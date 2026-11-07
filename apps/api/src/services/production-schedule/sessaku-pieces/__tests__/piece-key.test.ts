@@ -1,3 +1,4 @@
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
 import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceGeneration, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
 describe('piece identity and monotonic generation', () => {
@@ -19,7 +20,7 @@ describe('piece identity and monotonic generation', () => {
     const calls: string[][] = [];
     for (const key of [cutting, later]) {
       const execute = vi.fn();
-      const tx = { csvDashboardRow: { findMany: vi.fn().mockResolvedValue([]) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([later, cutting]) }, $executeRaw: execute };
+      const tx = { $queryRaw: vi.fn().mockResolvedValue([]), csvDashboardRow: { findMany: vi.fn().mockResolvedValue([]) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([later, cutting]) }, $executeRaw: execute };
       await acquireSessakuPieceLogicalLocks(tx as never, [key]);
       calls.push(execute.mock.calls.map((call) => call[1] as string));
     }
@@ -32,11 +33,15 @@ describe('piece identity and monotonic generation', () => {
     const later = { ...cutting, fsigencd: '2', fkojun: '2' };
     const locks = [];
     for (const key of [cutting, later]) {
-      const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) }, csvDashboardRow: { findMany: vi.fn().mockResolvedValue([
+      const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([
         { rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '2', FKOJUN: '2' } },
         { rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' } }
-      ]) }, $executeRaw: vi.fn() };
+      ]), $executeRaw: vi.fn() };
       await acquireSessakuPieceLogicalLocks(tx as never, [key]);
+      const query = tx.$queryRaw.mock.calls[0][0];
+      expect(query.text).toContain(`COALESCE(r."rowData"->>'FSEIBAN', '') =`);
+      expect(query.text).toContain(`COALESCE(r."rowData"->>'FHINCD', '') =`);
+      expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'A', 'P']);
       locks.push(tx.$executeRaw.mock.calls.map((call) => call[1]));
     }
     expect(locks[0]).toHaveLength(2);

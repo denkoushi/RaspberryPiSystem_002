@@ -1,4 +1,4 @@
-import { readSessakuPieceSets, encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { assertSessakuPieceWinnerTargets, lockSessakuPieceSourceRows, synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 /**
  * Production schedule order supplement sync: read/normalize → plan → short DB write.
@@ -421,12 +421,16 @@ export async function runOrderSupplementReplacementTransaction(
         const keys = await lockSessakuPieceSourceRows(tx, chunk.map((entry) => entry.csvDashboardRowId));
         if (keys.length) await assertSessakuPieceWinnerTargets(tx, chunk.map((entry) => entry.csvDashboardRowId));
         const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: chunk.map((entry) => entry.csvDashboardRowId) } }, select: { id: true, rowData: true } }) : [];
-        const sets = keys.length ? await readSessakuPieceSets(tx, rows) : new Map();
+        const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+        const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+        const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+        const partsWithSets = new Set(relatedSets.map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+        const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
         const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
         const data = [];
         for (const entry of chunk) {
           if (!keys.length) { data.push(entry); continue; }
-          data.push((liveRowIds.has(entry.csvDashboardRowId) || params.pieceQuantityByRowId?.get(entry.csvDashboardRowId) === 0) && params.pieceQuantityByRowId?.has(entry.csvDashboardRowId) ? { ...entry, plannedQuantity: params.pieceQuantityByRowId.get(entry.csvDashboardRowId) } : entry);
+          data.push((liveRowIds.has(entry.csvDashboardRowId) || rowsWithSets.has(entry.csvDashboardRowId) && params.pieceQuantityByRowId?.get(entry.csvDashboardRowId) === 0) && params.pieceQuantityByRowId?.has(entry.csvDashboardRowId) ? { ...entry, plannedQuantity: params.pieceQuantityByRowId.get(entry.csvDashboardRowId) } : entry);
         }
         const batch = await tx.productionScheduleOrderSupplement.createMany({ data });
         await synchronizeSessakuPieceSources(tx, keys);
@@ -450,13 +454,17 @@ export async function runOrderSupplementReplacementTransaction(
         if (keys.length) await assertSessakuPieceWinnerTargets(tx, nextRowIds);
         const targetIds = [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds];
         const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: targetIds } }, select: { id: true, rowData: true } }) : [];
-        const sets = keys.length ? await readSessakuPieceSets(tx, rows) : new Map();
+        const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+        const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+        const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+        const partsWithSets = new Set(relatedSets.map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+        const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
         const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
         for (const entry of chunk) {
           const targetRowId = !keys.length ? undefined : typeof entry.data.csvDashboardRowId === 'string' ? entry.data.csvDashboardRowId : previous.find((p) => p.id === entry.id)?.csvDashboardRowId;
           await tx.productionScheduleOrderSupplement.update({
             where: { id: entry.id },
-            data: targetRowId && (liveRowIds.has(targetRowId) || params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
+            data: targetRowId && (liveRowIds.has(targetRowId) || rowsWithSets.has(targetRowId) && params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
           });
         }
         await synchronizeSessakuPieceSources(tx, keys);

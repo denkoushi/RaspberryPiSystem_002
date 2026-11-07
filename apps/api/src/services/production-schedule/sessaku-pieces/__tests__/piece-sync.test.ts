@@ -1,3 +1,4 @@
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
 import { lockAllSessakuPieceSets, lockSessakuPieceSourceRows, prepareSessakuPiecePublication, synchronizeSessakuPieceSources } from '../piece-sync.js';
 import { readSessakuPieceSets } from '../piece-key.js';
@@ -26,11 +27,9 @@ describe('piece publication lock budget and legacy paths', () => {
     tx.csvDashboardRow.findMany.mockResolvedValue([]);
     await lockAllSessakuPieceSets(tx as never, true);
     expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
-    expect(tx.$queryRaw).not.toHaveBeenCalled();
-    expect(tx.csvDashboardRow.findMany).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ where: expect.objectContaining({ OR: [
-      { AND: [{ rowData: { path: ['FSEIBAN'], equals: 'A' } }, { rowData: { path: ['FHINCD'], equals: 'P' } }] },
-      { AND: [{ rowData: { path: ['FSEIBAN'], equals: 'B' } }, { rowData: { path: ['FHINCD'], equals: 'P' } }] }
-    ] }) }));
+    expect(tx.csvDashboardRow.findMany).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.$queryRaw.mock.calls[0][0].values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'A', 'P', 'B', 'P']);
   });
   it.each([{ sets: [] }, { sets: [{ ...key, id: 'tombstone', pieces: [] }] }])('locks ordinary/tombstone source keys without winner or board queries %j', async ({ sets }) => {
     const tx = client(sets);
@@ -38,7 +37,7 @@ describe('piece publication lock budget and legacy paths', () => {
     expect(await prepareSessakuPiecePublication(tx as never, [{ rowData }])).toEqual([]);
     await synchronizeSessakuPieceSources(tx as never, [key]);
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
-    expect(tx.$queryRaw).not.toHaveBeenCalled();
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.productionScheduleSessakuPieceSet.update).not.toHaveBeenCalled();
   });
   it('looks up 7200 parent keys in one fseiban IN query and filters unrelated sibling keys', async () => {

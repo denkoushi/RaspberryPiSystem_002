@@ -51,11 +51,14 @@ async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: rea
   const parts = [...new Map(supported.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()];
   const [sets, rows] = await Promise.all([
     client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts } }),
-    client.csvDashboardRow.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts.map(({ fseiban, fhincd }) => ({ AND: [
-        { rowData: { path: ['FSEIBAN'], equals: fseiban } }, { rowData: { path: ['FHINCD'], equals: fhincd } }
-      ] })) }, select: { rowData: true }
-    })
+    client.$queryRaw<Array<{ rowData: Prisma.JsonValue }>>(Prisma.sql`
+      SELECT r."rowData" FROM "CsvDashboardRow" r
+      WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND (${Prisma.join(parts.map(({ fseiban, fhincd }) => Prisma.sql`
+          (COALESCE(r."rowData"->>'FSEIBAN', '') = ${fseiban}
+            AND COALESCE(r."rowData"->>'FHINCD', '') = ${fhincd})
+        `), ' OR ')})
+    `)
   ]);
   return [...keys, ...sets, ...rows.map((row) => sessakuPieceKeyFromRow(row.rowData))];
 }

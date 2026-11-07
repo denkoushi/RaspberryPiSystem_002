@@ -70,7 +70,7 @@ describe('grinding-planning-board-projection', () => {
     expect(items.reduce((sum, item) => sum + item.requiredMinutes!, 0)).toBe(1);
     for (const minutes of ['0', '']) expect(project(minutes).map((item) => [item.requiredMinutes, item.requiredMinutesKnown])).toEqual([[null, false], [null, false]]);
   });
-  it('projects linked grinding pieces with their own completion and proportional load', () => {
+  it.each([5, null])('projects linked grinding pieces with proportional load using supplement total %s', (plannedQuantity) => {
     const updatedAt = new Date('2026-11-07');
     const key = sessakuPieceKeyFromRow(sourceRow().rowData);
     const set: SessakuPieceSet = { ...key, id: 'later', csvDashboardId: 'dashboard', version: 2, nextPosition: 4,
@@ -78,11 +78,14 @@ describe('grinding-planning-board-projection', () => {
       pieces: [1, 2, 2].map((quantity, index) => ({ id: `later-${index}`, sourcePieceId: `cut-${index}`, pieceSetId: 'later',
         position: index + 1, quantity, isCompleted: index === 1, completedAt: index === 1 ? updatedAt : null, createdAt: updatedAt, updatedAt })) };
     const result = projectGrindingPlanningBoard(baseParams({ includePieces: true,
-      details: new Map([['row-1', detail({ orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }] })]]),
+      details: new Map([['row-1', detail({ orderSupplements: [{ plannedQuantity, plannedEndDate: null }] })]]),
       pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) }));
     expect(result.items.map((item) => [item.sourcePieceId, item.quantity, item.requiredMinutes, item.isCompleted])).toEqual([
       ['cut-0', 1, 20, false], ['cut-1', 2, 40, true], ['cut-2', 2, 40, false]
     ]);
+    expect(result.items.map((item) => item.parentPlannedQuantity)).toEqual([5, 5, 5]);
+    expect(result.items.every((item) => item.requiredMinutesKnown)).toBe(true);
+    expect(result.unknownRequiredMinutesCount).toBe(0);
     expect(result.load[0].requiredMinutes).toBe(60);
   });
   it.each([

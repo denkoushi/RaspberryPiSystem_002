@@ -50,12 +50,14 @@ export async function readSessakuPiecePublicationState(tx: Prisma.TransactionCli
     const external = previous ? await tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: previous.id } }) : null;
     const supplement = previous ? await tx.productionScheduleOrderSupplement.findUnique({ where: { csvDashboardRowId: previous.id } }) : null;
     const mail = previous ? await tx.productionScheduleFkojunstMailStatus.findUnique({ where: { csvDashboardRowId: previous.id } }) : null;
-    states.push({ key, previous, external, supplement, mail });
+    const progress = previous && key.sourcePieceSetId && !key.pieces.length
+      ? await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: previous.id } }) : null;
+    states.push({ key, previous, external, supplement, mail, progress });
   }
   return states;
 }
 export async function publishSessakuPieceProgress(tx: Prisma.TransactionClient, states: Awaited<ReturnType<typeof readSessakuPiecePublicationState>>) {
-  for (const { key, previous, external, supplement, mail } of states) {
+  for (const { key, previous, external, supplement, mail, progress } of states) {
     const winner = await findSessakuPieceWinner(tx, key);
     if (!winner) continue;
     const sameOrder = String((previous?.rowData as Record<string, unknown> | undefined)?.ProductNo ?? '') === String((winner.rowData as Record<string, unknown>)?.ProductNo ?? '');
@@ -70,6 +72,11 @@ export async function publishSessakuPieceProgress(tx: Prisma.TransactionClient, 
         externallyCompletedFromFkojunstMailStatus: external.externallyCompletedFromFkojunstMailStatus,
         externallyCompletedFromScheduleCsvDisappeared: external.externallyCompletedFromScheduleCsvDisappeared };
       await tx.productionScheduleExternalCompletion.upsert({ where: { csvDashboardRowId: winner.id }, create: { ...data, csvDashboardRowId: winner.id }, update: {} });
+    }
+    if (progress?.isCompleted && previous?.id !== winner.id) {
+      const data = { isCompleted: true, updatedAt: progress.updatedAt };
+      await tx.productionScheduleProgress.upsert({ where: { csvDashboardRowId: winner.id },
+        create: { ...data, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: winner.id }, update: data });
     }
     await reconcileSessakuPieceProgress(tx, key);
     const set = await readSessakuPieceSet(tx, key);

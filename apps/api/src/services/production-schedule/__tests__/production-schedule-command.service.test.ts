@@ -275,11 +275,11 @@ describe('production-schedule-command.service', () => {
     expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(String(vi.mocked(prisma.$executeRaw).mock.calls[0][1])).toContain('sessaku-pieces:');
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[0][0])).toContain('CsvDashboardRow');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[1][0])).toContain('CsvDashboardRow');
     const logical = vi.mocked(prisma.$executeRaw).mock.invocationCallOrder[0];
     const setRead = vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mock.invocationCallOrder[0];
-    const rowLock = vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[0];
+    const rowLock = vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[1];
     expect(logical).toBeLessThan(setRead);
     expect(setRead).toBeLessThan(rowLock);
     expect(rowLock).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
@@ -308,9 +308,9 @@ describe('production-schedule-command.service', () => {
     const relatedRead = vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mock.invocationCallOrder[1];
     expect(logical).toBeLessThan(relatedRead);
     expect(relatedRead).toBeLessThan(board);
-    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[0][0])).toContain('ProductionScheduleGrindingPlanningBoardState');
-    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[1][0])).toContain('CsvDashboardRow');
-    expect(vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[1]).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[1][0])).toContain('ProductionScheduleGrindingPlanningBoardState');
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[2][0])).toContain('CsvDashboardRow');
+    expect(vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[2]).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
   });
 
 });

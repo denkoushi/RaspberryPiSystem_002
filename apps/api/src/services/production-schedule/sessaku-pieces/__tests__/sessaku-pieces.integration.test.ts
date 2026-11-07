@@ -355,8 +355,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         await synchronizeSessakuPieceSources(tx, keys);
       });
     };
-    const importLaterQuantity = async (raw: string) => {
-      const source = toSupplementNormalizedRow('source', { ProductNo: '123', FSIGENCD: '2', FKOJUN: '2', plannedQuantity: raw })!;
+    const importLaterQuantity = async (raw: string, productNo = '123') => {
+      const source = toSupplementNormalizedRow('source', { ProductNo: productNo, FSIGENCD: '2', FKOJUN: '2', plannedQuantity: raw })!;
       const supplement = await prisma.productionScheduleOrderSupplement.findUnique({ where: { csvDashboardRowId: nextRowId } });
       const lookup = buildOrderSupplementKey(source);
       const plan = buildReplacementCreateInputs([source], new Map([[lookup, nextRowId]]), new Map(supplement ? [[lookup, supplement]] : []), new Date());
@@ -398,17 +398,41 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect((await readSessakuPieceSet(prisma, key()))).toMatchObject({ quantityWarning: null, pieces: [{ quantity: 1 }, { quantity: 2 }, { quantity: 3 }] });
       expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces[2]).toMatchObject({ quantity: 4, isCompleted: true });
     });
-    it.each(['later-update', 'cutting-create'])('keeps imported zero before first split and restores manual completion (%s)', async (path) => {
+    it.each(['later-update', 'cutting-create'])('applies zero after first split and restores manual completion across winner replacement (%s)', async (path) => {
       if (path === 'cutting-create') await prisma.productionScheduleOrderSupplement.delete({ where: { csvDashboardRowId: nextRowId } });
       expect(await importLaterQuantity('0')).toMatchObject({ plannedQuantity: null, piecePlannedQuantity: 0 });
-      expect((await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } })).plannedQuantity).toBe(0);
+      expect((await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } })).plannedQuantity).toBe(path === 'later-update' ? 5 : null);
       await splitThree();
+      await importLaterQuantity('0');
       const empty = (await readSessakuPieceSet(prisma, laterKey()))!;
       expect(empty.pieces).toEqual([]); expect(empty.sourcePieceSetId).toBeTruthy();
       await setProductionScheduleRowCompletionIntent({ rowId: nextRowId, locationKey: site, intent: 'complete' });
       await importLaterQuantity('0');
       expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } })).isCompleted).toBe(true);
-      if (path === 'later-update') await importLaterQuantity('5');
+      const previousRowId = nextRowId;
+      let replacementId = '';
+      let release!: () => void, ready!: () => void;
+      const held = new Promise<void>((resolve) => { ready = resolve; });
+      const unlock = new Promise<void>((resolve) => { release = resolve; });
+      const publication = reader.$transaction(async (tx) => {
+        await acquireSessakuPieceLogicalLocks(tx, [laterKey()]);
+        const states = await readSessakuPiecePublicationState(tx, [laterKey()]);
+        const previous = await tx.csvDashboardRow.findUniqueOrThrow({ where: { id: previousRowId } });
+        replacementId = (await tx.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...previous.rowData as Prisma.InputJsonObject, ProductNo: path === 'later-update' ? '999' : '123' },
+          dataHash: `${site}-later-winner`, occurredAt: new Date(), updatedAt: new Date('2099-01-01') } })).id;
+        await publishSessakuPieceProgress(tx, states);
+        await tx.csvDashboardRow.delete({ where: { id: previousRowId } });
+        ready(); await unlock;
+      }, { timeout: 30000 });
+      try {
+        await held;
+        expect((await findSessakuPieceWinner(prisma, laterKey()))?.id).toBe(previousRowId);
+        expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: replacementId } })).toBeNull();
+      } finally { release(); }
+      await publication;
+      nextRowId = replacementId;
+      expect((await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } })).isCompleted).toBe(true);
+      if (path === 'later-update') await importLaterQuantity('5', '999');
       else {
         await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: nextRowId }, data: { plannedQuantity: 5 } });
         await quantity(5);
@@ -450,6 +474,11 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       r = await resplit(r);
       const orphan = (await readSessakuPieceSet(prisma, laterKey()))!;
       expect(orphan.pieces.map((piece) => piece.id)).toEqual([old.pieces[0].id, old.pieces[2].id]);
+      await quantity(5);
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces).toEqual(orphan.pieces);
+      r = await complete(r.pieces[0]);
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces).toEqual(orphan.pieces);
+      r = await complete(r.pieces[0], 'incomplete');
       await merge(r);
       expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
     });
@@ -615,6 +644,17 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         return await Promise.allSettled([leader, follower]);
       } finally { release(); spy.mockRestore(); }
     }
+    it.each(['csv', 'split'])('serializes CSV completion and first split with no initial set (%s first)', async (first) => {
+      await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FSIGENCD: '2', FKOJUN: '2', progress: '完了', updatedAt: '2099/01/01 00:00' } } });
+      const candidate = await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } });
+      const csvRequest = () => new ProgressSyncFromCsvService().sync({ candidates: [{ rowId: nextRowId, rowData: candidate.rowData, occurredAt: candidate.occurredAt }] });
+      const results = await serializeAtLogicalLock(first === 'csv' ? csvRequest : splitThree, first === 'csv' ? splitThree : csvRequest);
+      expect(results.every((result) => result.status === 'fulfilled')).toBe(true);
+      const set = await readSessakuPieceSet(prisma, laterKey());
+      const progress = await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } });
+      if (first === 'csv') { expect(set).toBeNull(); expect(progress.isCompleted).toBe(true); }
+      else { expect(set?.pieces).toHaveLength(3); expect(set?.pieces.every((piece) => !piece.isCompleted)).toBe(true); expect(progress.isCompleted).toBe(false); }
+    });
     it.each(['import', 'split'])('serializes supplement import without an existing set against first split (%s first)', async (first) => {
       const p = await parent();
       const splitRequest = () => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0, quantities: [1, 2, 2] });

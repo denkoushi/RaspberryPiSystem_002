@@ -90,13 +90,13 @@ async function removeQuantityPieces(tx: Prisma.TransactionClient, csvDashboardId
 }
 async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
   const winner = await findSessakuPieceWinner(tx, key);
-  if (!winner) return { external: false, manualCompleted: false, plannedQuantity: null };
+  if (!winner) return { hasWinner: false, external: false, manualCompleted: false, plannedQuantity: null };
   const [external, supplement, progress] = await Promise.all([
     tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } }),
     tx.productionScheduleOrderSupplement.findUnique({ where: { csvDashboardRowId: winner.id } }),
     tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: winner.id } })
   ]);
-  return { manualCompleted: progress?.isCompleted === true, external: external?.isExternallyCompleted === true, plannedQuantity: supplement?.plannedQuantity ?? null };
+  return { hasWinner: true, manualCompleted: progress?.isCompleted === true, external: external?.isExternallyCompleted === true, plannedQuantity: supplement?.plannedQuantity ?? null };
 }
 
 /** Caller holds all related logical locks. Progress for the requested row is published by its caller. */
@@ -106,6 +106,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   const source = await readQuantitySource(tx, key);
   const linked = set.pieces.filter((piece) => piece.sourcePieceId);
   if (linked.length || set.sourcePieceSetId) {
+    if (!source.hasWinner) return false;
     const cutting = set.sourcePieceSetId
       ? await tx.productionScheduleSessakuPieceSet.findUnique({ where: { id: set.sourcePieceSetId }, include: { pieces: { orderBy: { position: 'asc' } } } })
       : (await tx.productionScheduleSessakuPiece.findFirst({ where: { id: linked[0].sourcePieceId! }, include: { pieceSet: { include: { pieces: { orderBy: { position: 'asc' } } } } } }))?.pieceSet;
@@ -125,7 +126,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   const removed = set.pieces.filter((piece) => !plan.pieces.some((next) => next.id === piece.id)).map((piece) => piece.id);
   // Never discard completed evidence in a later process to satisfy a reduced cutting plan.
   const laterDetails = await Promise.all(later.map((process) => readQuantitySource(tx, process)));
-  if (later.some((process, index) => set.pieces.some((cutting) => {
+  if (later.some((process, index) => laterDetails[index].hasWinner && set.pieces.some((cutting) => {
     const completed = process.pieces.filter((piece) => piece.sourcePieceId === cutting.id && (piece.isCompleted || laterDetails[index].external)).reduce((sum, piece) => sum + piece.quantity, 0);
     const nextQuantity = plan.pieces.find((piece) => piece.id === cutting.id)?.quantity ?? 0;
     return nextQuantity < cutting.quantity && completed > nextQuantity;
@@ -137,6 +138,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   // Invalid later plans retain their source references; retain the cutting pieces too.
   if (removed.length && later.some((process, index) => {
     const detail = laterDetails[index];
+    if (!detail.hasWinner) return false;
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
     return planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition).pieces
       .some((piece) => removed.includes(piece.sourcePieceId));
@@ -148,6 +150,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   const changed = await saveQuantityPlan(tx, set, plan, nextTotal, undefined, true);
   for (const [index, process] of later.entries()) {
     const detail = laterDetails[index];
+    if (!detail.hasWinner) continue;
     if (!process.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: process.id }, data: { sourcePieceSetId: set.id } });
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
     const laterPlan = planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition);

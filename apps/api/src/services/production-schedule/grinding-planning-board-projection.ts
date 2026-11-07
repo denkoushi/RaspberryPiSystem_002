@@ -527,7 +527,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const inherited = params.overrides.get(parent.itemId);
       const own = params.overrides.get(itemId);
       const override = own ?? inherited;
-      const total = parent.plannedQuantity;
+      const total = parent.plannedQuantity ?? (set.sourcePieceSetId || piece.sourcePieceId ? set.plannedQuantity : null);
       const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null && parent.requiredMinutes > 0
         ? parent.requiredMinutes * piece.quantity / total : null;
       const isCompleted = external || piece.isCompleted;
