@@ -1,3 +1,6 @@
+import Fastify from 'fastify';
+import { registerErrorHandler } from '../../../../plugins/error-handler.js';
+import { registerSessakuPiecesRoutes } from '../../../../routes/kiosk/production-schedule/sessaku-pieces.js';
 import { buildOrderSupplementKey, buildReplacementCreateInputs, runOrderSupplementReplacementTransaction, toSupplementNormalizedRow } from '../../order-supplement-sync.pipeline.js';
 import { replaceAllWinnerExternalCompletionStatesFromMailSync } from '../../external-completion/fkojunst-external-completion-sync.repository.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../../fkojunst-status-mail-critical-lock.js';
@@ -75,6 +78,27 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await expect(split()).rejects.toMatchObject({ statusCode: 403 });
     expect((await board()).items).toEqual(before.items);
     expect(await readSessakuPieceSet(prisma, key())).toBeNull();
+  });
+  it.each(['parent', 'piece'] as const)('returns 400 PIECE_QUANTITY_CONFLICT for a mismatched %s split total', async (target) => {
+    const p = await parent();
+    const result = target === 'piece' ? await split() : null;
+    const item = result?.pieces[0] ?? p;
+    const app = Fastify();
+    registerErrorHandler(app);
+    await registerSessakuPiecesRoutes(app, {
+      requireClientDevice: async () => ({ clientDevice: {} }),
+      resolveLocationScopeContext: () => ({ siteKey: site })
+    } as never);
+    try {
+      const response = await app.inject({ method: 'POST',
+        url: '/kiosk/production-schedule/grinding-planning-board/pieces/split',
+        payload: { parentItemId: p.itemId, targetPieceId: item.pieceId,
+          itemRevision: item.itemRevision, expectedPieceSetVersion: result?.pieceSetVersion ?? 0,
+          quantities: target === 'piece' ? [2, 3] : [1, 1] }
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().errorCode).toBe('PIECE_QUANTITY_CONFLICT');
+    } finally { await app.close(); }
   });
   it('projects [2,3], preserves parent responses, aggregates completion and downstream arrival', async () => {
     let result = await split(); expect(result.pieces.map((p) => p.quantity)).toEqual([2, 3]);

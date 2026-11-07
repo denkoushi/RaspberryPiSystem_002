@@ -26,13 +26,18 @@ export function PlanningBoardChainLinks({ bars, content, rowElements, barRows, l
     const element = content.current;
     if (!element) return;
     const bounds = element.getBoundingClientRect();
-    const position = (bar: GanttBar, last = false) => {
+    const position = (bar: GanttBar) => {
       const row = rowElements.current.get(barRows.get(bar.item.itemId)!);
-      const rect = ganttBarGeometry(bar, layout.start, dayWidth, true, last);
-      if (!row || !rect) return null;
-      return { ...rect, left: labelWidth + rect.left,
-        top: (row.getBoundingClientRect().top - bounds.top) / pageZoom() + rect.top };
+      const first = ganttBarGeometry(bar, layout.start, dayWidth, true);
+      const last = ganttBarGeometry(bar, layout.start, dayWidth, true, true);
+      if (!row || !first || !last) return null;
+      const top = (row.getBoundingClientRect().top - bounds.top) / pageZoom();
+      return {
+        first: { ...first, left: labelWidth + first.left, top: top + first.top },
+        last: { ...last, left: labelWidth + last.left, top: top + last.top }
+      };
     };
+    const positions = new Map(bars.map((bar) => [bar.item.itemId, position(bar)]));
     const processes = new Map<string, GanttBar[]>();
     for (const bar of bars) {
       const key = bar.item.kind === 'piece' && bar.item.parentItemId ? bar.item.parentItemId : bar.item.itemId;
@@ -42,8 +47,8 @@ export function PlanningBoardChainLinks({ bars, content, rowElements, barRows, l
     }
     const groups = [...processes.values()];
     setLinks(groups.slice(1).flatMap((group, index) => groups[index]!.flatMap((previousBar) => group.flatMap((bar) => {
-      const previous = position(previousBar, true);
-      const next = position(bar);
+      const previous = positions.get(previousBar.item.itemId)?.last;
+      const next = positions.get(bar.item.itemId)?.first;
       if (!previous || !next) return [];
       const x1 = previous.left + previous.width;
       const y1 = previous.top + previous.height / 2;

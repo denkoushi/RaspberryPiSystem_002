@@ -141,14 +141,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && <>
-      {showPieceQuantity && <div className="absolute top-0 z-10" style={{ left: Math.max(0, (bar.end! - start) * dayWidth - 80) }}>
-        <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selected} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />
-      </div>}
-      <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
-        style={{ left: (bar.end! - start) * dayWidth - 28 }}
+    {onCompleteToggle && completionTargetId === bar.item.itemId && <div
+      className="absolute top-0 z-10 flex w-max items-start"
+      style={{ left: Math.max(0, (bar.end! - start) * dayWidth), transform: `translateX(max(-100%, ${-Math.max(0, (bar.end! - start) * dayWidth)}px))` }}>
+      {showPieceQuantity && <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selected} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
+      <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
         disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />
-    </>}
+    </div>}
     </>
   );
 });

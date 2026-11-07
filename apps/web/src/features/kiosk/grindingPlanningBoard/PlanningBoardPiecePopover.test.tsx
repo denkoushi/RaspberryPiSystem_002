@@ -144,16 +144,17 @@ describe('PlanningBoardPiecePopover', () => {
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
     await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, after === 3 ? [1, 2] : [1, 1]));
   });
-  it('resets an open distribution when only the revision changes', async () => {
+  it('preserves an edited distribution when only the revision changes', async () => {
     const h = setup();
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    fireEvent.click(screen.getByLabelText('1片目の数量を増やす'));
     const updated = { ...row, itemRevision: 'new' };
     h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={updated} /></PlanningBoardPiecesContext.Provider>);
-    expect(screen.getByLabelText('分け数')).toHaveTextContent('2');
+    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
     fireEvent.click(screen.getByRole('button', { name: '分ける' }));
-    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, [2, 3]));
+    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(updated, [2, 2, 1]));
   });
   it.each([false, true])('blocks a completing parent inside the popover even with external disabled=%s', (disabled) => {
     const h = setup(piece('a', 3));

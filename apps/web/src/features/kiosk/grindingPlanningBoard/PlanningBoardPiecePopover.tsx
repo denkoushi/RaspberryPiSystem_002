@@ -145,7 +145,7 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
   useEffect(() => {
     if (open) setQuantities(distributeQuantity(quantity ?? 0, 2));
-  }, [open, quantity, item.itemRevision]);
+  }, [open, quantity]);
   const count = quantities.length;
   const setCount = (value: number) => setQuantities(distributeQuantity(quantity ?? 0, value));
   const adjust = (index: number, delta: number) => setQuantities((values) => {

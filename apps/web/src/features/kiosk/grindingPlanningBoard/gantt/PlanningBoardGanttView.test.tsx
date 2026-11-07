@@ -7,6 +7,7 @@ import { PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../Pla
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
+import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
@@ -226,7 +227,7 @@ describe('PlanningBoardGanttView', () => {
     expect(bar).toBeEnabled();
     fireEvent.click(bar);
     const button = screen.getByRole('button', { name: label });
-    expect(button.parentElement).toBe(bar.parentElement);
+    expect(button.parentElement!.parentElement).toBe(bar.parentElement);
     fireEvent.click(button);
     expect(onCompleteToggle).toHaveBeenCalledWith(target, completed ? 'incomplete' : 'complete');
     expect(values.onToggleItem).toHaveBeenCalledTimes(completed ? 0 : 1);
@@ -255,7 +256,7 @@ describe('PlanningBoardGanttView', () => {
     const badge = screen.getByRole('button', { name: '取込で完了' });
     expect(badge).toHaveTextContent('取込');
     expect(badge).toBeDisabled();
-    expect(badge.parentElement).toBe(bar.parentElement);
+    expect(badge.parentElement!.parentElement).toBe(bar.parentElement);
     fireEvent.click(badge);
     expect(onCompleteToggle).not.toHaveBeenCalled();
     expect(values.onToggleItem).not.toHaveBeenCalled();
@@ -830,6 +831,35 @@ describe('forward PlanningBoardGanttView', () => {
     expect(links).toHaveLength(4);
     expect(links.map((link) => link.getAttribute('data-from-to'))).toEqual(['P->A', 'P->B', 'A->N', 'B->N']);
   });
+  it('measures each piece once while keeping all nine adjacent-process links', () => {
+    const entries = ['P', 'N'].flatMap((parent, index) => [1, 2, 3].map((piece) => item({
+      itemId: `${parent}${piece}`, kind: 'piece', parentItemId: parent, processOrder: index ? '20' : '10', requiredMinutes: 60
+    })));
+    const layout = forwardProps(entries).layout;
+    const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
+    const content = document.createElement('div');
+    const contentRect = vi.spyOn(content, 'getBoundingClientRect');
+    const rows = bars.map(() => document.createElement('div'));
+    const measurements = rows.map((row) => vi.spyOn(row, 'getBoundingClientRect'));
+    render(<PlanningBoardChainLinks bars={bars} layout={layout} content={{ current: content }}
+      rowElements={{ current: new Map(rows.map((row, index) => [String(index), row])) }}
+      barRows={new Map(bars.map((bar, index) => [bar.item.itemId, String(index)]))}
+      labelWidth={168} dayWidth={100} viewportWidth={1000} viewportHeight={500} />);
+    expect(screen.getAllByTestId('planning-gantt-chain-link')).toHaveLength(9);
+    expect(contentRect).toHaveBeenCalledTimes(1);
+    for (const measurement of measurements) expect(measurement).toHaveBeenCalledTimes(1);
+  });
+  it('anchors backward completion alone at the bar end', () => {
+    render(<PlanningBoardGanttView {...props()} onCompleteToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const completion = screen.getByRole('button', { name: '完了にする' });
+    const wrapper = completion.parentElement!;
+    expect(wrapper.children).toHaveLength(1);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const end = parseFloat(bar.style.left) + parseFloat(bar.style.width);
+    expect(wrapper.style.left).toBe(`${end}px`);
+    expect(wrapper.style.transform).toBe(`translateX(max(-100%, ${-end}px))`);
+  });
   it('offers merging after two gantt long presses use the shared piece selection', async () => {
     vi.useFakeTimers();
     const entries = ['a', 'b'].map((id) => item({ itemId: `piece:${id}`, kind: 'piece', pieceId: id, parentItemId: 'parent', plannedQuantity: 1, parentPlannedQuantity: 2, requiredMinutes: 60 }));
@@ -852,13 +882,19 @@ describe('forward PlanningBoardGanttView', () => {
     expect(changePieces).toHaveBeenCalledExactlyOnceWith(updated);
   });
   it.each([false, true])('places the backward quantity control immediately before completion (resourceView=%s)', (resourceView) => {
-    render(<PieceGantt resourceView={resourceView} items={[item({ plannedQuantity: 12 })]} mode="backward" />);
+    render(<PieceGantt resourceView={resourceView} items={[item({ kind: 'piece', parentItemId: 'parent', quantity: 1000, plannedQuantity: 1000, parentPlannedQuantity: 2000 })]} mode="backward" />);
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
     const quantity = screen.getByRole('button', { name: /の数量/ });
-    expect(quantity.parentElement!.parentElement!.nextElementSibling).toBe(screen.getByRole('button', { name: '完了にする' }));
-    expect(quantity).toHaveTextContent('12個 ▾');
-    expect(parseFloat(quantity.parentElement!.parentElement!.style.left)).toBeGreaterThanOrEqual(0);
-    expect(quantity.parentElement!.parentElement!.style.transform).toBe('');
+    const wrapper = quantity.parentElement!.parentElement!;
+    const completion = screen.getByRole('button', { name: '完了にする' });
+    expect(wrapper).toHaveClass('absolute', 'flex', 'w-max');
+    expect(quantity.parentElement!.nextElementSibling).toBe(completion);
+    expect(completion.parentElement).toBe(wrapper);
+    expect(quantity).toHaveTextContent('1000／2000 ▾');
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const end = parseFloat(bar.style.left) + parseFloat(bar.style.width);
+    expect(wrapper.style.left).toBe(`${end}px`);
+    expect(wrapper.style.transform).toBe(`translateX(max(-100%, ${-end}px))`);
   });
   it('clamps a backward quantity control at the left edge of the row', () => {
     const entry = item({ plannedQuantity: 5 });
@@ -873,7 +909,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
     const position = screen.getByRole('button', { name: /の数量/ }).parentElement!.parentElement!;
     expect(position.style.left).toBe('0px');
-    expect(position.style.transform).toBe('');
+    expect(position.style.transform).toBe('translateX(max(-100%, 0px))');
   });
   it.each(['reorder', 'move'] as const)('drags a piece bar to %s with its piece ID intact', (operation) => {
     const entries = [item({ itemId: 'piece:a', kind: 'piece', pieceId: 'a', parentItemId: 'parent', requiredMinutes: 60 }),
