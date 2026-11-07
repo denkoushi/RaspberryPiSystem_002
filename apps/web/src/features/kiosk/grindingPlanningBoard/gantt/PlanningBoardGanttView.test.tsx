@@ -1,11 +1,14 @@
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinutesContext';
+import { PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../PlanningBoardPiecePopover';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
+import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
+import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
@@ -224,7 +227,7 @@ describe('PlanningBoardGanttView', () => {
     expect(bar).toBeEnabled();
     fireEvent.click(bar);
     const button = screen.getByRole('button', { name: label });
-    expect(button.parentElement).toBe(bar.parentElement);
+    expect(button.parentElement!.parentElement).toBe(bar.parentElement);
     fireEvent.click(button);
     expect(onCompleteToggle).toHaveBeenCalledWith(target, completed ? 'incomplete' : 'complete');
     expect(values.onToggleItem).toHaveBeenCalledTimes(completed ? 0 : 1);
@@ -253,7 +256,7 @@ describe('PlanningBoardGanttView', () => {
     const badge = screen.getByRole('button', { name: '取込で完了' });
     expect(badge).toHaveTextContent('取込');
     expect(badge).toBeDisabled();
-    expect(badge.parentElement).toBe(bar.parentElement);
+    expect(badge.parentElement!.parentElement).toBe(bar.parentElement);
     fireEvent.click(badge);
     expect(onCompleteToggle).not.toHaveBeenCalled();
     expect(values.onToggleItem).not.toHaveBeenCalled();
@@ -724,6 +727,204 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 107, clientY: 20 });
     fireEvent.click(bar);
   };
+  function PieceGantt({ items, mode = 'forward', createEnabled = true, enabled = true, cutting = true, disabled = false, stripOnly = false, pieceDisabled = false, resourceView = true, completionPendingParentIds, changePieces = vi.fn() }: {
+    items: GrindingPlanningBoardItem[]; mode?: 'forward' | 'backward'; createEnabled?: boolean; enabled?: boolean; cutting?: boolean; disabled?: boolean;
+    pieceDisabled?: boolean; resourceView?: boolean; stripOnly?: boolean; completionPendingParentIds?: ReadonlySet<string>; changePieces?: (items: GrindingPlanningBoardItem[], quantities?: number[]) => Promise<void>;
+  }) {
+    const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+    const actions = usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories: { '305': cutting ? 'cutting' : 'grinding' },
+      selectedItems: items.filter((entry) => selected.has(entry.itemId)), changePieces, completionPendingParentIds });
+    return <PlanningBoardPiecesContext.Provider value={actions}>
+      {stripOnly ? <PlanningBoardChainStrip pieceDisabled={pieceDisabled} bottom={0} bars={props(items).layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))} resourceNameMap={{}} selectedItemIds={selected} currentItemId={null} onStep={vi.fn()} onClose={vi.fn()} disabled={disabled} /> : <PlanningBoardGanttView {...(mode === 'forward' ? forwardProps(items) : props(items))} disabled={disabled}
+        pieceDisabled={pieceDisabled} resourceView={resourceView} onCompleteToggle={vi.fn()} selectedItemIds={selected} onToggleItem={(entry, checked) => setSelected((previous) => {
+          const next = new Set(previous); if (checked) next.add(entry.itemId); else next.delete(entry.itemId); return next;
+        })} />}
+    </PlanningBoardPiecesContext.Provider>;
+  }
+  it.each([
+    ['available', {}, {}, true], ['quantity one', { plannedQuantity: 1 }, {}, false],
+    ['completed', { isCompleted: true }, {}, false], ['warning', { quantityWarning: 'INVALID_PLANNED_QUANTITY' }, {}, false],
+    ['unassigned', { fseiban: '********' }, {}, false], ['creation off', {}, { createEnabled: false }, false],
+    ['disabled', {}, { disabled: true }, true], ['actions off', {}, { enabled: false }, false], ['grinding', {}, { cutting: false }, false], ['original or special due', {}, { pieceDisabled: true }, true]
+  ] as const)('shows only operable strip quantities: %s', (_name, overrides, options, visible) => {
+    render(<PieceGantt stripOnly items={[item({ plannedQuantity: 12, ...overrides })]} {...options} />);
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    expect(within(strip).queryByRole('button', { name: /の数量/ }) !== null).toBe(visible);
+    if (visible) expect(within(strip).getByRole('button', { name: /の数量/ })).toHaveClass('border-2', 'border-sky-400', 'bg-sky-900');
+    else expect(within(strip).queryByText(/個|／/)).not.toBeInTheDocument();
+  });
+  it.each(['forward', 'backward'] as const)('keeps the same disabled quantity button while saving in %s mode', (mode) => {
+    const items = [item({ plannedQuantity: 12 })];
+    const { rerender } = render(<PieceGantt items={items} mode={mode} />);
+    if (mode === 'forward') tap(screen.getByTestId('planning-gantt-bar-a'));
+    else fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const button = screen.getByRole('button', { name: /の数量/ });
+    expect(button).toBeEnabled();
+    rerender(<PieceGantt items={items} mode={mode} disabled />);
+    expect(screen.getByRole('button', { name: /の数量/ })).toBe(button);
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    rerender(<PieceGantt items={items} mode={mode} />);
+    expect(screen.getByRole('button', { name: /の数量/ })).toBe(button);
+    expect(button).toBeEnabled();
+  });
+  it.each(['forward', 'backward'] as const)('disables quantities for the completing parent only in %s mode', (mode) => {
+    const items = ['a', 'b', 'other'].map((id) => item({ itemId: `piece:${id}`, kind: 'piece',
+      parentItemId: id === 'other' ? 'other-parent' : 'parent', plannedQuantity: 3, parentPlannedQuantity: 6, requiredMinutes: 60 }));
+    const draw = (parents: ReadonlySet<string>) => <PieceGantt items={items} mode={mode} completionPendingParentIds={parents} />;
+    const { rerender } = render(draw(new Set()));
+    const focus = (id: string) => {
+      const bar = screen.getByTestId(`planning-gantt-bar-piece:${id}`);
+      if (mode === 'forward') tap(bar); else fireEvent.click(bar);
+    };
+    focus('a');
+    expect(screen.getAllByRole('button', { name: /の数量/ }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+    rerender(draw(new Set(['parent'])));
+    for (const id of ['a', 'b', 'other']) {
+      if (mode === 'backward' && id !== 'a') focus(id);
+      const button = document.querySelector(`[data-planning-board-quantity-item="piece:${id}"]`);
+      expect(button).toBeInTheDocument();
+      if (id === 'other') expect(button).toBeEnabled(); else expect(button).toBeDisabled();
+    }
+    rerender(draw(new Set()));
+    expect(screen.getAllByRole('button', { name: /の数量/ }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+  });
+  it('splits from the chain strip into adjusted quantities [5,4,3]', async () => {
+    const entry = item({ plannedQuantity: 12 }); const changePieces = vi.fn().mockResolvedValue(undefined);
+    render(<PieceGantt items={[entry]} changePieces={changePieces} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    fireEvent.click(screen.getByRole('button', { name: '1片目の数量を増やす' }));
+    expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('3');
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([entry], [5, 4, 3]));
+  });
+  it('splits from a reused chain bar with the latest item revision', async () => {
+    const entry = item({ plannedQuantity: 5 });
+    const changePieces = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<PieceGantt items={[entry]} changePieces={changePieces} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const updated = { ...entry, itemRevision: 'r2' };
+    rerender(<PieceGantt items={[updated]} changePieces={changePieces} />);
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([updated], [2, 3]));
+  });
+  it.each([true, false])('shows forward quantities only in the strip (resourceView=%s)', (resourceView) => {
+    render(<PieceGantt items={[item({ plannedQuantity: 5 })]} resourceView={resourceView} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const buttons = screen.getAllByRole('button', { name: /の数量/ });
+    expect(buttons).toHaveLength(1);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toContainElement(buttons[0]!);
+  });
+  it('connects adjacent processes across all sibling pieces without linking the siblings', () => {
+    const entries = [item({ itemId: 'P', processOrder: '10', requiredMinutes: 60 }),
+      ...['A', 'B'].map((id) => item({ itemId: id, kind: 'piece', parentItemId: 'parent', processOrder: '20', requiredMinutes: 60 })),
+      item({ itemId: 'N', processOrder: '30', requiredMinutes: 60 })];
+    render(<PlanningBoardGanttView {...forwardProps(entries)} />);
+    tap(screen.getByTestId('planning-gantt-bar-P'));
+    const links = screen.getAllByTestId('planning-gantt-chain-link');
+    expect(links).toHaveLength(4);
+    expect(links.map((link) => link.getAttribute('data-from-to'))).toEqual(['P->A', 'P->B', 'A->N', 'B->N']);
+  });
+  it('measures each piece once while keeping all nine adjacent-process links', () => {
+    const entries = ['P', 'N'].flatMap((parent, index) => [1, 2, 3].map((piece) => item({
+      itemId: `${parent}${piece}`, kind: 'piece', parentItemId: parent, processOrder: index ? '20' : '10', requiredMinutes: 60
+    })));
+    const layout = forwardProps(entries).layout;
+    const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
+    const content = document.createElement('div');
+    const contentRect = vi.spyOn(content, 'getBoundingClientRect');
+    const rows = bars.map(() => document.createElement('div'));
+    const measurements = rows.map((row) => vi.spyOn(row, 'getBoundingClientRect'));
+    render(<PlanningBoardChainLinks bars={bars} layout={layout} content={{ current: content }}
+      rowElements={{ current: new Map(rows.map((row, index) => [String(index), row])) }}
+      barRows={new Map(bars.map((bar, index) => [bar.item.itemId, String(index)]))}
+      labelWidth={168} dayWidth={100} viewportWidth={1000} viewportHeight={500} />);
+    expect(screen.getAllByTestId('planning-gantt-chain-link')).toHaveLength(9);
+    expect(contentRect).toHaveBeenCalledTimes(1);
+    for (const measurement of measurements) expect(measurement).toHaveBeenCalledTimes(1);
+  });
+  it('anchors backward completion alone at the bar end', () => {
+    render(<PlanningBoardGanttView {...props()} onCompleteToggle={vi.fn()} />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const completion = screen.getByRole('button', { name: '完了にする' });
+    const wrapper = completion.parentElement!;
+    expect(wrapper.children).toHaveLength(1);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const end = parseFloat(bar.style.left) + parseFloat(bar.style.width);
+    expect(wrapper.style.left).toBe(`${end}px`);
+    expect(wrapper.style.transform).toBe(`translateX(max(-100%, ${-end}px))`);
+  });
+  it('offers merging after two gantt long presses use the shared piece selection', async () => {
+    vi.useFakeTimers();
+    const entries = ['a', 'b'].map((id) => item({ itemId: `piece:${id}`, kind: 'piece', pieceId: id, parentItemId: 'parent', plannedQuantity: 1, parentPlannedQuantity: 2, requiredMinutes: 60 }));
+    const changePieces = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<PieceGantt items={entries} changePieces={changePieces} createEnabled={false} />);
+    for (const entry of entries) {
+      const bar = screen.getByTestId(`planning-gantt-bar-${entry.itemId}`);
+      fireEvent.pointerDown(bar, { clientX: 100, button: 0 }); act(() => vi.advanceTimersByTime(500));
+      fireEvent.pointerUp(bar, { clientX: 100 }); fireEvent.click(bar);
+      expect(bar).toHaveAttribute('aria-pressed', 'true');
+    }
+    const updated = entries.map((entry) => ({ ...entry, itemRevision: 'r2' }));
+    rerender(<PieceGantt items={updated} changePieces={changePieces} createEnabled={false} />);
+    tap(screen.getByTestId('planning-gantt-bar-piece:a'));
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })[0]!);
+    act(() => vi.advanceTimersByTime(350));
+    expect(screen.queryByRole('button', { name: '分ける' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+    await act(async () => {});
+    expect(changePieces).toHaveBeenCalledExactlyOnceWith(updated);
+  });
+  it.each([false, true])('places the backward quantity control immediately before completion (resourceView=%s)', (resourceView) => {
+    render(<PieceGantt resourceView={resourceView} items={[item({ kind: 'piece', parentItemId: 'parent', quantity: 1000, plannedQuantity: 1000, parentPlannedQuantity: 2000 })]} mode="backward" />);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const quantity = screen.getByRole('button', { name: /の数量/ });
+    const wrapper = quantity.parentElement!.parentElement!;
+    const completion = screen.getByRole('button', { name: '完了にする' });
+    expect(wrapper).toHaveClass('absolute', 'flex', 'w-max');
+    expect(quantity.parentElement!.nextElementSibling).toBe(completion);
+    expect(completion.parentElement).toBe(wrapper);
+    expect(quantity).toHaveTextContent('1000／2000 ▾');
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    const end = parseFloat(bar.style.left) + parseFloat(bar.style.width);
+    expect(wrapper.style.left).toBe(`${end}px`);
+    expect(wrapper.style.transform).toBe(`translateX(max(-100%, ${-end}px))`);
+  });
+  it('clamps a backward quantity control at the left edge of the row', () => {
+    const entry = item({ plannedQuantity: 5 });
+    const values = props([entry]);
+    for (const group of values.layout.groups) for (const row of group.rows) for (const bar of row.bars) {
+      bar.start = values.layout.start - 2;
+      bar.end = values.layout.start;
+    }
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { '305': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardGanttView {...values} onCompleteToggle={vi.fn()} /></PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
+    const position = screen.getByRole('button', { name: /の数量/ }).parentElement!.parentElement!;
+    expect(position.style.left).toBe('0px');
+    expect(position.style.transform).toBe('translateX(max(-100%, 0px))');
+  });
+  it.each(['reorder', 'move'] as const)('drags a piece bar to %s with its piece ID intact', (operation) => {
+    const entries = [item({ itemId: 'piece:a', kind: 'piece', pieceId: 'a', parentItemId: 'parent', requiredMinutes: 60 }),
+      item({ itemId: 'piece:b', kind: 'piece', pieceId: 'b', parentItemId: 'parent', originalResourceCd: operation === 'move' ? '306' : '305', requiredMinutes: 60 })];
+    const values = forwardProps(entries); const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const bar = screen.getByTestId('planning-gantt-bar-piece:a'); const target = screen.getByTestId('planning-gantt-bar-piece:b');
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const x = parseFloat(target.style.left);
+    fireEvent.pointerDown(bar, { clientX: 0, clientY: 0, button: 0 });
+    fireEvent.pointerMove(bar, { clientX: x + 1, clientY: operation === 'move' ? 120 : 0 });
+    fireEvent.pointerUp(bar, { clientX: x + 1, clientY: operation === 'move' ? 120 : 0 });
+    if (operation === 'move') expect(onResourceMove).toHaveBeenCalledWith(entries[0], '306', entries[1], 'before');
+    else expect(values.onResourceReorder).toHaveBeenCalledWith(entries[0], entries[1], 'before');
+  });
   it('focuses a part across resource rows in process order, switches parts and toggles closed', () => {
     const values = forwardProps(chainItems());
     render(<PlanningBoardGanttView {...values} resourceNameMap={{ '306': ['306 ＮＣ研削盤'] }} selectedItemIds={new Set(['a', 'c'])} />);
@@ -941,6 +1142,7 @@ describe('forward PlanningBoardGanttView', () => {
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     tap(screen.getByTestId('planning-gantt-bar-a'));
     expect(within(screen.getByTestId('planning-gantt-chain-strip')).getByText(/· 2工程$/)).toBeInTheDocument();
+    expect(items.map(({ itemId }) => screen.getByTestId(`planning-gantt-chain-badge-${itemId}`).textContent)).toEqual(['1', '2']);
     expect(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByText('→')).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
     const pieces = items.map((value) => ({ ...value, kind: 'piece' as const, parentItemId: 'parent' }));
@@ -948,6 +1150,24 @@ describe('forward PlanningBoardGanttView', () => {
     tap(screen.getByTestId('planning-gantt-bar-a'));
     expect(within(screen.getByTestId('planning-gantt-chain-strip')).getByText(/· 1工程$/)).toBeInTheDocument();
     expect(within(screen.getByTestId('planning-gantt-chain-strip')).queryByText('→')).not.toBeInTheDocument();
+  });
+  it('orders sibling pieces by position and numbers the strip and bars 1,2,2,2', () => {
+    const pieces = [
+      { itemId: 'piece:a', piecePosition: 3 },
+      { itemId: 'piece:z', piecePosition: 1 },
+      { itemId: 'piece:m', piecePosition: 2 }
+    ].map((piece) => item({ ...piece, kind: 'piece', parentItemId: 'parent', processOrder: '20', plannedQuantity: 3, requiredMinutes: 60 }));
+    const entries = [pieces[0]!, item({ plannedQuantity: 3, requiredMinutes: 60 }), pieces[1]!, pieces[2]!];
+    render(<PieceGantt items={entries} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    const steps = within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /工順/ });
+    expect(steps.map((step) => step.firstElementChild?.textContent)).toEqual(['1', '2', '2', '2']);
+    const orderedIds = ['a', 'piece:z', 'piece:m', 'piece:a'];
+    expect(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })
+      .map((button) => button.getAttribute('data-planning-board-quantity-item'))).toEqual(orderedIds);
+    for (const [index, id] of orderedIds.entries()) {
+      expect(screen.getByTestId(`planning-gantt-chain-badge-${id}`)).toHaveTextContent(index === 0 ? '1' : '2');
+    }
   });
   it('shows only the process order and machine in each strip step, without times', () => {
     const values = forwardProps([item({ requiredMinutes: 480, originalDueDate: '2026-10-13' }), item({ itemId: 'b', processOrder: '20', requiredMinutesKnown: false })]);

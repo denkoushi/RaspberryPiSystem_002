@@ -24,6 +24,30 @@ describe('sessaku piece quantity reconciliation', () => {
     expect(result.nextPosition).toBe(4);
     expect(planSessakuPieceQuantities(result.pieces, 7, false, 4)).toEqual(result);
   });
+  it.each([false, true])('reconciles three pieces on decrease and increase (completed middle=%s)', (completed) => {
+    const source = [
+      { id: 'a', position: 1, quantity: 3, isCompleted: false },
+      { id: 'b', position: 2, quantity: 4, isCompleted: completed },
+      { id: 'c', position: 3, quantity: 5, isCompleted: false }
+    ];
+    const decreased = planSessakuPieceQuantities(source, 6, false, 4);
+    expect(decreased.pieces).toEqual(completed
+      ? [{ ...source[0], quantity: 2 }, source[1]]
+      : [source[0], { ...source[1], quantity: 3 }]);
+    expect(decreased.nextPosition).toBe(4); expect(decreased.quantityWarning).toBeNull();
+    expect(planSessakuPieceQuantities(source, 15, false, 4)).toEqual({
+      pieces: [source[0], source[1], { ...source[2], quantity: 8 }], nextPosition: 4, quantityWarning: null
+    });
+    expect(source.map((p) => p.quantity)).toEqual([3, 4, 5]);
+  });
+  it('preserves three completed pieces on decrease and appends a new position on increase', () => {
+    const source = [1, 2, 3].map((position) => ({ id: String(position), position, quantity: position, isCompleted: true }));
+    expect(planSessakuPieceQuantities(source, 5, false, 4)).toEqual({ pieces: source, nextPosition: 4, quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN' });
+    const increased = planSessakuPieceQuantities(source, 8, false, 4);
+    expect(increased.pieces.slice(0, 3)).toEqual(source);
+    expect(increased.pieces[3]).toMatchObject({ position: 4, quantity: 2, isCompleted: false });
+    expect(increased.nextPosition).toBe(5);
+  });
   it('keeps an empty tombstone empty', () => expect(planSessakuPieceQuantities([], 5, false, 3).pieces).toEqual([]));
   it.each([null, -1, 1.5, NaN, Infinity])('warns for invalid quantity %s', (total) => {
     expect(planSessakuPieceQuantities(pieces(), total, false, 3)).toMatchObject({ pieces: pieces(), quantityWarning: 'INVALID_PLANNED_QUANTITY' });

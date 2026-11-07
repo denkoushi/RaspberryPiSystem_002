@@ -801,3 +801,89 @@ R1〜R5はいずれも妥当。保存中のtd/trクリックと取消トース�
 ユーザーの依頼「分配機能ONにして」により、本番の Pi5 で `SESSAKU_PIECES_CREATE_ENABLED=true` にする。経路は `infrastructure/ansible/inventory.yml` の `api_sessaku_pieces_create_enabled` → `infrastructure/ansible/templates/docker.env.j2` → `infrastructure/docker/.env` → API コンテナの環境変数。API 全体の設定なので端末ごとには分けられず、全キオスクの製番ボードで分割と再分割ができるようになる。戻すときは inventory の値を `"false"` にして通常のローリング更新を流す。false に戻しても、すでにある片の表示・結合・完了・取消は動く。
 
 #2603 の反映(run 20261107-013719-7c3394)では API に届かなかった。標準の Pi5 反映は `infrastructure/docker/.env` を描き直さず、前回の compose.env を写して `roles/release_pi5/tasks/business-hermes-chat-prepare.yml` の一覧にある値だけを書き込むため。その一覧と `api.env.j2` に `SESSAKU_PIECES_CREATE_ENABLED` を足し、`scripts/deploy/tests/test_ansible_standard_release.py` で一覧に入っていることを確かめる。
+
+## 2026-11-07 ガントの分ける／まとめる（ローカル実装）
+
+現在の `feat--gantt-piece-split` worktree で実装。開始時の未コミット変更はなし。git の変更操作、秘密ファイルの参照、commit/push/PR/merge/deploy は実施していない。
+
+- forward の工程帯と backward／製番行の完了ボタン直前へ、共通 `PlanningBoardPiecePopover` を追加。ガント専用 variant は操作可能時だけ数量・sky 枠・▾を表示し、表のトリガー外観は維持する。元の計画・特別納期モードの抑止もページから渡す。
+- ガントの `onToggleItem` → ページの `selectedItemIds` → `selectedVisibleItems` → `usePlanningBoardPieceActions` が同じ選択を使用することを確認。帯へ同じ選択 ID を渡し、同親2片の長押し後に「まとめる」が出て選択片が送られることをテストした。
+- 分け数変更で従来の均等配分（余りは後ろ）へ戻し、各片の数量調整は最後の片で吸収する。最後の±は visibility hidden、各片の下限は1。表示配列をそのまま送信し、44pxボタンと窓内スクロール・画面高さ上限を維持する。補助説明文は追加しない。
+- 片の棒のドラッグ実装は変更不要だった。`piece:` ID のまま同加工機内並べ替え・別加工機への移動が呼び出されることをポインター操作テストで確認。ページの加工機許可・保存経路にも片除外はない。実機・実ブラウザー・実DBでの操作確認は実施していない。
+
+追加テスト名（パラメーター展開前）:
+
+- web: `shows only operable strip quantities: %s`、`splits from the chain strip into adjusted quantities [5,4,3]`、`offers merging after two gantt long presses use the shared piece selection`、`places the backward quantity control immediately before completion (resourceView=%s)`、`drags a piece bar to %s with its piece ID intact`。
+- web 共通窓: `bounds every piece at one, balances the last and resets distribution when count changes`、`scrolls many piece rows inside the viewport-bounded dialog`。
+- API 計算: `reconciles three pieces on decrease and increase (completed middle=%s)`、`preserves three completed pieces on decrease and appends a new position on increase`。
+- API 統合: `merges non-adjacent first and third pieces at the first position, preserving the middle`、`re-splits a middle target into three pieces and renumbers surviving positions in order`。数量・生存ID・並び・position／nextPositionを検査する。
+
+検証（約8分、全体の重いテストは未実行）:
+
+- `pnpm --filter @raspi-system/web test src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.test.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx`: 最終199件成功、6.43秒。途中は6件、次に9件失敗。棒端へのwrapper追加が既存の完了ボタンDOM位置を変えた点を修正し、追加テストの完了済み／無効状態で帯を開くfixture、layout.groups参照、merge callbackの引数期待を訂正した。
+- `pnpm --filter @raspi-system/api test src/services/production-schedule/sessaku-pieces/__tests__/piece-quantity.test.ts src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts`: 初回はPrisma Client未生成で収集失敗。`pnpm --filter @raspi-system/api exec prisma generate` 成功後、計算21件成功（4ms）、統合は共有パッケージ未buildで収集失敗。
+- `pnpm --filter @raspi-system/shelf-layout-core --filter @raspi-system/slip-match-core --filter @raspi-system/part-search-core build`: 成功。再度の統合単独コマンド `pnpm --filter @raspi-system/api test src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts`: 専用 `TEST_DATABASE_URL` 未設定のため24件skip（新規2件を含む）。Dockerの読み取り確認もソケットへの permission denied。実DBのa/c受入検証は未完了で、サービス本体の不具合の有無は断定しない。
+- `pnpm --filter @raspi-system/web exec tsc -b --pretty false`: 初回は共有パッケージ成果物不足で失敗、上記build後に成功。
+- `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit`: 成功。追加で試した `tsc -p tsconfig.json --noEmit` は既存include/rootDirのTS6059、`tsc -p tsconfig.json --rootDir . --noEmit` はJavaScript heap out of memory。これらの設定変更や大きなheapでの反復は行わない。
+- `pnpm --filter @raspi-system/api lint`: 成功。`pnpm --filter @raspi-system/web lint`: import/order 3件失敗。修正前を読んだ再実行も同じ3件で失敗。import順修正後、`pnpm --filter @raspi-system/web exec eslint` に今回変更したwebの7ファイル（PageView、PiecePopover本体／テスト、ChainStrip、GanttRow、GanttView本体／テスト）を指定して成功。全体lintの追加反復はしない。
+- `git diff --check`: 成功。サーバー実装・API・DB・フラグ・研削・表の見た目は変更しない。終了時の変更は今回のコード／テスト9ファイルと本書のみ。
+
+
+## 2026-11-07 ガント追加修正（ローカル実装）
+
+- 帯と forward 棒の工程番号は、同じ親の片を同じ番号にする（通常行＋3片は `1,2,2,2`）。通常行どうしは個別番号を維持する。
+- GanttView の chain を `processOrder → piecePosition → itemId` 順へ揃える。
+- gantt 数量トリガーは操作不能時だけ非表示とし、保存中などの disabled では同じボタンを残す（開いている小窓の扱いは維持）。
+- 帯と backward 行の数量 disabled に、Context の `completionPendingParentIds` による同親の完了待ちを含める。
+
+回帰テストは番号と片順、通常行の別番号、forward/backward の保存中ボタンのDOM同一性と無効化、同親完了待ちの無効化と別親への非波及・解除を確認した。
+
+検証結果:
+
+- `pnpm --filter @raspi-system/web test src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.test.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx`: 最終 **2 files / 204 tests passed**（6.71秒、exit 0）。初回は203 passed / 1 failed（5.95秒）。追加テストの帯を開いた直後の `aria-current` 期待が既存挙動と異なったため修正し、片順は数量トリガーのID順で確認した。baseline-browser-mapping のデータが古い旨の警告あり。
+- `pnpm --filter @raspi-system/web exec tsc -b --pretty false`: 出力なし、exit 0。
+- `pnpm --filter @raspi-system/web exec eslint src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardChainStrip.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow.tsx src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx`: 出力なし、exit 0。
+
+既存作業の上に上記web 5ファイルと本書だけを編集。依頼どおり git 操作（status/diffを含む）と秘密ファイル参照は行っていない。commit/push/PR/merge/release/deploy、実ブラウザー検証は未実施。
+
+### レビュー1回目の指摘と修正（2026-11-07）
+
+- 開いた数量窓は指示数・revisionの更新で2分割へ戻し、送信直前にも各片1以上・合計一致・2片以上を検証する。分け数の±も保存中・blocked中は無効化した。
+- APIの400 `PIECE_QUANTITY_CONFLICT` を既存409と同じ更新通知・再取得へ揃えた。ガント内のContextをuseMemoで包み、分割・結合ともcurrentBarsの最新itemを送る。
+- 棒・帯のContext購読を数量窓へ集約し、同親完了待ちを共通部品内で判定する。棒端の数量はbackwardだけ表示しleftを0以上に丸める。線は帯・番号と同じ親キーで工程をまとめ、隣接工程間の全棒を結び、同親片間を結ばない。
+- 回帰テストに総数5→3／3→2、revision更新、保存中の±、400の文言・再取得、forward/backwardの表示と位置、P→A/B→Nの4接続を追加。既存の保存中カウンター操作の期待は今回の無効化仕様へ更新した。
+
+検証: `apps/web` で `pnpm exec vitest run src/features/kiosk/grindingPlanningBoard src/pages/kiosk` は72ファイル・1161件成功（59.44秒）。その後に追加した左端0pxの境界テストは単独1件成功（2.54秒）。`pnpm exec tsc -b --pretty false` と変更web 9ファイルのeslint（最後に追加したテストも再確認）は成功。初回の関連3ファイル検証は旧仕様のカウンター期待3件が失敗し、仕様に合わせた更新後に上記指定範囲で成功。eslintはページの行数上限を条件式の改行調整で解消した。検証は約4分。
+
+既存WIPを引き継ぎ、今回の編集は上記web 9ファイルと本記録のみ。git操作・秘密ファイル参照・commit・push・PR・merge・release・deployは実施していない。実ブラウザー検証は未実施。
+
+## 不具合時に操作を追う
+
+`requestId` はAPI再起動でリセットされる連番のため、`createdAt` と組で検索する。端末認証に失敗した401は監査表に残らず、pinoの `sessaku_piece.auth_failed`（outcome: `rejected`）で追跡する。
+pinoは操作の要点だけを記録し、前後の状態は監査表 `ProductionScheduleSessakuPieceAuditLog` に保存する。監査表の記録は30日を超えると削除される。
+
+片操作は `sessaku_piece.split` / `sessaku_piece.merge` / `sessaku_piece.complete` / `sessaku_piece.uncomplete` の固定eventで、成功・拒否・失敗を各操作1行記録する。APIのエラー応答の `requestId` はFastifyの `request.id` と同じ。例（APIコンテナ名は環境に合わせる）:
+
+```sh
+docker logs --since 1h <api-container> 2>&1 | grep -E '"event":"sessaku_piece\.(split|merge|complete|uncomplete)"'
+docker logs --since 1h <api-container> 2>&1 | grep '"requestId":"req-xxx"'
+```
+
+操作ログは既存loggerの子loggerでINFO出力を有効にし、本番の既定 `LOG_LEVEL=warn` でも各操作を記録する。他のloggerのレベルは変更しない。監査DBもログレベルに依存せず保存する。
+
+```sql
+SELECT * FROM "ProductionScheduleSessakuPieceAuditLog"
+WHERE "requestId" = 'req-xxx' ORDER BY "createdAt";
+SELECT * FROM "ProductionScheduleSessakuPieceAuditLog"
+WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
+```
+
+`beforeJson` / `afterJson` は片数 `count`、位置順の数量 `quantities` と対応する `pieceIds`、完了片ID `completedPieceIds`、親指示数 `plannedQuantity`。未分割・全片結合後の片数は0、配分は空配列。拒否・失敗では変更後も変更前と同じ値（rollback）、読める前に失敗した場合はJSON null。`expectedVersion` と `itemRevision` / `itemRevisions` は送信値、`resultVersion` は成功時だけ保存する。認証・入力検証前に失敗した場合や削除済みの片など、解決できないID・端末・数量は未記録/nullとなる。予期しない例外のメッセージは秘密情報を避けるため一般化する。
+
+管理者など既存の閲覧権限で `GET /api/clients/logs?category=sessaku-pieces`（ルートは `/clients/logs?category=sessaku-pieces`）を開き、contextの `action`、`itemId` / `parentItemId`、`errorCode`、`status`、`requestId` を確認する。画面側の失敗だけを既存errorTelemetryのキュー経由で送る。通常は5秒周期で送信し、オフライン時は既存キューに保持する。従業員名、NFCタグ、トークン、ヘッダー全体、任意のエラーオブジェクトは送らない。
+
+保持期間は既存 `ClientNetworkLogRetentionScheduler`（毎日03:20 JST）の30日・最大5000件×10バッチを共有する。ClientLogの対象categoryに `sessaku-pieces` を追加し、監査表も同じcutoffで別途最大10バッチを削除する。旧 `ProductionScheduleOrderSplitAuditLog` は利用・変更しない。
+
+後の工程への分割は `runSessakuPieceOperation({ action: 'propagate', requestId, siteKey, actorClientDeviceId, actorDeviceName, parentItemId, pieceIds, expectedVersion }, async (audit) => { /* transaction内でaudit.beforeJson/afterJson/resultVersionを設定 */ })` を使える。外側にラップし、transactionの完了・rollback後に監査を書く。監査保存失敗は `sessaku_piece.audit_write_failed` のWARNだけを残し、元の応答・例外を維持する。実行中のauditを既存サービスに渡すと二重記録を防ぐ。
+
+本変更のローカル検証: APIの監査・route・保持ジョブ対象21件、webのerrorTelemetry・ページ対象238件が成功（最終ページ再確認198件も成功）。web `tsc --noEmit` / 全体lint、API変更ファイルeslint / `tsc -p tsconfig.build.json --noEmit`、Prisma format / validate、`git diff --check` は成功。既存schemaの無関係な整形差分は残さず、新モデルの整形を確認した。webテストでは既存のjsdom通信エラー出力があるが全件成功。専用 `TEST_DATABASE_URL` がないためDB統合27件はskip（追加した成功・409、既存400への監査assertionを含む）。migration適用・本番反映は未実施。検証時はdotenv自動読込を止め、ViteのenvDirを空の一時パスへ向けた。
