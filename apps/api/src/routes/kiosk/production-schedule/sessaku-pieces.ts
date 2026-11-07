@@ -22,6 +22,9 @@ export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: Ki
     });
   };
   app.post(`${base}/split`, { config: { rateLimit: false } }, async (request) => perform(request, 'split', async (audit) => {
+    // Preserve numeric split input even when schema validation rejects it; never copy arbitrary bodies.
+    const requested = z.object({ quantities: z.array(z.number()).max(2000) }).safeParse(request.body);
+    if (requested.success) audit.requestedQuantities = requested.data.quantities;
     const body = sessakuPiecesSplitSchema.parse(request.body);
     Object.assign(audit, { parentItemId: body.parentItemId, pieceIds: body.targetPieceId ? [body.targetPieceId] : [], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision });
     return splitSessakuPieces({ ...body, siteKey: audit.siteKey!, audit });

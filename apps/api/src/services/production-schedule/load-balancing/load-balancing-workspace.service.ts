@@ -1,3 +1,4 @@
+import { getLoadBalancingOutsourceSettings } from './load-balancing-outsource-settings.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import {
@@ -127,7 +128,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
   const siteKey = resolveSiteKeyForScopeKey(params.siteKeyInput.trim());
   const today = resolveLoadBalancingToday(params.now);
 
-  const [{ source, cacheHit, cacheState }, baseCap, monthlyCap, classes, calendars, rules] = await Promise.all([
+  const [{ source, cacheHit, cacheState }, baseCap, monthlyCap, classes, calendars, rules, outsourceSettings] = await Promise.all([
     readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range, today, perf }),
     listLoadBalancingCapacityBaseResolved(siteKey),
     listLoadBalancingMonthlyCapacityRangeResolved({
@@ -137,15 +138,17 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
     }),
     listLoadBalancingClassesResolved(siteKey),
     listLoadBalancingWorkCalendarsResolved(siteKey),
-    listLoadBalancingTransferRulesResolved(siteKey)
+    listLoadBalancingTransferRulesResolved(siteKey),
+    getLoadBalancingOutsourceSettings(siteKey)
   ]);
 
   const result = await perf.measure('assemble', async () =>
     readLoadBalancingWorkspaceResultWithCache({
       source,
-      settingsKey: JSON.stringify([baseCap, monthlyCap, classes, calendars, rules]),
-      assemble: () =>
-        assembleLoadBalancingWorkspace({
+      settingsKey: JSON.stringify([formatUtcDateKey(today), baseCap, monthlyCap, classes, calendars, rules, outsourceSettings]),
+      assemble: () => ({
+        outsourceSettings,
+        ...assembleLoadBalancingWorkspace({
           siteKey: baseCap.siteKey,
           today,
           fromMonth: range.fromMonth,
@@ -171,6 +174,7 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
               efficiencyRatio
             }))
         })
+      })
     })
   );
   perf.flush({ cacheHit, cacheState, queryRowCount: source.queryRows.length, rowCount: result.rows.length });

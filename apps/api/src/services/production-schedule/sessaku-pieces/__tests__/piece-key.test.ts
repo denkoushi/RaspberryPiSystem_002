@@ -1,7 +1,12 @@
+import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceGeneration, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
 describe('piece identity and monotonic generation', () => {
+  it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
+    const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
+    expect(() => sessakuPieceConflict(error)).toThrowError(expect.objectContaining({ statusCode: 409, code: expected }));
+  });
   it('preserves exact winner key strings across encoding', () => {
     const key = sessakuPieceKeyFromRow({ FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' });
     expect(encodeSessakuPieceKey(key)).toBe('[" A ","part","01","2"]');

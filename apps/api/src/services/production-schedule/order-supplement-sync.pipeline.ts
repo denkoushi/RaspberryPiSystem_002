@@ -438,7 +438,7 @@ export async function runOrderSupplementReplacementTransaction(
           }
           const batch = await tx.productionScheduleOrderSupplement.createMany({ data });
           await synchronizeSessakuPieceSources(tx, keys);
-          return { count: batch.count, audits: collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys), '__shared__') };
+          return { count: batch.count, audits: collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys, before), '__shared__') };
         },
         {
           maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
@@ -474,7 +474,7 @@ export async function runOrderSupplementReplacementTransaction(
             });
           }
           await synchronizeSessakuPieceSources(tx, keys);
-          return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys), '__shared__');
+          return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys, before), '__shared__');
         },
         {
           maxWait: REPLACEMENT_TX_MAX_WAIT_MS,

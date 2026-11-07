@@ -104,6 +104,9 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
   }));
 }
 export function sessakuPieceConflict(error: unknown): never {
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+    throw new ApiError(409, '片が参照されています。再読み込みしてください', undefined, 'PIECE_REFERENCED');
+  }
   if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2034'].includes(error.code)) {
     throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
   }

@@ -94,7 +94,7 @@ export class ProgressSyncFromCsvService {
             }, tx);
           }
         }
-        return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys), params.locationKey?.trim() || '__shared__');
+        return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys, before), params.locationKey?.trim() || '__shared__');
       }, { timeout: 30000, maxWait: 15000 });
       try {
         return await execute();

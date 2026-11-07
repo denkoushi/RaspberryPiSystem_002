@@ -133,6 +133,17 @@ describe('later process quantity planning', () => {
       quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN', pieces: [current[0]]
     });
   });
+  it('assigns positions only to positive pieces and is identical on repeated sync', () => {
+    const sources = ['a', 'b'].map((id, index) => ({ id, position: index + 1, quantity: 1, isCompleted: false }));
+    const current = [
+      { id: 'done-a', sourcePieceId: 'a', position: 1, quantity: 1, isCompleted: true },
+      { id: 'open-a', sourcePieceId: 'a', position: 2, quantity: 1, isCompleted: false },
+      { id: 'done-b', sourcePieceId: 'b', position: 3, quantity: 1, isCompleted: true }
+    ];
+    const first = planLaterProcessPieceQuantities(current, sources, 2, false, 4);
+    expect(first.pieces).toEqual([current[0], { ...current[2], position: 2 }]);
+    expect(planLaterProcessPieceQuantities(first.pieces, sources, 2, false, first.nextPosition)).toEqual(first);
+  });
   it('consolidates only unfinished siblings on structural changes, preserving completed evidence', () => {
     const current = [
       ...later.map((piece) => ({ ...piece, isCompleted: true })),

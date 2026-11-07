@@ -6446,8 +6446,50 @@ model ProductionScheduleSessakuPieceAuditLog {
   itemRevision        String?
   itemRevisions       Json
   resultVersion       Int?
+  requestedQuantities Json?
+  timing              Json?
 
   @@index([parentItemId, createdAt], map: "SessakuPieceAudit_parent_created_idx")
   @@index([requestId])
   @@index([createdAt])
+}
+
+/// Authoritative site snapshot; absence falls back to shared, an empty snapshot does not.
+model ProductionScheduleOutsourceConfig {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(120)
+  mode           String   @default("process") @db.VarChar(20)
+  order          String[] @default(["due", "minutes", "vendor"])
+  vendors        ProductionScheduleOutsourceVendor[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([csvDashboardId, siteKey])
+}
+
+model ProductionScheduleOutsourceVendor {
+  id                     String @id @default(uuid())
+  configId               String
+  vendorId               String @db.VarChar(100)
+  name                   String @db.VarChar(120)
+  priority               Int
+  monthlyCapacityMinutes Float?
+  config                 ProductionScheduleOutsourceConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+  conditions             ProductionScheduleOutsourceCondition[]
+
+  @@unique([configId, vendorId])
+}
+
+model ProductionScheduleOutsourceCondition {
+  id          String @id @default(uuid())
+  vendorId    String
+  position    Int
+  resourceCds String[]
+  partPrefix  String @db.VarChar(200)
+  partName    String @db.VarChar(200)
+  maxMinutes  Float?
+  vendor      ProductionScheduleOutsourceVendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@unique([vendorId, position])
 }

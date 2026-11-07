@@ -78,6 +78,26 @@ export type ProductionScheduleLoadBalancingWorkspaceTransferRule = {
   efficiencyRatio: number;
 };
 
+export type OutsourceCondition = {
+  resourceCds: string[];
+  partPrefix: string;
+  partName: string;
+  maxMinutes: number | null;
+};
+export type OutsourceVendor = {
+  id: string;
+  name: string;
+  priority: number;
+  monthlyCapacityMinutes: number | null;
+  conditions: OutsourceCondition[];
+};
+export type OutsourceOrderKey = 'due' | 'minutes' | 'vendor';
+export type OutsourceSettings = {
+  vendors: OutsourceVendor[];
+  mode: 'process' | 'part';
+  order: OutsourceOrderKey[];
+};
+
 export interface ProductionScheduleLoadBalancingWorkspaceResponse {
   siteKey: string;
   today: string;
@@ -88,6 +108,7 @@ export interface ProductionScheduleLoadBalancingWorkspaceResponse {
   rows: ProductionScheduleLoadBalancingWorkspaceRow[];
   unallocatedRows: ProductionScheduleLoadBalancingStartDateLevelingUnallocatedRow[];
   transferRules: ProductionScheduleLoadBalancingWorkspaceTransferRule[];
+  outsourceSettings?: OutsourceSettings;
 }
 
 export interface ProductionScheduleLoadBalancingWorkspaceDayResponse {
@@ -232,5 +253,10 @@ export async function putKioskProductionScheduleLoadBalancingCapacityBase(payloa
     siteKey: string;
     items: Array<{ resourceCd: string; baseAvailableMinutes: number }>;
   }>('/kiosk/production-schedule/load-balancing/capacity-base', payload);
+  return data;
+}
+
+export async function putKioskProductionScheduleLoadBalancingOutsourceSettings(payload: OutsourceSettings & { targetDeviceScopeKey?: string }) {
+  const { data } = await api.put<OutsourceSettings>('/kiosk/production-schedule/load-balancing/outsource-settings', payload);
   return data;
 }

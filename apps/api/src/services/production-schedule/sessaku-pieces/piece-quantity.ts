@@ -69,9 +69,14 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
   }
   const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1));
   // Additional work after all later pieces completed still belongs to the final cutting piece.
+  lastPosition = 0;
   const linked = plan.pieces.map((piece) => {
     const previous = baseline.find((old) => old.id === piece.id);
-    return { ...piece, sourcePieceId: previous ? previous.sourcePieceId : sources[sources.length - 1]?.id ?? null };
+    const sourcePieceId = previous ? previous.sourcePieceId : sources[sources.length - 1]?.id ?? null;
+    // Assign persisted positions only after zero quantities have been removed.
+    const sourcePosition = sources.find((source) => source.id === sourcePieceId)?.position ?? 0;
+    lastPosition = Math.max(lastPosition + 1, sourcePosition);
+    return { ...piece, sourcePieceId, position: lastPosition };
   });
   return { ...plan, pieces: linked };
 }
