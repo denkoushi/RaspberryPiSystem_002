@@ -428,7 +428,12 @@ export async function runOrderSupplementReplacementTransaction(
           const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
           const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
           const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
-          const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
+          const rowsWithSets = new Set(rows.filter((row) => {
+            const key = sessakuPieceKeyFromRow(row.rowData);
+            const ownSet = sets.get(encodeSessakuPieceKey(key));
+            if (ownSet && !ownSet.pieces.length && !ownSet.sourcePieceSetId) return false;
+            return partsWithSets.has(JSON.stringify([key.fseiban, key.fhincd]));
+          }).map((row) => row.id));
           const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
           const before = await readLaterPieceAuditSnapshots(tx, keys);
           const data = [];
@@ -463,7 +468,12 @@ export async function runOrderSupplementReplacementTransaction(
           const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
           const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
           const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
-          const rowsWithSets = new Set(rows.filter((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return partsWithSets.has(JSON.stringify([fseiban, fhincd])); }).map((row) => row.id));
+          const rowsWithSets = new Set(rows.filter((row) => {
+            const key = sessakuPieceKeyFromRow(row.rowData);
+            const ownSet = sets.get(encodeSessakuPieceKey(key));
+            if (ownSet && !ownSet.pieces.length && !ownSet.sourcePieceSetId) return false;
+            return partsWithSets.has(JSON.stringify([key.fseiban, key.fhincd]));
+          }).map((row) => row.id));
           const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
           const before = await readLaterPieceAuditSnapshots(tx, keys);
           for (const entry of chunk) {

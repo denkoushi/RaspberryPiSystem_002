@@ -56,8 +56,8 @@ describe('PlanningBoardItemTable completion', () => {
     expect(screen.getByRole('table').querySelectorAll('col')).toHaveLength(5);
   });
 
-  it('keeps the linked later piece completion button available without structural controls', () => {
-    const later = item('piece:later', { kind: 'piece', pieceId: 'later', sourcePieceId: 'cut', parentItemId: 'parent', pieceSetVersion: 1,
+  it.each([undefined, 'cut'])('keeps later piece completion available without structural controls (source=%s)', (sourcePieceId) => {
+    const later = item('piece:later', { kind: 'piece', pieceId: 'later', sourcePieceId, isLaterProcess: true, parentItemId: 'parent', pieceSetVersion: 1,
       quantity: 2, plannedQuantity: 2, parentPlannedQuantity: 5 });
     const onCompleteToggle = vi.fn();
     const actions = { enabled: true, createEnabled: true, isCutting: () => true, selectedItemsByParent: new Map(),

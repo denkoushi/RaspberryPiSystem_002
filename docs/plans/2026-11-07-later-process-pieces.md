@@ -225,3 +225,17 @@ Main's two existing migrations (audit request timing and outsource vendors) were
 Validation: API `tsc --noEmit -p tsconfig.build.json`, web `tsc --noEmit -p tsconfig.json` and both package lint commands passed. The requested API `vitest run src/services/production-schedule src/services/csv-dashboard src/services/imports` completed in 87.84 seconds: 1,684 passed, 16 existing skips and only the excluded snapshotId assertion at grinding-planning-board.integration.test.ts:1114 failed. After consolidating two redundant concurrency cases into the existing test and strengthening raw-error checks, the final quantity/integration run passed 152/152 (including all 109 DB cases) in 34.41 seconds; focused ESLint of the final integration file also passed. Web `vitest run src/features/kiosk/grindingPlanningBoard` passed 483/483 across 34 files in 10.38 seconds. Initial CSV test fixtures were corrected for ingestion's ProductNo/FSEIBAN lengths and the replacement row's zero supplement before the successful runs.
 
 Validation used the supplied localhost:55491/lpp database, a dotenv-disabling Node preload and temporary Vite configs pointing envDir at an empty directory. Health/performance and the known snapshot failure were not changed. Validation stayed within the 45-minute budget. The worktree began clean; the five changed files belong solely to this revision, the index remains empty, and final git diff --check passed. Branch feat/later-process-pieces and HEAD 55283817 are unchanged. No secret file was read; no git add, commit, push, history mutation, migration/reset, CI, infrastructure, UI text or deployment change was performed.
+
+
+## Known Limitations
+
+- 後工程の勝者行が消えている間に切削を分け直す／まとめると、勝者が戻ってもその後工程 set は切削の片と対応づかないことがある（数量の合計は保たれる）。
+
+## Ninth Review Revision (2026-11-07)
+
+- 補助 CSV の作成・更新とも、自身の set が空で sourcePieceSetId を持たない切削行を、関連 set による raw "0" 保存の特例から除外。両 set が空の状態での作成・更新と、その後の [2,3] 分割を DB 回帰テストで確認。
+- API 投影と共有型に set 単位の isLaterProcess を追加。参照の外れた後工程片と片0個のリンク済み切削行では「分ける」「まとめる」を隠す。完了操作・UI 文言は変更しない。投影と web の回帰テストを追加。
+
+検証: 指定の API `vitest run src/services/production-schedule src/services/csv-dashboard src/services/imports` は 1,686 成功・16 skip・既知の snapshotId 失敗1件のみ（122.63秒）。片の DB 統合テスト111件はすべて成功。web `vitest run src/features/kiosk/grindingPlanningBoard` は34ファイル・487件成功（17.35秒）。API/web の指定型チェックと両 package の lint、共有型の build/lint は成功。最後に変更した完了ボタンのテストも個別 lint 成功。最初の web 全体テスト起動は root で vitest が見つからず未開始となり、apps/web から正しく実行した。
+
+指定の localhost:55491/lpp と、dotenv を無効化する preload・空の envDir を使った一時 Vite 設定で検証。検証・確認は約5分で予算内。既知の snapshotId・health・performance は修正していない。開始時に既存 WIP はなく、変更9ファイルはこの修正のみ。最終 git diff --check 成功、index は空、branch feat/later-process-pieces・HEAD c638e6c4 は維持。秘密ファイルの読み取り、git add、commit、push、履歴操作、migration/reset、CI・infrastructure・UI 文言の変更、デプロイは未実施。

@@ -709,6 +709,25 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       });
       expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: nextRowId } })).toBeNull();
     });
+    it.each(['create', 'update'])('does not retain cutting CSV zero with both sets empty (%s supplement)', async (path) => {
+      await split();
+      await importLaterQuantity('0');
+      await quantity(0);
+      const cutting = (await readSessakuPieceSet(prisma, key()))!;
+      expect(cutting).toMatchObject({ pieces: [], sourcePieceSetId: null });
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: cutting.id });
+      await quantity(5);
+      if (path === 'create') await prisma.productionScheduleOrderSupplement.delete({ where: { csvDashboardRowId: rowId } });
+      const source = toSupplementNormalizedRow('source', { ProductNo: '123', FSIGENCD: '1', FKOJUN: '1', plannedQuantity: '0' })!;
+      const supplement = await prisma.productionScheduleOrderSupplement.findUnique({ where: { csvDashboardRowId: rowId } });
+      const lookup = buildOrderSupplementKey(source);
+      const plan = buildReplacementCreateInputs([source], new Map([[lookup, rowId]]), new Map(supplement ? [[lookup, supplement]] : []), new Date());
+      await runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: 1, normalized: 1 });
+      expect((await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: rowId } })).plannedQuantity).toBe(path === 'update' ? 5 : null);
+      if (path === 'create') await quantity(5);
+      expect((await split()).pieces.map((piece) => piece.quantity)).toEqual([2, 3]);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: cutting.id, plannedQuantity: 0 });
+    });
     it.each(['1', '3'])('preserves a later parent placement on machine %s when resplitting cutting after raw supplement zero', async (resource) => {
       const cutting = await splitThree();
       await importLaterQuantity('0');

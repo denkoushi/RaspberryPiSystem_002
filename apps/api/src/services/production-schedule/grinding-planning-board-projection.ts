@@ -482,7 +482,7 @@ function buildItems(
     items.push({
       itemId,
       kind: 'row',
-      ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
+      ...(pieceSet ? { isLaterProcess: Boolean(pieceSet.sourcePieceSetId), pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
       itemRevision: createItemRevision(revisionInput),
       version: override?.version ?? 0,
       sourceRowId: row.id,

@@ -104,6 +104,7 @@ export interface GrindingPlanningBoardItem {
   parentItemId?: string;
   pieceId?: string;
   sourcePieceId?: string;
+  isLaterProcess?: boolean;
   piecePosition?: number;
   pieceSetVersion?: number;
   quantity?: number;
