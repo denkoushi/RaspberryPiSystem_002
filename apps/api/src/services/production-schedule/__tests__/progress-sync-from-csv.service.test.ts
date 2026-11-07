@@ -3,11 +3,13 @@ vi.mock('../sessaku-pieces/piece-sync.js', () => ({ synchronizeSessakuPieceSourc
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProgressSyncFromCsvService } from '../progress-sync-from-csv.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $transaction: vi.fn(),
     $executeRaw: vi.fn(),
+    csvDashboardRow: { findMany: vi.fn().mockResolvedValue([]) },
     productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     productionScheduleProgress: {
       findUnique: vi.fn(),
@@ -181,6 +183,7 @@ describe('ProgressSyncFromCsvService', () => {
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     expect(prisma.dueManagementOutcomeEvent.create).not.toHaveBeenCalled();
     expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
   });
@@ -192,7 +195,16 @@ describe('ProgressSyncFromCsvService', () => {
     const candidates = ['ordinary', 'live', 'empty'].map((FSEIBAN) => ({ rowId: FSEIBAN,
       rowData: { FSEIBAN, FHINCD: 'p', FSIGENCD: '1', FKOJUN: '1' }, occurredAt: new Date() }));
     await service.sync({ candidates, hasProgressColumn: false });
-    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledTimes(1);
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledTimes(2);
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenNthCalledWith(2, {
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [{ fseiban: 'live', fhincd: 'p' }] }
+    });
+    expect(prisma.csvDashboardRow.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [{ AND: [
+        { rowData: { path: ['FSEIBAN'], equals: 'live' } },
+        { rowData: { path: ['FHINCD'], equals: 'p' } }
+      ] }] }, select: { rowData: true }
+    });
     expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
     expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(synchronizeSessakuPieceSources).toHaveBeenCalledExactlyOnceWith(prisma, [{ fseiban: 'live', fhincd: 'p', fsigencd: '1', fkojun: '1' }]);

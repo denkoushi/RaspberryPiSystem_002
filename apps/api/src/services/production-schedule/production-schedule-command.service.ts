@@ -1,5 +1,4 @@
-import { readWinnerRowsByLogicalKeyFseibans } from './grinding-planning-board/source.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, sessakuPieceKeyFromRow, supportsSessakuPieceRelations } from './sessaku-pieces/piece-key.js';
 import { reconcileSessakuPieceQuantities } from './sessaku-pieces/piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './sessaku-pieces/piece-completion.js';
 import { performance } from 'node:perf_hooks';
@@ -143,13 +142,16 @@ export async function driveProductionScheduleRowCompletion(params: {
   let pieceHandled = false;
   const key = sessakuPieceKeyFromRow(current);
   await prisma.$transaction(async (tx) => {
-      // First splits must serialize with ordinary row completion too. Read state only after all locks.
-      const relatedRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((candidate) => sessakuPieceKeyFromRow(candidate.rowData).fhincd === key.fhincd);
-      await acquireSessakuPieceLogicalLocks(tx, [key, ...relatedRows.map((candidate) => sessakuPieceKeyFromRow(candidate.rowData))]);
-      await acquireSessakuPieceBoardStateLocks(tx);
+      // The logical group also serializes ordinary completion with first split creation.
+      await acquireSessakuPieceLogicalLocks(tx, [key]);
+      const set = await readSessakuPieceSet(tx, key);
+      const related = supportsSessakuPieceRelations(key) ? await tx.productionScheduleSessakuPieceSet.findMany({
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd,
+          OR: [{ pieces: { some: {} } }, { sourcePieceSetId: { not: null } }] }, select: { id: true }
+      }) : [];
+      if (set?.pieces.length || set?.sourcePieceSetId || related.length) await acquireSessakuPieceBoardStateLocks(tx);
       await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
       await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
-      const set = await readSessakuPieceSet(tx, key);
       const latest = await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: row.id } });
       isCompleted = latest?.isCompleted === true;
       nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';

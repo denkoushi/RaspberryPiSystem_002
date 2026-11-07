@@ -15,7 +15,7 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, de
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean };
+type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean };
 
 async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
@@ -33,7 +33,7 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
   const result = linked.map((laterSet): LaterProcess => {
     const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
     const detail = row ? details.get(row.id) : undefined;
-    return { key: laterSet, set: laterSet, plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
+    return { key: laterSet, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
       completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true };
   });
   for (const row of rows) {
@@ -41,13 +41,14 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
     if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
-    if (laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
-    result.push({ key: candidate, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false });
+    if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
+    result.push({ key: candidate, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true });
   }
   return result;
 }
 
 function assertLaterProcessesEditable(later: LaterProcess[]) {
+  if (later.some(({ set }) => set?.quantityWarning)) conflict('PIECE_QUANTITY_CONFLICT');
   if (later.some(({ set, completed }) => completed || set?.pieces.some((piece) => piece.isCompleted))) {
     throw new ApiError(409, '後工程の片が完了しています', undefined, 'LATER_PROCESS_PIECE_COMPLETED');
   }
@@ -115,11 +116,12 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
 
 async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>) {
   for (const process of later) {
+    if (source?.pieces.length && !process.hasWinner) continue;
     const parentId = sessakuPieceParentItemId(process.key);
     const previous = process.set?.pieces ?? [];
     const set = process.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(process.key), plannedQuantity: process.plannedQuantity } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: source!.id, version: { increment: 1 } } });
-    if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity);
+    if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity, true);
     const saved = await readSessakuPieceSet(tx, process.key);
     const removed = previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id));
     const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];

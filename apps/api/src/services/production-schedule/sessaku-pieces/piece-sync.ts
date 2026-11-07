@@ -6,17 +6,17 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, en
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-/** Only live piece parents need publication locks; ordinary rows retain their legacy path. */
+/** Lock source row keys even before their first set is created, then reread live state. */
 export async function lockSessakuPieceSourceRows(tx: Prisma.TransactionClient, rowIds: readonly string[]) {
   const rows = await tx.csvDashboardRow.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, id: { in: [...rowIds] } }, select: { id: true, rowData: true } });
-  const sets = await readSessakuPieceSets(tx, rows);
-  const keys = [...sets.values()].filter((set) => set.pieces.length || set.sourcePieceSetId);
+  const keys = rows.map((row) => sessakuPieceKeyFromRow(row.rowData));
   if (!keys.length) return [];
   await acquireSessakuPieceLogicalLocks(tx, keys);
   const latest = await tx.csvDashboardRow.findMany({ where: { id: { in: rows.map((row) => row.id) } }, select: { id: true, rowData: true } });
   const latestKeys = new Map(latest.map((row) => [row.id, encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData))]));
   if (rows.some((row) => keys.some((key) => encodeSessakuPieceKey(key) === encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData))) && latestKeys.get(row.id) !== encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))) throw new ApiError(409, '補助CSVの対象キーを再計画してください', undefined, 'SOURCE_ITEM_MISSING');
-  await acquireSessakuPieceBoardStateLocks(tx);
+  const sets = await readSessakuPieceSets(tx, latest);
+  if ([...sets.values()].some((set) => set.pieces.length || set.sourcePieceSetId)) await acquireSessakuPieceBoardStateLocks(tx);
   return keys;
 }
 export async function synchronizeSessakuPieceSources(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], externalChangedKeys: ReadonlySet<string> = new Set()) {

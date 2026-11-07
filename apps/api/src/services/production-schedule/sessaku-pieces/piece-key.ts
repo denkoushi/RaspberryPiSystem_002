@@ -41,13 +41,23 @@ export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClie
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lock}, 0))`;
   }
 }
-/** Lock every existing set of the same part together, including its cutting source. */
+export function supportsSessakuPieceRelations(key: SessakuPieceLogicalKey) {
+  return [key.fseiban, key.fhincd, key.fsigencd, key.fkojun].every((value) => value.trim().length > 0) && key.fseiban.trim() !== '********';
+}
+/** Include row keys before their first set exists, in the same order from either process. */
 async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: readonly SessakuPieceLogicalKey[]) {
-  if (!keys.length) return [];
-  const sets = await client.productionScheduleSessakuPieceSet.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [...new Map(keys.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()] }
-  });
-  return [...keys, ...sets];
+  const supported = keys.filter(supportsSessakuPieceRelations);
+  if (!supported.length) return [...keys];
+  const parts = [...new Map(supported.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()];
+  const [sets, rows] = await Promise.all([
+    client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts } }),
+    client.csvDashboardRow.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts.map(({ fseiban, fhincd }) => ({ AND: [
+        { rowData: { path: ['FSEIBAN'], equals: fseiban } }, { rowData: { path: ['FHINCD'], equals: fhincd } }
+      ] })) }, select: { rowData: true }
+    })
+  ]);
+  return [...keys, ...sets, ...rows.map((row) => sessakuPieceKeyFromRow(row.rowData))];
 }
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {
   return client.productionScheduleSessakuPieceSet.findUnique({

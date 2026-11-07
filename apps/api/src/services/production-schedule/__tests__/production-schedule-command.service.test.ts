@@ -42,6 +42,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
     csvDashboardRow: {
       findFirst: vi.fn(),
+      findMany: vi.fn().mockResolvedValue([]),
     },
     productionScheduleProgress: {
       findUnique: vi.fn(),
@@ -242,7 +243,7 @@ describe('production-schedule-command.service', () => {
     expect(result.unchanged).toBe(true);
     expect(result.rowData.progress).toBe('完了');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).not.toHaveBeenCalled();
     expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
   });
@@ -263,8 +264,8 @@ describe('production-schedule-command.service', () => {
 
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
   });
-  it.each([null, { id: 'empty', pieces: [] }])('ordinary/tombstone completion takes logical, board and row locks before reading piece and progress state: %j', async (set) => {
-    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A' } } as never);
+  it.each([null, { id: 'empty', pieces: [] }])('ordinary/tombstone completion skips ranking and board locks and reads Progress after row lock: %j', async (set) => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' } } as never);
     vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce(set as never);
     vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
     vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null);
@@ -272,14 +273,44 @@ describe('production-schedule-command.service', () => {
     expect(prisma.productionScheduleProgress.findUnique).toHaveBeenCalledTimes(1);
     expect(prisma.productionScheduleProgress.upsert).toHaveBeenCalledTimes(1);
     expect(prisma.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 30000, maxWait: 15000 });
-    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
     expect(String(vi.mocked(prisma.$executeRaw).mock.calls[0][1])).toContain('sessaku-pieces:');
-    expect(String(vi.mocked(prisma.$executeRaw).mock.calls[1][0])).toContain('sessaku-piece-board-states');
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(prisma.$queryRaw).mock.calls[0][0])).toContain('CsvDashboardRow');
+    const logical = vi.mocked(prisma.$executeRaw).mock.invocationCallOrder[0];
+    const setRead = vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mock.invocationCallOrder[0];
+    const rowLock = vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[0];
+    expect(logical).toBeLessThan(setRead);
+    expect(setRead).toBeLessThan(rowLock);
+    expect(rowLock).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
+
+  });
+  it.each([{ FSEIBAN: '', FHINCD: 'P' }, { FSEIBAN: '********', FHINCD: 'P' }, { FSEIBAN: 'A', FHINCD: '' }])('completion only locks its own key for unsupported parents %j', async (part) => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { ...part, FSIGENCD: '1', FKOJUN: '1' } } as never);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null);
+    await completeProductionScheduleRow({ rowId: 'row', locationKey: 'site' });
+    expect(prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).not.toHaveBeenCalled();
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+  it('takes board locks only after logical locks and related set detection, before the row lock', async () => {
+    const related = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1', id: 'source' };
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' } } as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mockResolvedValueOnce([related] as never).mockResolvedValueOnce([{ id: 'source' }] as never);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null);
+    await completeProductionScheduleRow({ rowId: 'row', locationKey: 'site' });
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(2);
+    const logical = vi.mocked(prisma.$executeRaw).mock.invocationCallOrder[0];
+    const board = vi.mocked(prisma.$executeRaw).mock.invocationCallOrder[1];
+    const relatedRead = vi.mocked(prisma.productionScheduleSessakuPieceSet.findMany).mock.invocationCallOrder[1];
+    expect(logical).toBeLessThan(relatedRead);
+    expect(relatedRead).toBeLessThan(board);
     expect(String(vi.mocked(prisma.$queryRaw).mock.calls[0][0])).toContain('ProductionScheduleGrindingPlanningBoardState');
     expect(String(vi.mocked(prisma.$queryRaw).mock.calls[1][0])).toContain('CsvDashboardRow');
-    const lastLock = vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[1];
-    expect(lastLock).toBeLessThan(vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mock.invocationCallOrder[0]);
-    expect(lastLock).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
+    expect(vi.mocked(prisma.$queryRaw).mock.invocationCallOrder[1]).toBeLessThan(vi.mocked(prisma.productionScheduleProgress.findUnique).mock.invocationCallOrder[0]);
   });
 
 });

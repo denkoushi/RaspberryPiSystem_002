@@ -6404,6 +6404,7 @@ model ProductionScheduleSessakuPieceSet {
   pieces ProductionScheduleSessakuPiece[]
   @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceSet_logical_key")
   @@index([csvDashboardId, fseiban], map: "PSSPieceSet_seiban_idx")
+  @@index([sourcePieceSetId], map: "PSSPieceSet_source_idx")
 }
 
 model ProductionScheduleSessakuPiece {

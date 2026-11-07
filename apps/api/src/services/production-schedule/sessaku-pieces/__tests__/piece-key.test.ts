@@ -19,13 +19,29 @@ describe('piece identity and monotonic generation', () => {
     const calls: string[][] = [];
     for (const key of [cutting, later]) {
       const execute = vi.fn();
-      const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([later, cutting]) }, $executeRaw: execute };
+      const tx = { csvDashboardRow: { findMany: vi.fn().mockResolvedValue([]) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([later, cutting]) }, $executeRaw: execute };
       await acquireSessakuPieceLogicalLocks(tx as never, [key]);
       calls.push(execute.mock.calls.map((call) => call[1] as string));
     }
     expect(calls[0]).toHaveLength(2);
     expect(calls[0]).toEqual(calls[1]);
     expect(calls[0]).toEqual([...calls[0]].sort());
+  });
+  it('locks the same ordered row keys before any cutting or later set exists', async () => {
+    const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
+    const later = { ...cutting, fsigencd: '2', fkojun: '2' };
+    const locks = [];
+    for (const key of [cutting, later]) {
+      const tx = { productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) }, csvDashboardRow: { findMany: vi.fn().mockResolvedValue([
+        { rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '2', FKOJUN: '2' } },
+        { rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' } }
+      ]) }, $executeRaw: vi.fn() };
+      await acquireSessakuPieceLogicalLocks(tx as never, [key]);
+      locks.push(tx.$executeRaw.mock.calls.map((call) => call[1]));
+    }
+    expect(locks[0]).toHaveLength(2);
+    expect(locks[0]).toEqual(locks[1]);
+    expect(locks[0]).toEqual([...locks[0]].sort());
   });
 
 });

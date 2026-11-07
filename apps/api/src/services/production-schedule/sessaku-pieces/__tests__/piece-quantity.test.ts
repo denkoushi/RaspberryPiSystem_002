@@ -98,5 +98,27 @@ describe('later process quantity planning', () => {
     const finished = grown.pieces.map((piece) => ({ ...piece, isCompleted: true })) as typeof later;
     expect(planLaterProcessPieceQuantities(finished, sources, 7, false, grown.nextPosition).pieces).toEqual(finished);
   });
+  it('removes an unfinished zero tail even when completed quantity exceeds the new plan', () => {
+    const source = [{ id: 'a', position: 1, quantity: 3, isCompleted: false }];
+    const current = [
+      { id: 'done', sourcePieceId: 'a', position: 1, quantity: 3, isCompleted: true },
+      { id: 'tail', sourcePieceId: 'a', position: 2, quantity: 2, isCompleted: false }
+    ];
+    expect(planLaterProcessPieceQuantities(current, source, 2, false, 3)).toMatchObject({
+      quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN', pieces: [current[0]]
+    });
+  });
+  it('consolidates only unfinished siblings on structural changes, preserving completed evidence', () => {
+    const current = [
+      ...later.map((piece) => ({ ...piece, isCompleted: true })),
+      { ...later[2], id: 'tail-1', position: 4, quantity: 1 },
+      { ...later[2], id: 'tail-2', position: 5, quantity: 1 }
+    ];
+    const plan = planLaterProcessPieceQuantities(current, sources, 7, false, 6, true);
+    expect(plan.pieces.map((piece) => [piece.id, piece.quantity])).toEqual([
+      ...later.map((piece) => [piece.id, piece.quantity]), ['tail-1', 2]
+    ]);
+    expect(plan.pieces.slice(0, 3).every((piece) => piece.isCompleted)).toBe(true);
+  });
 
 });
