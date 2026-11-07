@@ -32,6 +32,116 @@ describe('kiosk error reporter', () => {
     await s.reporter.flush();
     expect(s.send.mock.calls[1][0][0].context.droppedCount).toBe(1);
   });
+  it('keeps piece queue and attempt budgets separate from crashes and existing reports', async () => {
+    const s = setup();
+    for (let i = 0; i < 100; i++) s.reporter.record('sessaku_piece', { status: 500 });
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).queue).toHaveLength(5);
+    s.reporter.record('render_crash', { message: 'crash after piece failures' });
+    expect(s.send.mock.calls[0][0]).toHaveLength(6);
+    expect(s.send.mock.calls[0][0]).toContainEqual(expect.objectContaining({ context: expect.objectContaining({ kind: 'render_crash' }) }));
+    await s.reporter.flush();
+    for (let i = 0; i < 100; i++) s.reporter.record('sessaku_piece', { status: 500 });
+    for (let i = 0; i < 19; i++) s.reporter.record('api_network', { urlPath: `/orders/${i}` });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[1][0]).toHaveLength(19);
+    expect(s.send.mock.calls.flatMap(([logs]) => logs).filter((log) => log.context.kind === 'sessaku_piece')).toHaveLength(5);
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    restored.reporter.record('sessaku_piece', { status: 500 });
+    await restored.reporter.flush();
+    expect(restored.send).not.toHaveBeenCalled();
+    restored.time(160001);
+    restored.reporter.record('sessaku_piece', { status: 500 });
+    await restored.reporter.flush();
+    expect(restored.send.mock.calls[0][0]).toHaveLength(1);
+  });
+  it('can send a crash immediately after exhausting the piece attempt budget', async () => {
+    const s = setup();
+    for (let i = 0; i < 20; i++) {
+      s.reporter.record('sessaku_piece');
+      await s.reporter.flush();
+    }
+    expect(s.send).toHaveBeenCalledTimes(5);
+    s.reporter.record('render_crash', { message: 'crash' });
+    expect(s.send.mock.calls[5][0][0].context.kind).toBe('render_crash');
+  });
+  it('preserves both exhausted budgets across two reloads in the same minute', async () => {
+    const s = setup();
+    s.send.mockRejectedValue(new Error('offline'));
+    for (let i = 0; i < 20; i++) s.reporter.record('api_network', { urlPath: `/orders/${i}` });
+    for (let i = 0; i < 5; i++) s.reporter.record('sessaku_piece', { status: 409 });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[0][0]).toHaveLength(25);
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    const twiceRestored = setup(restored.storage.get(QUEUE_KEY));
+    for (const current of [restored, twiceRestored]) {
+      await current.reporter.flush();
+      expect(current.send).not.toHaveBeenCalled();
+      const saved = JSON.parse(current.storage.get(QUEUE_KEY)!);
+      expect(saved.attempts).toHaveLength(20);
+      expect(saved.pieceAttempts).toHaveLength(5);
+    }
+    twiceRestored.time(160001);
+    await twiceRestored.reporter.flush();
+    expect(twiceRestored.send.mock.calls[0][0]).toHaveLength(25);
+  });
+  it('adds discarded legacy piece rows to saved drops', async () => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status: 409 });
+    const saved = JSON.parse(s.storage.get(QUEUE_KEY)!);
+    saved.queue = Array.from({ length: 10 }, (_, i) => ({
+      ...saved.queue[0], log: { ...saved.queue[0].log, context: { ...saved.queue[0].log.context, incidentCode: `AAAAA${'ABCDEFGHJK'[i]}` } }
+    }));
+    saved.dropped = 3;
+    delete saved.pieceAttempts;
+    const restored = setup(JSON.stringify(saved));
+    expect(JSON.parse(restored.storage.get(QUEUE_KEY)!).dropped).toBe(8);
+    restored.reporter.record('api_network', { urlPath: '/orders' });
+    await restored.reporter.flush();
+    const logs = restored.send.mock.calls[0][0];
+    expect(logs).toHaveLength(6);
+    expect(logs.slice(0, 5).every((log: { context: Record<string, unknown> }) => log.context.droppedCount === undefined)).toBe(true);
+    expect(logs[5].context.droppedCount).toBe(8);
+  });
+  it('drops saved common API failures for piece paths but keeps slow piece requests', async () => {
+    const s = setup();
+    s.reporter.record('api_4xx', { method: 'put', urlPath: '/api/sessaku-pieces/piece-1/completion', status: 409 });
+    s.reporter.record('slow_request', { method: 'post', urlPath: '/api/sessaku-pieces/split', status: 200 });
+    s.reporter.record('api_4xx', { method: 'get', urlPath: '/api/orders', status: 404 });
+    s.reporter.record('sessaku_piece', { status: 409 });
+    const restored = setup(s.storage.get(QUEUE_KEY)!);
+    await restored.reporter.flush();
+    const kinds = restored.send.mock.calls[0][0].map((log: { context: Record<string, unknown> }) => `${log.context.kind}:${log.context.urlPath ?? ''}`);
+    expect(kinds).toEqual(['slow_request:/api/sessaku-pieces/split', 'api_4xx:/api/orders', 'sessaku_piece:']);
+  });
+  it('carries drops over a piece-only send to the next non-piece row', async () => {
+    const s = setup();
+    for (let i = 0; i < 7; i++) s.reporter.record('sessaku_piece', { status: 409 });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[0][0]).toHaveLength(5);
+    for (const log of s.send.mock.calls[0][0]) expect(log.context).not.toHaveProperty('droppedCount');
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).dropped).toBe(2);
+    s.reporter.record('api_network', { urlPath: '/orders' });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[1][0][0].context).toMatchObject({ kind: 'api_network', droppedCount: 2 });
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).dropped).toBe(0);
+  });
+  it('warns for PIECE_QUANTITY_CONFLICT with status 400, including after reload', async () => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status: 400, errorCode: 'PIECE_QUANTITY_CONFLICT' });
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    await s.reporter.flush();
+    await restored.reporter.flush();
+    for (const current of [s, restored]) expect(current.send.mock.calls[0][0][0]).toMatchObject({
+      level: 'WARN', context: { status: 400, errorCode: 'PIECE_QUANTITY_CONFLICT' }
+    });
+  });
+  it.each([[409, 'WARN'], [400, 'ERROR'], [500, 'ERROR'], [undefined, 'ERROR']])('uses %s piece status level %s, including after reload', async (status, level) => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status });
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    await restored.reporter.flush();
+    expect(restored.send.mock.calls[0][0][0].level).toBe(level);
+  });
   it('restores persistent queue after failed sending and offline reload', async () => {
     const s = setup();
     s.send.mockRejectedValue(new Error('offline'));

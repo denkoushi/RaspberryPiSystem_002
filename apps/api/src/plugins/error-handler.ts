@@ -21,6 +21,7 @@ import { ZodError } from 'zod';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { env } from '../config/env.js';
 import { ApiError, DomainHttpError } from '../lib/errors.js';
+import { classifyErrorResponse } from '../lib/error-response.js';
 import { redactUrlForLog } from '../lib/log-url.js';
 import { resolveErrorLogDevice } from '../services/clients/error-log-device.service.js';
 
@@ -113,9 +114,6 @@ const isPrismaLikeError = (value: unknown): value is PrismaLikeError =>
 const hasValidation = (value: unknown): value is { validation: unknown } =>
   isRecord(value) && 'validation' in value;
 
-const getStatusCode = (value: unknown): number | undefined =>
-  isRecord(value) && typeof value.statusCode === 'number' ? value.statusCode : undefined;
-
 const getMessage = (value: unknown): string | undefined =>
   isRecord(value) && typeof value.message === 'string' ? value.message : undefined;
 
@@ -201,6 +199,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
     const userAgent = request.headers['user-agent'];
     const userId = request.user?.id;
     const normalizedError = toError(error);
+    const classification = classifyErrorResponse(error);
 
 
     // Fastifyのスキーマ検証エラーを処理
@@ -211,7 +210,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           requestId,
           method,
           url,
-          'SCHEMA_VALIDATION_ERROR',
+          classification.errorCode,
           normalizedError,
           {
             userId,
@@ -221,10 +220,10 @@ export function registerErrorHandler(app: FastifyInstance): void {
         'Schema validation error',
       );
       reply
-        .status(400)
+        .status(classification.status)
         .send(
           buildErrorResponse(requestId, 'リクエスト形式が不正です', {
-            errorCode: 'SCHEMA_VALIDATION_ERROR',
+            errorCode: classification.errorCode,
             issues: validationErrors,
           }),
         );
@@ -237,7 +236,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           requestId,
           method,
           url,
-          error.code || `API_ERROR_${error.statusCode}`,
+          classification.errorCode,
           error,
           {
             userId,
@@ -248,7 +247,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
         'API error',
       );
       reply
-        .status(error.statusCode)
+        .status(classification.status)
         .send(
           buildErrorResponse(requestId, error.message, {
             errorCode: error.code,
@@ -264,7 +263,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           requestId,
           method,
           url,
-          'VALIDATION_ERROR',
+          classification.errorCode,
           error,
           {
             userId,
@@ -274,10 +273,10 @@ export function registerErrorHandler(app: FastifyInstance): void {
         'Validation error',
       );
       reply
-        .status(400)
+        .status(classification.status)
         .send(
           buildErrorResponse(requestId, 'リクエスト形式が不正です', {
-            errorCode: 'VALIDATION_ERROR',
+            errorCode: classification.errorCode,
             issues: error.issues,
           }),
         );
@@ -303,7 +302,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
 
       if (error.code === 'P2025') {
         reply
-          .status(404)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -341,7 +340,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           'P2003エラー詳細',
         );
         reply
-          .status(400)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -378,7 +377,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           'P2002エラー詳細',
         );
         reply
-          .status(400)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -394,7 +393,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       }
 
       reply
-        .status(400)
+        .status(classification.status)
         .send(
           buildPrismaClientResponse(
             requestId,
@@ -431,7 +430,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           'P2025エラー（フォールバック）',
         );
         reply
-          .status(404)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -467,7 +466,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           'P2003エラー（フォールバック）',
         );
         reply
-          .status(400)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -503,7 +502,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
           'P2002エラー（フォールバック）',
         );
         reply
-          .status(400)
+          .status(classification.status)
           .send(
             buildPrismaClientResponse(
               requestId,
@@ -524,7 +523,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
         requestId,
         method,
         url,
-        getStatusCode(error) ? `HTTP_${getStatusCode(error)}` : 'UNHANDLED_ERROR',
+        classification.errorCode,
         normalizedError,
         {
           userId,
@@ -534,14 +533,13 @@ export function registerErrorHandler(app: FastifyInstance): void {
       'Unhandled error',
     );
 
-    const statusCode = getStatusCode(error) ?? 500;
     const message = getMessage(error) || 'サーバーエラー';
 
     reply
-      .status(statusCode)
+      .status(classification.status)
       .send(
         buildErrorResponse(requestId, message, {
-          errorCode: getStatusCode(error) ? `HTTP_${getStatusCode(error)}` : 'UNHANDLED_ERROR',
+          errorCode: classification.errorCode,
         }),
       );
   });

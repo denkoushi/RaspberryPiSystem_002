@@ -20,6 +20,7 @@ import {
   useUpdateKioskGrindingPlanningBoardSeibanChecks
 } from '../../api/hooks';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
+import { reportSessakuPieceError } from '../../features/kiosk/errorTelemetry';
 import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingPlanningBoard/createPlanningBoardSeibanActions';
 import { PlanningBoardBulkEditDialog } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardBulkEditDialog';
 import { PlanningBoardDuePanels } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardDuePanels';
@@ -363,10 +364,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       const affectedIds = new Set([target.parentItemId, ...items.map((piece) => piece.itemId), ...currentItemsRef.current.filter((piece) => piece.parentItemId === target.parentItemId).map((piece) => piece.itemId)]);
       setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, new Set([...ids].filter((id) => !affectedIds.has(id)))])));
       pieceFocusItemIdRef.current = target; pieceRefreshRef.current = refetchBoard; setPiecePhase('refreshing');
-    } catch (error) {
-      const conflict = isAxiosError(error) && error.response?.status === 409; const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
-      pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle');
-      notify(message, 'error'); void refetchBoard().catch(() => undefined);
+    } catch (error) { if (items[0]) reportSessakuPieceError(quantities ? 'split' : 'merge', items[0], error);
+      const conflict = isAxiosError(error) && (error.response?.status === 409 || (error.response?.status === 400 && error.response.data?.errorCode === 'PIECE_QUANTITY_CONFLICT')); const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
+      pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle'); notify(message, 'error'); void refetchBoard().catch(() => undefined);
       throw new Error(message);
     }
   }, [interactionLocked, writeBlocked, writeQueue.pending, completionPendingRef, notify, splitPieces, mergePieces, refetchBoard, pieceFocusItemIdRef, bulkReady, refreshRequired, orderPreview, clearPieceCompletion, setCompletionNotice]);

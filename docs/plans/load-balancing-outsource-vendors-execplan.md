@@ -153,7 +153,7 @@ Vite preview failed to listen on 127.0.0.1:5178 (EPERM). Installed bundled Chrom
 Changed files (repository-relative paths; no pre-existing WIP):
 
     apps/api/prisma/schema.prisma
-    apps/api/prisma/migrations/20261107000000_load_balancing_outsource_vendors/migration.sql
+    apps/api/prisma/migrations/20261107120000_load_balancing_outsource_vendors/migration.sql
     apps/api/src/routes/kiosk/production-schedule/load-balancing.ts
     apps/api/src/routes/kiosk/production-schedule/__tests__/load-balancing.route.test.ts
     apps/api/src/services/production-schedule/load-balancing/load-balancing-outsource-settings.service.ts

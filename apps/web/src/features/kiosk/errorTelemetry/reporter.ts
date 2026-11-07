@@ -1,8 +1,8 @@
-export type ErrorKind = 'render_crash' | 'window_error' | 'unhandled_rejection' | 'api_network' | 'api_timeout' | 'api_5xx' | 'api_4xx' | 'slow_request';
+export type ErrorKind = 'sessaku_piece' | 'render_crash' | 'window_error' | 'unhandled_rejection' | 'api_network' | 'api_timeout' | 'api_5xx' | 'api_4xx' | 'slow_request';
 type Log = { level: 'ERROR' | 'WARN'; message: string; context: Record<string, unknown> };
 type Pending = { fingerprint: string; log: Log };
 export const QUEUE_KEY = 'kiosk-ui-error-queue-v1';
-const KINDS: ErrorKind[] = ['render_crash', 'window_error', 'unhandled_rejection', 'api_network', 'api_timeout', 'api_5xx', 'api_4xx', 'slow_request'];
+const KINDS: ErrorKind[] = ['sessaku_piece', 'render_crash', 'window_error', 'unhandled_rejection', 'api_network', 'api_timeout', 'api_5xx', 'api_4xx', 'slow_request'];
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 // The same failure keeps aggregating locally and reaches the server at most once per minute.
 export const RESEND_INTERVAL_MS = 60000;
@@ -10,6 +10,7 @@ export const RESEND_INTERVAL_MS = 60000;
 const BENIGN_MESSAGE = /^ResizeObserver loop/;
 const safeSignal = (value: unknown) => typeof value === 'string' && /^[\w.-]{1,100}$/.test(value) ? value : undefined;
 export const urlPath = (url: string): string => new URL(url, 'https://kiosk.invalid').pathname;
+export const isSessakuPiecePath = (url: string): boolean => urlPath(url).includes('/sessaku-pieces/');
 // Never serialize arbitrary rejection objects, axios payloads, or URL query values.
 const safeText = (text: string) => text
   .replace(/([\w/+.-]+)\?[^\s)]+/g, '$1?[redacted]')
@@ -28,27 +29,31 @@ export class KioskErrorReporter {
   private queue: Pending[] = [];
   private dropped = 0;
   private attempts: number[] = [];
+  private pieceAttempts: number[] = [];
   private sending = false;
   private lastSent = new Map<string, number>();
   private send?: (logs: Log[]) => Promise<unknown>;
   constructor(private readonly env: ReporterEnvironment) {
     try {
       const saved = JSON.parse(env.storage().getItem(QUEUE_KEY) ?? '{}');
+      this.dropped = Number.isSafeInteger(saved.dropped) && saved.dropped >= 0 ? saved.dropped : 0;
+      this.attempts = Array.isArray(saved.attempts) ? saved.attempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 20) : [];
+      this.pieceAttempts = Array.isArray(saved.pieceAttempts) ? saved.pieceAttempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 5) : [];
       if (Array.isArray(saved.queue)) {
-        for (const item of saved.queue.slice(0, 50)) {
+        for (const item of saved.queue.slice(0, 55)) {
           const c = item?.log?.context;
           if (!c || !KINDS.includes(c.kind) || typeof c.route !== 'string' || !c.route.startsWith('/kiosk') || typeof c.occurredAt !== 'string' || !Number.isFinite(Date.parse(c.occurredAt))) continue;
+          if (c.kind !== 'slow_request' && String(c.kind).startsWith('api_') && typeof c.urlPath === 'string' && isSessakuPiecePath(c.urlPath)) continue;
           // Rebuild from the allowlist, even when storage has been corrupted/edited.
           this.record(c.kind, { ...c, message: item.log.message }, c);
         }
+        this.persist();
       }
-      this.dropped = Number.isSafeInteger(saved.dropped) && saved.dropped >= 0 ? saved.dropped : 0;
-      this.attempts = Array.isArray(saved.attempts) ? saved.attempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 20) : [];
     } catch { /* Storage is optional. */ }
   }
   setTransport(send: (logs: Log[]) => Promise<unknown>) { this.send = send; }
   private persist() {
-    try { this.env.storage().setItem(QUEUE_KEY, JSON.stringify({ queue: this.queue, dropped: this.dropped, attempts: this.attempts })); } catch { /* Never affect the UI. */ }
+    try { this.env.storage().setItem(QUEUE_KEY, JSON.stringify({ queue: this.queue, dropped: this.dropped, attempts: this.attempts, pieceAttempts: this.pieceAttempts })); } catch { /* Never affect the UI. */ }
   }
   record(kind: ErrorKind, data: Record<string, unknown> = {}, restored?: Record<string, unknown>): { incidentCode: string; occurredAt: string } | undefined {
     try {
@@ -61,7 +66,7 @@ export class KioskErrorReporter {
       if (kind === 'window_error' && typeof data.message === 'string' && BENIGN_MESSAGE.test(data.message)) return;
       const message = exception ? safeText(typeof data.message === 'string' ? data.message : 'Unknown exception').slice(0, 1000) || 'Unknown exception' : `Kiosk API: ${kind}`;
       const context: Record<string, unknown> = {
-        category: 'kiosk_ui_error', kind, route: restored ? restored.route : this.env.route(), occurredAt,
+        category: kind === 'sessaku_piece' ? 'sessaku-pieces' : 'kiosk_ui_error', kind, route: restored ? restored.route : this.env.route(), occurredAt,
         count: restored && Number.isSafeInteger(restored.count) && Number(restored.count) > 0 ? restored.count : 1,
         incidentCode, online: restored ? restored.online === true : this.env.online()
       };
@@ -78,14 +83,23 @@ export class KioskErrorReporter {
         context.requestId = safeSignal(data.requestId);
         context.durationMs = typeof data.durationMs === 'number' && Number.isFinite(data.durationMs) ? Math.max(0, Math.round(data.durationMs)) : 0;
       }
-      const fingerprint = JSON.stringify(exception ? [kind, context.name, message.slice(0, 200)] : [kind, context.method, path, context.status]);
+      if (kind === 'sessaku_piece') {
+        for (const key of ['action', 'itemId', 'parentItemId', 'errorCode']) {
+          if (typeof data[key] === 'string' && String(data[key]).length <= 2000) context[key] = data[key];
+        }
+      }
+      const fingerprint = kind === 'sessaku_piece' ? incidentCode : JSON.stringify(exception ? [kind, context.name, message.slice(0, 200)] : [kind, context.method, path, context.status]);
+      const isPiece = kind === 'sessaku_piece';
+      const attempts = isPiece ? this.pieceAttempts : this.attempts;
+      const limit = isPiece ? 5 : 20;
+      const queueSize = this.queue.filter((item) => (item.log.context.kind === 'sessaku_piece') === isPiece).length;
       const existing = this.queue.find((item) => item.fingerprint === fingerprint);
       if (existing) {
         Object.assign(existing.log.context, context, { count: Number(existing.log.context.count) + Number(context.count) });
-      } else if (this.queue.length < 50 && (restored || this.attempts.filter((time) => time > this.env.now() - 60000).length < 20)) {
-        this.queue.push({ fingerprint, log: { level: kind === 'api_4xx' || kind === 'slow_request' ? 'WARN' : 'ERROR', message, context } });
+      } else if (queueSize < (isPiece ? 5 : 50) && (restored || attempts.filter((time) => time > this.env.now() - 60000).length < limit)) {
+        this.queue.push({ fingerprint, log: { level: kind === 'api_4xx' || kind === 'slow_request' || (isPiece && (context.status === 409 || context.errorCode === 'PIECE_QUANTITY_CONFLICT')) ? 'WARN' : 'ERROR', message, context } });
       } else { this.dropped += Number(context.count); }
-      this.persist();
+      if (!restored) this.persist();
       if (kind === 'render_crash' && !restored) void this.flush();
       return { incidentCode, occurredAt };
     } catch { return; }
@@ -95,14 +109,18 @@ export class KioskErrorReporter {
       if (!this.send || this.sending || !this.env.route().startsWith('/kiosk') || !this.env.online() || !this.queue.length) return;
       const now = this.env.now();
       this.attempts = this.attempts.filter((time) => time > now - 60000);
-      const available = 20 - this.attempts.length;
-      if (!available) { this.persist(); return; }
+      this.pieceAttempts = this.pieceAttempts.filter((time) => time > now - 60000);
+      let available = 20 - this.attempts.length;
+      let pieceAvailable = 5 - this.pieceAttempts.length;
+      if (!available && !pieceAvailable) { this.persist(); return; }
       const due = this.queue.filter((item) => item.log.context.kind === 'render_crash' || (this.lastSent.get(item.fingerprint) ?? -Infinity) <= now - RESEND_INTERVAL_MS);
       if (!due.length) return;
-      const batch = due.slice(0, available).map((item) => ({ ...item, log: { ...item.log, context: { ...item.log.context } } }));
-      const dropped = this.dropped;
-      if (dropped) batch[0].log.context.droppedCount = dropped;
-      this.attempts.push(...batch.map(() => now));
+      const batch = due.filter((item) => item.log.context.kind === 'sessaku_piece' ? pieceAvailable-- > 0 : available-- > 0).map((item) => ({ ...item, log: { ...item.log, context: { ...item.log.context } } }));
+      if (!batch.length) return;
+      const droppedRow = batch.find((item) => item.log.context.kind !== 'sessaku_piece');
+      const dropped = droppedRow ? this.dropped : 0;
+      if (droppedRow && dropped) droppedRow.log.context.droppedCount = dropped;
+      for (const item of batch) (item.log.context.kind === 'sessaku_piece' ? this.pieceAttempts : this.attempts).push(now);
       this.sending = true;
       this.persist();
       try {

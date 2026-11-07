@@ -25,6 +25,11 @@ type PieceActions = {
 
 export const PlanningBoardPiecesContext = createContext<PieceActions | null>(null);
 
+function distributeQuantity(total: number, count: number) {
+  const base = Math.floor(total / count);
+  return Array.from({ length: count }, (_, index) => base + (index >= count - total % count ? 1 : 0));
+}
+
 const EMPTY_SELECTED_PIECES: ReadonlyMap<string, GrindingPlanningBoardItem[]> = new Map();
 
 export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved }: {
@@ -107,8 +112,8 @@ export function usePlanningBoardPieceFocus(items: readonly GrindingPlanningBoard
   return itemIdRef;
 }
 
-export function PlanningBoardPiecePopover({ item, disabled = false, selected = false, specialDueMode }: {
-  item: GrindingPlanningBoardItem; disabled?: boolean; selected?: boolean; specialDueMode?: 'today' | 'overnight' | null;
+export function PlanningBoardPiecePopover({ item, disabled = false, selected = false, specialDueMode, variant = 'table' }: {
+  item: GrindingPlanningBoardItem; disabled?: boolean; selected?: boolean; specialDueMode?: 'today' | 'overnight' | null; variant?: 'table' | 'gantt';
 }) {
   const actions = useContext(PlanningBoardPiecesContext);
   const [open, setOpen] = useState(false);
@@ -120,10 +125,11 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
   const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge);
+  if (variant === 'gantt' && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
-  return <span className="inline-block min-w-8 align-middle" onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
+  return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
     {(operable || open) && actions
-      ? <PiecePopoverControl item={item} actions={actions} canSplit={canSplit} mergeItems={mergeItems} label={label} disabled={disabled || !operable} open={open} setOpen={setOpen} />
+      ? <PiecePopoverControl variant={variant} item={item} actions={actions} canSplit={canSplit} mergeItems={mergeItems} label={label} disabled={disabled || !operable || actions.completionPendingParentIds?.has(item.parentItemId ?? item.itemId) === true} open={open} setOpen={setOpen} />
       : label}
     {item.kind === 'piece' && <span className="block h-0.5 overflow-hidden rounded bg-slate-700" aria-hidden="true">
       <span className="block h-full bg-emerald-400" style={{ width: `${Math.min(100, Math.max(0, (quantity ?? 0) / (item.parentPlannedQuantity || 1) * 100))}%` }} />
@@ -131,11 +137,22 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   </span>;
 }
 
-function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disabled, open, setOpen }: {
-  item: GrindingPlanningBoardItem; actions: PieceActions; canSplit: boolean;
+function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disabled, open, setOpen, variant }: {
+  variant: 'table' | 'gantt'; item: GrindingPlanningBoardItem; actions: PieceActions; canSplit: boolean;
   mergeItems?: GrindingPlanningBoardItem[]; label: string; disabled: boolean; open: boolean; setOpen: (open: boolean) => void;
 }) {
-  const [count, setCount] = useState(2);
+  const quantity = item.plannedQuantity;
+  const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
+  useEffect(() => {
+    if (open) setQuantities(distributeQuantity(quantity ?? 0, 2));
+  }, [open, quantity]);
+  const count = quantities.length;
+  const setCount = (value: number) => setQuantities(distributeQuantity(quantity ?? 0, value));
+  const adjust = (index: number, delta: number) => setQuantities((values) => {
+    const last = values.length - 1;
+    if (index === last || values[index]! + delta < 1 || values[last]! - delta < 1) return values;
+    return values.map((value, i) => value + (i === index ? delta : i === last ? -delta : 0));
+  });
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<{ message: string; isError: boolean } | null>(null);
   const [backdropReady, setBackdropReady] = useState(false);
@@ -151,21 +168,23 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
     const current = removalRef.current;
     if (current.open) current.onRemoved?.(current.item);
   }, []);
-  const quantity = item.plannedQuantity;
   const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
   const operable = !disabled && ready;
   const close = () => setOpen(false);
   const run = async (merge: boolean) => {
     if (pending || (merge ? !mergeItems : !canSplit || typeof quantity !== 'number')) return;
+    if (!operable || actions.getBlocking().blocked) return;
+    if (!merge && (quantities.length < 2 || quantities.some((value) => !Number.isInteger(value) || value < 1) ||
+      quantities.reduce((total, value) => total + value, 0) !== quantity)) {
+      setCount(2);
+      return;
+    }
     setPending(true);
     setFailure(null);
     try {
       if (merge && mergeItems) await actions.onMerge(mergeItems);
       else if (typeof quantity === 'number') {
-        const n = Math.min(count, quantity);
-        const base = Math.floor(quantity / n);
-        const remainder = quantity % n;
-        await actions.onSplit(item, Array.from({ length: n }, (_, index) => base + (index >= n - remainder ? 1 : 0)));
+        await actions.onSplit(item, quantities);
       }
       setOpen(false);
     } catch (error) {
@@ -178,15 +197,24 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   };
   return <>
     <button type="button" data-planning-board-quantity-item={item.itemId} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
-      aria-haspopup="dialog" aria-expanded={open} className="min-h-11 min-w-11 rounded border border-slate-600 px-1 tabular-nums disabled:border-transparent"
-      onClick={() => { setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}</button>
+      aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
+      onClick={() => { setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
     {open && <PieceDialog actions={actions} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
         {canSplit && <>
           <div className="flex items-center justify-between gap-2">
-            <button type="button" aria-label="分け数を減らす" disabled={!backdropReady || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount((value) => value - 1)}>−</button>
+            <button type="button" aria-label="分け数を減らす" disabled={!backdropReady || pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
             <output aria-label="分け数" className="tabular-nums">{Math.min(count, quantity ?? 0)}</output>
-            <button type="button" aria-label="分け数を増やす" disabled={!backdropReady || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount((value) => value + 1)}>＋</button>
+            <button type="button" aria-label="分け数を増やす" disabled={!backdropReady || pending || blocked || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
+          </div>
+          <div className="flex flex-col gap-2">
+            {quantities.map((value, index) => <div key={index} className="flex items-center justify-between gap-2">
+              <button type="button" aria-label={`${index + 1}片目の数量を減らす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
+                disabled={!backdropReady || pending || blocked || value <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, -1)}>−</button>
+              <output aria-label={`${index + 1}片目の数量`} className="tabular-nums">{value}</output>
+              <button type="button" aria-label={`${index + 1}片目の数量を増やす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
+                disabled={!backdropReady || pending || blocked || quantities[count - 1]! <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, 1)}>＋</button>
+            </div>)}
           </div>
           <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>分ける</button>
         </>}
@@ -207,7 +235,7 @@ function PieceDialog({ actions, pending, disabled, failure, backdropReady, onClo
   const message = failure ?? (blocked || pending ? { message: blocking.message, isError: blocking.isError } : null);
   return <Dialog isOpen onClose={onClose} closeOnBackdrop={backdropReady} ariaLabel="数量" size="sm" overlayZIndex={100}
     lockScroll={false} initialFocusRef={initialFocusRef} overlayClassName="overscroll-contain"
-    className={`!max-w-48 !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
+    className={`!max-w-48 !max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
     <div ref={initialFocusRef} tabIndex={-1} className="outline-none" data-planning-board-piece-dialog>{children(blocked)}</div>
     {message && <p role={message.isError ? 'alert' : 'status'} className="mt-2 text-sm">{message.message}</p>}
   </Dialog>;

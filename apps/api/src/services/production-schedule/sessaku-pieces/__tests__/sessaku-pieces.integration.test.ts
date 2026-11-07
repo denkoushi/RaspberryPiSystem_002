@@ -1,3 +1,6 @@
+import Fastify from 'fastify';
+import { registerErrorHandler } from '../../../../plugins/error-handler.js';
+import { registerSessakuPiecesRoutes } from '../../../../routes/kiosk/production-schedule/sessaku-pieces.js';
 import { buildOrderSupplementKey, buildReplacementCreateInputs, runOrderSupplementReplacementTransaction, toSupplementNormalizedRow } from '../../order-supplement-sync.pipeline.js';
 import { replaceAllWinnerExternalCompletionStatesFromMailSync } from '../../external-completion/fkojunst-external-completion-sync.repository.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../../fkojunst-status-mail-critical-lock.js';
@@ -61,6 +64,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await prisma.productionScheduleGrindingPlanningBoardState.createMany({ data: [site, other].map((siteKey) => ({ csvDashboardId: dashboardId, siteKey, seibanOrder: [seiban] })) });
   });
   afterEach(async () => {
+    await prisma.productionScheduleSessakuPieceAuditLog.deleteMany({ where: { siteKey: site } });
     await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
     await prisma.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: { siteKey: { in: [site, other] } } });
     await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: { in: [site, other] } } });
@@ -70,11 +74,43 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
+  it('keeps success and rolled-back 409 audit rows', async () => {
+    const p = await parent();
+    const input = { siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3] };
+    const result = await splitSessakuPieces(input);
+    await expect(splitSessakuPieces(input)).rejects.toMatchObject({ statusCode: 409 });
+    const logs = await prisma.productionScheduleSessakuPieceAuditLog.findMany({ where: { siteKey: site }, orderBy: { createdAt: 'asc' } });
+    expect(logs).toHaveLength(2);
+    expect(logs[0]).toMatchObject({ outcome: 'success', resultVersion: result.pieceSetVersion, afterJson: { count: 2, quantities: [2, 3] } });
+    expect(logs[1]).toMatchObject({ outcome: 'rejected', httpStatus: 409, errorCode: 'STALE_SESSAKU_PIECES', beforeJson: { count: 2, quantities: [2, 3] }, afterJson: { count: 2, quantities: [2, 3] } });
+  });
   it('gate OFF rejects creation while parent response stays unchanged', async () => {
     const before = await board(); vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'false');
     await expect(split()).rejects.toMatchObject({ statusCode: 403 });
     expect((await board()).items).toEqual(before.items);
     expect(await readSessakuPieceSet(prisma, key())).toBeNull();
+  });
+  it.each(['parent', 'piece'] as const)('returns 400 PIECE_QUANTITY_CONFLICT for a mismatched %s split total', async (target) => {
+    const p = await parent();
+    const result = target === 'piece' ? await split() : null;
+    const item = result?.pieces[0] ?? p;
+    const app = Fastify();
+    registerErrorHandler(app);
+    await registerSessakuPiecesRoutes(app, {
+      requireClientDevice: async () => ({ clientDevice: { name: 'terminal', location: site } }),
+      resolveLocationScopeContext: () => ({ siteKey: site })
+    } as never);
+    try {
+      const response = await app.inject({ method: 'POST',
+        url: '/kiosk/production-schedule/grinding-planning-board/pieces/split', headers: { 'x-client-key': 'test-client' },
+        payload: { parentItemId: p.itemId, targetPieceId: item.pieceId,
+          itemRevision: item.itemRevision, expectedPieceSetVersion: result?.pieceSetVersion ?? 0,
+          quantities: target === 'piece' ? [2, 3] : [1, 1] }
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().errorCode).toBe('PIECE_QUANTITY_CONFLICT');
+      expect(await prisma.productionScheduleSessakuPieceAuditLog.findFirst({ where: { requestId: response.json().requestId, siteKey: site } })).toMatchObject({ outcome: 'rejected', httpStatus: 400, parentItemId: p.itemId, errorCode: 'PIECE_QUANTITY_CONFLICT' });
+    } finally { await app.close(); }
   });
   it('projects [2,3], preserves parent responses, aggregates completion and downstream arrival', async () => {
     let result = await split(); expect(result.pieces.map((p) => p.quantity)).toEqual([2, 3]);
@@ -100,6 +136,21 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await expect(splitSessakuPieces({ siteKey: site, parentItemId: old.itemId, itemRevision: old.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3] })).rejects.toMatchObject({ code: 'STALE_SESSAKU_PIECES' });
     expect((await split()).pieceSetVersion).toBeGreaterThan(merged.pieceSetVersion);
   });
+  it('refreshes an empty set quantity on resplit after the order changes from 5 to 7', async () => {
+    const first = await split();
+    const merged = await mergeSessakuPieces({ siteKey: site, parentItemId: first.parentItemId,
+      expectedPieceSetVersion: first.pieceSetVersion, pieceIds: first.pieces.map((p) => p.pieceId!),
+      itemRevisions: Object.fromEntries(first.pieces.map((p) => [p.itemId, p.itemRevision])) });
+    expect(merged.pieces).toEqual([]);
+    await quantity(7);
+    expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ plannedQuantity: 5, pieces: [] });
+    const p = await parent();
+    const result = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion!, quantities: [3, 4] });
+    expect(result.pieces.map((piece) => piece.quantity)).toEqual([3, 4]);
+    expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ plannedQuantity: 7 });
+    expect(await prisma.productionScheduleSessakuPieceAuditLog.findFirst({ where: { siteKey: site, action: 'split', resultVersion: result.pieceSetVersion } })).toMatchObject({ beforeJson: { count: 0, plannedQuantity: 7 }, afterJson: { count: 2, quantities: [3, 4], plannedQuantity: 7 } });
+  });
   it('rejects legacy writes and shares manual arrival at the parent', async () => {
     const old = await parent(); const r = await split(); const b = await board();
     await expect(updateGrindingPlanningBoardRank({ siteKey: site, sourceRevision: b.sourceRevision, itemId: old.itemId, itemRevision: old.itemRevision, alternateRank: 1 })).rejects.toMatchObject({ code: 'PIECES_REQUIRE_PIECE_TARGET' });
@@ -115,6 +166,33 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const unfinished = r.pieces.filter((p) => !p.isCompleted);
     r = await mergeSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, expectedPieceSetVersion: r.pieceSetVersion, pieceIds: unfinished.map((p) => p.pieceId!), itemRevisions: Object.fromEntries(unfinished.map((p) => [p.itemId, p.itemRevision])) });
     expect(r.pieces.map((p) => p.quantity)).toEqual([2, 3]); expect(r.pieces[0].isCompleted).toBe(true);
+  });
+  it('merges non-adjacent first and third pieces at the first position, preserving the middle', async () => {
+    const p = await parent();
+    const r = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [1, 2, 2] });
+    const selected = [r.pieces[0], r.pieces[2]];
+    const merged = await mergeSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, expectedPieceSetVersion: r.pieceSetVersion,
+      pieceIds: selected.map((piece) => piece.pieceId!), itemRevisions: Object.fromEntries(selected.map((piece) => [piece.itemId, piece.itemRevision])) });
+    expect(merged.pieces.map((piece) => piece.quantity)).toEqual([3, 2]);
+    expect(merged.pieces[1].pieceId).toBe(r.pieces[1].pieceId);
+    const stored = await readSessakuPieceSet(prisma, key());
+    expect(stored?.pieces.map((piece) => [piece.position, piece.quantity])).toEqual([[1, 3], [2, 2]]);
+    expect(stored?.pieces[1].id).toBe(r.pieces[1].pieceId);
+  });
+  it('re-splits a middle target into three pieces and renumbers surviving positions in order', async () => {
+    await quantity(12); const p = await parent();
+    const r = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [2, 7, 3] });
+    const target = r.pieces[1];
+    const splitAgain = await splitSessakuPieces({ siteKey: site, parentItemId: r.parentItemId, targetPieceId: target.pieceId,
+      itemRevision: target.itemRevision, expectedPieceSetVersion: r.pieceSetVersion, quantities: [1, 2, 4] });
+    expect(splitAgain.pieces.map((piece) => piece.quantity)).toEqual([2, 1, 2, 4, 3]);
+    expect(splitAgain.pieces[0].pieceId).toBe(r.pieces[0].pieceId);
+    expect(splitAgain.pieces[4].pieceId).toBe(r.pieces[2].pieceId);
+    const stored = await readSessakuPieceSet(prisma, key());
+    expect(stored?.pieces.map((piece) => piece.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(stored?.pieces.map((piece) => piece.id)).toEqual(splitAgain.pieces.map((piece) => piece.pieceId));
+    expect(stored?.pieces.some((piece) => piece.id === target.pieceId)).toBe(false);
+    expect(stored?.nextPosition).toBe(6);
   });
   it('quantity sync, warnings, external correction and CSV progress protect manual evidence', async () => {
     let r = await split(); r = await complete(r.pieces[0]);

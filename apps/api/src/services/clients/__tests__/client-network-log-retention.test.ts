@@ -3,16 +3,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../lib/prisma.js';
 import { NETWORK_LOG_BATCH_SIZE, NETWORK_LOG_MAX_BATCHES, pruneClientNetworkLogs } from '../client-network-log-retention.js';
 
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { clientLog: { findMany: vi.fn(), deleteMany: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { productionScheduleSessakuPieceAuditLog: { findMany: vi.fn(), deleteMany: vi.fn() }, clientLog: { findMany: vi.fn(), deleteMany: vi.fn() } } }));
 const now = new Date('2026-10-09T00:00:00Z');
 const cutoff = new Date('2026-09-09T00:00:00Z');
 const categoryPredicate = { OR: [
   { context: { path: ['category'], equals: 'network_health' } },
-  { context: { path: ['category'], equals: 'kiosk_net_stats' } }
+  { context: { path: ['category'], equals: 'kiosk_net_stats' } },
+  { context: { path: ['category'], equals: 'sessaku-pieces' } }
 ] };
 
 describe('network ClientLog retention', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => { vi.resetAllMocks(); vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.findMany).mockResolvedValue([]); });
 
   it('selects and deletes only old target categories, repeating the predicate on deletion', async () => {
     const rows = [
@@ -24,7 +25,7 @@ describe('network ClientLog retention', () => {
       { id: 'old-storage', createdAt: new Date('2020-01-01'), context: { category: 'storage_health' } },
       { id: 'old-legacy', createdAt: new Date('2020-01-01'), context: null }
     ];
-    const predicate = (row: typeof rows[number]) => row.createdAt < cutoff && ['network_health', 'kiosk_net_stats'].includes(row.context?.category ?? '');
+    const predicate = (row: typeof rows[number]) => row.createdAt < cutoff && ['network_health', 'kiosk_net_stats', 'sessaku-pieces'].includes(row.context?.category ?? '');
     vi.mocked(prisma.clientLog.findMany).mockImplementation(async (args) => {
       expect(args).toEqual({ where: { createdAt: { lt: cutoff }, ...categoryPredicate }, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: NETWORK_LOG_BATCH_SIZE });
       return rows.filter(predicate).map(({ id }) => ({ id })) as never;
@@ -37,6 +38,26 @@ describe('network ClientLog retention', () => {
     });
     expect(await pruneClientNetworkLogs(now)).toBe(2);
     expect(rows.map((row) => row.id)).toEqual(['boundary', 'new-network', 'old-ui', 'old-storage', 'old-legacy']);
+  });
+
+  it('deletes audit rows older than 30 days while preserving boundary and newer rows', async () => {
+    vi.mocked(prisma.clientLog.findMany).mockResolvedValue([]);
+    const rows = [
+      { id: 'old-audit', createdAt: new Date(cutoff.getTime() - 1) },
+      { id: 'boundary-audit', createdAt: cutoff },
+      { id: 'recent-audit', createdAt: now }
+    ];
+    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.findMany).mockImplementation(async (args) => {
+      expect(args).toEqual({ where: { createdAt: { lt: cutoff } }, select: { id: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: NETWORK_LOG_BATCH_SIZE });
+      return rows.filter((row) => row.createdAt < cutoff).map(({ id }) => ({ id })) as never;
+    });
+    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.deleteMany).mockImplementation(async (args) => {
+      expect(args).toEqual({ where: { createdAt: { lt: cutoff }, id: { in: ['old-audit'] } } });
+      rows.splice(0, 1);
+      return { count: 1 };
+    });
+    expect(await pruneClientNetworkLogs(now)).toBe(1);
+    expect(rows.map((row) => row.id)).toEqual(['boundary-audit', 'recent-audit']);
   });
 
   it('does not delete when nothing matches', async () => {

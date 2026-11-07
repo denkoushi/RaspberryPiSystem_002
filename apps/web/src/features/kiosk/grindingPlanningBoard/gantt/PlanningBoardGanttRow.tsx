@@ -4,6 +4,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
+import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
@@ -24,6 +25,8 @@ export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 
 type InteractionProps = {
+  pieceDisabled?: boolean;
+  showPieceQuantity?: boolean;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
   completionPendingItemIds?: ReadonlySet<string>;
   completionTargetId?: string | null;
@@ -48,7 +51,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
+  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -138,10 +141,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && <PlanningBoardCompletionButton
-      item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
-      style={{ left: (bar.end! - start) * dayWidth - 28 }}
-      disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
+    {onCompleteToggle && completionTargetId === bar.item.itemId && <div
+      className="absolute top-0 z-10 flex w-max items-start"
+      style={{ left: Math.max(0, (bar.end! - start) * dayWidth), transform: `translateX(max(-100%, ${-Math.max(0, (bar.end! - start) * dayWidth)}px))` }}>
+      {showPieceQuantity && <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selected} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
+      <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
+        disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />
+    </div>}
     </>
   );
 });
