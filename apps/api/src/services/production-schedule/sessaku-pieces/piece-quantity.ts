@@ -48,13 +48,16 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
     const previous = pieces.filter((piece) => piece.sourcePieceId === source.id);
     const completedTotal = previous.filter((piece) => piece.isCompleted || externalCompleted).reduce((sum, piece) => sum + piece.quantity, 0);
     let assignedUnfinished = false;
-    const mapped = previous.length ? previous.flatMap((piece) => {
+    const mapped = previous.flatMap((piece) => {
       if (piece.isCompleted || externalCompleted) return { ...piece };
       if (assignedUnfinished && consolidateUnfinished) return [];
       const quantity = assignedUnfinished ? 0 : Math.max(0, source.quantity - completedTotal);
       assignedUnfinished = true;
       return { ...piece, quantity };
-    }) : [{ id: randomUUID(), sourcePieceId: source.id, quantity: source.quantity, isCompleted: false, position: source.position }];
+    });
+    if (!assignedUnfinished && completedTotal < source.quantity) {
+      mapped.push({ id: randomUUID(), sourcePieceId: source.id, quantity: source.quantity - completedTotal, isCompleted: false, position: source.position });
+    }
     return mapped.map((piece) => {
       lastPosition = Math.max(lastPosition + 1, source.position);
       return { ...piece, position: lastPosition };
@@ -138,11 +141,15 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
   const removed = set.pieces.filter((piece) => !plan.pieces.some((next) => next.id === piece.id)).map((piece) => piece.id);
   // Never discard completed evidence in a later process to satisfy a reduced cutting plan.
   const laterDetails = await Promise.all(later.map((process) => readQuantitySource(tx, process)));
-  if (later.some((process, index) => laterDetails[index].hasWinner && set.pieces.some((cutting) => {
-    const completed = process.pieces.filter((piece) => piece.sourcePieceId === cutting.id && (piece.isCompleted || laterDetails[index].external)).reduce((sum, piece) => sum + piece.quantity, 0);
-    const nextQuantity = plan.pieces.find((piece) => piece.id === cutting.id)?.quantity ?? 0;
-    return nextQuantity < cutting.quantity && completed > nextQuantity;
-  }))) {
+  const plannedTotal = plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
+  const cuttingShrinks = plannedTotal < set.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
+  if (later.some((process, index) => laterDetails[index].hasWinner && (
+    (cuttingShrinks && process.pieces.filter((piece) => piece.isCompleted || laterDetails[index].external).reduce((sum, piece) => sum + piece.quantity, 0) > plannedTotal)
+    || set.pieces.some((cutting) => {
+      const completed = process.pieces.filter((piece) => piece.sourcePieceId === cutting.id && (piece.isCompleted || laterDetails[index].external)).reduce((sum, piece) => sum + piece.quantity, 0);
+      const nextQuantity = plan.pieces.find((piece) => piece.id === cutting.id)?.quantity ?? 0;
+      return nextQuantity < cutting.quantity && completed > nextQuantity;
+    })))) {
     plan.pieces = set.pieces;
     plan.quantityWarning = 'COMPLETED_QUANTITY_EXCEEDS_PLAN';
     removed.length = 0;

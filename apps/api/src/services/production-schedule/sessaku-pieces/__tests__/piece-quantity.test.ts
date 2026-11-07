@@ -89,6 +89,25 @@ describe('later process quantity planning', () => {
     expect(plan.pieces.map((piece) => [piece.id, piece.quantity])).toEqual(later.map((piece, index) => [piece.id, [2, 3, 5][index]]));
     expect(later.map((piece) => piece.quantity)).toEqual([1, 2, 2]);
   });
+  it.each([[6, 3], [7, 4], [5, 2]])('fills each source deficit before absorbing later plan %s at the tail', (total, tail) => {
+    const cutting = [
+      { id: 'a', position: 1, quantity: 3, isCompleted: false },
+      { id: 'b', position: 2, quantity: 3, isCompleted: true }
+    ];
+    const existing = [
+      { id: 'done-a', sourcePieceId: 'a', position: 1, quantity: 2, isCompleted: true },
+      { id: 'open-b', sourcePieceId: 'b', position: 2, quantity: 3, isCompleted: false }
+    ];
+    const plan = planLaterProcessPieceQuantities(existing, cutting, total, false, 3);
+    expect(plan.quantityWarning).toBeNull();
+    expect(plan.pieces).toMatchObject([
+      existing[0],
+      { sourcePieceId: 'a', quantity: 1, isCompleted: false, position: 2 },
+      { ...existing[1], quantity: tail, position: 3 }
+    ]);
+    expect(new Set(plan.pieces.map((piece) => piece.id)).size).toBe(3);
+    expect(planLaterProcessPieceQuantities(plan.pieces, cutting, total, false, plan.nextPosition)).toEqual(plan);
+  });
   it('preserves later completion independently of cutting and warns on impossible totals', () => {
     const completed = later.map((piece) => ({ ...piece, isCompleted: true }));
     const plan = planLaterProcessPieceQuantities(completed, sources, 4, false, 4);

@@ -449,17 +449,22 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect((await readSessakuPieceSet(prisma, laterKey()))?.quantityWarning).toBe('COMPLETED_QUANTITY_EXCEEDS_PLAN');
       expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true });
     });
-    it.each(['split', 'merge', 'full-merge'])('allows cutting %s after the completed later winner disappears', async (operation) => {
+    it.each(['split', 'merge', 'full-merge'].flatMap((operation) => [false, true].map((completed) => ({ operation, completed }))))('allows cutting $operation after the later winner disappears (completed=$completed)', async ({ operation, completed }) => {
       const r = await splitThree();
-      await complete((await laterItems())[2]);
+      if (completed) await complete((await laterItems())[2]);
       const later = (await readSessakuPieceSet(prisma, laterKey()))!;
       const done = later.pieces[2];
       await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
       if (operation === 'split') await resplit(r, 2);
       else await merge(r, operation === 'merge' ? r.pieces.slice(1) : r.pieces);
-      if (operation === 'full-merge') expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
-      else {
-        expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: done.completedAt });
+      if (operation === 'full-merge') {
+        const retained = await readSessakuPieceSet(prisma, laterKey());
+        if (completed) expect(retained).toMatchObject({ sourcePieceSetId: null, quantityWarning: null, pieces: [{ id: done.id, sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: done.completedAt }] });
+        else expect(retained).toBeNull();
+      } else {
+        if (completed) {
+          expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toMatchObject({ sourcePieceId: null, quantity: 2, isCompleted: true, completedAt: done.completedAt });
+        } else expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toBeNull();
         const cutting = (await readSessakuPieceSet(prisma, key()))!;
         const items = (await board()).items.filter((item) => item.sourceRowId === rowId);
         // Removing the final old source detaches the hidden set without recreating pieces.
@@ -467,6 +472,79 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         if (operation === 'split') await merge(current, items.slice(0, 2));
         if (operation === 'split') expect((await readSessakuPieceSet(prisma, laterKey()))?.sourcePieceSetId).toBeNull();
       }
+    });
+    it.each(['split', 'merge'])('allows cutting %s after an externally completed, warned later winner disappears', async (operation) => {
+      const r = await splitThree();
+      await prisma.productionScheduleExternalCompletion.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: nextRowId, isExternallyCompleted: true } });
+      await importLaterQuantity('2');
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.quantityWarning).toBe('COMPLETED_QUANTITY_EXCEEDS_PLAN');
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      const result = operation === 'split' ? await resplit(r) : await merge(r);
+      if (operation === 'split') await merge(result);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
+    });
+    it('clears the warning when removing the final source references from a hidden set with completed evidence', async () => {
+      const r = await splitThree();
+      await complete((await laterItems())[2]);
+      await importLaterQuantity('1');
+      await prisma.csvDashboardRow.delete({ where: { id: nextRowId } });
+      await merge(r);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ sourcePieceSetId: null, quantityWarning: null, pieces: [{ quantity: 2, isCompleted: true, sourcePieceId: null }] });
+    });
+    it.each(['cutting', 'later'])('keeps quantity growth aligned with each source (%s plan updated first)', async (first) => {
+      let r = await split();
+      r = await complete(r.pieces[1]);
+      await complete((await laterItems())[0]);
+      const done = (await readSessakuPieceSet(prisma, laterKey()))!.pieces[0];
+      if (first === 'cutting') { await quantity(6); await laterQuantity(6); }
+      else { await laterQuantity(6); await quantity(6); }
+      const cutting = (await readSessakuPieceSet(prisma, key()))!;
+      const later = (await readSessakuPieceSet(prisma, laterKey()))!;
+      expect(cutting.pieces.map((piece) => piece.quantity)).toEqual([3, 3]);
+      expect(later.pieces.map((piece) => [piece.sourcePieceId, piece.quantity, piece.isCompleted])).toEqual([
+        [cutting.pieces[0].id, 2, true], [cutting.pieces[0].id, 1, false], [cutting.pieces[1].id, 3, false]
+      ]);
+      expect(later.pieces[0].completedAt).toEqual(done.completedAt);
+      expect(later.quantityWarning).toBeNull();
+    });
+    it('counts detached completed later quantity when protecting a cutting decrease', async () => {
+      const p = await parent();
+      await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0, quantities: [1, 4] });
+      const cutting = (await readSessakuPieceSet(prisma, key()))!;
+      const later = (await readSessakuPieceSet(prisma, laterKey()))!;
+      await prisma.productionScheduleSessakuPiece.update({ where: { id: later.pieces[1].id }, data: { quantity: 2 } });
+      const done = await prisma.productionScheduleSessakuPiece.create({ data: { pieceSetId: later.id, position: 3, quantity: 2, isCompleted: true, completedAt: new Date() } });
+      await quantity(1);
+      expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ pieces: cutting.pieces, quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN' });
+      expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toEqual(done);
+      await quantity(2);
+      expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ quantityWarning: null, pieces: [{ quantity: 1 }, { quantity: 1 }] });
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.find((piece) => piece.id === done.id)).toEqual(done);
+    });
+    it('leaves unsplit later rows untouched on full merge', async () => {
+      const r = await splitThree();
+      await prisma.productionScheduleSessakuPieceSet.delete({ where: { id: (await readSessakuPieceSet(prisma, laterKey()))!.id } });
+      await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardRowId: nextRowId } });
+      const laterParent = (await laterItems())[0];
+      const overrides = await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: laterParent.itemId }, orderBy: { id: 'asc' } });
+      const states = await prisma.productionScheduleGrindingPlanningBoardState.findMany({ where: { siteKey: { in: [site, other] } } });
+      const result = await merge(r);
+      expect(await readSessakuPieceSet(prisma, laterKey())).toBeNull();
+      expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: nextRowId } })).toBeNull();
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: laterParent.itemId }, orderBy: { id: 'asc' } })).toEqual(overrides);
+      for (const state of states) expect((await prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { id: state.id } })).version).toBe(state.version + 1);
+      expect(result.pieces).toEqual([]);
+      expect(result.affectedItemIds).not.toContain(laterParent.itemId);
+    });
+    it('does not create incomplete Progress for an empty linked set', async () => {
+      await splitThree();
+      await importLaterQuantity('0');
+      await prisma.productionScheduleProgress.deleteMany({ where: { csvDashboardRowId: nextRowId } });
+      await reader.$transaction(async (tx) => {
+        await acquireSessakuPieceLogicalLocks(tx, [laterKey()]);
+        expect(await reconcileSessakuPieceProgress(tx, laterKey(), { emptyIsIncomplete: true })).toEqual({ sourceRowId: nextRowId, parentIsCompleted: false });
+      });
+      expect(await prisma.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: nextRowId } })).toBeNull();
     });
     it('preserves a later parent placement when resplitting cutting after raw supplement zero', async () => {
       const cutting = await splitThree();

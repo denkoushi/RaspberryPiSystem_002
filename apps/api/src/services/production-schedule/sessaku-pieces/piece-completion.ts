@@ -18,6 +18,7 @@ export async function reconcileSessakuPieceProgress(tx: Prisma.TransactionClient
   ]);
   if (!set.pieces.length && set.sourcePieceSetId && previous?.isCompleted) return { sourceRowId: winner.id, parentIsCompleted: true };
   const isCompleted = aggregateSessakuPieceCompletion(set.pieces, external?.isExternallyCompleted === true);
+  if (!set.pieces.length && set.sourcePieceSetId && !previous && !isCompleted) return { sourceRowId: winner.id, parentIsCompleted: false };
   if (previous?.isCompleted !== isCompleted) {
     await tx.productionScheduleProgress.upsert({
       where: { csvDashboardRowId: winner.id },
