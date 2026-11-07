@@ -68,10 +68,14 @@ export function useLoadBalancingWorkspaceState({
 
   const [scenario, setScenario] = useState<{ key: string; result: ScenarioResult; history: ScenarioResult[] }>({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] });
   const result = scenario.key === scenarioKey ? scenario.result : { actions: EMPTY_ACTIONS, noTaker: [] };
-  const commitResult = useCallback((next: ScenarioResult) => setScenario((current) => ({
-    key: scenarioKey, result: next,
-    history: [...(current.key === scenarioKey ? current.history : []), current.key === scenarioKey ? current.result : { actions: [], noTaker: [] }]
-  })), [scenarioKey]);
+  const commitResult = useCallback((next: ScenarioResult) => setScenario((current) => {
+    const currentResult = current.key === scenarioKey ? current.result : { actions: [], noTaker: [] };
+    if (current.key === scenarioKey && JSON.stringify(currentResult) === JSON.stringify(next)) return current;
+    return {
+      key: scenarioKey, result: next,
+      history: [...(current.key === scenarioKey ? current.history : []), currentResult]
+    };
+  }), [scenarioKey]);
   const undo = () => setScenario((current) => {
     if (current.key !== scenarioKey || !current.history.length) return current;
     const previous = current.history[current.history.length - 1]!;

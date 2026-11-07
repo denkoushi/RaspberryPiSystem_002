@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { namedTargetKey } from '../loadBalancingNamedTargets';
 import {
   aggregateScenario, applyOutsource, autoSelect, cancelScenarioRow, collectNoTaker, isScenarioCandidate,
   partKey, readLoad, transferOptions, vendorMatches, outsourceOption, vendorRowUsage, type ScenarioInput
@@ -286,4 +287,102 @@ describe('seeded properties (400 cases)', () => {
       }
     });
   }
+});
+
+describe('named stage zero', () => {
+  const namedInput = (rows: Row[], targets: NonNullable<NonNullable<ScenarioInput['settings']>['namedTargets']>, vendors = [vendor('v1', null, { conditions: [] })]) => {
+    const start = input(rows, { resources: [resource('A', 10000), resource('B', 10000)] });
+    start.settings = { ...start.settings!, namedTargets: targets, vendors, mode: 'part' };
+    return start;
+  };
+  it.each(['machine', 'seiban', 'part'] as const)('selects %s even without overload, ignoring conditions and part mode', (kind) => {
+    const r = row('a', 100, { machineName: ' Ｎｖｄ ' });
+    const key = kind === 'machine' ? 'NVD' : kind === 'seiban' ? r.fseiban : partKey(r);
+    const start = namedInput([r, row('b', 100, { machineName: 'OTHER', fseiban: 'S2' })], [{ kind, key, vendorId: 'v1' }]);
+    expect(autoSelect(start)).toEqual({ actions: [{ rowId: 'a', type: 'outsource', vendorId: 'v1' }], noTaker: [] });
+  });
+  it('part beats seiban, seiban beats machine even when the finer vendor has a lower rank', () => {
+    const rows = [row('a'), row('b'), row('c', 100, { fseiban: 'S2' })];
+    const start = namedInput(rows, [
+      { kind: 'machine', key: 'NVD', vendorId: 'v1' }, { kind: 'seiban', key: 'S1', vendorId: 'v2' },
+      { kind: 'part', key: partKey(rows[0]!), vendorId: 'v3' }
+    ], [vendor('v1'), vendor('v2', null, { priority: 2 }), vendor('v3', null, { priority: 3 })]);
+    expect(autoSelect(start).actions).toEqual([
+      { rowId: 'c', type: 'outsource', vendorId: 'v1' }, { rowId: 'b', type: 'outsource', vendorId: 'v2' }, { rowId: 'a', type: 'outsource', vendorId: 'v3' }
+    ]);
+  });
+  it.each([null, 0, 99, 100])('respects monthly cap %s without fallback to transfer or another vendor', (cap) => {
+    const start = namedInput([row('a')], [{ kind: 'machine', key: 'NVD', vendorId: 'v1' }], [vendor('v1', cap), vendor('fallback')]);
+    start.resources[0] = resource('A', 0);
+    start.rules = [{ fromClassCode: 'A', toClassCode: 'B', efficiencyRatio: 1, priority: 1 }];
+    const result = autoSelect(start);
+    expect(result).toEqual(cap === null || cap >= 100 ? { actions: [{ rowId: 'a', type: 'outsource', vendorId: 'v1' }], noTaker: [] } : { actions: [], noTaker: [{ rowId: 'a', reason: '上限' }] });
+  });
+  it('counts existing vendor use, preserves operations and never overwrites them', () => {
+    const start = namedInput([row('a', 60), row('b', 50), row('c')], [{ kind: 'machine', key: 'NVD', vendorId: 'v1' }], [vendor('v1', 100)]);
+    start.actions = [{ rowId: 'a', type: 'outsource', vendorId: 'v1' }, { rowId: 'c', type: 'defer', fromBucket: months[0]! }];
+    expect(autoSelect(start)).toEqual({ actions: start.actions, noTaker: [{ rowId: 'b', reason: '上限' }] });
+  });
+  it('charges late work to the actual JST month even outside the displayed normal months', () => {
+    const start = namedInput([row('late', 100, { late: true, effectiveDueDate: '2026-10-01', allocations: [{ bucket: 'late', minutes: 100 }] })], [{ kind: 'machine', key: 'NVD', vendorId: 'v1' }], [vendor('v1', 100)]);
+    start.months = ['2026-12'];
+    const result = autoSelect(start);
+    expect(result.actions).toHaveLength(1);
+    expect([...aggregateScenario({ ...start, actions: result.actions }).vendorUsage.get('v1')!]).toEqual([['2026-11', 100]]);
+    start.settings!.vendors[0]!.monthlyCapacityMinutes = 99;
+    expect(autoSelect(start).noTaker).toEqual([{ rowId: 'late', reason: '上限' }]);
+  });
+  it('requires room in every month, summing repeated monthly allocations', () => {
+    const r = row('a', 120, { allocations: [{ bucket: months[0]!, minutes: 60 }, { bucket: months[1]!, minutes: 30 }, { bucket: months[1]!, minutes: 30 }] });
+    const start = namedInput([r], [{ kind: 'part', key: partKey(r), vendorId: 'v1' }], [vendor('v1', 59)]);
+    expect(autoSelect(start).noTaker).toHaveLength(1);
+    start.settings!.vendors[0]!.monthlyCapacityMinutes = 60;
+    expect(autoSelect(start).actions).toHaveLength(1);
+  });
+  it('excludes machine-filtered, unallocated and outside-range rows', () => {
+    const start = namedInput([row('filtered', 100, { machineName: 'HX' }), row('unallocated', 100, { plannedStartDate: '' }), row('outside', 100, { allocations: [{ bucket: '2027-01', minutes: 100 }] }), row('valid')], [{ kind: 'seiban', key: 'S1', vendorId: 'v1' }]);
+    start.machine = 'ＮＶＤ';
+    expect(autoSelect(start).actions.map((a) => a.rowId)).toEqual(['valid']);
+  });
+  it('rebuilds loads before transfer and vendor usage before conditional outsourcing', () => {
+    const start = namedInput([row('named', 60), row('conditional', 50)], [{ kind: 'part', key: partKey(row('named')), vendorId: 'v1' }], [vendor('v1', 100)]);
+    start.resources = [resource('A', 50), resource('B', 100)];
+    start.rules = [{ fromClassCode: 'A', toClassCode: 'B', efficiencyRatio: 1, priority: 1 }];
+    expect(autoSelect(start).actions.map((a) => a.rowId)).toEqual(['named']); // remaining load equals capacity
+    start.resources[0] = resource('A', 0);
+    start.rules = [];
+    const result = autoSelect(start);
+    expect(result.actions.map((a) => a.rowId)).toEqual(['named']);
+    expect(result.noTaker).toEqual([{ rowId: 'conditional', reason: '上限' }]);
+  });
+  it('orders by vendor priority, due date and rowId independently of input order', () => {
+    const rows = [row('z'), row('b', 50, { effectiveDueDate: '2026-11-10' }), row('a', 50, { effectiveDueDate: '2026-11-10' }), row('rank1', 50, { fseiban: 'S2' })];
+    const start = namedInput(rows, [{ kind: 'seiban', key: 'S1', vendorId: 'v2' }, { kind: 'seiban', key: 'S2', vendorId: 'v1' }], [vendor('v2', 50, { priority: 2 }), vendor('v1', 50)]);
+    const result = autoSelect(start);
+    expect(result.actions.map((a) => a.rowId)).toEqual(['rank1', 'a']);
+    expect(result.noTaker).toEqual([{ rowId: 'b', reason: '上限' }, { rowId: 'z', reason: '上限' }]);
+    expect(autoSelect({ ...start, rows: [...rows].reverse(), settings: { ...start.settings!, vendors: [...start.settings!.vendors].reverse() } })).toEqual(result);
+  });
+  it('keeps distinct long normalized machine names as distinct target keys', () => {
+    const prefix = 'Ａ'.repeat(40);
+    const first = row('a', 100, { machineName: `${prefix}１` });
+    const second = row('b', 100, { machineName: `${prefix}２` });
+    expect(namedTargetKey('machine', first)).toBe(`${'A'.repeat(40)}1`);
+    expect(namedTargetKey('machine', first)).not.toBe(namedTargetKey('machine', second));
+    const start = namedInput([first, second], [{ kind: 'machine', key: namedTargetKey('machine', first), vendorId: 'v1' }]);
+    expect(autoSelect(start).actions.map((a) => a.rowId)).toEqual(['a']);
+  });
+  it('separates unnumbered part targets by ProductNo', () => {
+    const a = row('a', 100, { fseiban: '********', fhincd: 'P', productNo: '1' });
+    const b = { ...a, rowId: 'b', productNo: '2' };
+    const start = namedInput([a, b], [{ kind: 'part', key: partKey(a), vendorId: 'v1' }]);
+    expect(autoSelect(start).actions.map((a) => a.rowId)).toEqual(['a']);
+  });
+  it('does not pull a blocked named row into a conditional part group', () => {
+    const a = row('a', 60, { fhincd: 'P', machineName: 'HX' });
+    const b = row('b', 40, { fhincd: 'P' });
+    const start = namedInput([a, b], [{ kind: 'machine', key: 'HX', vendorId: 'v1' }], [vendor('v1', 0), vendor('fallback')]);
+    start.resources[0] = resource('A', 0);
+    expect(autoSelect(start)).toEqual({ actions: [{ rowId: 'b', type: 'outsource', vendorId: 'fallback', groupId: JSON.stringify(['fallback', ['b']]) }], noTaker: [{ rowId: 'a', reason: '上限' }] });
+  });
 });

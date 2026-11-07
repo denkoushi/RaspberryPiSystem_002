@@ -6454,6 +6454,7 @@ model ProductionScheduleOutsourceConfig {
   mode           String   @default("process") @db.VarChar(20)
   order          String[] @default(["due", "minutes", "vendor"])
   vendors        ProductionScheduleOutsourceVendor[]
+  namedTargets   ProductionScheduleOutsourceNamedTarget[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -6484,4 +6485,16 @@ model ProductionScheduleOutsourceCondition {
   vendor      ProductionScheduleOutsourceVendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, position])
+}
+
+model ProductionScheduleOutsourceNamedTarget {
+  id       String @id @default(uuid())
+  configId String
+  kind     String @db.VarChar(20)
+  key      String
+  vendorId String @db.VarChar(100)
+  position Int
+  config   ProductionScheduleOutsourceConfig @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@unique([configId, kind, key])
 }
