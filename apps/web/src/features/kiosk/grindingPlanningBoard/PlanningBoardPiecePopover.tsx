@@ -202,7 +202,7 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
       onClick={() => { setShowSplit(canSplit); setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
     {open && <PieceDialog actions={actions} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
-        {showSplit && <>
+        {showSplit && actions.createEnabled && <>
           <div className="flex items-center justify-between gap-2">
             <button type="button" aria-label="分け数を減らす" disabled={pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
             <output aria-label="分け数" className="tabular-nums">{count}</output>
