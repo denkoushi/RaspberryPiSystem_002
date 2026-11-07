@@ -201,6 +201,21 @@ describe('PlanningBoardPiecePopover', () => {
     expect(screen.getByRole('button', { name: '6つに分ける' })).toBeInTheDocument();
     expect(document.querySelector('[data-planning-board-piece-dialog]')!.parentElement).toHaveClass('overflow-y-auto', '!max-h-[calc(100dvh-4rem)]');
   });
+  it('wraps more than three pieces into three columns and shrinks six pieces when the quantity drops', async () => {
+    const h = setup({ ...row, plannedQuantity: 30 });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    fireEvent.click(screen.getByRole('button', { name: '6つに分ける数' }));
+    expect(screen.getByLabelText('1片目の数量').parentElement!.parentElement).toHaveStyle({ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' });
+    const five = { ...row, plannedQuantity: 5 };
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={five} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByRole('button', { name: '5つに分ける数' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '6つに分ける数' })).toBeDisabled();
+    const thirty = { ...row, plannedQuantity: 30 };
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={thirty} /></PlanningBoardPiecesContext.Provider>);
+    await waitFor(() => expect(screen.getByRole('button', { name: /^[2-6]つに分ける$/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /^[2-6]つに分ける$/ }));
+    await waitFor(() => expect(h.onSplit).toHaveBeenCalledExactlyOnceWith(thirty, [6, 6, 6, 6, 6]));
+  });
   it('opens without changing body scroll styles or querying focusable element layout', () => {
     const originalOverflow = document.body.style.overflow;
     const offsetParent = vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get');

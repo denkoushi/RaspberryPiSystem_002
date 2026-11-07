@@ -218,7 +218,7 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
           <div aria-hidden="true" className="flex h-3.5 overflow-hidden rounded">
             {quantities.map((value, index) => <span key={index} className={`min-w-0 ${PIECE_COLORS[index % PIECE_COLORS.length]}`} style={{ flex: value }} />)}
           </div>
-          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${Math.min(count, 3)}, minmax(0, 1fr))` }}>
             {quantities.map((value, index) => <div key={index} className={`min-w-0 rounded border-t-4 bg-slate-900 py-2 ${PIECE_BORDERS[index % PIECE_BORDERS.length]}`}>
               <output aria-label={`${index + 1}片目の数量`} className="block overflow-x-auto text-center text-xl font-semibold tabular-nums">{value}</output>
               <div className="mt-2 grid grid-cols-2 gap-0.5 px-0.5">
