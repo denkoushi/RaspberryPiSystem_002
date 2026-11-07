@@ -64,6 +64,66 @@ describe('kiosk error reporter', () => {
     s.reporter.record('render_crash', { message: 'crash' });
     expect(s.send.mock.calls[5][0][0].context.kind).toBe('render_crash');
   });
+  it('preserves both exhausted budgets across two reloads in the same minute', async () => {
+    const s = setup();
+    s.send.mockRejectedValue(new Error('offline'));
+    for (let i = 0; i < 20; i++) s.reporter.record('api_network', { urlPath: `/orders/${i}` });
+    for (let i = 0; i < 5; i++) s.reporter.record('sessaku_piece', { status: 409 });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[0][0]).toHaveLength(25);
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    const twiceRestored = setup(restored.storage.get(QUEUE_KEY));
+    for (const current of [restored, twiceRestored]) {
+      await current.reporter.flush();
+      expect(current.send).not.toHaveBeenCalled();
+      const saved = JSON.parse(current.storage.get(QUEUE_KEY)!);
+      expect(saved.attempts).toHaveLength(20);
+      expect(saved.pieceAttempts).toHaveLength(5);
+    }
+    twiceRestored.time(160001);
+    await twiceRestored.reporter.flush();
+    expect(twiceRestored.send.mock.calls[0][0]).toHaveLength(25);
+  });
+  it('adds discarded legacy piece rows to saved drops', async () => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status: 409 });
+    const saved = JSON.parse(s.storage.get(QUEUE_KEY)!);
+    saved.queue = Array.from({ length: 10 }, (_, i) => ({
+      ...saved.queue[0], log: { ...saved.queue[0].log, context: { ...saved.queue[0].log.context, incidentCode: `AAAAA${'ABCDEFGHJK'[i]}` } }
+    }));
+    saved.dropped = 3;
+    delete saved.pieceAttempts;
+    const restored = setup(JSON.stringify(saved));
+    expect(JSON.parse(restored.storage.get(QUEUE_KEY)!).dropped).toBe(8);
+    restored.reporter.record('api_network', { urlPath: '/orders' });
+    await restored.reporter.flush();
+    const logs = restored.send.mock.calls[0][0];
+    expect(logs).toHaveLength(6);
+    expect(logs.slice(0, 5).every((log: { context: Record<string, unknown> }) => log.context.droppedCount === undefined)).toBe(true);
+    expect(logs[5].context.droppedCount).toBe(8);
+  });
+  it('carries drops over a piece-only send to the next non-piece row', async () => {
+    const s = setup();
+    for (let i = 0; i < 7; i++) s.reporter.record('sessaku_piece', { status: 409 });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[0][0]).toHaveLength(5);
+    for (const log of s.send.mock.calls[0][0]) expect(log.context).not.toHaveProperty('droppedCount');
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).dropped).toBe(2);
+    s.reporter.record('api_network', { urlPath: '/orders' });
+    await s.reporter.flush();
+    expect(s.send.mock.calls[1][0][0].context).toMatchObject({ kind: 'api_network', droppedCount: 2 });
+    expect(JSON.parse(s.storage.get(QUEUE_KEY)!).dropped).toBe(0);
+  });
+  it('warns for PIECE_QUANTITY_CONFLICT with status 400, including after reload', async () => {
+    const s = setup();
+    s.reporter.record('sessaku_piece', { status: 400, errorCode: 'PIECE_QUANTITY_CONFLICT' });
+    const restored = setup(s.storage.get(QUEUE_KEY));
+    await s.reporter.flush();
+    await restored.reporter.flush();
+    for (const current of [s, restored]) expect(current.send.mock.calls[0][0][0]).toMatchObject({
+      level: 'WARN', context: { status: 400, errorCode: 'PIECE_QUANTITY_CONFLICT' }
+    });
+  });
   it.each([[409, 'WARN'], [400, 'ERROR'], [500, 'ERROR'], [undefined, 'ERROR']])('uses %s piece status level %s, including after reload', async (status, level) => {
     const s = setup();
     s.reporter.record('sessaku_piece', { status });

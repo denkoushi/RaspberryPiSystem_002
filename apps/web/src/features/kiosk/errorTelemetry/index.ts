@@ -39,6 +39,7 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
   try {
     getNetworkReporter()?.record(input);
     if (!input.url || input.status === 401 || input.code === 'ERR_CANCELED') return;
+    if (urlPath(input.url).includes('/sessaku-pieces/')) return;
     let kind: ErrorKind;
     if (input.code === 'ECONNABORTED' || input.code === 'ETIMEDOUT') kind = 'api_timeout';
     else if (!input.status) kind = 'api_network';

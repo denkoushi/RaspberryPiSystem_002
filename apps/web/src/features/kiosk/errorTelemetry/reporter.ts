@@ -35,6 +35,9 @@ export class KioskErrorReporter {
   constructor(private readonly env: ReporterEnvironment) {
     try {
       const saved = JSON.parse(env.storage().getItem(QUEUE_KEY) ?? '{}');
+      this.dropped = Number.isSafeInteger(saved.dropped) && saved.dropped >= 0 ? saved.dropped : 0;
+      this.attempts = Array.isArray(saved.attempts) ? saved.attempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 20) : [];
+      this.pieceAttempts = Array.isArray(saved.pieceAttempts) ? saved.pieceAttempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 5) : [];
       if (Array.isArray(saved.queue)) {
         for (const item of saved.queue.slice(0, 55)) {
           const c = item?.log?.context;
@@ -42,10 +45,8 @@ export class KioskErrorReporter {
           // Rebuild from the allowlist, even when storage has been corrupted/edited.
           this.record(c.kind, { ...c, message: item.log.message }, c);
         }
+        this.persist();
       }
-      this.dropped = Number.isSafeInteger(saved.dropped) && saved.dropped >= 0 ? saved.dropped : 0;
-      this.attempts = Array.isArray(saved.attempts) ? saved.attempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 20) : [];
-      this.pieceAttempts = Array.isArray(saved.pieceAttempts) ? saved.pieceAttempts.filter((t: unknown) => typeof t === 'number' && t > env.now() - 60000).slice(0, 5) : [];
     } catch { /* Storage is optional. */ }
   }
   setTransport(send: (logs: Log[]) => Promise<unknown>) { this.send = send; }
@@ -94,9 +95,9 @@ export class KioskErrorReporter {
       if (existing) {
         Object.assign(existing.log.context, context, { count: Number(existing.log.context.count) + Number(context.count) });
       } else if (queueSize < (isPiece ? 5 : 50) && (restored || attempts.filter((time) => time > this.env.now() - 60000).length < limit)) {
-        this.queue.push({ fingerprint, log: { level: kind === 'api_4xx' || kind === 'slow_request' || (isPiece && context.status === 409) ? 'WARN' : 'ERROR', message, context } });
+        this.queue.push({ fingerprint, log: { level: kind === 'api_4xx' || kind === 'slow_request' || (isPiece && (context.status === 409 || context.errorCode === 'PIECE_QUANTITY_CONFLICT')) ? 'WARN' : 'ERROR', message, context } });
       } else { this.dropped += Number(context.count); }
-      this.persist();
+      if (!restored) this.persist();
       if (kind === 'render_crash' && !restored) void this.flush();
       return { incidentCode, occurredAt };
     } catch { return; }
@@ -114,8 +115,9 @@ export class KioskErrorReporter {
       if (!due.length) return;
       const batch = due.filter((item) => item.log.context.kind === 'sessaku_piece' ? pieceAvailable-- > 0 : available-- > 0).map((item) => ({ ...item, log: { ...item.log, context: { ...item.log.context } } }));
       if (!batch.length) return;
-      const dropped = this.dropped;
-      if (dropped) batch[0].log.context.droppedCount = dropped;
+      const droppedRow = batch.find((item) => item.log.context.kind !== 'sessaku_piece');
+      const dropped = droppedRow ? this.dropped : 0;
+      if (droppedRow && dropped) droppedRow.log.context.droppedCount = dropped;
       for (const item of batch) (item.log.context.kind === 'sessaku_piece' ? this.pieceAttempts : this.attempts).push(now);
       this.sending = true;
       this.persist();

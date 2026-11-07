@@ -8,6 +8,43 @@ describe('browser kiosk error collection', () => {
     window.history.replaceState({}, '', '/kiosk/borrow');
   });
   afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); window.history.replaceState({}, '', '/'); });
+  it('keeps duplicate piece API failures out of the common budget while retaining network stats', async () => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi, reportSessakuPieceError, reportKioskException } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    for (let i = 0; i < 20; i++) {
+      reportKioskApi({ method: 'put', url: `https://example/api/sessaku-pieces/piece-${i}/completion?value=secret`, status: 409, durationMs: 100 });
+      reportSessakuPieceError('complete', { itemId: `piece-${i}` }, {
+        isAxiosError: true, response: { status: 409, data: { errorCode: 'STALE_SESSAKU_PIECES' } }
+      });
+      await vi.advanceTimersByTimeAsync(1000);
+    }
+    reportKioskException('render_crash', new Error('crash after piece failures'));
+    const logs = send.mock.calls.flatMap(([payload]) => payload.logs);
+    expect(logs.filter((log) => log.context.kind === 'render_crash')).toHaveLength(1);
+    expect(logs.some((log) => log.context.kind === 'api_4xx')).toBe(false);
+    await vi.advanceTimersByTimeAsync(280000);
+    expect(send.mock.calls.flatMap(([payload]) => payload.logs)).toContainEqual(expect.objectContaining({
+      context: expect.objectContaining({ category: 'kiosk_net_stats', requests: 20, failures: 0 })
+    }));
+  });
+  it('excludes piece operation paths but preserves other paths and query-only matches', async () => {
+    vi.spyOn(window, 'addEventListener').mockImplementation(() => undefined);
+    const send = vi.fn().mockResolvedValue(undefined);
+    const { initializeKioskErrorTelemetry, reportKioskApi } = await import('./index');
+    initializeKioskErrorTelemetry(send);
+    for (const url of ['/api/sessaku-pieces/split', '/api/sessaku-pieces/merge', '/api/sessaku-pieces/piece-1/completion']) {
+      reportKioskApi({ url, status: 409, durationMs: 100 });
+    }
+    for (const url of ['/orders?next=/sessaku-pieces/split', '/api/sessaku-pieces', '/api/other-sessaku-pieces/split']) {
+      reportKioskApi({ url, status: 409, durationMs: 100 });
+    }
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(send.mock.calls[0][0].logs.map((log: { context: { urlPath: string } }) => log.context.urlPath)).toEqual([
+      '/orders', '/api/sessaku-pieces', '/api/other-sessaku-pieces/split'
+    ]);
+  });
   it.each(['split', 'merge', 'complete', 'uncomplete'])('sends one %s failure using the sessaku-pieces category and safe response fields', async (action) => {
     const send = vi.fn().mockResolvedValue(undefined);
     const { initializeKioskErrorTelemetry, reportSessakuPieceError } = await import('./index');
