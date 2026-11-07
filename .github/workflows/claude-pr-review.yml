@@ -1,0 +1,99 @@
+name: Claude PR review
+
+# PR を Claude に自動レビューさせる。費用は Anthropic Console の API クレジット
+# (secrets.ANTHROPIC_API_KEY) から出る。パブリックリポジトリなので、
+# このリポジトリ内のブランチから作った PR だけで動かし、fork の PR や
+# 他人のコメントでは動かさない。
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, ready_for_review, reopened, labeled]
+    # 文書だけの PR はレビューしない(ラベルを付けても動かない)。
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: claude-review
+    # 動かす条件:
+    # - fork ではなく、このリポジトリのブランチからの PR
+    # - draft ではない
+    # - labeled のときは claude-review / claude-review-fable ラベルが付いたときだけ
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false &&
+      (github.event.action != 'labeled' ||
+       github.event.label.name == 'claude-review' ||
+       github.event.label.name == 'claude-review-fable')
+    # 条件を満たしたときだけ同じ PR の前回分を取り消す(関係ないラベルでは取り消さない)。
+    concurrency:
+      group: claude-pr-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Choose model
+        id: model
+        env:
+          HAS_FABLE_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'claude-review-fable') }}
+          HAS_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
+        run: |
+          # キー未登録のあいだは何もしない(他の PR のチェックを赤にしない)。
+          echo "has_key=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::notice::ANTHROPIC_API_KEY が未登録のため、レビューを省略します。"
+          fi
+          # 通常は Sonnet。大きい変更だけ claude-review-fable ラベルで Fable にする。
+          if [ "$HAS_FABLE_LABEL" = "true" ]; then
+            echo "name=claude-fable-5-1" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=claude-sonnet-5-5" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Review
+        if: steps.model.outputs.has_key == 'true'
+        # クレジット切れなどで失敗しても、マージ判定を止めない。
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          use_sticky_comment: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            あなたはこの PR の第三者レビュアーです。日本語で書いてください。
+
+            見るもの:
+            - `gh pr diff` で差分を読み、必要なら周辺のコードを読む。
+            - 正しさの不具合(条件の取り違え、境界値、例外処理の漏れ、競合、
+              データを壊す変更、後方互換の破れ、テストが実際の不具合を検出できていない点)を優先する。
+            - 書き方の好みや、差分と関係のない既存コードへの指摘はしない。
+            - 確信が持てない指摘は、そう明記する。指摘が無ければ「指摘なし」と書く。
+
+            書き方:
+            - 具体的な行への指摘はインラインコメントにする。
+            - 最後に、重い順に並べた短いまとめを1件だけ PR コメントに書く。
+
+            書いてはいけないもの(このリポジトリは公開されている):
+            - IP アドレス、ホスト名、端末名、ユーザー名、パスワード、トークン、鍵、
+              社内の取引先名などの値。コード中にあっても引用しない。
+            - 運用環境の構成の詳しい説明。
+          claude_args: |
+            --model ${{ steps.model.outputs.name }}
+            --max-turns 40
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Read,Grep,Glob"
