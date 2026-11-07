@@ -289,8 +289,8 @@ it('measures real page interactions with the production fixture (one warmup, thr
           await measure(`${prefix}refetch_same_popup_open`, () => refresh(['board']));
           expect(document.querySelector('[data-planning-board-piece-dialog]')).toBeTruthy();
           await act(async () => { vi.advanceTimersByTime(350); });
-          const plus = document.querySelector<HTMLButtonElement>('[aria-label="分け数を増やす"]')!;
-          const minus = document.querySelector<HTMLButtonElement>('[aria-label="分け数を減らす"]')!;
+          const plus = document.querySelector<HTMLButtonElement>('[aria-label="3つに分ける数"]')!;
+          const minus = document.querySelector<HTMLButtonElement>('[aria-label="2つに分ける数"]')!;
           expect(plus).not.toBeDisabled();
           await measure(`${prefix}popup_plus`, () => { fireEvent.click(plus); });
           expect(minus).not.toBeDisabled();
@@ -300,7 +300,7 @@ it('measures real page interactions with the production fixture (one warmup, thr
           await act(async () => fireEvent.click(quantity()));
           await act(async () => { vi.advanceTimersByTime(350); });
           const before = network.stores.board.data.items.length;
-          const splitButton = button('分ける')!;
+          const splitButton = button('2つに分ける')!;
           expect(splitButton).not.toBeDisabled();
           await measure('table_split_success', () => { fireEvent.click(splitButton); });
           expect(network.stores.board.data.items).toHaveLength(before + 1);

@@ -297,7 +297,7 @@ try {
     await page.clock.fastForward(350);
     const beforePieces = await page.evaluate(() => window.perfHarness.board().items.length);
     await measure('pieces_split_success', async () => {
-      await dialog.getByRole('button', { name: '分ける', exact: true }).click();
+      await dialog.getByRole('button', { name: '2つに分ける', exact: true }).click();
       await dialog.waitFor({ state: 'detached' });
       await page.waitForFunction(before => window.perfHarness.board().items.length === before + 1, beforePieces);
     });
