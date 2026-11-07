@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), transaction: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn(), create: vi.fn(), transaction: vi.fn(), namedDelete: vi.fn(), namedCreate: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: {
   productionScheduleOutsourceConfig: { findUnique: mocks.findUnique },
   $transaction: mocks.transaction
@@ -9,7 +9,7 @@ vi.mock('../../../../lib/site-directory.js', () => ({ resolveSiteKeyForScopeKey:
 
 import { DEFAULT_OUTSOURCE_SETTINGS, getLoadBalancingOutsourceSettings, outsourceSettingsSchema, saveLoadBalancingOutsourceSettings, type LoadBalancingOutsourceSettings } from '../load-balancing-outsource-settings.service.js';
 
-const settings = (): LoadBalancingOutsourceSettings => ({ mode: 'part', order: ['vendor', 'minutes', 'due'], vendors: [{
+const settings = (): LoadBalancingOutsourceSettings => ({ namedTargets: [{ kind: 'machine', key: ' NVD ', vendorId: 'stable-1' }], mode: 'part', order: ['vendor', 'minutes', 'due'], vendors: [{
   id: 'stable-1', name: ' 加工業者 ', priority: 2, monthlyCapacityMinutes: 120.5,
   conditions: [{ resourceCds: [' a '], partPrefix: ' AB ', partName: ' 軸 ', maxMinutes: 45.5 }]
 }] });
@@ -20,6 +20,7 @@ describe('outsource settings persistence and site/shared resolution', () => {
     vi.resetAllMocks();
     mocks.transaction.mockImplementation(async (callback) => callback({
       productionScheduleOutsourceConfig: { upsert: mocks.upsert },
+      productionScheduleOutsourceNamedTarget: { deleteMany: mocks.namedDelete, create: mocks.namedCreate },
       productionScheduleOutsourceVendor: { deleteMany: mocks.deleteMany, create: mocks.create }
     }));
     mocks.upsert.mockResolvedValue({ id: 'config-site' });
@@ -63,6 +64,22 @@ describe('outsource settings persistence and site/shared resolution', () => {
     expect(mocks.deleteMany).toHaveBeenCalledTimes(1);
     expect(mocks.create).not.toHaveBeenCalled();
   });
+  it('replaces named children atomically and drops them when their vendor is removed', async () => {
+    const value = settings();
+    mocks.findUnique.mockResolvedValue(stored(value));
+    await saveLoadBalancingOutsourceSettings('shared', value);
+    expect(mocks.namedCreate).toHaveBeenCalledWith({ data: { kind: 'machine', key: 'NVD', vendorId: 'stable-1', configId: 'config-site', position: 0 } });
+    expect(mocks.namedDelete).toHaveBeenCalledWith({ where: { configId: 'config-site' } });
+    expect(mocks.namedDelete.mock.invocationCallOrder[0]).toBeLessThan(mocks.deleteMany.mock.invocationCallOrder[0]!);
+    mocks.namedCreate.mockClear();
+    mocks.findUnique.mockResolvedValue(stored(DEFAULT_OUTSOURCE_SETTINGS));
+    await saveLoadBalancingOutsourceSettings('shared', DEFAULT_OUTSOURCE_SETTINGS);
+    expect(mocks.namedCreate).not.toHaveBeenCalled();
+  });
+  it('accepts old requests without namedTargets and adds an empty list', () => {
+    const { namedTargets: _targets, ...legacy } = settings();
+    expect(outsourceSettingsSchema.parse(legacy).namedTargets).toEqual([]);
+  });
   it('preserves NULL and zero limits and zero conditions', async () => {
     const value = settings(); value.vendors[0]!.monthlyCapacityMinutes = null; value.vendors[0]!.conditions = [];
     expect(outsourceSettingsSchema.parse(value).vendors[0]).toMatchObject({ monthlyCapacityMinutes: null, conditions: [] });
@@ -70,6 +87,11 @@ describe('outsource settings persistence and site/shared resolution', () => {
     expect(outsourceSettingsSchema.parse(value).vendors[0]!.monthlyCapacityMinutes).toBe(0);
   });
   it.each([
+    (v: LoadBalancingOutsourceSettings) => { v.namedTargets[0]!.key = '  '; },
+    (v: LoadBalancingOutsourceSettings) => { v.namedTargets[0]!.kind = 'invalid' as never; },
+    (v: LoadBalancingOutsourceSettings) => { v.namedTargets[0]!.vendorId = 'missing'; },
+    (v: LoadBalancingOutsourceSettings) => { v.namedTargets.push({ ...v.namedTargets[0]!, key: 'NVD' }); },
+    (v: LoadBalancingOutsourceSettings) => { v.vendors = []; },
     (v: LoadBalancingOutsourceSettings) => { v.vendors[0]!.name = '  '; },
     (v: LoadBalancingOutsourceSettings) => { v.vendors[0]!.monthlyCapacityMinutes = -1; },
     (v: LoadBalancingOutsourceSettings) => { v.vendors[0]!.monthlyCapacityMinutes = Infinity; },

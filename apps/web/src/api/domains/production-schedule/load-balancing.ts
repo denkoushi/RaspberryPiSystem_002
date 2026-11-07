@@ -92,7 +92,13 @@ export type OutsourceVendor = {
   conditions: OutsourceCondition[];
 };
 export type OutsourceOrderKey = 'due' | 'minutes' | 'vendor';
+export type OutsourceNamedTarget = {
+  kind: 'machine' | 'seiban' | 'part';
+  key: string;
+  vendorId: string;
+};
 export type OutsourceSettings = {
+  namedTargets?: OutsourceNamedTarget[];
   vendors: OutsourceVendor[];
   mode: 'process' | 'part';
   order: OutsourceOrderKey[];

@@ -1,4 +1,4 @@
-import { readSessakuPieceSets } from '../sessaku-pieces/piece-key.js';
+import { readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
@@ -56,10 +56,30 @@ async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Pr
   `);
 }
 
-export async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
+export type SessakuLaneSourceScope = {
+  targetFseiban: string;
+  resourceCds: readonly string[];
+  inboundKeys: readonly SessakuPieceLogicalKey[];
+};
+
+export async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[], laneScope?: SessakuLaneSourceScope): Promise<WinnerRow[]> {
   const values = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))];
   if (values.length === 0) return [];
-  return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[])`);
+  let scope = Prisma.sql`TRUE`;
+  if (laneScope) {
+    // Match String.trim() in the projection, including tabs and Unicode whitespace.
+    const trimCharacters = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff';
+    const inbound = laneScope.inboundKeys.length ? Prisma.sql`(
+      COALESCE("r"."rowData"->>'FSEIBAN', ''), COALESCE("r"."rowData"->>'FHINCD', ''),
+      COALESCE("r"."rowData"->>'FSIGENCD', ''), COALESCE("r"."rowData"->>'FKOJUN', '')
+    ) IN (${Prisma.join(laneScope.inboundKeys.map((key) => Prisma.sql`(${key.fseiban}, ${key.fhincd}, ${key.fsigencd}, ${key.fkojun})`))})` : Prisma.sql`FALSE`;
+    // Each predicate depends only on logical-key columns, so it keeps entire winner partitions.
+    // Include the target seiban and overridden inbound parents even when their original lane differs.
+    scope = Prisma.sql`("r"."rowData"->>'FSEIBAN' = ${laneScope.targetFseiban}
+      OR BTRIM("r"."rowData"->>'FSIGENCD', ${trimCharacters}) = ANY(${[...laneScope.resourceCds]}::text[])
+      OR ${inbound})`;
+  }
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[]) AND ${scope}`);
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */

@@ -8,11 +8,13 @@
  */
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+const machineKey = (s) => s.trim().replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).replace(/\u3000/g, ' ').toUpperCase();
 const normalize = (s) => s.normalize('NFKC').trim().replace(/\s+/g, ' ').toUpperCase();
 
 export function referenceAutoSelect(input) {
   const { rows, months, resources, rules, settings, machine, today } = input;
   const actions = [...input.actions];
+  const blocked = new Set();
   const displayed = (bucket) => bucket === 'late' || months.includes(bucket);
 
   function displayedAmounts(row) {
@@ -24,7 +26,7 @@ export function referenceAutoSelect(input) {
   }
 
   function isCandidate(row) {
-    return row.plannedStartDate !== '' && row.effectiveDueDate !== ''
+    return !blocked.has(row.rowId) && row.plannedStartDate !== '' && row.effectiveDueDate !== ''
       && Number.isFinite(row.totalMinutes) && row.totalMinutes > 0
       && (!machine || normalize(row.machineName) === normalize(machine))
       && row.allocations.some(({ bucket, minutes }) =>
@@ -173,6 +175,32 @@ export function referenceAutoSelect(input) {
     return candidates.find((candidate) => candidate.fits);
   }
 
+  // Stage zero, independently expressed from the named-target specification.
+  const reserved = [];
+  const initialState = rebuild();
+  for (const row of rows) {
+    if (!isCandidate(row) || initialState.operated.has(row.rowId)) continue;
+    let chosen;
+    for (const kind of ['part', 'seiban', 'machine']) {
+      const key = kind === 'part' ? partKey(row) : kind === 'seiban' ? row.fseiban.trim() : machineKey(row.machineName);
+      chosen = (settings.namedTargets ?? []).find((target) => target.kind === kind && target.key === key);
+      if (chosen) break;
+    }
+    if (!chosen) continue;
+    const vendor = settings.vendors.find((item) => item.id === chosen.vendorId);
+    if (vendor) reserved.push({ row, vendor });
+  }
+  reserved.sort((a, b) => a.vendor.priority - b.vendor.priority || compare(a.row.effectiveDueDate, b.row.effectiveDueDate) || compare(a.row.rowId, b.row.rowId));
+  for (const { row, vendor } of reserved) {
+    const state = rebuild();
+    let enough = true;
+    for (const [month, minutes] of usageAmounts(row)) {
+      if (vendor.monthlyCapacityMinutes !== null && (state.usage.get(vendor.id)?.get(month) ?? 0) + minutes > vendor.monthlyCapacityMinutes) enough = false;
+    }
+    if (enough) actions.push({ rowId: row.rowId, type: 'outsource', vendorId: vendor.id });
+    else blocked.add(row.rowId);
+  }
+
   const cellKey = (cell) => JSON.stringify([cell.resourceCd, cell.month]);
   const processed = new Set();
   let currentKey = null;
@@ -238,7 +266,7 @@ export function referenceAutoSelect(input) {
   }
 
   const finalState = rebuild();
-  const noTakerByRow = new Map();
+  const noTakerByRow = new Map([...blocked].map((rowId) => [rowId, { rowId, reason: '上限' }]));
   const dueOrder = (a, b) => compare(a.effectiveDueDate, b.effectiveDueDate) || compare(a.rowId, b.rowId);
   for (const cell of finalState.excess) {
     let remaining = cell.over;

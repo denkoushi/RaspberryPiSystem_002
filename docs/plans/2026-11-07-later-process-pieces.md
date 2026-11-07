@@ -239,3 +239,15 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定の API `vitest run src/services/production-schedule src/services/csv-dashboard src/services/imports` は 1,686 成功・16 skip・既知の snapshotId 失敗1件のみ（122.63秒）。片の DB 統合テスト111件はすべて成功。web `vitest run src/features/kiosk/grindingPlanningBoard` は34ファイル・487件成功（17.35秒）。API/web の指定型チェックと両 package の lint、共有型の build/lint は成功。最後に変更した完了ボタンのテストも個別 lint 成功。最初の web 全体テスト起動は root で vitest が見つからず未開始となり、apps/web から正しく実行した。
 
 指定の localhost:55491/lpp と、dotenv を無効化する preload・空の envDir を使った一時 Vite 設定で検証。検証・確認は約5分で予算内。既知の snapshotId・health・performance は修正していない。開始時に既存 WIP はなく、変更9ファイルはこの修正のみ。最終 git diff --check 成功、index は空、branch feat/later-process-pieces・HEAD c638e6c4 は維持。秘密ファイルの読み取り、git add、commit、push、履歴操作、migration/reset、CI・infrastructure・UI 文言の変更、デプロイは未実施。
+
+
+## main #2613 の取り込み (2026-11-07)
+
+- 加工機列への絞り込み、段階別計測、一括書き込みを保持し、後工程の伝播・監査・メール critical → 論理キー → board → 行のロック順を維持。
+- readLaneScope に、各 site の後工程の親／既存片がいる列も追加。その列へ override で流入する別製番の親／片も読み、projection・before.overrides・rank の欠落を防ぐ。
+- 4サイト・約7,500行で、切削と異なる後工程列、サイト別配置、流入行を含め、分割・再分割・部分結合・全結合の永続化結果（sourcePieceId、順位、加工機、override 等）を全列読み取りの従来方式と比較。main の性能・null列テストと後工程の既存テストを両立。
+- web は main の分割画面テストと set 単位の isLaterProcess による操作制限テストを保持。後工程の選択解除テスト2件は #2611 のボタン名「2つに分ける」に合わせた。
+
+検証: 指定 API 範囲は1,699成功・16 skip・既知の snapshotId 失敗1件のみ（121.63秒）。片の DB 統合113件は全成功。各操作の読み取りは7,478行から108行になり、従来方式と永続化結果が一致。指定 web 範囲は1,199件全成功（53.60秒）。API/web 型チェック・package lint・最終編集テストの個別 lint も成功。
+
+指定 DB の migrate deploy は未適用なし。dotenv 無効化・空の envDir で秘密ファイルを読まず検証し、一時設定を削除。検証は約5分。マーカー0件・git diff --check 成功。既存 staged 差分を保護し、編集は6ファイル。HEAD 1d05b1a2・branch・UU 3件を維持。git add・commit・push・merge 完了／中止・新規 migration／reset・CI・infrastructure・UI 文言・デプロイの変更は未実施。
