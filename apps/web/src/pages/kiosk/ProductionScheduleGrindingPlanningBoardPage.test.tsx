@@ -212,6 +212,7 @@ function scanOrder(raw: string) {
 describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   const splitBoard = () => {
     const data = fixture();
+    data.resourceCategories['305'] = 'cutting';
     const parent = data.items[0]!;
     const pieces: GrindingPlanningBoardItem[] = [2, 3].map((quantity, index) => ({ ...parent,
       itemId: `piece:${index}`, kind: 'piece', parentItemId: parent.itemId, pieceId: `id-${index}`,
