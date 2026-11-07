@@ -3,6 +3,11 @@ from __future__ import annotations
 import json
 import os
 import fcntl
+import math
+import time
+import threading
+import subprocess
+from time import monotonic as lock_monotonic, sleep as lock_sleep
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -21,15 +26,100 @@ def business_switch_enabled() -> bool:
     return os.environ.get("BUSINESS_DEEPSEEK_SWITCH_ENABLED", "") in {"true", "1"}
 
 
+def positive_env_seconds(name: str, default: float) -> float:
+    value = float(os.environ.get(name) or default)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"invalid {name}")
+    return value
+
+
+def control_command_timeout() -> float:
+    return positive_env_seconds("LLM_RUNTIME_COMMAND_TIMEOUT_SEC", 120)
+
+
+def control_request_budget() -> float:
+    return positive_env_seconds("LLM_RUNTIME_REQUEST_BUDGET_SEC", 360)
+
+
+_control_request = threading.local()
+
+
+def request_timeout(limit: float) -> float:
+    deadline = getattr(_control_request, "deadline", None)
+    if deadline is None:
+        return limit
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("control request", control_request_budget())
+    return min(limit, remaining)
+
+
+class BusinessLockTimeout(TimeoutError):
+    pass
+
+
+def business_draining(path: str) -> bool:
+    flag = Path(path + ".drain")
+    try:
+        deadline = float(flag.read_text())
+        if math.isfinite(deadline):
+            return deadline > time.time()
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        pass
+    # A crashed writer must not block business admission indefinitely.
+    try:
+        return time.time() - flag.stat().st_mtime <= positive_env_seconds("BUSINESS_FORCE_STOP_DRAIN_SEC", 30) + 5
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
 @contextmanager
-def business_state_lock(path: str, *, exclusive: bool = True, blocking: bool = True):
+def business_force_drain(path: str, seconds: float):
+    # Serialize drain writers independently of the readers they must drain.
+    target = Path(path + ".drain.lock")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise BusinessLockTimeout("business_drain_in_progress") from error
+        flag = Path(path + ".drain")
+        tmp = Path(path + ".drain.tmp")
+        tmp.write_text(str(time.time() + seconds))
+        tmp.replace(flag)
+        try:
+            yield
+        finally:
+            flag.unlink(missing_ok=True)
+
+
+@contextmanager
+def business_state_lock(path: str, *, exclusive: bool = True, blocking: bool = True,
+                        timeout: float | None = None):
     # Shared by the gateway (including streams) and lifecycle writer processes.
     target = Path(path + ".lock")
     if exclusive:
         target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a" if exclusive else "r") as lock:
         mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
-        fcntl.flock(lock, mode | (0 if blocking else fcntl.LOCK_NB))
+        if blocking:
+            limit = timeout if timeout is not None else positive_env_seconds("BUSINESS_STATE_LOCK_TIMEOUT_SEC", 30)
+            deadline = lock_monotonic() + limit
+            while True:
+                try:
+                    fcntl.flock(lock, mode | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError as error:
+                    remaining = deadline - lock_monotonic()
+                    if remaining <= 0:
+                        raise BusinessLockTimeout("business_state_lock_timeout") from error
+                    lock_sleep(min(.05, remaining))
+        else:
+            fcntl.flock(lock, mode | fcntl.LOCK_NB)
         try:
             yield
         finally:

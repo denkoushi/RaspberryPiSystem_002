@@ -915,10 +915,12 @@ class BusinessSwitchContractTests(unittest.TestCase):
         for body in ({}, {'modelProfileId': 'private_test'}, {'selectedBusinessProfileId': self.deep, 'selectionRevision': True}, []):
             self.state.write_text(json.dumps(body))
             with self.assertRaises(self.module.BusinessRestoreUnavailableError):
-                self.module.make_handler(self.config)
+                self.module.business_selection_state(str(self.state), self.config.model_registry_root)
+            self.assertTrue(self.module.make_handler(self.config))  # Emergency stop stays available.
         self.state.write_text('{broken')
         with self.assertRaises(self.module.BusinessRestoreUnavailableError):
-            self.module.make_handler(self.config)
+            self.module.business_selection_state(str(self.state), self.config.model_registry_root)
+        self.assertTrue(self.module.make_handler(self.config))
         with patch.dict('os.environ', {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
             self.module.write_active_model_state(str(self.state), self.profile)
             self.assertNotIn('selectionRevision', self.state_value())
