@@ -31,6 +31,8 @@ function distributeQuantity(total: number, count: number) {
 }
 
 const EMPTY_SELECTED_PIECES: ReadonlyMap<string, GrindingPlanningBoardItem[]> = new Map();
+const PIECE_COLORS = ['bg-sky-400', 'bg-violet-400', 'bg-amber-500', 'bg-pink-400', 'bg-green-400', 'bg-rose-400'];
+const PIECE_BORDERS = ['border-t-sky-400', 'border-t-violet-400', 'border-t-amber-500', 'border-t-pink-400', 'border-t-green-400', 'border-t-rose-400'];
 
 export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved }: {
   onRemoved?: (item: GrindingPlanningBoardItem) => void;
@@ -200,24 +202,34 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
     <button type="button" data-planning-board-quantity-item={item.itemId} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
       aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
       onClick={() => { setShowSplit(canSplit); setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
-    {open && <PieceDialog actions={actions} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
+    {open && <PieceDialog actions={actions} showSplit={showSplit} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
         {showSplit && <>
-          <div className="flex items-center justify-between gap-2">
-            <button type="button" aria-label="分け数を減らす" disabled={pending || blocked || count <= 2} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count - 1)}>−</button>
-            <output aria-label="分け数" className="tabular-nums">{count}</output>
-            <button type="button" aria-label="分け数を増やす" disabled={pending || blocked || count >= (quantity ?? 0)} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => setCount(count + 1)}>＋</button>
+          <div role="group" aria-label="分け数" className="grid grid-cols-5 gap-1">
+            {[2, 3, 4, 5, 6].map((value) => <button key={value} type="button" aria-label={`${value}つに分ける数`} aria-pressed={count === value}
+              disabled={pending || blocked || value > (quantity ?? 0)} onClick={() => setCount(value)}
+              className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-2 rounded border-2 tabular-nums disabled:opacity-40 ${count === value ? 'border-emerald-400 text-emerald-400' : 'border-slate-600'}`}>
+              <span aria-hidden="true" className="flex h-2 w-[34px] gap-0.5">
+                {Array.from({ length: value }, (_, index) => <span key={index} className="min-w-0 flex-1 bg-current" />)}
+              </span>
+              {value}
+            </button>)}
           </div>
-          <div className="flex flex-col gap-2">
-            {quantities.map((value, index) => <div key={index} className="flex items-center justify-between gap-2">
-              <button type="button" aria-label={`${index + 1}片目の数量を減らす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
-                disabled={pending || blocked || value <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, -1)}>−</button>
-              <output aria-label={`${index + 1}片目の数量`} className="tabular-nums">{value}</output>
-              <button type="button" aria-label={`${index + 1}片目の数量を増やす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
-                disabled={pending || blocked || quantities[count - 1]! <= 1} className="h-11 w-11 rounded border disabled:opacity-40" onClick={() => adjust(index, 1)}>＋</button>
+          <div aria-hidden="true" className="flex h-3.5 overflow-hidden rounded">
+            {quantities.map((value, index) => <span key={index} className={`min-w-0 ${PIECE_COLORS[index % PIECE_COLORS.length]}`} style={{ flex: value }} />)}
+          </div>
+          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${count}, minmax(0, 1fr))` }}>
+            {quantities.map((value, index) => <div key={index} className={`min-w-0 rounded border-t-4 bg-slate-900 py-2 ${PIECE_BORDERS[index % PIECE_BORDERS.length]}`}>
+              <output aria-label={`${index + 1}片目の数量`} className="block overflow-x-auto text-center text-xl font-semibold tabular-nums">{value}</output>
+              <div className="mt-2 grid grid-cols-2 gap-0.5 px-0.5">
+                <button type="button" aria-label={`${index + 1}片目の数量を減らす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
+                  disabled={pending || blocked || value <= 1} className="h-9 min-w-0 rounded border border-slate-600 disabled:opacity-40" onClick={() => adjust(index, -1)}>−</button>
+                <button type="button" aria-label={`${index + 1}片目の数量を増やす`} style={{ visibility: index === count - 1 ? 'hidden' : undefined }}
+                  disabled={pending || blocked || quantities[count - 1]! <= 1} className="h-9 min-w-0 rounded border border-slate-600 disabled:opacity-40" onClick={() => adjust(index, 1)}>＋</button>
+              </div>
             </div>)}
           </div>
-          <button type="button" disabled={!backdropReady || pending || blocked || !operable || !validSplit} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>分ける</button>
+          <button type="button" disabled={!backdropReady || pending || blocked || !operable || !validSplit} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>{count}つに分ける</button>
         </>}
         {mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
       </div>}
@@ -225,8 +237,8 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
   </>;
 }
 
-function PieceDialog({ actions, pending, disabled, failure, backdropReady, onClose, children }: {
-  actions: PieceActions; pending: boolean; disabled: boolean;
+function PieceDialog({ actions, showSplit, pending, disabled, failure, backdropReady, onClose, children }: {
+  actions: PieceActions; showSplit: boolean; pending: boolean; disabled: boolean;
   failure: { message: string; isError: boolean } | null; backdropReady: boolean;
   onClose: () => void; children: (blocked: boolean) => React.ReactNode;
 }) {
@@ -236,7 +248,7 @@ function PieceDialog({ actions, pending, disabled, failure, backdropReady, onClo
   const message = failure ?? (blocked || pending ? { message: blocking.message, isError: blocking.isError } : null);
   return <Dialog isOpen onClose={onClose} closeOnBackdrop={backdropReady} ariaLabel="数量" size="sm" overlayZIndex={100}
     lockScroll={false} initialFocusRef={initialFocusRef} overlayClassName="overscroll-contain"
-    className={`!max-w-48 !max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
+    className={`${showSplit ? '!max-w-[300px]' : '!max-w-48'} !max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
     <div ref={initialFocusRef} tabIndex={-1} className="outline-none" data-planning-board-piece-dialog>{children(blocked)}</div>
     {message && <p role={message.isError ? 'alert' : 'status'} className="mt-2 text-sm">{message.message}</p>}
   </Dialog>;

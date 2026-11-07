@@ -795,12 +795,12 @@ describe('forward PlanningBoardGanttView', () => {
     render(<PieceGantt items={[entry]} changePieces={changePieces} />);
     tap(screen.getByTestId('planning-gantt-bar-a'));
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '分け数を増やす' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: '3つに分ける数' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '3つに分ける数' }));
     fireEvent.click(screen.getByRole('button', { name: '1片目の数量を増やす' }));
     expect(screen.getByLabelText('3片目の数量')).toHaveTextContent('3');
-    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^[2-6]つに分ける$/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /^[2-6]つに分ける$/ }));
     await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([entry], [5, 4, 3]));
   });
   it('retains three parts in an open chain dialog across quantity refreshes and submits the latest item', async () => {
@@ -808,14 +808,14 @@ describe('forward PlanningBoardGanttView', () => {
     const { rerender } = render(<PieceGantt items={[entry]} changePieces={changePieces} />);
     tap(screen.getByTestId('planning-gantt-bar-a'));
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
-    fireEvent.click(screen.getByRole('button', { name: '分け数を増やす' }));
+    fireEvent.click(screen.getByRole('button', { name: '3つに分ける数' }));
     rerender(<PieceGantt items={[{ ...entry, plannedQuantity: 6 }]} changePieces={changePieces} />);
-    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
+    expect(screen.getByRole('button', { name: '3つに分ける数' })).toHaveAttribute('aria-pressed', 'true');
     const updated = { ...entry, itemRevision: 'r3' };
     rerender(<PieceGantt items={[updated]} changePieces={changePieces} />);
-    expect(screen.getByLabelText('分け数')).toHaveTextContent('3');
-    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    expect(screen.getByRole('button', { name: '3つに分ける数' })).toHaveAttribute('aria-pressed', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: /^[2-6]つに分ける$/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /^[2-6]つに分ける$/ }));
     await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([updated], [1, 2, 2]));
   });
   it('splits from a reused chain bar with the latest item revision', async () => {
@@ -826,8 +826,8 @@ describe('forward PlanningBoardGanttView', () => {
     const updated = { ...entry, itemRevision: 'r2' };
     rerender(<PieceGantt items={[updated]} changePieces={changePieces} />);
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
-    await waitFor(() => expect(screen.getByRole('button', { name: '分ける' })).toBeEnabled());
-    fireEvent.click(screen.getByRole('button', { name: '分ける' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^[2-6]つに分ける$/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /^[2-6]つに分ける$/ }));
     await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([updated], [2, 3]));
   });
   it.each([true, false])('shows forward quantities only in the strip (resourceView=%s)', (resourceView) => {
@@ -892,7 +892,7 @@ describe('forward PlanningBoardGanttView', () => {
     tap(screen.getByTestId('planning-gantt-bar-piece:a'));
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })[0]!);
     act(() => vi.advanceTimersByTime(350));
-    expect(screen.queryByRole('button', { name: '分ける' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^[2-6]つに分ける$/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
     await act(async () => {});
     expect(changePieces).toHaveBeenCalledExactlyOnceWith(updated);
