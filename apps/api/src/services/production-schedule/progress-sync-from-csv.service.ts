@@ -1,6 +1,6 @@
 import { logger } from '../../lib/logger.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
-import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
+import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type LaterPiecePropagationAudit } from './sessaku-pieces/piece-audit.js';
 import { acquireSessakuPieceLogicalLocks, readSessakuPieceSets, encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 import { Prisma } from '@prisma/client';
@@ -34,7 +34,7 @@ export class ProgressSyncFromCsvService {
     // Without a progress column only already split rows need source reconciliation.
     const initialSets = !hasProgressColumn ? await readSessakuPieceSets(prisma, candidates) : null;
     const pending = initialSets ? candidates.filter((candidate) => initialSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(candidate.rowData)))?.pieces.length || initialSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(candidate.rowData)))?.sourcePieceSetId) : candidates;
-    const propagationAudits: PieceAuditContext[] = [];
+    const propagationAudits: LaterPiecePropagationAudit[] = [];
     const syncBatch = async (batch: ProgressSyncCandidate[]) => {
       const initial = await readSessakuPieceSets(prisma, batch);
       let needsCritical = [...initial.values()].some((set) => set.pieces.length || set.sourcePieceSetId);

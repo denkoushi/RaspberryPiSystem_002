@@ -1,5 +1,5 @@
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { decodeSessakuPieceParentItemId, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
+import { supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError, DomainHttpError } from '../../../lib/errors.js';
@@ -96,7 +96,13 @@ export type LaterPieceAuditSnapshot = {
 };
 
 export async function readLaterPieceAuditSnapshots(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], before: readonly LaterPieceAuditSnapshot[] = []): Promise<LaterPieceAuditSnapshot[]> {
-  const parts = [...new Map(keys.map((key) => [JSON.stringify([key.fseiban, key.fhincd]), key])).values()];
+  const byPart = new Map<string, SessakuPieceLogicalKey>();
+  for (const key of keys) {
+    const part = JSON.stringify([key.fseiban, key.fhincd]);
+    const previous = byPart.get(part);
+    if (!previous || supportsSessakuPieceRelations(key) || !supportsSessakuPieceRelations(previous)) byPart.set(part, key);
+  }
+  const parts = [...byPart.values()];
   if (!parts.length) return [];
   const sets = await tx.productionScheduleSessakuPieceSet.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts.map(({ fseiban, fhincd }) => ({ fseiban, fhincd })),
@@ -107,25 +113,30 @@ export async function readLaterPieceAuditSnapshots(tx: Prisma.TransactionClient,
     .map((set) => ({ setId: set.id, pieces: set.pieces.map(({ id, sourcePieceId, quantity, isCompleted }) => ({ id, sourcePieceId, quantity, isCompleted })) })) }));
 }
 
-export function collectLaterPiecePropagationAudits(before: LaterPieceAuditSnapshot[], after: LaterPieceAuditSnapshot[], siteKey: string): PieceAuditContext[] {
+export type LaterPiecePropagationAudit = PieceAuditContext & { fseiban: string; fhincd: string };
+
+export function collectLaterPiecePropagationAudits(before: LaterPieceAuditSnapshot[], after: LaterPieceAuditSnapshot[], siteKey: string): LaterPiecePropagationAudit[] {
   return before.flatMap((previous) => {
     const saved = after.find(({ key }) => key.fseiban === previous.key.fseiban && key.fhincd === previous.key.fhincd);
     if (JSON.stringify(previous.sets) === JSON.stringify(saved?.sets ?? [])) return [];
-    return [{ action: 'propagate', siteKey, fseiban: previous.key.fseiban, parentItemId: sessakuPieceParentItemId(previous.key),
+    return [{ action: 'propagate', siteKey, fseiban: previous.key.fseiban, fhincd: previous.key.fhincd, parentItemId: sessakuPieceParentItemId(previous.key),
       beforeJson: { laterProcesses: previous.sets }, afterJson: { laterProcesses: saved?.sets ?? [] },
       resultPieceIds: [...new Set([...previous.sets, ...(saved?.sets ?? [])].flatMap((set) => set.pieces.map((piece) => piece.id)))] }];
   });
 }
 
 /** Call only after the business transaction has committed. */
-export async function writeLaterPiecePropagationAudits(audits: readonly PieceAuditContext[]) {
-  const byPart = new Map<string, PieceAuditContext>();
-  for (const audit of audits) {
-    const key = decodeSessakuPieceParentItemId(audit.parentItemId!);
-    const part = JSON.stringify([key.fseiban, key.fhincd]);
-    const previous = byPart.get(part);
-    byPart.set(part, previous ? { ...previous, afterJson: audit.afterJson,
-      resultPieceIds: [...new Set([...(previous.resultPieceIds ?? []), ...(audit.resultPieceIds ?? [])])] } : audit);
+export async function writeLaterPiecePropagationAudits(audits: readonly LaterPiecePropagationAudit[]) {
+  try {
+    const byPart = new Map<string, LaterPiecePropagationAudit>();
+    for (const audit of audits) {
+      const part = JSON.stringify([audit.fseiban, audit.fhincd]);
+      const previous = byPart.get(part);
+      byPart.set(part, previous ? { ...previous, afterJson: audit.afterJson,
+        resultPieceIds: [...new Set([...(previous.resultPieceIds ?? []), ...(audit.resultPieceIds ?? [])])] } : audit);
+    }
+    for (const audit of byPart.values()) await runSessakuPieceOperation(audit, async () => undefined);
+  } catch {
+    logger.warn({ event: 'sessaku_piece.audit_write_failed', action: 'propagate' }, 'Sessaku piece audit write failed');
   }
-  for (const audit of byPart.values()) await runSessakuPieceOperation(audit, async () => undefined);
 }

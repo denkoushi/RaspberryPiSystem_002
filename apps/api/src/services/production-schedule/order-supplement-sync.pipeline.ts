@@ -1,4 +1,4 @@
-import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
+import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type LaterPiecePropagationAudit } from './sessaku-pieces/piece-audit.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
 import { assertSessakuPieceWinnerTargets, lockSessakuPieceSourceRows, synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 /**
@@ -413,7 +413,7 @@ export async function runOrderSupplementReplacementTransaction(
   const retentionCutoff = new Date();
   retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
 
-  const propagationAudits: PieceAuditContext[] = [];
+  const propagationAudits: LaterPiecePropagationAudit[] = [];
   try {
     let inserted = 0;
     for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {

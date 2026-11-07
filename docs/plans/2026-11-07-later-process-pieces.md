@@ -296,3 +296,13 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定 DB localhost:55491/lpp を `DATABASE_URL` / `TEST_DATABASE_URL` に設定し、dotenv 無効化・空の envDir で実行。API `vitest run` の sessaku-pieces 配下・route、production-schedule-command、process-order は10ファイル・255件すべて成功（実 DB 統合131件、61.38秒）。API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json`、両 package の `pnpm lint` と最終 `git diff --check` も成功。初回の同時実行テストは DB ドライバのエラー構造の期待値を修正し、その後に成功を確認した。
 
 検証は約3分で予算内。開始時の既存 WIP はなく、変更7ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD 415c4a2b・空の index を維持。秘密ファイルの読み取り、git の変更操作、新規 migration/reset、UI 文言・監査テーブルの追加、既知の別件修正、デプロイは未実施。
+
+## Fourteenth Review Revision (2026-11-07)
+
+- 取り込み監査の製番＋品番の代表キーは `supportsSessakuPieceRelations` を満たすものを優先し、なければ従来どおり最後のキーを使う。propagate 監査には品番を保持し、parentItemId の decode をせず製番＋品番で集約する。
+- commit 後の監査集約・記録で例外が出ても、既存の `sessaku_piece.audit_write_failed` 警告だけを出し、取り込みの成功や元の例外を変えない。
+- 実 DB 回帰テスト6件を追加。補助 CSV 同期／CSV 完了反映の各バッチで、後工程数量が変わる行に加工機コード空／工順空の行が後続しても成功し、propagate 監査が1件残ることを確認。監査 DB 書き込み失敗時の成功維持も両経路で確認する。代表キーの優先・fallback、空キーの集約と品番の分離、監査準備失敗の警告について単体テスト4件を追加。
+
+検証: 指定 DB localhost:55491/lpp を `DATABASE_URL` / `TEST_DATABASE_URL` に設定し、dotenv 無効化・空の envDir で実行。API `vitest run` の sessaku-pieces・production-schedule-command・order-supplement-sync・progress-sync は13ファイル・302件すべて成功（片の実 DB 統合137件を含む、49.99秒）。API `tsc --noEmit -p tsconfig.build.json`、`pnpm lint`、最終 `git diff --check` も成功。
+
+開始時の既存 WIP はなく、変更6ファイルは今回の修正のみ。秘密ファイルの読み取り、git の変更操作、新規 migration／監査テーブル、UI 文言変更、既知の別件修正、デプロイは未実施。

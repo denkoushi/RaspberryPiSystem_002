@@ -1,10 +1,11 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../../../lib/prisma.js';
 import { logger } from '../../../../lib/logger.js';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 import { z } from 'zod';
 import { ApiError } from '../../../../lib/errors.js';
-import { collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, runSessakuPieceOperation, type PieceAuditContext } from '../piece-audit.js';
+import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, runSessakuPieceOperation, type PieceAuditContext } from '../piece-audit.js';
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleSessakuPieceAuditLog: { create: vi.fn() } } }));
 vi.mock('../../../../lib/logger.js', () => {
   const log = { info: vi.fn(), warn: vi.fn() };
@@ -104,6 +105,37 @@ describe('runSessakuPieceOperation', () => {
     expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.audit_write_failed', requestId: 'req-1', action: 'split' }, 'Sessaku piece audit write failed');
     expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('secret');
     expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain('secret');
+  });
+  it.each(['fsigencd', 'fkojun'] as const)('prefers supported representatives and retains the last unsupported fallback (%s)', async (field) => {
+    const key = { fseiban: 'S1', fhincd: 'P1', fsigencd: '1', fkojun: '1' };
+    const blank = { ...key, [field]: '' };
+    const findMany = vi.fn().mockResolvedValue([]);
+    const tx = { productionScheduleSessakuPieceSet: { findMany } } as unknown as Prisma.TransactionClient;
+    expect((await readLaterPieceAuditSnapshots(tx, [key, blank]))[0].key).toEqual(key);
+    expect((await readLaterPieceAuditSnapshots(tx, [blank, key]))[0].key).toEqual(key);
+    const fallback = { ...blank, fsigencd: '' };
+    expect((await readLaterPieceAuditSnapshots(tx, [blank, fallback]))[0].key).toEqual(fallback);
+  });
+  it('groups blank parent keys by manufacturing part without decoding and keeps different parts separate', async () => {
+    const snapshot = (fhincd: string, quantity: number, fsigencd = '') => [{
+      key: { fseiban: 'S1', fhincd, fsigencd, fkojun: '' },
+      sets: [{ setId: fhincd, pieces: [{ id: fhincd, sourcePieceId: 'cut', quantity, isCompleted: false }] }]
+    }];
+    await writeLaterPiecePropagationAudits([
+      ...collectLaterPiecePropagationAudits(snapshot('P1', 2), snapshot('P1', 3), 'site'),
+      ...collectLaterPiecePropagationAudits(snapshot('P1', 3, '2'), snapshot('P1', 4), 'site'),
+      ...collectLaterPiecePropagationAudits(snapshot('P2', 2), snapshot('P2', 3), 'site')
+    ]);
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mock.calls[0][0].data).toMatchObject({
+      beforeJson: { laterProcesses: snapshot('P1', 2)[0].sets }, afterJson: { laterProcesses: snapshot('P1', 4)[0].sets }
+    });
+  });
+  it('warns without rejecting when post-commit audit preparation fails', async () => {
+    const audit = { action: 'propagate', fseiban: 'S1', fhincd: 'P1', afterJson: {} };
+    Object.defineProperty(audit, 'afterJson', { get: () => { throw new Error('secret payload'); } });
+    await expect(writeLaterPiecePropagationAudits([audit])).resolves.toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ event: 'sessaku_piece.audit_write_failed', action: 'propagate' }, 'Sessaku piece audit write failed');
   });
   it('combines committed batches into one propagate audit per manufacturing part', async () => {
     const key = { fseiban: 'S1', fhincd: 'P1', fsigencd: '1', fkojun: '1' };

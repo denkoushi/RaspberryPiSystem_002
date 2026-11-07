@@ -1279,6 +1279,56 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         beforeJson: { laterProcesses: [{ setId: before.id, pieces: [{ quantity: 1 }, { quantity: 2 }, { quantity: 2 }] }] },
         afterJson: { laterProcesses: [{ setId: before.id, pieces: [{ quantity: 1 }, { quantity: 2 }, { quantity: 4 }] }] } });
     });
+    it.each([
+      ['supplement', 'FSIGENCD'], ['supplement', 'FKOJUN'], ['csv', 'FSIGENCD'], ['csv', 'FKOJUN']
+    ] as const)('commits %s import and one propagate audit with a trailing blank %s row', async (path, field) => {
+      await splitThree();
+      const blank = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+        rowData: { ...rowData, FSIGENCD: '3', FKOJUN: '3', [field]: '' },
+        dataHash: `${site}-blank`, occurredAt: new Date() } });
+      if (path === 'supplement') {
+        const sources = ['2', '3'].map((order) => toSupplementNormalizedRow('source', {
+          ProductNo: '123', FSIGENCD: order, FKOJUN: order, plannedQuantity: '7'
+        })!);
+        const existing = await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: nextRowId } });
+        // Include the incomplete schedule row last in the same update batch.
+        await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId,
+          csvDashboardRowId: blank.id, sourceCsvDashboardId: site, productNo: '123', resourceCd: '3', processOrder: '3', plannedQuantity: 5 } });
+        const blankSupplement = await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: blank.id } });
+        const plan = buildReplacementCreateInputs(sources,
+          new Map([[buildOrderSupplementKey(sources[0]), nextRowId], [buildOrderSupplementKey(sources[1]), blank.id]]),
+          new Map([existing, blankSupplement].map((entry) => [buildOrderSupplementKey(entry), entry])), new Date());
+        await expect(runOrderSupplementReplacementTransaction(prisma, { ...plan, scanned: 2, normalized: 2 })).resolves.toMatchObject({ upserted: 2 });
+        expect((await prisma.productionScheduleOrderSupplement.findUniqueOrThrow({ where: { csvDashboardRowId: blank.id } })).plannedQuantity).toBe(7);
+      } else {
+        await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: nextRowId }, data: { plannedQuantity: 7 } });
+        const later = await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } });
+        await expect(new ProgressSyncFromCsvService().sync({ candidates: [later, blank].map((row) => ({
+          rowId: row.id, rowData: row.rowData, occurredAt: row.occurredAt
+        })), locationKey: site })).resolves.toBeUndefined();
+      }
+      expect((await readSessakuPieceSet(prisma, laterKey()))!.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 4]);
+      const audits = await prisma.productionScheduleSessakuPieceAuditLog.findMany({ where: { fseiban: seiban, action: 'propagate' } });
+      expect(audits).toHaveLength(1);
+      expect(audits[0]).toMatchObject({ outcome: 'success', httpStatus: 200,
+        beforeJson: { laterProcesses: [{ pieces: [{ quantity: 1 }, { quantity: 2 }, { quantity: 2 }] }] },
+        afterJson: { laterProcesses: [{ pieces: [{ quantity: 1 }, { quantity: 2 }, { quantity: 4 }] }] } });
+    });
+    it.each(['supplement', 'csv'])('preserves committed %s import when audit storage fails', async (path) => {
+      await splitThree();
+      const auditWrite = vi.spyOn(prisma.productionScheduleSessakuPieceAuditLog, 'create').mockRejectedValue(new Error('audit storage unavailable'));
+      try {
+        if (path === 'supplement') await expect(importLaterQuantity('7')).resolves.toBeDefined();
+        else {
+          await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: nextRowId }, data: { plannedQuantity: 7 } });
+          const later = await prisma.csvDashboardRow.findUniqueOrThrow({ where: { id: nextRowId } });
+          await expect(new ProgressSyncFromCsvService().sync({ candidates: [{ rowId: later.id,
+            rowData: later.rowData, occurredAt: later.occurredAt }], locationKey: site })).resolves.toBeUndefined();
+        }
+        expect(auditWrite).toHaveBeenCalledTimes(1);
+        expect((await readSessakuPieceSet(prisma, laterKey()))!.pieces.map((piece) => piece.quantity)).toEqual([1, 2, 4]);
+      } finally { auditWrite.mockRestore(); }
+    });
     it('does not audit rolled-back propagation as successful', async () => {
       await splitThree();
       const before = (await readSessakuPieceSet(prisma, laterKey()))!;
