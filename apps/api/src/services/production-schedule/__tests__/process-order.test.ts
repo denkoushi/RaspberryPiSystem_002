@@ -10,8 +10,13 @@ describe('isLaterProcessOrder', () => {
     expect(isLaterProcessOrder('20', '010')).toBe(true);
     expect(isLaterProcessOrder('9', '10')).toBe(false);
   });
-  it('falls back to string order for non-numeric or blank values', () => {
+  it('falls back to string order for non-numeric values', () => {
     expect(isLaterProcessOrder('B', 'A')).toBe(true);
-    expect(isLaterProcessOrder('', '10')).toBe(false);
+  });
+  it.each(['', ' ', '\t\u3000'])('excludes blank process orders (%j) on either side', (blank) => {
+    for (const order of ['10', 'A', blank]) {
+      expect(isLaterProcessOrder(blank, order)).toBe(false);
+      expect(isLaterProcessOrder(order, blank)).toBe(false);
+    }
   });
 });

@@ -3,7 +3,7 @@ import type { ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/cl
 import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByLogicalKeyFseibans, type SessakuLaneSourceScope } from '../../grinding-planning-board/source.js';
 import { prisma } from '../../../../lib/prisma.js';
-import { findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceParentItemId, type SessakuPieceSet } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceParentItemId, type SessakuPieceSet } from '../piece-key.js';
 import { splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.service.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $transaction: vi.fn() } }));
@@ -29,6 +29,7 @@ const stop = new Error('stop before loading scoped rows');
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+  vi.mocked(acquireSessakuPieceLogicalLocks).mockResolvedValue(new Set([JSON.stringify(Object.values(key))]));
   vi.mocked(findSessakuPieceWinner).mockResolvedValue(row);
   vi.mocked(readWinnerRowsByLogicalKeyFseibans).mockResolvedValue([row]);
   vi.mocked(readRowDetails).mockResolvedValue(new Map([[row.id, detail]]));

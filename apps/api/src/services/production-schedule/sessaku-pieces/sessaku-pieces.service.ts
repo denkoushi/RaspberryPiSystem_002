@@ -13,16 +13,16 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-type LaterProcess = { key: SessakuPieceLogicalKey; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean };
+type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean };
 
 async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
     const candidate = sessakuPieceKeyFromRow(row.rowData);
-    return candidate.fhincd === key.fhincd && isLaterProcessOrder(candidate.fkojun, key.fkojun);
+    return supportsSessakuPieceRelations(candidate) && candidate.fhincd === key.fhincd && isLaterProcessOrder(candidate.fkojun, key.fkojun);
   });
   const details = await readRowDetails(tx, rows.map((row) => row.id));
   const sets = await readSessakuPieceSets(tx, rows);
@@ -35,7 +35,7 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
   const toLaterProcess = (laterSet: NonNullable<typeof set>): LaterProcess => {
     const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
     const detail = row ? details.get(row.id) : undefined;
-    return { key: laterSet, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
+    return { key: laterSet, rowId: row?.id, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
       completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true };
   };
   const result = set ? (await readLinked([set])).map(toLaterProcess) : [];
@@ -47,7 +47,7 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
     if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
-    result.push({ key: candidate, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true });
+    result.push({ key: candidate, rowId: row.id, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true });
     if (laterSet) adopted.push(laterSet);
   }
   // An empty independent cutting set can still own later sets, including missing winners.
@@ -271,24 +271,35 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
   const key = decodeSessakuPieceParentItemId(params.parentItemId);
   if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
   await ensurePlanningBoardState(params.siteKey);
-  try {
+  const retryWithExpandedLocks = new Error('Later process lock scope changed');
+  const discoveredKeys = new Map<string, SessakuPieceLogicalKey>();
+  const execute = () => {
     const lockStarted = performance.now();
-    return await prisma.$transaction(async (tx) => {
+    return prisma.$transaction(async (tx) => {
       if (params.audit?.timing) params.audit.timing.lockWaitMs += performance.now() - lockStarted;
+      let lockedKeys: ReadonlySet<string> = new Set();
+      const lockedRowIds = new Set<string>();
       await timed(params.audit, 'lockWaitMs', async () => {
         await acquireFkojunstStatusMailCriticalTransactionLock(tx);
         const candidateRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => sessakuPieceKeyFromRow(row.rowData).fhincd === key.fhincd);
         const candidates = candidateRows.map((row) => sessakuPieceKeyFromRow(row.rowData));
-        await acquireSessakuPieceLogicalLocks(tx, [key, ...candidates]);
+        lockedKeys = await acquireSessakuPieceLogicalLocks(tx, [key, ...candidates, ...discoveredKeys.values()]);
         await acquireSessakuPieceBoardStateLocks(tx);
         for (const row of [...candidateRows].sort((a, b) => a.id.localeCompare(b.id))) {
           await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
           await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+          lockedRowIds.add(row.id);
         }
       });
       const set = await readSessakuPieceSet(tx, key);
       const discoverUnsplit = typeof params.discoverUnsplitLater === 'function' ? params.discoverUnsplitLater(set) : params.discoverUnsplitLater === true;
       const later = await readLaterProcesses(tx, key, set, discoverUnsplit);
+      const unlocked = later.filter((process) => !lockedKeys.has(encodeSessakuPieceKey(process.key)) || (process.rowId && !lockedRowIds.has(process.rowId)));
+      if (unlocked.length) {
+        for (const process of unlocked) discoveredKeys.set(encodeSessakuPieceKey(process.key), process.key);
+        // Roll back before expanding locks so every attempt preserves critical -> logical -> board -> row.
+        throw retryWithExpandedLocks;
+      }
       const relatedItemIds = later.flatMap((process) => [sessakuPieceParentItemId(process.key), ...(process.set?.pieces ?? []).map((piece) => `piece:${piece.id}`)]);
       const siteOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: [...relatedItemIds, params.parentItemId, ...(set?.pieces ?? []).map((piece) => `piece:${piece.id}`)] } }, select: { siteKey: true } });
       const overrideSites = new Set(siteOverrides.map((o) => o.siteKey));
@@ -333,7 +344,15 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
         sourceRowId: winner.id, parentIsCompleted: result?.parentIsCompleted ?? false };
     }, { timeout: 30000, maxWait: 15000 });
-  } catch (error) { sessakuPieceConflict(error); }
+  };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { return await execute(); }
+    catch (error) {
+      if (error === retryWithExpandedLocks) continue;
+      sessakuPieceConflict(error);
+    }
+  }
+  conflict();
 }
 function assertRevision(item: GrindingPlanningBoardItem | undefined, expected: string | undefined) {
   if (!item || item.itemRevision !== expected) conflict();

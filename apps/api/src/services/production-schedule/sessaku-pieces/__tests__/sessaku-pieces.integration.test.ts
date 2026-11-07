@@ -10,7 +10,7 @@ import { replaceAllWinnerExternalCompletionStatesFromMailSync } from '../../exte
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../../fkojunst-status-mail-critical-lock.js';
 import { getGrindingPlanningBoardDueScope, updateGrindingPlanningBoardDueScope } from '../../grinding-planning-board-due-scope.service.js';
 import { readPlanningSnapshotGenerationToken } from '../../grinding-planning-board/state.js';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../../../lib/prisma.js';
@@ -526,6 +526,114 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const r = created.find((r) => r.status === 'fulfilled')!; if (r.status !== 'fulfilled') throw new Error();
     const completed = await Promise.allSettled(r.value.pieces.map((p) => complete(p)));
     expect(completed.filter((r) => r.status === 'fulfilled')).toHaveLength(1); expect(completed.find((r) => r.status === 'rejected')).toMatchObject({ reason: { statusCode: 409 } });
+  });
+  it('does not create later pieces for a row without a resource code', async () => {
+    const data = { ...rowData, FSIGENCD: '', FKOJUN: '2' };
+    await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: data } });
+    await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: nextRowId, sourceCsvDashboardId: site, productNo: '123', resourceCd: '', processOrder: '2', plannedQuantity: 5 } });
+    const result = await split();
+    expect(result.pieces.map((piece) => piece.quantity)).toEqual([2, 3]);
+    expect(await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(data))).toBeNull();
+    expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(1);
+  });
+  it.each(['new-key', 'winner-replacement'])('retries a first split after CSV inserts a later key or winner and locks its logical key and parent row before CSV Progress sync (%s)', async (kind) => {
+    const p = await parent();
+    const data = { ...rowData, FSIGENCD: kind === 'new-key' ? '3' : '2', FKOJUN: kind === 'new-key' ? '3' : '2', ProductNo: '999', progress: '完了', updatedAt: '2099/01/01 00:00' };
+    const laterKey = sessakuPieceKeyFromRow(data);
+    let releaseFirst!: () => void, firstReady!: () => void, releaseRetry!: () => void, retryReady!: () => void, csvReady!: () => void;
+    const firstHeld = new Promise<void>((resolve) => { firstReady = resolve; });
+    const firstUnlock = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const retryHeld = new Promise<void>((resolve) => { retryReady = resolve; });
+    const retryUnlock = new Promise<void>((resolve) => { releaseRetry = resolve; });
+    const csvAttempted = new Promise<void>((resolve) => { csvReady = resolve; });
+    const transaction = prisma.$transaction.bind(prisma);
+    const lockStages: string[][] = [];
+    let newRowId = '';
+    const spy = vi.spyOn(prisma, '$transaction').mockImplementation((async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) => {
+      const index = lockStages.length;
+      const stages: string[] = []; lockStages.push(stages);
+      return transaction(async (tx) => {
+        const execute = tx.$executeRaw.bind(tx), query = tx.$queryRaw.bind(tx);
+        const executeWithBarrier = async (...args: Parameters<typeof execute>) => {
+          const sql = String(args[0]);
+          if (index >= 2 && String(args[1]).startsWith('sessaku-pieces:')) csvReady();
+          const result = await execute(...args);
+          if (sql.includes('pg_advisory_xact_lock')) {
+            stages.push(sql.includes('sessaku-piece-board-states') ? 'board' : String(args[1]).startsWith('sessaku-pieces:') ? 'logical' : typeof args[1] === 'bigint' ? 'row' : 'critical');
+          }
+          if (index === 0 && stages.at(-1) === 'logical') { firstReady(); await firstUnlock; }
+          return result;
+        };
+        const queryWithBarrier = async (...args: Parameters<typeof query>) => {
+          const result = await query(...args);
+          if (index === 1 && String(args[0]).includes('FOR UPDATE') && args[1] === newRowId) { retryReady(); await retryUnlock; }
+          return result;
+        };
+        return callback(new Proxy(tx, { get: (target, property) => property === '$executeRaw' ? executeWithBarrier : property === '$queryRaw' ? queryWithBarrier : Reflect.get(target, property) }));
+      }, options);
+    }) as typeof prisma.$transaction);
+    const pending = splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3] });
+    let csvPending: Promise<void> | undefined;
+    try {
+      await firstHeld;
+      // Raw CSV publication uses another connection and precedes its Progress synchronization.
+      const row = await reader.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data, dataHash: `${site}-inserted-later`, occurredAt: new Date() } });
+      newRowId = row.id;
+      await reader.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: site, productNo: data.ProductNo, resourceCd: data.FSIGENCD, processOrder: data.FKOJUN, plannedQuantity: 5 } });
+      releaseFirst();
+      expect(await Promise.race([retryHeld.then(() => 'retry'), pending.then(() => 'finished')])).toBe('retry');
+      for (const stages of lockStages.slice(0, 2)) {
+        expect(stages.slice(0, 3)).toEqual(['critical', 'logical', 'board']);
+        expect(stages.slice(3).every((stage) => stage === 'row')).toBe(true);
+      }
+      const logicalLock = `sessaku-pieces:${dashboardId}:${encodeSessakuPieceKey(laterKey)}`;
+      const parentLock = createHash('sha256').update(row.id).digest().readBigInt64BE(0);
+      await reader.$transaction(async (tx) => {
+        expect(await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtextextended(${logicalLock}, 0)) AS locked`).toEqual([{ locked: false }]);
+        expect(await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(${parentLock}) AS locked`).toEqual([{ locked: false }]);
+      });
+      await expect(reader.$transaction((tx) => tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE NOWAIT`)).rejects.toMatchObject({ code: 'P2010', meta: { driverAdapterError: { cause: { originalCode: '55P03' } } } });
+      csvPending = new ProgressSyncFromCsvService().sync({ candidates: [{ rowId: row.id, rowData: row.rowData, occurredAt: row.occurredAt }] });
+      await csvAttempted;
+      releaseRetry();
+      const result = await pending;
+      await csvPending;
+      const saved = await readSessakuPieceSet(prisma, laterKey);
+      expect(saved?.sourcePieceSetId).toBe((await readSessakuPieceSet(prisma, key()))?.id);
+      expect(saved?.pieces.map((piece) => [piece.sourcePieceId, piece.quantity, piece.position, piece.isCompleted])).toEqual(result.pieces.map((piece) => [piece.pieceId, piece.quantity, piece.piecePosition, false]));
+      expect(await prisma.productionScheduleProgress.findUniqueOrThrow({ where: { csvDashboardRowId: row.id } })).toMatchObject({ isCompleted: false });
+    } finally {
+      releaseFirst(); releaseRetry();
+      await Promise.allSettled([pending, ...(csvPending ? [csvPending] : [])]);
+      spy.mockRestore();
+    }
+  });
+  it('returns a conflict without piece or board writes when later keys keep appearing on every lock attempt', async () => {
+    const p = await parent();
+    const before = await prisma.productionScheduleGrindingPlanningBoardState.findMany({ where: { siteKey: { in: [site, other] } } });
+    const transaction = prisma.$transaction.bind(prisma);
+    let attempts = 0;
+    const spy = vi.spyOn(prisma, '$transaction').mockImplementation((async (callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) => {
+      const index = ++attempts;
+      return transaction(async (tx) => {
+        const execute = tx.$executeRaw.bind(tx);
+        const executeWithNewKey = async (...args: Parameters<typeof execute>) => {
+          const result = await execute(...args);
+          if (String(args[1]).startsWith('sessaku-pieces:')) {
+            await reader.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: { ...rowData, FSIGENCD: '3', FKOJUN: String(index + 2) }, dataHash: `${site}-new-key-${index}`, occurredAt: new Date() } });
+          }
+          return result;
+        };
+        return callback(new Proxy(tx, { get: (target, property) => property === '$executeRaw' ? executeWithNewKey : Reflect.get(target, property) }));
+      }, options);
+    }) as typeof prisma.$transaction);
+    try {
+      await expect(splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0, quantities: [2, 3] })).rejects.toMatchObject({ statusCode: 409, code: 'STALE_SESSAKU_PIECES' });
+      expect(attempts).toBe(3);
+      expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(0);
+      expect(await prisma.productionScheduleGrindingPlanningBoardState.findMany({ where: { siteKey: { in: [site, other] } } })).toEqual(before);
+      expect(await prisma.productionScheduleProgress.count({ where: { csvDashboardRow: { dataHash: { startsWith: site } } } })).toBe(0);
+    } finally { spy.mockRestore(); }
   });
   it('two connections serialize split against quantity synchronization', async () => {
     const p = await parent(); let release!: () => void; let locked!: () => void;

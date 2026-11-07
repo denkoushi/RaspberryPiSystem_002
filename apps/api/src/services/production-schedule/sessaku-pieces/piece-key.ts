@@ -35,13 +35,15 @@ export function decodeSessakuPieceParentItemId(value: string): SessakuPieceLogic
 export function sessakuPieceSetWhere(key: SessakuPieceLogicalKey) {
   return { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd, fsigencd: key.fsigencd, fkojun: key.fkojun };
 }
-export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], options: { onlyPartsWithSets?: boolean } = {}): Promise<void> {
-  const locks = [...new Set((await readRelatedSessakuPieceKeys(tx, keys, options.onlyPartsWithSets)).map(encodeSessakuPieceKey))].sort()
+export async function acquireSessakuPieceLogicalLocks(tx: Prisma.TransactionClient, keys: readonly SessakuPieceLogicalKey[], options: { onlyPartsWithSets?: boolean } = {}): Promise<ReadonlySet<string>> {
+  const lockedKeys = new Set((await readRelatedSessakuPieceKeys(tx, keys, options.onlyPartsWithSets)).map(encodeSessakuPieceKey));
+  const locks = [...lockedKeys].sort()
     .map((encoded) => `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${encoded}`);
-  if (!locks.length) return;
+  if (!locks.length) return lockedKeys;
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(k, 0))
     FROM unnest(${locks}::text[]) WITH ORDINALITY AS logical_locks(k, ordinal)
     ORDER BY ordinal`;
+  return lockedKeys;
 }
 export function supportsSessakuPieceRelations(key: SessakuPieceLogicalKey) {
   return [key.fseiban, key.fhincd, key.fsigencd, key.fkojun].every((value) => value.trim().length > 0) && key.fseiban.trim() !== '********';

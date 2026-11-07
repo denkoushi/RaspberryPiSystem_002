@@ -234,6 +234,7 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 - 後工程の勝者行が消えている間に切削を分け直す／まとめると、勝者が戻ってもその後工程 set は切削の片と対応づかないことがある（数量の合計は保たれる）。
 - 完了済みで空・未リンクの切削 set B は取り込まれず、B に付いた後工程 C もたどらないため、A を分けても C に片ができない。B の完了を取り消して A を分け直せば戻る。
 - 切削の勝者行が CSV から消えると、その set に付いた後工程（取り込んだ切削行を含む）は行が戻るまで固定される。
+- 勝者が消えて外された後工程 set に完了片が残っていると、勝者が戻った後の補助 CSV 同期で、切削側の処理として新しい未リンクの片ができることがある。指示数が無ければ `INVALID_PLANNED_QUANTITY` になる。
 
 ## Ninth Review Revision (2026-11-07)
 
@@ -285,3 +286,13 @@ Validation used the supplied localhost:55491/lpp database, a dotenv-disabling No
 検証: 指定 DB localhost:55491/lpp を両 DB 環境変数に設定し、dotenv 無効化・空の envDir で実行。sessaku-pieces 配下・route、production-schedule-command、process-order は10ファイル・248件すべて成功（実 DB 統合127件を含む、60.22秒）。API `tsc --noEmit -p tsconfig.build.json`、`pnpm lint`、最終 `git diff --check` も成功。最初の型チェックは `tsconfig.json` を指定したため既存の rootDir 設定エラーになり、計画文書指定の build 設定に訂正した。
 
 今回の追加は統合テスト5件と既存2件の期待値更新、本文書への追記。本体の追加修正は不要だった。既存の未コミット修正3ファイルは保持し、branch feat/later-process-pieces・HEAD 7a174b4b を維持。秘密ファイルの読み取り、git の変更操作、migration/reset、既知の別件修正、デプロイは未実施。
+
+## Thirteenth Review Revision (2026-11-07)
+
+- 分割・結合の再検索で見つけた後工程について、取得済みの論理キーと親行ロックの両方を確認する。未ロックのキー／勝者行があればトランザクションを破棄し、発見済みのキーを含めてメール critical → 論理キー → board state → 行の順で取り直す。最大3試行で安定しなければ既存の 409 `STALE_SESSAKU_PIECES` を返す。
+- 後工程候補に `supportsSessakuPieceRelations` を適用し、加工機コードが空の行への片作成・接続を除外。`isLaterProcessOrder` は片側でも trim 後に空なら false を返す。
+- 実 DB 回帰テスト4件で、ロック直後の新規後工程追加／同一キーの勝者交代、再試行後の論理キー・親行 advisory・`FOR UPDATE`、競合 CSV 同期後の source links・数量・順序・Progress、再試行上限とロールバック、加工機コード空を検証する。停止処理は既存と同じテスト内トランザクションラップに限定し、本番用フックは追加しない。空工順の単体テスト3件と Known Limitations の指定事項も追記。
+
+検証: 指定 DB localhost:55491/lpp を `DATABASE_URL` / `TEST_DATABASE_URL` に設定し、dotenv 無効化・空の envDir で実行。API `vitest run` の sessaku-pieces 配下・route、production-schedule-command、process-order は10ファイル・255件すべて成功（実 DB 統合131件、61.38秒）。API `tsc --noEmit -p tsconfig.build.json`、web `tsc --noEmit -p tsconfig.json`、両 package の `pnpm lint` と最終 `git diff --check` も成功。初回の同時実行テストは DB ドライバのエラー構造の期待値を修正し、その後に成功を確認した。
+
+検証は約3分で予算内。開始時の既存 WIP はなく、変更7ファイルは今回の修正のみ。branch feat/later-process-pieces・HEAD 415c4a2b・空の index を維持。秘密ファイルの読み取り、git の変更操作、新規 migration/reset、UI 文言・監査テーブルの追加、既知の別件修正、デプロイは未実施。
