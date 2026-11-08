@@ -491,10 +491,6 @@ export function KioskPhotoBorrowPage() {
                       path={successLoan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')}
                       alt="撮影した写真"
                       className="mx-auto h-32 w-32 rounded-lg object-cover"
-                      onError={(e) => {
-                        // サムネイルが読み込めない場合は非表示
-                        (e.target as HTMLImageElement).style.display = 'none';
-                      }}
                     />
                   </div>
                 )}

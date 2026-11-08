@@ -70,9 +70,6 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
               path={tool.thumbnailUrl}
               alt={nameLine}
               className={thumbImgClass}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
             />
           ) : null}
           <div className="min-w-0 flex-1">
@@ -121,9 +118,6 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
             path={tool.thumbnailUrl}
             alt={tool.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = 'none';
-            }}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-white/30">画像なし</div>

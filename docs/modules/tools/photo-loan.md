@@ -134,9 +134,10 @@ model ClientDevice {
   - **パス**: `/api/storage/photos/YYYY/MM/YYYYMMDD_HHMMSS_{employeeId}.jpg`
   - **認証**: JWTトークンまたはAPIキーが必要
 
-- `GET /storage/thumbnails/:path` - サムネイルの配信（認証不要、Caddy経由）
+- `GET /storage/thumbnails/:path` - サムネイルの配信
+  - **認証**: 登録済み端末のキー（`x-client-key`）またはJWTトークンが必要
   - **パス**: `/storage/thumbnails/YYYY/MM/YYYYMMDD_HHMMSS_{employeeId}_thumb.jpg`
-  - **配信**: Caddyで静的ファイル配信
+  - **配信**: CaddyがAPIへ転送し、APIが返す
 
 ### クライアント端末設定
 

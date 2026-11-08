@@ -78,9 +78,6 @@ export function KioskActiveLoanCard({
                   onThumbnailClick(photoUrl);
                 }
               }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
-              }}
             />
           </div>
         ) : null}

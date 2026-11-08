@@ -85,10 +85,12 @@ describe('ProtectedImage', () => {
     expect(revoke).toHaveBeenCalledWith('blob:image-0');
     apiGet.mockRejectedValueOnce(new Error('unavailable'));
     await act(async () => { vi.advanceTimersByTime(30_000); });
-    expect(screen.getByText('読み込み失敗')).toHaveAttribute('data-visualization-fallback');
-    expect(revoke).toHaveBeenCalledWith('blob:image-1');
+    expect(screen.getByAltText('visualization')).toHaveAttribute('src', 'blob:image-1');
+    expect(screen.queryByText('読み込み失敗')).toBeNull();
+    expect(revoke).not.toHaveBeenCalledWith('blob:image-1');
     await act(async () => { vi.advanceTimersByTime(30_000); });
     expect(screen.getByAltText('visualization')).toHaveAttribute('src', 'blob:image-2');
+    expect(revoke).toHaveBeenCalledWith('blob:image-1');
     view.unmount();
     expect(revoke).toHaveBeenCalledWith('blob:image-2');
     await act(async () => { vi.advanceTimersByTime(30_000); });

@@ -142,11 +142,9 @@ export function useProtectedImageBlobUrl(
           setError(null);
           if (previousUrl) revoke(previousUrl);
         } catch {
-          if (!cancelled) {
-            setBlobUrl(null);
+          // Keep showing the last image when a later refresh fails.
+          if (!cancelled && !ownedUrl) {
             setError('画像の読み込みに失敗しました');
-            if (ownedUrl) revoke(ownedUrl);
-            ownedUrl = null;
           }
         } finally {
           fetching = false;
