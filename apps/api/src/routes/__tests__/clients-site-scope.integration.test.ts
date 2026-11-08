@@ -74,12 +74,7 @@ describe('site assignment administration', () => {
     expect(resolveSiteKeyForScopeKey(renamed)).toBe(siteKey);
 
     const relocated = `relocated-${Date.now()}`;
-    await app.inject({
-      method: 'POST',
-      url: '/api/clients/heartbeat',
-      headers: { 'Content-Type': 'application/json', 'x-client-key': device.apiKey },
-      payload: { location: relocated }
-    });
+    await app.inject({ method: 'PUT', url: `/api/clients/${device.id}`, headers, payload: { location: relocated } });
     await app.inject({ method: 'GET', url: '/api/sites', headers: createAuthHeader(adminToken) });
     expect(resolveSiteKeyForScopeKey(relocated)).toBe(siteKey);
   });
