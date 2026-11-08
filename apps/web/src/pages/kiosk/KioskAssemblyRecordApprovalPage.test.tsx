@@ -440,6 +440,20 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     expect(approve).toBeEnabled();
   });
 
+  it('displays the same-person approval message without reopening the PIN dialog', async () => {
+    mockResolveOperatorNfc.mockResolvedValue({ employeeId: 'employee-1', displayName: '作業者' });
+    mockApprove.mockRejectedValue({ isAxiosError: true, response: { status: 403, data: {
+      errorCode: 'RECORD_APPROVAL_SAME_PERSON', message: '同じ人は承認できません'
+    } } });
+    renderPage();
+    await screen.findByRole('button', { name: '承認: タグをかざす' });
+    mockUseNfcStream.mockReturnValue({ uid: 'tag-1', timestamp: '1' });
+    fireEvent.click(screen.getByRole('button', { name: '全て', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: '承認: 作業者で承認' }));
+    await waitFor(() => expect(screen.getByRole('status', { name: '承認者照合' })).toHaveTextContent('同じ人は承認できません'));
+    expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument();
+  });
+
   it.each(['EXPIRED', 'INVALID', 'DEVICE_MISMATCH', 'REQUIRED'])('reopens the PIN dialog for %s approval confirmation', async (suffix) => {
     mockResolveOperatorNfc.mockResolvedValue({ employeeId: 'employee-2', displayName: '高橋' });
     renderPage();

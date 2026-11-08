@@ -32,7 +32,7 @@ beforeEach(async () => {
   mocks.verify.mockResolvedValue({ success: true });
   app = Fastify();
   app.setErrorHandler((error: FastifyError, _request: FastifyRequest, reply: FastifyReply) => {
-    void reply.code(error instanceof ApiError ? error.statusCode : 500).send({ errorCode: (error as ApiError).code });
+    void reply.code(error instanceof ApiError ? error.statusCode : 500).send({ errorCode: (error as ApiError).code, message: error.message });
   });
   const allow = async (request: FastifyRequest, reply: Parameters<typeof authenticate>[1]) => {
     if (request.headers.authorization) await authenticate(request, reply);
@@ -80,6 +80,16 @@ describe.each(cases)('$purpose access confirmation', ({ purpose, approve, verify
       payload: { approverEmployeeTagUid: 'employee' } });
     expect(response.statusCode).toBe(200);
     expect(mocks.approve).toHaveBeenCalledOnce();
+  });
+  it.each(['ADMIN', 'MANAGER'] as const)('preserves the same-person refusal for a %s user JWT', async (role) => {
+    mocks.role = role;
+    mocks.approve.mockRejectedValue(new ApiError(403, '同じ人は承認できません', undefined, 'RECORD_APPROVAL_SAME_PERSON'));
+    const token = signAccessToken({ id: 'user', username: 'manager', role, mfaEnabled: true } as User);
+    const response = await app.inject({ method: 'POST', url: approve, headers: { authorization: `Bearer ${token}` },
+      payload: { approverEmployeeTagUid: 'employee' } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ errorCode: 'RECORD_APPROVAL_SAME_PERSON', message: '同じ人は承認できません' });
+    expect(mocks.approve).toHaveBeenCalledWith(id, expect.objectContaining({ approverEmployeeTagUid: 'employee' }));
   });
   it('keeps an unsuccessful password response unchanged', async () => {
     mocks.verify.mockResolvedValue({ success: false });

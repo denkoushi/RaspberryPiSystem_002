@@ -401,6 +401,27 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     expect(nfcState.enabledCalls.at(-1)).toBe(false);
   });
 
+  it('displays the same-person approval message without reopening the PIN dialog', async () => {
+    const session = makeSession('confirmation', { recordApprovalState: 'approvable' });
+    mockUseSelfInspectionRecordApprovals.mockReturnValue({ data: { sessions: [session] }, isLoading: false });
+    mockUseSelfInspectionRecordApprovalSession.mockReturnValue({ data: makeDetail(session), isLoading: false });
+    const approve = vi.fn().mockRejectedValue({ isAxiosError: true, response: { status: 403, data: { errorCode: 'RECORD_APPROVAL_SAME_PERSON', message: '同じ人は承認できません' } } });
+    mockUseApproveRecordApproval.mockReturnValue({ mutateAsync: approve, isPending: false });
+    mockUseResolveApprover.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ kind: 'employee', employee: { employeeCode: 'E001', displayName: '承認者A', nfcTagUid: 'tag' } }), isPending: false });
+    const view = renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: '承認を開始' }));
+    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
+    nfcState.event = { uid: 'tag', timestamp: '2026-11-08T01:00:00Z' };
+    view.rerender(<MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection/record-approvals']}><Routes><Route path="/kiosk/part-measurement/self-inspection/record-approvals" element={<KioskSelfInspectionRecordApprovalPage />} /></Routes></MemoryRouter>);
+    const button = await screen.findByRole('button', { name: '承認して完了' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    expect(await screen.findByText('同じ人は承認できません')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument();
+    expect(approve).toHaveBeenCalledWith({ sessionId: session.id, approverEmployeeTagUid: 'tag', comment: null, accessToken: 'self-token' });
+  });
+
   it('keeps inspector-final records read-only and renders deletion history without approval controls', async () => {
     const inspectorSession = makeSession('inspector-final', {
       decisionWorkflow: 'INSPECTOR_FINAL_JUDGEMENT',
