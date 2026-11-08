@@ -71,11 +71,26 @@ describe('shared operation password attempt limit', () => {
     expect(compare).not.toHaveBeenCalled();
   });
 
+  it('returns a successful attempt only to the window it was counted in', async () => {
+    const replacedWindowEndsAt = new Date(Date.now() + ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS * 2);
+    const realCompare = bcrypt.compare.bind(bcrypt) as (data: string, encrypted: string) => Promise<boolean>;
+    vi.spyOn(bcrypt, 'compare').mockImplementation(async (data: string, encrypted: string) => {
+      await prisma.productionScheduleAccessPasswordConfig.update({
+        where: { location },
+        data: { failedAttemptCount: 3, failedAttemptWindowEndsAt: replacedWindowEndsAt }
+      });
+      return realCompare(data, encrypted);
+    });
+    expect(await verify('2520')).toEqual({ success: true });
+    expect(await config()).toMatchObject({ failedAttemptCount: 3, failedAttemptWindowEndsAt: replacedWindowEndsAt });
+  });
+
   it('records every concurrent failed comparison atomically and then limits further attempts', async () => {
     const compare = vi.spyOn(bcrypt, 'compare');
     const results = await Promise.allSettled(Array.from({ length: 15 }, () => verify('0000')));
     const completed = results.filter((result) => result.status === 'fulfilled');
-    expect(completed.length).toBeGreaterThanOrEqual(ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT);
+    expect(completed).toHaveLength(ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(15 - ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT);
     for (const result of results) {
       if (result.status === 'fulfilled') expect(result.value).toEqual({ success: false });
       else expect(result.reason).toMatchObject(rateLimited);

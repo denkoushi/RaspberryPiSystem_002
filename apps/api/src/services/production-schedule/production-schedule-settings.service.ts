@@ -481,31 +481,43 @@ export async function upsertDueManagementAccessPassword(params: {
   };
 }
 
-async function reserveAccessPasswordAttempt(location: string, now: Date): Promise<boolean> {
-  for (let tries = 0; tries < 2; tries += 1) {
-    const inWindow = await prisma.productionScheduleAccessPasswordConfig.updateMany({
-      where: {
-        location,
-        failedAttemptWindowEndsAt: { gt: now },
-        failedAttemptCount: { lt: ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT }
-      },
-      data: { failedAttemptCount: { increment: 1 } }
+/** Returns the end of the window the attempt was counted in, or null when the limit is reached. */
+async function reserveAccessPasswordAttempt(location: string, now: Date): Promise<Date | null> {
+  for (let tries = 0; tries < 3; tries += 1) {
+    const current = await prisma.productionScheduleAccessPasswordConfig.findUnique({
+      where: { location },
+      select: { failedAttemptWindowEndsAt: true }
     });
-    if (inWindow.count > 0) return true;
+    const windowEndsAt = current?.failedAttemptWindowEndsAt ?? null;
+    if (windowEndsAt && windowEndsAt.getTime() > now.getTime()) {
+      const inWindow = await prisma.productionScheduleAccessPasswordConfig.updateMany({
+        where: {
+          location,
+          failedAttemptWindowEndsAt: windowEndsAt,
+          failedAttemptCount: { lt: ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT }
+        },
+        data: { failedAttemptCount: { increment: 1 } }
+      });
+      if (inWindow.count > 0) return windowEndsAt;
+      const latest = await prisma.productionScheduleAccessPasswordConfig.findUnique({
+        where: { location },
+        select: { failedAttemptWindowEndsAt: true }
+      });
+      if (latest?.failedAttemptWindowEndsAt?.getTime() === windowEndsAt.getTime()) return null;
+      continue;
+    }
+    const newWindowEndsAt = new Date(now.getTime() + ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS);
     const newWindow = await prisma.productionScheduleAccessPasswordConfig.updateMany({
       where: {
         location,
         OR: [{ failedAttemptWindowEndsAt: null }, { failedAttemptWindowEndsAt: { lte: now } }]
       },
-      data: {
-        failedAttemptCount: 1,
-        failedAttemptWindowEndsAt: new Date(now.getTime() + ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS)
-      }
+      data: { failedAttemptCount: 1, failedAttemptWindowEndsAt: newWindowEndsAt }
     });
-    if (newWindow.count > 0) return true;
-    // Another request may have opened the window between the two updates; check it once more.
+    if (newWindow.count > 0) return newWindowEndsAt;
+    // Another request opened a window between the read and the update; read it again.
   }
-  return false;
+  return null;
 }
 
 export async function verifyDueManagementAccessPassword(params: {
@@ -527,14 +539,15 @@ export async function verifyDueManagementAccessPassword(params: {
   // Count the attempt before comparing, so concurrent requests cannot exceed the limit.
   // The count is shared by every caller for this location and expires with its window.
   const now = new Date();
-  if (!(await reserveAccessPasswordAttempt(location, now))) {
+  const reservedWindowEndsAt = await reserveAccessPasswordAttempt(location, now);
+  if (!reservedWindowEndsAt) {
     throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'ACCESS_PASSWORD_RATE_LIMITED');
   }
   const success = await bcrypt.compare(password, config.dueManagementPasswordHash);
   if (success) {
     // Give back this attempt only; other callers' failures stay counted until the window ends.
     await prisma.productionScheduleAccessPasswordConfig.updateMany({
-      where: { location, failedAttemptWindowEndsAt: { gt: now }, failedAttemptCount: { gt: 0 } },
+      where: { location, failedAttemptWindowEndsAt: reservedWindowEndsAt, failedAttemptCount: { gt: 0 } },
       data: { failedAttemptCount: { decrement: 1 } }
     });
   }
