@@ -360,7 +360,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
   const closeQueue = useCallback(() => queuePopover.current?.closeUnlessPinned(), []);
   const flaggedIndex = useRef(-1);
-  const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; step: number; today: number } | null>(null);
+  const previousSingleKey = useRef<string | null>(null); const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; step: number; today: number } | null>(null);
   const width = singleGroup ? Math.max(1, viewportWidth - labelWidth) : (layout.end - layout.start) * dayWidth;
   const { window: ganttWindow, onScroll: updateWindow, measure: measureWindow } = usePlanningBoardGanttWindow(viewport, labelWidth);
   const showHours = dayWidth >= HOUR_TICK_MIN_DAY_WIDTH;
@@ -386,8 +386,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   // Before paint, so the mounted window follows the new position without a blank frame.
   useLayoutEffect(() => {
     if (!viewport.current) return;
-    if (singleMode) { viewport.current.scrollLeft = 0; viewport.current.scrollTop = 0; measureWindow(); return; }
-    const previous = previousAxis.current;
+    // 1台表示: only a new machine or scale returns to the first row, not the 30-second clock tick.
+    const singleKey = singleMode ? `${singleResourceCd}:${scale}:${forward}:${homeKey}` : null; if (singleKey) { if (previousSingleKey.current !== singleKey) { viewport.current.scrollLeft = 0; viewport.current.scrollTop = 0; } previousSingleKey.current = singleKey; measureWindow(); return; }
+    previousSingleKey.current = null; const previous = previousAxis.current;
     // A scale press starts near today so a 2- or 4-day span does not open on past days; data changes keep the position.
     // The one-day scale never opens before the shift starts. Backward charts open an hour before now on the hour.
     // 「今日から」 has nothing before now, so it opens ten minutes before the current ten-minute step and keeps the bars at the left edge.

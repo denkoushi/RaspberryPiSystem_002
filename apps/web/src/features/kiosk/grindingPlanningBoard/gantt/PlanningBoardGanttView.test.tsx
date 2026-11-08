@@ -802,6 +802,17 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.click(within(head).getByRole('button', { name: '1台の資源CDを選ぶ' }));
     expect(onOpenSingleResourcePicker).toHaveBeenCalledWith(within(head).getByRole('button', { name: '1台の資源CDを選ぶ' }));
   });
+  it('keeps the single-resource scroll position on clock ticks and resets it for another scale', () => {
+    const values = forwardProps();
+    const later = { ...values.layout, now: values.layout.now! + 30 / (24 * 60 * 60) };
+    const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    viewport.scrollTop = 200;
+    rerender(<PlanningBoardGanttView {...values} layout={later} scale={1} singleResourceCd="305" />);
+    expect(viewport.scrollTop).toBe(200);
+    rerender(<PlanningBoardGanttView {...values} layout={later} scale={2} singleResourceCd="305" />);
+    expect(viewport.scrollTop).toBe(0);
+  });
   it('keeps cross-resource predecessor timing and clips a long item into distinct registered rows', () => {
     const entries = [item({ itemId: 'pre', originalResourceCd: '306', processOrder: '10', requiredMinutes: 600 }),
       item({ processOrder: '20', requiredMinutes: 1200 })];
