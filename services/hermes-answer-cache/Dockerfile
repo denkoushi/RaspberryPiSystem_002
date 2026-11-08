@@ -10,7 +10,10 @@ RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-tran
 RUN chmod -R a+rX /opt/models
 ENV HF_HUB_OFFLINE=1
 RUN apt-get update && apt-get install -y --only-upgrade --no-install-recommends \
-    gzip libpcre2-8-0 libsqlite3-0 perl-base libssl3t64 openssl openssl-provider-legacy \
+    gzip libpcre2-8-0 libsqlite3-0 perl-base libssl3t64 openssl openssl-provider-legacy zlib1g \
+    && zlib_version="$(dpkg-query -W -f='${Version}' zlib1g)" \
+    && dpkg --compare-versions "$zlib_version" ge '1:1.3.dfsg+really1.3.1-1+deb13u1' \
+      || { echo "zlib1g is below the required fixed version: $zlib_version" >&2; exit 1; } \
     && rm -rf /var/lib/apt/lists/*
 RUN python -m pip uninstall --yes pip setuptools wheel
 RUN useradd --uid 10001 --create-home cache && mkdir /data && chown cache:cache /data
