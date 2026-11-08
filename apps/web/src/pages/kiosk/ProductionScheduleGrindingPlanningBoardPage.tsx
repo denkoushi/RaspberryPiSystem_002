@@ -37,6 +37,7 @@ import {
 } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
+import { usePlanningBoardCategory } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
 import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
 import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
@@ -54,13 +55,12 @@ import type { OrderPreview, ResourceOrderSnapshot, ResourceOrderHistory, DueMode
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
-  GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
+  GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
   GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
-  const [categories, setCategories] = useState({ grinding: true, cutting: false });
-  const category: GrindingPlanningBoardCategory = categories.grinding && categories.cutting ? 'all' : categories.grinding ? 'grinding' : 'cutting';
+  const { category, changeCategory } = usePlanningBoardCategory();
   const [pinMode, setPinMode] = useState(false);
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
@@ -687,7 +687,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)}
         overlapCount={ganttLayout.overlapCount}
         onNextOverlap={gantt.scrollToNextOverlap}
-        categories={categories}
+        category={category}
         view={view}
         status={status}
         allocation={allocation}
@@ -696,7 +696,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
-        onCategoriesChange={(value) => { if (!writeQueue.pending && (value.grinding || value.cutting)) setCategories(value); }}
+        onCategoryChange={(value) => { if (!writeQueue.pending) changeCategory(value); }}
         onViewChange={(next) => { setPinMode(false); setView(next); }}
         onStatusChange={(value) => { if (!writeQueue.pending) setStatus(value); }}
         onAllocationChange={(value) => { if (!writeQueue.pending) setAllocation(value); }}

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardToolbar } from './PlanningBoardToolbar';
@@ -8,8 +8,8 @@ import type { PlanningBoardToolbarProps } from './PlanningBoardToolbar';
 const props = (): PlanningBoardToolbarProps => ({
   ganttEnabled: true, onToggleGantt: vi.fn(), ganttMode: 'forward', onGanttModeChange: vi.fn(), lateCount: 2, onNextLate: vi.fn(),
   onProposeOrder: vi.fn(), onSortDue: vi.fn(), onUndoOrder: vi.fn(), canUndoOrder: true,
-  categories: { grinding: true, cutting: false }, view: 'resource', status: 'incomplete', allocation: 'alternate', selectedCount: 0, registeredCount: 3,
-  onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
+  category: 'grinding', view: 'resource', status: 'incomplete', allocation: 'alternate', selectedCount: 0, registeredCount: 3,
+  onOpenDrawer: vi.fn(), onCategoryChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
   it.each([false, true])('places SCAW after the Gantt group, toggles and hides it during comparison (gantt=%s)', (ganttEnabled) => {
@@ -104,27 +104,28 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(toggle).toHaveClass('bg-sky-400');
   });
-  it('toggles categories independently and keeps at least one pressed', () => {
+  it('selects exactly one of cutting, grinding and all and respects scopeDisabled', () => {
     const values = props();
     const { rerender } = render(<PlanningBoardToolbar {...values} />);
-    fireEvent.click(screen.getByRole('button', { name: '研削' }));
-    expect(values.onCategoriesChange).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: true, cutting: true });
-    rerender(<PlanningBoardToolbar {...values} categories={{ grinding: true, cutting: true }} />);
-    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '研削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: false, cutting: true });
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: true, cutting: false });
-    vi.mocked(values.onCategoriesChange).mockClear();
-    rerender(<PlanningBoardToolbar {...values} categories={{ grinding: false, cutting: true }} />);
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).not.toHaveBeenCalled();
+    const group = within(screen.getByRole('group', { name: '工程' }));
+    expect(group.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual(['切削', '研削', '両方']);
+    expect(group.getAllByRole('button', { pressed: true })).toEqual([group.getByRole('button', { name: '研削' })]);
+    for (const [category, label] of [['cutting', '切削'], ['all', '両方'], ['grinding', '研削']] as const) {
+      fireEvent.click(group.getByRole('button', { name: label }));
+      expect(values.onCategoryChange).toHaveBeenLastCalledWith(category);
+      rerender(<PlanningBoardToolbar {...values} category={category} />);
+      expect(group.getAllByRole('button', { pressed: true })).toEqual([group.getByRole('button', { name: label })]);
+      fireEvent.click(group.getByRole('button', { name: label }));
+      expect(values.onCategoryChange).toHaveBeenLastCalledWith(category);
+      expect(group.getAllByRole('button', { pressed: true })).toHaveLength(1);
+    }
+    vi.mocked(values.onCategoryChange).mockClear();
     rerender(<PlanningBoardToolbar {...values} scopeDisabled />);
-    expect(screen.getByRole('button', { name: '研削' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '切削' })).toBeDisabled();
+    for (const button of group.getAllByRole('button')) {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(values.onCategoryChange).not.toHaveBeenCalled();
   });
   it('toggles mode and navigates late work', () => {
     const values = props();

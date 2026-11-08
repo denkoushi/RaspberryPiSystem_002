@@ -12,6 +12,7 @@ import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGa
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
+  GrindingPlanningBoardCategory,
   GrindingPlanningBoardSpecialDueKind,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
@@ -100,7 +101,7 @@ export type PlanningBoardToolbarProps = {
   canUndoOrder?: boolean;
   overlapCount?: number;
   onNextOverlap?: () => void;
-  categories: { grinding: boolean; cutting: boolean };
+  category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   status: PlanningBoardStatus;
   allocation: PlanningBoardAllocation;
@@ -110,7 +111,7 @@ export type PlanningBoardToolbarProps = {
   registeredCount: number;
   feedback?: ReactNode;
   onOpenDrawer: () => void;
-  onCategoriesChange: (categories: { grinding: boolean; cutting: boolean }) => void;
+  onCategoryChange: (category: GrindingPlanningBoardCategory) => void;
   onViewChange: (view: GrindingPlanningBoardView) => void;
   onStatusChange: (status: PlanningBoardStatus) => void;
   onAllocationChange: (allocation: PlanningBoardAllocation) => void;
@@ -138,7 +139,7 @@ export function PlanningBoardToolbar({
   onProposeOrder, onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
   overlapCount = 0,
   onNextOverlap,
-  categories,
+  category,
   view,
   status,
   allocation,
@@ -148,7 +149,7 @@ export function PlanningBoardToolbar({
   registeredCount,
   feedback,
   onOpenDrawer,
-  onCategoriesChange,
+  onCategoryChange,
   onViewChange,
   onStatusChange,
   onAllocationChange,
@@ -207,11 +208,14 @@ export function PlanningBoardToolbar({
         <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
       <SegmentGroup ariaLabel="工程">
-        <SegmentButton disabled={scopeDisabled} pressed={categories.grinding} onClick={() => { if (categories.cutting) onCategoriesChange({ ...categories, grinding: !categories.grinding }); }}>
+        <SegmentButton disabled={scopeDisabled} pressed={category === 'cutting'} onClick={() => onCategoryChange('cutting')}>
+          切削
+        </SegmentButton>
+        <SegmentButton disabled={scopeDisabled} pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
           研削
         </SegmentButton>
-        <SegmentButton disabled={scopeDisabled} pressed={categories.cutting} onClick={() => { if (categories.grinding) onCategoriesChange({ ...categories, cutting: !categories.cutting }); }}>
-          切削
+        <SegmentButton disabled={scopeDisabled} pressed={category === 'all'} onClick={() => onCategoryChange('all')}>
+          両方
         </SegmentButton>
       </SegmentGroup>
       <button type="button" aria-label="前工程が済んだものだけ表示" aria-pressed={arrivalFilterEnabled}

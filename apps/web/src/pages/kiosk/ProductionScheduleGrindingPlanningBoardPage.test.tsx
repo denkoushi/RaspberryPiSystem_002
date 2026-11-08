@@ -11,6 +11,7 @@ import * as ganttLayout from '../../features/kiosk/grindingPlanningBoard/gantt/p
 import * as piecePopover from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover';
 import * as chipData from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
 import * as planningBoardSorting from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { CATEGORY_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
 import { LARGE_SCREEN_STORAGE_KEY } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 import * as pageGanttHook from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import * as writeQueueHook from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
@@ -433,7 +434,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       const ids = operation === 'split' ? ['a', 'c'] : ['piece:0', 'piece:1', 'c'];
       const select = () => { for (const id of ids) fireEvent.click(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox')); };
       select();
-      fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+      fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方', exact: true }));
       select();
       // Merge requires a same-parent selection; leave the unrelated row selected in the other scope.
       if (operation === 'merge') fireEvent.click(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox'));
@@ -441,10 +442,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await waitFor(() => expect(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' })).toBeEnabled());
       fireEvent.click(screen.getByRole('button', { name: operation === 'split' ? '2つに分ける' : 'まとめる' }));
       await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
-      for (const scope of ['all', 'cutting']) {
+      for (const scope of ['all', 'grinding']) {
         for (const id of ids.filter((id) => id !== 'c')) expect(within(screen.getByTestId(`planning-board-item-${id}`)).getByRole('checkbox')).not.toBeChecked();
-        if (scope === 'cutting' || operation === 'split') expect(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox')).toBeChecked();
-        if (scope === 'all') fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+        if (scope === 'grinding' || operation === 'split') expect(within(screen.getByTestId('planning-board-item-c')).getByRole('checkbox')).toBeChecked();
+        if (scope === 'all') fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
       }
     });
     it('keeps zero-piece rows stable when blocked writes switch pending off', () => {
@@ -809,7 +810,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       await screen.findByText('完了にしました');
       data = { ...data, snapshotId: 'external-change', items: change === 'sibling-gone' ? [data.items[1]!] : change === 'merged' ? [fixture().items[0]!] : [] };
       view.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
-      fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+      fireEvent.click(within(screen.getByRole('group', { name: '進捗' })).getByRole('button', { name: '両方', exact: true }));
       expect(screen.queryByTestId('planning-board-item-piece:0')).not.toBeInTheDocument();
       if (change !== 'sibling-gone') expect(screen.queryByTestId('planning-board-item-piece:1')).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: 'ガント', exact: true }));
@@ -1282,6 +1283,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem('kiosk-planning-board-gantt-scale');
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
+    localStorage.removeItem(CATEGORY_STORAGE_KEY);
     mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset();
     mocks.completion.mockReset();
     mocks.completion.mockResolvedValue({});
@@ -1351,7 +1353,6 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     if (category === 'cutting') {
       fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
-      fireEvent.click(screen.getByRole('button', { name: '研削', exact: true }));
     }
     expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
     expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
@@ -1362,7 +1363,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '部品aの個別指定' })).toHaveTextContent('1');
     expect(within(screen.getByTestId('planning-board-item-c')).getByRole('button', { name: '部品cの個別指定' })).toHaveTextContent('3');
     expect(screen.getByLabelText('今日中のアイテム件数')).toHaveTextContent('1件');
-    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '進捗' })).getByRole('button', { name: '両方', exact: true }));
     expect(screen.getByTestId('planning-board-item-d')).toBeInTheDocument();
     expect(screen.queryByTestId('planning-board-item-b')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '完了', exact: true }));
@@ -1472,7 +1473,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const row = screen.getByTestId('planning-board-item-a');
     const scroll = row.closest('[data-resource-scroll]')!;
     scroll.scrollTop = 120;
-    fireEvent.click(screen.getByRole('button', { name: '切削', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方', exact: true }));
     expect(screen.getByTestId('planning-board-item-a').closest('[data-resource-scroll]')).toBe(scroll);
     expect(scroll.scrollTop).toBe(120);
   });
@@ -1555,7 +1556,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
       const view = renderSeibanBoard();
       // Keep the row visible after completing it.
-      fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+      fireEvent.click(within(screen.getByRole('group', { name: '進捗' })).getByRole('button', { name: '両方', exact: true }));
       fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
       await screen.findByText('完了にしました');
       fireEvent.click(screen.getByRole('button', { name: '資源CD', exact: true }));
@@ -1632,7 +1633,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.completion.mockImplementation(() => new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     openListView();
-    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '進捗' })).getByRole('button', { name: '両方', exact: true }));
     const row = screen.getByTestId('planning-board-item-a');
     fireEvent.click(within(row).getByRole('button', { name: '完了にする' }));
     const completed = within(row).getByRole('button', { name: '未完了に戻す' });
@@ -1698,7 +1699,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   it('keeps the overlay until a matching refresh, then allows import completion to take over', async () => {
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
     openListView();
-    fireEvent.click(screen.getByRole('button', { name: '両方', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '進捗' })).getByRole('button', { name: '両方', exact: true }));
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
     await screen.findByText('完了にしました');
     let snapshotNumber = 1;
@@ -1845,16 +1846,29 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     returned.unmount();
   });
 
-  it('keeps selections scoped to the derived all category and restores each scope', () => {
+  it('restores the selected category when the page is remounted', () => {
+    const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'cutting' }), expect.anything());
+    page.unmount();
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'false');
+    expect(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' })).toHaveAttribute('aria-pressed', 'false');
+    expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'cutting' }), expect.anything());
+  });
+
+  it('keeps selections scoped to the all category and restores each scope', () => {
     renderSeibanBoard();
     selectAllBoardItems();
     expect(screen.getByText('4件')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'all' }), expect.anything());
     expect(mocks.load).toHaveBeenLastCalledWith('all');
     expect(mocks.candidates).toHaveBeenLastCalledWith(expect.objectContaining({ category: 'all' }), expect.anything());
     expect(screen.getByRole('button', { name: '一括変更' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(screen.getByRole('button', { name: '研削' }));
     expect(screen.getByText('4件')).toBeInTheDocument();
   });
 
@@ -1865,7 +1879,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     data.items[1]!.originalResourceCd = '100';
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     renderSeibanBoard();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '資源CD 305を変更' }));
     let dialog = screen.getByRole('dialog', { name: '一括変更' });
     expect(within(dialog).getByRole('button', { name: '資源CD 584へ変更' })).toBeEnabled();
@@ -1887,7 +1901,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     openListView();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     const panes = [...screen.getByTestId('planning-board-resource-view').querySelectorAll<HTMLElement>('[data-resource-code]')];
     if (hasMap) expect(panes.map((pane) => pane.dataset.resourceCode)).toEqual(['584', '305', '100']);
     const source = within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '資源CD 305を変更' });
@@ -2670,7 +2684,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('製番登録を保存できませんでした'));
     expect(candidateCheckbox).toBeChecked();
 
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     await waitFor(() => expect(screen.getByLabelText('CAND-FAILを登録候補に選択')).not.toBeChecked());
   });
 
@@ -3310,7 +3324,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByTestId('planning-board-seiban-26-1041')).not.toBeInTheDocument();
 
     fireEvent.click(within(drawer).getByRole('button', { name: '製番登録ペインを閉じる' }));
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     expect(screen.getByText('0件')).toBeInTheDocument();
   });
 
@@ -3707,7 +3721,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     current.sourceRevision = 'board-3';
     current.registeredFseibans = ['26-1050', '26-1041'];
     current.seibanOrder = current.registeredFseibans;
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
 
     await waitFor(() => expect(within(drawer).getAllByRole('button', { name: /26-1050/ }).length).toBeGreaterThan(0));
     expect(within(drawer).queryAllByRole('button', { name: /26-1043/ })).toHaveLength(0);
@@ -3848,7 +3862,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     const dialog = screen.getByRole('dialog', { name: '一括変更' });
     mocks.snapshot.mockReturnValue({ data: refreshed, isLoading: false, isError: false, refetch: mocks.refetch });
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '工程' })).getByRole('button', { name: '両方' }));
     fireEvent.click(within(dialog).getByRole('button', { name: '資源CD 584へ変更' }));
     fireEvent.click(within(dialog).getByRole('button', { name: '適用' }));
 
