@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../config/env/load-dotenv.js', () => ({}));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue({ id: 'viewer', username: 'viewer', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false }) }, clientDevice: { findUnique: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id, user: { id: 'viewer', username: 'viewer', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false } })) }, clientDevice: { findUnique: vi.fn() } } }));
 vi.mock('../../../services/inference/inference-runtime.js', () => ({
   getInferenceRuntime: vi.fn(),
 }));
@@ -51,7 +51,7 @@ describe('local LLM availability (isolated, real JWT/client-key authorization)',
     vi.mocked(getInferenceRuntime).mockReturnValue({
       router, providers: [provider], getAdminProvider: () => undefined,
     } as ReturnType<typeof getInferenceRuntime>);
-    viewerHeaders = { authorization: `Bearer ${jwt.sign({ sub: 'viewer', username: 'viewer', role: 'VIEWER' }, env.JWT_ACCESS_SECRET)}` };
+    viewerHeaders = { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'viewer', sub: 'viewer', username: 'viewer', role: 'VIEWER' }, env.JWT_ACCESS_SECRET)}` };
     app = Fastify();
     registerLocalLlmRoutes(app);
     await app.ready();

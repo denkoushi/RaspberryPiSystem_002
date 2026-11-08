@@ -44,7 +44,8 @@ export class BusinessHermesAnswerCache {
     return await this.request('/experience', event, signal) === true;
   }
 
-  async feedback(id: string, verdict: 'helpful' | 'unhelpful'): Promise<boolean> {
+  async feedback(id: string, verdict: 'helpful' | 'unhelpful', canPromote = false): Promise<boolean> {
+    if (verdict === 'helpful' && !canPromote) return true;
     return await this.request('/feedback', { id, verdict }) === true;
   }
 

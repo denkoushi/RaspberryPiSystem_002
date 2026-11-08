@@ -34,12 +34,16 @@ export async function mfaDisable(body: { password: string }): Promise<{ success:
   return data;
 }
 
-export async function updateUserRole(userId: string, role: 'ADMIN' | 'MANAGER' | 'VIEWER') {
-  const { data } = await api.post<{ user: AuthResponse['user'] }>(`/auth/users/${userId}/role`, { role });
+export async function updateUserRole(userId: string, role: 'ADMIN' | 'MANAGER' | 'VIEWER', currentPassword: string) {
+  const { data } = await api.post<{ user: AuthResponse['user'] }>(`/auth/users/${userId}/role`, { role, currentPassword });
   return data.user;
 }
 
 export async function getRoleAuditLogs(limit = 100) {
   const { data } = await api.get<{ logs: RoleAuditLog[] }>('/auth/role-audit', { params: { limit } });
   return data.logs;
+}
+
+export async function logoutRequest(): Promise<void> {
+  await api.post('/auth/logout', {});
 }

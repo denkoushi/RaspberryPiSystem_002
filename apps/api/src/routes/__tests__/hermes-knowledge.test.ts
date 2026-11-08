@@ -27,7 +27,8 @@ vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
     procedureWorker: { kick: mocks.procedureKick }, workTypes: async () => ['段取り', 'その他'] }),
 }));
 
-beforeEach(() => { vi.spyOn(prisma.user, 'findUnique'); });
+beforeEach(() => { vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
+    vi.spyOn(prisma.user, 'findUnique'); });
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Knowledge API authentication boundary', () => {
@@ -147,8 +148,8 @@ describe('Knowledge review API', () => {
   const reviewer = { id: 'e1', employeeCode: '0001', displayName: '社員A', nfcTagUid: 'tag', positionName: '主任', rank: 'leader' };
   const server = () => { vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'true'); const app = Fastify(); registerHermesKnowledgeRoutes(app); return app; };
   const jwtHeaders = (role: string) => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } as never);
-    return { authorization: `Bearer ${jwt.sign({ sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` };
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+    return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'user-1', sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` };
   };
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); mocks.triageGet.mockResolvedValue([]); });
 

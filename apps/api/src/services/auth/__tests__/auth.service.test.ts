@@ -12,6 +12,9 @@ const mocks = vi.hoisted(() => ({
     TOKEN_EXPIRES_IN: '15m',
     REFRESH_TOKEN_EXPIRES_IN: '7d'
   },
+  sessionCreate: vi.fn(),
+  sessionUpdate: vi.fn(),
+  sessionFind: vi.fn(),
   findUnique: vi.fn(),
   update: vi.fn(),
   updateMany: vi.fn(),
@@ -27,7 +30,9 @@ vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(
 vi.mock('../login-limit-alert.js', () => ({ LOGIN_ATTEMPT_LIMIT: 10, notifyLoginAttemptLimitReached: mocks.notifyLimit }));
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    authSession: { create: mocks.sessionCreate, updateMany: mocks.sessionUpdate, findUniqueOrThrow: mocks.sessionFind },
     user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
+    $transaction: vi.fn(),
     $queryRaw: mocks.queryRaw,
     $executeRaw: mocks.executeRaw,
     authLoginAttempt: { deleteMany: mocks.deleteMany },
@@ -38,6 +43,7 @@ vi.mock('../../../lib/prisma.js', () => ({
 import { ApiError } from '../../../lib/errors.js';
 import { verifyTotpCodeStep } from '../../../lib/mfa.js';
 import { AuthService } from '../auth.service.js';
+import { prisma } from '../../../lib/prisma.js';
 
 const PASSWORD = 'correct-horse';
 const PASSWORD_HASH = bcrypt.hashSync(PASSWORD, 4);
@@ -70,6 +76,10 @@ async function captureError(promise: Promise<unknown>): Promise<ApiError> {
 const service = new AuthService();
 
 beforeEach(() => {
+  vi.mocked(prisma.$transaction).mockImplementation(async (callback) => (callback as (tx: typeof prisma) => Promise<unknown>)(prisma));
+  mocks.sessionCreate.mockReset().mockImplementation(async ({ data }) => ({ id: 'session-1', ...data }));
+  mocks.sessionUpdate.mockReset().mockResolvedValue({ count: 1 });
+  mocks.sessionFind.mockReset().mockResolvedValue({ id: 'session-1', refreshTokenId: 'old-refresh', expiresAt: new Date(Date.now() + 86400000) });
   mocks.env.ADMIN_MFA_REQUIRED = false;
   mocks.findUnique.mockReset();
   mocks.update.mockReset();
@@ -97,9 +107,10 @@ describe('AuthService.login', () => {
       mfaRequired: false
     });
     const access = jwt.verify(result.accessToken, 'svc-access-secret') as jwt.JwtPayload;
-    expect(access).toMatchObject({ sub: 'user-1', role: 'MANAGER', mfaEnabled: false });
+    expect(access).toMatchObject({ sub: 'user-1', role: 'MANAGER', mfaEnabled: false, sessionId: 'session-1' });
+    expect(mocks.sessionCreate).toHaveBeenCalledExactlyOnceWith({ data: { userId: 'user-1', expiresAt: expect.any(Date), refreshTokenId: expect.any(String) } });
     const refresh = jwt.verify(result.refreshToken, 'svc-refresh-secret') as jwt.JwtPayload;
-    expect(refresh.sub).toBe('user-1');
+    expect(refresh).toMatchObject({ sub: 'user-1', sessionId: access.sessionId, tokenId: expect.any(String) });
   });
 
   it('uses the same 401 message for unknown user and wrong password (no user enumeration)', async () => {
@@ -185,11 +196,11 @@ describe('AuthService.login', () => {
     }
   });
 
-  it('rejects an inactive account with 403 before checking the password', async () => {
+  it('returns the password-mismatch response for inactive accounts after password comparison', async () => {
     mocks.findUnique.mockResolvedValue(makeUser({ status: 'DISABLED' as User['status'] }));
     const error = await captureError(service.login({ username: 'alice', password: 'whatever' }));
-    expect(error.statusCode).toBe(403);
-    expect(error.message).toBe('アカウントが無効化されています');
+    expect(error.statusCode).toBe(401);
+    expect(error.message).toBe('ユーザー名またはパスワードが違います');
   });
 
   it('flags ADMIN without MFA as setup-required when enforcement is on', async () => {
@@ -273,7 +284,7 @@ describe('AuthService.login', () => {
 
 describe('AuthService.refresh', () => {
   const refreshFor = (claims: Record<string, unknown>, secret = 'svc-refresh-secret', options: jwt.SignOptions = { expiresIn: '7d' }) =>
-    jwt.sign(claims, secret, options);
+    jwt.sign({ tokenType: 'refresh', sessionId: 'session-1', tokenId: 'refresh-1', ...claims }, secret, options);
 
   it('issues a new pair from a valid refresh token using current DB state', async () => {
     // Role changed in DB since the token was issued: the new tokens must carry the DB role.
@@ -306,7 +317,7 @@ describe('AuthService.refresh', () => {
   it('rejects when the user has been disabled', async () => {
     mocks.findUnique.mockResolvedValue(makeUser({ status: 'DISABLED' as User['status'] }));
     const error = await captureError(service.refresh({ refreshToken: refreshFor({ sub: 'user-1' }) }));
-    expect(error.statusCode).toBe(403);
+    expect(error.statusCode).toBe(401);
   });
 
   it('forces re-login when MFA was enabled after the refresh token was issued', async () => {
@@ -406,5 +417,39 @@ describe('TOTP matched steps', () => {
       authenticator.resetOptions();
       authenticator.options = originalOptions;
     }
+  });
+});
+
+describe('session revocation on MFA changes', () => {
+  it('revokes other sessions and rotates the current session without extending its expiry on MFA activation', async () => {
+    const user = makeUser({ role: 'MANAGER' });
+    mocks.findUnique.mockResolvedValue(user);
+    mocks.update.mockResolvedValue({ ...user, mfaEnabled: true });
+    const result = await service.activateMfa(user.id, {
+      password: PASSWORD, secret: TOTP_SECRET, code: authenticator.generate(TOTP_SECRET), backupCodes: ['backup-code']
+    }, 'session-1');
+    expect(mocks.sessionUpdate).toHaveBeenCalledWith({ where: { userId: user.id, revokedAt: null, id: { not: 'session-1' } }, data: { revokedAt: expect.any(Date) } });
+    expect(mocks.sessionCreate).not.toHaveBeenCalled();
+    const existingSession = await mocks.sessionFind.mock.results[0].value;
+    expect((jwt.decode(result.refreshToken) as jwt.JwtPayload).exp).toBe(Math.floor(existingSession.expiresAt.getTime() / 1000));
+    expect(result.backupCodes).toEqual(['backup-code']);
+    expect(jwt.decode(result.accessToken)).toMatchObject({ sessionId: 'session-1', mfaEnabled: true });
+  });
+  it('retains only the current session on MFA disable', async () => {
+    mocks.findUnique.mockResolvedValue(makeUser({ mfaEnabled: true }));
+    await service.disableMfa('user-1', { password: PASSWORD }, 'current-session');
+    expect(mocks.sessionUpdate).toHaveBeenCalledWith({ where: { userId: 'user-1', revokedAt: null, id: { not: 'current-session' } }, data: { revokedAt: expect.any(Date) } });
+  });
+  it('counts disabled accounts exactly like wrong passwords, including notification', async () => {
+    mocks.findUnique.mockResolvedValue(makeUser({ status: 'DISABLED' }));
+    mocks.queryRaw.mockResolvedValue([{ username: 'alice', count: 10 }]);
+    const compare = vi.spyOn(bcrypt, 'compare');
+    try {
+      await expect(service.login({ username: 'alice', password: PASSWORD })).rejects.toMatchObject({ statusCode: 401, message: 'ユーザー名またはパスワードが違います' });
+      expect(compare).toHaveBeenCalledWith(PASSWORD, PASSWORD_HASH);
+      expect(mocks.notifyLimit).toHaveBeenCalledWith('alice');
+      expect(mocks.sessionCreate).not.toHaveBeenCalled();
+      expect(mocks.deleteMany).not.toHaveBeenCalled();
+    } finally { compare.mockRestore(); }
   });
 });

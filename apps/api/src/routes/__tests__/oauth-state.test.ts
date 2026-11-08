@@ -16,7 +16,7 @@ vi.mock('../../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'oauth-test-access-secret' }
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn() } }
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() } }
 }));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
@@ -26,10 +26,10 @@ vi.mock('../../services/backup/backup-config.loader.js', () => ({
 }));
 
 const headersFor = (role: string) => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'admin-id', username: 'admin', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'admin-id', username: 'admin', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return {
     authorization: `Bearer ${jwt.sign(
-      { sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
+      { tokenType: 'access', sessionId: 'admin-id', sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
     )}`
   };
 };
@@ -160,9 +160,9 @@ describe.each([
   it('rejects a different authenticated issuer before exchanging tokens', async () => {
     const state = await authorize();
     const headers = headersFor('ADMIN');
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: {
       id: 'other-admin', username: 'other', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false
-    } as never);
+    } }) as never);
     const response = await app.inject({ url: `${path}/callback?code=authorization-code&state=${state}`, headers });
     expect(response.statusCode).toBe(403);
     expectNoExchangeOrSave();

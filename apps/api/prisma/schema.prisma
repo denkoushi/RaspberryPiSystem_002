@@ -925,6 +925,7 @@ model User {
   mfaBackupCodes              String[]       @default([])
   createdAt                   DateTime       @default(now())
   updatedAt                   DateTime       @updatedAt
+  authSessions                AuthSession[]
   transactions                Transaction[]
   auditLogsActor              RoleAuditLog[] @relation("RoleAuditActor")
   auditLogsTarget             RoleAuditLog[] @relation("RoleAuditTarget")
@@ -6566,4 +6567,18 @@ model ProductionScheduleDueDateAuditLog {
   @@index([createdAt])
   @@index([csvDashboardRowId, createdAt])
   @@index([fseiban, processingType, createdAt], map: "ProductionScheduleDueDateAuditLog_target_idx")
+}
+
+model AuthSession {
+  id             String    @id @default(uuid())
+  userId         String
+  createdAt      DateTime  @default(now()) @db.Timestamp(3)
+  expiresAt      DateTime  @db.Timestamp(3)
+  revokedAt      DateTime? @db.Timestamp(3)
+  refreshTokenId String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([revokedAt])
 }

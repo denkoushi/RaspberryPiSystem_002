@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
-import { signAccessToken } from '../../../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../../../test/auth-session-fixture.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { LoanService } from '../../../../services/tools/loan.service.js';
@@ -14,11 +14,11 @@ import { registerPhotoBorrowRoute } from '../photo-borrow.js';
 import { registerReturnRoute } from '../return.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } },
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } },
 }));
 
 function tokenForUser(user: User): string {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...user, status: 'ACTIVE', mfaEnabled: false });
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { ...user, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return signAccessToken(user);
 }
 

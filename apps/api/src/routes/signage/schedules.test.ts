@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { signAccessToken } from '../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import type { SignageService } from '../../services/signage/index.js';
 import { registerScheduleRoutes } from './schedules.js';
 
@@ -33,7 +33,7 @@ const service = {
 };
 
 function authHeader(role: User['role']) {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   const token = signAccessToken({
     id: '11111111-1111-4111-8111-111111111111',
     username: 'schedule-test-user',
@@ -53,6 +53,7 @@ describe('signage schedule response boundaries', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
 
   beforeEach(() => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
     vi.spyOn(prisma.user, 'findUnique');
     vi.clearAllMocks();
     service.getSchedules.mockResolvedValue([internalSchedule]);

@@ -1,3 +1,4 @@
+import { hasSharedProductionJwtSecret } from './env/jwt-secret-warning.js';
 import './env/load-dotenv.js';
 
 import { z } from 'zod';
@@ -142,3 +143,10 @@ const envSchema = z
   });
 
 export const env = envSchema.parse(process.env);
+
+if (hasSharedProductionJwtSecret(env)) {
+  void import('../lib/logger.js').then(({ logger }) => {
+    logger.warn('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET use the same signing key');
+    return import('../services/auth/jwt-secret-alert.js').then(({ notifySharedJwtSecret }) => notifySharedJwtSecret());
+  }).catch(() => { console.warn('Failed to report shared JWT signing key configuration'); });
+}

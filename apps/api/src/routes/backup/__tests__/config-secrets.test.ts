@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue({ id: 'admin', username: 'admin', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: true }) }, backupConfigChange: { create: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, userId: 'admin', expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'admin', username: 'admin', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: true } })) }, user: { findUnique: vi.fn().mockResolvedValue({ id: 'admin', username: 'admin', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: true }) }, backupConfigChange: { create: vi.fn() } } }));
 vi.mock('../../../services/backup/backup-scheduler.js', () => ({ getBackupScheduler: () => ({ reload: vi.fn() }) }));
 vi.mock('../../../services/kiosk-documents/kiosk-document-gmail.scheduler.js', () => ({ getKioskDocumentGmailScheduler: () => ({ reload: vi.fn() }) }));
 
@@ -25,7 +25,7 @@ describe('backup config secrets', () => {
   let directory: string;
   let configPath: string;
   const readFile = async () => JSON.parse(await fs.readFile(configPath, 'utf8'));
-  const headers = () => ({ authorization: `Bearer ${jwt.sign({ sub: 'admin', username: 'admin', role: 'ADMIN', mfaEnabled: true }, process.env.JWT_ACCESS_SECRET!)}` });
+  const headers = () => ({ authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'session-admin', sub: 'admin', username: 'admin', role: 'ADMIN', mfaEnabled: true }, process.env.JWT_ACCESS_SECRET!)}` });
   const get = async () => {
     const response = await app.inject({ method: 'GET', url: '/backup/config', headers: headers() });
     expect(response.statusCode).toBe(200);

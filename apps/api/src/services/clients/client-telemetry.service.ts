@@ -1,3 +1,4 @@
+import { claimStatusClientId } from './status-client-id-claim.js';
 import crypto from 'crypto';
 import type { ClientDevice } from '@prisma/client';
 import { resolveSignagePreviewTargetInput } from '../kiosk/kiosk-signage-preview.service.js';
@@ -307,11 +308,9 @@ export async function upsertClientStatus(params: {
       '[ClientTelemetry] status client ID differs from registered value');
   }
   if (registeredDevice.statusClientId == null) {
-    const existing = await prisma.clientDevice.findFirst({ where: { statusClientId: metrics.clientId, id: { not: registeredDevice.id } } });
-    if (existing) throw new ApiError(409, '監視端末IDはすでに登録されています');
+    await claimStatusClientId(registeredDevice.id, statusClientId);
   }
   const clientDevice = await requireRegisteredClientDevice(clientKey, {
-    ...(registeredDevice.statusClientId == null ? { statusClientId } : {}),
     lastSeenAt: now
   });
 

@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  findUnique: vi.fn(),
+  sessionFind: vi.fn(),
   findPinConfig: vi.fn(),
   env: {
     ADMIN_MFA_REQUIRED: false as boolean,
@@ -15,14 +15,14 @@ const mocks = vi.hoisted(() => ({
   }
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.findUnique }, productionScheduleAccessPasswordConfig: { findUnique: mocks.findPinConfig } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: mocks.sessionFind }, productionScheduleAccessPasswordConfig: { findUnique: mocks.findPinConfig } } }));
 
 import {
   authenticate,
   authorizeRoles,
   isAdminMfaRequired,
   requireDueManagementToken,
-  signAccessToken,
+  signAccessToken as signUserAccessToken,
   signDueManagementToken,
   signRefreshToken
 } from '../auth.js';
@@ -42,8 +42,16 @@ function makeUser(overrides: Partial<User> = {}): User {
   } as User;
 }
 
+function sessionFor(user: User | null) {
+  return { id: 'session-1', userId: user?.id ?? 'user-1', expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user };
+}
+
+function signAccessToken(user: User): string {
+  mocks.sessionFind.mockResolvedValue(sessionFor(user));
+  return signUserAccessToken(user, 'session-1');
+}
+
 function tokenForUser(user: User): string {
-  mocks.findUnique.mockResolvedValue(user);
   return signAccessToken(user);
 }
 
@@ -88,7 +96,7 @@ beforeEach(() => {
   vi.setSystemTime(FIXED_NOW);
   mocks.findPinConfig.mockReset().mockResolvedValue(null);
   mocks.env.ADMIN_MFA_REQUIRED = false;
-  mocks.findUnique.mockReset().mockResolvedValue(makeUser());
+  mocks.sessionFind.mockReset().mockResolvedValue(sessionFor(makeUser()));
 });
 
 afterEach(() => {
@@ -135,10 +143,10 @@ describe('authenticate', () => {
     const token = tokenForUser(makeUser({ id: 'u-1', username: 'alice', role: 'ADMIN' }));
     const request = makeRequest(`Bearer ${token}`);
     await authenticate(request, makeReply());
-    expect(request.user).toEqual({ id: 'u-1', username: 'alice', role: 'ADMIN' });
-    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
-      where: { id: 'u-1' },
-      select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
+    expect(request.user).toEqual({ id: 'u-1', username: 'alice', role: 'ADMIN', sessionId: 'session-1' });
+    expect(mocks.sessionFind).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'session-1' },
+      include: { user: { select: { id: true, username: true, role: true, status: true, mfaEnabled: true } } }
     });
   });
 
@@ -170,7 +178,7 @@ describe('authenticate', () => {
     const error = await captureError(authenticate(makeRequest(`Bearer ${forged}`), makeReply()));
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
     expect(error.statusCode).toBe(401);
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.sessionFind).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token presented as an access token', async () => {
@@ -195,7 +203,7 @@ describe('authenticate', () => {
     const error = await captureError(authenticate(makeRequest(`Bearer ${unsigned}`), makeReply()));
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
     expect(error.statusCode).toBe(401);
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.sessionFind).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -211,7 +219,7 @@ describe('authenticate', () => {
     const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.statusCode).toBe(401);
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.sessionFind).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -241,7 +249,7 @@ describe('authenticate', () => {
 
   it.each([null, makeUser({ status: 'DISABLED' })])('rejects a missing or disabled DB user (%j)', async (user) => {
     const token = signAccessToken(makeUser());
-    mocks.findUnique.mockResolvedValue(user);
+    mocks.sessionFind.mockResolvedValue(sessionFor(user));
     const reply = makeReply();
     const request = makeRequest(`Bearer ${token}`);
     const error = await captureError(authenticate(request, reply));
@@ -252,11 +260,11 @@ describe('authenticate', () => {
 
   it('immediately applies a demotion and the current DB username', async () => {
     const token = signAccessToken(makeUser({ role: 'ADMIN' }));
-    mocks.findUnique.mockResolvedValue(makeUser({ role: 'VIEWER', username: 'renamed' }));
+    mocks.sessionFind.mockResolvedValue(sessionFor(makeUser({ role: 'VIEWER', username: 'renamed' })));
     const request = makeRequest(`Bearer ${token}`);
     const error = await captureError(authorizeRoles('ADMIN')(request, makeReply()));
     expect(error).toMatchObject({ statusCode: 403, code: 'AUTH_INSUFFICIENT_PERMISSIONS' });
-    expect(request.user).toEqual({ id: 'user-1', username: 'renamed', role: 'VIEWER' });
+    expect(request.user).toEqual({ id: 'user-1', username: 'renamed', role: 'VIEWER', sessionId: 'session-1' });
   });
 
   it.each([
@@ -265,7 +273,7 @@ describe('authenticate', () => {
   ])('requires DB MFA for an ADMIN regardless of stale token claims (%j)', async (claims) => {
     mocks.env.ADMIN_MFA_REQUIRED = true;
     const token = signAccessToken(makeUser(claims));
-    mocks.findUnique.mockResolvedValue(makeUser({ role: 'ADMIN', mfaEnabled: false }));
+    mocks.sessionFind.mockResolvedValue(sessionFor(makeUser({ role: 'ADMIN', mfaEnabled: false })));
     const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error).toMatchObject({ statusCode: 403, code: 'MFA_SETUP_REQUIRED' });
   });
@@ -273,18 +281,35 @@ describe('authenticate', () => {
   it('re-reads the user on every request so status changes take effect immediately', async () => {
     const token = signAccessToken(makeUser());
     const user = makeUser();
-    mocks.findUnique.mockResolvedValueOnce(user).mockResolvedValueOnce({ ...user, status: 'DISABLED' });
+    mocks.sessionFind.mockResolvedValueOnce(sessionFor(user)).mockResolvedValueOnce(sessionFor({ ...user, status: 'DISABLED' }));
     await authenticate(makeRequest(`Bearer ${token}`), makeReply());
     const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
-    expect(mocks.findUnique).toHaveBeenCalledTimes(2);
+    expect(mocks.sessionFind).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['missing', null],
+    ['revoked', { ...sessionFor(makeUser()), revokedAt: FIXED_NOW }],
+    ['expired', { ...sessionFor(makeUser()), expiresAt: FIXED_NOW }],
+    ['mismatched owner', { ...sessionFor(makeUser()), userId: 'other-user' }]
+  ])('sets reply status for an invalid session (%s)', async (_label, session) => {
+    const token = signAccessToken(makeUser());
+    mocks.sessionFind.mockResolvedValue(session);
+    const reply = makeReply();
+    const request = makeRequest(`Bearer ${token}`);
+    const error = await captureError(authenticate(request, reply));
+    expect(error).toMatchObject({ statusCode: 401, code: 'AUTH_TOKEN_INVALID', message: 'トークンが無効です' });
+    expect(reply.code).toHaveBeenCalledWith(401);
+    expect(request.user).toBeUndefined();
   });
 
   it('propagates DB failures without mapping them to AUTH_TOKEN_INVALID', async () => {
     const failure = new Error('database unavailable');
-    mocks.findUnique.mockRejectedValue(failure);
+    const token = signAccessToken(makeUser());
+    mocks.sessionFind.mockRejectedValue(failure);
     const reply = makeReply();
-    await expect(authenticate(makeRequest(`Bearer ${signAccessToken(makeUser())}`), reply)).rejects.toBe(failure);
+    await expect(authenticate(makeRequest(`Bearer ${token}`), reply)).rejects.toBe(failure);
     expect(reply.code).not.toHaveBeenCalled();
     expect(failure).not.toBeInstanceOf(ApiError);
   });
@@ -306,10 +331,10 @@ describe('authenticate', () => {
     });
 
     it('blocks legacy ADMIN tokens that carry no mfaEnabled claim', async () => {
-      mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1', role: 'ADMIN', mfaEnabled: true }));
+      mocks.sessionFind.mockResolvedValue(sessionFor(makeUser({ id: 'u-1', role: 'ADMIN', mfaEnabled: true })));
       const legacy = jwt.sign({ sub: 'u-1', username: 'alice', role: 'ADMIN' }, ACCESS);
       const error = await captureError(authenticate(makeRequest(`Bearer ${legacy}`), makeReply()));
-      expect(error.code).toBe('MFA_SETUP_REQUIRED');
+      expect(error.code).toBe('AUTH_TOKEN_INVALID');
     });
 
     it('allows ADMIN tokens without MFA only on POST to the MFA setup routes', async () => {
@@ -367,8 +392,8 @@ describe('authorizeRoles', () => {
   });
 
   it('uses the DB role even when the role claim is unknown', async () => {
-    mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1' }));
-    const token = jwt.sign({ sub: 'u-1', username: 'alice', role: 'SUPERUSER' }, ACCESS);
+    mocks.sessionFind.mockResolvedValue(sessionFor(makeUser({ id: 'u-1' })));
+    const token = jwt.sign({ sub: 'u-1', username: 'alice', role: 'SUPERUSER', tokenType: 'access', sessionId: 'session-1' }, ACCESS);
     const error = await captureError(authorizeRoles('ADMIN')(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.statusCode).toBe(403);
     expect(error.code).toBe('AUTH_INSUFFICIENT_PERMISSIONS');

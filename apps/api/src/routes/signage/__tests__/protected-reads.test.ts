@@ -11,7 +11,7 @@ vi.mock('../../../services/signage/signage.renderer.js', () => ({
   SignageRenderer: class { async renderVisualizationToBuffer() { return Buffer.from('image'); } },
 }));
 
-import { signAccessToken } from '../../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../../test/auth-session-fixture.js';
 import { prisma } from '../../../lib/prisma.js';
 import { registerPhotoStorageRoutes } from '../../storage/photos.js';
 import { registerThumbnailStorageRoutes } from '../../storage/thumbnails.js';
@@ -29,8 +29,9 @@ describe.each([
 ])('protected read %s', (url, cacheControl) => {
   let app: ReturnType<typeof Fastify>;
   beforeEach(async () => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
     vi.spyOn(prisma.visualizationDashboard, 'findUnique').mockResolvedValue({ id: 'dashboard' } as never);
-    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(viewer as never);
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: viewer }) as never);
     app = Fastify();
     await app.register(async (routes) => {
       registerPhotoStorageRoutes(routes);

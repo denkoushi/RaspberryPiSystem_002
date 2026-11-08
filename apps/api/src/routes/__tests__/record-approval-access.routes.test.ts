@@ -1,6 +1,7 @@
 import Fastify, { type FastifyRequest, type FastifyReply, type FastifyError } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { signAccessToken, signKioskAccessToken, authenticate } from '../../lib/auth.js';
+import { signKioskAccessToken, authenticate } from '../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import { ApiError } from '../../lib/errors.js';
 import { registerAssemblyWorkSessionRoutes } from '../assembly/work-sessions.js';
 import { registerSelfInspectionRoutes } from '../part-measurement/self-inspection.js';
@@ -9,9 +10,9 @@ import { registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute } fro
 import type { User } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({ approve: vi.fn(), verify: vi.fn(), role: 'MANAGER' }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn(async () => ({
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id, user: {
   id: 'user', username: 'manager', role: mocks.role, status: 'ACTIVE', mfaEnabled: true
-})) } } }));
+} })) }, productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) } } }));
 vi.mock('../../services/production-schedule/production-schedule-settings.service.js', () => ({
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify, verifyDueManagementAccessPasswordForToken: mocks.verify
 }));

@@ -7,7 +7,7 @@ vi.mock('../../../../config/env.js', () => ({
   env: { JWT_ACCESS_SECRET: 'machine-route-test-secret', ADMIN_MFA_REQUIRED: false },
 }));
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: {
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) },
     user: { findUnique: vi.fn() },
     machineNfcTag: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
     employee: { findUnique: vi.fn() },
@@ -32,9 +32,9 @@ const machine = {
   createdAt: new Date(), updatedAt: new Date(),
 };
 const headers = (role = 'ADMIN') => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'u1', username: 'tester', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'u1', username: 'tester', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return {
-    authorization: `Bearer ${jwt.sign({ sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
+    authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'u1', sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
   };
 };
 let app: FastifyInstance;

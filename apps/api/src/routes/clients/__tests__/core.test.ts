@@ -2,19 +2,19 @@ import Fastify from 'fastify';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 import type { User } from '@prisma/client';
-import { signAccessToken } from '../../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../../test/auth-session-fixture.js';
 import { ApiError } from '../../../lib/errors.js';
 
 import { prisma } from '../../../lib/prisma.js';
 import { registerClientCoreRoutes } from '../core.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() } }
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() }, clientDevice: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() } }
 }));
 
 function tokenForUser(user: User): string {
   const activeUser = { ...user, status: 'ACTIVE' as const, mfaEnabled: true };
-  vi.mocked(prisma.user.findUnique).mockResolvedValue(activeUser);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: activeUser }) as never);
   return signAccessToken(activeUser);
 }
 
@@ -31,10 +31,10 @@ describe('client registration routes', () => {
   void app.register(registerClientCoreRoutes);
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(prisma.user.findUnique).mockImplementation(async ({ where }) => ({
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: {
       id: where.id, username: where.id, role: where.id === 'manager' ? 'MANAGER' : where.id === 'viewer' ? 'VIEWER' : 'ADMIN',
       status: 'ACTIVE', mfaEnabled: false,
-    }) as never);
+    } }) as never);
     vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({ id: 'device-1' } as never);
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: false } as never);

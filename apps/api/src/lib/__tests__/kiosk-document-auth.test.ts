@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../prisma.js', () => ({ prisma: { user: { findUnique: mocks.userFindUnique }, clientDevice: { findUnique: mocks.findUnique } } }));
+vi.mock('../prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ user: await mocks.userFindUnique({ where: { id: where.id } }), userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: mocks.userFindUnique }, clientDevice: { findUnique: mocks.findUnique } } }));
 
 import { ApiError } from '../errors.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../kiosk-document-auth.js';
@@ -24,7 +24,7 @@ const reply = { code: vi.fn().mockReturnThis() } as unknown as FastifyReply;
 
 const bearer = (role: string) => {
   mocks.userFindUnique.mockResolvedValue({ id: 'u-1', username: 'alice', role, status: 'ACTIVE', mfaEnabled: false });
-  return `Bearer ${jwt.sign({ sub: 'u-1', username: 'alice', role }, 'doc-auth-secret')}`;
+  return `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'u-1', sub: 'u-1', username: 'alice', role }, 'doc-auth-secret')}`;
 };
 
 async function captureError(promise: Promise<unknown>): Promise<ApiError> {

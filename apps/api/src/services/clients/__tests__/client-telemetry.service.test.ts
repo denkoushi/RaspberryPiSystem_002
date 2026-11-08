@@ -24,6 +24,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     clientDevice: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),
+      updateMany: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock('../../../lib/prisma.js', () => ({
       findMany: vi.fn(),
     },
     alert: { findFirst: vi.fn() },
+    $executeRaw: vi.fn(),
     $transaction: vi.fn(),
   },
 }));
@@ -46,6 +48,8 @@ vi.mock('../../alerts/alerts-config.js', () => ({
 beforeEach(() => {
   vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device-1', statusClientId: null } as never);
   vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue(null);
+  vi.mocked(prisma.clientDevice.updateMany).mockResolvedValue({ count: 1 });
+  vi.mocked(prisma.$transaction).mockImplementation(async (fn) => (fn as (tx: unknown) => Promise<unknown>)(prisma));
 });
 
 describe('client-telemetry.service', () => {
@@ -92,7 +96,7 @@ describe('client-telemetry.service', () => {
     } });
     expect(prisma.clientDevice.update).toHaveBeenCalledWith({
       where: { apiKey: 'registered-key' },
-      data: { statusClientId: 'raspi4-status-only', lastSeenAt: expect.any(Date) }
+      data: { lastSeenAt: expect.any(Date) }
     });
   });
 
@@ -235,7 +239,7 @@ describe('OS update health delivery', () => {
     vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
     alertCreate.mockResolvedValue({ id: 'alert-1' });
     vi.mocked(prisma.$transaction).mockImplementation(async (callback) => {
-      return (callback as (tx: unknown) => Promise<unknown>)({ alert: { create: alertCreate }, alertDelivery: { create: deliveryCreate } });
+      return (callback as (tx: unknown) => Promise<unknown>)({ $executeRaw: prisma.$executeRaw, clientDevice: prisma.clientDevice, alert: { create: alertCreate }, alertDelivery: { create: deliveryCreate } });
     });
   });
   async function report(level: 'WARN' | 'INFO', extra: Record<string, unknown> = {}) {
@@ -429,7 +433,7 @@ describe('kiosk UI logs', () => {
       clientId: 'pi4-actual', level: 'WARN', context: { category: 'network_health', signalDbm: -90, statusPostOk: false }
     })] });
     expect(prisma.alert.findFirst).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
 });

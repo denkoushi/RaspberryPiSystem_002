@@ -80,7 +80,7 @@ describe('account login attempt accounting', () => {
 
   it('keeps inactive accounts and MFA failures in the count', async () => {
     await prisma.user.update({ where: { id: user!.id }, data: { status: 'DISABLED' } });
-    await expect(login()).rejects.toMatchObject({ statusCode: 403 });
+    await expect(login()).rejects.toMatchObject({ statusCode: 401 });
     await prisma.user.update({ where: { id: user!.id }, data: { status: 'ACTIVE', mfaEnabled: true } });
     await expect(login()).rejects.toMatchObject(unauthorized);
     expect(await attempt()).toMatchObject({ count: 2 });

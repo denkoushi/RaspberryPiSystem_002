@@ -6,14 +6,19 @@ import { ApiError } from './errors.js';
 import { prisma } from './prisma.js';
 
 export interface JwtPayload {
+  tokenType?: 'access' | 'refresh';
+  sessionId?: string;
+  tokenId?: string;
   sub: string;
   username: string;
   role: User['role'];
   mfaEnabled?: boolean;
 }
 
-export function signAccessToken(user: User): string {
+export function signAccessToken(user: User, sessionId?: string): string {
   const payload: JwtPayload = {
+    tokenType: 'access',
+    sessionId,
     sub: user.id,
     username: user.username,
     role: user.role,
@@ -24,8 +29,11 @@ export function signAccessToken(user: User): string {
   return jwt.sign(payload, secret, options);
 }
 
-export function signRefreshToken(user: User): string {
+export function signRefreshToken(user: User, sessionId?: string, tokenId?: string, expiresAt?: Date): string {
   const payload: JwtPayload = {
+    tokenType: 'refresh',
+    sessionId,
+    tokenId,
     sub: user.id,
     username: user.username,
     role: user.role,
@@ -33,6 +41,10 @@ export function signRefreshToken(user: User): string {
   };
   const secret: Secret = env.JWT_REFRESH_SECRET;
   const options: SignOptions = { expiresIn: env.REFRESH_TOKEN_EXPIRES_IN as SignOptions['expiresIn'] };
+  if (expiresAt) {
+    const configured = jwt.decode(jwt.sign(payload, secret, options)) as jwt.JwtPayload;
+    return jwt.sign({ ...payload, exp: Math.min(configured.exp!, Math.floor(expiresAt.getTime() / 1000)) }, secret);
+  }
   return jwt.sign(payload, secret, options);
 }
 
@@ -128,6 +140,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     }
     payload = jwt.verify(token, env.JWT_ACCESS_SECRET) as JwtPayload;
     if (
+      payload.tokenType !== 'access' ||
       typeof payload.sub !== 'string' || !payload.sub ||
       typeof payload.username !== 'string' || !payload.username ||
       typeof payload.role !== 'string'
@@ -138,22 +151,27 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
-  });
+  const session = typeof payload.sessionId === 'string' ? await prisma.authSession.findUnique({
+    where: { id: payload.sessionId },
+    include: { user: { select: { id: true, username: true, role: true, status: true, mfaEnabled: true } } }
+  }) : null;
+  if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt.getTime() <= Date.now()) {
+    reply.code(401);
+    throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
+  }
+  const user = session.user;
   if (!user || user.status !== 'ACTIVE') {
     reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
   if (isAdminMfaRequired(user.role) && !(payload.mfaEnabled === true && user.mfaEnabled === true)) {
     const isMfaSetupRoute = request.method === 'POST' &&
-      ['/api/auth/mfa/initiate', '/api/auth/mfa/activate'].includes(request.routeOptions.url ?? '');
+      ['/api/auth/mfa/initiate', '/api/auth/mfa/activate', '/api/auth/logout'].includes(request.routeOptions.url ?? '');
     if (!isMfaSetupRoute) {
       throw new ApiError(403, '管理者アカウントはMFAの設定が必要です', undefined, 'MFA_SETUP_REQUIRED');
     }
   }
-  request.user = { id: user.id, username: user.username, role: user.role };
+  request.user = { id: user.id, username: user.username, role: user.role, sessionId: session.id };
 }
 
 export function authorizeRoles(...roles: User['role'][]): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {

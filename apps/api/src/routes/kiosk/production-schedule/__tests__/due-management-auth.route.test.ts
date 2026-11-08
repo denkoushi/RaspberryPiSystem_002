@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(), command: vi.fn(), selection: vi.fn(), dailyPlan: vi.fn(),
   rank: vi.fn(), auto: vi.fn(), importHours: vi.fn(), proposal: vi.fn(), learning: vi.fn()
 }));
-vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
+vi.mock('../../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, userId: 'user', expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } })) }, productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
 vi.mock('../../../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'test-due-management-secret' } }));
 vi.mock('../../../../services/production-schedule/production-schedule-settings.service.js', () => ({
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify, verifyDueManagementAccessPasswordForToken: mocks.verify
@@ -170,10 +170,10 @@ describe('due-management authorization', () => {
     const dueResponse = await app.inject({ url: '/user', headers: { authorization: `Bearer ${signDueManagementToken('device')}` } });
     expect(dueResponse.statusCode).toBe(401);
     expect(dueResponse.json().code).toBe('AUTH_TOKEN_INVALID');
-    const userToken = jwt.sign({ sub: 'user', username: 'test', role: 'ADMIN' }, secret, { expiresIn: '1h' });
+    const userToken = jwt.sign({ tokenType: 'access', sessionId: 'session-user', sub: 'user', username: 'test', role: 'ADMIN' }, secret, { expiresIn: '1h' });
     const userResponse = await app.inject({ url: '/user', headers: { authorization: `Bearer ${userToken}` } });
     expect(userResponse.statusCode).toBe(200);
-    expect(userResponse.json()).toEqual({ id: 'user', username: 'test', role: 'ADMIN' });
+    expect(userResponse.json()).toEqual({ id: 'user', username: 'test', role: 'ADMIN', sessionId: 'session-user' });
   });
 
   it('binds proxy operations to the actor device independently of the target location', async () => {

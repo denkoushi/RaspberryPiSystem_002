@@ -3,13 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 import { assertClientDeviceOperationScope } from '../../../services/clients/client-device-resolution.service.js';
 import { ApiError } from '../../../lib/errors.js';
-import { signAccessToken } from '../../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../../test/auth-session-fixture.js';
 import { registerTorqueWrenchRoutes } from '../index.js';
 
 const mocks = vi.hoisted(() => ({ confirm: vi.fn(), acquire: vi.fn(), takeover: vi.fn(), role: 'ADMIN' }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn(async () => ({
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id, user: {
   id: 'user', username: 'operator', role: mocks.role, status: 'ACTIVE', mfaEnabled: true
-})) } } }));
+} })) } } }));
 vi.mock('../../../services/clients/client-device-auth.service.js', () => ({
   requireKioskClientDevice: vi.fn(async () => ({ clientDevice: { id: 'device', name: 'terminal', canProxyOtherDevices: false } }))
 }));
