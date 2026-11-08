@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { isAdminMfaRequired, signAccessToken, signRefreshToken, type JwtPayload } from '../../lib/auth.js';
+import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   generateBackupCodes,
@@ -104,7 +105,7 @@ function buildTokenPair(user: User): Pick<LoginResult, 'accessToken' | 'refreshT
 const MAX_LOGIN_USERNAME_LENGTH = 128;
 const DUMMY_PASSWORD_HASH = '$2a$10$0aHEpcYrWdHZqOlUGHK9pOJIATM.o8owRzLFFGc6JqgFhSBRpJwdu';
 
-async function reserveLoginAttempt(username: string): Promise<void> {
+async function deleteExpiredLoginAttempts(username: string): Promise<void> {
   await prisma.$executeRaw`
     DELETE FROM "AuthLoginAttempt" WHERE "username" IN (
       SELECT "username" FROM "AuthLoginAttempt"
@@ -114,6 +115,14 @@ async function reserveLoginAttempt(username: string): Promise<void> {
       LIMIT 100 FOR UPDATE SKIP LOCKED
     )
   `;
+}
+
+async function reserveLoginAttempt(username: string): Promise<void> {
+  try {
+    await deleteExpiredLoginAttempts(username);
+  } catch (error) {
+    logger.warn({ err: error }, 'Failed to delete expired login attempts');
+  }
   const reserved = await prisma.$queryRaw<Array<{ username: string }>>`
     INSERT INTO "AuthLoginAttempt" ("username", "count", "windowEndsAt", "updatedAt")
     VALUES (${username}, 1,

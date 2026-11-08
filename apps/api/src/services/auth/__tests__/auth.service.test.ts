@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
@@ -140,6 +141,13 @@ describe('AuthService.login', () => {
     } finally {
       compare.mockRestore();
     }
+  });
+
+  it('continues to reserve the attempt when deleting expired attempts fails', async () => {
+    mocks.executeRaw.mockRejectedValue(new Error('lock timeout'));
+    await service.login({ username: 'alice', password: 'wrong-password' }).catch(() => undefined);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
+    expect(mocks.findUnique).toHaveBeenCalled();
   });
 
   it('returns 429 before user lookup and password comparison when reservation is refused', async () => {

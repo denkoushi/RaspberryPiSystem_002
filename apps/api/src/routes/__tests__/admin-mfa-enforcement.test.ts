@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   updateMany: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(), deleteMany: vi.fn()
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
   user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
   $queryRaw: mocks.queryRaw, $executeRaw: mocks.executeRaw,
