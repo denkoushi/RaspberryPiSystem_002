@@ -17,6 +17,8 @@ import { logger } from '../../../lib/logger.js';
  * - 2026-01-28更新: content.dropboxapi.comの新しい証明書フィンガープリントを追加
  * - 2026-02-16更新: api/content/notify.dropboxapi.comの新しい証明書フィンガープリントを追加
  * - 2026-06-26更新: api/notify.dropboxapi.comの新しい証明書フィンガープリントを追加
+ * - 2026-11-09更新: api/content/notify.dropboxapi.comの新しい証明書フィンガープリントを追加
+ *   （2026-11-05 発行。発行元が DigiCert G5 TLS ECC SHA384 2021 CA1 に変わった）
  */
 const DROPBOX_CERTIFICATE_FINGERPRINTS = [
   'sha256/df9a4cabca84f3de17c1f52b7247b95d7a3e1166dd1eb55a2f2917b29f9e7cad', // api.dropboxapi.com (旧)
@@ -28,7 +30,10 @@ const DROPBOX_CERTIFICATE_FINGERPRINTS = [
   'sha256/2b2ffab566b828495e4a0c8cd8f477cc13d308209fd55169f15c933687868dd1', // content.dropboxapi.com (新、2026-02-16確認)
   'sha256/118d3ebeae3bf03eed53227bb933efc2fb8857c7e2a679e12ec62c14fe5f874c', // notify.dropboxapi.com (新、2026-02-16確認)
   'sha256/1405eaa6ffd622dd36906e3082e5124f226155d9933432ad4ae4a122b5bf26fc', // api.dropboxapi.com (新、2026-06-26確認)
-  'sha256/d079bba2c85fece7467456badabefd93002d640c241f430baa8cd51835f7928e'  // notify.dropboxapi.com (新、2026-06-26確認)
+  'sha256/d079bba2c85fece7467456badabefd93002d640c241f430baa8cd51835f7928e', // notify.dropboxapi.com (新、2026-06-26確認)
+  'sha256/f8a18f0f0d4d84879a6c1312ed867225b772f9bccebddb1e7c127ac3e8d95269', // api.dropboxapi.com (新、2026-11-09確認)
+  'sha256/1a28b51e8b0cb4cba2e804f2cebabb6b5341623ddb7b15e681f3489264b9c848', // content.dropboxapi.com (新、2026-11-09確認)
+  'sha256/f768f557161681882af50da2a815e07b989fc38dca921ee03d98fbb9ae2d7a0b'  // notify.dropboxapi.com (新、2026-11-09確認)
 ] as const;
 
 /**
