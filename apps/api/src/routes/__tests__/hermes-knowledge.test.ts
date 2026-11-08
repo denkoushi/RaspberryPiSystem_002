@@ -1,7 +1,8 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../lib/prisma.js';
 import { registerHermesKnowledgeRoutes } from '../hermes-knowledge.js';
 
 const mocks = vi.hoisted(() => ({
@@ -25,6 +26,9 @@ vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
     triage: { get: mocks.triageGet }, triageService: { pending: mocks.pending, decide: mocks.decide },
     procedureWorker: { kick: mocks.procedureKick }, workTypes: async () => ['段取り', 'その他'] }),
 }));
+
+beforeEach(() => { vi.spyOn(prisma.user, 'findUnique'); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Knowledge API authentication boundary', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); mocks.triageGet.mockResolvedValue([]); });
@@ -140,7 +144,10 @@ describe('Knowledge review API', () => {
   const headers = { 'x-client-key': 'valid-key' };
   const reviewer = { id: 'e1', employeeCode: '0001', displayName: '社員A', nfcTagUid: 'tag', positionName: '主任', rank: 'leader' };
   const server = () => { vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'true'); const app = Fastify(); registerHermesKnowledgeRoutes(app); return app; };
-  const jwtHeaders = (role: string) => ({ authorization: `Bearer ${jwt.sign({ sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` });
+  const jwtHeaders = (role: string) => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } as never);
+    return { authorization: `Bearer ${jwt.sign({ sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` };
+  };
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); mocks.triageGet.mockResolvedValue([]); });
 
   it.each(['pending', 'detail', 'approve', 'return'])('requires knowledgeActor for %s', async action => {

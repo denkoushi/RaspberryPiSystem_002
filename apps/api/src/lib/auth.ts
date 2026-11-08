@@ -3,6 +3,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { User } from '@prisma/client';
 import { env } from '../config/env.js';
 import { ApiError } from './errors.js';
+import { prisma } from './prisma.js';
 
 export interface JwtPayload {
   sub: string;
@@ -97,14 +98,22 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
-  if (isAdminMfaRequired(payload.role) && payload.mfaEnabled !== true) {
+  const user = await prisma.user.findUnique({
+    where: { id: payload.sub },
+    select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
+  });
+  if (!user || user.status !== 'ACTIVE') {
+    reply.code(401);
+    throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
+  }
+  if (isAdminMfaRequired(user.role) && !(payload.mfaEnabled === true && user.mfaEnabled === true)) {
     const isMfaSetupRoute = request.method === 'POST' &&
       ['/api/auth/mfa/initiate', '/api/auth/mfa/activate'].includes(request.routeOptions.url ?? '');
     if (!isMfaSetupRoute) {
       throw new ApiError(403, '管理者アカウントはMFAの設定が必要です', undefined, 'MFA_SETUP_REQUIRED');
     }
   }
-  request.user = { id: payload.sub, username: payload.username, role: payload.role };
+  request.user = { id: user.id, username: user.username, role: user.role };
 }
 
 export function authorizeRoles(...roles: User['role'][]): (request: FastifyRequest, reply: FastifyReply) => Promise<void> {

@@ -1,13 +1,17 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import pino from 'pino';
-import {describe,it,expect,vi} from 'vitest';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {env} from '../../../config/env.js';
 import {ApiError} from '../../../lib/errors.js';
 import {registerHermesSearchTrialRoutes} from '../hermes-search-trial.js';
 import {prisma} from '../../../lib/prisma.js';
 
 describe('Hermes search trial authorization',()=>{
+  beforeEach(() => {
+    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ id: 'reader', username: 'reader', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false } as never);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
   it('uses the existing reader boundary, preserves original text and keeps failure separate from no match',async()=>{
     const app=Fastify();
     app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof ApiError?error.statusCode:400).send({code:'REJECTED'}));
@@ -167,6 +171,7 @@ describe('Hermes search trial authorization',()=>{
       const headers = { 'x-client-key': 'synthetic-kiosk' };
       expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
+      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'reader', username: 'reader', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } as never);
       const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
       expect((await app.inject({ method: 'POST', url, headers: { ...headers, authorization: `Bearer ${token}` }, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });

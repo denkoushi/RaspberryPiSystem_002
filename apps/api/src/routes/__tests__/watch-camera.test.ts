@@ -21,6 +21,7 @@ vi.mock('../kiosk/shared.js', async () => ({
 }));
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
+  user: { findUnique: vi.fn() },
   clientDevice: { findMany: vi.fn(), findUnique: vi.fn() },
   watchCameraSampleSession: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
   watchCameraSampleFrame: { findMany: vi.fn(), groupBy: vi.fn(), updateMany: vi.fn() },
@@ -37,7 +38,10 @@ let app: ReturnType<typeof Fastify>;
 let device = 0;
 const id = '9df8a3d0-77bd-40d4-9c05-2cf86f06c734';
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0, 1]);
-const authorization = (role: string) => ({ authorization: `Bearer ${jwt.sign({ sub: 'user', username: 'test', role }, 'watch-camera-test-signing-key')}` });
+const authorization = (role: string) => {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  return { authorization: `Bearer ${jwt.sign({ sub: 'user', username: 'test', role }, 'watch-camera-test-signing-key')}` };
+};
 const post = (payload = jpeg, contentType = 'image/jpeg', key = 'camera-key') => app.inject({ method: 'POST', url: '/watch-camera/frames',
   headers: { 'content-type': contentType, 'x-client-key': key }, payload });
 beforeEach(async () => {

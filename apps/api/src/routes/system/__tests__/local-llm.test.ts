@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -7,6 +7,7 @@ process.env.JWT_REFRESH_SECRET ??= 'test-refresh-secret-1234567890';
 
 import { buildServer } from '../../../app.js';
 import { env } from '../../../config/env.js';
+import { prisma } from '../../../lib/prisma.js';
 import { resetInferenceRuntimeForTests } from '../../../services/inference/inference-runtime.js';
 import { resetLocalLlmRuntimeControllerForTests } from '../../../services/inference/runtime/get-local-llm-runtime-controller.js';
 import { expectApiError } from '../../__tests__/helpers.js';
@@ -54,6 +55,9 @@ describe('system local llm routes', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
+      id: where.id, username: where.id, role: where.id === 'test-admin' ? 'ADMIN' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
+    }) as never);
     vi.stubGlobal('fetch', vi.fn());
     adminToken = createAccessToken('ADMIN');
     managerToken = createAccessToken('MANAGER');
@@ -73,6 +77,8 @@ describe('system local llm routes', () => {
     resetInferenceRuntimeForTests();
     resetLocalLlmRuntimeControllerForTests();
   });
+
+  afterEach(() => { vi.restoreAllMocks(); });
 
   afterAll(async () => {
     env.LOCAL_LLM_BASE_URL = originalConfig.baseUrl;

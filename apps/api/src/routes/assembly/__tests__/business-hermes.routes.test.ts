@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { ZodError } from 'zod';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
@@ -47,6 +47,11 @@ function createApp() {
 }
 
 describe('business Hermes routes', () => {
+  beforeEach(() => {
+    vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
+      id: where.id, username: where.id, role: where.id === 'admin' ? 'ADMIN' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
+    }) as never);
+  });
   afterEach(() => vi.restoreAllMocks());
   it('requires a client key and passes server-resolved device identity', async () => {
     const fixture = createApp();

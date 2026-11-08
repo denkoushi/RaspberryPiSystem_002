@@ -89,6 +89,13 @@ describe('MFA activation re-authentication', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
+  it('rejects 11 backup codes before updating', async () => {
+    const response = await submit({ ...setupPayload(), backupCodes: Array.from({ length: 11 }, (_, i) => `backup-${i}`) });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().errorCode).toBe('VALIDATION_ERROR');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])('rejects wrong password when mfaEnabled=%s', async (enabled) => {
     user.mfaEnabled = enabled;
     user.totpSecret = authenticator.generateSecret();
@@ -213,14 +220,19 @@ describe('admin MFA enforcement', () => {
 
   it.each(['ADMIN', 'MANAGER'] as const)('rejects legacy %s tokens without an MFA claim', async (role) => {
     mocks.env.ADMIN_MFA_REQUIRED = true;
+    user.role = role;
     user.mfaEnabled = true;
     const token = jwt.sign({ sub: user.id, username: user.username, role }, mocks.env.JWT_ACCESS_SECRET);
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(token) }));
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: user.id },
+      select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
+    });
   });
 
   it.each([undefined, false, 'true', 1])('requires the boolean true claim, rejecting %s', async (mfaEnabled) => {
     mocks.env.ADMIN_MFA_REQUIRED = true;
+    user.mfaEnabled = true;
     const token = jwt.sign({ sub: user.id, username: user.username, role: user.role, mfaEnabled }, mocks.env.JWT_ACCESS_SECRET);
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(token) }));
     expectMfaError(await app.inject({ url: '/api/user-probe?next=/api/auth/mfa/initiate', headers: headers(token) }));
