@@ -20,7 +20,7 @@ export function createDeviceReadRateLimit({ queryKey = false } = {}): RateLimitO
   });
   const deviceId = async (request: FastifyRequest) => {
     const key = clientKey(request);
-    return key ? lookupDevice(key) : null;
+    return key ? lookupDevice(key, request.ip) : null;
   };
 
   return {

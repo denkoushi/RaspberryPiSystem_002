@@ -168,11 +168,14 @@ describe('device read rate limits with the global plugin', () => {
 
   it('shares invalid rotating keys by IP and aliases by confirmed device ID', async () => {
     const app = await makeApp();
+    for (const key of ['device-a', 'device-alias']) {
+      expect((await app.inject({ url: urls[6], headers: { 'x-client-key': key } })).statusCode).toBe(200);
+    }
     for (let n = 0; n < 32; n++) {
       expect((await app.inject({ url: urls[6], headers: { 'x-client-key': `unknown-${n}` } })).statusCode).toBe(200);
     }
     expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'another-unknown' } })).statusCode).toBe(429);
-    for (let n = 0; n < 4; n++) {
+    for (let n = 0; n < 2; n++) {
       expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'device-a' } })).statusCode).toBe(200);
     }
     expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'device-alias' } })).statusCode).toBe(429);
