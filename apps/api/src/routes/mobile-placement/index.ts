@@ -4,10 +4,9 @@ import { extractManufacturingOrder10 } from '../../services/mobile-placement/gen
 import { buildActualSlipOcrPreviewSafe } from '../../services/mobile-placement/actual-slip-ocr-preview.js';
 import { getKnownFseibans } from '../../services/mobile-placement/known-fseiban-cache.js';
 import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-placement/genpyo-slip/fseiban-snap.js';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
-import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
@@ -477,10 +476,8 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     };
   });
 
-  // All devices arrive through the Caddy gateway, so count per device key rather than per IP.
   app.post('/mobile-placement/edge-scans', {
-    config: { rateLimit: { max: 120, timeWindow: '1 minute',
-      keyGenerator: (request: FastifyRequest) => `edge-scan:${normalizeClientKey(request.headers['x-client-key']) ?? request.ip}` } }
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } }
   }, async (request) => {
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = edgeScanBodySchema.parse(request.body);
