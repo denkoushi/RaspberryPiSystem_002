@@ -659,7 +659,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     });
     expect(put.statusCode).toBe(400);
     const body = put.json();
-    expect(body.errorCode).toBe('INVALID_SIGNAGE_PREVIEW_TARGET');
+    expect(body.errorCode).toBe('VALIDATION_ERROR');
   });
 
   it('preserves migrated saved references and serves authorized JPEG without returning credentials', async () => {

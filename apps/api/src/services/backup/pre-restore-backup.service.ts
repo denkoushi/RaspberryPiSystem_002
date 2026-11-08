@@ -1,3 +1,4 @@
+import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import { BackupTargetFactory } from './backup-target-factory.js';
 import type { BackupKind } from './backup-types.js';
@@ -30,6 +31,7 @@ export async function runPreRestoreBackup(params: {
   const allFailed = results.every((r) => !r.success);
   if (allFailed) {
     const errorMessages = results.map((r) => `${r.provider}: ${r.error || 'Unknown error'}`).join('; ');
-    throw new ApiError(500, `Pre-backup failed on all providers: ${errorMessages}`);
+    logger?.error({ errors: errorMessages }, '[PreRestoreBackup] Pre-backup failed on all providers');
+    throw new ApiError(500, '復元前のバックアップに失敗したため、復元を中止しました');
   }
 }

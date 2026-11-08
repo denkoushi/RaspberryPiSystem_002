@@ -148,6 +148,32 @@ describe.each([
     expectNoExchangeOrSave();
   });
 
+  it('accepts the authenticated issuer at callback', async () => {
+    const state = await authorize();
+    const response = await app.inject({
+      url: `${path}/callback?code=authorization-code&state=${state}`, headers: headersFor('ADMIN')
+    });
+    expect(response.statusCode).toBe(200);
+    expect(BackupConfigLoader.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a different authenticated issuer before exchanging tokens', async () => {
+    const state = await authorize();
+    const headers = headersFor('ADMIN');
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      id: 'other-admin', username: 'other', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false
+    } as never);
+    const response = await app.inject({ url: `${path}/callback?code=authorization-code&state=${state}`, headers });
+    expect(response.statusCode).toBe(403);
+    expectNoExchangeOrSave();
+  });
+
+  it('rejects a state without a recorded issuer', async () => {
+    const state = oauthStateStore.issueOAuthState('', provider);
+    expect((await callback({ code: 'authorization-code', state })).statusCode).toBe(403);
+    expectNoExchangeOrSave();
+  });
+
   it('consumes a state before concurrent callbacks exchange tokens', async () => {
     const state = await authorize();
     const responses = await Promise.all([

@@ -30,6 +30,23 @@ describe('GET /system/deploy-readiness/internal', () => {
     checkDatabaseConnection.mockResolvedValue(undefined);
   });
 
+  it.each(['127.0.0.1', '::1', '::ffff:127.0.0.1'])('accepts loopback %s', async (remoteAddress) => {
+    const app = createApp();
+    apps.push(app);
+    const response = await app.inject({ url: '/system/deploy-readiness/internal', remoteAddress });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it.each(['192.168.1.12', '::ffff:192.168.1.12'])('hides readiness from %s even with forwarded loopback', async (remoteAddress) => {
+    const app = createApp();
+    apps.push(app);
+    const response = await app.inject({
+      url: '/system/deploy-readiness/internal', remoteAddress, headers: { 'x-forwarded-for': '127.0.0.1' }
+    });
+    expect(response.statusCode).toBe(404);
+    expect(checkDatabaseConnection).not.toHaveBeenCalled();
+  });
+
   it('rejects an enabled scheduler before initialization starts', async () => {
     const app = createApp(true);
     apps.push(app);

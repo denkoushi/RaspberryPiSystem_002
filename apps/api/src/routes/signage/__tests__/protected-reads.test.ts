@@ -30,6 +30,7 @@ describe.each([
   let app: ReturnType<typeof Fastify>;
   beforeEach(async () => {
     vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
+    vi.spyOn(prisma.visualizationDashboard, 'findUnique').mockResolvedValue({ id: 'dashboard' } as never);
     vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(viewer as never);
     app = Fastify();
     await app.register(async (routes) => {

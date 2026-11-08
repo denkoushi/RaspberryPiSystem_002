@@ -74,6 +74,8 @@ vi.mock('../../api/hooks', () => ({
     ],
   }),
 }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'ADMIN' } }) }));
+
 vi.mock('../../features/admin/data-boards/useBoardPreviewImage', () => ({
   useBoardPreviewImage: () => ({ imageUrl: null, error: null, isLoading: false }),
 }));

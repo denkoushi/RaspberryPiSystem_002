@@ -56,6 +56,15 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
   // - `registerWebRTCRoutes()` が prefix `/webrtc` でサブアプリを登録しているため、
   //   ここでは `/signaling` のみを定義する（`/webrtc/...` を重ねると二重になる）。
   app.log.info('Registering WebRTC signaling WebSocket route: /signaling');
+  // 応答されないまま期限が切れた呼び出しは、両方の端末に取り消しとして知らせる
+  callStore.setRingingExpiredHandler(call => {
+    for (const [to, from] of [[call.from, call.to], [call.to, call.from]] as const) {
+      const target = clientConnections.get(to);
+      if (target && target.readyState === WS_OPEN) {
+        target.send(JSON.stringify({ type: 'cancel', callId: call.callId, from, to, timestamp: Date.now() }));
+      }
+    }
+  });
   app.get('/signaling', { websocket: true }, async (connection, req) => {
     // 機密情報保護: 認証ヘッダーをログから除外
     const sanitizedHeaders = redactHeadersForLog(req.headers);
@@ -441,8 +450,7 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
       app.log.info({ clientId, connectionStartTime, disconnectTime, connectionDuration }, 'WebRTC signaling client disconnected');
 
       // このクライアントが参加しているコールを終了
-      const call = callStore.getCallByClientId(clientId);
-      if (call) {
+      for (const call of callStore.getCallsByClientId(clientId)) {
         const otherClientId = call.from === clientId ? call.to : call.from;
         const otherSocket = clientConnections.get(otherClientId);
 

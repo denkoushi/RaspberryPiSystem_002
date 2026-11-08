@@ -4,6 +4,7 @@ import compress from '@fastify/compress';
 import multipart from '@fastify/multipart';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import { websocketOptions } from './lib/websocket-options.js';
 import type { FastifyInstance } from 'fastify';
 import { env } from './config/env.js';
 import { registerErrorHandler } from './plugins/error-handler.js';
@@ -60,7 +61,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     threshold: 1024,
     encodings: ['gzip', 'br']
   });
-  await app.register(websocket);
+  await app.register(websocket, websocketOptions);
   await app.register(multipart, {
     limits: {
       fileSize: 50 * 1024 * 1024, // 50MB per file (PDF対応)

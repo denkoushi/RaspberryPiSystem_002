@@ -120,6 +120,16 @@ describe('client-telemetry.service', () => {
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'stored-monitor' })] });
   });
 
+  it.each(['kiosk_ui_error', 'kiosk_net_stats', 'sessaku-pieces'])('overwrites status log device identity for %s', async category => {
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1', name: 'real device' } as never);
+    vi.mocked(prisma.clientStatus.upsert).mockResolvedValue({ id: 'status-1' } as never);
+    await upsertClientStatus({ clientKey: 'key', requestId: 'req', metrics: {
+      clientId: 'monitor', hostname: 'pi', ipAddress: '192.0.2.1', cpuUsage: 0, memoryUsage: 0, diskUsage: 0,
+      logs: [{ level: 'INFO', message: 'ok', context: { category, clientDeviceId: 'spoof', clientDeviceName: 'spoof' } }]
+    } });
+    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ context: { category, clientDeviceId: 'device-1', clientDeviceName: 'real device' } })] });
+  });
+
   it('refuses a monitoring ID already registered to another device', async () => {
     vi.mocked(prisma.clientDevice.findFirst).mockResolvedValueOnce({ id: 'other-device' } as never);
     await expect(upsertClientStatus({ clientKey: 'key', requestId: 'req', metrics: {
@@ -129,20 +139,20 @@ describe('client-telemetry.service', () => {
     expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
-  it('touchClientHeartbeat は既存キーの lastSeen / location を更新する', async () => {
+  it('touchClientHeartbeat は既存キーの lastSeen だけを更新する', async () => {
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({
       id: 'device-1',
       name: 'kiosk-1',
       location: 'B',
     } as never);
 
-    const row = await touchClientHeartbeat({ clientKey: 'ck-1', location: 'B' });
+    const row = await touchClientHeartbeat({ clientKey: 'ck-1' });
 
     expect(row.location).toBe('B');
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { apiKey: 'ck-1' },
-        data: expect.objectContaining({ location: 'B' }),
+        data: { lastSeenAt: expect.any(Date) },
       })
     );
   });

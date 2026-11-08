@@ -158,7 +158,6 @@ export async function registerClientDeviceAdmin(params: {
     where: { apiKey: params.apiKey },
     update: {
       ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
-      location,
       lastSeenAt: now,
     },
     create: {
@@ -177,23 +176,18 @@ export async function registerClientDeviceAdmin(params: {
 }
 
 /**
- * 登録済み端末のみ: x-client-key 相当のキーで生存通知（lastSeen / location）。
+ * 登録済み端末のみ: x-client-key 相当のキーで生存通知（lastSeen）。
  * 未登録キーは 404。
  */
-export async function touchClientHeartbeat(params: { clientKey: string; location?: string | null }) {
+export async function touchClientHeartbeat(params: { clientKey: string }) {
   const now = new Date();
-  const location = normalizeOptionalLocation(params.location);
   try {
     const device = await prisma.clientDevice.update({
       where: { apiKey: params.clientKey },
       data: {
-        location,
         lastSeenAt: now,
       },
     });
-    if (location !== undefined) {
-      invalidateSiteDirectory();
-    }
     return device;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -233,6 +227,7 @@ export async function updateClientDevice(params: {
   id: string;
   statusClientId?: string;
   name?: string;
+  location?: string | null;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
@@ -242,10 +237,9 @@ export async function updateClientDevice(params: {
   canProxyOtherDevices?: boolean;
   isSignage?: boolean;
   signagePreviewTargetDeviceId?: string | null;
-  signagePreviewTargetApiKey?: string | null;
 }) {
   try {
-    const previewTarget = params.signagePreviewTargetDeviceId !== undefined || params.signagePreviewTargetApiKey !== undefined
+    const previewTarget = params.signagePreviewTargetDeviceId !== undefined
       ? await resolveSignagePreviewTargetInput(params)
       : {};
     const updated = await prisma.clientDevice.update({
@@ -255,6 +249,7 @@ export async function updateClientDevice(params: {
         ...previewTarget,
         ...(params.isSignage !== undefined ? { isSignage: params.isSignage } : {}),
         name: params.name ?? undefined,
+        ...(params.location !== undefined ? { location: params.location } : {}),
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
@@ -269,7 +264,7 @@ export async function updateClientDevice(params: {
       }
     });
     // 拠点・端末名（location 未設定時の端末スコープキー）の変更を、次のリクエストから反映する。
-    if (params.siteKey !== undefined || params.name !== undefined) {
+    if (params.siteKey !== undefined || params.name !== undefined || params.location !== undefined) {
       invalidateSiteDirectory();
     }
     return updated;
@@ -349,6 +344,11 @@ export async function upsertClientStatus(params: {
   const logEntries = (metrics.logs ?? [])
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
+  for (const entry of logEntries) {
+    if (isKioskLog(entry)) {
+      entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
+    }
+  }
   if (logEntries.length > 0) {
     await prisma.clientLog.createMany({
       data: logEntries.map((entry) => ({

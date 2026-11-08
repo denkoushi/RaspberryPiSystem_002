@@ -16,12 +16,12 @@ export const registerClientBodySchema = z.object({
   apiKey: z.string().min(8),
   statusClientId: statusClientIdSchema.optional(),
   name: z.string().min(1),
-  location: z.string().optional().nullable(),
+  location: z.string().max(100).optional().nullable(),
 });
 
 /** 端末 POST /clients/heartbeat 用（x-client-key 必須・本文は任意） */
 export const clientHeartbeatBodySchema = z.object({
-  location: z.string().optional().nullable(),
+  location: z.string().max(100).optional().nullable(),
 });
 
 export const metricSchema = z.object({
@@ -77,6 +77,7 @@ const clientDisplayNameSchema = z
 export const updateClientSchema = z.object({
   statusClientId: statusClientIdSchema.optional(),
   name: clientDisplayNameSchema.optional(),
+  location: z.string().max(100).optional().nullable(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
@@ -86,7 +87,7 @@ export const updateClientSchema = z.object({
   siteKey: z.string().trim().min(1).max(50).optional().nullable(),
   isSignage: z.boolean().optional(),
   signagePreviewTargetDeviceId: z.string().guid().nullable().optional(),
-  signagePreviewTargetApiKey: z.string().min(1).nullable().optional(),
+  signagePreviewTargetApiKey: z.never().optional(),
   canProxyOtherDevices: z.boolean().optional()
 });
 

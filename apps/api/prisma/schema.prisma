@@ -2392,6 +2392,7 @@ model ProductionScheduleAccessPasswordConfig {
   id                        String   @id @default(uuid())
   location                  String
   dueManagementPasswordHash String   @db.VarChar(255)
+  passwordChangedAt         DateTime?
   failedAttemptCount        Int       @default(0)
   failedAttemptWindowEndsAt DateTime?
   createdAt                 DateTime @default(now())

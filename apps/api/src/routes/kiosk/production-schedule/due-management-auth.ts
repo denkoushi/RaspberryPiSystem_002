@@ -5,7 +5,7 @@ import { signDueManagementToken } from '../../../lib/auth.js';
 
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-  verifyDueManagementAccessPassword
+  verifyDueManagementAccessPasswordForToken
 } from '../../../services/production-schedule/production-schedule-settings.service.js';
 import type { KioskRouteDeps } from './shared.js';
 
@@ -23,12 +23,14 @@ export async function registerProductionScheduleDueManagementAuthRoute(
   app.post('/kiosk/production-schedule/due-management/verify-access-password', { config: { rateLimit: dueManagementAccessPasswordRateLimit } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const body = dueManagementAccessPasswordVerifyBodySchema.parse(request.body);
-    const result = await verifyDueManagementAccessPassword({
+    const result = await verifyDueManagementAccessPasswordForToken({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
       clientDeviceId: clientDevice.id,
       ip: request.ip,
       password: body.password
     });
-    return result.success ? { ...result, token: signDueManagementToken(clientDevice.id) } : result;
+    return result.success
+      ? { success: true, token: signDueManagementToken(clientDevice.id, result.passwordChangedAt) }
+      : { success: false };
   });
 }

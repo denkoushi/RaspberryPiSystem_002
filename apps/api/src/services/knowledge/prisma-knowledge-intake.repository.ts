@@ -151,5 +151,12 @@ export class PrismaKnowledgeIntakeRepository implements KnowledgeIntakeRepositor
       return (decoded.sources ?? []).map((source, index) => ({ source, organized: decoded.organized![index]! }));
     });
   }
+  async readySource(sourceId: string) {
+    const row = await this.db.knowledgeIntake.findFirst({ where: { state: 'ready', sources: { array_contains: [{ id: sourceId }] } }, orderBy: { sequence: 'desc' } });
+    if (!row) return null;
+    const decoded = decode(row);
+    const index = (decoded.sources ?? []).findIndex(source => source.id === sourceId);
+    return index < 0 ? null : { source: decoded.sources![index]!, organized: decoded.organized![index]! };
+  }
   async publication() { return (await this.db.knowledgeTopic.findUnique({ where: { id: KNOWLEDGE_TOPIC.id } }))?.revision ?? null; }
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { ImageBackupTarget } from '../targets/image-backup.target';
 import { BackupService } from '../backup.service';
 import { MockStorageProvider } from '../storage/mock-storage.provider';
@@ -11,7 +11,12 @@ describe('ImageBackupTarget', () => {
   let backupService: BackupService;
   let testStorageDir: string;
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     storageProvider = new MockStorageProvider();
     backupService = new BackupService(storageProvider);
     

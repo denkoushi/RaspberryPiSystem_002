@@ -41,6 +41,22 @@ describe('client registration routes', () => {
   });
   afterAll(async () => { await app.close(); });
 
+  it('ignores heartbeat location and lets managers update it through PUT', async () => {
+    const heartbeat = await app.inject({ method: 'POST', url: '/clients/heartbeat', headers: { 'x-client-key': body.apiKey }, payload: { location: 'stale location' } });
+    expect(heartbeat.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith({ where: { apiKey: body.apiKey }, data: { lastSeenAt: expect.any(Date) } });
+    const updated = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { location: 'a'.repeat(100) } });
+    expect(updated.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ location: 'a'.repeat(100) }) }));
+  });
+
+  it.each(['/clients', '/clients/heartbeat', '/clients/device-1'])('rejects excessive location length at %s', async url => {
+    const response = await app.inject({ method: url.endsWith('device-1') ? 'PUT' : 'POST', url, headers: { 'x-client-key': body.apiKey }, payload: { ...body, location: 'a'.repeat(101) } });
+    expect(response.statusCode).toBe(400);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+    expect(prisma.clientDevice.upsert).not.toHaveBeenCalled();
+  });
+
   it('requires ADMIN for registration', async () => {
     const token = tokenForUser({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
     const response = await app.inject({ method: 'POST', url: '/clients', headers: { authorization: `Bearer ${token}` }, payload: body });
@@ -89,15 +105,10 @@ describe('client registration routes', () => {
     }) }));
   });
 
-  it('converts the legacy preview field and clears both fields', async () => {
-    const target = { id: '11111111-1111-4111-8111-111111111111', apiKey: 'fixture-only-signage-target', isSignage: true };
-    vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue(target as never);
-    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetApiKey: target.apiKey } });
-    expect(response.statusCode).toBe(200);
-    expect(prisma.clientDevice.findFirst).toHaveBeenCalledWith({ where: { OR: [{ apiKey: target.apiKey }, { id: target.apiKey }] }, select: { id: true, isSignage: true } });
-    expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.id,
-    }) }));
+  it('rejects the legacy preview field and clears both fields using an ID', async () => {
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetApiKey: 'legacy-key' } });
+    expect(response.statusCode).toBe(400);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
     const cleared = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetDeviceId: null } });
     expect(cleared.statusCode).toBe(200);
     expect(prisma.clientDevice.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({
@@ -172,6 +183,21 @@ describe('client registration routes', () => {
     expect(response.json().client.apiKey).toBe(body.apiKey);
   });
 
+  it('saves the initial location and preserves it on re-registration', async () => {
+    let stored: Record<string, unknown> | undefined;
+    vi.mocked(prisma.clientDevice.upsert).mockImplementation(async ({ create, update }) => {
+      stored = stored ? { ...stored, ...update } : { id: 'device-1', ...create };
+      return stored as never;
+    });
+    const initial = await app.inject({ method: 'POST', url: '/clients', payload: { ...body, location: 'initial location' } });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json().client.location).toBe('initial location');
+    const repeated = await app.inject({ method: 'POST', url: '/clients', payload: { ...body, location: 'changed location' } });
+    expect(repeated.statusCode).toBe(200);
+    expect(repeated.json().client.location).toBe('initial location');
+    expect(vi.mocked(prisma.clientDevice.upsert).mock.calls[1][0].update).not.toHaveProperty('location');
+  });
+
   it('stores statusClientId on create and on upsert update', async () => {
     const response = await app.inject({ method: 'POST', url: '/clients', payload: {
       ...body, statusClientId: 'raspi4-factory'
@@ -189,7 +215,7 @@ describe('client registration routes', () => {
     expect(response.statusCode).toBe(200);
     const args = vi.mocked(prisma.clientDevice.upsert).mock.calls[0][0];
     expect(args.create).toEqual({ ...body, location: undefined, siteKey: undefined, isSignage: false, lastSeenAt: expect.any(Date) });
-    expect(args.update).toEqual({ location: undefined, lastSeenAt: expect.any(Date) });
+    expect(args.update).toEqual({ lastSeenAt: expect.any(Date) });
   });
 
   it.each(['', ' ', ' raspi4', 'raspi4 ', 'a'.repeat(256), 'raspi\n4', 'raspi\u00004', 'raspi\u007f4', null, 123])(

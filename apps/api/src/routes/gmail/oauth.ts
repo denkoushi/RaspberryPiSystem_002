@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authorizeRoles } from '../../lib/auth.js';
+import { authenticate, authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
@@ -84,7 +84,11 @@ export function registerGmailOAuthRoutes(app: FastifyInstance): void {
   // CSRF保護はサーバーに保存したstateの照合で行う
   app.get('/gmail/oauth/callback', { config: { rateLimit: OAUTH_RATE_LIMIT } }, async (request, reply) => {
     const { state } = request.query as { state?: unknown };
-    consumeOAuthState(state, 'gmail');
+    const issuedState = consumeOAuthState(state, 'gmail');
+    if (request.headers.authorization) await authenticate(request, reply);
+    if (!issuedState.userId || (request.user && request.user.id !== issuedState.userId)) {
+      throw new ApiError(403, 'OAuth state issuer does not match the authenticated user');
+    }
     const query = gmailOauthCallbackQuerySchema.parse(request.query);
     
     if (query.error) {

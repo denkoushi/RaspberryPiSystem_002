@@ -18,6 +18,7 @@ export interface BackupResult {
   success: boolean;
   path?: string;
   sizeBytes?: number;
+  hash?: string;
   error?: string;
   timestamp: Date;
   modifiedAt?: Date;

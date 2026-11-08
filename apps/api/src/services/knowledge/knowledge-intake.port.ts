@@ -31,5 +31,6 @@ export interface KnowledgeIntakeRepositoryPort {
   finish(id: string, token: string, state: string, action: KnowledgeAction, result: IntakeResult, revision?: string): Promise<void>;
   fail(id: string, token: string, errorCode: string, deferred: boolean): Promise<void>;
   readySources(): Promise<{ source: KnowledgeSource; organized: OrganizedNote }[]>;
+  readySource(sourceId: string): Promise<{ source: KnowledgeSource; organized: OrganizedNote } | null>;
   publication(): Promise<string | null>;
 }

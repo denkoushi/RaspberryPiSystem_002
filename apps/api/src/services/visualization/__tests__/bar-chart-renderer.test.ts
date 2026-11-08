@@ -21,4 +21,16 @@ describe('BarChartRenderer', () => {
     expect(output.contentType).toBe('image/jpeg');
     expect(output.buffer.length).toBeGreaterThan(0);
   });
+
+  it('replaces invalid stored colors with defaults and accepts valid hex colors', async () => {
+    const renderer = new BarChartRenderer();
+    const data = { kind: 'series' as const, labels: ['A'], datasets: [{ label: 'A', values: [5] }] };
+    const config = { width: 800, height: 450 };
+    const defaults = await renderer.render(data, config);
+    const invalid = await renderer.render(data, { ...config, colors: { good: '"/><image href="http://example.com/', bad: 'red', neutral: 'url(http://example.com)' } });
+    expect(invalid.buffer).toEqual(defaults.buffer);
+    const valid = await renderer.render(data, { ...config, colors: { good: '#123456', bad: '#abcdef', neutral: '#112233' } });
+    expect(valid.contentType).toBe('image/jpeg');
+    expect(valid.buffer).not.toEqual(defaults.buffer);
+  });
 });

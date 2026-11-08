@@ -37,6 +37,16 @@ update-frequency: medium
 
 **解決状況**: ✅ **実装完了**（2025-11-25）
 
+**API の安全上の修正（2026-11-08）**:
+- local / Dropbox の保存は暗号化必須。鍵がない環境でも API とプロバイダーは起動し、書き込みだけ失敗する。定時実行の通知は既存経路を使う。
+- ローカル保存はファイル 0600、作成ディレクトリ 0700。成功履歴には保存前の SHA-256 と `summary.encrypted: true` を記録する。
+- 復元は共通の信頼判定を現在の DB に対して完了してから実行する。旧形式の可否は完了したバックアップ履歴で判断し、リクエストの `expectedHash` は使用しない。
+- 正本実装: `apps/api/src/services/backup/backup-restore-validation.ts`。Gmail は読み取り専用。DB migration は不要。
+- 判定は復元前バックアップより前に行う。暗号化したバックアップが一度でも成功した後は、暗号化されていない旧形式は画面から復元できない(旧ファイルは削除せず残す)。
+- この変更より前の定時・手動の DB バックアップは履歴に照合値が無いため、反映直後から画面では復元できない(決定済みの扱い。旧ファイルは残す)。
+- `scripts/server/backup.sh` は API 経由で保存できないとき、平文のローカル保存に切り替えず失敗する。
+- 手動の DB 復元(`scripts/server/restore.sh`)は、暗号化されたファイルを稼働中の API コンテナ内の `dist/scripts/decrypt-backup.js` で復号してから流す。単体での復号: `scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/decrypt-backup.js < 入力 > 出力`。
+
 **関連ファイル**: 
 - `scripts/server/backup.sh`
 - `scripts/server/restore.sh`

@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { registerHermesKnowledgeRoutes } from '../hermes-knowledge.js';
 
 const mocks = vi.hoisted(() => ({
-  receive: vi.fn(), choose: vi.fn(), readySources: vi.fn(), get: vi.fn(), kick: vi.fn(),
+  receive: vi.fn(), choose: vi.fn(), readySources: vi.fn(), readySource: vi.fn(), get: vi.fn(), kick: vi.fn(),
   readDisplay: vi.fn(), listPublished: vi.fn(), getPublished: vi.fn(), triageGet: vi.fn().mockResolvedValue([]),
   resolveReviewer: vi.fn(), listRanks: vi.fn(), replaceRanks: vi.fn(),
   listPendingApproval: vi.fn(), getForReview: vi.fn(), approve: vi.fn(), returnRevision: vi.fn(), reportError: vi.fn(),
@@ -18,7 +18,7 @@ vi.mock('../../services/clients/client-device-auth.service.js', () => ({
   findClientDeviceByApiKey: async (key: string) => key === 'valid-key' ? { id: 'device-one' } : null,
 }));
 vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
-  getKnowledgeRuntime: () => ({ fields: mocks.fields, subjects: { search: mocks.subjects, recent: mocks.recentSubjects }, resolvePoster: mocks.resolvePoster, intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, get: mocks.get },
+  getKnowledgeRuntime: () => ({ fields: mocks.fields, subjects: { search: mocks.subjects, recent: mocks.recentSubjects }, resolvePoster: mocks.resolvePoster, intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, readySource: mocks.readySource, get: mocks.get },
     assets: { readDisplay: mocks.readDisplay }, worker: { kick: mocks.kick, stop: async () => {} }, documents: { initialize: async () => {} },
     procedures: { listPublished: mocks.listPublished, getPublished: mocks.getPublished, searchTopics: mocks.searchTopics, listPendingApproval: mocks.listPendingApproval, getForReview: mocks.getForReview,
       approve: mocks.approve, returnRevision: mocks.returnRevision, reportError: mocks.reportError },
@@ -54,11 +54,13 @@ describe('Knowledge API authentication boundary', () => {
   });
   it('requires both a published source and its image membership', async () => {
     const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000'; const image = 'a'.repeat(64);
-    mocks.readySources.mockResolvedValue([{ source: { id, images: [{ id: image }] } }]); mocks.readDisplay.mockResolvedValue(Buffer.from('jpeg'));
+    mocks.readySource.mockImplementation(async (sourceId: string) => sourceId === id ? { source: { id, images: [{ id: image }] } } : null); mocks.readDisplay.mockResolvedValue(Buffer.from('jpeg'));
     const ok = await app.inject({ url: `/hermes-knowledge/sources/${id}/images/${image}`, headers: { 'x-client-key': 'valid-key' } });
     expect(ok.statusCode).toBe(200); expect(ok.headers['content-type']).toContain('image/jpeg');
     const hidden = await app.inject({ url: `/hermes-knowledge/sources/${id}/images/${'b'.repeat(64)}`, headers: { 'x-client-key': 'valid-key' } });
-    expect(hidden.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1); await app.close();
+    expect(hidden.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1);
+    const other = await app.inject({ url: `/hermes-knowledge/sources/223e4567-e89b-42d3-a456-426614174000/images/${image}`, headers: { 'x-client-key': 'valid-key' } });
+    expect(other.statusCode).toBe(404); expect(mocks.readySources).not.toHaveBeenCalled(); await app.close();
   });
   it('lists and reads only published procedures behind authentication', async () => {
     const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000';

@@ -26,6 +26,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
       return { count };
     })
   },
+  productionScheduleAccessPasswordConfig: { findUnique: vi.fn(async () => null) },
   $executeRaw: vi.fn(async () => 0)
 } }));
 import { createAuthSession, revokeUserSessions, rotateAuthSession, deleteExpiredAuthSessions } from '../auth-session.service.js';

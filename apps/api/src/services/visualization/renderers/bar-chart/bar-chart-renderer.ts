@@ -1,3 +1,4 @@
+import { hexColorSchema } from '../../../signage/signage-canvas.js';
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { RenderConfig, RenderOutput, SeriesVisualizationData, VisualizationData } from '../../visualization.types.js';
@@ -58,7 +59,7 @@ export class BarChartRenderer implements Renderer {
 
     const barHeight = Math.max(22, Math.floor((chartHeight - barGap * Math.max(0, values.length - 1)) / Math.max(values.length, 1)));
     const barColor =
-      dataset?.isGood === false ? (config.colors?.bad ?? t.colors.status.error) : (config.colors?.good ?? t.colors.status.info);
+      dataset?.isGood === false ? (hexColorSchema.safeParse(config.colors?.bad).data ?? t.colors.status.error) : (hexColorSchema.safeParse(config.colors?.good).data ?? t.colors.status.info);
 
     const barsSvg = values
       .map((value, index) => {

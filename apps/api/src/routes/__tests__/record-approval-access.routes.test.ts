@@ -10,11 +10,11 @@ import { registerKioskPartMeasurementSelfInspectionRecordApprovalAuthRoute } fro
 import type { User } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({ approve: vi.fn(), verify: vi.fn(), role: 'MANAGER' }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn(async () => ({
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn(async () => ({
   id: 'user', username: 'manager', role: mocks.role, status: 'ACTIVE', mfaEnabled: true
 })) } } }));
 vi.mock('../../services/production-schedule/production-schedule-settings.service.js', () => ({
-  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify, verifyDueManagementAccessPasswordForToken: mocks.verify
 }));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: async (key: string) => ({
   clientDevice: { id: key, name: 'terminal' }

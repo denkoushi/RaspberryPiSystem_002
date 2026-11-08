@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { isLoopbackAddress } from '../../lib/loopback-address.js';
 import { checkDatabaseConnection } from '../../services/system/db-health.service.js';
 
 export type InternalDeployReadinessScheduler = {
@@ -29,7 +30,10 @@ export function registerDeployReadinessRoute(app: FastifyInstance): void {
   app.get(
     '/system/deploy-readiness/internal',
     { config: { rateLimit: false } },
-    async (_request, reply) => {
+    async (request, reply) => {
+      if (!isLoopbackAddress(request.raw.socket.remoteAddress)) {
+        return reply.status(404).send();
+      }
       let database: 'ready' | 'error' = 'ready';
       try {
         await checkDatabaseConnection();
