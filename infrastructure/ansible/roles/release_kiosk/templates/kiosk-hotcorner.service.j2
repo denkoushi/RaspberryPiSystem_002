@@ -9,9 +9,9 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User={{ ansible_user }}
+User={{ kiosk_gui_user | default(ansible_user) }}
 Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
+Environment=XAUTHORITY={{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.Xauthority
 Environment=XDG_RUNTIME_DIR=/run/user/{{ release_kiosk_user_uid.stdout }}
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ release_kiosk_user_uid.stdout }}/bus
 ExecStart=/usr/bin/python3 /usr/local/bin/kiosk-hotcorner.py

@@ -1,15 +1,15 @@
 - name: Create ibus autostart directory
   ansible.builtin.file:
-    path: "/home/{{ ansible_user }}/.config/autostart"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart"
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: "0755"
   when: terminal_release_mode | default('full') == 'full'
 
 - name: Check ibus autostart directory before release
   ansible.builtin.stat:
-    path: "/home/{{ ansible_user }}/.config/autostart"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart"
   register: ibus_autostart_directory
   when: terminal_release_mode | default('full') == 'release-only'
 
@@ -24,9 +24,9 @@
 - name: Deploy ibus autostart desktop file
   ansible.builtin.template:
     src: "{{ playbook_dir }}/../templates/ibus-autostart.desktop.j2"
-    dest: "/home/{{ ansible_user }}/.config/autostart/ibus.desktop"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart/ibus.desktop"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: "0644"
 
 - name: Deploy ibus process owner reconcile script
@@ -39,9 +39,9 @@
 
 - name: Enable IBus process owner autostart in single-owner mode
   ansible.builtin.copy:
-    dest: "/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart/ibus-owner.desktop"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: "0644"
     content: |
       [Desktop Entry]
@@ -56,15 +56,15 @@
 
 - name: Disable IBus process owner autostart in legacy mode
   ansible.builtin.file:
-    path: "/home/{{ ansible_user }}/.config/autostart/ibus-owner.desktop"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart/ibus-owner.desktop"
     state: absent
   when: not (ibus_single_owner_enabled | bool)
 
 - name: Disable competing global IME autostart entries for kiosk user
   ansible.builtin.copy:
-    dest: "/home/{{ ansible_user }}/.config/autostart/{{ item }}"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart/{{ item }}"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: "0644"
     content: |
       [Desktop Entry]
@@ -87,7 +87,7 @@
   args:
     executable: /bin/bash
   become: yes
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   register: ibus_owner_result
   changed_when: "'changed:ibus-owner' in ibus_owner_result.stdout"
   when:
@@ -107,7 +107,7 @@
     test "${competing_count}" -eq 0
   args:
     executable: /bin/bash
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   changed_when: false
   when:
     - terminal_release_mode | default('full') == 'release-only'

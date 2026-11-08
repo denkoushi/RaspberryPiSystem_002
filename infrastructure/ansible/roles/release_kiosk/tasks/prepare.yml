@@ -55,6 +55,10 @@
   ansible.builtin.import_tasks: first_install_preflight.yml
   when: release_kiosk_first_install | bool
 
+- name: Prepare the optional GUI account before release staging
+  ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
     name: kiosk
@@ -160,6 +164,14 @@
   loop:
     - "{{ release_kiosk_run_dir }}"
     - "{{ release_kiosk_stage_dir }}"
+
+- name: Prepare the reversible GUI session transaction
+  ansible.builtin.import_tasks: prepare_gui_session.yml
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when: manage_kiosk_browser | default(false) | bool
 
 - name: Provision the empty Pi4 runtime
   ansible.builtin.import_tasks: first_install.yml
@@ -445,7 +457,7 @@
     mode: '0755'
   vars:
     kiosk_release_sha: "{{ release_sha }}"
-  when: release_kiosk_services | length > 0
+  when: release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool)
 
 - name: Stage the kiosk browser unit
   ansible.builtin.template:
@@ -454,7 +466,7 @@
     owner: root
     group: root
     mode: '0644'
-  when: release_kiosk_services | length > 0
+  when: release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool)
 
 - name: Stage NFC agent environment
   ansible.builtin.template:
@@ -513,7 +525,7 @@
         + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
-        ] if release_kiosk_services | length > 0 else [])
+        ] if release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool) else [])
         + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},

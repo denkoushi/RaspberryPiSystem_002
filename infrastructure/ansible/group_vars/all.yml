@@ -496,3 +496,11 @@ device_type_defaults:
       - signage-lite-watchdog.timer
       - signage-daily-reboot.timer
       - status-agent.timer
+
+# Optional kiosk desktop session; deployment and power operations keep ansible_user.
+kiosk_unprivileged_session_enabled: false
+kiosk_unprivileged_session_user: kiosk-display
+kiosk_unprivileged_session_groups: []
+kiosk_gui_user: "{{ kiosk_unprivileged_session_user if (kiosk_unprivileged_session_enabled | bool) else ansible_user }}"
+kiosk_gui_home: "{{ getent_passwd[kiosk_gui_user][4] if (kiosk_unprivileged_session_enabled | bool) else '/home/' ~ ansible_user }}"
+kiosk_gui_uid: "{{ getent_passwd[kiosk_gui_user][1] }}"

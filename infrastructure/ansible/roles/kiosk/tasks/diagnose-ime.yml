@@ -8,7 +8,7 @@
     IBUS_DESIRED_SIGNATURE: "{{ ibus_desired_daemon_flag_signature }}"
     IBUS_COMPETING_PATTERN: "{{ ibus_competing_daemon_pattern }}"
   become: yes
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   register: ime_diagnostic_result
   failed_when: false
   changed_when: false

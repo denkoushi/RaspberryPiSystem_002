@@ -15,9 +15,9 @@
         nickname: EM EV TLS CA - G3B
         fingerprint: 'E7:56:8F:E6:E1:23:31:F4:FD:7D:E6:1D:A4:C7:55:9D:0F:8E:B1:92:A2:18:D4:74:1A:3B:A7:51:84:33:38:38'
     distrusted_intermediates_directory: /usr/local/share/raspi-distrusted-intermediates
-    # Kiosk systemd and signage session owners use ansible_user; on Pi5 this
-    # is the operator desktop account. Resolve its home/GID rather than root's.
-    distrusted_nss_home: "{{ getent_passwd[ansible_user][4] }}"
+    # Only kiosk GUI sessions select the optional display account.
+    distrusted_nss_user: "{{ kiosk_gui_user | default(ansible_user) if 'kiosk' in group_names else ansible_user }}"
+    distrusted_nss_home: "{{ getent_passwd[distrusted_nss_user][4] }}"
     distrusted_nss_database: "sql:{{ distrusted_nss_home }}/.pki/nssdb"
   block:
     - name: Read the controller intermediate certificate fingerprints
@@ -48,6 +48,12 @@
       loop_control:
         label: "{{ item.item.nickname }}"
 
+    - name: Prepare the optional kiosk GUI account before its NSS database
+      ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
+      when:
+        - "'kiosk' in group_names"
+        - kiosk_unprivileged_session_enabled | default(false) | bool
+
     - name: Inspect the operating-system CA selection file
       ansible.builtin.stat:
         path: /etc/ca-certificates.conf
@@ -77,14 +83,14 @@
     - name: Resolve the Chromium session user's home and primary group
       ansible.builtin.getent:
         database: passwd
-        key: "{{ ansible_user }}"
+        key: "{{ distrusted_nss_user }}"
 
     - name: Ensure the Chromium user's NSS directories exist with user ownership
       ansible.builtin.file:
         path: "{{ distrusted_nss_home }}/{{ item }}"
         state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ getent_passwd[ansible_user][2] }}"
+        owner: "{{ distrusted_nss_user }}"
+        group: "{{ getent_passwd[distrusted_nss_user][2] }}"
         mode: '0700'
       loop:
         - .pki
@@ -94,7 +100,7 @@
       ansible.builtin.command:
         argv: [certutil, -N, -d, "{{ distrusted_nss_database }}", --empty-password]
         creates: "{{ distrusted_nss_home }}/.pki/nssdb/cert9.db"
-      become_user: "{{ ansible_user }}"
+      become_user: "{{ distrusted_nss_user }}"
 
     - name: Ensure the distrust certificate source directory exists outside the OS trust anchors
       ansible.builtin.file:
@@ -118,7 +124,7 @@
     - name: List existing NSS certificates and trust attributes
       ansible.builtin.command:
         argv: [certutil, -L, -d, "{{ distrusted_nss_database }}"]
-      become_user: "{{ ansible_user }}"
+      become_user: "{{ distrusted_nss_user }}"
       changed_when: false
       register: distrusted_nss_listing
       when: not ansible_check_mode
@@ -137,7 +143,7 @@
           - p,p,p
           - -i
           - "{{ distrusted_intermediates_directory }}/{{ item.filename }}"
-      become_user: "{{ ansible_user }}"
+      become_user: "{{ distrusted_nss_user }}"
       loop: "{{ distrusted_intermediates }}"
       loop_control:
         label: "{{ item.nickname }}"

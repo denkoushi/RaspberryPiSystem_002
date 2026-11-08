@@ -1,0 +1,38 @@
+---
+- name: Capture the original GUI autologin drop-in metadata
+  ansible.builtin.stat:
+    path: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+  register: release_kiosk_gui_autologin_original
+
+- name: Select browser files for an optional GUI account release without agents
+  ansible.builtin.set_fact:
+    release_kiosk_gui_session_files_required: >-
+      {{ (kiosk_unprivileged_session_enabled | default(false) | bool)
+         or release_kiosk_gui_autologin_original.stat.exists }}
+
+- name: Back up the original GUI autologin drop-in
+  ansible.builtin.copy:
+    src: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+    dest: '{{ release_kiosk_stage_dir }}/gui-autologin.original'
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+  when: release_kiosk_gui_autologin_original.stat.exists
+
+- name: Capture the previous browser session owner
+  ansible.builtin.command:
+    argv: [systemctl, show, kiosk-browser.service, --property=User, --value]
+  register: release_kiosk_previous_gui_owner
+  changed_when: false
+  when: (kiosk_unprivileged_session_enabled | default(false) | bool) or release_kiosk_gui_autologin_original.stat.exists
+
+- name: Resolve the previous GUI session UID for rollback
+  ansible.builtin.command:
+    argv: [id, -u, '{{ release_kiosk_previous_gui_owner.stdout | default(ansible_user, true) }}']
+  register: release_kiosk_previous_gui_uid
+  changed_when: false
+  when: (kiosk_unprivileged_session_enabled | default(false) | bool) or release_kiosk_gui_autologin_original.stat.exists
+
+- name: Prepare the optional GUI user's desktop files
+  ansible.builtin.import_tasks: '{{ playbook_dir }}/../tasks/kiosk-gui-session-config.yml'

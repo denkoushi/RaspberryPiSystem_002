@@ -1,0 +1,46 @@
+---
+- name: Ensure the LightDM drop-in directory exists for the optional GUI session
+  ansible.builtin.file:
+    path: /etc/lightdm/lightdm.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  when: kiosk_unprivileged_session_enabled | default(false) | bool
+
+- name: Mark the GUI autologin switch boundary
+  ansible.builtin.set_fact:
+    kiosk_gui_autologin_attempted: true
+
+- name: Select the dedicated GUI autologin account
+  ansible.builtin.template:
+    src: '{{ playbook_dir }}/../templates/kiosk-gui-session.conf.j2'
+    dest: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+    owner: root
+    group: root
+    mode: '0644'
+  register: kiosk_gui_autologin_install
+  when: kiosk_unprivileged_session_enabled | default(false) | bool
+
+- name: Restore OS autologin when the optional GUI session is disabled
+  ansible.builtin.file:
+    path: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+    state: absent
+  register: kiosk_gui_autologin_remove
+  when: not (kiosk_unprivileged_session_enabled | default(false) | bool)
+
+- name: Stop the browser before restarting its GUI session
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: stopped
+  when: kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)
+
+- name: Restart LightDM after changing the GUI autologin account
+  ansible.builtin.systemd:
+    name: lightdm.service
+    state: restarted
+  when: kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)
+
+- name: Wait for the selected GUI session after changing autologin
+  ansible.builtin.import_tasks: kiosk-gui-session-wait.yml
+  when: (kiosk_unprivileged_session_enabled | default(false) | bool) or (kiosk_gui_autologin_remove.changed | default(false))
