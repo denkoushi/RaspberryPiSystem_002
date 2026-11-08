@@ -9,8 +9,14 @@ import { prisma } from '../../../lib/prisma.js';
 import { registerClientCoreRoutes } from '../core.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
+  prisma: { user: { findUnique: vi.fn() }, clientDevice: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
 }));
+
+function tokenForUser(user: User): string {
+  const activeUser = { ...user, status: 'ACTIVE' as const, mfaEnabled: true };
+  vi.mocked(prisma.user.findUnique).mockResolvedValue(activeUser);
+  return signAccessToken(activeUser);
+}
 
 const body = { apiKey: 'test-client-key', name: 'factory-pi' };
 
@@ -20,7 +26,7 @@ describe('client registration routes', () => {
     reply.code(error instanceof ZodError ? 400 : error instanceof ApiError ? error.statusCode : 500).send({ error: 'Invalid request' });
   });
   app.addHook('onRequest', async request => {
-    request.headers.authorization ??= `Bearer ${signAccessToken({ id: 'admin', username: 'admin', role: 'ADMIN' } as User)}`;
+    request.headers.authorization ??= `Bearer ${tokenForUser({ id: 'admin', username: 'admin', role: 'ADMIN' } as User)}`;
   });
   void app.register(registerClientCoreRoutes);
   beforeEach(() => {
@@ -32,7 +38,7 @@ describe('client registration routes', () => {
   afterAll(async () => { await app.close(); });
 
   it('requires ADMIN for registration', async () => {
-    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
     const response = await app.inject({ method: 'POST', url: '/clients', headers: { authorization: `Bearer ${token}` }, payload: body });
     expect(response.statusCode).toBe(403);
     expect(prisma.clientDevice.upsert).not.toHaveBeenCalled();
@@ -40,7 +46,7 @@ describe('client registration routes', () => {
 
   it.each([false, true])('requires ADMIN to change canProxyOtherDevices (current %s)', async current => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: current } as never);
-    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { canProxyOtherDevices: !current } });
     expect(response.statusCode).toBe(403);
     expect(prisma.clientDevice.update).not.toHaveBeenCalled();
@@ -50,14 +56,14 @@ describe('client registration routes', () => {
 
   it.each([false, true])('allows MANAGER to save an unchanged canProxyOtherDevices value (%s)', async current => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: current } as never);
-    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { name: 'updated', canProxyOtherDevices: current } });
     expect(response.statusCode).toBe(200);
     expect(prisma.clientDevice.update).toHaveBeenCalled();
   });
 
   it('allows MANAGER to update ordinary fields', async () => {
-    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { name: 'updated' } });
     expect(response.statusCode).toBe(200);
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: 'updated' }) }));
