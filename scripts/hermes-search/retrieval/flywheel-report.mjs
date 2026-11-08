@@ -66,9 +66,11 @@ function formatPlannerVersions(versions) {
 export function summarizeNight(rows, { labels = null } = {}) {
   const plannerVersions = plannerVersionCounts(rows);
   const filterRows = rows.filter((row) => row.kind === 'filter');
-  rows = rows.filter((row) => row.kind !== 'filter');
+  const syntheticFollowUp = summarizeSyntheticFollowUps(rows);
+  rows = rows.filter((row) => !['filter', 'follow_up'].includes(row.kind));
   const summary = {
     rows: rows.length,
+    syntheticFollowUp,
     plannerVersions,
     generated: 0,
     kept: 0,
@@ -161,6 +163,33 @@ function formatSyntheticFilters(summary) {
   ];
 }
 
+const followUpBucket = () => ({ questions: 0, ok: 0, planMismatch: 0, shownMismatch: 0, countMismatch: 0, unsupported: 0 });
+
+export function summarizeSyntheticFollowUps(rows) {
+  const summary = { ...followUpBucket(), byAction: {} };
+  for (const row of rows) {
+    if (row.source !== 'synthetic' || row.kind !== 'follow_up') continue;
+    const check = row.followUpCheck;
+    const outcome = check?.supported !== true ? 'unsupported' : check.ok === true ? 'ok'
+      : check.reason === 'count_mismatch' ? 'countMismatch'
+        : check.planOk === false ? 'planMismatch' : 'shownMismatch';
+    const action = row.action ?? 'unknown';
+    summary.byAction[action] ??= followUpBucket();
+    for (const bucket of [summary, summary.byAction[action]]) {
+      bucket.questions += 1;
+      bucket[outcome] += 1;
+    }
+  }
+  return summary;
+}
+
+function formatSyntheticFollowUps(summary) {
+  if (!summary?.questions) return [];
+  const text = bucket => `questions ${bucket.questions}, ok ${bucket.ok}, plan mismatch ${bucket.planMismatch}, shown mismatch ${bucket.shownMismatch}, count mismatch ${bucket.countMismatch}, unsupported ${bucket.unsupported}`;
+  return [`  synthetic follow-up: ${text(summary)}`,
+    ...Object.entries(summary.byAction).map(([action, bucket]) => `    ${action}: ${text(bucket)}`)];
+}
+
 function counts(record) {
   return Object.entries(record).sort((left, right) => right[1] - left[1]).map(([key, value]) => `${key} ${value}`).join(', ');
 }
@@ -189,7 +218,7 @@ function countReal(bucket, row) {
 export function summarizeReal(rows) {
   const summary = { regression: { replayed: 0, ok: 0, failed: 0 }, plannerVersions: plannerVersionCounts(rows), ...realBucket(), dayOutcomes: {}, filter: { questions: 0, supported: 0, ok: 0, mismatch: 0 }, followUp: { check: { supported: 0, ok: 0, scope: 0, missed: 0, wrong: 0, unsupported: {} }, ...realBucket(), filterMismatch: 0, byAction: {}, countAnswers: 0 } };
   for (const row of rows) {
-    if (!['real', 'regression'].includes(row?.source)) continue;
+    if (row?.kind === 'follow_up' || !['real', 'regression'].includes(row?.source)) continue;
     if (row.source === 'regression') {
       summary.regression.replayed += 1;
       summary.regression[regressionOk(row) === true ? 'ok' : 'failed'] += 1;
@@ -264,6 +293,7 @@ export function formatReport(night, summary) {
   if (live.scored === 0) {
     lines.push(`  live: not run for ${live.notRun} kept questions`);
     lines.push(...formatSyntheticFilters(summary.filter));
+    lines.push(...formatSyntheticFollowUps(summary.syntheticFollowUp));
     return lines.join('\n') + formatPlannerVersions(summary.plannerVersions);
   }
   lines.push(
@@ -282,6 +312,7 @@ export function formatReport(night, summary) {
   const reasons = Object.entries(summary.unavailableReasons ?? {}).sort((left, right) => right[1] - left[1]);
   if (reasons.length) lines.push(`  unavailable reasons: ${reasons.map(([reason, count]) => `${reason}=${count}`).join(', ')}`);
   lines.push(...formatSyntheticFilters(summary.filter));
+  lines.push(...formatSyntheticFollowUps(summary.syntheticFollowUp));
   return lines.join('\n') + formatPlannerVersions(summary.plannerVersions);
 }
 

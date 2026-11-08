@@ -17,6 +17,8 @@ import { enrichmentSettings, withinWindow } from './enrichment-dgx.mjs';
 import { createDgxGrader, createJevPairGrader, filterAndLabel } from './flywheel-filter.mjs';
 import { checkFilterAnswer, checkFollowUpAnswer, filterOutcome, followUpLoss, isFilterOnlyPlan } from './flywheel-filter-check.mjs';
 import { loadCauseById } from './worker.mjs';
+import { checkSyntheticFollowUp } from './flywheel-follow-up-check.mjs';
+import { followUpId, sampleFollowUpQuestions } from './flywheel-follow-up-questions.mjs';
 import { sampleFilterQuestions } from './flywheel-filter-questions.mjs';
 import { createDgxChat, generateForPairs, guardChat, probeChat } from './flywheel-generate.mjs';
 import { createLiveScorer, lossStage, relevantIds } from './flywheel-live.mjs';
@@ -44,6 +46,8 @@ export const DEFAULT_REGRESSION_BUDGET = 10;
 export const REGRESSION_BUDGET_CAP = 30;
 export const DEFAULT_FILTER_BUDGET = 10;
 export const FILTER_BUDGET_CAP = 30;
+export const DEFAULT_FOLLOW_UP_BUDGET = 10;
+export const FOLLOW_UP_BUDGET_CAP = 30;
 export const REAL_LABEL_DEPTH = 5;
 
 export function flywheelSettings(env = process.env) {
@@ -52,6 +56,7 @@ export function flywheelSettings(env = process.env) {
   const realBudget = Number(env.HERMES_FLYWHEEL_REAL_BUDGET ?? NaN);
   const regressionBudget = Number(env.HERMES_FLYWHEEL_REGRESSION_BUDGET ?? NaN);
   const filterBudget = Number(env.HERMES_FLYWHEEL_FILTER_BUDGET ?? NaN);
+  const followUpBudget = Number(env.HERMES_FLYWHEEL_FOLLOW_UP_BUDGET ?? NaN);
   const learnBudget = Number(env.HERMES_FLYWHEEL_LEARN_BUDGET ?? NaN);
   const plannerBudget = Number(env.HERMES_FLYWHEEL_PLANNER_BUDGET ?? NaN);
   const inference = enrichmentSettings(env);
@@ -62,6 +67,7 @@ export function flywheelSettings(env = process.env) {
     realBudget: Number.isInteger(realBudget) && realBudget >= 0 && env.HERMES_FLYWHEEL_REAL_BUDGET?.trim() !== '' ? Math.min(realBudget, REAL_BUDGET_CAP) : DEFAULT_REAL_BUDGET,
     regressionBudget: Number.isInteger(regressionBudget) && regressionBudget >= 0 && env.HERMES_FLYWHEEL_REGRESSION_BUDGET?.trim() !== '' ? Math.min(regressionBudget, REGRESSION_BUDGET_CAP) : DEFAULT_REGRESSION_BUDGET,
     filterBudget: Number.isInteger(filterBudget) && filterBudget >= 0 && env.HERMES_FLYWHEEL_FILTER_BUDGET?.trim() !== '' ? Math.min(filterBudget, FILTER_BUDGET_CAP) : DEFAULT_FILTER_BUDGET,
+    followUpBudget: Number.isInteger(followUpBudget) && followUpBudget >= 0 && env.HERMES_FLYWHEEL_FOLLOW_UP_BUDGET?.trim() !== '' ? Math.min(followUpBudget, FOLLOW_UP_BUDGET_CAP) : DEFAULT_FOLLOW_UP_BUDGET,
     learnBudget: Number.isInteger(learnBudget) && learnBudget >= 0 && env.HERMES_FLYWHEEL_LEARN_BUDGET?.trim() !== '' ? Math.min(learnBudget, LEARN_BUDGET_CAP) : DEFAULT_LEARN_BUDGET,
     plannerBudget: Number.isInteger(plannerBudget) && plannerBudget >= 0 && env.HERMES_FLYWHEEL_PLANNER_BUDGET?.trim() !== '' ? Math.min(plannerBudget, PLANNER_BUDGET_CAP) : DEFAULT_PLANNER_BUDGET,
     window: env.HERMES_RETRIEVAL_ENRICHMENT_WINDOW || '',
@@ -116,7 +122,7 @@ export async function usedAnchors(dir) {
     return used;
   }
   for (const name of names.filter((item) => /^questions-\d{4}-\d{2}-\d{2}\.jsonl$/u.test(item))) {
-    for (const row of await readLines(path.join(dir, name))) if (row?.kind !== 'filter' && row?.a) used.add(row.a);
+    for (const row of await readLines(path.join(dir, name))) if (!['filter', 'follow_up'].includes(row?.kind) && row?.a) used.add(row.a);
   }
   return used;
 }
@@ -153,7 +159,7 @@ function shownRelevantWithLabels(row, labels) {
 function unlabelledShownPairs(rows, labels) {
   const groups = new Map();
   for (const row of rows) {
-    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
+    if (['filter', 'follow_up'].includes(row.kind) || row.kept !== true || !row.question || row.live?.loss !== 'other_shown') continue;
     const anchor = bareId(row.a);
     const relevant = new Set(relevantIds(row));
     for (const id of (row.live.shown ?? []).map(bareId)) {
@@ -229,7 +235,7 @@ export async function runFlywheelNight({
   status.night = nightOf(now());
   await mkdir(settings.dir, { recursive: true, mode: 0o700 });
   const filePath = questionsPath(settings.dir, status.night);
-  const done = (await readLines(filePath)).filter((row) => row.kind !== 'filter').length;
+  const done = (await readLines(filePath)).filter((row) => !['filter', 'follow_up'].includes(row.kind)).length;
   const budget = settings.maxQuestions - done;
 
   const catalog = loadNonconformityCatalog();
@@ -350,7 +356,7 @@ export async function runFlywheelNight({
   const rows = await readLines(filePath);
   let scored = false;
   for (const row of rows) {
-    if (row.kind === 'filter' || row.kept !== true || !row.question || row.live) continue;
+    if (['filter', 'follow_up'].includes(row.kind) || row.kept !== true || !row.question || row.live) continue;
     if (!withinWindow(settings.window, now())) break;
     score ??= await makeLive({ records, catalog, evaluate });
     row.live = { ...await score(row) };
@@ -401,7 +407,7 @@ export async function runFlywheelNight({
   }
   let relabelled = false;
   for (const row of rows) {
-    if (row.kind === 'filter' || row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
+    if (['filter', 'follow_up'].includes(row.kind) || row.kept !== true || row.live?.loss !== 'other_shown' || !shownRelevantWithLabels(row, labels)) continue;
     row.live.loss = null;
     row.live.labelled = true;
     relabelled = true;
@@ -412,7 +418,7 @@ export async function runFlywheelNight({
     await rename(temporary, filePath);
   }
   for (const row of rows) {
-    if (row.kind === 'filter' || row.kept !== true) continue;
+    if (['filter', 'follow_up'].includes(row.kind) || row.kept !== true) continue;
     if (!row.live) status.pendingLive += 1;
     else if (row.live.loss == null) status.shown += 1;
     else status.lossStages[row.live.loss] = (status.lossStages[row.live.loss] ?? 0) + 1;
@@ -437,9 +443,46 @@ export async function runFlywheelNight({
     const row = { at: now().toISOString(), source: 'synthetic', kind: 'filter', ...question,
       relevant: [], labels: {}, live, filterCheck };
     await appendFile(filePath, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    rows.push(row);
     filterRemaining -= 1;
     status.filter.generated += 1;
     status.filter[filterOutcome(row)] += 1;
+  }
+  const followUpDone = rows.filter(row => row.kind === 'follow_up');
+  const followUpIds = new Set(followUpDone.map(row => row.id));
+  const followUpTexts = new Set(followUpDone.map(row => row.question));
+  const followUpBudget = settings.followUpBudget ?? DEFAULT_FOLLOW_UP_BUDGET;
+  const firstTurns = rows.filter(row => row.kind === 'filter');
+  const followUpQuestions = sampleFollowUpQuestions({ firstTurns, records: corpus, catalog, causeById, count: followUpBudget,
+    random: createRandom(seed ?? Number(status.night.replaceAll('-', ''))), now: now() });
+  // Failed first turns are visible diagnostics, never replayed as a valid conversation.
+  const failedFirstTurns = firstTurns.filter(row => row.filterCheck?.ok !== true).map(row => ({
+    id: followUpId(now(), row.id, 'count', 'first_turn_mismatch'), question: `${row.question}\n何件ある？`, action: 'count',
+    firstTurnId: row.id, previousPlan: row.live?.plan ?? null, previousShown: row.live?.shown ?? [],
+    expected: {}, seed: { template: 'first_turn_mismatch', firstTurnMismatch: true },
+  }));
+  // Diagnostic rows for failed first turns run no live question, so they never use the budget.
+  let followUpRemaining = Math.max(0, followUpBudget - followUpDone.filter(row => row.live).length);
+  for (const question of [...failedFirstTurns, ...followUpQuestions]) {
+    if (followUpRemaining <= 0 || !withinWindow(settings.window, now()) || guarded.tripped()) break;
+    if (followUpIds.has(question.id) || followUpTexts.has(question.question)) continue;
+    let live = null;
+    if (!question.seed.firstTurnMismatch) {
+      score ??= await makeLive({ records, catalog, evaluate });
+      live = { ...await score({ ...question, kind: 'follow_up', relevant: [] }) };
+      live.reason ??= null;
+    }
+    const followUpCheck = checkSyntheticFollowUp({ question, live, records: corpus, catalog, causeById });
+    if (live) {
+      live.loss = followUpCheck.ok === true ? null : followUpCheck.reason;
+      await logLive(question.id, live);
+    }
+    const row = { at: now().toISOString(), source: 'synthetic', kind: 'follow_up', ...question,
+      relevant: [], labels: {}, live, followUpCheck };
+    await appendFile(filePath, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+    followUpIds.add(question.id);
+    followUpTexts.add(question.question);
+    if (live) followUpRemaining -= 1;
   }
   const realFile = realPath(settings.dir, status.night);
   const nightRealRows = await readLines(realFile);
@@ -591,7 +634,7 @@ export async function runFlywheelNight({
     else if (active !== candidate && (settings.plannerBudget ?? DEFAULT_PLANNER_BUDGET) > 0) {
       const followUp = (row) => row.live.followUpAction != null || Boolean(row.previousPlan);
       const selected = [...await readLines(filePath), ...await readLines(realFile)]
-        .filter((row) => row.question && Array.isArray(row.live?.shown))
+        .filter((row) => row.kind !== 'follow_up' && row.question && Array.isArray(row.live?.shown))
         .sort((left, right) => Number(followUp(right)) - Number(followUp(left)))
         .slice(0, settings.plannerBudget ?? DEFAULT_PLANNER_BUDGET);
       if (selected.length) {
