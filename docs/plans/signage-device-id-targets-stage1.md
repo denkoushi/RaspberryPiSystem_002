@@ -25,7 +25,7 @@ The admin hub, schedule editor, data board schedule fixtures, and kiosk preview 
 
 The migration adds `isSignage`, `signagePreviewTargetDeviceId`, and `targetClientDeviceIds`. It backfills the flag from the historical credential naming convention, maps schedule keys to device IDs while dropping missing devices (disabling schedules left with no target), and maps saved preview targets to device IDs. Existing preview rows containing IDs are preserved too.
 
-Schedule writes prefer explicitly supplied IDs, validate every requested device, and save both IDs and current credentials in a single Prisma write. Cached key inputs are resolved before saving. Updates without target input preserve the stored IDs, drop terminals that no longer exist, and refresh the legacy array; they never widen a targeted schedule to all terminals. Invalid legacy input is rejected rather than converted to a global assignment.
+Schedule writes prefer explicitly supplied IDs, validate every requested device, and save both IDs and current credentials in a single Prisma write. Cached key inputs are resolved before saving. Updates without target input leave both target arrays untouched, so a concurrent target change is never overwritten. Invalid legacy input is rejected rather than converted to a global assignment.
 
 Kiosk and ordinary client edit routes validate preview targets using `isSignage`. Clearing a target clears both columns. Renderer filenames and delivery map keys derive from IDs. The image route resolves terminal credentials at request time. Management image previews pass a device ID and require ADMIN or MANAGER authorization; they do not count as terminal delivery. Existing overview credential fields remain for stage-one compatibility, while the web uses its new `clientDeviceId` field.
 
@@ -73,6 +73,6 @@ Final local verification (no database; PostgreSQL integration tests not executed
 - Web Vitest for kiosk components, API domains, signage features and admin pages: 72 files, 464 tests passed.
 - API and web TypeScript checks: exit 0.
 
-Review follow-ups applied: schedules whose stored targets all point at removed terminals are disabled by the migration instead of becoming global; updates without target input keep the stored IDs, drop removed terminals, and never turn a targeted schedule into a global one.
+Review follow-ups applied: schedules whose stored targets all point at removed terminals are disabled by the migration instead of becoming global; updates without target input leave targets untouched; the kiosk preview's legacy column stores the device ID, as older versions already did.
 
 Deployment notes: deploy the API before the web. Renderer image paths change, so a terminal may show the empty-content message until the next render cycle. If the application is rolled back after the migration, schedule edits made on the old version update only the legacy array; re-run the backfill statements before moving forward again.

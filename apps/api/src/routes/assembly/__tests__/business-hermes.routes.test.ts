@@ -49,7 +49,7 @@ function createApp() {
 describe('business Hermes routes', () => {
   beforeEach(() => {
     vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
-      id: where.id, username: where.id, role: where.id === 'admin' ? 'ADMIN' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
+      id: where.id, username: where.id, role: where.id === 'admin' ? 'ADMIN' : where.id === 'viewer' ? 'VIEWER' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
     }) as never);
   });
   afterEach(() => vi.restoreAllMocks());
@@ -161,6 +161,30 @@ describe('business Hermes routes', () => {
     expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: feedbackBody })).statusCode).toBe(409);
 
     expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel` })).statusCode).toBe(401);
+  });
+
+  it('lets VIEWER read consultations but not change them', async () => {
+    const fixture = createApp();
+    const consultationService = {
+      list: vi.fn().mockResolvedValue([]), create: vi.fn(), get: vi.fn(), update: vi.fn(), chat: vi.fn(), cancel: vi.fn(), feedback: vi.fn()
+    };
+    await registerBusinessHermesRoutes(fixture.app, {
+      requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service,
+      chatService: fixture.chatService,
+      consultationService: consultationService as never
+    });
+    const token = jwt.sign({ sub: 'viewer', username: 'viewer', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
+    const headers = { authorization: `Bearer ${token}` };
+    const id = '00000000-0000-4000-8000-000000000001';
+    expect((await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/consultations', headers })).statusCode).toBe(200);
+    expect((await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/consultations', headers, payload: { title: '相談' } })).statusCode).toBe(403);
+    expect((await fixture.app.inject({ method: 'PATCH', url: `/assembly/business-hermes/consultations/${id}`, headers, payload: { relatedIdentifiers: ['PN-1'] } })).statusCode).toBe(403);
+    expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${id}/cancel`, headers })).statusCode).toBe(403);
+    expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${id}/feedback`, headers, payload: { messageId: id, verdict: 'helpful' } })).statusCode).toBe(403);
+    expect((await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers, payload: { messages: [{ role: 'user', content: '品番: PART-1' }] } })).statusCode).toBe(403);
+    for (const fn of [consultationService.create, consultationService.update, consultationService.cancel, consultationService.feedback, consultationService.chat, fixture.chat]) expect(fn).not.toHaveBeenCalled();
+    await fixture.app.close();
   });
 
   it('routes consultation chat to the case service and does not inject client assistant history', async () => {

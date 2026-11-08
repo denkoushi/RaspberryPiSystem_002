@@ -910,10 +910,7 @@ export class SignageService {
     };
   }
 
-  private async resolveScheduleTargets(
-    input: Pick<SignageScheduleInput, 'targetClientDeviceIds' | 'targetClientKeys'>,
-    dropUnknown = false,
-  ): Promise<{ targetClientDeviceIds: string[]; targetClientKeys: string[] } | Record<string, never>> {
+  private async resolveScheduleTargets(input: Pick<SignageScheduleInput, 'targetClientDeviceIds' | 'targetClientKeys'>) {
     const ids = input.targetClientDeviceIds;
     const requested = [...new Set(ids ?? input.targetClientKeys ?? [])];
     const devices = requested.length === 0 ? [] : await this.db.clientDevice.findMany({
@@ -922,9 +919,7 @@ export class SignageService {
     });
     const byTarget = new Map(devices.map((device) => [ids !== undefined ? device.id : device.apiKey, device]));
     const known = requested.filter((target) => byTarget.has(target));
-    if (known.length < requested.length && !dropUnknown) throw new ApiError(400, '登録済み端末のみ選択できます', undefined, 'INVALID_SIGNAGE_TARGET');
-    // Never widen a targeted schedule to every terminal.
-    if (known.length === 0 && requested.length > 0) return {};
+    if (known.length < requested.length) throw new ApiError(400, '登録済み端末のみ選択できます', undefined, 'INVALID_SIGNAGE_TARGET');
     return {
       targetClientDeviceIds: known.map((target) => byTarget.get(target)!.id),
       targetClientKeys: known.map((target) => byTarget.get(target)!.apiKey),
@@ -983,8 +978,9 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
+    // Omitted targets stay untouched so a concurrent target change is never overwritten.
     const targets = input.targetClientDeviceIds === undefined && input.targetClientKeys === undefined
-      ? await this.resolveScheduleTargets(await this.db.signageSchedule.findUniqueOrThrow({ where: { id }, select: { targetClientDeviceIds: true } }), true)
+      ? {}
       : await this.resolveScheduleTargets(input);
     const schedule = await this.db.signageSchedule.update({
       where: { id },

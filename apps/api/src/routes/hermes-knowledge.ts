@@ -11,9 +11,9 @@ import { intakeResponse } from '../services/knowledge/knowledge-intake.service.j
 import { approveRequestSchema, errorReportRequestSchema, positionRanksRequestSchema, returnRequestSchema, reviewRequestSchema } from '../services/knowledge/procedure-review-input.js';
 import { procedureImageIds } from '../services/knowledge/procedure-content.js';
 
-export async function knowledgeActor(request: FastifyRequest, reply: FastifyReply): Promise<string> {
+async function resolveKnowledgeActor(request: FastifyRequest, reply: FastifyReply, roles: Array<'ADMIN' | 'MANAGER' | 'VIEWER'>): Promise<string> {
   if (request.headers.authorization) {
-    await authorizeRoles('ADMIN', 'MANAGER', 'VIEWER')(request, reply);
+    await authorizeRoles(...roles)(request, reply);
     return `user:${request.user!.id}`;
   }
   const key = parseKioskApiClientKeyHeader(request.headers['x-client-key']);
@@ -21,8 +21,17 @@ export async function knowledgeActor(request: FastifyRequest, reply: FastifyRepl
     const client = await findClientDeviceByApiKey(key);
     if (client) return `client:${client.id}`;
   }
-  await authorizeRoles('ADMIN', 'MANAGER', 'VIEWER')(request, reply);
+  await authorizeRoles(...roles)(request, reply);
   return `user:${request.user!.id}`;
+}
+
+export async function knowledgeActor(request: FastifyRequest, reply: FastifyReply): Promise<string> {
+  return resolveKnowledgeActor(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+}
+
+/** Writes: kiosk device keys, or ADMIN/MANAGER users. */
+export async function knowledgeWriter(request: FastifyRequest, reply: FastifyReply): Promise<string> {
+  return resolveKnowledgeActor(request, reply, ['ADMIN', 'MANAGER']);
 }
 
 export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
@@ -43,9 +52,9 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
   };
 
   app.post('/hermes-knowledge/intakes', { bodyLimit: 56_000_000,
-    onRequest: async (request, reply) => { await knowledgeActor(request, reply); },
+    onRequest: async (request, reply) => { await knowledgeWriter(request, reply); },
     config: { rateLimit: { max: 12, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const owner = await knowledgeActor(request, reply);
+    const owner = await knowledgeWriter(request, reply);
     try {
       const response = await runtime.intake.receive(owner, request.body);
       runtime.worker.kick();
@@ -66,14 +75,14 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     return { intakes: await withTriage(await runtime.repository.history(owner, conversationId)) };
   });
   app.post('/hermes-knowledge/intakes/:id/retry', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const owner = await knowledgeActor(request, reply);
+    const owner = await knowledgeWriter(request, reply);
     const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const { version } = z.object({ version: z.number().int().positive() }).strict().parse(request.body);
     if (!await runtime.repository.retry(id, owner, version)) throw new ApiError(409, '再処理できる状態ではありません。最新の状態を確認してください。');
     runtime.worker.kick(); return (await withTriage([(await runtime.repository.get(id, owner))!]))[0];
   });
   app.post('/hermes-knowledge/intakes/:id/choice', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const owner = await knowledgeActor(request, reply);
+    const owner = await knowledgeWriter(request, reply);
     const { id } = z.object({ id: z.string().guid() }).parse(request.params);
     const { version, action } = z.object({ version: z.number().int().positive(), action: z.enum(['save', 'ask', 'report', 'delegate']) }).strict().parse(request.body);
     if (!await runtime.repository.choose(id, owner, version, action)) throw new ApiError(409, 'この確認は古くなっています。最新の入力からやり直してください。');
@@ -84,7 +93,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     return runtime.triageService.pending(request.body).catch(posterError);
   });
   app.post('/hermes-knowledge/triage/:intakeId/decide', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
-    await knowledgeActor(request, reply);
+    await knowledgeWriter(request, reply);
     const { intakeId } = z.object({ intakeId: z.string().guid() }).parse(request.params);
     try {
       const decided = await runtime.triageService.decide(intakeId, request.body);
@@ -165,7 +174,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     return { procedure };
   });
   app.post('/hermes-knowledge/reviews/:revisionId/approve', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const actor = await knowledgeActor(request, reply);
+    const actor = await knowledgeWriter(request, reply);
     const { revisionId } = revisionParams.parse(request.params);
     const { reviewerTagUid, comment } = reviewBody(approveRequestSchema, request.body);
     const reviewer = await runtime.reviewers.resolve(reviewerTagUid, true).catch(reviewError);
@@ -173,7 +182,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     return { ok: true };
   });
   app.post('/hermes-knowledge/reviews/:revisionId/return', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const actor = await knowledgeActor(request, reply);
+    const actor = await knowledgeWriter(request, reply);
     const { revisionId } = revisionParams.parse(request.params);
     const { reviewerTagUid, comment } = reviewBody(returnRequestSchema, request.body);
     const reviewer = await runtime.reviewers.resolve(reviewerTagUid, true).catch(reviewError);
@@ -188,7 +197,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
     return reply.header('Cache-Control', 'private, no-store').type('image/jpeg').send(await runtime.assets.readDisplay(imageId));
   });
   app.post('/hermes-knowledge/procedures/:procedureId/error-report', { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } }, async (request, reply) => {
-    const actor = await knowledgeActor(request, reply);
+    const actor = await knowledgeWriter(request, reply);
     const { procedureId } = z.object({ procedureId: z.string().guid() }).strict().parse(request.params);
     const { reporterTagUid, comment } = reviewBody(errorReportRequestSchema, request.body);
     const reporter = await runtime.reviewers.resolve(reporterTagUid).catch(reviewError);

@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { SignageService } from '../../services/signage/index.js';
+import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
+import type { SignageContentResponse, SignageService } from '../../services/signage/index.js';
 
 function resolveClientKeyFromRequest(request: FastifyRequest): string | null {
   const headerKey = request.headers['x-client-key'];
@@ -13,12 +14,18 @@ function resolveClientKeyFromRequest(request: FastifyRequest): string | null {
   return fromQuery ?? fromHeader ?? null;
 }
 
-export function registerContentRoute(app: FastifyInstance, signageService: SignageService): void {
-  // GET /api/signage/content - 現在時刻に基づいて表示すべきコンテンツを取得（認証不要、サイネージ用）
-  app.get('/content', { config: { rateLimit: false } }, async (request: FastifyRequest) => {
-    const clientKey = resolveClientKeyFromRequest(request);
-    const content = await signageService.getContent({ clientKey });
-    return content;
-  });
+/** Hide borrower names from callers without a registered terminal key. */
+export function withoutEmployeeNames(content: SignageContentResponse): SignageContentResponse {
+  if (!content.tools) return content;
+  return { ...content, tools: content.tools.map((tool) => ({ ...tool, employeeName: null })) };
 }
 
+export function registerContentRoute(app: FastifyInstance, signageService: SignageService): void {
+  // GET /api/signage/content - 現在時刻に基づいて表示すべきコンテンツを取得（サイネージ用）
+  app.get('/content', { config: { rateLimit: false } }, async (request: FastifyRequest) => {
+    const requestedKey = resolveClientKeyFromRequest(request);
+    const device = requestedKey ? await findClientDeviceByApiKey(requestedKey) : null;
+    const content = await signageService.getContent({ clientKey: device ? requestedKey : null });
+    return device ? content : withoutEmployeeNames(content);
+  });
+}

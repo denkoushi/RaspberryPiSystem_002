@@ -56,12 +56,21 @@ export type BusinessHermesRouteDeps = {
 };
 
 // The web app sends both headers. Preserve the signed-in actor for approval.
-async function authorizeConsultation(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+async function authorizeConsultationAs(request: FastifyRequest, reply: FastifyReply, roles: Array<'ADMIN' | 'MANAGER' | 'VIEWER'>): Promise<void> {
   if (request.headers.authorization) {
-    await authorizeRoles('ADMIN', 'MANAGER', 'VIEWER')(request, reply);
+    await authorizeRoles(...roles)(request, reply);
   } else {
-    await authorizeKioskClientKeyOrJwtRoles(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+    await authorizeKioskClientKeyOrJwtRoles(request, reply, roles);
   }
+}
+
+async function authorizeConsultation(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await authorizeConsultationAs(request, reply, ['ADMIN', 'MANAGER', 'VIEWER']);
+}
+
+/** Writes: kiosk device keys, or ADMIN/MANAGER users. */
+async function authorizeConsultationWrite(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  await authorizeConsultationAs(request, reply, ['ADMIN', 'MANAGER']);
 }
 
 export async function registerBusinessHermesRoutes(
@@ -80,7 +89,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/consultations', {
     preHandler: async (request, reply) => {
-      await authorizeConsultation(request, reply);
+      await authorizeConsultationWrite(request, reply);
     }
   }, async (request) => {
     const body = consultationCreateSchema.parse(request.body ?? {});
@@ -103,7 +112,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/consultations/:id/cancel', {
     preHandler: async (request, reply) => {
-      await authorizeConsultation(request, reply);
+      await authorizeConsultationWrite(request, reply);
     }
   }, async (request) => {
     const { id } = paramsSchema.parse(request.params);
@@ -112,7 +121,7 @@ export async function registerBusinessHermesRoutes(
 
   app.patch('/assembly/business-hermes/consultations/:id', {
     preHandler: async (request, reply) => {
-      await authorizeConsultation(request, reply);
+      await authorizeConsultationWrite(request, reply);
     }
   }, async (request, reply) => {
     const params = paramsSchema.parse(request.params);
@@ -124,7 +133,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/consultations/:id/feedback', {
     preHandler: async (request, reply) => {
-      await authorizeConsultation(request, reply);
+      await authorizeConsultationWrite(request, reply);
     }, config: { rateLimit: { max: 30, timeWindow: '1 minute' } }
   }, async (request, reply) => {
     const { id } = paramsSchema.parse(request.params);
@@ -136,7 +145,7 @@ export async function registerBusinessHermesRoutes(
 
   app.post('/assembly/business-hermes/chat', {
     preHandler: async (request, reply) => {
-      await authorizeConsultation(request, reply);
+      await authorizeConsultationWrite(request, reply);
     },
     config: { rateLimit: { max: 12, timeWindow: '1 minute' } }
   }, async (request, reply) => {

@@ -20,7 +20,6 @@ describe('schedule target input and rollback writes', () => {
       signageSchedule: {
         create: vi.fn(async ({ data }) => ({ id: scheduleId, ...data })),
         update: vi.fn(async ({ data }) => ({ id: scheduleId, ...data })),
-        findUniqueOrThrow: vi.fn().mockResolvedValue({ targetClientDeviceIds: [device.id] }),
       },
     };
     const app = Fastify();
@@ -50,21 +49,12 @@ describe('schedule target input and rollback writes', () => {
     expect(db.clientDevice.findMany).toHaveBeenCalledWith({ where: { apiKey: { in: [device.apiKey] } }, select: { id: true, apiKey: true } });
   });
 
-  it('refreshes legacy keys on a write with unchanged targets', async () => {
+  it('leaves stored targets untouched on a write without targets', async () => {
     const { app, db } = fixture();
-    const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { name: 'Renamed' } });
-    expect(response.statusCode).toBe(200);
-    expect(db.signageSchedule.update).toHaveBeenCalledWith({ where: { id: scheduleId }, data: {
-      name: 'Renamed', targetClientDeviceIds: [device.id], targetClientKeys: [device.apiKey],
-    } });
-  });
-
-  it('drops deleted terminals on a write with unchanged targets but never widens to all terminals', async () => {
-    const { app, db } = fixture();
-    db.clientDevice.findMany.mockResolvedValue([]);
     const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { name: 'Renamed' } });
     expect(response.statusCode).toBe(200);
     expect(db.signageSchedule.update).toHaveBeenCalledWith({ where: { id: scheduleId }, data: { name: 'Renamed' } });
+    expect(db.clientDevice.findMany).not.toHaveBeenCalled();
   });
 
   it.each([{ targetClientDeviceIds: ['not-an-id'] }, { targetClientDeviceIds: [device.id] }, { targetClientKeys: ['unknown-key'] }])(

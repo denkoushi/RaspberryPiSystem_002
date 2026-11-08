@@ -210,7 +210,7 @@ describe('Knowledge review API', () => {
   });
   it('permits active general employees to report errors with a JWT actor', async () => {
     const app = server(); const employee = { ...reviewer, rank: 'general' }; mocks.resolveReviewer.mockResolvedValue(employee); mocks.reportError.mockResolvedValue(undefined);
-    expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers: jwtHeaders('VIEWER'), payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers: jwtHeaders('MANAGER'), payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(200);
     expect(mocks.resolveReviewer).toHaveBeenCalledWith('tag'); expect(mocks.reportError).toHaveBeenCalledWith(id, employee, 'user:user-1', '誤り');
     mocks.reportError.mockRejectedValue(new Error('PROCEDURE_NOT_PUBLISHED'));
     expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers, payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(409);
@@ -230,6 +230,24 @@ describe('Knowledge review API', () => {
     expect((await app.inject({ url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role) })).json()).toEqual(table);
     expect((await app.inject({ method: 'PUT', url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role), payload: { ranks: [{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }] } })).statusCode).toBe(200);
     expect(mocks.replaceRanks).toHaveBeenCalledWith([{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }]); await app.close();
+  });
+  it('lets VIEWER JWT read but not write', async () => {
+    const app = server(); const auth = jwtHeaders('VIEWER');
+    const writes: Array<[string, unknown]> = [
+      [`/hermes-knowledge/intakes/${id}/retry`, {}],
+      [`/hermes-knowledge/intakes/${id}/choice`, {}],
+      [`/hermes-knowledge/triage/${id}/decide`, {}],
+      [`/hermes-knowledge/reviews/${id}/approve`, { reviewerTagUid: 'tag' }],
+      [`/hermes-knowledge/reviews/${id}/return`, { reviewerTagUid: 'tag', comment: '再確認' }],
+      [`/hermes-knowledge/procedures/${id}/error-report`, { reporterTagUid: 'tag', comment: '誤り' }]
+    ];
+    for (const [url, payload] of writes) {
+      expect((await app.inject({ method: 'POST', url, headers: auth, payload: payload as Record<string, unknown> })).statusCode).toBe(403);
+    }
+    expect((await app.inject({ method: 'POST', url: '/hermes-knowledge/intakes', headers: { ...auth, 'content-type': 'application/json' }, payload: {} })).statusCode).toBe(403);
+    expect(mocks.approve).not.toHaveBeenCalled(); expect(mocks.returnRevision).not.toHaveBeenCalled(); expect(mocks.reportError).not.toHaveBeenCalled();
+    expect((await app.inject({ url: '/hermes-knowledge/capabilities', headers: auth })).statusCode).toBe(200);
+    await app.close();
   });
   it('denies device keys and VIEWER JWT for mapping reads and writes', async () => {
     const app = server();

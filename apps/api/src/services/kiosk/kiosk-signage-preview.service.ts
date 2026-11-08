@@ -31,12 +31,13 @@ export async function resolveSignagePreviewTargetInput(input: {
   if (target == null) return { signagePreviewTargetDeviceId: null, signagePreviewTargetApiKey: null };
   const device = await prisma.clientDevice.findUnique({
     where: id !== undefined ? { id: target } : { apiKey: target },
-    select: { id: true, apiKey: true, isSignage: true }
+    select: { id: true, isSignage: true }
   });
   if (!device?.isSignage) {
     throw new ApiError(400, '登録済みサイネージ端末のみ選択できます', undefined, 'INVALID_SIGNAGE_PREVIEW_TARGET');
   }
-  return { signagePreviewTargetDeviceId: device.id, signagePreviewTargetApiKey: device.apiKey };
+  // The legacy column keeps an ID, which older versions already read.
+  return { signagePreviewTargetDeviceId: device.id, signagePreviewTargetApiKey: device.id };
 }
 
 export async function clearSignagePreviewTarget(clientDeviceId: string): Promise<void> {

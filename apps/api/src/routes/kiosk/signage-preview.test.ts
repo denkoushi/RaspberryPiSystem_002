@@ -102,12 +102,12 @@ describe('kiosk signage preview credential boundary', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it.each(['id', 'legacy', 'cached-id'] as const)('accepts %s selection input and dual writes the target', async (format) => {
+  it.each(['id', 'legacy', 'cached-id'] as const)('accepts %s selection input and stores the ID in both fields', async (format) => {
     const payload = format === 'id' ? { signagePreviewTargetDeviceId: signage.id } : format === 'cached-id' ? { signagePreviewTargetClientDeviceId: signage.id } : { signagePreviewTargetApiKey: signage.apiKey };
     const response = await (await buildApp()).inject({ method: 'PUT', url: '/kiosk/signage-preview/selection', headers: { 'x-client-key': kiosk.apiKey }, payload });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ ok: true, signagePreviewTargetDeviceId: signage.id, signagePreviewTargetClientDeviceId: signage.id });
-    expect(mocks.update).toHaveBeenCalledWith({ where: { id: kiosk.id }, data: { signagePreviewTargetDeviceId: signage.id, signagePreviewTargetApiKey: signage.apiKey } });
+    expect(mocks.update).toHaveBeenCalledWith({ where: { id: kiosk.id }, data: { signagePreviewTargetDeviceId: signage.id, signagePreviewTargetApiKey: signage.id } });
     expect(storedTarget).toBe(signage.id);
     expect(response.body).not.toContain(signage.apiKey);
   });
