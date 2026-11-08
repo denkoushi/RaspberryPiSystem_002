@@ -447,12 +447,47 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', cell: 'B10' }));
   });
 
-  it.each(['blank', 'missing-first'])('warns and skips a block with %s A sequence', async (kind) => {
+  it('warns and skips a block with blank A sequence', async () => {
     const fixture = buildWorkbook();
-    for (let offset = 0; offset < (kind === 'blank' ? 4 : 1); offset++) fixture.sheet.getCell(fixture.start + offset, 1).value = null;
+    for (let offset = 0; offset < 4; offset++) fixture.sheet.getCell(fixture.start + offset, 1).value = null;
     const result = success(await parse(fixture));
     expect(result.blocks).toHaveLength(4);
     expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', seiban: 'AB1C2345' }));
+  });
+
+  it.each([null, '　 '])('reads a block missing its first A number (%s) with a non-blocking warning', async (value) => {
+    const fixture = buildWorkbook();
+    const original = success(await parse(fixture));
+    fixture.sheet.getCell(fixture.start, 1).value = value;
+    const result = success(await parse(fixture));
+    expect(result.blocks).toEqual(original.blocks);
+    expect(result.warnings).toEqual([
+      { code: 'MISSING_BLOCK_NUMBER', seiban: 'AB1C2345', cell: 'A10', rawText: value || null },
+      ...original.warnings
+    ]);
+    expect(result.warnings.some((warning) => warning.code === 'BLOCK_SHAPE')).toBe(false);
+  });
+
+  it('warns and skips a block missing its first A number with incorrect following numbers', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, 1).value = null;
+    fixture.sheet.getCell(fixture.start + 2, 1).value = 4;
+    const result = success(await parse(fixture));
+    expect(result.blocks).toHaveLength(4);
+    expect(result.blocks.some((block) => block.seiban === 'AB1C2345')).toBe(false);
+    expect(result.warnings).toEqual([
+      expect.objectContaining({ code: 'BLOCK_SHAPE', seiban: 'AB1C2345' })
+    ]);
+  });
+
+  it('ignores a hidden block missing its first A number without warnings', async () => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, 1).value = null;
+    for (let offset = 0; offset < 4; offset++) fixture.sheet.getRow(fixture.start + offset).hidden = true;
+    const result = success(await parse(fixture));
+    expect(result.blocks).toHaveLength(4);
+    expect(result.blocks.some((block) => block.seiban === 'AB1C2345')).toBe(false);
+    expect(result.warnings).toEqual([]);
   });
 
   it.each(['main', 'alias', 'history'])('rejects conflicting dates for a duplicate %s seiban', async (kind) => {

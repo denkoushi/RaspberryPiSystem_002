@@ -94,6 +94,7 @@ const minutesWarningExplanations: Record<string, string> = {
   FILENAME_DATE_MISMATCH: 'ファイル名の日付と受信日が離れています', MULTIPLE_SCHEDULE_SHEETS: '日程表の候補が複数あります',
   AMBIGUOUS_YEAR: '日付の年を一意に決められません', MERGED_ACROSS_BLOCKS: '製番をまたぐ結合セルです',
   FORMULA_NO_RESULT: '数式の計算結果がありません', BLOCK_SHAPE: '製番の4行構成が想定と異なります',
+  MISSING_BLOCK_NUMBER: '先頭の番号1が無い行を読み取りました',
 };
 
 export async function deliverDScheduleMinutesNotice(
