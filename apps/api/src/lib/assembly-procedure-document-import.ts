@@ -7,6 +7,7 @@ import { ApiError } from './errors.js';
 import { convertPdfToImages } from './pdf-converter.js';
 import { withPdfConvertSlot } from './pdf-convert-semaphore.js';
 import {
+  assertPdfMagic,
   classifyDrawingUpload,
   getDrawingInputMaxBytes,
   getDrawingInputTooLargeMessage,
@@ -29,6 +30,7 @@ import {
 } from '../services/assembly-procedure-assets/local-assembly-procedure-asset-storage.adapter.js';
 
 export const ASSEMBLY_PROCEDURE_DOCUMENT_MAX_PAGES = 40;
+export const ASSEMBLY_PROCEDURE_PDF_CONVERT_TIMEOUT_MS = 120_000;
 
 export type AssemblyProcedureDocumentImportInput = {
   buffer: Buffer;
@@ -106,7 +108,10 @@ async function convertPdfBufferToPageBuffers(buffer: Buffer): Promise<Buffer[]> 
       prefix: 'page',
       format: 'jpeg',
       dpi: PART_MEASUREMENT_PDF_RENDER_DPI,
-      quality: PART_MEASUREMENT_PDF_JPEG_QUALITY
+      quality: PART_MEASUREMENT_PDF_JPEG_QUALITY,
+      // Render one page past the limit so an over-limit document is still rejected below.
+      lastPage: ASSEMBLY_PROCEDURE_DOCUMENT_MAX_PAGES + 1,
+      timeoutMs: ASSEMBLY_PROCEDURE_PDF_CONVERT_TIMEOUT_MS
     });
 
     const entries = await fs.readdir(outputDir);
@@ -162,6 +167,13 @@ export async function importAssemblyProcedureDocumentPagesAndSave(
   const resolvedMime = resolveDrawingMime(input.mimetype, input.filename);
   if (!resolvedMime) {
     throw new ApiError(400, '未対応の手順書形式です');
+  }
+  if (kind === 'pdf') {
+    try {
+      assertPdfMagic(input.buffer);
+    } catch {
+      throw new ApiError(400, 'PDF ファイルの形式が不正です');
+    }
   }
   const storage = options.storage ?? getAssemblyProcedureAssetStorage();
   let sourceAsset: StoredAssemblyProcedureAsset | null = null;
