@@ -52,7 +52,7 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
       beforeDueDate: before, afterDueDate: date ? date === '2026-11-10' ? after : before : null
     })]);
     expect(mocks.tx.productionScheduleDueDateAuditLog.create).toHaveBeenCalledOnce();
-    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable' });
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5_000, timeout: 15_000 });
     expect(mocks.resetCaches).toHaveBeenCalledOnce();
     if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.deleteMany).toHaveBeenCalled();
     else expect(mocks.tx.productionScheduleRowNote.upsert).toHaveBeenCalled();
