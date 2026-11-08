@@ -745,7 +745,7 @@ describe('procedure-manuals workshop', () => {
     for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-12');
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }));
-    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1'));
+    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1', '2520'));
     expect(mocks.replace).toHaveBeenCalledExactlyOnceWith('DFD1', 'assembly', { modelCode: 'DFD1', assignments: [
       { assemblyProcedureDocumentId: 'root', kioskDocumentId: null, sortOrder: 0, label: null },
       { assemblyProcedureDocumentId: null, kioskDocumentId: 'pdf', sortOrder: 1, label: 'PDF' }
