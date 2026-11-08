@@ -9,8 +9,7 @@ import {prisma} from '../../../lib/prisma.js';
 
 describe('Hermes search trial authorization',()=>{
   beforeEach(() => {
-    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
-    vi.spyOn(prisma.user, 'findUnique').mockResolvedValue({ id: 'reader', username: 'reader', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false } as never);
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false } }) as never);
   });
   afterEach(() => { vi.restoreAllMocks(); });
   it('uses the existing reader boundary, preserves original text and keeps failure separate from no match',async()=>{
@@ -163,7 +162,7 @@ describe('Hermes search trial authorization',()=>{
     const url = '/assembly/hermes-search-trial/answer';
     try {
       for (const role of ['VIEWER', 'MANAGER', 'ADMIN']) {
-        vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'reader', username: 'reader', role, status: 'ACTIVE', mfaEnabled: false } as never);
+        vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
         const token = jwt.sign({ tokenType: 'access', sessionId: 'reader', sub: 'reader', username: 'reader', role }, env.JWT_ACCESS_SECRET);
         const headers = { authorization: `Bearer ${token}` };
         expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
@@ -173,7 +172,7 @@ describe('Hermes search trial authorization',()=>{
       const headers = { 'x-client-key': 'synthetic-kiosk' };
       expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
-      vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'reader', username: 'reader', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } as never);
+      vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } }) as never);
       const token = jwt.sign({ tokenType: 'access', sessionId: 'reader', sub: 'reader', username: 'reader', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
       expect((await app.inject({ method: 'POST', url, headers: { ...headers, authorization: `Bearer ${token}` }, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });

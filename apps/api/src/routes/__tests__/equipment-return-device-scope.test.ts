@@ -14,7 +14,7 @@ vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.
 
 function tokenForUser(user: User): string {
   const activeUser = { ...user, status: 'ACTIVE' as const, mfaEnabled: true };
-  vi.mocked(prisma.user.findUnique).mockResolvedValue(activeUser);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: activeUser }) as never);
   return signAccessToken(activeUser);
 }
 

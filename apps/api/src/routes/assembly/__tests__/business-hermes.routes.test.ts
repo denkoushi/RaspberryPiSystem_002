@@ -49,10 +49,9 @@ function createApp() {
 
 describe('business Hermes routes', () => {
   beforeEach(() => {
-    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
-    vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: {
       id: where.id, username: where.id, role: where.id === 'admin' ? 'ADMIN' : where.id === 'viewer' ? 'VIEWER' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
-    }) as never);
+    } }) as never);
   });
   afterEach(() => vi.restoreAllMocks());
   it('requires a client key and passes server-resolved device identity', async () => {

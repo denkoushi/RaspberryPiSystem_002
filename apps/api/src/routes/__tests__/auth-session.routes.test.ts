@@ -16,7 +16,7 @@ import { registerAuthRoutes } from '../auth.js';
 beforeEach(() => { vi.clearAllMocks(); mocks.authenticated = true; mocks.findActor.mockResolvedValue({ passwordHash: bcrypt.hashSync('correct', 4) }); mocks.updateRole.mockResolvedValue({ user: { role: 'MANAGER' } }); });
 async function inject(url: string, payload: unknown) {
   const app = Fastify();
-  app.setErrorHandler((error, _req, reply) => { const err = error as { statusCode?: number; name?: string }; return reply.code(err.name === 'ZodError' ? 400 : err.statusCode ?? 500).send({}); });
+  app.setErrorHandler((error, _req, reply) => { const err = error as { statusCode?: number; name?: string; code?: string }; return reply.code(err.name === 'ZodError' ? 400 : err.statusCode ?? 500).send({ errorCode: err.code }); });
   await registerAuthRoutes(app);
   try { return await app.inject({ method: 'POST', url, payload }); } finally { await app.close(); }
 }
@@ -26,6 +26,22 @@ describe('auth session routes', () => {
     const response = await inject(`/auth/users/${target}/role`, { role: 'MANAGER', currentPassword });
     expect(response.statusCode).toBe(currentPassword ? 401 : 400);
     expect(mocks.updateRole).not.toHaveBeenCalled();
+  });
+  it('returns the password mismatch code for an incorrect acting-user password', async () => {
+    const response = await inject(`/auth/users/${target}/role`, { role: 'MANAGER', currentPassword: 'wrong' });
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('AUTH_PASSWORD_MISMATCH');
+  });
+  it('uses the login rate limit for role changes and MFA disable', async () => {
+    const app = Fastify();
+    const limits = new Map<string, unknown>();
+    app.addHook('onRoute', (route) => { limits.set(route.url, route.config?.rateLimit); });
+    try {
+      await registerAuthRoutes(app);
+      expect(limits.get('/auth/login')).toEqual({ max: 10, timeWindow: '1 minute' });
+      expect(limits.get('/auth/users/:id/role')).toEqual(limits.get('/auth/login'));
+      expect(limits.get('/auth/mfa/disable')).toEqual(limits.get('/auth/login'));
+    } finally { await app.close(); }
   });
   it('changes a role after password re-entry', async () => {
     expect((await inject(`/auth/users/${target}/role`, { role: 'MANAGER', currentPassword: 'correct' })).statusCode).toBe(200);

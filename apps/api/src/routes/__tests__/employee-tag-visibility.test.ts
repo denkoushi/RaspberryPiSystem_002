@@ -13,7 +13,7 @@ vi.mock('../../config/env.js', () => ({
   env: { JWT_ACCESS_SECRET: 'employee-visibility-test-secret' }
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn() } }
+  prisma: { authSession: { findUnique: vi.fn() } }
 }));
 
 const employee: Employee = {
@@ -33,10 +33,10 @@ const employee: Employee = {
 };
 
 const jwtHeaders = (role: UserRole) => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'test-user', username: 'test-user', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'test-user', username: 'test-user', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return {
     authorization: `Bearer ${jwt.sign(
-      { sub: 'test-user', username: 'test-user', role },
+      { tokenType: 'access', sessionId: 'test-user', sub: 'test-user', username: 'test-user', role },
       'employee-visibility-test-secret'
     )}`
   };
@@ -49,7 +49,7 @@ describe('Employee read response tag visibility', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.spyOn(prisma.user, 'findUnique');
+    vi.spyOn(prisma.authSession, 'findUnique');
     findAll.mockResolvedValue([employee]);
     findById.mockResolvedValue(employee);
     const service = { findAll, findById } as unknown as EmployeeService;

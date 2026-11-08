@@ -21,7 +21,7 @@ vi.mock('../../config/env.js', () => ({ env: mocks.env }));
 vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
   authSession: {
-    findUnique: vi.fn(async ({ where }) => ({ id: where.id, userId: 'test-user', expiresAt: new Date(Date.now() + 86400000), revokedAt: null })),
+    findUnique: vi.fn(async ({ where }) => ({ id: where.id, user: await mocks.findUnique(), userId: 'test-user', expiresAt: new Date(Date.now() + 86400000), revokedAt: null })),
     create: vi.fn(async ({ data }) => ({ id: 'test-user', ...data })),
     updateMany: vi.fn(async () => ({ count: 1 })),
     findUniqueOrThrow: vi.fn(async () => ({ id: 'test-user', userId: 'test-user', refreshTokenId: 'initial', expiresAt: new Date(Date.now() + 86400000) }))
@@ -242,9 +242,9 @@ describe('admin MFA enforcement', () => {
     user.mfaEnabled = true;
     const token = jwt.sign({ tokenType: 'access', sessionId: user.id, sub: user.id, username: user.username, role }, mocks.env.JWT_ACCESS_SECRET);
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(token) }));
-    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
+    expect(prisma.authSession.findUnique).toHaveBeenCalledExactlyOnceWith({
       where: { id: user.id },
-      select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
+      include: { user: { select: { id: true, username: true, role: true, status: true, mfaEnabled: true } } }
     });
   });
 

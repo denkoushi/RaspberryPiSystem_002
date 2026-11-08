@@ -148,7 +148,7 @@ describe('Knowledge review API', () => {
   const reviewer = { id: 'e1', employeeCode: '0001', displayName: '社員A', nfcTagUid: 'tag', positionName: '主任', rank: 'leader' };
   const server = () => { vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'true'); const app = Fastify(); registerHermesKnowledgeRoutes(app); return app; };
   const jwtHeaders = (role: string) => {
-    vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } as never);
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
     return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'user-1', sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` };
   };
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); mocks.triageGet.mockResolvedValue([]); });

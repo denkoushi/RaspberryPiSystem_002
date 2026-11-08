@@ -24,7 +24,7 @@ vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFi
 
 const id = '00000000-0000-4000-8000-000000000001';
 const headers = (role: string) => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id, username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id, username: 'test', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return {
     authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: id, sub: id, username: 'test', role }, 'check-sheet-test-only-secret')}`
   };

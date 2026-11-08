@@ -39,7 +39,7 @@ let device = 0;
 const id = '9df8a3d0-77bd-40d4-9c05-2cf86f06c734';
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0, 1]);
 const authorization = (role: string) => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'user', sub: 'user', username: 'test', role }, 'watch-camera-test-signing-key')}` };
 };
 const post = (payload = jpeg, contentType = 'image/jpeg', key = 'camera-key') => app.inject({ method: 'POST', url: '/watch-camera/frames',

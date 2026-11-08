@@ -151,14 +151,15 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
-  const session = typeof payload.sessionId === 'string' ? await prisma.authSession.findUnique({ where: { id: payload.sessionId } }) : null;
+  const session = typeof payload.sessionId === 'string' ? await prisma.authSession.findUnique({
+    where: { id: payload.sessionId },
+    include: { user: { select: { id: true, username: true, role: true, status: true, mfaEnabled: true } } }
+  }) : null;
   if (!session || session.userId !== payload.sub || session.revokedAt || session.expiresAt.getTime() <= Date.now()) {
+    reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');
   }
-  const user = await prisma.user.findUnique({
-    where: { id: payload.sub },
-    select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
-  });
+  const user = session.user;
   if (!user || user.status !== 'ACTIVE') {
     reply.code(401);
     throw new ApiError(401, 'トークンが無効です', undefined, 'AUTH_TOKEN_INVALID');

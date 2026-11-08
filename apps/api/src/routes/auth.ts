@@ -76,16 +76,16 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     return authService.activateMfa(request.user!.id, body, request.user!.sessionId!);
   });
 
-  app.post('/auth/mfa/disable', { preHandler: authenticate }, async (request) => {
+  app.post('/auth/mfa/disable', { config: { rateLimit: authRateLimit }, preHandler: authenticate }, async (request) => {
     const body = mfaDisableSchema.parse(request.body);
     return authService.disableMfa(request.user!.id, body, request.user!.sessionId);
   });
 
-  app.post('/auth/users/:id/role', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
+  app.post('/auth/users/:id/role', { config: { rateLimit: authRateLimit }, preHandler: authorizeRoles('ADMIN') }, async (request) => {
     const params = z.object({ id: z.string().guid() }).parse(request.params);
     const body = updateRoleSchema.parse(request.body);
     const actor = await prisma.user.findUniqueOrThrow({ where: { id: request.user!.id } });
-    if (!await bcrypt.compare(body.currentPassword, actor.passwordHash)) throw new ApiError(401, 'パスワードが違います');
+    if (!await bcrypt.compare(body.currentPassword, actor.passwordHash)) throw new ApiError(401, 'パスワードが違います', undefined, 'AUTH_PASSWORD_MISMATCH');
     return authRoleAdminService.updateUserRole({
       actorSessionId: request.user!.sessionId,
       actorUser: {

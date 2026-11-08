@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   clientKey: vi.fn(), findAll: vi.fn(), getDashboard: vi.fn(), listModels: vi.fn(), confirmations: vi.fn()
 }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: mocks.userFindUnique } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id, user: await mocks.userFindUnique() })) }, user: { findUnique: mocks.userFindUnique } } }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
 // These routes' schemas import generated enums even though persistence is mocked.
 vi.mock('@prisma/client', () => {

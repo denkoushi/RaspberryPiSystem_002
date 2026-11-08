@@ -10,7 +10,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   user: { findUnique: vi.fn(async () => state.user) },
   authSession: {
     create: vi.fn(async ({ data }) => { const session = { id: 's1', createdAt: new Date(), revokedAt: null, ...data }; state.sessions.set('s1', session); return session; }),
-    findUnique: vi.fn(async ({ where }) => state.sessions.get(where.id) ?? null),
+    findUnique: vi.fn(async ({ where }) => { const session = state.sessions.get(where.id); return session ? { ...session, user: state.user } : null; }),
     findUniqueOrThrow: vi.fn(async ({ where }) => state.sessions.get(where.id)),
     updateMany: vi.fn(async ({ where, data }) => {
       let count = 0;

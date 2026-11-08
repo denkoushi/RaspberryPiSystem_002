@@ -17,7 +17,7 @@ import { registerDgxResourceRoutes } from '../dgx-resource.js';
 let app: FastifyInstance;
 const action = vi.fn(async () => ({ ok: true as const, message: '完了しました' }));
 const headers = (role = 'ADMIN') => {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'test', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'test', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'test', sub: 'test', username: 'test', role }, env.JWT_ACCESS_SECRET)}` };
 };
 beforeEach(async () => {

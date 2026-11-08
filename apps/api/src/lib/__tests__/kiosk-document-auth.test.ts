@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: mocks.userFindUnique }, clientDevice: { findUnique: mocks.findUnique } } }));
+vi.mock('../prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ user: await mocks.userFindUnique({ where: { id: where.id } }), userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: mocks.userFindUnique }, clientDevice: { findUnique: mocks.findUnique } } }));
 
 import { ApiError } from '../errors.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../kiosk-document-auth.js';

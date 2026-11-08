@@ -33,7 +33,7 @@ const service = {
 };
 
 function authHeader(role: User['role']) {
-  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   const token = signAccessToken({
     id: '11111111-1111-4111-8111-111111111111',
     username: 'schedule-test-user',

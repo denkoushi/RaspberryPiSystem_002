@@ -7,6 +7,11 @@ import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-co
 export async function notifySharedJwtSecret(): Promise<void> {
   const type = 'auth-shared-jwt-secret';
   try {
+    const recent = await prisma.alert.findFirst({
+      where: { type, timestamp: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+      select: { id: true }
+    });
+    if (recent) return;
     const config = await loadAlertsDispatcherConfig();
     await prisma.alert.create({ data: {
       id: randomUUID(), type, severity: AlertSeverity.WARNING,
