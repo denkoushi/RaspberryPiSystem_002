@@ -417,3 +417,12 @@ APIは `pnpm exec vitest run src/services/production-schedule/__tests__/grinding
 - [Prisma v7 の機能表](https://www.prisma.io/docs/orm/v7/reference/database-features)では式索引は未対応で、[migrate diff](https://www.prisma.io/docs/cli/v7/migrate/diff)は未対応機能の差分を出さない。実DBでの削除提案の有無は未確認（ローカル接続が P1001）。
 - ローカル計測(Mac・PostgreSQL 14、12万行・部品キー160件の最小テーブル): 従来の到着判定は索引なしで 45.6ms(全件走査)、索引を足しても従来の書き方では索引を使わず 73ms。新しい書き方と索引で 3.9ms(索引を使う入れ子ループ)、結果は同じ 432 行。工程チップの結合も索引を使い 1.3ms。migration 全体の適用と統合テストは、ローカル DB に pgvector が無く未実施(CI で実行する)。
 - 変更後の値: 反映後に同じログで測る。
+
+## 2026-11-08 負荷集計の override 件数による遅延
+
+- 本番 Pi5 の API 起動直後、`loadSummaryCompute` が70〜84秒。ローカル PostgreSQL 18、約13.7万行・override 1,847件では、`ROW_NUMBER() = 1` が重複除去後の件数を450行（実際34,640行）と過小推定し、row override との Nested Loop Left Join で比較が増えていた。
+- `grinding-planning-board-load-summary.ts` の重複除去だけを `DISTINCT ON` へ変更した。同じ分割キーの式（NULL/空文字、`********` の場合だけ ProductNo を含む）と sourceRowId 順の先頭行を維持する。override の照合・piece 優先順位、分の加算順、JS フォールバック、キャッシュ・ウォームアップは変更しない。セッションの結合設定も変更しない。
+- `src/__bench_tmp__/bench.ts time` の結果（grinding / cutting / all）: 修正前 5,814 / 6,276 / 5,574ms、修正後 298 / 277 / 284ms。ハッシュは修正前後で `7861768ac727b10b` / `679309d3397cffed` / `d7fbdfd1f3f23a8f` と一致した。unknown 件数も459 / 2,547 / 3,006で一致。
+- 同スクリプトの `explain`: 重複除去の推定90,000行、実際34,640行。row override は Hash Left Join、実行234.455ms。Nested Loop と Rows Removed by Join Filter は出ていない。計測前に ANALYZE は実行せず、元 DB への書込みも行っていない。
+- 検証用 DB は元 DB のスキーマだけを複製した `grinding_load_sql_test_20261108`。負荷集計の統合20件・ユニット16件が成功。対象 ESLint と `git diff --check` も成功。指定 typecheck は既存 tsconfig の `rootDir: src` と src 外の include による TS6059 で失敗（設定は変更しない）。
+- 指定のボード・片の統合テストは、既存 workspace 依存のビルドと migration の raw revision 初期行を専用 DB に準備して実行し、177件中176件成功（40.31秒）。残る1件は `keeps an override on a same-logical-key winner and ignores legacy record changes` の snapshotId 一致チェック（1114行）。変更前の load-summary モジュールを `git show HEAD:...` から一時 Vite transform で読み込んだ単独テストでも同じ失敗を確認した（1.24秒）。今回の集計変更では修正しない。
