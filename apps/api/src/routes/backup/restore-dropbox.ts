@@ -1,3 +1,6 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -10,9 +13,10 @@ import type { BackupConfig } from '../../services/backup/backup-config.js';
 import { BackupHistoryService } from '../../services/backup/backup-history.service.js';
 import { BackupTargetFactory } from '../../services/backup/backup-target-factory.js';
 import type { BackupKind } from '../../services/backup/backup-types.js';
-import { BackupService } from '../../services/backup/backup.service.js';
 import { StorageProviderFactory } from '../../services/backup/storage-provider-factory.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
+
+const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
 
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   accessToken?: string;
@@ -27,7 +31,7 @@ const restoreFromDropboxRequestSchema = z.object({
   verifyIntegrity: z.boolean().optional().default(true), // 整合性検証を実行するか
   preBackup: z.boolean().optional(), // リストア前の事前バックアップ
   expectedSize: z.number().optional(), // 期待されるファイルサイズ
-  expectedHash: z.string().optional(), // 期待されるハッシュ値（SHA256）
+  expectedHash: z.string().optional(), // 旧クライアント互換のため受理するが判定には使用しない
 });
 
 export async function registerBackupRestoreDropboxRoutes(
@@ -38,6 +42,7 @@ export async function registerBackupRestoreDropboxRoutes(
   // Dropboxからバックアップをリストア
   app.post('/backup/restore/from-dropbox', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',
@@ -89,7 +94,6 @@ export async function registerBackupRestoreDropboxRoutes(
     // Dropboxストレージプロバイダーを作成（Factoryパターンを使用）
     const dropboxProvider = await StorageProviderFactory.createFromConfig(config, protocol, host, onTokenUpdate);
 
-    const backupService = new BackupService(dropboxProvider);
     const historyService = new BackupHistoryService();
 
     // バックアップパスからtargetKindとtargetSourceを推測
@@ -124,17 +128,6 @@ export async function registerBackupRestoreDropboxRoutes(
         targetSource = targetSource.replace(/\.sql$/, '');
         logger?.info({ original: backupPathParts[backupPathParts.length - 1], cleaned: targetSource }, '[BackupRoute] Removed .sql extension from targetSource');
       }
-    }
-
-    const preBackup = body.preBackup ?? (targetKind === 'database');
-    if (preBackup) {
-      await runPreRestoreBackup({
-        config,
-        targetKind: targetKind as BackupKind,
-        targetSource,
-        protocol,
-        host,
-      });
     }
 
     // データベースバックアップの場合は拡張子を処理
@@ -193,13 +186,25 @@ export async function registerBackupRestoreDropboxRoutes(
         }
       }
 
+      backupData = await validateBackupForRestore(backupData, { backupPath: actualBackupPath });
+
+      // 復元してよいと確かめた後で、事前バックアップを取る
+      const preBackup = body.preBackup ?? (targetKind === 'database');
+      if (preBackup) {
+        await runPreRestoreBackup({
+          config,
+          targetKind: targetKind as BackupKind,
+          targetSource,
+          protocol,
+          host,
+        });
+      }
+
       // 整合性検証
       if (body.verifyIntegrity) {
         const { BackupVerifier } = await import('../../services/backup/backup-verifier.js');
         const verification = BackupVerifier.verify(
-          backupData,
-          body.expectedSize,
-          body.expectedHash
+          backupData
         );
 
         if (!verification.valid) {
@@ -207,7 +212,7 @@ export async function registerBackupRestoreDropboxRoutes(
             { errors: verification.errors, backupPath: actualBackupPath, originalPath: body.backupPath },
             '[BackupRoute] Backup integrity verification failed'
           );
-          throw new ApiError(400, `Backup integrity verification failed: ${verification.errors.join(', ')}`);
+          throw new ApiError(400, 'このバックアップは復元できません');
         }
 
         logger?.info(
@@ -272,9 +277,8 @@ export async function registerBackupRestoreDropboxRoutes(
       } else {
         // restoreメソッドが実装されていない場合は汎用的なリストア（ファイルとして保存）
         const tempPath = `/tmp/restored-${Date.now()}.backup`;
-        await backupService.restore(normalizedBackupPath, {
-          destination: tempPath,
-        });
+        await fs.mkdir(path.dirname(tempPath), { recursive: true });
+        await fs.writeFile(tempPath, backupData, { mode: 0o600 });
 
         logger?.info({ backupPath: actualBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
 

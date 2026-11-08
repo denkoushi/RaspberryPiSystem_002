@@ -92,7 +92,7 @@ export class ImageBackupTarget implements BackupTarget {
 
     try {
       // tar.gzファイルを一時ディレクトリに保存
-      await fs.writeFile(archivePath, backupData);
+      await fs.writeFile(archivePath, backupData, { mode: 0o600 });
 
       logger?.info({ tmpDir, photosDir: this.photosDir, thumbnailsDir: this.thumbnailsDir }, '[ImageBackupTarget] Restoring image backup from tar.gz');
 

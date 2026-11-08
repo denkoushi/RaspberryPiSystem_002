@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { CsvBackupTarget } from '../targets/csv-backup.target';
 import { BackupService } from '../backup.service';
 import { MockStorageProvider } from '../storage/mock-storage.provider';
@@ -9,6 +9,7 @@ describe('CsvBackupTarget', () => {
   let backupService: BackupService;
 
   beforeEach(async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     storageProvider = new MockStorageProvider();
     backupService = new BackupService(storageProvider);
     // テストデータをクリーンアップ（他のテストの影響を防ぐ）
@@ -17,6 +18,7 @@ describe('CsvBackupTarget', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     // テストデータをクリーンアップ
     await prisma.employee.deleteMany({});
     await prisma.item.deleteMany({});

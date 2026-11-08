@@ -159,7 +159,8 @@ if check_api_available; then
   USE_API=true
   echo "✅ API経由でバックアップを実行します（Dropbox設定があれば自動的に使用されます）"
 else
-  echo "⚠️  ローカルバックアップのみ実行します"
+  echo "❌ APIに接続できないため、バックアップを中止します（暗号化できない形では保存しません）" >&2
+  exit 1
 fi
 
 # 1. データベースバックアップ
@@ -170,17 +171,9 @@ if [ "${USE_API}" = true ]; then
   if backup_via_api "database" "${DB_SOURCE}" "backup-${DATE}"; then
     echo "   → API経由でバックアップ完了"
   else
-    echo "   → API経由のバックアップに失敗、ローカルバックアップにフォールバック"
-    USE_API=false
+    echo "❌ API経由のデータベースバックアップに失敗しました（暗号化の鍵の設定を確認してください）" >&2
+    exit 1
   fi
-fi
-
-if [ "${USE_API}" != true ]; then
-  # ローカルバックアップ（従来の方法）
-  docker compose -f "${COMPOSE_FILE}" exec -T db \
-    pg_dump -U postgres --clean --if-exists borrow_return | gzip > "${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  echo "   → ローカルバックアップ完了: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  echo "   → バックアップサイズ: $(du -h "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" | cut -f1)"
 fi
 
 # 2. 環境変数ファイルのバックアップ
@@ -229,9 +222,8 @@ if [ -d "${PHOTO_STORAGE_DIR}/photos" ] || [ -d "${PHOTO_STORAGE_DIR}/thumbnails
     elif backup_via_api "image" "photo-storage" "photos-${DATE}"; then
       echo "   → API経由でバックアップ完了"
     else
-      echo "   → API経由のバックアップに失敗、ローカルバックアップにフォールバック"
-      USE_API=false
-      RUN_LOCAL_PHOTO_BACKUP=true
+      echo "❌ API経由の写真バックアップに失敗しました（暗号化の鍵の設定を確認してください）" >&2
+      exit 1
     fi
   else
     RUN_LOCAL_PHOTO_BACKUP=true
@@ -293,10 +285,6 @@ echo ""
 echo "=========================================="
 echo "バックアップ完了: $(date '+%Y-%m-%d %H:%M:%S')"
 echo "=========================================="
-if [ -f "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" ]; then
-  echo "ローカルバックアップ: ${BACKUP_DIR}/db_backup_${DATE}.sql.gz"
-  echo "バックアップサイズ: $(du -h "${BACKUP_DIR}/db_backup_${DATE}.sql.gz" | cut -f1)"
-fi
 if [ "${USE_API}" = true ]; then
   echo "API経由のバックアップ: 設定ファイル（/opt/RaspberryPiSystem_002/config/backup.json）でDropboxが有効化されている場合、自動的にDropboxにアップロードされます"
 fi

@@ -68,7 +68,7 @@ sudo journalctl -u backup-verify-quarterly.service -n 200
 ## Pi5本番の現在方針（2026-09-30）
 
 - **Dropboxに秘密情報を置かない。** `.vault-pass`、`vault.yml`、`.env`、`backup.json`、証明書、`.ssh`、各端末のTailscale状態・nfc-agent `.env`・status-agent設定は、Dropboxのバックアップ対象から外した（2026-09-30）。これらはGoogle Driveの暗号化DR（[ADR-20260820](../decisions/ADR-20260820-google-drive-disaster-recovery.md)）に含まれる。キオスクはAnsibleで再構築し、新しい端末IDで復旧する。
-- **Dropboxへ送るバックアップは暗号化する。** `BACKUP_ENCRYPTION_KEY`（32バイトbase64、Vaultの `vault_backup_encryption_key` → `infrastructure/docker/.env`）があると、APIはAES-256-GCMで暗号化してから送る。保存先のパスは変えない。復元時は先頭の目印 `RPBKENC1` で暗号化済みか判定し、暗号化前の平文バックアップもそのまま復元できる。鍵が未設定の環境では従来どおり平文で送り、警告ログを出す。
+- **Dropboxへ送るバックアップは暗号化する。** `BACKUP_ENCRYPTION_KEY`（32バイトbase64、Vaultの `vault_backup_encryption_key` → `infrastructure/docker/.env`）があると、APIはAES-256-GCMで暗号化してから送る。保存先のパスは変えない。ローカル保存も同じ鍵で暗号化する。鍵が未設定または不正な環境では、APIは起動するがバックアップの書き込みは失敗し(履歴は FAILED、定時バックアップは既存の失敗通知)、平文では保存しない。`scripts/server/backup.sh` もAPI経由で保存できないときは平文に切り替えず失敗する。復元時は先頭の目印 `RPBKENC1` で暗号化済みか判定し、鍵で復号できたものだけ受け付ける。暗号化されていないバックアップは、照合値が記録済みの履歴と一致し、かつ暗号化したバックアップがまだ一度も取れていないときだけ受け付ける(詳細は [KB](../knowledge-base/infrastructure/backup-restore.md))。
 - **鍵の保全。** 鍵を失うと暗号化済みのDropboxバックアップは復元できない。鍵はVault（git管理・`.vault-pass` で復号）とGoogle Drive DR（`infrastructure/docker/.env` を含む）の両方に残る。
 - Dropboxの割り当ては2.15GBで、DBダンプは1本約460MB。DBのDropbox保持は3世代とし、長期の世代はGoogle Drive DR（日7/週5/月12）で持つ。
 
@@ -666,7 +666,7 @@ curl https://<pi5_host>/api/backup \
 
 2. **アクセストークンの管理**: Dropboxアクセストークンは環境変数で管理することも検討してください
 
-3. **バックアップの暗号化**: Dropboxへ送るバックアップは `BACKUP_ENCRYPTION_KEY` で暗号化される（上記「Pi5本番の現在方針」）。秘密情報そのものはDropboxの対象にしない
+3. **バックアップの暗号化**: Dropbox・ローカルとも、バックアップは `BACKUP_ENCRYPTION_KEY` で暗号化される。鍵が無いと書き込みは失敗する（上記「Pi5本番の現在方針」）。秘密情報そのものはDropboxの対象にしない
 
 4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
    - **証明書更新時の対応**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります

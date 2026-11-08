@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma.js';
 import { BackupOperationType, BackupStatus, BackupFileStatus, Prisma } from '@prisma/client';
 
 export interface BackupSummary {
+  encrypted?: boolean;
   targetKind?: string;
   targetSource?: string;
   sizeBytes?: number;

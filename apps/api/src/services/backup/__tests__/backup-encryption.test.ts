@@ -16,7 +16,6 @@ import {
 import { EncryptedStorageProvider } from '../storage/encrypted-storage.provider.js';
 import type { LargeFileUploadProvider, StorageProvider } from '../storage/storage-provider.interface.js';
 import { StorageProviderFactory } from '../storage-provider-factory.js';
-import { DropboxStorageProvider } from '../storage/dropbox-storage.provider.js';
 
 const key = randomBytes(32);
 
@@ -108,7 +107,7 @@ describe('backup encryption', () => {
     });
   });
 
-  it('encrypts buffer uploads and decrypts downloads through the inner provider', async () => {
+  it('encrypts buffer uploads and preserves raw downloads for trust validation', async () => {
     const stored = new Map<string, Buffer>();
     const inner: StorageProvider = {
       upload: vi.fn(async (file: Buffer, remotePath: string) => {
@@ -124,7 +123,8 @@ describe('backup encryption', () => {
     stored.set('csv/legacy/items.csv', Buffer.from('legacy plain'));
 
     expect(isEncryptedBackup(stored.get('csv/x/employees.csv') as Buffer)).toBe(true);
-    expect(await provider.download('csv/x/employees.csv')).toEqual(Buffer.from('employees.csv'));
+    expect(await provider.download('csv/x/employees.csv')).toEqual(stored.get('csv/x/employees.csv'));
+    expect(isEncryptedBackup(await provider.download('csv/x/employees.csv'))).toBe(true);
     expect(await provider.download('csv/legacy/items.csv')).toEqual(Buffer.from('legacy plain'));
   });
 });
@@ -139,11 +139,11 @@ describe('StorageProviderFactory with BACKUP_ENCRYPTION_KEY', () => {
     }
   });
 
-  it('wraps Dropbox when a key is configured and keeps the plain provider otherwise', () => {
+  it('always wraps Dropbox, including without a key', () => {
     const options = { provider: 'dropbox' as const, accessToken: 'test-access-token', basePath: '/test-backups' };
 
     delete process.env.BACKUP_ENCRYPTION_KEY;
-    expect(StorageProviderFactory.create(options)).toBeInstanceOf(DropboxStorageProvider);
+    expect(StorageProviderFactory.create(options)).toBeInstanceOf(EncryptedStorageProvider);
 
     process.env.BACKUP_ENCRYPTION_KEY = key.toString('base64');
     expect(StorageProviderFactory.create(options)).toBeInstanceOf(EncryptedStorageProvider);
