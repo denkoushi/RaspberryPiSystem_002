@@ -527,3 +527,5 @@ The expand-only migration gate also required foreign keys inside new-table
 creation and separate nullable-column statements. Both revised migrations
 passed the canonical migration validator and a transaction-scoped PostgreSQL
 schema check with enforced foreign keys. No production migration was rewritten.
+
+相談の一覧と内容は共有する。変更は作成した利用者か端末と ADMIN だけに認める。作成者の記録が無い古い相談は ADMIN と MANAGER だけが変更できる。
