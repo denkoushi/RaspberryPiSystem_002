@@ -16,6 +16,8 @@ import type { BackupKind } from '../../services/backup/backup-types.js';
 import { StorageProviderFactory } from '../../services/backup/storage-provider-factory.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
 
+const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
+
 type LegacyStorageOptions = NonNullable<BackupConfig['storage']['options']> & {
   accessToken?: string;
   refreshToken?: string;
@@ -40,6 +42,7 @@ export async function registerBackupRestoreDropboxRoutes(
   // Dropboxからバックアップをリストア
   app.post('/backup/restore/from-dropbox', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',

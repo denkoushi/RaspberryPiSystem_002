@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
 import { createAuthHeader, createTestUser } from './helpers.js';
@@ -16,6 +16,7 @@ describe('Backup API integration', () => {
   let testConfigPath: string | null = null;
 
   beforeEach(async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     // BackupConfigLoader は初期化時に /app/config/backup.json を参照するケースがあるため、
     // テストでは必ず書き込み可能なパスへ向ける（ローカル環境差分で500になり得る）
     testConfigPath = `/tmp/backup-config.test.${Date.now()}.${Math.random().toString(36).slice(2)}.json`;
@@ -45,6 +46,7 @@ describe('Backup API integration', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     // テストデータをクリーンアップ
     await prisma.employee.deleteMany({});
     await prisma.item.deleteMany({});

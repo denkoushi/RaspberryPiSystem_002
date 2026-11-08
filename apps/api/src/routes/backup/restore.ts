@@ -16,6 +16,8 @@ import { BackupHistoryService } from '../../services/backup/backup-history.servi
 import { logger } from '../../lib/logger.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
 
+const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
+
 const restoreRequestSchema = z.object({
   backupPath: z.string(),
   destination: z.string().optional(),
@@ -32,6 +34,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
   // バックアップの復元
   app.post('/backup/restore', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',
@@ -163,6 +166,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
   // リストアのドライラン（破壊的操作なし）
   app.post('/backup/restore/dry-run', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',
