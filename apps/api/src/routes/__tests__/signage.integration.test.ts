@@ -255,10 +255,11 @@ describe('GET /api/signage/schedules', () => {
   });
 
   it('should return schedules with authentication', async () => {
+    const viewer = await createTestUser('VIEWER');
     const response = await app.inject({
       method: 'GET',
       url: '/api/signage/schedules',
-      headers: createAuthHeader(adminToken),
+      headers: createAuthHeader(viewer.token),
     });
 
     expect(response.statusCode).toBe(200);
