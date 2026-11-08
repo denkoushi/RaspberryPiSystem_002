@@ -173,6 +173,8 @@ async function createFixture(): Promise<{
 
 async function cleanupFixture(fixture: { siteKey: string; rowIds: string[]; splitIds: string[] }): Promise<void> {
   await db().productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: fixture.siteKey } });
   if (fixture.splitIds.length > 0) {
     await db().productionScheduleOrderSplitAssignment.deleteMany({ where: { splitId: { in: fixture.splitIds } } });
     await db().productionScheduleOrderSplit.deleteMany({ where: { id: { in: fixture.splitIds } } });
@@ -344,6 +346,52 @@ describeIntegration('grinding planning board lightweight load summary integratio
     expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
       alternateItemCount: 1, alternateRequiredMinutes: 10
     });
+  });
+
+  it('resolves stored own values identically in SQL, fallback and projection, including split setup and unknown CSV', async () => {
+    const fixture = await createFixture();
+    const rows = fixture.rows.filter((row) => /-PART-[DE]$/.test(row.data.FHINCD!));
+    const splitRow = rows.find((row) => row.splitQuantities.length > 0)!;
+    const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: splitRow.data.FSEIBAN!, fhincd: splitRow.data.FHINCD!,
+      fsigencd: splitRow.data.FSIGENCD!, fkojun: splitRow.data.FKOJUN!, plannedQuantity: 5,
+      pieces: { create: [2, 3].map((quantity, position) => ({ quantity, position })) }
+    } });
+    try {
+      const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey };
+      await db().productionScheduleGrindingPlanningBoardResourceMinutesSource.create({ data: { ...scope, resourceCd: 'G-02', source: 'own' } });
+      for (const row of rows) {
+        await db().productionScheduleGrindingPlanningBoardResourcePartMinutes.create({ data: {
+          ...scope, resourceCd: 'G-02', fhincd: row.data.FHINCD!, perUnitMinutes: 10, setupMinutes: 30
+        } });
+        await db().productionScheduleGrindingPlanningBoardOverride.create({ data: {
+          ...scope, itemKey: buildGrindingPlanningBoardRowItemId(row.data), overrideResourceCd: 'G-02'
+        } });
+      }
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const, isResourceInCategory: () => true };
+      const ids = rows.map((row) => row.id);
+      const fallback = await summaryReader()({ ...params, winnerRowIds: ids });
+      const aggregate = await summaryReader()({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`
+        "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "CsvDashboardRow"."id" IN (${Prisma.join(ids)})` });
+      expect(aggregate).toEqual(fallback);
+      expect(aggregate.unknownRequiredMinutesCount).toBe(0);
+      expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({ requiredMinutes: 190, unfinishedItemCount: 3 });
+      const { getGrindingPlanningBoardResourceMinutes } = await import('../grinding-planning-board-resource-minutes.service.js');
+      const input = projectionInput({ ...fixture, rows });
+      for (const row of rows) input.overrides.set(buildGrindingPlanningBoardRowItemId(row.data), {
+        overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1
+      });
+      const projection = projectGrindingPlanningBoard({ ...input, category: 'grinding', seibanOrder: [], ranks: { rows: new Map() },
+        includePieces: true, pieceSets: await readSessakuPieceSets(db(), input.rows),
+        resourceMinutes: await getGrindingPlanningBoardResourceMinutes({ siteKey: fixture.siteKey }) });
+      expect(projection.load).toEqual(aggregate.load);
+      const otherSite = await summaryReader()({ ...params, siteKey: `${fixture.siteKey}-other`, winnerRowIds: ids });
+      expect(otherSite.unknownRequiredMinutesCount).toBe(1);
+      expect(otherSite.load[0]?.requiredMinutes).toBe(100);
+    } finally {
+      await db().productionScheduleSessakuPieceSet.delete({ where: { id: pieceSet.id } });
+    }
   });
 
   it('reads minimal source columns, applies override/split/completion rules, and equals full projection load', async () => {

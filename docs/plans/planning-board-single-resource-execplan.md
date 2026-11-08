@@ -1,0 +1,93 @@
+# 製番ボード: 1台表示と、資源CDごとの「独自の値」
+
+This ExecPlan is a living document. Keep `Progress`, `Surprises & Discoveries`, `Decision Log`, and `Outcomes & Retrospective` up to date as work proceeds. It follows `.agent/PLANS.md`.
+
+## Purpose / Big Picture
+
+The kiosk 製番ボード (route component `apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx`, gantt under `apps/web/src/features/kiosk/grindingPlanningBoard/gantt/`) shows one gantt lane per machine (資源CD). Two things are missing for planners.
+
+First, there is no way to look far ahead on one machine. After this change a "1台" button in the existing top toolbar opens a list of 資源CD; choosing one turns the whole gantt area into that single machine's schedule, folded into stacked rows (at the 1日 scale each row is 6 working hours starting 8:00 with nights skipped; at 2日 and above each row spans that many calendar days). The toolbar button then reads like "305 ✕" and pressing it returns to all lanes. The choice is remembered per terminal (browser localStorage) and survives reload until ✕ is pressed. Every existing gantt operation keeps working in this view: scale menu, tap select with the N件 count and 一括変更, 📌 pin mode, long-press drag reorder, 製番色, 納期順, ↶ 戻す, late stars and count, hover queue, the 工程のつながり strip and its 分割 / まとめる popover.
+
+Second, bar widths always come from the CSV column `FSIGENSHOYORYO` (資源所要量, minutes for the whole lot, set-up included). After this change each 資源CD can choose its bar-width source: 元の値 (CSV, the default) or 独自の値. 独自の値 are entered per 資源CD × 品番 (`FHINCD`) as "minutes per piece" plus "set-up minutes"; a bar's own length is perPiece × quantity + setup. A 品番 without an entered value falls back to 元の値. In 1台表示 a second row (40px tall, 32px buttons) shows the machine button, 8H/10H/24H/休憩, 月平均, a two-way switch "元の値 Xh | 独自の値 Yh", and a "品番の値" button with the count of entered values that opens a bottom sheet (height min(56%, 520px)) with one row per 品番 (品番 / 品名 / 件 / 元 / 1個 / 段取り / 独自) and steppers (1個 step 0.5, 段取り step 5). In the normal all-lanes view, a 資源CD whose source is 独自 shows a small "独自" mark on its lane label. No password is required, the same as the existing 8H/10H/24H setting.
+
+The approved visual reference is mock v7 (claude.ai artifact DDUSwWzRpN2R3KyGA3pmQi); its behaviour is described fully in this plan so the mock is not needed to implement.
+
+## Progress
+
+- [x] (2026-11-09) Investigation of current code (storage, minutes path, gantt structure, toolbar, tests).
+- [x] (2026-11-09) Milestone A: API storage, resolution of effective minutes on the server, shared types, tests. Local implementation complete; database-backed verification remains environment-dependent.
+- [ ] Milestone B: 1台表示 on the web (toolbar button, picker, folded rows, `.sh` row without the value sheet, localStorage memory, all existing operations).
+- [ ] Milestone C: 独自の値 on the web (source switch, 品番の値 sheet, "独自" mark, data hooks).
+- [ ] Verification, commit, PR.
+
+## Surprises & Discoveries
+
+- The board's load summary (`apps/api/src/services/production-schedule/grinding-planning-board-load-summary.ts`) does not feed bar minutes; item minutes come from `apps/api/src/services/production-schedule/grinding-planning-board-projection.ts` (around lines 139, 415, 520). Both paths read `FSIGENSHOYORYO` separately, and load-summary has two code paths (SQL around line 305/347 and a fallback around line 165).
+- `usePersistedPlanningBoardGanttScale.ts` does not actually persist; the scale always starts at 1日.
+- The gantt `window` prop is a pixel range for virtualised rendering, not a time window; it cannot skip nights.
+- The board response is cached by a snapshot generation token (`apps/api/src/services/production-schedule/grinding-planning-board/state.ts`, `readPlanningSnapshotGenerationDetails`) that does not know about any new settings table.
+
+- (2026-11-09) FHINCD is not uniformly limited to 40 or 50 characters: `MachinePalletItem.fhincd` already uses `VarChar(120)`, and `apps/api/src/routes/part-measurement/shared.ts` accepts 120 characters. The new column and request validation therefore use 120.
+- (2026-11-09) The materialized load path must retain FHINCD, bar quantity and original-minute groups until the shared TypeScript resolver runs. Applying the resolver to each group and multiplying own minutes by its bar count preserves one setup per bar without duplicating the formula in SQL.
+- (2026-11-09) This worktree initially had no installed dependencies or built workspace packages. Offline frozen installation and builds of shared-types, slip-match-core, shelf-layout-core and part-search-core supplied the validation prerequisites. Prisma generation needed `PRISMA_SCHEMA_ENGINE_BINARY=/private/tmp/planning-board-schema-engine`, copied from the existing local cache, because the sandbox cannot update the default cache.
+- (2026-11-09) The requested broad API run reported 619 passed, 15 failed and 94 skipped across 89 files (76 passed, 9 failed, 4 skipped). Eight failing files require PostgreSQL unavailable in this environment; the ninth failed to import the initially unbuilt slip-match-core package. After building that dependency, the board service file passed all 112 tests. The newly added real-database parity case is among 21 load-summary integration tests skipped without a dedicated TEST_DATABASE_URL. No unrelated DB tests were changed.
+
+## Decision Log
+
+- Decision: resolve 元/独自 on the server, in one shared resolver used by projection (row items and split pieces) and by both load-summary paths. Rationale: if only the web layout substituted minutes, the per-resource load figures in the normal view would disagree with bar lengths. Date: 2026-11-09.
+- Decision: the own value is looked up by the item's effective (displayed) 資源CD and its trimmed `fhincd`. The resource's source flag is also read from the effective 資源CD. Rationale: the setting belongs to the machine the bar is drawn on. Date: 2026-11-09.
+- Decision: for a split piece the own length is perPiece × pieceQuantity + setup, i.e. every bar (件) carries one set-up; merging pieces back gives one set-up again. This matches the approved mock (`ownOf = pp*qty + setup` per bar) and the user's rule "段取り(1件に1回)". Date: 2026-11-09.
+- Decision: an own value applies whenever the resource source is 独自, a value exists for that 品番, and the bar's quantity is a known positive number, even when the CSV minutes are missing. Otherwise the bar uses 元の値 (possibly unknown, as today). Date: 2026-11-09.
+- Decision: storage is two new tables rather than a column on `ProductionScheduleGrindingPlanningBoardResourceCapacity`, so the capacity service's "delete the record when back to default" rule stays untouched. Date: 2026-11-09.
+- Decision: out of scope are the separate 負荷調整 screen (`apps/api/src/services/production-schedule/load-balancing/csv-dashboard-row-required-minutes.sql.ts`) and 月平均 (machine-signal median of actual running time); neither changes with the source switch. Date: 2026-11-09.
+- Decision: one branch `feat/planning-board-single-resource`, one PR, three milestones done sequentially. Date: 2026-11-09.
+
+## Outcomes & Retrospective
+
+Milestone A is implemented locally. Migration `20261109090000_add_planning_board_resource_minutes` creates the two settings tables with cascade foreign keys and numeric/source checks. The pure resolver is `apps/api/src/services/production-schedule/grinding-planning-board-required-minutes.ts`; row items, split pieces and both load readers use it. Board reads share one settings read between projection and load; write responses retain the same settings. Both settings tables contribute site-scoped count/max-updatedAt to the generation token used by board and load caches.
+
+Validation: Prisma generation and shared-types build passed. The five directly affected service/resolver/projection/load/route files passed 175 tests; the board service file passed 112 tests, including both new settings-table generation invalidation cases. After the final load-reader cleanup and route-test grouping, the load and route subset passed 120 tests. API lint and shared-types lint passed with zero warnings/errors; API `tsconfig.build.json` and web `tsconfig.json` checks passed with `--noEmit --incremental false`. The new load-summary integration file reports 21 skipped tests. The broad-run database failures described above remain unverified, so the complete requested API suite is not claimed green.
+
+No apps/web files were edited. Milestones B/C, migration application, commit, push, PR, merge and deployment remain undone. No git commands or .env/secret reads were performed; existing WIP could not be classified through git under the user's explicit restriction. integrationPending remains open for the later authorized PR/CI/main stages.
+
+## Context and Orientation
+
+Kiosk API routes live in `apps/api/src/routes/kiosk/production-schedule/grinding-planning-board.ts`. The existing per-machine capacity setting is the model to copy: Prisma model `ProductionScheduleGrindingPlanningBoardResourceCapacity` in `apps/api/prisma/schema.prisma` (unique on csvDashboardId × siteKey × resourceCd), migrations under `apps/api/prisma/migrations/<YYYYMMDDhhmmss>_<name>/migration.sql` (see `20261014090000_add_planning_board_resource_capacity`), GET/PUT `/kiosk/production-schedule/grinding-planning-board/resource-capacity` authenticated by the `x-client-key` header through `requireClientDevice` and scoped to a site by `resolveLocationScopeContext`, service `apps/api/src/services/production-schedule/grinding-planning-board-resource-capacity.service.ts`, tests `apps/api/src/services/production-schedule/__tests__/grinding-planning-board-resource-capacity.service.unit.test.ts` and `apps/api/src/routes/kiosk/production-schedule/__tests__/grinding-planning-board.route.test.ts`. Shared request/response types are in `packages/shared-types/src/common/production-schedule-grinding-planning-board.ts`. On the web the fetch functions are in `apps/web/src/api/domains/production-schedule/grinding-planning-board.ts`, React Query hooks in `apps/web/src/api/hooks/production-schedule/grinding-planning-board.ts` (see `useKioskGrindingPlanningBoardResourceCapacity` and the optimistic `useUpdateKioskGrindingPlanningBoardResourceCapacity`), query keys in `apps/web/src/api/queryKeys/productionSchedule.ts`.
+
+Gantt rendering: `gantt/PlanningBoardGanttView.tsx` assembles resource groups and renders `gantt/PlanningBoardForwardGanttRow.tsx` per lane in forward mode; layout is `gantt/planningBoardGanttLayout.ts` (`buildPlanningBoardGanttLayout`, `placeForward`, working periods from 8:00 with breaks 10:00–10:10, 12:10–12:50, 14:50–15:00; 24H means all day with no breaks). Drop targeting is `gantt/planningBoardForwardDrop.ts`. The 工程のつながり strip is `gantt/PlanningBoardChainStrip.tsx`, which shows `PlanningBoardPiecePopover` for 分割/まとめる (split only for cutting items with integer quantity ≥ 2, not completed, no quantity warning). Toolbar: `apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardToolbar.tsx`; the gantt button group is around lines 232–262, SCAW sits after it. Persisted-setting hook examples: `gantt/usePersistedPlanningBoardGanttMode.ts` (`{schemaVersion: 1, mode}`, read/write failures tolerated).
+
+## Plan of Work
+
+Milestone A (API). Add Prisma models `ProductionScheduleGrindingPlanningBoardResourceMinutesSource` (csvDashboardId, siteKey VarChar(100), resourceCd VarChar(20), source text limited to 'own'; a row exists only when the source is 独自; unique on the three keys) and `ProductionScheduleGrindingPlanningBoardResourcePartMinutes` (csvDashboardId, siteKey, resourceCd, fhincd VarChar sized to fit real FHINCD values, perUnitMinutes double precision ≥ 0, setupMinutes integer ≥ 0; unique on the four keys), both with createdAt/updatedAt and cascade FK to CsvDashboard, with one additive migration. Add a service `grinding-planning-board-resource-minutes.service.ts` with get (returns `{ ownSourceResourceCds: string[], values: { resourceCd, fhincd, perUnitMinutes, setupMinutes }[] }` for the site) and two updates: set source (`{ resourceCd, source: 'original' | 'own' }`, 'original' deletes the row) and set value (`{ resourceCd, fhincd, perUnitMinutes: number | null, setupMinutes: number }`, null deletes the row). Add routes GET `/kiosk/production-schedule/grinding-planning-board/resource-minutes`, PUT `.../resource-minutes/source`, PUT `.../resource-minutes/value`, same auth as resource-capacity, zod validation (trimmed resourceCd 1–20, fhincd trimmed non-empty within the column size, perUnitMinutes finite 0–100000 or null, setupMinutes integer 0–100000). Add a pure resolver `resolveRequiredMinutes({ originalMinutes, originalKnown, quantity, effectiveResourceCd, fhincd }, settings)` returning `{ requiredMinutes, requiredMinutesKnown, originalRequiredMinutes, ownRequiredMinutes, requiredMinutesSource: 'original' | 'own' }`, and use it in projection for row items and split pieces (piece original stays proportional as today; piece own = perUnit × pieceQuantity + setup) and in both load-summary paths so load totals use the same effective minutes. Settings are loaded once per request for the site. Extend the board item type in shared-types with `originalRequiredMinutes: number | null`, `ownRequiredMinutes: number | null`, `requiredMinutesSource: 'original' | 'own'` (keep `requiredMinutes` as the effective value). Include both new tables (count and max updatedAt for the site) in `readPlanningSnapshotGenerationDetails` and wherever load-summary results are cached, so a PUT invalidates cached boards. Tests: service unit tests (site isolation, upsert, delete on 'original'/null, validation), route tests (GET/PUT, auth, bad input), resolver unit tests (fallbacks, piece setup per bar, unknown CSV with own value), projection/load-summary tests showing own minutes used when source is own.
+
+Milestone B (web, 1台表示). New persisted hook `usePersistedPlanningBoardSingleResource(scope)` storing `{ schemaVersion: 1, resourceCd }` under a key like `kiosk.planning-board.single-resource:${siteKey}:${category}`; clearing removes the key; ignore a stored value whose 資源CD is not among current lanes. Toolbar: a "1台" button inside the gantt group; it opens a picker popover (portal, outside click and Escape close, focus return, same pattern as the scale menu) listing the lanes' 資源CD with machine names; in single mode the button shows "<資源CD> ✕" and pressing it returns to all lanes. Esc closes, in order, an open dialog, popover, the value sheet, then single mode. The full forward layout is still computed for all resources; only rendering filters to the selected 資源CD, so 前工程 dependencies remain. Folding: at 1日 build windows of 360 working minutes using the resource's working periods (8H/10H/24H, breaks), skipping non-working time; at 2日+ windows are N calendar days with weekend shading and day ticks; horizontal scale per hour matches the normal view at the same scale. Each window renders the existing `PlanningBoardForwardGanttRow` (bars clipped to the window, original item IDs and callbacks kept) with a unique key; drop detection, row registration and scroll-to-item, hover queue, chain links, and late jump must use the coordinates of the window under the pointer or containing the item. Left column per row shows date, time band, and that day's load band. The `.sh` row under the toolbar is 40px tall with 32px buttons and holds: machine button (opens the picker), 8H/10H/24H/休憩 (existing capacity hooks), 月平均 (existing value). Use the whole gantt area for the single machine; the toolbar and page frame stay.
+
+Milestone C (web, 独自の値). Fetch/update hooks for resource-minutes with optimistic update and invalidation of the board and load queries on success. `.sh` row adds the switch "元の値 Xh | 独自の値 Yh" (X = sum of originalRequiredMinutes, Y = sum of ownRequiredMinutes ?? originalRequiredMinutes over that resource's items, in hours with one decimal) and the "品番の値 N" button that opens the bottom sheet; the sheet lists that resource's 品番 with 品名, 件数, 元 (per-lot original), steppers for 1個 (0.5) and 段取り (5), and the resulting 独自; editing saves per row (debounced) and bars update after the board refetch while the gantt stays visible above the sheet. Normal view lane label shows "独自" when the resource's source is own.
+
+## Concrete Steps
+
+Work in `/Users/tsudatakashi/RaspberryPiSystem_002-worktrees/feat--planning-board-single-resource`. Generate the Prisma client after schema changes with `pnpm --filter @raspi-system/api exec prisma generate`. Build shared types first if the web or api typecheck cannot resolve them: `pnpm --filter @raspi-system/shared-types build`.
+
+## Validation and Acceptance
+
+Run, from the worktree root:
+
+    pnpm --filter @raspi-system/api test src/services/production-schedule/__tests__ src/routes/kiosk/production-schedule/__tests__/grinding-planning-board.route.test.ts
+    pnpm --filter @raspi-system/web test src/features/kiosk/grindingPlanningBoard
+    pnpm --filter @raspi-system/api lint && pnpm --filter @raspi-system/web lint && pnpm --filter @raspi-system/shared-types lint
+    pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit --incremental false
+    pnpm --filter @raspi-system/web exec tsc -p tsconfig.json --noEmit --incremental false
+
+Acceptance in the browser: on the 製番ボード, pressing "1台" and choosing a 資源CD shows only that machine folded into rows; reload keeps it; "✕" returns to all lanes and reload stays on all lanes. Switching to 独自の値 and entering 1個 = 10, 段取り = 30 for a 品番 with quantity 4 makes that bar 70 minutes long; a 品番 without a value keeps its CSV length; switching back to 元の値 restores CSV lengths; the normal view shows "独自" on that lane label while 独自 is selected.
+
+## Idempotence and Recovery
+
+The migration only creates tables; it can be rolled back by dropping the two tables. Settings rows are deleted when set back to defaults, so no stale data remains.
+
+## Interfaces and Dependencies
+
+No new libraries. New endpoints are listed in Milestone A; their request/response types live in `packages/shared-types/src/common/production-schedule-grinding-planning-board.ts`.
+
+## Revision Note
+
+2026-11-09: Recorded the Milestone A implementation, FHINCD sizing evidence, shared resolver and cache behavior, and local verification results. Milestones B/C and repository integration are intentionally left open because only the API milestone was authorized.

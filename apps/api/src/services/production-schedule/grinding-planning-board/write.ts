@@ -1,3 +1,4 @@
+import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
@@ -47,6 +48,7 @@ async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?
   const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
   const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const pieceSets = await readSessakuPieceSets(params.client, rows);
+  const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey }, params.client);
   if (!params.allowPieceParent) for (const row of rows) {
     if (params.itemIds.includes(buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)))
       && pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length) {
@@ -71,7 +73,7 @@ async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
     return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
   });
-  const common = { rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => id.startsWith('piece:')), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
+  const common = { resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => id.startsWith('piece:')), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });
   const cutting = projectGrindingPlanningBoard({ ...common, category: 'cutting' });
   const byItemId = new Map<string, GrindingPlanningBoardItem>();
@@ -81,7 +83,7 @@ async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?
     if (!item) throw new ApiError(409, '対象アイテムが消滅または工程区分が変わりました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
     if (!params.sourceRowIds.includes(item.sourceRowId)) throw new ApiError(409, 'CSVの勝者行が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
-  return { state, byItemId, overrides, rows, details, ranks, pieceSets, progressRows, policy: params.policy, masterResourceCds };
+  return { resourceMinutes, state, byItemId, overrides, rows, details, ranks, pieceSets, progressRows, policy: params.policy, masterResourceCds };
 }
 
 function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
@@ -196,6 +198,7 @@ async function applyOverridesInTransaction(params: { pieceKeys: readonly Sessaku
 
 function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>): Map<string, GrindingPlanningBoardItem> {
   const common = {
+    resourceMinutes: current.resourceMinutes,
     rows: current.rows,
     pieceSets: current.pieceSets,
     includePieces: true,
@@ -215,6 +218,7 @@ function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<
 
 function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>, itemId: string): GrindingPlanningBoardItem {
   const common = {
+    resourceMinutes: current.resourceMinutes,
     rows: current.rows,
     pieceSets: current.pieceSets,
     includePieces: true,

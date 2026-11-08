@@ -1,3 +1,4 @@
+import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { compareProcessOrder } from './process-order.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
@@ -5,6 +6,7 @@ import { createHash } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
 import type {
+  GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
@@ -82,6 +84,7 @@ export type GrindingPlanningBoardProgressProjection = {
 };
 
 export type GrindingPlanningBoardProjectionInput = {
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   includePieces?: boolean;
   pieceSets?: ReadonlyMap<string, SessakuPieceSet>;
   dueSource?: BoardDueSource;
@@ -426,8 +429,8 @@ function buildItems(
     const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
 
     const displayFields = { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined };
-    const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
-    const requiredMinutesKnown = requiredMinutes != null;
+    const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: sourceMinutes, originalKnown: sourceMinutes != null,
+      quantity: sourceQuantity, effectiveResourceCd, fhincd: rowValue(data, 'FHINCD') }, params.resourceMinutes);
     const parentDue = resolveBoardDueDate({
       source: params.dueSource ?? 'excel', itemOverride: null,
       manualDueDate: ymd(detail.rowNotes[0]?.dueDate), manualUpdatedAt: detail.manualUpdatedAt ?? null,
@@ -501,8 +504,7 @@ function buildItems(
       orderPinned: override?.orderPinned ?? false,
       specialDue: specialDueForOverride(override),
       plannedQuantity: displayFields.plannedQuantity ?? null,
-      requiredMinutes,
-      requiredMinutesKnown,
+      ...resolvedMinutes,
       isCompleted: rowCompleted,
       lslhSurface: false,
       completionSource,
@@ -528,8 +530,11 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const own = params.overrides.get(itemId);
       const override = own ?? inherited;
       const total = parent.plannedQuantity ?? (set.sourcePieceSetId || piece.sourcePieceId ? set.plannedQuantity : null);
-      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null && parent.requiredMinutes > 0
-        ? parent.requiredMinutes * piece.quantity / total : null;
+      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.originalRequiredMinutes != null && parent.originalRequiredMinutes > 0
+        ? parent.originalRequiredMinutes * piece.quantity / total : null;
+      const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
+        quantity: piece.quantity, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        fhincd: parent.fhincd }, params.resourceMinutes);
       const isCompleted = external || piece.isCompleted;
       const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
         originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
@@ -547,7 +552,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         effectiveDueDate, alternateRank: override?.alternateRank ?? null,
         orderPinned: override?.orderPinned ?? false, specialDue: specialDueForOverride(override),
-        version: own?.version ?? 0, requiredMinutes: minutes, requiredMinutesKnown: minutes != null,
+        version: own?.version ?? 0, ...resolvedMinutes,
         itemRevision: createItemRevision({ parentRevision: parent.itemRevision, pieceId: piece.id, position: piece.position,
           pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
           quantityWarning: set.quantityWarning, external, inherited, own })

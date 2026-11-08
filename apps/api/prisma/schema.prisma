@@ -1547,6 +1547,8 @@ model CsvDashboard {
   feedFreshnessState             CsvFeedFreshnessState?
   rows                           CsvDashboardRow[]
   grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
+  grindingPlanningBoardResourceMinutesSources ProductionScheduleGrindingPlanningBoardResourceMinutesSource[]
+  grindingPlanningBoardResourcePartMinutes ProductionScheduleGrindingPlanningBoardResourcePartMinutes[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -2011,6 +2013,36 @@ model ProductionScheduleGrindingPlanningBoardState {
 
   @@unique([csvDashboardId, siteKey], map: "PSGrindingPlanningState_dashboard_site_key")
   @@index([csvDashboardId, updatedAt], map: "PSGrindingPlanningState_dashboard_updated_idx")
+}
+
+model ProductionScheduleGrindingPlanningBoardResourceMinutesSource {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  resourceCd     String   @db.VarChar(20)
+  source         String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningMinutesSource_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, resourceCd], map: "PSGrindingPlanningMinutesSource_site_resource_key")
+}
+
+model ProductionScheduleGrindingPlanningBoardResourcePartMinutes {
+  id             String   @id @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  resourceCd     String   @db.VarChar(20)
+  fhincd         String   @db.VarChar(120)
+  perUnitMinutes Float
+  setupMinutes   Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningPartMinutes_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, resourceCd, fhincd], map: "PSGrindingPlanningPartMinutes_site_resource_key")
 }
 
 model ProductionScheduleGrindingPlanningBoardResourceCapacity {

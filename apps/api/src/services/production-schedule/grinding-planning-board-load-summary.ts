@@ -1,6 +1,9 @@
+import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
+import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
+  GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardLoad,
   GrindingPlanningBoardLoadResponse
@@ -33,6 +36,7 @@ export type GrindingPlanningBoardLoadSummary = GrindingPlanningBoardLoadResponse
 export type GrindingPlanningBoardLoadSummaryDbClient = Pick<PrismaClient, '$queryRaw'>;
 
 export type ReadGrindingPlanningBoardLoadSummaryParams = {
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   client: GrindingPlanningBoardLoadSummaryDbClient;
   dashboardId?: string;
   /** Canonical winner ids, used by the isolated fallback path and tests. */
@@ -81,6 +85,7 @@ type LoadSummaryOverrideBinding = {
 type LoadSummaryAggregateRow = {
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
+  fhincd?: string | null; quantity?: number | null;
   itemCount: bigint;
   unknownItemCount: bigint;
   requiredMinutesSum: number | null;
@@ -164,30 +169,20 @@ function resolveOverrideResource(
 
 function toSummaryRow(
   row: LoadSummarySourceRow,
-  overrideByItemKey: ReadonlyMap<string, string | null>
+  overrideByItemKey: ReadonlyMap<string, string | null>,
+  settings: GrindingPlanningBoardResourceMinutesResponse,
+  originalResourceCd: string
 ): GrindingPlanningBoardLoadSummaryRow {
   const rowData = buildSourceRowData(row);
-  const originalResourceCd = row.resourceCd == null ? null : normalizeProductionScheduleResourceCd(row.resourceCd);
-  if (originalResourceCd == null) {
-    return {
-      itemId: buildGrindingPlanningBoardRowItemId(rowData),
-      sourceRowId: row.id,
-      kind: 'row',
-      originalResourceCd: null,
-      effectiveResourceCd: null,
-      requiredMinutes: null,
-      requiredMinutesKnown: false,
-      isCompleted: row.isCompleted
-    };
-  }
-
   const parentItemId = buildGrindingPlanningBoardRowItemId(rowData);
   if (row.pieceId) {
     const itemId = `piece:${row.pieceId}`;
+    const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd);
     const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null && row.requiredMinutes > 0
       ? row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
-      effectiveResourceCd: resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd),
-      requiredMinutes: minutes, requiredMinutesKnown: minutes != null, isCompleted: row.isCompleted };
+      effectiveResourceCd,
+      ...resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
+        quantity: row.pieceQuantity ?? null, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings), isCompleted: row.isCompleted };
   }
   const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, parentItemId, originalResourceCd);
   return {
@@ -196,19 +191,10 @@ function toSummaryRow(
     kind: 'row',
     originalResourceCd,
     effectiveResourceCd,
-    requiredMinutes: row.requiredMinutes,
-    requiredMinutesKnown: row.requiredMinutes != null,
+    ...resolveRequiredMinutes({ originalMinutes: row.requiredMinutes, originalKnown: row.requiredMinutes != null,
+      quantity: row.plannedQuantity, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings),
     isCompleted: row.isCompleted
   };
-}
-
-function addAggregateMinutes(
-  entry: GrindingPlanningBoardLoad,
-  field: 'originalRequiredMinutes' | 'alternateRequiredMinutes',
-  minutes: number | null
-): void {
-  if (minutes == null) return;
-  entry[field] = (entry[field] ?? 0) + minutes;
 }
 
 function buildGrindingPlanningBoardLoadSummaryFromAggregates(
@@ -257,7 +243,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
     if (originalLoadResource != null) {
       const originalEntry = ensure(originalLoadResource);
       originalEntry.originalItemCount += itemCount;
-      addAggregateMinutes(originalEntry, 'originalRequiredMinutes', aggregate.requiredMinutesSum);
+      addMinutes(originalEntry, 'originalRequiredMinutes', aggregate.requiredMinutesSum);
       originalEntry.originalUnknownItemCount += unknownItemCount;
     }
 
@@ -265,7 +251,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
       const alternateEntry = ensure(effectiveLoadResource);
       alternateEntry.alternateItemCount += itemCount;
       alternateEntry.unfinishedItemCount += itemCount;
-      addAggregateMinutes(alternateEntry, 'alternateRequiredMinutes', aggregate.requiredMinutesSum);
+      addMinutes(alternateEntry, 'alternateRequiredMinutes', aggregate.requiredMinutesSum);
       alternateEntry.alternateUnknownItemCount += unknownItemCount;
       alternateEntry.unknownItemCount += unknownItemCount;
     }
@@ -293,12 +279,12 @@ async function readAggregatedLoadSummary(params: {
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   overrideRows: readonly LoadSummaryOverrideRow[];
   siteKey: string;
+  resourceMinutes: GrindingPlanningBoardResourceMinutesResponse;
 }): Promise<LoadSummaryAggregateRow[]> {
   const overrideBindings = params.overrideRows.flatMap((row) => {
     const binding = decodeAggregateOverride(row);
     return binding == null ? [] : [binding];
   });
-  const overrideJson = JSON.stringify(overrideBindings);
 
   // DISTINCT ON keeps the same first source row per logical item without the
   // ROW_NUMBER() = 1 selectivity underestimate that caused items × overrides scans.
@@ -343,6 +329,7 @@ async function readAggregatedLoadSummary(params: {
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
+        CASE WHEN b."pieceId" IS NULL THEN b."plannedQuantity" ELSE b."pieceQuantity" END AS "quantity",
         'row'::text AS "itemKind",
         CASE WHEN b."pieceId" IS NULL THEN b."requiredMinutes"
           WHEN b."requiredMinutes" > 0 AND b."plannedQuantity" > 0 AND COALESCE(b."quantityWarning", '') <> 'INVALID_PLANNED_QUANTITY'
@@ -369,7 +356,7 @@ async function readAggregatedLoadSummary(params: {
     ),
     "overrides" AS MATERIALIZED (
       SELECT *
-      FROM jsonb_to_recordset(${overrideJson}::jsonb) AS "overrideRows"(
+      FROM jsonb_to_recordset(${JSON.stringify(overrideBindings)}::jsonb) AS "overrideRows"(
         "itemKind" text,
         "fseiban" text,
         "productNo" text,
@@ -390,7 +377,8 @@ async function readAggregatedLoadSummary(params: {
           THEN "deduplicatedItems"."originalResourceCd"
           ELSE "rowOverrides"."overrideResourceCd"
         END AS "effectiveResourceCd",
-        "deduplicatedItems"."requiredMinutes"
+        "deduplicatedItems"."requiredMinutes",
+        "deduplicatedItems"."fhincd", "deduplicatedItems"."quantity"
       FROM "deduplicatedItems"
       LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" "pieceOverrides"
         ON "pieceOverrides"."csvDashboardId" = ${params.dashboardId} AND "pieceOverrides"."siteKey" = ${params.siteKey}
@@ -407,14 +395,24 @@ async function readAggregatedLoadSummary(params: {
     SELECT
       "originalResourceCd",
       "effectiveResourceCd",
+      "fhincd", "quantity",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
       SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
-    GROUP BY "originalResourceCd", "effectiveResourceCd"
+    GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes"
   `);
 
-  return aggregateRows;
+  return aggregateRows.map((row) => {
+    const count = Number(row.itemCount);
+    const resolved = resolveRequiredMinutes({
+      originalMinutes: row.requiredMinutesSum == null ? null : row.requiredMinutesSum / count,
+      originalKnown: Number(row.unknownItemCount) === 0,
+      quantity: row.quantity ?? null, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
+    }, params.resourceMinutes);
+    return resolved.requiredMinutesSource === 'own'
+      ? { ...row, requiredMinutesSum: resolved.requiredMinutes! * count, unknownItemCount: 0n } : row;
+  });
 }
 
 async function readMaterializedLoadAggregates(
@@ -431,7 +429,7 @@ async function readMaterializedLoadAggregates(
     return readAggregatedLoadSummary({
       client: params.client, dashboardId, siteKey: params.siteKey,
       leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-      overrideRows
+      overrideRows, resourceMinutes: params.resourceMinutes!
     });
   };
   const context = params.cache;
@@ -500,8 +498,9 @@ export async function readGrindingPlanningBoardLoadSummary(
     return { load: [], unknownRequiredMinutesCount: 0 };
   }
   const dashboardId = params.dashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
+  const resourceMinutes = params.resourceMinutes ?? await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey });
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
-    const rows = await readMaterializedLoadAggregates({ ...params, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
+    const rows = await readMaterializedLoadAggregates({ ...params, resourceMinutes, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
     return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
   }
   const rows: LoadSummarySourceRow[] = [];
@@ -544,20 +543,12 @@ export async function readGrindingPlanningBoardLoadSummary(
     `));
   };
 
-  if (params.leaderboardMaterializedBaseWhere !== undefined) {
-    await readSourceRows(
-      params.leaderboardMaterializedBaseWhere
-    );
-  } else {
-    for (const ids of chunk(winnerRowIds, SOURCE_ROW_CHUNK_SIZE)) {
-      const idParts = ids.map((id) => Prisma.sql`${id}`);
-      await readSourceRows(
-        Prisma.sql`
-          "CsvDashboardRow"."csvDashboardId" = ${dashboardId}
-          AND "CsvDashboardRow"."id"::text = ANY(ARRAY[${Prisma.join(idParts)}]::text[])
-        `
-      );
-    }
+  for (const ids of chunk(winnerRowIds, SOURCE_ROW_CHUNK_SIZE)) {
+    const idParts = ids.map((id) => Prisma.sql`${id}`);
+    await readSourceRows(Prisma.sql`
+      "CsvDashboardRow"."csvDashboardId" = ${dashboardId}
+      AND "CsvDashboardRow"."id"::text = ANY(ARRAY[${Prisma.join(idParts)}]::text[])
+    `);
   }
 
   const overrideRows = await params.client.$queryRaw<LoadSummaryOverrideRow[]>(Prisma.sql`
@@ -570,7 +561,7 @@ export async function readGrindingPlanningBoardLoadSummary(
   const summaryRows = rows.flatMap((row) => {
     const originalResourceCd = row.resourceCd == null ? null : normalizeProductionScheduleResourceCd(row.resourceCd);
     if (originalResourceCd == null || !params.isResourceInCategory(originalResourceCd, params.category)) return [];
-    return [toSummaryRow(row, overrideByItemKey)];
+    return [toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd)];
   });
   return buildGrindingPlanningBoardLoadSummary(summaryRows);
 }
