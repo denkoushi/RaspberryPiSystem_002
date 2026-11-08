@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
+import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
 
 import {
   useUpdateKioskGrindingPlanningBoardArrival,
@@ -288,6 +289,66 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await act(async () => { tail.resolve(response([item('4')], null, { snapshotId: 'snapshot-2' })); });
     await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
     expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3', '4']);
+  });
+
+  it('A→B→Aではfreshな先頭ページに対応する全件をすぐ復元し、続きを要求しない', async () => {
+    mocks.getBoard.mockResolvedValueOnce(response([item('2')], '160'))
+      .mockResolvedValueOnce(response([item('1'), item('3')], null))
+      .mockResolvedValueOnce(response([item('4')], '160', { category: 'cutting' }))
+      .mockResolvedValueOnce(response([item('5')], null, { category: 'cutting' }));
+    const hook = renderHook(({ category }: { category: 'grinding' | 'cutting' }) =>
+      useKioskGrindingPlanningBoardProgressive({ category, view: 'seiban' }),
+    { initialProps: { category: 'grinding' }, wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const completeA = hook.result.current.data;
+    expect(completeA?.items).toEqual([item('2'), item('1'), item('3')]);
+    hook.rerender({ category: 'cutting' });
+    await waitFor(() => expect(hook.result.current.data?.items).toEqual([item('4'), item('5')]));
+    expect(hook.result.current.isComplete).toBe(true);
+
+    hook.rerender({ category: 'grinding' });
+    expect(hook.result.current.data).toBe(completeA);
+    expect(hook.result.current.isComplete).toBe(true);
+    expect(hook.result.current.isAppending).toBe(false);
+    expect(hook.result.current.scopeReady).toBe(true);
+    expect(hook.result.current.appendError).toBeNull();
+    expect(mocks.getBoard).toHaveBeenCalledTimes(4);
+    expect(mocks.getBoard.mock.calls.filter(([params]) => params.category === 'grinding' && params.cursor != null)).toHaveLength(1);
+  });
+
+  it.each(['updatedAt', 'snapshotId', 'sourceRevision'] as const)('Aの先頭ページ再取得で%sが変わると、Aへ戻った際に続きを要求する', async (changed) => {
+    const tail = deferred<GrindingPlanningBoardResponse>();
+    const fresh = changed === 'snapshotId' ? { snapshotId: 'snapshot-2' }
+      : changed === 'sourceRevision' ? { sourceRevision: 'revision-2' } : {};
+    mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockResolvedValueOnce(response([item('3')], null, { category: 'cutting' }))
+      .mockResolvedValueOnce(response([item('4')], '160', fresh))
+      .mockReturnValueOnce(tail.promise);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(({ category }: { category: 'grinding' | 'cutting' }) =>
+      useKioskGrindingPlanningBoardProgressive({ category, view: 'seiban' }),
+    { initialProps: { category: 'grinding' }, wrapper: wrapper(client) });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const params = { category: 'grinding', view: 'seiban' } as const;
+    const queryKey = productionScheduleQueryKeys.grindingPlanningBoard(params);
+    const previousUpdatedAt = client.getQueryState(queryKey)!.dataUpdatedAt;
+    hook.rerender({ category: 'cutting' });
+    await waitFor(() => expect(hook.result.current.data?.items).toEqual([item('3')]));
+    await act(async () => {
+      await client.fetchQuery({ queryKey, queryFn: () => mocks.getBoard(params) });
+    });
+    expect(client.getQueryState(queryKey)!.dataUpdatedAt).toBeGreaterThan(previousUpdatedAt);
+
+    hook.rerender({ category: 'grinding' });
+    await waitFor(() => expect(mocks.getBoard).toHaveBeenCalledTimes(5));
+    expect(mocks.getBoard).toHaveBeenLastCalledWith({ ...params, cursor: 160, pageSize: 640, snapshotId: fresh.snapshotId ?? 'snapshot-1' });
+    expect(hook.result.current.data?.items).toEqual([item('4')]);
+    expect(hook.result.current.isComplete).toBe(false);
+    expect(hook.result.current.isAppending).toBe(true);
+    await act(async () => { tail.resolve(response([item('5')], null, fresh)); });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    expect(hook.result.current.data?.items).toEqual([item('4'), item('5')]);
   });
 
   it('保存後は全件差し替えまで確定済みの値と順番を保持し、次の保存へrevisionを渡す', async () => {

@@ -137,6 +137,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   const mergedParamsKeyRef = useRef<string | null>(null);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
   const displayedRef = useRef<{ paramsKey: string; data: GrindingPlanningBoardResponse; complete: boolean } | undefined>(undefined);
+  const completeDataRef = useRef(new Map<string, { signature: string; data: GrindingPlanningBoardResponse }>());
   type Settlement = { paramsKey: string; updatedAt: number; data: GrindingPlanningBoardResponse | undefined; isError: boolean; error: unknown };
   const settledRef = useRef<Settlement | undefined>(undefined);
   const [settlement, setSettlement] = useState<Settlement>();
@@ -236,14 +237,28 @@ export function useKioskGrindingPlanningBoardProgressive(
     let previousCursor = -1;
 
     const keepComplete = displayedRef.current?.paramsKey === paramsKey && displayedRef.current.complete;
-    const publish = () => {
-      const data = { ...initial, items, nextCursor: cursor };
+    const publish = (data = { ...initial, items, nextCursor: cursor }) => {
+      const complete = data.nextCursor == null;
       mergedParamsKeyRef.current = paramsKey;
-      displayedRef.current = { paramsKey, data, complete: cursor == null };
+      displayedRef.current = { paramsKey, data, complete };
       setMergedData(data);
-      setIsComplete(cursor == null);
-      if (cursor == null) setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data, isError: false, error: null });
+      setIsComplete(complete);
+      if (complete) {
+        const cache = completeDataRef.current;
+        cache.delete(paramsKey);
+        cache.set(paramsKey, { signature: firstSignature, data });
+        if (cache.size > 6) cache.delete(cache.keys().next().value!);
+        setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data, isError: false, error: null });
+      }
     };
+    const cached = completeDataRef.current.get(paramsKey);
+    if (cached?.signature === firstSignature) {
+      publish(cached.data);
+      setAppendError(null);
+      staleRefetchCountRef.current = 0;
+      setIsAppending(false);
+      return;
+    }
     if (!keepComplete || cursor == null) publish();
     setAppendError(null);
     if (cursor == null) {
