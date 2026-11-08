@@ -5,8 +5,8 @@ import { PlanningBoardToolbar, type PlanningBoardToolbarProps } from './grinding
 import { usePersistedArrivalFilter } from './usePersistedArrivalFilter';
 
 const toolbarProps: PlanningBoardToolbarProps = {
-  categories: { grinding: true, cutting: false }, view: 'resource', status: 'incomplete', allocation: 'alternate',
-  selectedCount: 0, registeredCount: 0, onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(),
+  category: 'grinding', view: 'resource', status: 'incomplete', allocation: 'alternate',
+  selectedCount: 0, registeredCount: 0, onOpenDrawer: vi.fn(), onCategoryChange: vi.fn(), onViewChange: vi.fn(),
   onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 };
 function Toolbar() {
