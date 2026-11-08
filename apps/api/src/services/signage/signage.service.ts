@@ -30,7 +30,7 @@ export function signageScheduleMatchesClientDeviceId(
   const ids = targetClientDeviceIds ?? [];
   return ids.length === 0 || Boolean(clientDeviceId && ids.includes(clientDeviceId));
 }
-import { ApiError } from '../../lib/errors.js';
+import { resolveLegacyScheduleTargets, resolveScheduleTargets } from './schedule-targets.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
@@ -178,11 +178,12 @@ export class SignageService {
   private readonly scheduleSummaryOrderBy = [{ priority: 'desc' as const }, { id: 'asc' as const }];
 
   private async findScheduleSummaries(where: Prisma.SignageScheduleWhereInput): Promise<ScheduleSummary[]> {
-    return this.db.signageSchedule.findMany({
+    const rows = await this.db.signageSchedule.findMany({
       where,
       orderBy: this.scheduleSummaryOrderBy,
       select: this.scheduleSummarySelect,
     });
+    return resolveLegacyScheduleTargets(this.db, rows);
   }
 
   /**
@@ -910,22 +911,6 @@ export class SignageService {
     };
   }
 
-  private async resolveScheduleTargets(input: Pick<SignageScheduleInput, 'targetClientDeviceIds' | 'targetClientKeys'>) {
-    const ids = input.targetClientDeviceIds;
-    const requested = [...new Set(ids ?? input.targetClientKeys ?? [])];
-    const devices = requested.length === 0 ? [] : await this.db.clientDevice.findMany({
-      where: ids !== undefined ? { id: { in: requested } } : { apiKey: { in: requested } },
-      select: { id: true, apiKey: true },
-    });
-    const byTarget = new Map(devices.map((device) => [ids !== undefined ? device.id : device.apiKey, device]));
-    const known = requested.filter((target) => byTarget.has(target));
-    if (known.length < requested.length) throw new ApiError(400, '登録済み端末のみ選択できます', undefined, 'INVALID_SIGNAGE_TARGET');
-    return {
-      targetClientDeviceIds: known.map((target) => byTarget.get(target)!.id),
-      targetClientKeys: known.map((target) => byTarget.get(target)!.apiKey),
-    };
-  }
-
   async createSchedule(input: SignageScheduleInput): Promise<{
     id: string;
     name: string;
@@ -940,7 +925,7 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
-    const targets = await this.resolveScheduleTargets(input);
+    const targets = await resolveScheduleTargets(this.db, input);
     const schedule = await this.db.signageSchedule.create({
       data: {
         name: input.name,
@@ -981,7 +966,9 @@ export class SignageService {
     // Omitted targets stay untouched so a concurrent target change is never overwritten.
     const targets = input.targetClientDeviceIds === undefined && input.targetClientKeys === undefined
       ? {}
-      : await this.resolveScheduleTargets(input);
+      : await resolveScheduleTargets(this.db, input, await this.db.signageSchedule.findUnique({
+        where: { id }, select: { targetClientDeviceIds: true, targetClientKeys: true },
+      }));
     const schedule = await this.db.signageSchedule.update({
       where: { id },
       data: {

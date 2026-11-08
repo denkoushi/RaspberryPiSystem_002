@@ -12,6 +12,7 @@ const schedule = (partial: Record<string, unknown>) => ({
   pdfId: null,
   layoutConfig: null,
   targetClientDeviceIds: [],
+  targetClientKeys: [],
   dayOfWeek: [1, 2, 3, 4, 5],
   startTime: '00:00',
   endTime: '23:59',

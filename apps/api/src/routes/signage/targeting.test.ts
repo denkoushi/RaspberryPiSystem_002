@@ -18,6 +18,7 @@ describe('schedule target input and rollback writes', () => {
     const db = {
       clientDevice: { findMany: vi.fn().mockResolvedValue([device]) },
       signageSchedule: {
+        findUnique: vi.fn().mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [] }),
         create: vi.fn(async ({ data }) => ({ id: scheduleId, ...data })),
         update: vi.fn(async ({ data }) => ({ id: scheduleId, ...data })),
       },
@@ -55,6 +56,7 @@ describe('schedule target input and rollback writes', () => {
     expect(response.statusCode).toBe(200);
     expect(db.signageSchedule.update).toHaveBeenCalledWith({ where: { id: scheduleId }, data: { name: 'Renamed' } });
     expect(db.clientDevice.findMany).not.toHaveBeenCalled();
+    expect(db.signageSchedule.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([{ targetClientDeviceIds: ['not-an-id'] }, { targetClientDeviceIds: [device.id] }, { targetClientKeys: ['unknown-key'] }])(
@@ -66,6 +68,33 @@ describe('schedule target input and rollback writes', () => {
       expect(db.signageSchedule.create).not.toHaveBeenCalled();
     }
   );
+
+  it.each(['targetClientDeviceIds', 'targetClientKeys'] as const)('drops only stored stale targets on update using %s', async (field) => {
+    const { app, db } = fixture();
+    const stale = field === 'targetClientDeviceIds' ? '33333333-3333-4333-8333-333333333333' : 'deleted-key';
+    const valid = field === 'targetClientDeviceIds' ? device.id : device.apiKey;
+    db.signageSchedule.findUnique.mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [], [field]: [stale] });
+    const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { [field]: [stale, valid] } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id], targetClientKeys: [device.apiKey] });
+    expect(db.signageSchedule.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: scheduleId }, select: { targetClientDeviceIds: true, targetClientKeys: true },
+    });
+  });
+
+  it.each(['targetClientDeviceIds', 'targetClientKeys'] as const)('rejects new unknown and entirely stale updates using %s', async (field) => {
+    for (const stored of [false, true]) {
+      const { app, db } = fixture();
+      const unknown = field === 'targetClientDeviceIds' ? '33333333-3333-4333-8333-333333333333' : 'unknown-key';
+      const valid = field === 'targetClientDeviceIds' ? device.id : device.apiKey;
+      db.signageSchedule.findUnique.mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [], [field]: stored ? [unknown] : [] });
+      db.clientDevice.findMany.mockResolvedValue(stored ? [] : [device]);
+      const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { [field]: stored ? [unknown] : [valid, unknown] } });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ errorCode: 'INVALID_SIGNAGE_TARGET' });
+      expect(db.signageSchedule.update).not.toHaveBeenCalled();
+    }
+  });
 
   it('clears both target arrays for all terminals', async () => {
     const { app, db } = fixture();
