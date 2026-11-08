@@ -52,6 +52,7 @@ export async function registerKioskPowerRoute(
       JSON.stringify(
         {
           action: body.action,
+          clientKey,
           clientDeviceId: clientDevice.id,
           requestId: request.id,
           requestedAt
