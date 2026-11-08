@@ -106,37 +106,6 @@ export class EmployeeCsvImporter implements CsvImporter {
       updated: 0
     };
 
-    // Replacement recreates unreferenced employees; preserve omitted HR positions across that deletion.
-    const missingPositions = employeeRows.filter(row => row.positionName === undefined).map(row => row.employeeCode);
-    const preservedPositions = new Map(replaceExisting && missingPositions.length ? (await prisma.employee.findMany({
-      where: { employeeCode: { in: missingPositions } }, select: { employeeCode: true, positionName: true },
-    })).map(row => [row.employeeCode, row.positionName]) : []);
-
-    // replaceExisting=trueの場合: Loanレコードが存在しない従業員を削除
-    if (replaceExisting) {
-      try {
-        const loans = await prisma.loan.findMany({
-          select: { employeeId: true }
-        });
-        const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
-        
-        if (employeeIdsWithLoans.size > 0) {
-          await prisma.employee.deleteMany({
-            where: {
-              id: {
-                notIn: Array.from(employeeIdsWithLoans)
-              }
-            }
-          });
-        } else {
-          await prisma.employee.deleteMany();
-        }
-      } catch (error) {
-        logger?.error({ err: error }, '[EmployeeCsvImporter] Error in deleteMany');
-        throw error;
-      }
-    }
-
     // CSV内のnfcTagUid重複チェック
     const nfcTagUidMap = new Map<string, string[]>();
     for (const row of employeeRows) {
@@ -157,9 +126,42 @@ export class EmployeeCsvImporter implements CsvImporter {
       throw new ApiError(400, errorMessage);
     }
 
+    const statuses = employeeRows.map(row => normalizeEmployeeStatus(row.status));
+
     // 各行をループ処理
     await prisma.$transaction(async (tx) => {
-      for (const row of employeeRows) {
+      // Replacement recreates unreferenced employees; preserve omitted HR positions across that deletion.
+      const missingPositions = employeeRows.filter(row => row.positionName === undefined).map(row => row.employeeCode);
+      const preservedPositions = new Map(replaceExisting && missingPositions.length ? (await tx.employee.findMany({
+        where: { employeeCode: { in: missingPositions } }, select: { employeeCode: true, positionName: true },
+      })).map(row => [row.employeeCode, row.positionName]) : []);
+
+      // replaceExisting=trueの場合: Loanレコードが存在しない従業員を削除
+      if (replaceExisting) {
+        try {
+          const loans = await tx.loan.findMany({
+            select: { employeeId: true }
+          });
+          const employeeIdsWithLoans = new Set(loans.map(l => l.employeeId).filter((id): id is string => id !== null));
+
+          if (employeeIdsWithLoans.size > 0) {
+            await tx.employee.deleteMany({
+              where: {
+                id: {
+                  notIn: Array.from(employeeIdsWithLoans)
+                }
+              }
+            });
+          } else {
+            await tx.employee.deleteMany();
+          }
+        } catch (error) {
+          logger?.error({ err: error }, '[EmployeeCsvImporter] Error in deleteMany');
+          throw error;
+        }
+      }
+
+      for (const [index, row] of employeeRows.entries()) {
         // displayNameはlastName + firstNameから自動生成
         const displayName = `${row.lastName}${row.firstName}`;
         const updateData = {
@@ -171,7 +173,7 @@ export class EmployeeCsvImporter implements CsvImporter {
           ...(row.positionName !== undefined ? { positionName: row.positionName.trim() || null }
             : preservedPositions.has(row.employeeCode) ? { positionName: preservedPositions.get(row.employeeCode)! } : {}),
           nfcTagUid: row.nfcTagUid || null,
-          status: normalizeEmployeeStatus(row.status)
+          status: statuses[index]
         };
         const createData = {
           employeeCode: row.employeeCode,
