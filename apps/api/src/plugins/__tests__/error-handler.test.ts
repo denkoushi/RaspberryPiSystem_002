@@ -174,3 +174,35 @@ describe('shared error classification preserves responses and logs', () => {
     }
   });
 });
+
+describe('unhandled error messages', () => {
+  it.each([
+    ['production', 500, 'サーバーエラー'],
+    ['test', 500, 'secret detail'],
+    ['production', 400, 'secret detail'],
+  ])('uses %s response text for status %s', async (nodeEnv, statusCode, message) => {
+    vi.resetModules();
+    vi.doMock('../../config/env.js', () => ({ env: { NODE_ENV: nodeEnv } }));
+    const { registerErrorHandler: register } = await import('../error-handler.js');
+    const logs: unknown[] = [];
+    const instance = Fastify({ logger: { stream: { write: (line: string) => { logs.push(JSON.parse(line)); } } } });
+    register(instance);
+    instance.get('/fail', async () => {
+      const error = new Error('secret detail');
+      if (statusCode < 500) Object.assign(error, { statusCode });
+      throw error;
+    });
+    try {
+      const response = await instance.inject('/fail');
+      expect(response.statusCode).toBe(statusCode);
+      expect(response.json().message).toBe(message);
+      await vi.waitFor(() => {
+        expect(logs).toContainEqual(expect.objectContaining({ errorMessage: 'secret detail', msg: 'Unhandled error' }));
+      });
+    } finally {
+      await instance.close();
+      vi.doUnmock('../../config/env.js');
+      vi.resetModules();
+    }
+  });
+});

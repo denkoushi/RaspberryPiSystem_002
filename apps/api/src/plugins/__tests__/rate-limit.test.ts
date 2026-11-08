@@ -34,6 +34,7 @@ beforeEach(async () => {
   app.get('/api/kiosk/config', ok);
   app.get('/api/admin/thing', ok);
   app.get('/api/admin/other', ok);
+  app.get('/api/admin/items/:id', ok);
   // Generic catch-all used for allow-list checks so every prefix hits a real route.
   app.get('/*', ok);
   await app.register(registerAuthRoutes, { prefix: '/api' });
@@ -122,14 +123,15 @@ describe('registerRateLimit', () => {
     expect((await hit('/api/kiosk/other', 121)).at(-1)).toBe(429);
   });
 
-  it('counts kiosk requests per client key, normalising JSON-quoted keys', async () => {
+  it('shares a bucket across parameter values on the same route', async () => {
+    await hit('/api/admin/items/first', 120);
+    expect((await hit('/api/admin/items/second', 1))).toEqual([429]);
+  });
+
+  it('shares a kiosk bucket regardless of the client key header', async () => {
     await hit('/api/kiosk/config', 120, { 'x-client-key': 'kiosk-a' });
-    // Same key spelled as JSON string shares the counter.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': '"kiosk-a"' } })).statusCode).toBe(429);
-    // A different kiosk on the same IP is not affected.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': 'kiosk-b' } })).statusCode).toBe(200);
-    // Requests without a key share an "anonymous" bucket separate from keyed kiosks.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config' })).statusCode).toBe(200);
+    expect(await hit('/api/kiosk/config', 1, { 'x-client-key': 'kiosk-b' })).toEqual([429]);
+    expect(await hit('/api/kiosk/config', 1)).toEqual([429]);
   });
 
   it.each([

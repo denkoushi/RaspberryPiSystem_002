@@ -1,7 +1,6 @@
 import rateLimit from '@fastify/rate-limit';
 import fp from 'fastify-plugin';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { normalizeClientKey } from '../lib/client-key.js';
 
 /**
  * レート制限プラグイン
@@ -55,12 +54,8 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     timeWindow: '1 minute',
     // URL+IPをキーにしてエンドポイント別にカウント
     keyGenerator: (request: FastifyRequest) => {
-      const baseUrl = normalizeRateLimitPath(request.url);
-      if (baseUrl.startsWith('/api/kiosk')) {
-        const clientKey = normalizeClientKey(request.headers['x-client-key']);
-        return `${request.ip}:${baseUrl}:${clientKey ?? 'anonymous'}`;
-      }
-      return `${request.ip}:${baseUrl}`;
+      const routePattern = request.routeOptions.url ?? normalizeRateLimitPath(request.url);
+      return `${request.ip}:${routePattern}`;
     },
     // 特定パスをスキップ
     allowList: (request: FastifyRequest) => {
