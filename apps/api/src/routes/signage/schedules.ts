@@ -1,3 +1,4 @@
+import { requireDeviceKeyOrViewer } from '../../lib/device-or-viewer.js';
 import type { FastifyInstance } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
@@ -13,8 +14,8 @@ function withoutLegacyTargets<T extends { targetClientKeys?: unknown }>(schedule
 export function registerScheduleRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
-  // GET /api/signage/schedules - スケジュール一覧取得（認証不要、サイネージ用）
-  app.get('/schedules', { config: { rateLimit: false } }, async () => {
+  // GET /api/signage/schedules - スケジュール一覧取得（端末キーまたはログインが必要）
+  app.get('/schedules', { preHandler: requireDeviceKeyOrViewer, config: { rateLimit: false } }, async () => {
     const schedules = await signageService.getSchedules();
     // 公開DTOは許可した表示項目だけを返し、端末の認証情報を含めない。
     return {

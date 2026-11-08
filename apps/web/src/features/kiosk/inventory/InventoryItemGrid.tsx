@@ -2,6 +2,7 @@ import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryCompartment, type InventoryImportSummary } from '../../../api/client';
+import { ProtectedImage } from '../../../components/common/ProtectedImage';
 
 import { issuedLabel, needsOrdering, needsReorder, unitLabel } from './inventoryDailyFlow';
 import { InventoryHoverCard } from './InventoryHoverCard';
@@ -115,7 +116,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
       {pending.map((candidate) => (
         <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${tooltip ? 'opacity-[.55]' : ''} transition-opacity duration-150 motion-reduce:transition-none ${listRow} border-2 border-inv-amber hover:brightness-110 focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
           <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
-            {candidate.photoUrl ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+            {candidate.photoUrl ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
           </span>
           <span className="inline-flex items-center gap-1 rounded-full bg-inv-amber px-2 py-1 text-xs font-black text-inv-amber-ink"><LockIcon size={14} />未登録</span>
           <span className="truncate text-[17px] font-bold">候補 #{candidate.sourceItemId}</span>
@@ -134,7 +135,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
             onBlur={hideTooltip}
             className={`${listRow} ${stockBorder(compartment)} ${hoverClass(compartment)}`} onClick={() => onPick(compartment)}>
             <span className="block h-14 w-14 overflow-hidden rounded-lg bg-inv-s3">
-              {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+              {photo ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             </span>
             <span aria-label="置き場所の番号" className={`${invLabelNumber} min-w-0 truncate justify-self-start text-sm`}>{formatInventoryLabelNumber(compartment.labelNumber)}</span>
             <span className="truncate text-[17px] font-bold">{compartment.item.name.trim() || '—'}</span>
@@ -154,7 +155,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
       {pending.map((candidate) => (
         <button key={candidate.id} type="button" aria-label={`未登録 候補 #${candidate.sourceItemId} を登録する`} className={`${tooltip ? 'opacity-[.55]' : ''} transition-opacity duration-150 motion-reduce:transition-none flex flex-col overflow-hidden rounded-[14px] border-2 border-inv-amber bg-inv-s1 text-left text-inv-text hover:brightness-110 focus:outline-none focus-visible:brightness-110`} onClick={() => onPickPending?.(candidate)}>
           <span className={`relative block ${config.photo} w-full bg-inv-s3`}>
-            {candidate.photoUrl ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+            {candidate.photoUrl ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(candidate.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
             <span className="absolute left-2 top-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-inv-amber px-3 text-[13px] font-black text-inv-amber-ink"><LockIcon size={14} />未登録</span>
           </span>
           <span className="px-3 pt-2.5 text-sm font-bold">候補 #{candidate.sourceItemId}</span>
@@ -179,7 +180,7 @@ export const InventoryItemGrid = memo(function InventoryItemGrid({ compartments,
           >
           <button type="button" aria-describedby={tooltip?.compartment.id === compartment.id ? tooltipId : undefined} className={`flex h-full w-full flex-col overflow-hidden rounded-[14px] ${stockBorder(compartment)} bg-inv-s1 text-left text-inv-text focus:outline-none`} onClick={() => onPick(compartment)}>
             <span className={`relative block ${config.photo} w-full shrink-0 bg-inv-s3`}>
-              {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+              {photo ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
               <span className="absolute inset-x-1.5 top-1.5 flex items-start gap-1.5">
                 <span className="flex shrink-0 items-baseline gap-1 rounded-lg bg-inv-bg/75 px-2 py-1 text-sm font-bold">
                   <span className={`text-[22px] font-black tabular-nums ${empty ? 'text-inv-amber' : 'text-inv-text'}`}>{compartment.stockQuantity}</span>

@@ -254,10 +254,12 @@ describe('GET /api/signage/schedules', () => {
     }
   });
 
-  it('should return schedules without authentication', async () => {
+  it('should return schedules with authentication', async () => {
+    const viewer = await createTestUser('VIEWER');
     const response = await app.inject({
       method: 'GET',
       url: '/api/signage/schedules',
+      headers: createAuthHeader(viewer.token),
     });
 
     expect(response.statusCode).toBe(200);
@@ -330,7 +332,7 @@ describe('GET /api/signage/schedules/management', () => {
     expect(disabledRes.statusCode).toBe(200);
     const disabledId = disabledRes.json().schedule.id as string;
 
-    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules', headers: createAuthHeader(admin.token) });
     expect(publicList.statusCode).toBe(200);
     const publicIds = (publicList.json().schedules as Array<{ id: string }>).map((s) => s.id);
     expect(publicIds).toContain(enabledId);
@@ -839,7 +841,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
   });
 
   it('should return image for schedule with layoutConfig FULL self_inspection_machine_board', async () => {
-    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules', headers: createAuthHeader(adminToken) });
     for (const schedule of listResponse.json().schedules as Array<{ id: string }>) {
       await app.inject({
         method: 'DELETE',
@@ -1134,6 +1136,7 @@ describe('GET /api/signage/content with SPLIT layout (left: pdf, right: pdf)', (
     const listResponse = await app.inject({
       method: 'GET',
       url: '/api/signage/schedules',
+      headers: createAuthHeader(adminToken),
     });
     const { schedules } = listResponse.json();
     for (const schedule of schedules) {
@@ -1262,8 +1265,10 @@ describe('GET /api/signage/visualization-image/:id', () => {
   let app: Awaited<ReturnType<typeof buildServer>>;
   let closeServer: (() => Promise<void>) | null = null;
   let dashboardId: string;
+  let viewerToken: string;
 
   beforeAll(async () => {
+    viewerToken = (await createTestUser('VIEWER')).token;
     app = await buildServer();
     closeServer = async () => {
       await app.close();
@@ -1289,9 +1294,10 @@ describe('GET /api/signage/visualization-image/:id', () => {
     }
   });
 
-  it('should return image/jpeg without authentication', async () => {
+  it('should return image/jpeg with authentication', async () => {
     const response = await app.inject({
       method: 'GET',
+      headers: createAuthHeader(viewerToken),
       url: `/api/signage/visualization-image/${dashboardId}`,
     });
 
@@ -1304,6 +1310,7 @@ describe('GET /api/signage/visualization-image/:id', () => {
   it('should return 400 for invalid UUID', async () => {
     const response = await app.inject({
       method: 'GET',
+      headers: createAuthHeader(viewerToken),
       url: '/api/signage/visualization-image/invalid-uuid',
     });
 
@@ -1342,6 +1349,7 @@ describe('GET /api/signage/content with SPLIT layout (left: loans, right: visual
     const listResponse = await app.inject({
       method: 'GET',
       url: '/api/signage/schedules',
+      headers: createAuthHeader(adminToken),
     });
     const { schedules } = listResponse.json();
     for (const schedule of schedules) {
@@ -1427,7 +1435,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     const admin = await createTestUser('ADMIN');
     adminToken = admin.token;
 
-    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    const listResponse = await app.inject({ method: 'GET', url: '/api/signage/schedules', headers: createAuthHeader(adminToken) });
     const { schedules } = listResponse.json();
     for (const schedule of schedules as Array<{ id: string }>) {
       await app.inject({
@@ -1529,7 +1537,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     expect(targetedRes.body).not.toContain(clientA.apiKey);
     expect(targetedRes.json().schedule.targetClientDeviceIds).toEqual([clientA.id]);
 
-    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
+    const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules', headers: createAuthHeader(adminToken) });
     expect(publicList.statusCode).toBe(200);
     const publicTargeted = publicList.json().schedules.find(
       (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,

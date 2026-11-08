@@ -353,6 +353,10 @@ update-frequency: medium
 **関連ファイル**: 
 - `apps/web/src/pages/tools/HistoryPage.tsx`
 
+**画像表示の取得方法（2026-11-08）**:
+- サムネイルとサイネージの可視化画像は、元画像と同じく端末キーかログインが要る。画面では `ProtectedImage`（`useProtectedImageBlobUrl`）で取得して表示する。
+- 一覧の遅延画像は画面内に入ってから取得する。可視化画像は30秒ごとに取り直し、古い URL を解放する。
+
 ---
 
 ### [KB-037] カメラプレビューのCPU負荷問題（常時プレビュー削除）

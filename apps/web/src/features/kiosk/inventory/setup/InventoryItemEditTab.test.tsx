@@ -11,6 +11,10 @@ import type { NfcEvent } from '../../../../hooks/useNfcStream';
 const nfc = vi.hoisted(() => ({ event: null as NfcEvent | null }));
 const area = '30007_KSJP-55';
 
+vi.mock('../../../../components/common/ProtectedImage', () => ({
+  ProtectedImage: ({ path, ...props }: { path: string } & import('react').ImgHTMLAttributes<HTMLImageElement>) => <img {...props} src={path} />,
+}));
+
 vi.mock('../../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value, readInventoryPhotoRegion: vi.fn(), resolveInventoryTag: vi.fn(), api: { get: vi.fn() } }));
 vi.mock('../../../../components/kiosk/useInventoryFullPhoto', () => ({ useInventoryFullPhoto: (url: string) => ({ imageUrl: url, error: false }) }));
 vi.mock('../../../../api/hooks', () => ({

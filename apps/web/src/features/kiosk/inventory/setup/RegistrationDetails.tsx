@@ -1,4 +1,5 @@
 import { inventoryThumbnailUrl, type InventoryImport, type InventoryItem, type InventoryToolFieldSuggestion } from '../../../../api/client';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { ChevronDownIcon } from '../InventoryIcons';
 import { invButtonSm, invField, invLabel, invSeg } from '../inventoryUi';
 
@@ -42,7 +43,7 @@ export function RegistrationDetails({
         </div>
         {draft.mode === 'EXISTING_ITEM' ? (
           draft.itemId ? <div className="mt-2 flex h-16 items-center gap-2.5 rounded-xl border-2 border-inv-cyan bg-inv-cyan/[0.12] px-2.5">
-            {selectedItem?.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(selectedItem.photos[0].photoUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
+            {selectedItem?.photos[0] ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(selectedItem.photos[0].photoUrl)} alt="" className="h-12 w-12 shrink-0 rounded-lg object-cover" /> : <span className="h-12 w-12 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
             <span className="min-w-0 flex-1 truncate text-base font-black">{draft.itemName}</span>
             <span className="shrink-0 text-[13px] text-inv-muted">追加先</span>
           </div> : <div className="mt-2 flex h-16 items-center rounded-xl border border-dashed border-inv-cyan px-3.5 text-base font-bold text-inv-cyan">→ 右の一覧から追加先を選ぶ</div>

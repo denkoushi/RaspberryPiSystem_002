@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryPhoto } from '../../../api/client';
+import { ProtectedImage } from '../../../components/common/ProtectedImage';
 import { useInventoryFullPhoto } from '../../../components/kiosk/useInventoryFullPhoto';
 
 type Props = {
@@ -33,8 +34,8 @@ export function InventoryPhotoPane({ photos }: Props) {
         aria-pressed={zoomed}
         onClick={() => setZoomed((current) => !current)}
       >
-        <img src={src} alt={photo.originalFilename} className="h-full w-full object-contain" />
-      </button> : <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[18px] border border-inv-line bg-inv-s1"><img src={src} alt={photo.originalFilename} className="h-full w-full object-contain" /></div>}
+        <ProtectedImage path={src} alt={photo.originalFilename} className="h-full w-full object-contain" />
+      </button> : <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[18px] border border-inv-line bg-inv-s1"><ProtectedImage path={src} alt={photo.originalFilename} className="h-full w-full object-contain" /></div>}
       {!zoomed && photos.length > 1 ? (
         <div className="flex shrink-0 gap-3 overflow-x-auto">
           {photos.map((entry, entryIndex) => (
@@ -46,7 +47,7 @@ export function InventoryPhotoPane({ photos }: Props) {
               className={`shrink-0 overflow-hidden rounded-xl border-2 ${entry.id === photo.id ? 'border-inv-cyan' : 'border-inv-line'}`}
               onClick={() => setIndex(entryIndex)}
             >
-              <img src={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-[150px] w-[200px] object-cover" />
+              <ProtectedImage path={inventoryThumbnailUrl(entry.photoUrl)} alt="" className="h-[150px] w-[200px] object-cover" />
             </button>
           ))}
         </div>

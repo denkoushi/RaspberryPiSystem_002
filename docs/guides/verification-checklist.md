@@ -692,7 +692,7 @@ curl -sk -o /dev/null -w "%{http_code}\n" -X POST "https://<Pi5>/api/tools/loans
 **確認ポイント**（[KB-322](../knowledge-base/infrastructure/signage.md#kb-322-管理コンソール-サイネージスケジュール一覧無効レコードの再編集api分離)）:
 
 - [x] （自動）`verify-phase12-real.sh` が **PASS**（回帰・既存 Phase12 観点・2026-04-01）
-- [x] 公開 `GET /api/signage/schedules`（キオスク）が **有効のみ** を返す（無効は一覧に出ない）（設計＋統合テストで担保）
+- [x] `GET /api/signage/schedules`（キオスク。2026-11-08 から登録済み端末のキーかログインが必要）が **有効のみ** を返す（無効は一覧に出ない）（設計＋統合テストで担保）
 - [x] 認証付き `GET /api/signage/schedules/management` が **ADMIN/MANAGER** で無効含む一覧に利用できる（管理 UI `/admin/signage-schedules`）（設計＋統合テストで担保・手動の再編集フローは運用で随時）
 
 **デプロイ実績（本変更）**: Pi5 のみ `scripts/update-all-clients.sh --limit raspberrypi5`、Detach Run **`20260401-134910-13950`**（`PLAY RECAP failed=0`）

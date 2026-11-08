@@ -17,6 +17,7 @@ import type { NfcEvent } from '../../hooks/useNfcStream';
 
 vi.mock('../../api/client', () => ({ resolveInventoryTag: vi.fn(), resolveInventoryLabelNumber: vi.fn(), saveInventoryMachineOrder: vi.fn(), inventoryThumbnailUrl: vi.fn((value: string) => value) }));
 vi.mock('../../api/hooks/item-inventory', () => ({ useInventoryTags: vi.fn() }));
+vi.mock('../../hooks/useProtectedImageBlobUrl', () => ({ useProtectedImageBlobUrl: (path: string | null | undefined) => ({ blobUrl: path ?? null, error: null }) }));
 vi.mock('../../features/kiosk/inventory/offline/inventoryOfflineQueueStore', () => ({
   inventoryOfflineQueueStore: { list: vi.fn(async () => []), prune: vi.fn(), add: vi.fn(), fail: vi.fn(), remove: vi.fn() },
 }));

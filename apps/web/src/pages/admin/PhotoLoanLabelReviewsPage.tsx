@@ -8,6 +8,7 @@ import { Fragment, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { usePatchPhotoLabelReview, usePhotoLabelReviews, usePhotoSimilarCandidates } from '../../api/hooks';
+import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useAuth } from '../../contexts/AuthContext';
@@ -88,8 +89,8 @@ function ReviewRow({ item }: { item: PhotoLabelReviewItem }) {
     <Fragment>
     <tr className="border-b border-slate-200 align-top text-slate-900">
       <td className="py-3 pr-2">
-        <img
-          src={toThumbnailUrl(item.photoUrl)}
+        <ProtectedImage
+          path={toThumbnailUrl(item.photoUrl)}
           alt="写真持出サムネイル"
           className="h-20 w-20 rounded object-cover bg-slate-100"
           loading="lazy"

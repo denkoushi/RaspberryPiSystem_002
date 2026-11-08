@@ -7,6 +7,10 @@ import { InventoryItemGrid, sortByLowStock } from './InventoryItemGrid';
 import type { InventoryCompartment, InventoryImportSummary } from '../../../api/client';
 
 
+vi.mock('../../../components/common/ProtectedImage', () => ({
+  ProtectedImage: ({ path, ...props }: { path: string } & import('react').ImgHTMLAttributes<HTMLImageElement>) => <img {...props} src={path} />,
+}));
+
 vi.mock('../../../api/client', () => ({ inventoryThumbnailUrl: (value: string) => value }));
 
 function drawer(id: string, name: string, lastIssuedAt: string | null, drawerNumber = 1) {
