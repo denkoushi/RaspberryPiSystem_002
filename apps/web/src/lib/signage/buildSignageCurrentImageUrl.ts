@@ -9,7 +9,8 @@ export function normalizeSignageApiBase(): string {
 }
 
 export type BuildSignageCurrentImageUrlOptions = {
-  /** `ClientDevice.apiKey`。未指定・空のときはクエリ `key` を付けない（後方互換・従来の単一キャッシュ） */
+  clientDeviceId?: string | null;
+  /** Terminal authentication credential. */
   clientKey?: string | null;
   /** キャッシュバスタ（ポーリング更新用） */
   cacheBust?: string | number;
@@ -23,6 +24,7 @@ export function buildSignageCurrentImageUrlSearchParams(
   options: BuildSignageCurrentImageUrlOptions = {}
 ): URLSearchParams {
   const params = new URLSearchParams();
+  if (options.clientDeviceId) params.set('clientDeviceId', options.clientDeviceId);
   const key = options.clientKey?.trim();
   if (key) {
     params.set('key', key);

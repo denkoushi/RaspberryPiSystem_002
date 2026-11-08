@@ -16,12 +16,12 @@ function legacyCurrentImagePath(): string {
   return path.join(getRenderDir(), LEGACY_CURRENT_IMAGE_NAME);
 }
 
-function storageIdForClientKey(clientKey: string): string {
-  return createHash('sha256').update(clientKey, 'utf8').digest('hex');
+function storageIdForClientDeviceId(clientDeviceId: string): string {
+  return createHash('sha256').update(clientDeviceId, 'utf8').digest('hex');
 }
 
-function pathForClientCurrentImage(clientKey: string): string {
-  return path.join(getRenderDir(), `current-${storageIdForClientKey(clientKey)}.jpg`);
+function pathForClientCurrentImage(clientDeviceId: string): string {
+  return path.join(getRenderDir(), `current-${storageIdForClientDeviceId(clientDeviceId)}.jpg`);
 }
 
 export class SignageRenderStorage {
@@ -30,21 +30,21 @@ export class SignageRenderStorage {
   }
 
   /**
-   * 端末（apiKey）ごとに latest JPEG を保存する
+   * 端末 IDごとに latest JPEG を保存する
    */
   static async saveRenderedImageForClient(
     buffer: Buffer,
-    clientKey: string,
+    clientDeviceId: string,
   ): Promise<{
     filename: string;
     filePath: string;
   }> {
-    const filePath = pathForClientCurrentImage(clientKey);
+    const filePath = pathForClientCurrentImage(clientDeviceId);
     await writeAtomicFileAtRoot(getRenderDir(), path.basename(filePath), buffer, 'replace');
 
     let filename = path.basename(filePath);
     if (KEEP_HISTORY) {
-      filename = `signage_${storageIdForClientKey(clientKey)}_${Date.now()}.jpg`;
+      filename = `signage_${storageIdForClientDeviceId(clientDeviceId)}_${Date.now()}.jpg`;
       const historyPath = path.join(getRenderDir(), filename);
       await writeAtomicFileAtRoot(getRenderDir(), filename, buffer, 'create');
       return { filename, filePath: historyPath };
@@ -71,12 +71,12 @@ export class SignageRenderStorage {
   }
 
   /**
-   * 端末キーがあるときはその端末用ファイル。無いときはレガシー current.jpg（存在すれば）
+   * 端末 ID があるときはその端末用ファイル。無いときはレガシー current.jpg（存在すれば）
    */
-  static async readCurrentImage(clientKey?: string | null): Promise<Buffer | null> {
-    if (clientKey && clientKey.length > 0) {
+  static async readCurrentImage(clientDeviceId?: string | null): Promise<Buffer | null> {
+    if (clientDeviceId && clientDeviceId.length > 0) {
       try {
-        return await fs.readFile(pathForClientCurrentImage(clientKey));
+        return await fs.readFile(pathForClientCurrentImage(clientDeviceId));
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
           return null;
@@ -94,8 +94,8 @@ export class SignageRenderStorage {
     }
   }
 
-  static getCurrentImagePathForClient(clientKey: string): string {
-    return pathForClientCurrentImage(clientKey);
+  static getCurrentImagePathForClient(clientDeviceId: string): string {
+    return pathForClientCurrentImage(clientDeviceId);
   }
 
   /** @deprecated 端末別パスを優先。JWT のみ等で引き続き参照 */

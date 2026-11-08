@@ -98,6 +98,16 @@ describe('ClientsPage', () => {
     expect(settings().getByRole('switch', { name: '他端末の代理操作を許可' })).toBeDisabled();
   });
 
+  it.each(['ADMIN', 'MANAGER'])('allows %s to change the signage flag', async (role) => {
+    authUser.role = role;
+    render(<ClientsPage />);
+    fireEvent.click(settings().getByRole('switch', { name: 'サイネージを許可' }));
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      id: 'mac', payload: expect.objectContaining({ isSignage: true })
+    }));
+  });
+
   it('marks a device without a site and warns in its settings', () => {
     render(<ClientsPage />);
     expect(screen.getByRole('button', { name: /拠点未設定/ })).toHaveTextContent('1');

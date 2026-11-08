@@ -195,14 +195,14 @@ export function SchedulePanel({ editor }: { editor: Editor }) {
   };
 
   const days = formData.dayOfWeek ?? [];
-  const targetKeys = useMemo(() => formData.targetClientKeys ?? [], [formData.targetClientKeys]);
+  const targetKeys = useMemo(() => formData.targetClientDeviceIds ?? [], [formData.targetClientDeviceIds]);
   const clientCandidates = useMemo(
     () => resolveSignageTargetClientCandidates(editor.clientsForSignageQuery.data ?? [], targetKeys),
     [editor.clientsForSignageQuery.data, targetKeys],
   );
-  const toggleClient = (apiKey: string) => {
-    const next = targetKeys.includes(apiKey) ? targetKeys.filter((key) => key !== apiKey) : [...targetKeys, apiKey];
-    setFormData({ ...formData, targetClientKeys: next });
+  const toggleClient = (clientDeviceId: string) => {
+    const next = targetKeys.includes(clientDeviceId) ? targetKeys.filter((key) => key !== clientDeviceId) : [...targetKeys, clientDeviceId];
+    setFormData({ ...formData, targetClientDeviceIds: next });
   };
 
   const isSaving = editor.create.isPending || editor.update.isPending;
@@ -373,11 +373,11 @@ export function SchedulePanel({ editor }: { editor: Editor }) {
       <div className="sh-fld">
         <span className="sh-flbl">表示する端末</span>
         <div className="sh-filter">
-          <button type="button" className="sh-pill" aria-pressed={targetKeys.length === 0} onClick={() => setFormData({ ...formData, targetClientKeys: [] })}>
+          <button type="button" className="sh-pill" aria-pressed={targetKeys.length === 0} onClick={() => setFormData({ ...formData, targetClientDeviceIds: [] })}>
             すべての端末
           </button>
           {clientCandidates.map((client) => (
-            <button key={client.id} type="button" className="sh-pill" aria-pressed={targetKeys.includes(client.apiKey)} onClick={() => toggleClient(client.apiKey)}>
+            <button key={client.id} type="button" className="sh-pill" aria-pressed={targetKeys.includes(client.id)} onClick={() => toggleClient(client.id)}>
               {client.name}
             </button>
           ))}

@@ -47,7 +47,7 @@ function canvasSpec(overrides: Record<string, unknown> = {}) {
 function serviceWith({
   schedules = [],
   findMany = vi.fn(async (input?: { where?: unknown }) => input?.where
-    ? [{ id: DEVICE_ID, apiKey: SECRET_API_KEY }]
+    ? [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1', apiKey: SECRET_API_KEY }]
     : [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1' }]),
   a2uiData = { resolve: vi.fn(async (value) => value), readSource: vi.fn(), listSources: vi.fn() }
 }: {
@@ -58,14 +58,14 @@ function serviceWith({
   const createSchedule = vi.fn(async (input: Record<string, unknown>) => ({
     id: 'new-schedule',
     ...input,
-    targetClientKeys: input.targetClientKeys ?? [],
+    targetClientDeviceIds: input.targetClientDeviceIds ?? [],
     layoutConfig: input.layoutConfig ?? null,
     enabled: input.enabled ?? true
   }));
   const updateSchedule = vi.fn(async (id: string, input: Record<string, unknown>) => ({
     id,
     ...input,
-    targetClientKeys: input.targetClientKeys ?? [],
+    targetClientDeviceIds: input.targetClientDeviceIds ?? [],
     layoutConfig: input.layoutConfig ?? null,
     enabled: input.enabled ?? true
   }));
@@ -181,7 +181,7 @@ describe('BusinessHermesMcpService signage tools', () => {
       contentType: 'PDF',
       pdfId: '77777777-7777-4777-8777-777777777777',
       layoutConfig: { layout: 'FULL', slots: [{ position: 'FULL', kind: 'pdf', config: { pdfId: 'kept' } }] },
-      targetClientKeys: [SECRET_API_KEY],
+      targetClientDeviceIds: [DEVICE_ID],
       dayOfWeek: [1, 3], startTime: '08:00', endTime: '17:00', priority: 4, enabled: false
     }];
     const { service } = serviceWith({ schedules });
@@ -216,7 +216,7 @@ describe('BusinessHermesMcpService signage tools', () => {
           pdfId: '99999999-9999-4999-8999-999999999999', displayMode: 'SINGLE', apiKey: 'do-not-return'
         } }],
         hiddenInternalValue: 'do-not-return'
-      }, targetClientKeys: [], dayOfWeek: [1],
+      }, targetClientDeviceIds: [], dayOfWeek: [1],
       startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
     }];
     const { service } = serviceWith({ schedules });
@@ -294,7 +294,7 @@ describe('BusinessHermesMcpService signage tools', () => {
     const applied = await service.applySignageProposal(proposed.proposal);
     expect(createSchedule).toHaveBeenCalledWith(expect.objectContaining({
       name: '自由画面',
-      targetClientKeys: [SECRET_API_KEY],
+      targetClientDeviceIds: [DEVICE_ID],
       layoutConfig: { layout: 'CANVAS', ...spec }
     }));
     expect(payload(applied)).toMatchObject({ action: 'created', schedule: { name: '自由画面', targetClientCount: 1 } });
@@ -304,7 +304,7 @@ describe('BusinessHermesMcpService signage tools', () => {
   it('updates an existing canvas schedule through the real update path', async () => {
     const existing = {
       id: '33333333-3333-4333-8333-333333333333', name: '自由画面', contentType: 'TOOLS', pdfId: null,
-      layoutConfig: { layout: 'CANVAS', ...canvasSpec() }, targetClientKeys: [STORED_API_KEY],
+      layoutConfig: { layout: 'CANVAS', ...canvasSpec() }, targetClientDeviceIds: [DEVICE_ID],
       dayOfWeek: [1, 2, 3, 4, 5], startTime: '08:00', endTime: '17:00', priority: 5, enabled: true
     };
     const findMany = vi.fn(async (input?: { where?: unknown }) => input?.where
@@ -321,11 +321,11 @@ describe('BusinessHermesMcpService signage tools', () => {
     expect(updateSchedule).not.toHaveBeenCalled();
     await service.applySignageProposal(proposed.proposal);
     expect(updateSchedule).toHaveBeenCalledWith(existing.id, expect.objectContaining({
-      priority: 8, targetClientKeys: [STORED_API_KEY], layoutConfig: { layout: 'CANVAS', ...updatedCanvas }
+      priority: 8, targetClientDeviceIds: [DEVICE_ID], layoutConfig: { layout: 'CANVAS', ...updatedCanvas }
     }));
   });
 
-  it('prepares a progress schedule without writing, then applies it with server-resolved target keys', async () => {
+  it('prepares a progress schedule without writing, then applies it with device IDs', async () => {
     const { service, createSchedule } = serviceWith();
 
     const response = await service.call('business_hermes_configure_signage_kiosk_progress_overview', {
@@ -354,7 +354,7 @@ describe('BusinessHermesMcpService signage tools', () => {
     const applied = await service.applySignageProposal(payload(response).proposal);
     expect(createSchedule).toHaveBeenCalledWith(expect.objectContaining({
       name: '業務進捗',
-      targetClientKeys: [SECRET_API_KEY],
+      targetClientDeviceIds: [DEVICE_ID],
       layoutConfig: progressLayout('工場A - 組立1', { slideIntervalSeconds: 45, seibanPerPage: 6 })
     }));
     expect(applied.content[0]?.text).not.toContain(SECRET_API_KEY);
@@ -371,6 +371,7 @@ describe('BusinessHermesMcpService signage tools', () => {
       contentType: 'TOOLS',
       pdfId: null,
       layoutConfig: progressLayout('工場A - 組立1', { slideIntervalSeconds: 50, seibanPerPage: 4 }),
+      targetClientDeviceIds: [DEVICE_ID],
       targetClientKeys: [STORED_API_KEY],
       dayOfWeek: [1, 2, 3, 4, 5],
       startTime: '08:00',
@@ -379,7 +380,7 @@ describe('BusinessHermesMcpService signage tools', () => {
       enabled: false
     };
     const findMany = vi.fn(async (input?: { where?: unknown }) => input?.where
-      ? [{ id: DEVICE_ID, apiKey: STORED_API_KEY }]
+      ? [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1', apiKey: STORED_API_KEY }]
       : [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1' }]);
     const { service, updateSchedule } = serviceWith({ schedules: [existing], findMany });
 
@@ -393,7 +394,7 @@ describe('BusinessHermesMcpService signage tools', () => {
     expect(updateSchedule).not.toHaveBeenCalled();
     const applied = await service.applySignageProposal(payload(response).proposal);
     expect(updateSchedule).toHaveBeenCalledWith(existing.id, expect.objectContaining({
-      targetClientKeys: [STORED_API_KEY],
+      targetClientDeviceIds: [DEVICE_ID],
       dayOfWeek: existing.dayOfWeek,
       startTime: '09:00',
       endTime: existing.endTime,
@@ -432,7 +433,7 @@ describe('BusinessHermesMcpService signage tools', () => {
   it('rejects duplicate names before attempting an update', async () => {
     const duplicate = {
       id: '44444444-4444-4444-8444-444444444444', name: '業務進捗', contentType: 'TOOLS',
-      layoutConfig: progressLayout('工場A - 組立1'), targetClientKeys: [], dayOfWeek: [1],
+      layoutConfig: progressLayout('工場A - 組立1'), targetClientDeviceIds: [], dayOfWeek: [1],
       startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
     };
     const { service, updateSchedule, createSchedule } = serviceWith({ schedules: [duplicate, { ...duplicate, id: '55555555-5555-4555-8555-555555555555' }] });
@@ -448,10 +449,10 @@ describe('BusinessHermesMcpService signage tools', () => {
       id: '66666666-6666-4666-8666-666666666666', name: '業務進捗', contentType: 'PDF',
       pdfId: '77777777-7777-4777-8777-777777777777',
       layoutConfig: { layout: 'SPLIT', slots: [{ position: 'LEFT', kind: 'pdf', config: { pdfId: 'kept-layout' } }] },
-      targetClientKeys: [STORED_API_KEY], dayOfWeek: [1], startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
+      targetClientDeviceIds: [DEVICE_ID], dayOfWeek: [1], startTime: '08:00', endTime: '17:00', priority: 1, enabled: true
     };
     const findMany = vi.fn(async (input?: { where?: unknown }) => input?.where
-      ? [{ id: OTHER_DEVICE_ID, apiKey: SECRET_API_KEY }]
+      ? [{ id: OTHER_DEVICE_ID, name: '別端末', location: '工場A - 組立2', apiKey: SECRET_API_KEY }]
       : [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1' }]);
     const { service, updateSchedule } = serviceWith({ schedules: [existing], findMany });
     const response = await service.call('business_hermes_configure_signage_kiosk_progress_overview', { scheduleName: '業務進捗', confirm: true });
@@ -461,7 +462,7 @@ describe('BusinessHermesMcpService signage tools', () => {
       contentType: existing.contentType,
       pdfId: existing.pdfId,
       layoutConfig: existing.layoutConfig,
-      targetClientKeys: [SECRET_API_KEY],
+      targetClientDeviceIds: [OTHER_DEVICE_ID],
       dayOfWeek: [2], startTime: '09:00', endTime: '18:00', priority: 9, enabled: false
     }));
     expect(applied.content[0]?.text).not.toContain(SECRET_API_KEY);

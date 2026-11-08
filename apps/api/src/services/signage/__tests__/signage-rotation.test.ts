@@ -11,7 +11,7 @@ const schedule = (partial: Record<string, unknown>) => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [1, 2, 3, 4, 5],
   startTime: '00:00',
   endTime: '23:59',
@@ -31,7 +31,7 @@ describe('SignageService.getRotationForClient', () => {
       schedule({ id: 'low', priority: 0 }),
       schedule({ id: 'high', priority: 5 }),
       schedule({ id: 'morning-only', startTime: '07:30', endTime: '09:00' }),
-      schedule({ id: 'other-device', targetClientKeys: ['key-b'] }),
+      schedule({ id: 'other-device', targetClientDeviceIds: ['key-b'] }),
     ]);
 
     const rotation = await service.getRotationForClient('key-a', NOW);

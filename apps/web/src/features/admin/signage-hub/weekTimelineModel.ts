@@ -59,11 +59,11 @@ export function getSignageNow(now: Date, timeZone = 'Asia/Tokyo'): { dayOfWeek: 
   return { dayOfWeek: WEEKDAY_INDEX[pick('weekday')] ?? 0, minute: hour * 60 + Number(pick('minute')) };
 }
 
-/** 空 = 全端末向け。値があるときは列挙された端末だけ（サーバーの signageScheduleMatchesClientKey と同じ規則） */
-export function scheduleTargetsClient(schedule: Pick<SignageSchedule, 'targetClientKeys'>, clientKey: string | null): boolean {
-  const keys = schedule.targetClientKeys ?? [];
+/** 空 = 全端末向け。値があるときは列挙された端末だけ（サーバーの signageScheduleMatchesClientDeviceId と同じ規則） */
+export function scheduleTargetsClient(schedule: Pick<SignageSchedule, 'targetClientDeviceIds'>, clientDeviceId: string | null): boolean {
+  const keys = schedule.targetClientDeviceIds ?? [];
   if (keys.length === 0) return true;
-  return clientKey !== null && keys.includes(clientKey);
+  return clientDeviceId !== null && keys.includes(clientDeviceId);
 }
 
 export function classifyScheduleContent(schedule: Pick<SignageSchedule, 'contentType' | 'layoutConfig'>): SignageContentKind {
@@ -110,12 +110,12 @@ function assignLanes(blocks: WeekTimelineBlock[]): void {
  */
 export function buildWeekTimelineBlocks(
   schedules: SignageSchedule[],
-  clientKey: string | null,
+  clientDeviceId: string | null,
   now: Date,
   timeZone = 'Asia/Tokyo',
 ): WeekTimeline {
   const current = getSignageNow(now, timeZone);
-  const visible = schedules.filter((schedule) => schedule.enabled && scheduleTargetsClient(schedule, clientKey));
+  const visible = schedules.filter((schedule) => schedule.enabled && scheduleTargetsClient(schedule, clientDeviceId));
   let startMinute = DEFAULT_START_MINUTE;
   let endMinute = DEFAULT_END_MINUTE;
 
@@ -176,10 +176,10 @@ export function formatMinute(minute: number): string {
 /** 週間スケジュールの表に出ない予定（無効、または選択中の端末向けでない）を理由つきで返す */
 export function listOffTimelineSchedules(
   schedules: SignageSchedule[],
-  clientKey: string | null,
+  clientDeviceId: string | null,
 ): Array<{ scheduleId: string; name: string; reason: string }> {
   return schedules
-    .filter((schedule) => !schedule.enabled || !scheduleTargetsClient(schedule, clientKey))
+    .filter((schedule) => !schedule.enabled || !scheduleTargetsClient(schedule, clientDeviceId))
     .map((schedule) => ({
       scheduleId: schedule.id,
       name: schedule.name,

@@ -9,7 +9,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { registerClientCoreRoutes } from '../core.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
+  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
 }));
 
 const body = { apiKey: 'test-client-key', name: 'factory-pi' };
@@ -25,6 +25,10 @@ describe('client registration routes', () => {
   void app.register(registerClientCoreRoutes);
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.user.findUnique).mockImplementation(async ({ where }) => ({
+      id: where.id, username: where.id, role: where.id === 'manager' ? 'MANAGER' : where.id === 'viewer' ? 'VIEWER' : 'ADMIN',
+      status: 'ACTIVE', mfaEnabled: false,
+    }) as never);
     vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({ id: 'device-1' } as never);
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: false } as never);
@@ -61,6 +65,59 @@ describe('client registration routes', () => {
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { name: 'updated' } });
     expect(response.statusCode).toBe(200);
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: 'updated' }) }));
+  });
+
+  it.each(['ADMIN', 'MANAGER'] as const)('allows %s to set signage fields and dual writes the preview target', async (role) => {
+    const target = { id: '11111111-1111-4111-8111-111111111111', apiKey: 'fixture-only-signage-target', isSignage: true };
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(target as never);
+    vi.mocked(prisma.clientDevice.update).mockImplementation(async ({ data }) => ({ id: 'device-1', apiKey: body.apiKey, ...data }) as never);
+    const token = signAccessToken({ id: role === 'ADMIN' ? 'admin' : 'manager', username: 'user', role } as User);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: {
+      isSignage: true, signagePreviewTargetDeviceId: target.id,
+    } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().client).toMatchObject({ isSignage: true, signagePreviewTargetDeviceId: target.id, apiKey: body.apiKey });
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      isSignage: true, signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.apiKey,
+    }) }));
+  });
+
+  it('converts the legacy preview field and clears both fields', async () => {
+    const target = { id: '11111111-1111-4111-8111-111111111111', apiKey: 'fixture-only-signage-target', isSignage: true };
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(target as never);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetApiKey: target.apiKey } });
+    expect(response.statusCode).toBe(200);
+    expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { apiKey: target.apiKey }, select: { id: true, apiKey: true, isSignage: true } });
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.apiKey,
+    }) }));
+    const cleared = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetDeviceId: null } });
+    expect(cleared.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      signagePreviewTargetDeviceId: null, signagePreviewTargetApiKey: null,
+    }) }));
+  });
+
+  it('rejects a non-signage preview target even if its credential contains signage', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', apiKey: 'fixture-signage-key', isSignage: false } as never);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetDeviceId: '11111111-1111-4111-8111-111111111111' } });
+    expect(response.statusCode).toBe(400);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps signage edits unavailable to VIEWER', async () => {
+    const token = signAccessToken({ id: 'viewer', username: 'viewer', role: 'VIEWER' } as User);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { isSignage: true } });
+    expect(response.statusCode).toBe(403);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+  });
+
+  it('includes signage fields and the legacy credential in the client list', async () => {
+    const row = { id: 'device-1', apiKey: body.apiKey, isSignage: true, signagePreviewTargetDeviceId: null };
+    vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([row] as never);
+    const response = await app.inject({ method: 'GET', url: '/clients' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().clients).toEqual([row]);
   });
 
   it('stores statusClientId on create and on upsert update', async () => {

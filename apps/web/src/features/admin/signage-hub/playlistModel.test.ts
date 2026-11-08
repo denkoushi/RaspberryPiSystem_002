@@ -20,7 +20,7 @@ const schedule = (partial: Partial<SignageSchedule>): SignageSchedule => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
   startTime: '00:00',
   endTime: '23:59',
@@ -46,7 +46,7 @@ describe('buildPlaylist', () => {
     schedule({ id: 'a', name: 'KPI' }),
     schedule({ id: 'b', name: '順位ボード' }),
     schedule({ id: 'morning', name: '持出一覧', dayOfWeek: [1, 2, 3, 4, 5], startTime: '07:30', endTime: '09:00' }),
-    schedule({ id: 'other', targetClientKeys: ['key-b'] }),
+    schedule({ id: 'other', targetClientDeviceIds: ['key-b'] }),
     schedule({ id: 'off', enabled: false }),
   ];
 
@@ -76,13 +76,13 @@ describe('nextInRotation', () => {
 describe('buildQuickSchedulePayload', () => {
   it('defaults to all screens, always, as one full-screen slot', () => {
     expect(
-      buildQuickSchedulePayload({ name: ' 生産日程 ', content: { type: 'web_page', webCaptureId: 'cap-1' }, targetClientKeys: [], when: DEFAULT_QUICK_WHEN }),
+      buildQuickSchedulePayload({ name: ' 生産日程 ', content: { type: 'web_page', webCaptureId: 'cap-1' }, targetClientDeviceIds: [], when: DEFAULT_QUICK_WHEN }),
     ).toEqual({
       name: '生産日程',
       contentType: 'TOOLS',
       pdfId: null,
       layoutConfig: { layout: 'FULL', slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: 'cap-1' } }] },
-      targetClientKeys: [],
+      targetClientDeviceIds: [],
       dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
       startTime: '00:00',
       endTime: '23:59',
@@ -95,19 +95,19 @@ describe('buildQuickSchedulePayload', () => {
     const payload = buildQuickSchedulePayload({
       name: '掲示',
       content: { type: 'pdf', pdfId: 'p1', displayMode: 'SINGLE', slideInterval: null },
-      targetClientKeys: ['key-a'],
+      targetClientDeviceIds: ['key-a'],
       when: { always: false, dayOfWeek: [5, 1], startTime: '13:00', endTime: '17:00' },
     });
-    expect(payload).toMatchObject({ contentType: 'PDF', pdfId: 'p1', targetClientKeys: ['key-a'], dayOfWeek: [1, 5], startTime: '13:00', endTime: '17:00' });
+    expect(payload).toMatchObject({ contentType: 'PDF', pdfId: 'p1', targetClientDeviceIds: ['key-a'], dayOfWeek: [1, 5], startTime: '13:00', endTime: '17:00' });
     expect(payload.layoutConfig).toEqual({ layout: 'FULL', slots: [{ position: 'FULL', kind: 'pdf', config: { pdfId: 'p1', displayMode: 'SINGLE', slideInterval: null } }] });
   });
 });
 
 describe('planRemoveFromScreen', () => {
   it('deletes an all-screens schedule, narrows a multi-screen one, and deletes the last screen', () => {
-    expect(planRemoveFromScreen({ targetClientKeys: [] }, 'key-a')).toEqual({ action: 'delete', affectsAllScreens: true });
-    expect(planRemoveFromScreen({ targetClientKeys: ['key-a', 'key-b'] }, 'key-a')).toEqual({ action: 'update', targetClientKeys: ['key-b'] });
-    expect(planRemoveFromScreen({ targetClientKeys: ['key-a'] }, 'key-a')).toEqual({ action: 'delete', affectsAllScreens: false });
+    expect(planRemoveFromScreen({ targetClientDeviceIds: [] }, 'key-a')).toEqual({ action: 'delete', affectsAllScreens: true });
+    expect(planRemoveFromScreen({ targetClientDeviceIds: ['key-a', 'key-b'] }, 'key-a')).toEqual({ action: 'update', targetClientDeviceIds: ['key-b'] });
+    expect(planRemoveFromScreen({ targetClientDeviceIds: ['key-a'] }, 'key-a')).toEqual({ action: 'delete', affectsAllScreens: false });
   });
 });
 

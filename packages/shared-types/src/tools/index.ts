@@ -57,6 +57,8 @@ export interface Item {
 
 export interface ClientDevice {
   id: string;
+  isSignage?: boolean;
+  signagePreviewTargetDeviceId?: string | null;
   name: string;
   location?: string | null;
   defaultMode?: 'PHOTO' | 'TAG' | null; // デフォルト: 'TAG'

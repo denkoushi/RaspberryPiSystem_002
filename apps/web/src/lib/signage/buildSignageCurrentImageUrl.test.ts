@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { buildSignageCurrentImageUrl, buildSignageCurrentImageUrlSearchParams } from './buildSignageCurrentImageUrl';
 
 describe('buildSignageCurrentImageUrlSearchParams', () => {
+  it('addresses an admin preview by device ID without a credential query', () => {
+    const params = buildSignageCurrentImageUrlSearchParams({ clientDeviceId: 'device-a', cacheBust: 1 });
+    expect(params.get('clientDeviceId')).toBe('device-a');
+    expect(params.has('key')).toBe(false);
+  });
+
   it('matches URL query rules used by buildSignageCurrentImageUrl', () => {
     const sp = buildSignageCurrentImageUrlSearchParams({
       clientKey: 'client-key-android-signage-01',

@@ -175,10 +175,10 @@ export class SignageRenderer {
     filename: string;
     clientKeysRendered: number;
   }> {
-    const clientKeys = await this.signageService.listSignageRenderClientApiKeys();
+    const clientDeviceIds = await this.signageService.listSignageRenderClientDeviceIds();
     let lastFilename = '';
 
-    if (clientKeys.length === 0) {
+    if (clientDeviceIds.length === 0) {
       const content = await this.signageService.getContent();
       const buffer = await this.renderContent(content);
       const result = await SignageRenderStorage.saveLegacyGlobalImage(buffer);
@@ -186,22 +186,22 @@ export class SignageRenderer {
       logger.info({ location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename }, 'Legacy global signage image saved');
     } else {
       let clientKeysRendered = 0;
-      for (const clientKey of clientKeys) {
+      for (const clientDeviceId of clientDeviceIds) {
         try {
-          const content = await this.signageService.getContent({ clientKey });
+          const content = await this.signageService.getContent({ clientDeviceId });
           const buffer = await this.renderContent(content);
-          const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientKey);
+          const result = await SignageRenderStorage.saveRenderedImageForClient(buffer, clientDeviceId);
           lastFilename = result.filename;
           clientKeysRendered += 1;
           logger.info(
-            { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientKeyLen: clientKey.length },
+            { location: 'signage.renderer.ts:renderCurrentContent', filename: result.filename, clientDeviceId },
             'Client signage image saved',
           );
         } catch (error) {
           // Rendering and storage are atomic per client. Do not replace this
           // client's previous JPEG, and continue with the remaining devices.
           logger.warn(
-            { err: error, location: 'signage.renderer.ts:renderCurrentContent', clientKeyLen: clientKey.length },
+            { err: error, location: 'signage.renderer.ts:renderCurrentContent', clientDeviceId },
             'Client signage image was not updated',
           );
         }
@@ -221,7 +221,7 @@ export class SignageRenderer {
     return {
       renderedAt: new Date(),
       filename: lastFilename,
-      clientKeysRendered: clientKeys.length,
+      clientKeysRendered: clientDeviceIds.length,
     };
   }
 

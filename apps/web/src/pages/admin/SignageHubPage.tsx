@@ -52,7 +52,7 @@ export function SignageHubPage() {
   const overviewQuery = useSignageManagementOverview();
   const emergencyQuery = useSignageEmergency();
   const [sheet, setSheet] = useState<Sheet>(() => sheetFromQuery(searchParams.get('panel')));
-  const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null);
+  const [selectedClientDeviceId, setSelectedClientDeviceId] = useState<string | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [imageRefreshToken, setImageRefreshToken] = useState(0);
   const [justAddedId, setJustAddedId] = useState<string | null>(null);
@@ -69,34 +69,34 @@ export function SignageHubPage() {
   );
   useEffect(() => {
     if (clients.length === 0) return;
-    if (!selectedClientKey || !clients.some((client) => client.apiKey === selectedClientKey)) {
-      setSelectedClientKey(clients[0].apiKey);
+    if (!selectedClientDeviceId || !clients.some((client) => client.id === selectedClientDeviceId)) {
+      setSelectedClientDeviceId(clients[0].id);
     }
-  }, [clients, selectedClientKey]);
-  const selectedClient = clients.find((client) => client.apiKey === selectedClientKey) ?? null;
+  }, [clients, selectedClientDeviceId]);
+  const selectedClient = clients.find((client) => client.id === selectedClientDeviceId) ?? null;
 
   const schedules = useMemo(() => editor.schedulesQuery.data ?? [], [editor.schedulesQuery.data]);
   const overview = overviewQuery.data;
-  const overviewEntry = overview?.clients.find((entry) => entry.apiKey === selectedClientKey);
+  const overviewEntry = overview?.clients.find((entry) => entry.clientDeviceId === selectedClientDeviceId);
   const interval = overview?.renderIntervalSeconds ?? 30;
   const switchSeconds = overview?.scheduleSwitchIntervalSeconds ?? 30;
   const playlist = useMemo(
-    () => buildPlaylist(schedules, selectedClientKey, overviewEntry?.rotation),
-    [schedules, selectedClientKey, overviewEntry?.rotation],
+    () => buildPlaylist(schedules, selectedClientDeviceId, overviewEntry?.rotation),
+    [schedules, selectedClientDeviceId, overviewEntry?.rotation],
   );
   const onAir = playlist.find((item) => item.isOnAir) ?? null;
   const next = nextInRotation(overviewEntry?.rotation);
   const nextName = next ? (schedules.find((schedule) => schedule.id === next.scheduleId)?.name ?? null) : null;
 
-  const { imageUrl, error: imageError } = useSignageClientImage(selectedClientKey, 30_000, imageRefreshToken);
+  const { imageUrl, error: imageError } = useSignageClientImage(selectedClientDeviceId, 30_000, imageRefreshToken);
   const emergencyActive = emergencyQuery.data?.enabled ?? false;
   const isAdvancedEditing = editor.isCreating || editor.editingId !== null;
-  const deliveryOf = (apiKey: string) =>
-    judgeDelivery(overview?.clients.find((entry) => entry.apiKey === apiKey)?.lastFetchedAt ?? null, now, interval);
-  const delivery = selectedClientKey ? deliveryOf(selectedClientKey) : null;
+  const deliveryOf = (clientDeviceId: string) =>
+    judgeDelivery(overview?.clients.find((entry) => entry.clientDeviceId === clientDeviceId)?.lastFetchedAt ?? null, now, interval);
+  const delivery = selectedClientDeviceId ? deliveryOf(selectedClientDeviceId) : null;
 
-  const timeline = useMemo(() => buildWeekTimelineBlocks(schedules, selectedClientKey, now), [schedules, selectedClientKey, now]);
-  const offTimeline = useMemo(() => listOffTimelineSchedules(schedules, selectedClientKey), [schedules, selectedClientKey]);
+  const timeline = useMemo(() => buildWeekTimelineBlocks(schedules, selectedClientDeviceId, now), [schedules, selectedClientDeviceId, now]);
+  const offTimeline = useMemo(() => listOffTimelineSchedules(schedules, selectedClientDeviceId), [schedules, selectedClientDeviceId]);
   const libraryItems = useMemo(
     () =>
       buildContentLibrary({
@@ -197,9 +197,9 @@ export function SignageHubPage() {
                 type="button"
                 role="tab"
                 className="sh-screen-tab"
-                aria-selected={client.apiKey === selectedClientKey}
-                data-state={deliveryOf(client.apiKey).state}
-                onClick={() => setSelectedClientKey(client.apiKey)}
+                aria-selected={client.id === selectedClientDeviceId}
+                data-state={deliveryOf(client.id).state}
+                onClick={() => setSelectedClientDeviceId(client.id)}
               >
                 <i aria-hidden="true" />
                 {client.name}
@@ -281,7 +281,7 @@ export function SignageHubPage() {
         <PlaylistPanel
           items={playlist}
           schedules={schedules}
-          clientKey={selectedClientKey}
+          clientDeviceId={selectedClientDeviceId}
           clientName={selectedClient?.name ?? null}
           switchSeconds={switchSeconds}
           justAddedId={justAddedId}
@@ -300,7 +300,7 @@ export function SignageHubPage() {
         }}
         onAdvanced={() => startAdvancedCreate()}
         clients={clients}
-        defaultClientKey={selectedClientKey}
+        defaultClientDeviceId={selectedClientDeviceId}
         visualizationDashboards={editor.visualizationDashboardsQuery.data ?? []}
         csvDashboards={editor.csvDashboardsQuery.data ?? []}
       />

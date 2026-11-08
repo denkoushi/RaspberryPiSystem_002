@@ -68,7 +68,7 @@ vi.mock('../../api/hooks', () => ({
         startTime: '13:00',
         endTime: '17:00',
         priority: 0,
-        targetClientKeys: [],
+        targetClientDeviceIds: [],
         layoutConfig: { layout: 'FULL', slots: [{ position: 'FULL', kind: 'csv_dashboard', config: { csvDashboardId: 'table-1' } }] },
       },
     ],

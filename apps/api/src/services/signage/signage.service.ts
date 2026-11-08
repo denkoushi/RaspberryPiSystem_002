@@ -13,6 +13,7 @@ type ScheduleSummary = Pick<
   | 'contentType'
   | 'pdfId'
   | 'layoutConfig'
+  | 'targetClientDeviceIds'
   | 'targetClientKeys'
   | 'dayOfWeek'
   | 'startTime'
@@ -21,24 +22,15 @@ type ScheduleSummary = Pick<
   | 'enabled'
 >;
 
-/**
- * スケジュールが要求側 clientKey（ClientDevice.apiKey）に対して適用されるか。
- * - targetClientKeys が空: 全端末向け
- * - 値あり: requestClientKey が一致する端末のみ（未指定・空文字のリクエストでは対象外）
- */
-export function signageScheduleMatchesClientKey(
-  targetClientKeys: string[] | null | undefined,
-  requestClientKey?: string | null,
+/** Empty targets apply to every terminal. */
+export function signageScheduleMatchesClientDeviceId(
+  targetClientDeviceIds: string[] | null | undefined,
+  clientDeviceId?: string | null,
 ): boolean {
-  const keys = targetClientKeys ?? [];
-  if (keys.length === 0) {
-    return true;
-  }
-  if (requestClientKey == null || requestClientKey === '') {
-    return false;
-  }
-  return keys.includes(requestClientKey);
+  const ids = targetClientDeviceIds ?? [];
+  return ids.length === 0 || Boolean(clientDeviceId && ids.includes(clientDeviceId));
 }
+import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
@@ -61,7 +53,8 @@ export interface SignageScheduleInput {
   contentType: SignageContentType;
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfigJson;
-  /** 省略または空=全端末。値ありのときは列挙 apiKey の端末のみ */
+  /** Empty targets apply to every terminal. */
+  targetClientDeviceIds?: string[];
   targetClientKeys?: string[];
   dayOfWeek: number[];
   startTime: string;
@@ -173,6 +166,7 @@ export class SignageService {
     contentType: true,
     pdfId: true,
     layoutConfig: true,
+    targetClientDeviceIds: true,
     targetClientKeys: true,
     dayOfWeek: true,
     startTime: true,
@@ -199,14 +193,14 @@ export class SignageService {
   }
 
   /**
-   * レンダラ用：キャッシュ生成対象の ClientDevice.apiKey 一覧（安定した順序）
+   * レンダラ用：キャッシュ生成対象の ClientDevice.id 一覧（安定した順序）
    */
-  async listSignageRenderClientApiKeys(): Promise<string[]> {
+  async listSignageRenderClientDeviceIds(): Promise<string[]> {
     const rows = await this.db.clientDevice.findMany({
-      select: { apiKey: true },
-      orderBy: { apiKey: 'asc' },
+      select: { id: true },
+      orderBy: { id: 'asc' },
     });
-    return rows.map((r) => r.apiKey);
+    return rows.map((r) => r.id);
   }
 
   /**
@@ -294,12 +288,14 @@ export class SignageService {
     };
   }
 
-  /**
-   * 現在時刻に基づいて表示すべきコンテンツを取得
-   * @param options.clientKey ClientDevice.apiKey（x-client-key）。省略時は端末限定スケジュールを除外し、空targetのみ評価
-   */
-  async getContent(options?: { clientKey?: string | null }): Promise<SignageContentResponse> {
-    const requestClientKey = options?.clientKey ?? null;
+  async resolveClientDeviceId(clientKey?: string | null): Promise<string | null> {
+    if (!clientKey) return null;
+    const device = await this.db.clientDevice.findUnique({ where: { apiKey: clientKey }, select: { id: true } });
+    return device?.id ?? null;
+  }
+
+  async getContent(options?: { clientKey?: string | null; clientDeviceId?: string | null }): Promise<SignageContentResponse> {
+    const clientDeviceId = options?.clientDeviceId ?? await this.resolveClientDeviceId(options?.clientKey);
     const now = new Date();
     const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
 
@@ -444,7 +440,7 @@ export class SignageService {
     // スケジュールから適切なコンテンツを取得（端末キーで事前に絞り込み → 時刻窓・優先度・ローテーションは従来どおり）
     const schedules = await this.getSchedules();
     const schedulesForClient = schedules.filter((s) =>
-      signageScheduleMatchesClientKey(s.targetClientKeys, requestClientKey),
+      signageScheduleMatchesClientDeviceId(s.targetClientDeviceIds, clientDeviceId),
     );
 
 
@@ -520,12 +516,12 @@ export class SignageService {
    * getContent と同じ選び方（端末で絞る → 時刻で絞る → 優先順位順 → 一定間隔で切り替え）をそのまま使う。
    */
   async getRotationForClient(
-    clientKey: string | null,
+    clientDeviceId: string | null,
     now: Date = new Date(),
   ): Promise<{ scheduleIds: string[]; currentIndex: number; secondsUntilSwitch: number | null; isFallback: boolean }> {
     const { currentDayOfWeek, currentTime } = this.getCurrentTimeInfo(now);
     const schedules = await this.getSchedules();
-    const schedulesForClient = schedules.filter((s) => signageScheduleMatchesClientKey(s.targetClientKeys, clientKey));
+    const schedulesForClient = schedules.filter((s) => signageScheduleMatchesClientDeviceId(s.targetClientDeviceIds, clientDeviceId));
     const matched = this.selectMatchedSchedules(schedulesForClient, currentDayOfWeek, currentTime);
     if (matched.length === 0) {
       const fallback =
@@ -914,15 +910,34 @@ export class SignageService {
     };
   }
 
-  /**
-   * スケジュールを作成
-   */
+  private async resolveScheduleTargets(
+    input: Pick<SignageScheduleInput, 'targetClientDeviceIds' | 'targetClientKeys'>,
+    dropUnknown = false,
+  ): Promise<{ targetClientDeviceIds: string[]; targetClientKeys: string[] } | Record<string, never>> {
+    const ids = input.targetClientDeviceIds;
+    const requested = [...new Set(ids ?? input.targetClientKeys ?? [])];
+    const devices = requested.length === 0 ? [] : await this.db.clientDevice.findMany({
+      where: ids !== undefined ? { id: { in: requested } } : { apiKey: { in: requested } },
+      select: { id: true, apiKey: true },
+    });
+    const byTarget = new Map(devices.map((device) => [ids !== undefined ? device.id : device.apiKey, device]));
+    const known = requested.filter((target) => byTarget.has(target));
+    if (known.length < requested.length && !dropUnknown) throw new ApiError(400, '登録済み端末のみ選択できます', undefined, 'INVALID_SIGNAGE_TARGET');
+    // Never widen a targeted schedule to every terminal.
+    if (known.length === 0 && requested.length > 0) return {};
+    return {
+      targetClientDeviceIds: known.map((target) => byTarget.get(target)!.id),
+      targetClientKeys: known.map((target) => byTarget.get(target)!.apiKey),
+    };
+  }
+
   async createSchedule(input: SignageScheduleInput): Promise<{
     id: string;
     name: string;
     contentType: SignageContentType;
     pdfId: string | null;
     layoutConfig: SignageLayoutConfigJson;
+    targetClientDeviceIds: string[];
     targetClientKeys: string[];
     dayOfWeek: number[];
     startTime: string;
@@ -930,13 +945,14 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
+    const targets = await this.resolveScheduleTargets(input);
     const schedule = await this.db.signageSchedule.create({
       data: {
         name: input.name,
         contentType: input.contentType,
         pdfId: input.pdfId ?? null,
         layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig ?? null),
-        targetClientKeys: input.targetClientKeys ?? [],
+        ...targets,
         dayOfWeek: input.dayOfWeek,
         startTime: input.startTime,
         endTime: input.endTime,
@@ -959,6 +975,7 @@ export class SignageService {
     contentType: SignageContentType;
     pdfId: string | null;
     layoutConfig: SignageLayoutConfigJson;
+    targetClientDeviceIds: string[];
     targetClientKeys: string[];
     dayOfWeek: number[];
     startTime: string;
@@ -966,6 +983,9 @@ export class SignageService {
     priority: number;
     enabled: boolean;
   }> {
+    const targets = input.targetClientDeviceIds === undefined && input.targetClientKeys === undefined
+      ? await this.resolveScheduleTargets(await this.db.signageSchedule.findUniqueOrThrow({ where: { id }, select: { targetClientDeviceIds: true } }), true)
+      : await this.resolveScheduleTargets(input);
     const schedule = await this.db.signageSchedule.update({
       where: { id },
       data: {
@@ -975,7 +995,7 @@ export class SignageService {
         ...(input.layoutConfig !== undefined && {
           layoutConfig: this.toPrismaLayoutConfig(input.layoutConfig),
         }),
-        ...(input.targetClientKeys !== undefined && { targetClientKeys: input.targetClientKeys }),
+        ...targets,
         ...(input.dayOfWeek !== undefined && { dayOfWeek: input.dayOfWeek }),
         ...(input.startTime !== undefined && { startTime: input.startTime }),
         ...(input.endTime !== undefined && { endTime: input.endTime }),

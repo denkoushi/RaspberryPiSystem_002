@@ -254,7 +254,7 @@ type KioskProgressConfig = {
 
 type PreparedSignage = {
   existing?: SignageManagementSchedule;
-  targetClientKeys?: string[];
+  targetClientDeviceIds?: string[];
   targetClientDevices: BusinessHermesSignageTargetSummary[];
   scheduleInput: SignageScheduleInput;
   proposal: BusinessHermesSignageProposal;
@@ -1382,7 +1382,7 @@ export class BusinessHermesMcpService {
           deviceScopeKey: progress?.deviceScopeKey ?? null,
           slideIntervalSeconds: progress?.slideIntervalSeconds ?? null,
           seibanPerPage: progress?.seibanPerPage ?? null,
-          targetClientCount: schedule.targetClientKeys.length,
+          targetClientCount: schedule.targetClientDeviceIds.length,
           dayOfWeek: schedule.dayOfWeek,
           startTime: schedule.startTime,
           endTime: schedule.endTime,
@@ -1413,7 +1413,7 @@ export class BusinessHermesMcpService {
       proposal: proposal.a2ui ? { ...prepared.proposal, a2ui: proposal.a2ui } : prepared.proposal,
       schedule: safeScheduleDraft(
         prepared.scheduleInput,
-        prepared.targetClientKeys?.length ?? 0,
+        prepared.targetClientDeviceIds?.length ?? 0,
         prepared.targetClientDevices,
         prepared.existing?.id,
         prepared.proposal.deviceScopeKey,
@@ -1427,7 +1427,7 @@ export class BusinessHermesMcpService {
     if (!parsed.success) {
       return errorText('Invalid signage proposal', 'BUSINESS_HERMES_SIGNAGE_INVALID_PROPOSAL');
     }
-    const prepared = await this.prepareSignage(parsed.data, true);
+    const prepared = await this.prepareSignage(parsed.data);
     if ('content' in prepared) return prepared;
     const scheduleInput = prepared.scheduleInput;
     const schedule = prepared.existing
@@ -1435,7 +1435,7 @@ export class BusinessHermesMcpService {
       : await this.signage.createSchedule(scheduleInput);
     return jsonText({
       action: prepared.existing ? 'updated' : 'created',
-      schedule: safeScheduleSummary(schedule, prepared.targetClientKeys?.length ?? 0)
+      schedule: safeScheduleSummary(schedule, prepared.targetClientDeviceIds?.length ?? 0)
     });
   }
 
@@ -1450,7 +1450,7 @@ export class BusinessHermesMcpService {
       proposal: prepared.proposal,
       schedule: safeScheduleDraft(
         prepared.scheduleInput,
-        prepared.targetClientKeys?.length ?? 0,
+        prepared.targetClientDeviceIds?.length ?? 0,
         prepared.targetClientDevices,
         prepared.existing?.id,
         prepared.proposal.deviceScopeKey,
@@ -1460,7 +1460,6 @@ export class BusinessHermesMcpService {
 
   private async prepareSignage(
     proposal: BusinessHermesSignageProposal,
-    resolveSecrets = false,
   ): Promise<PreparedSignage | BusinessHermesMcpResult> {
     const input = proposal;
     const schedules = await this.signage.listSchedulesForManagement();
@@ -1518,33 +1517,17 @@ export class BusinessHermesMcpService {
       }
     }
 
-    let targetClientKeys = existing?.targetClientKeys;
+    let targetClientDeviceIds = existing?.targetClientDeviceIds;
     let targetClientDevices: BusinessHermesSignageTargetSummary[] = [];
     if (input.targetClientDeviceIds !== undefined) {
-      const targetRows = resolveSecrets
-        ? await this.db.clientDevice.findMany({
-          where: { id: { in: input.targetClientDeviceIds } },
-          select: { id: true, name: true, location: true, apiKey: true }
-        })
-        : await this.db.clientDevice.findMany({
-          where: { id: { in: input.targetClientDeviceIds } },
-          select: { id: true, name: true, location: true }
-        });
+      const targetRows = await this.db.clientDevice.findMany({
+        where: { id: { in: input.targetClientDeviceIds } },
+        select: { id: true, name: true, location: true }
+      });
       if (targetRows.length !== input.targetClientDeviceIds.length) {
         return errorText('One or more target ClientDevices are unknown', 'BUSINESS_HERMES_UNKNOWN_TARGET_CLIENT_DEVICE');
       }
-      if (resolveSecrets) {
-        const keysById = new Map<string, string>();
-        for (const row of targetRows) {
-          keysById.set(row.id, 'apiKey' in row && typeof row.apiKey === 'string' ? row.apiKey : '');
-        }
-        targetClientKeys = input.targetClientDeviceIds.map((id) => keysById.get(id)!).filter(Boolean);
-        if (targetClientKeys.length !== input.targetClientDeviceIds.length) {
-          return errorText('One or more target ClientDevices are not configured for signage', 'BUSINESS_HERMES_TARGET_CLIENT_DEVICE_NOT_CONFIGURED');
-        }
-      } else {
-        targetClientKeys = input.targetClientDeviceIds.map(() => 'proposal-target');
-      }
+      targetClientDeviceIds = input.targetClientDeviceIds;
       const targetsById = new Map(targetRows.map((row) => [row.id, row]));
       targetClientDevices = input.targetClientDeviceIds.map((id) => {
         const row = targetsById.get(id)!;
@@ -1554,9 +1537,9 @@ export class BusinessHermesMcpService {
           deviceScopeKey: String(resolveDeviceScopeKey(row))
         };
       });
-    } else if (existing && existing.targetClientKeys.length > 0) {
+    } else if (existing && existing.targetClientDeviceIds.length > 0) {
       const targetRows = await this.db.clientDevice.findMany({
-        where: { apiKey: { in: existing.targetClientKeys } },
+        where: { id: { in: existing.targetClientDeviceIds } },
         select: { id: true, name: true, location: true }
       });
       targetClientDevices = targetRows.map((row) => ({
@@ -1565,7 +1548,7 @@ export class BusinessHermesMcpService {
         deviceScopeKey: String(resolveDeviceScopeKey(row))
       }));
     }
-    if (!existing && (!targetClientKeys || targetClientKeys.length === 0)) {
+    if (!existing && (!targetClientDeviceIds || targetClientDeviceIds.length === 0)) {
       return errorText('New signage schedules require at least one explicit target ClientDevice', 'BUSINESS_HERMES_CREATE_REQUIRES_EXPLICIT_TARGETS');
     }
 
@@ -1622,7 +1605,7 @@ export class BusinessHermesMcpService {
       contentType: input.a2ui ? SignageContentType.TOOLS : existing?.contentType ?? SignageContentType.TOOLS,
       pdfId: input.a2ui ? null : existing?.pdfId ?? null,
       layoutConfig,
-      targetClientKeys,
+      targetClientDeviceIds,
       dayOfWeek: input.dayOfWeek ?? existing!.dayOfWeek,
       startTime: input.startTime ?? existing!.startTime,
       endTime: input.endTime ?? existing!.endTime,
@@ -1633,7 +1616,7 @@ export class BusinessHermesMcpService {
     const canonicalProposal = existing && !input.scheduleId
       ? { ...canonicalInput, scheduleId: existing.id }
       : canonicalInput;
-    return { existing, targetClientKeys, targetClientDevices, scheduleInput, proposal: canonicalProposal };
+    return { existing, targetClientDeviceIds, targetClientDevices, scheduleInput, proposal: canonicalProposal };
   }
 
   /** Internal catalogue preparation reuses the authorized reader in larger pages.

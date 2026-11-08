@@ -175,12 +175,13 @@ export async function measureConcurrentInjectResponses<T>(params: {
 /**
  * テスト用のクライアントデバイスを作成
  */
-export async function createTestClientDevice(apiKey?: string): Promise<ClientDevice> {
+export async function createTestClientDevice(apiKey?: string, options: { isSignage?: boolean } = {}): Promise<ClientDevice> {
   const generatedKey = apiKey ?? `test-client-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const client = await prisma.clientDevice.create({
     data: {
       name: `Test Client ${new Date().toISOString()}`,
       apiKey: generatedKey,
+      isSignage: options.isSignage ?? false,
       // 拠点は明示設定だけで決まる（location からは推測しない）。第2工場はマイグレーションで登録済み。
       siteKey: '第2工場',
     },
