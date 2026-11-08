@@ -14,6 +14,7 @@ import { dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
+import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
 import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
@@ -209,6 +210,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 bar.item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+                clipPath: bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : undefined,
                 color: draggedItemId === bar.item.itemId ? 'rgb(148 163 184)' : undefined,
                 outline: draggedItemId === bar.item.itemId ? '3px dashed rgb(251 191 36)' : undefined,
