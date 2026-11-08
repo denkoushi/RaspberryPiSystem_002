@@ -912,11 +912,24 @@ describe('assembly torque management API', () => {
       calloutTipYRatio: 0.88
     });
 
+    for (const revision of [
+      { name: '改版名' },
+      { areas: payload.areas }
+    ]) {
+      const denied = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${template.id}/revise`,
+        headers,
+        payload: revision
+      });
+      expect(denied.statusCode).toBe(403);
+    }
+
     const revised = await app.inject({
       method: 'POST',
       url: `/api/assembly/templates/${template.id}/revise`,
       headers,
-      payload: { name: '矢視コピー確認' }
+      payload: { name: '矢視コピー確認', accessPassword: '2520' }
     });
     expect(revised.statusCode).toBe(200);
     const revisedTemplate = revised.json().template;
@@ -2688,7 +2701,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/templates/${v1.id}/revise`,
       headers,
-      payload: { name: 'ステップ v2' }
+      payload: { name: 'ステップ v2', accessPassword: '2520' }
     });
     expect(revised.statusCode).toBe(200);
     expect(revised.json().template.procedureSequence.steps).toHaveLength(3);
@@ -2877,13 +2890,13 @@ describe('assembly torque management API', () => {
         method: 'POST',
         url: `/api/assembly/templates/${v1Id}/revise`,
         headers,
-        payload: { name: '競合 v2-A' }
+        payload: { name: '競合 v2-A', accessPassword: '2520' }
       }),
       app.inject({
         method: 'POST',
         url: `/api/assembly/templates/${v1Id}/revise`,
         headers,
-        payload: { name: '競合 v2-B' }
+        payload: { name: '競合 v2-B', accessPassword: '2520' }
       })
     ]);
     expect([firstRevision.statusCode, staleRevision.statusCode].sort()).toEqual([200, 409]);

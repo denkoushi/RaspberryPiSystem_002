@@ -876,6 +876,7 @@ export class AssemblyTemplateService {
     ) {
       throw new ApiError(400, '改版では手順パターンを変更できません。「複製して新規」を使用してください');
     }
+    await this.accessService.requireAccessPassword(input.accessPassword);
     const areas =
       input.areas ??
       source.areas.map((area) => ({
@@ -960,8 +961,7 @@ export class AssemblyTemplateService {
       },
       {
         expectedActiveSourceId: id,
-        requireProcedurePassword:
-          input.procedureItems != null || input.procedureSteps != null,
+        requireProcedurePassword: false,
         carriedKioskDocumentIds
       }
     );
