@@ -143,10 +143,29 @@ describe('operation password two tier attempt limit', () => {
     await expect(verifyDueManagementAccessPassword({ location, password: '2520', clientDeviceId: 'device-a', ip: '192.0.2.2' })).rejects.toMatchObject(rateLimited);
   });
 
-  it('preserves the comparison result when notification creation fails', async () => {
+  it('preserves the comparison result when notification creation fails and allows a later retry', async () => {
     vi.spyOn(prisma.alert, 'create').mockRejectedValue(new Error('notification unavailable'));
     await fillGlobalLimit();
     await expect(verify('2520', 'another-device')).rejects.toMatchObject(rateLimited);
     expect(prisma.alert.create).toHaveBeenCalledTimes(1);
+    expect((await attempt('global')).notified).toBe(false);
+  });
+
+  it('does not notify when the attempt that reaches the global limit uses the correct password', async () => {
+    for (let index = 0; index < ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT - 1; index += 1) {
+      await verify('0000', `device-${Math.floor(index / ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT)}`);
+    }
+    expect(await verify('2520', 'device-correct')).toEqual({ success: true });
+    expect(await prisma.alert.count({ where: { type: alertType } })).toBe(0);
+    expect(await attempt('global')).toMatchObject({ count: ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT - 1, notified: false });
+    expect(await verify('0000', 'device-last')).toEqual({ success: false });
+    expect(await prisma.alert.count({ where: { type: alertType } })).toBe(1);
+    expect(await attempt('global')).toMatchObject({ count: ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT, notified: true });
+  });
+
+  it('rolls back the global reservation when the device limit rejects the attempt', async () => {
+    for (let index = 0; index < ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT; index += 1) await verify('0000');
+    await expect(verify('0000')).rejects.toMatchObject(rateLimited);
+    expect((await attempt('global')).count).toBe(ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT);
   });
 });

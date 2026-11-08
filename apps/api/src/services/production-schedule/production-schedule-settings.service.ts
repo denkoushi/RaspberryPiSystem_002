@@ -491,37 +491,40 @@ export type AccessPasswordCaller = { clientDeviceId?: string | null; ip?: string
 
 const accessPasswordRateLimited = () => new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'ACCESS_PASSWORD_RATE_LIMITED');
 
+// The column stores UTC wall-clock time, so compare against UTC regardless of the session time zone.
 async function reserveAccessPasswordAttempt(location: string, scope: string) {
   return prisma.$transaction(async (tx) => {
     const reservations: Array<{ scope: string; windowEndsAt: Date }> = [];
-    let notify = false;
     // Always lock global before device, and roll back both when either limit is reached.
     for (const [key, limit] of [['global', ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT], [scope, ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT]] as const) {
-      const rows = await tx.$queryRaw<Array<{ count: number; windowEndsAt: Date; notified: boolean }>>`
+      const rows = await tx.$queryRaw<Array<{ count: number; windowEndsAt: Date }>>`
         INSERT INTO "ProductionScheduleAccessPasswordAttempt" ("location", "scope", "count", "windowEndsAt", "updatedAt", "notified")
-        VALUES (${location}, ${key}, 1, statement_timestamp() + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond', statement_timestamp(), false)
+        VALUES (${location}, ${key}, 1, (statement_timestamp() AT TIME ZONE 'UTC') + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond', (statement_timestamp() AT TIME ZONE 'UTC'), false)
         ON CONFLICT ("location", "scope") DO UPDATE SET
-          "count" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= statement_timestamp() THEN 1 ELSE "ProductionScheduleAccessPasswordAttempt"."count" + 1 END,
-          "notified" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= statement_timestamp() THEN false ELSE "ProductionScheduleAccessPasswordAttempt"."notified" END,
-          "windowEndsAt" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= statement_timestamp() THEN statement_timestamp() + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond' ELSE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" END,
-          "updatedAt" = statement_timestamp()
-        WHERE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= statement_timestamp() OR "ProductionScheduleAccessPasswordAttempt"."count" < ${limit}
-        RETURNING "count", "windowEndsAt", "notified"
+          "count" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN 1 ELSE "ProductionScheduleAccessPasswordAttempt"."count" + 1 END,
+          "notified" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN false ELSE "ProductionScheduleAccessPasswordAttempt"."notified" END,
+          "windowEndsAt" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN (statement_timestamp() AT TIME ZONE 'UTC') + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond' ELSE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" END,
+          "updatedAt" = (statement_timestamp() AT TIME ZONE 'UTC')
+        WHERE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') OR "ProductionScheduleAccessPasswordAttempt"."count" < ${limit}
+        RETURNING "count", "windowEndsAt"
       `;
       const row = rows[0];
       if (!row) throw accessPasswordRateLimited();
       reservations.push({ scope: key, windowEndsAt: row.windowEndsAt });
-      if (key === 'global' && row.count === limit && !row.notified) {
-        await tx.productionScheduleAccessPasswordAttempt.update({ where: { location_scope: { location, scope: key } }, data: { notified: true } });
-        notify = true;
-      }
     }
-    return { reservations, notify };
-  });
+    return reservations;
+  }, { maxWait: 10_000, timeout: 10_000 });
 }
 
-async function notifyAccessPasswordLimit(): Promise<void> {
+// Notify only after a failed comparison has left the global window at its limit.
+async function notifyAccessPasswordLimitIfReached(location: string, windowEndsAt: Date): Promise<void> {
   const type = 'operation-password-global-limit';
+  const where = { location, scope: 'global', windowEndsAt };
+  const claimed = await prisma.productionScheduleAccessPasswordAttempt.updateMany({
+    where: { ...where, count: { gte: ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT }, notified: false },
+    data: { notified: true }
+  });
+  if (claimed.count === 0) return;
   try {
     const config = await loadAlertsDispatcherConfig();
     const routeKey = resolveRouteKey(type, config.routing);
@@ -535,6 +538,8 @@ async function notifyAccessPasswordLimit(): Promise<void> {
     });
   } catch {
     logger.warn({ type }, 'Failed to create operation password limit alert');
+    // Let a later failure in the same window try again.
+    await prisma.productionScheduleAccessPasswordAttempt.updateMany({ where: { ...where, notified: true }, data: { notified: false } }).catch(() => undefined);
   }
 }
 
@@ -555,9 +560,12 @@ export async function verifyDueManagementAccessPassword(params: AccessPasswordCa
     return { success: false };
   }
   const scope = params.clientDeviceId ? `device:${params.clientDeviceId}` : `ip:${params.ip ?? 'unknown'}`;
-  const { reservations, notify } = await reserveAccessPasswordAttempt(location, scope);
-  if (notify) await notifyAccessPasswordLimit();
+  const reservations = await reserveAccessPasswordAttempt(location, scope);
   const success = await bcrypt.compare(password, config.dueManagementPasswordHash);
+  if (!success) {
+    const global = reservations.find((reservation) => reservation.scope === 'global');
+    if (global) await notifyAccessPasswordLimitIfReached(location, global.windowEndsAt);
+  }
   if (success) {
     await prisma.$transaction(reservations.map((reservation) =>
       prisma.productionScheduleAccessPasswordAttempt.updateMany({
