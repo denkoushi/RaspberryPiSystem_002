@@ -156,7 +156,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/return', '/cancel'])('%s requires a managing JWT role', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
     const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}` }, payload: { loanId } });
     expect(response.statusCode).toBe(403);
     expect(loanService[path === '/return' ? 'return' : 'cancel']).not.toHaveBeenCalled();
