@@ -123,6 +123,8 @@ Review corrections (2026-10-26): skip enabling unwritten collector units during 
 
 Review validation completed locally in a few minutes: `python3 -m pytest scripts/server/tests/test_security_review_collect.py scripts/ci/tests/test_classify_changes.py -q` passed (72 tests); `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit` passed; `pnpm --filter @raspi-system/api exec vitest run src/services/security-review src/services/inference src/bootstrap` passed (27 files, 152 tests); `pnpm --filter @raspi-system/api lint` passed; `git diff --check` passed. Existing uncommitted implementation work was preserved. No remote machine, deployment or state-changing Git command was used.
 
+Weekly triage (2026-11-09, `summary --days 7`, 2026-11-03 to 2026-11-09): 7 nights, 0 skipped; 126 findings, 28 confirmed, 96 false alarms, 1 known, 0 refused chunks, 3 fixed; confirmed ratio 0.23.
+
 ## Context and Orientation
 
 Data flows through four parts: the Pi5 host, the Pi5 API containers, the DGX gateway, and Claude in the morning.
