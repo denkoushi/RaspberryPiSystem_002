@@ -4,7 +4,7 @@ import { signKioskAccessToken } from '../../lib/auth.js';
 
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-  verifyDueManagementAccessPassword
+  verifyDueManagementAccessPasswordForToken
 } from '../../services/production-schedule/production-schedule-settings.service.js';
 import type { KioskRouteDeps } from './production-schedule/shared.js';
 
@@ -24,13 +24,15 @@ export async function registerKioskAssemblyRecordApprovalAuthRoute(
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const body = assemblyRecordApprovalAccessPasswordVerifyBodySchema.parse(request.body);
-      const result = await verifyDueManagementAccessPassword({
+      const result = await verifyDueManagementAccessPasswordForToken({
         location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
         clientDeviceId: clientDevice.id,
         ip: request.ip,
         password: body.password
       });
-      return result.success ? { ...result, token: signKioskAccessToken('assembly-record-approval', clientDevice.id) } : result;
+      return result.success
+        ? { success: true, token: signKioskAccessToken('assembly-record-approval', clientDevice.id, '12h', result.passwordChangedAt) }
+        : { success: false };
     }
   );
 }

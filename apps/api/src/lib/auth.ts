@@ -45,22 +45,29 @@ function kioskAccessTokenContext(purpose: KioskAccessPurpose) {
   };
 }
 
+/** 照合に使ったパスワードの世代。変更されたことが無ければ 0。 */
+function passwordVersionOf(passwordChangedAt: Date | null | undefined): number {
+  return passwordChangedAt ? passwordChangedAt.getTime() : 0;
+}
+
 export function signKioskAccessToken(
   purpose: KioskAccessPurpose,
   clientDeviceId: string | undefined,
-  expiresIn: SignOptions['expiresIn'] = '12h'
+  expiresIn: SignOptions['expiresIn'] = '12h',
+  passwordChangedAt: Date | null = null
 ): string {
   const { code } = kioskAccessTokenContext(purpose);
   if (!clientDeviceId) {
     throw new ApiError(403, '操作端末を特定できません', undefined, `${code}_TOKEN_INVALID`);
   }
-  return jwt.sign({ purpose, clientDeviceId }, env.JWT_ACCESS_SECRET, {
+  const pwv = passwordVersionOf(passwordChangedAt);
+  return jwt.sign({ purpose, clientDeviceId, pwv, iat: Date.now() / 1000 }, env.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     expiresIn
   });
 }
 
-export function requireKioskAccessToken(rawToken: unknown, purpose: KioskAccessPurpose, clientDeviceId: string | undefined): void {
+export function requireKioskAccessToken(rawToken: unknown, purpose: KioskAccessPurpose, clientDeviceId: string | undefined): Promise<void> {
   const { code, label } = kioskAccessTokenContext(purpose);
   if (!rawToken) {
     throw new ApiError(403, `${label}のパスワード確認が必要です`, undefined, `${code}_TOKEN_REQUIRED`);
@@ -75,7 +82,8 @@ export function requireKioskAccessToken(rawToken: unknown, purpose: KioskAccessP
   }
   if (
     typeof payload === 'string' || payload.purpose !== purpose ||
-    typeof payload.exp !== 'number' || typeof payload.clientDeviceId !== 'string' ||
+    typeof payload.exp !== 'number' || typeof payload.iat !== 'number' || typeof payload.clientDeviceId !== 'string' ||
+    (payload.pwv !== undefined && typeof payload.pwv !== 'number') ||
     payload.sub !== undefined || payload.role !== undefined
   ) {
     throw new ApiError(403, `${label}の認証が無効です`, undefined, `${code}_TOKEN_INVALID`);
@@ -83,14 +91,23 @@ export function requireKioskAccessToken(rawToken: unknown, purpose: KioskAccessP
   if (payload.clientDeviceId !== clientDeviceId) {
     throw new ApiError(403, '操作端末でパスワードを再確認してください', undefined, `${code}_TOKEN_DEVICE_MISMATCH`);
   }
+  const tokenPasswordVersion = typeof payload.pwv === 'number' ? payload.pwv : 0;
+  return prisma.productionScheduleAccessPasswordConfig.findUnique({
+    where: { location: 'shared' },
+    select: { passwordChangedAt: true }
+  }).then((config) => {
+    if (tokenPasswordVersion !== passwordVersionOf(config?.passwordChangedAt)) {
+      throw new ApiError(403, `${label}のパスワードを再確認してください`, undefined, `${code}_TOKEN_EXPIRED`);
+    }
+  });
 }
 
-export function signDueManagementToken(clientDeviceId: string | undefined): string {
-  return signKioskAccessToken('due-management', clientDeviceId);
+export function signDueManagementToken(clientDeviceId: string | undefined, passwordChangedAt: Date | null = null): string {
+  return signKioskAccessToken('due-management', clientDeviceId, '12h', passwordChangedAt);
 }
 
-export function requireDueManagementToken(rawToken: unknown, clientDeviceId: string | undefined): void {
-  requireKioskAccessToken(rawToken, 'due-management', clientDeviceId);
+export function requireDueManagementToken(rawToken: unknown, clientDeviceId: string | undefined): Promise<void> {
+  return requireKioskAccessToken(rawToken, 'due-management', clientDeviceId);
 }
 
 export function isAdminMfaRequired(role: User['role']): boolean {

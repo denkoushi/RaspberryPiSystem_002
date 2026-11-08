@@ -373,7 +373,8 @@ export class BackupConfigLoader {
       // tmpへ書いてrenameすることで、読み取り側は常に「完全なJSON」を読む。
       const tmpPath = `${configPath}.tmp.${process.pid}.${Date.now()}`;
       const payload = JSON.stringify(prunedConfig, null, 2);
-      await fs.writeFile(tmpPath, payload, 'utf-8');
+      await fs.writeFile(tmpPath, payload, { encoding: 'utf-8', mode: 0o600 });
+      await fs.chmod(tmpPath, 0o600);
       await fs.rename(tmpPath, configPath);
       
       logger?.info(

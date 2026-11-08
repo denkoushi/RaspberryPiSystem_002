@@ -135,7 +135,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
   app.get('/hermes-knowledge/sources/:sourceId/images/:imageId', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
     const { sourceId, imageId } = z.object({ sourceId: z.string().guid(), imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);
-    const allowed = (await runtime.repository.readySources()).some(record => record.source.id === sourceId && record.source.images.some(image => image.id === imageId));
+    const allowed = (await runtime.repository.readySource(sourceId))?.source.images.some(image => image.id === imageId) ?? false;
     if (!allowed) throw new ApiError(404, '画像が見つかりません。');
     return reply.header('Cache-Control', 'private, no-store').type('image/jpeg').send(await runtime.assets.readDisplay(imageId));
   });
@@ -239,7 +239,7 @@ export function registerHermesKnowledgeRoutes(app: FastifyInstance) {
   app.get('/hermes-knowledge/sources/:sourceId/pdf', { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
     await knowledgeActor(request, reply);
     const { sourceId } = z.object({ sourceId: z.string().guid() }).parse(request.params);
-    const source = (await runtime.repository.readySources()).find(record => record.source.id === sourceId)?.source;
+    const source = (await runtime.repository.readySource(sourceId))?.source;
     if (!source?.pdf) throw new ApiError(404, 'PDFが見つかりません。');
     return reply.header('Cache-Control', 'private, no-store').header('Content-Disposition', 'inline; filename="knowledge-source.pdf"').type('application/pdf').send(await runtime.assets.readOriginal(source.pdf.assetId));
   });

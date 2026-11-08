@@ -470,14 +470,17 @@ export async function upsertDueManagementAccessPassword(params: {
     throw new Error('パスワードは必須です');
   }
   const dueManagementPasswordHash = await bcrypt.hash(password, 10);
+  const passwordChangedAt = new Date();
   await prisma.productionScheduleAccessPasswordConfig.upsert({
     where: { location },
     create: {
       location,
-      dueManagementPasswordHash
+      dueManagementPasswordHash,
+      passwordChangedAt
     },
     update: {
-      dueManagementPasswordHash
+      dueManagementPasswordHash,
+      passwordChangedAt
     }
   });
   return {
@@ -543,21 +546,33 @@ async function notifyAccessPasswordLimitIfReached(location: string, windowEndsAt
   }
 }
 
-export async function verifyDueManagementAccessPassword(params: AccessPasswordCaller & {
+type AccessPasswordVerifyParams = AccessPasswordCaller & {
   location: string;
   password: string;
-}): Promise<{ success: boolean }> {
+};
+
+export async function verifyDueManagementAccessPassword(params: AccessPasswordVerifyParams): Promise<{ success: boolean }> {
+  const { success } = await verifyDueManagementAccessPasswordForToken(params);
+  return { success };
+}
+
+/**
+ * 照合に使ったパスワードの変更時刻も返す。確認済みの印に入れ、後でパスワードが変わったら印を無効にするために使う。
+ */
+export async function verifyDueManagementAccessPasswordForToken(
+  params: AccessPasswordVerifyParams
+): Promise<{ success: boolean; passwordChangedAt: Date | null }> {
   const location = normalizeLocation(params.location);
   const password = params.password;
   if (password.trim().length === 0) {
-    return { success: false };
+    return { success: false, passwordChangedAt: null };
   }
   const config = await prisma.productionScheduleAccessPasswordConfig.findUnique({
     where: { location },
-    select: { dueManagementPasswordHash: true }
+    select: { dueManagementPasswordHash: true, passwordChangedAt: true }
   });
   if (!config) {
-    return { success: false };
+    return { success: false, passwordChangedAt: null };
   }
   const scope = params.clientDeviceId ? `device:${params.clientDeviceId}` : `ip:${params.ip ?? 'unknown'}`;
   const reservations = await reserveAccessPasswordAttempt(location, scope);
@@ -574,5 +589,5 @@ export async function verifyDueManagementAccessPassword(params: AccessPasswordCa
       })
     ));
   }
-  return { success };
+  return { success, passwordChangedAt: config.passwordChangedAt ?? null };
 }

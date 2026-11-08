@@ -1510,7 +1510,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
       payload: {
         name: 'kiosk-only-client-a',
         contentType: 'TOOLS',
-        targetClientKeys: [clientA.apiKey],
+        targetClientDeviceIds: [clientA.id],
         layoutConfig: {
           layout: 'FULL',
           slots: [

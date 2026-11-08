@@ -36,10 +36,9 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
 
   app.post('/clients/heartbeat', async (request) => {
     const clientKey = requireClientKey(request.headers['x-client-key']);
-    const body = clientHeartbeatBodySchema.parse(request.body ?? {});
+    clientHeartbeatBodySchema.parse(request.body ?? {});
     const client = await touchClientHeartbeat({
       clientKey,
-      location: body.location,
     });
     return { client };
   });
@@ -72,6 +71,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       id,
       statusClientId: body.statusClientId,
       name: body.name,
+      location: body.location,
       defaultMode: body.defaultMode ?? undefined,
       kioskInitialRoute: body.kioskInitialRoute,
       haizenEdgeEnabled: body.haizenEdgeEnabled,
@@ -80,7 +80,6 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       siteKey: body.siteKey,
       isSignage: body.isSignage,
       signagePreviewTargetDeviceId: body.signagePreviewTargetDeviceId,
-      signagePreviewTargetApiKey: body.signagePreviewTargetApiKey,
       canProxyOtherDevices: body.canProxyOtherDevices
     });
     const { apiKey, ...publicClient } = client;

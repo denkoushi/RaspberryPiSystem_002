@@ -192,16 +192,17 @@ const csvImportScheduleUpdateSchema = z.object({
 
 export async function registerImportScheduleRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
+  const scheduleRouteRateLimit = { max: 60, timeWindow: '1 minute' };
   const scheduleAdminService = new ImportScheduleAdminService();
 
   // === CSVインポートスケジュール管理API ===
   // スケジュール一覧取得
-  app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
+  app.get('/imports/schedule', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async () => {
     return await scheduleAdminService.listSchedules();
   });
 
   // スケジュール追加
-  app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
+  app.post('/imports/schedule', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const body = csvImportScheduleSchema.parse(request.body ?? {});
     const { schedule, warnings } = await scheduleAdminService.createSchedule(body);
 
@@ -210,7 +211,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // スケジュール更新
-  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const { id } = request.params as { id: string };
     const body = csvImportScheduleUpdateSchema.parse(request.body ?? {});
     const { schedule, warnings } = await scheduleAdminService.updateSchedule(id, body);
@@ -220,7 +221,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // スケジュール削除
-  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const { id } = request.params as { id: string };
     await scheduleAdminService.deleteSchedule(id);
 
@@ -229,7 +230,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // 手動実行
-  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request, reply) => {
+  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const { response, completion } = await scheduleAdminService.runScheduleInBackground(id, {

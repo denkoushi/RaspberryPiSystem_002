@@ -1,3 +1,4 @@
+import { hexColorSchema } from '../../../signage/signage-canvas.js';
 import sharp from 'sharp';
 import type { Renderer } from '../renderer.interface.js';
 import type { KpiVisualizationData, RenderConfig, RenderOutput, VisualizationData } from '../../visualization.types.js';
@@ -42,9 +43,9 @@ export class KpiCardsRenderer implements Renderer {
     const title = config.title ?? '可視化';
 
     const t = createMd3Tokens({ width, height });
-    const goodColor = config.colors?.good ?? t.colors.status.success;
-    const badColor = config.colors?.bad ?? t.colors.status.error;
-    const neutralColor = config.colors?.neutral ?? t.colors.status.info;
+    const goodColor = hexColorSchema.safeParse(config.colors?.good).data ?? t.colors.status.success;
+    const badColor = hexColorSchema.safeParse(config.colors?.bad).data ?? t.colors.status.error;
+    const neutralColor = hexColorSchema.safeParse(config.colors?.neutral).data ?? t.colors.status.info;
 
     const scale = t.scale;
     const padding = Math.round(24 * scale);

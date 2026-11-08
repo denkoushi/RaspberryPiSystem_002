@@ -33,7 +33,7 @@ describe('schedule target input and rollback writes', () => {
   it.each(['POST', 'PUT'] as const)('dual writes ID targets on %s', async (method) => {
     const { app, db } = fixture();
     const response = await app.inject({ method, url: method === 'POST' ? '/schedules' : `/schedules/${scheduleId}`, payload: {
-      ...input, targetClientDeviceIds: [device.id], targetClientKeys: ['ignored-old-input'],
+      ...input, targetClientDeviceIds: [device.id],
     } });
     expect(response.statusCode).toBe(200);
     expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id] });
@@ -42,16 +42,13 @@ describe('schedule target input and rollback writes', () => {
     expect(db.clientDevice.findMany).toHaveBeenCalledWith({ where: { id: { in: [device.id] } }, select: { id: true, apiKey: true } });
   });
 
-  it.each(['POST', 'PUT'] as const)('converts cached legacy input on %s', async (method) => {
+  it.each(['POST', 'PUT'] as const)('rejects legacy key targets on %s', async method => {
     const { app, db } = fixture();
-    const response = await app.inject({ method, url: method === 'POST' ? '/schedules' : `/schedules/${scheduleId}`, payload: {
-      ...input, targetClientKeys: [device.apiKey],
-    } });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id] });
-    expect(response.body).not.toContain(device.apiKey);
-    expect(JSON.stringify((method === 'POST' ? db.signageSchedule.create : db.signageSchedule.update).mock.calls[0][0].data)).toContain(device.apiKey);
-    expect(db.clientDevice.findMany).toHaveBeenCalledWith({ where: { apiKey: { in: [device.apiKey] } }, select: { id: true, apiKey: true } });
+    const response = await app.inject({ method, url: method === 'POST' ? '/schedules' : `/schedules/${scheduleId}`, payload: { ...input, targetClientKeys: [device.apiKey] } });
+    expect(response.statusCode).toBe(400);
+    expect(db.signageSchedule.create).not.toHaveBeenCalled();
+    expect(db.signageSchedule.update).not.toHaveBeenCalled();
+    expect(db.clientDevice.findMany).not.toHaveBeenCalled();
   });
 
   it('leaves stored targets untouched on a write without targets', async () => {
@@ -73,10 +70,10 @@ describe('schedule target input and rollback writes', () => {
     }
   );
 
-  it.each(['targetClientDeviceIds', 'targetClientKeys'] as const)('drops only stored stale targets on update using %s', async (field) => {
+  it.each(['targetClientDeviceIds'] as const)('drops only stored stale targets on update using %s', async (field) => {
     const { app, db } = fixture();
-    const stale = field === 'targetClientDeviceIds' ? '33333333-3333-4333-8333-333333333333' : 'deleted-key';
-    const valid = field === 'targetClientDeviceIds' ? device.id : device.apiKey;
+    const stale = '33333333-3333-4333-8333-333333333333';
+    const valid = device.id;
     db.signageSchedule.findUnique.mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [], [field]: [stale] });
     const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { [field]: [stale, valid] } });
     expect(response.statusCode).toBe(200);
@@ -88,11 +85,11 @@ describe('schedule target input and rollback writes', () => {
     });
   });
 
-  it.each(['targetClientDeviceIds', 'targetClientKeys'] as const)('rejects new unknown and entirely stale updates using %s', async (field) => {
+  it.each(['targetClientDeviceIds'] as const)('rejects new unknown and entirely stale updates using %s', async (field) => {
     for (const stored of [false, true]) {
       const { app, db } = fixture();
-      const unknown = field === 'targetClientDeviceIds' ? '33333333-3333-4333-8333-333333333333' : 'unknown-key';
-      const valid = field === 'targetClientDeviceIds' ? device.id : device.apiKey;
+      const unknown = '33333333-3333-4333-8333-333333333333';
+      const valid = device.id;
       db.signageSchedule.findUnique.mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [], [field]: stored ? [unknown] : [] });
       db.clientDevice.findMany.mockResolvedValue(stored ? [] : [device]);
       const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { [field]: stored ? [unknown] : [valid, unknown] } });

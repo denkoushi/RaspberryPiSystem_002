@@ -100,6 +100,21 @@ describe('single signaling socket routes', () => {
     expect(read(other).at(-1)).toMatchObject({ type });
     expect(callStore.getCall(callId)).toBeUndefined();
   });
+  it('rejects a second ringing invite using the existing error envelope', async () => {
+    await viewer.receive({ type: 'invite', to: 'target' });
+    await viewer.receive({ type: 'invite', to: 'third' });
+    expect(read(viewer).at(-1)).toEqual({ type: 'error', payload: { message: 'Caller already has a ringing call' } });
+    expect(third.send).not.toHaveBeenCalled();
+    expect(callStore.getCallsByClientId('viewer')).toHaveLength(1);
+  });
+  it('ends every incoming and outgoing call on disconnect', async () => {
+    await viewer.receive({ type: 'invite', to: 'target' });
+    await third.receive({ type: 'invite', to: 'viewer' });
+    await viewer.disconnect();
+    expect(callStore.getCallsByClientId('viewer')).toEqual([]);
+    expect(read(target).at(-1)).toMatchObject({ type: 'hangup', from: 'viewer' });
+    expect(read(third).at(-1)).toMatchObject({ type: 'hangup', from: 'viewer' });
+  });
   it('preserves ping and call disconnect notification', async () => {
     await viewer.receive({ type: 'ping', payload: { timestamp: 123 } });
     expect(read(viewer).at(-1)).toEqual({ type: 'pong', timestamp: 123 });

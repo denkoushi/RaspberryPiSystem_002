@@ -37,14 +37,17 @@ export async function resolveScheduleTargets(
   input: Partial<ScheduleTargets>,
   stored?: ScheduleTargets | null,
 ) {
+  if (input.targetClientKeys !== undefined) {
+    throw new ApiError(400, '端末 ID で指定してください', undefined, 'INVALID_SIGNAGE_TARGET');
+  }
   const ids = input.targetClientDeviceIds;
-  const requested = [...new Set(ids ?? input.targetClientKeys ?? [])];
+  const requested = [...new Set(ids ?? [])];
   const devices = requested.length === 0 ? [] : await db.clientDevice.findMany({
-    where: ids !== undefined ? { id: { in: requested } } : { apiKey: { in: requested } },
+    where: { id: { in: requested } },
     select: { id: true, apiKey: true },
   });
-  const byTarget = new Map(devices.map((device) => [ids !== undefined ? device.id : device.apiKey, device]));
-  const previous = new Set((ids !== undefined ? stored?.targetClientDeviceIds : stored?.targetClientKeys) ?? []);
+  const byTarget = new Map(devices.map((device) => [device.id, device]));
+  const previous = new Set(stored?.targetClientDeviceIds ?? []);
   const known = requested.filter((target) => byTarget.has(target));
   if (requested.some((target) => !byTarget.has(target) && !previous.has(target)) || (requested.length > 0 && known.length === 0)) {
     throw new ApiError(400, '登録済み端末のみ選択できます', undefined, 'INVALID_SIGNAGE_TARGET');

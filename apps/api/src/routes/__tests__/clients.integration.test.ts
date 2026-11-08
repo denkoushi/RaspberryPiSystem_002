@@ -519,7 +519,8 @@ describe('クライアントテレメトリーAPI', () => {
     expect(clientDevice?.statusClientId).toBe(payload.clientId);
   });
 
-  it('POST /api/clients/heartbeat does not overwrite ClientDevice.name', async () => {
+  it('POST /api/clients/heartbeat does not overwrite ClientDevice.name or location', async () => {
+    const before = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
     const response = await app.inject({
       method: 'POST',
       url: '/api/clients/heartbeat',
@@ -537,7 +538,7 @@ describe('クライアントテレメトリーAPI', () => {
       where: { apiKey: clientKey }
     });
     expect(clientDevice?.name).toBe(clientName);
-    expect(clientDevice?.location).toBe('新しい場所');
+    expect(clientDevice?.location).toBe(before?.location);
   });
 
   it('POST /api/clients/heartbeat requires x-client-key', async () => {

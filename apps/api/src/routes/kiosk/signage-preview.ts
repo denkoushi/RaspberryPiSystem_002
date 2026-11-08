@@ -17,8 +17,6 @@ import {
 const selectionBodySchema = z.union([
   z.object({ signagePreviewTargetDeviceId: z.string().guid().nullable() }).strict(),
   z.object({ signagePreviewTargetClientDeviceId: z.string().guid().nullable() }).strict(),
-  // Accept a cached old client's input, but never return the supplied credential.
-  z.object({ signagePreviewTargetApiKey: z.string().min(1).nullable() }).strict(),
 ]);
 const imageQuerySchema = z.object({ clientDeviceId: z.string().guid().optional() });
 
