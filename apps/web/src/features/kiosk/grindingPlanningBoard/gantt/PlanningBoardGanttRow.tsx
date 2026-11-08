@@ -11,6 +11,7 @@ import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
+import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GanttWindow } from './usePlanningBoardGanttWindow';
@@ -135,7 +136,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
-      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined }}>
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>

@@ -12,6 +12,7 @@ import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
+import { pieceNotchClipPath } from './planningBoardPieceNotch';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -52,6 +53,20 @@ function props(items: GrindingPlanningBoardItem[] = [item()]) {
     selectedItemIds: new Set<string>(), resourceView: true
   };
 }
+describe('pieceNotchClipPath', () => {
+  it.each([[true, true], [true, false], [false, true], [false, false]])('marks only requested ends (left=%s, right=%s)', (left, right) => {
+    const clipPath = pieceNotchClipPath({ left, right });
+    if (!left && !right) {
+      expect(clipPath).toBeUndefined();
+      return;
+    }
+    expect(clipPath).toContain('polygon(evenodd,');
+    expect(clipPath).toContain('-12px -12px,calc(100% + 12px) -12px');
+    expect(clipPath?.includes('3px 50%')).toBe(left);
+    expect(clipPath?.includes('calc(100% - 3px) 50%')).toBe(right);
+  });
+});
+
 describe('PlanningBoardGanttView', () => {
   beforeEach(() => {
     uptimeQuery.mockReturnValue({ data: undefined });
@@ -240,6 +255,23 @@ describe('PlanningBoardGanttView', () => {
       fireEvent.pointerUp(bar, { pointerId: 1, clientX: 500 });
       expect(values.onDueDrop).not.toHaveBeenCalled();
     }
+  });
+
+  it.each([{}, { isLaterProcess: true }, { isCompleted: true, completionSource: 'import' as const }])('notches backward pieces while preserving imported hatching (%j)', (overrides) => {
+    render(<PlanningBoardGanttView {...props([
+      item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', sourceRowId: 'source', ...overrides }),
+      item({ itemId: 'row', processOrder: '20' })
+    ])} />);
+    expect((screen.getByTestId('planning-gantt-bar-piece:a').firstElementChild as HTMLElement).style.clipPath).toBe(pieceNotchClipPath({ left: true, right: true }));
+    if ('completionSource' in overrides) expect(screen.getByTestId('planning-gantt-bar-piece:a').firstElementChild).toHaveStyle({ background: GANTT_IMPORT_HATCH });
+    expect((screen.getByTestId('planning-gantt-bar-row').firstElementChild as HTMLElement).style.clipPath).toBe('');
+  });
+
+  it('omits notches on backward pieces narrower than 16px', () => {
+    render(<PlanningBoardGanttView {...props([item({ kind: 'piece', requiredMinutes: 1 })])} />);
+    const span = screen.getByTestId('planning-gantt-bar-a').firstElementChild as HTMLElement;
+    expect(parseFloat(span.style.width)).toBeLessThan(16);
+    expect(span.style.clipPath).toBe('');
   });
 
   it('stripes imported backward bars and shows a disabled import badge after tap', () => {
@@ -592,6 +624,35 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  it.each(['piece', 'row'] as const)('notches a single forward segment only for pieces (%s)', (kind) => {
+    render(<PlanningBoardGanttView {...forwardProps([item({ kind, requiredMinutes: 60 })])} />);
+    expect(screen.getByTestId('planning-gantt-bar-a').style.clipPath).toBe(kind === 'piece' ? pieceNotchClipPath({ left: true, right: true }) : '');
+  });
+  it('notches both ends of an unknown-duration forward piece', () => {
+    render(<PlanningBoardGanttView {...forwardProps([item({ kind: 'piece', requiredMinutesKnown: false })])} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(bar.style.width).toBe('70px');
+    expect(bar.style.clipPath).toBe(pieceNotchClipPath({ left: true, right: true }));
+  });
+  it('notches only the outer ends of forward pieces split across breaks', () => {
+    render(<PlanningBoardGanttView {...forwardProps([item({ kind: 'piece', requiredMinutes: 480 })])} />);
+    const segments = screen.getAllByTestId(/^planning-gantt-bar-a/);
+    expect(segments.length).toBeGreaterThan(2);
+    segments.forEach((segment, index) => {
+      expect(segment.style.clipPath).toBe(pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) ?? '');
+    });
+  });
+  it('omits notches on narrow forward end segments', () => {
+    const values = forwardProps([item({ kind: 'piece', requiredMinutes: 480 })]);
+    const segments = values.layout.groups[0]!.rows[0]!.bars[0]!.segments!;
+    for (const index of [0, segments.length - 1]) segments[index]!.end = segments[index]!.start + 1 / 1440;
+    render(<PlanningBoardGanttView {...values} />);
+    const buttons = screen.getAllByTestId(/^planning-gantt-bar-a/);
+    for (const button of [buttons[0]!, buttons.at(-1)!]) {
+      expect(parseFloat(button.style.width)).toBeLessThan(16);
+      expect(button.style.clipPath).toBe('');
+    }
+  });
   function laterProps(special = false) {
     const values = forwardProps([item({ requiredMinutes: 60, alternateRank: 1,
       specialDue: special ? { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' } : undefined }),
