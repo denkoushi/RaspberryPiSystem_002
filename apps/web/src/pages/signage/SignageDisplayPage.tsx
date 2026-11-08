@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from 'react';
 
 import {
   getSignageCurrentImageUrl,
-  getSignageVisualizationImageUrl,
   type SignageContentResponse,
   type SignageSlot,
   type SignageSlotConfig
 } from '../../api/client';
 import { useSignageContent } from '../../api/hooks';
+import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { VIEWPORT_MIN_HEIGHT_FULL, VIEWPORT_WIDTH_SAFE } from '../../constants/viewportLayout';
 
 type ToolItem = NonNullable<SignageContentResponse['tools']>[number];
@@ -66,8 +66,8 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
       >
         <div className={`flex min-w-0 flex-1 ${tool.thumbnailUrl ? 'gap-3' : ''}`}>
           {tool.thumbnailUrl ? (
-            <img
-              src={tool.thumbnailUrl}
+            <ProtectedImage
+              path={tool.thumbnailUrl}
               alt={nameLine}
               className={thumbImgClass}
               onError={(e) => {
@@ -117,8 +117,8 @@ function ToolCard({ tool, compact = false }: { tool: ToolItem; compact?: boolean
     >
       <div className="relative overflow-hidden rounded-2xl bg-slate-900/40" style={{ aspectRatio: '4 / 3' }}>
         {tool.thumbnailUrl ? (
-          <img
-            src={tool.thumbnailUrl}
+          <ProtectedImage
+            path={tool.thumbnailUrl}
             alt={tool.name}
             className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             onError={(e) => {
@@ -586,29 +586,21 @@ export function SignageDisplayPage() {
             );
           }
 
-          const imageUrl = getSignageVisualizationImageUrl(dashboardId);
-
           return (
             <section key={position} className={`flex min-h-0 flex-col gap-2 ${panelClass}`}>
               <div>
                 <h2 className="text-2xl font-semibold text-white">可視化</h2>
               </div>
               <div className="flex flex-1 items-center justify-center min-h-0">
-                <img
-                  src={imageUrl}
+                <ProtectedImage
+                  path={`/signage/visualization-image/${dashboardId}`}
+                  refreshIntervalMs={30_000}
                   alt="可視化ダッシュボード"
                   className="max-h-full max-w-full object-contain"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const parent = target.parentElement;
-                    const fallback = parent?.querySelector('[data-visualization-fallback]');
-                    if (fallback instanceof HTMLElement) fallback.classList.remove('hidden');
-                  }}
+                  fallback={<p className="text-white/60" data-visualization-fallback>
+                    可視化の読み込みに失敗しました
+                  </p>}
                 />
-                <p className="hidden text-white/60" data-visualization-fallback>
-                  可視化の読み込みに失敗しました
-                </p>
               </div>
             </section>
           );

@@ -9,6 +9,7 @@ import {
   useInventoryLocations,
   useInventoryMutations,
 } from '../../../../api/hooks';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { useDismissOnOutside } from '../../../../hooks/useDismissOnOutside';
 import { AREA_DIRECTIONS, composeArea, DEFAULT_AREA_DIRECTION, splitArea } from '../areaNaming';
@@ -538,7 +539,7 @@ export function InventoryRegistrationTab({ accessPassword, registration, setRegi
               const photo = entry.photos[0];
               return <button key={entry.id} type="button" aria-pressed={selected} aria-label={`候補 #${entry.sourceItemId}`} disabled={mutations.registerImport.isPending} className={`flex min-w-0 flex-col gap-2 rounded-xl border p-2 text-left ${selected ? 'border-2 border-inv-cyan bg-inv-cyan/[0.1]' : 'border-inv-line bg-inv-s2 hover:bg-inv-s3'}`} onClick={() => { chooseCandidate(entry.id); candidatesButtonRef.current?.focus(); }}>
                 <span className="block h-20 w-full overflow-hidden rounded-lg bg-inv-s3">
-                  {photo ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
+                  {photo ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt="" className="h-full w-full object-cover" /> : null}
                 </span>
                 <b className="max-w-full truncate text-sm">候補 #{entry.sourceItemId}</b>
                 <span className="line-clamp-2 break-all text-xs text-inv-muted">{entry.area}</span>

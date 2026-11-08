@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { InventoryLocationBlocks } from './InventoryLocationBlocks';
 import { InventoryPhotoPane } from './InventoryPhotoPane';
 
+vi.mock('../../../components/common/ProtectedImage', () => ({
+  ProtectedImage: ({ path, ...props }: { path: string } & import('react').ImgHTMLAttributes<HTMLImageElement>) => <img {...props} src={path} />,
+}));
+
 vi.mock('../../../api/client', () => ({
   inventoryThumbnailUrl: (value: string) => `thumb:${value}`,
   api: { get: vi.fn(() => new Promise(() => undefined)) },

@@ -2,13 +2,17 @@ import Fastify from 'fastify';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import {
   getFileStorageRuntime,
   resetFileStorageRuntimesForTests,
 } from '../../../services/file-storage/file-storage-runtime.js';
 import { registerThumbnailStorageRoutes } from '../thumbnails.js';
+
+vi.mock('../../../services/clients/client-device-auth.service.js', () => ({
+  findClientDeviceByApiKey: vi.fn().mockResolvedValue({ id: 'device' }),
+}));
 
 describe('GET /api/storage/thumbnails/*', () => {
   let root: string;
@@ -36,7 +40,7 @@ describe('GET /api/storage/thumbnails/*', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('keeps the public URL and verifies a cataloged thumbnail', async () => {
+  it('keeps the thumbnail URL and verifies a cataloged thumbnail', async () => {
     await getFileStorageRuntime().store.write({
       key: 'thumbnails/2026/07/example_thumb.jpg',
       data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
@@ -46,10 +50,11 @@ describe('GET /api/storage/thumbnails/*', () => {
 
     const response = await app.inject({
       method: 'GET',
+      headers: { 'x-client-key': 'device-key' },
       url: '/api/storage/thumbnails/2026/07/example_thumb.jpg',
     });
     expect(response.statusCode).toBe(200);
-    expect(response.headers['cache-control']).toBe('public, max-age=86400');
+    expect(response.headers['cache-control']).toBe('private, max-age=86400');
     expect(response.headers['content-type']).toContain('image/jpeg');
   });
 
@@ -64,6 +69,7 @@ describe('GET /api/storage/thumbnails/*', () => {
 
     const response = await app.inject({
       method: 'GET',
+      headers: { 'x-client-key': 'device-key' },
       url: '/api/storage/thumbnails/corrupt_thumb.jpg',
     });
     expect(response.statusCode).toBe(503);

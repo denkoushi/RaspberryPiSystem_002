@@ -9,6 +9,10 @@ import {
   kioskActiveLoanCardThumbImgClassName,
 } from '../kioskActiveLoanCardLayout';
 
+vi.mock('../../common/ProtectedImage', () => ({
+  ProtectedImage: ({ path, ...props }: { path: string } & import('react').ImgHTMLAttributes<HTMLImageElement>) => <img {...props} src={path} />,
+}));
+
 describe('KioskActiveLoanCard', () => {
   const noop = () => {};
 

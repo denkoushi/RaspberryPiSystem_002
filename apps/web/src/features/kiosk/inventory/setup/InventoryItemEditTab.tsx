@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
 import { compartmentLocationText, needsOrdering, needsReorder, unitLabel } from '../inventoryDailyFlow';
@@ -287,7 +288,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
                 const low = entry.compartments.filter(needsReorder);
                 const edge = low.length ? (entry.compartments.some(needsOrdering) ? 'border-2 border-inv-red' : 'border-2 border-inv-blue') : on ? '' : 'border-b border-inv-line';
                 return <button key={entry.id} type="button" aria-pressed={on} className={`grid h-[62px] shrink-0 grid-cols-[44px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-2 text-left ${edge} ${on ? 'bg-inv-cyan/[0.12] ring-2 ring-inset ring-inv-cyan' : 'hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
-                  {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-11 w-11 rounded-[9px] object-cover" /> : <span className="h-11 w-11 rounded-[9px] bg-inv-s3" aria-hidden="true" />}
+                  {entry.photos[0] ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-11 w-11 rounded-[9px] object-cover" /> : <span className="h-11 w-11 rounded-[9px] bg-inv-s3" aria-hidden="true" />}
                   <span className="flex min-w-0 flex-col gap-1">
                     <span className="truncate text-[15px] font-bold">{highlight(entry.name, needle)}</span>
                     <span className="flex min-w-0 items-center gap-2">
@@ -388,7 +389,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
         <div className="relative grid min-h-[280px] shrink-0 grid-cols-[236px_minmax(0,1fr)] gap-3">
           <section className={`${invPanel} relative min-h-0 overflow-hidden`} aria-label="写真">
             {photo ? <button type="button" className="block h-full w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto(photo.id)}>
-              <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
+              <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
             </button> : <p className="p-4 text-inv-faint">写真はありません</p>}
             {item.photos.length > 1 ? <>
               {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className={`absolute bottom-2 flex h-11 w-11 items-center justify-center rounded-lg border border-inv-line2 bg-inv-bg/75 text-xl ${offset === -1 ? 'left-2' : 'left-[60px]'}`} onClick={() => { setPhotoIndex((index + offset + item.photos.length) % item.photos.length); setConfirmPhotoId(null); }}>{offset === -1 ? '＜' : '＞'}</button>)}

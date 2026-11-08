@@ -71,8 +71,8 @@ describe('signage schedule response boundaries', () => {
     return app;
   }
 
-  it('returns public schedule fields anonymously without credentials or changing the internal record', async () => {
-    const response = await buildApp().inject({ method: 'GET', url: '/schedules' });
+  it('returns schedule fields to a viewer without credentials or changing the internal record', async () => {
+    const response = await buildApp().inject({ method: 'GET', url: '/schedules', headers: authHeader('VIEWER') });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ schedules: [publicSchedule] });
@@ -86,7 +86,7 @@ describe('signage schedule response boundaries', () => {
 
   it('preserves an empty public schedule list', async () => {
     service.getSchedules.mockResolvedValue([]);
-    const response = await buildApp().inject({ method: 'GET', url: '/schedules' });
+    const response = await buildApp().inject({ method: 'GET', url: '/schedules', headers: authHeader('VIEWER') });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ schedules: [] });

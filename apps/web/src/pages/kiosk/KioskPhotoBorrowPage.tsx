@@ -10,6 +10,7 @@ import {
   postClientLogs
 } from '../../api/client';
 import { useActiveLoans, useKioskConfig, usePhotoBorrowMutation } from '../../api/hooks';
+import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import {
   kioskButtonSecondaryClassName,
@@ -486,8 +487,8 @@ export function KioskPhotoBorrowPage() {
                 </p>
                 {successLoan.photoUrl && (
                   <div className="mt-4">
-                    <img
-                      src={successLoan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')}
+                    <ProtectedImage
+                      path={successLoan.photoUrl.replace('/api/storage/photos', '/storage/thumbnails').replace('.jpg', '_thumb.jpg')}
                       alt="撮影した写真"
                       className="mx-auto h-32 w-32 rounded-lg object-cover"
                       onError={(e) => {

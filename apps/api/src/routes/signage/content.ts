@@ -14,10 +14,10 @@ function resolveClientKeyFromRequest(request: FastifyRequest): string | null {
   return fromQuery ?? fromHeader ?? null;
 }
 
-/** Hide borrower names from callers without a registered terminal key. */
-export function withoutEmployeeNames(content: SignageContentResponse): SignageContentResponse {
+/** Hide borrower names and thumbnails from callers without a registered terminal key. */
+export function withoutEmployeeDetails(content: SignageContentResponse): SignageContentResponse {
   if (!content.tools) return content;
-  return { ...content, tools: content.tools.map((tool) => ({ ...tool, employeeName: null })) };
+  return { ...content, tools: content.tools.map((tool) => ({ ...tool, employeeName: null, thumbnailUrl: null })) };
 }
 
 export function registerContentRoute(app: FastifyInstance, signageService: SignageService): void {
@@ -26,6 +26,6 @@ export function registerContentRoute(app: FastifyInstance, signageService: Signa
     const requestedKey = resolveClientKeyFromRequest(request);
     const device = requestedKey ? await findClientDeviceByApiKey(requestedKey) : null;
     const content = await signageService.getContent({ clientKey: device ? requestedKey : null });
-    return device ? content : withoutEmployeeNames(content);
+    return device ? content : withoutEmployeeDetails(content);
   });
 }

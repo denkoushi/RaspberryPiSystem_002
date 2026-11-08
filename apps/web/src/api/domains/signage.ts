@@ -291,13 +291,6 @@ export async function renderSignageCanvasPreview(spec: SignageCanvasPreviewSpec)
   return data;
 }
 
-/** 可視化ダッシュボードのレンダリング画像URL（Web /signage 表示用） */
-export function getSignageVisualizationImageUrl(dashboardId: string): string {
-  const base = readProductionBuildConfig().apiBaseUrl;
-  const normalized = base.replace(/\/$/, '');
-  return `${normalized}/signage/visualization-image/${dashboardId}`;
-}
-
 /**
  * Pi3 / ブラウザ共通の latest JPEG（キャッシュバスタ付き可）。
  * `<img src>` 用: 解決済み `clientKey` を必ずクエリ `key` に載せ、端末別レンダキャッシュと一致させる。
