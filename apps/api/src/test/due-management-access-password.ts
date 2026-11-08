@@ -12,7 +12,9 @@ export const configureTestDueManagementAccessPassword = async (
     create: {
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
       dueManagementPasswordHash,
+      failedAttemptCount: 0,
+      failedAttemptWindowEndsAt: null,
     },
-    update: { dueManagementPasswordHash },
+    update: { dueManagementPasswordHash, failedAttemptCount: 0, failedAttemptWindowEndsAt: null },
   });
 };
