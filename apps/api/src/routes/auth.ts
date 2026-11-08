@@ -27,7 +27,7 @@ const mfaActivateSchema = z.object({
   currentBackupCode: z.string().optional(),
   secret: z.string().min(10),
   code: z.string().min(6),
-  backupCodes: z.array(z.string().min(4)).min(1)
+  backupCodes: z.array(z.string().min(4)).min(1).max(10)
 });
 
 const mfaDisableSchema = z.object({

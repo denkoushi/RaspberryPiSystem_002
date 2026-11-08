@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(), command: vi.fn(), selection: vi.fn(), dailyPlan: vi.fn(),
   rank: vi.fn(), auto: vi.fn(), importHours: vi.fn(), proposal: vi.fn(), learning: vi.fn()
 }));
+vi.mock('../../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
 vi.mock('../../../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'test-due-management-secret' } }));
 vi.mock('../../../../services/production-schedule/production-schedule-settings.service.js', () => ({
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify

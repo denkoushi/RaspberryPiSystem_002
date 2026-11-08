@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
+import { prisma } from '../../lib/prisma.js';
 import { signAccessToken } from '../../lib/auth.js';
 import type { SignageService } from '../../services/signage/index.js';
 import { registerScheduleRoutes } from './schedules.js';
@@ -30,6 +31,7 @@ const service = {
 };
 
 function authHeader(role: User['role']) {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } as never);
   const token = signAccessToken({
     id: '11111111-1111-4111-8111-111111111111',
     username: 'schedule-test-user',
@@ -49,6 +51,7 @@ describe('signage schedule response boundaries', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
 
   beforeEach(() => {
+    vi.spyOn(prisma.user, 'findUnique');
     vi.clearAllMocks();
     service.getSchedules.mockResolvedValue([internalSchedule]);
     service.listSchedulesForManagement.mockResolvedValue([internalSchedule]);
@@ -56,6 +59,7 @@ describe('signage schedule response boundaries', () => {
 
   afterEach(async () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
+    vi.restoreAllMocks();
   });
 
   function buildApp() {

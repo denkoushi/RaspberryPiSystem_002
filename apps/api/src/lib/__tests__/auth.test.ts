@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  findUnique: vi.fn(),
   env: {
     ADMIN_MFA_REQUIRED: false as boolean,
     JWT_ACCESS_SECRET: 'unit-access-secret',
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   }
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.findUnique } } }));
 
 import {
   authenticate,
@@ -33,9 +35,15 @@ function makeUser(overrides: Partial<User> = {}): User {
     id: 'user-1',
     username: 'alice',
     role: 'VIEWER',
+    status: 'ACTIVE',
     mfaEnabled: false,
     ...overrides
   } as User;
+}
+
+function tokenForUser(user: User): string {
+  mocks.findUnique.mockResolvedValue(user);
+  return signAccessToken(user);
 }
 
 type FakeRequest = FastifyRequest & { user?: { id: string; username: string; role: User['role'] } };
@@ -78,6 +86,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
   mocks.env.ADMIN_MFA_REQUIRED = false;
+  mocks.findUnique.mockReset().mockResolvedValue(makeUser());
 });
 
 afterEach(() => {
@@ -120,11 +129,15 @@ describe('isAdminMfaRequired', () => {
 });
 
 describe('authenticate', () => {
-  it('sets request.user from a valid Bearer access token', async () => {
-    const token = signAccessToken(makeUser({ id: 'u-1', username: 'alice', role: 'ADMIN' }));
+  it('sets request.user from the DB after one primary-key lookup', async () => {
+    const token = tokenForUser(makeUser({ id: 'u-1', username: 'alice', role: 'ADMIN' }));
     const request = makeRequest(`Bearer ${token}`);
     await authenticate(request, makeReply());
     expect(request.user).toEqual({ id: 'u-1', username: 'alice', role: 'ADMIN' });
+    expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'u-1' },
+      select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
+    });
   });
 
   it('rejects a missing Authorization header with AUTH_TOKEN_REQUIRED', async () => {
@@ -154,6 +167,8 @@ describe('authenticate', () => {
     const forged = jwt.sign({ sub: 'u-1', username: 'alice', role: 'ADMIN' }, 'attacker-secret');
     const error = await captureError(authenticate(makeRequest(`Bearer ${forged}`), makeReply()));
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
+    expect(error.statusCode).toBe(401);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
   it('rejects a refresh token presented as an access token', async () => {
@@ -163,7 +178,7 @@ describe('authenticate', () => {
   });
 
   it('accepts a token right before expiry and rejects it after expiry', async () => {
-    const token = signAccessToken(makeUser());
+    const token = tokenForUser(makeUser());
     vi.setSystemTime(new Date(FIXED_NOW.getTime() + 15 * 60 * 1000 - 1000));
     await expect(authenticate(makeRequest(`Bearer ${token}`), makeReply())).resolves.toBeUndefined();
 
@@ -177,6 +192,8 @@ describe('authenticate', () => {
     const unsigned = jwt.sign({ sub: 'u-1', username: 'alice', role: 'ADMIN' }, '', { algorithm: 'none' });
     const error = await captureError(authenticate(makeRequest(`Bearer ${unsigned}`), makeReply()));
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
+    expect(error.statusCode).toBe(401);
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -192,6 +209,7 @@ describe('authenticate', () => {
     const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.statusCode).toBe(401);
     expect(error.code).toBe('AUTH_TOKEN_INVALID');
+    expect(mocks.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -200,7 +218,7 @@ describe('authenticate', () => {
     ['extra segment', (t: string) => `Bearer ${t} extra`],
     ['double space', (t: string) => `Bearer  ${t}`]
   ])('rejects a valid token sent with a non-Bearer header shape (%s)', async (_label, build) => {
-    const token = signAccessToken(makeUser({ role: 'VIEWER' }));
+    const token = tokenForUser(makeUser({ role: 'VIEWER' }));
     const reply = makeReply();
     const request = makeRequest(build(token));
     const error = await captureError(authenticate(request, reply));
@@ -211,12 +229,62 @@ describe('authenticate', () => {
   });
 
   it('accepts the Bearer scheme case-insensitively', async () => {
-    const token = signAccessToken(makeUser({ role: 'VIEWER' }));
+    const token = tokenForUser(makeUser({ role: 'VIEWER' }));
     for (const scheme of ['bearer', 'BEARER']) {
       const request = makeRequest(`${scheme} ${token}`);
       await authenticate(request, makeReply());
       expect(request.user?.role).toBe('VIEWER');
     }
+  });
+
+  it.each([null, makeUser({ status: 'DISABLED' })])('rejects a missing or disabled DB user (%j)', async (user) => {
+    const token = signAccessToken(makeUser());
+    mocks.findUnique.mockResolvedValue(user);
+    const reply = makeReply();
+    const request = makeRequest(`Bearer ${token}`);
+    const error = await captureError(authenticate(request, reply));
+    expect(error).toMatchObject({ statusCode: 401, code: 'AUTH_TOKEN_INVALID', message: 'トークンが無効です' });
+    expect(reply.code).toHaveBeenCalledWith(401);
+    expect(request.user).toBeUndefined();
+  });
+
+  it('immediately applies a demotion and the current DB username', async () => {
+    const token = signAccessToken(makeUser({ role: 'ADMIN' }));
+    mocks.findUnique.mockResolvedValue(makeUser({ role: 'VIEWER', username: 'renamed' }));
+    const request = makeRequest(`Bearer ${token}`);
+    const error = await captureError(authorizeRoles('ADMIN')(request, makeReply()));
+    expect(error).toMatchObject({ statusCode: 403, code: 'AUTH_INSUFFICIENT_PERMISSIONS' });
+    expect(request.user).toEqual({ id: 'user-1', username: 'renamed', role: 'VIEWER' });
+  });
+
+  it.each([
+    { role: 'VIEWER' as const, mfaEnabled: false },
+    { role: 'ADMIN' as const, mfaEnabled: true }
+  ])('requires DB MFA for an ADMIN regardless of stale token claims (%j)', async (claims) => {
+    mocks.env.ADMIN_MFA_REQUIRED = true;
+    const token = signAccessToken(makeUser(claims));
+    mocks.findUnique.mockResolvedValue(makeUser({ role: 'ADMIN', mfaEnabled: false }));
+    const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
+    expect(error).toMatchObject({ statusCode: 403, code: 'MFA_SETUP_REQUIRED' });
+  });
+
+  it('re-reads the user on every request so status changes take effect immediately', async () => {
+    const token = signAccessToken(makeUser());
+    const user = makeUser();
+    mocks.findUnique.mockResolvedValueOnce(user).mockResolvedValueOnce({ ...user, status: 'DISABLED' });
+    await authenticate(makeRequest(`Bearer ${token}`), makeReply());
+    const error = await captureError(authenticate(makeRequest(`Bearer ${token}`), makeReply()));
+    expect(error.code).toBe('AUTH_TOKEN_INVALID');
+    expect(mocks.findUnique).toHaveBeenCalledTimes(2);
+  });
+
+  it('propagates DB failures without mapping them to AUTH_TOKEN_INVALID', async () => {
+    const failure = new Error('database unavailable');
+    mocks.findUnique.mockRejectedValue(failure);
+    const reply = makeReply();
+    await expect(authenticate(makeRequest(`Bearer ${signAccessToken(makeUser())}`), reply)).rejects.toBe(failure);
+    expect(reply.code).not.toHaveBeenCalled();
+    expect(failure).not.toBeInstanceOf(ApiError);
   });
 
   describe('when ADMIN_MFA_REQUIRED is on', () => {
@@ -226,7 +294,7 @@ describe('authenticate', () => {
 
     it('blocks ADMIN/MANAGER tokens without mfaEnabled with MFA_SETUP_REQUIRED', async () => {
       for (const role of ['ADMIN', 'MANAGER'] as const) {
-        const token = signAccessToken(makeUser({ role, mfaEnabled: false }));
+        const token = tokenForUser(makeUser({ role, mfaEnabled: false }));
         const request = makeRequest(`Bearer ${token}`);
         const error = await captureError(authenticate(request, makeReply()));
         expect(error.statusCode).toBe(403);
@@ -236,13 +304,14 @@ describe('authenticate', () => {
     });
 
     it('blocks legacy ADMIN tokens that carry no mfaEnabled claim', async () => {
+      mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1', role: 'ADMIN', mfaEnabled: true }));
       const legacy = jwt.sign({ sub: 'u-1', username: 'alice', role: 'ADMIN' }, ACCESS);
       const error = await captureError(authenticate(makeRequest(`Bearer ${legacy}`), makeReply()));
       expect(error.code).toBe('MFA_SETUP_REQUIRED');
     });
 
     it('allows ADMIN tokens without MFA only on POST to the MFA setup routes', async () => {
-      const token = signAccessToken(makeUser({ role: 'ADMIN', mfaEnabled: false }));
+      const token = tokenForUser(makeUser({ role: 'ADMIN', mfaEnabled: false }));
       for (const url of ['/api/auth/mfa/initiate', '/api/auth/mfa/activate']) {
         const request = makeRequest(`Bearer ${token}`, { method: 'POST', url });
         await authenticate(request, makeReply());
@@ -257,11 +326,11 @@ describe('authenticate', () => {
     });
 
     it('lets VIEWER without MFA and ADMIN with MFA through', async () => {
-      const viewer = makeRequest(`Bearer ${signAccessToken(makeUser({ role: 'VIEWER', mfaEnabled: false }))}`);
+      const viewer = makeRequest(`Bearer ${tokenForUser(makeUser({ role: 'VIEWER', mfaEnabled: false }))}`);
       await authenticate(viewer, makeReply());
       expect(viewer.user?.role).toBe('VIEWER');
 
-      const admin = makeRequest(`Bearer ${signAccessToken(makeUser({ role: 'ADMIN', mfaEnabled: true }))}`);
+      const admin = makeRequest(`Bearer ${tokenForUser(makeUser({ role: 'ADMIN', mfaEnabled: true }))}`);
       await authenticate(admin, makeReply());
       expect(admin.user?.role).toBe('ADMIN');
     });
@@ -269,7 +338,7 @@ describe('authenticate', () => {
 });
 
 describe('authorizeRoles', () => {
-  const tokenFor = (role: User['role']) => `Bearer ${signAccessToken(makeUser({ role }))}`;
+  const tokenFor = (role: User['role']) => `Bearer ${tokenForUser(makeUser({ role }))}`;
 
   it('allows only the listed roles', async () => {
     const guard = authorizeRoles('ADMIN', 'MANAGER');
@@ -295,7 +364,8 @@ describe('authorizeRoles', () => {
     expect(error.code).toBe('AUTH_INSUFFICIENT_PERMISSIONS');
   });
 
-  it('rejects a token whose role claim is not a known role', async () => {
+  it('uses the DB role even when the role claim is unknown', async () => {
+    mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1' }));
     const token = jwt.sign({ sub: 'u-1', username: 'alice', role: 'SUPERUSER' }, ACCESS);
     const error = await captureError(authorizeRoles('ADMIN')(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.statusCode).toBe(403);

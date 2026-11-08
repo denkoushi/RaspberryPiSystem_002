@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   env: { ADMIN_MFA_REQUIRED: true, JWT_ACCESS_SECRET: 'test-mfa-fallback-secret' },
+  userFindUnique: vi.fn(),
   clientKey: vi.fn(), findAll: vi.fn(), getDashboard: vi.fn(), listModels: vi.fn(), confirmations: vi.fn()
 }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.userFindUnique } } }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
 // These routes' schemas import generated enums even though persistence is mocked.
 vi.mock('@prisma/client', () => {
@@ -75,6 +77,7 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 function userHeaders(role = 'ADMIN') {
+  mocks.userFindUnique.mockResolvedValue({ id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false });
   const token = jwt.sign({ sub: 'user', username: 'test', role }, mocks.env.JWT_ACCESS_SECRET);
   return { authorization: `Bearer ${token}`, 'x-client-key': 'valid-device-key' };
 }

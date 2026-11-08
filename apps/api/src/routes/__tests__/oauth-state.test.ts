@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../lib/prisma.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { defaultBackupConfig } from '../../services/backup/backup-config.js';
@@ -14,6 +15,9 @@ import { registerGmailOAuthRoutes } from '../gmail/oauth.js';
 vi.mock('../../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'oauth-test-access-secret' }
 }));
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { user: { findUnique: vi.fn() } }
+}));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 }));
@@ -21,11 +25,14 @@ vi.mock('../../services/backup/backup-config.loader.js', () => ({
   BackupConfigLoader: { load: vi.fn(), save: vi.fn() }
 }));
 
-const headersFor = (role: string) => ({
-  authorization: `Bearer ${jwt.sign(
-    { sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
-  )}`
-});
+const headersFor = (role: string) => {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'admin-id', username: 'admin', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  return {
+    authorization: `Bearer ${jwt.sign(
+      { sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
+    )}`
+  };
+};
 
 describe.each([
   { provider: 'dropbox', path: '/backup/oauth', otherPath: '/gmail/oauth' },
@@ -35,6 +42,7 @@ describe.each([
   let now: number;
 
   beforeEach(async () => {
+    vi.spyOn(prisma.user, 'findUnique');
     now = Date.now();
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     vi.spyOn(oauthStateStore, 'issueOAuthState');

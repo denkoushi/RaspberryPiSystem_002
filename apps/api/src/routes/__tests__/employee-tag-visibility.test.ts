@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Employee, UserRole } from '@prisma/client';
 
+import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import type { EmployeeService } from '../../services/tools/employee.service.js';
 import { registerEmployeeGetRoute } from '../tools/employees/get.js';
@@ -10,6 +11,9 @@ import { registerEmployeeListRoute } from '../tools/employees/list.js';
 
 vi.mock('../../config/env.js', () => ({
   env: { JWT_ACCESS_SECRET: 'employee-visibility-test-secret' }
+}));
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { user: { findUnique: vi.fn() } }
 }));
 
 const employee: Employee = {
@@ -28,12 +32,15 @@ const employee: Employee = {
   updatedAt: new Date('2026-01-01T00:00:00Z')
 };
 
-const jwtHeaders = (role: UserRole) => ({
-  authorization: `Bearer ${jwt.sign(
-    { sub: 'test-user', username: 'test-user', role },
-    'employee-visibility-test-secret'
-  )}`
-});
+const jwtHeaders = (role: UserRole) => {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'test-user', username: 'test-user', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  return {
+    authorization: `Bearer ${jwt.sign(
+      { sub: 'test-user', username: 'test-user', role },
+      'employee-visibility-test-secret'
+    )}`
+  };
+};
 
 describe('Employee read response tag visibility', () => {
   let app: ReturnType<typeof Fastify>;
@@ -42,6 +49,7 @@ describe('Employee read response tag visibility', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.spyOn(prisma.user, 'findUnique');
     findAll.mockResolvedValue([employee]);
     findById.mockResolvedValue(employee);
     const service = { findAll, findById } as unknown as EmployeeService;
@@ -56,6 +64,7 @@ describe('Employee read response tag visibility', () => {
 
   afterEach(async () => {
     await app.close();
+    vi.restoreAllMocks();
   });
 
   describe.each([

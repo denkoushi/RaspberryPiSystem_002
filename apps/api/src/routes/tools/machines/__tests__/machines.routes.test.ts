@@ -8,6 +8,7 @@ vi.mock('../../../../config/env.js', () => ({
 }));
 vi.mock('../../../../lib/prisma.js', () => ({
   prisma: {
+    user: { findUnique: vi.fn() },
     machineNfcTag: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
     employee: { findUnique: vi.fn() },
     item: { findUnique: vi.fn() },
@@ -30,9 +31,12 @@ const machine = {
   maker: null, processClassification: null, coolant: null,
   createdAt: new Date(), updatedAt: new Date(),
 };
-const headers = (role = 'ADMIN') => ({
-  authorization: `Bearer ${jwt.sign({ sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
-});
+const headers = (role = 'ADMIN') => {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'u1', username: 'tester', role, status: 'ACTIVE', mfaEnabled: false } as never);
+  return {
+    authorization: `Bearer ${jwt.sign({ sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
+  };
+};
 let app: FastifyInstance;
 
 beforeEach(async () => {

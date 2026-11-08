@@ -4,11 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  userFindUnique: vi.fn(),
   env: { ADMIN_MFA_REQUIRED: false, JWT_ACCESS_SECRET: 'doc-auth-secret' }
 }));
 
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../prisma.js', () => ({ prisma: { clientDevice: { findUnique: mocks.findUnique } } }));
+vi.mock('../prisma.js', () => ({ prisma: { user: { findUnique: mocks.userFindUnique }, clientDevice: { findUnique: mocks.findUnique } } }));
 
 import { ApiError } from '../errors.js';
 import { authorizeKioskClientKeyOrJwtRoles } from '../kiosk-document-auth.js';
@@ -21,7 +22,10 @@ function makeRequest(headers: Record<string, unknown>): FakeRequest {
 
 const reply = { code: vi.fn().mockReturnThis() } as unknown as FastifyReply;
 
-const bearer = (role: string) => `Bearer ${jwt.sign({ sub: 'u-1', username: 'alice', role }, 'doc-auth-secret')}`;
+const bearer = (role: string) => {
+  mocks.userFindUnique.mockResolvedValue({ id: 'u-1', username: 'alice', role, status: 'ACTIVE', mfaEnabled: false });
+  return `Bearer ${jwt.sign({ sub: 'u-1', username: 'alice', role }, 'doc-auth-secret')}`;
+};
 
 async function captureError(promise: Promise<unknown>): Promise<ApiError> {
   try {
@@ -34,6 +38,7 @@ async function captureError(promise: Promise<unknown>): Promise<ApiError> {
 }
 
 beforeEach(() => {
+  mocks.userFindUnique.mockReset();
   mocks.findUnique.mockReset();
   mocks.findUnique.mockImplementation(async ({ where }: { where: { apiKey: string } }) =>
     where.apiKey === 'valid-key' ? { id: 'device-1', apiKey: 'valid-key' } : null

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { backupConfigChange: { create: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue({ id: 'admin', username: 'admin', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: true }) }, backupConfigChange: { create: vi.fn() } } }));
 vi.mock('../../../services/backup/backup-scheduler.js', () => ({ getBackupScheduler: () => ({ reload: vi.fn() }) }));
 vi.mock('../../../services/kiosk-documents/kiosk-document-gmail.scheduler.js', () => ({ getKioskDocumentGmailScheduler: () => ({ reload: vi.fn() }) }));
 

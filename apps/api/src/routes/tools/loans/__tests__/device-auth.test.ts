@@ -14,8 +14,13 @@ import { registerPhotoBorrowRoute } from '../photo-borrow.js';
 import { registerReturnRoute } from '../return.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { findUnique: vi.fn() } },
+  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } },
 }));
+
+function tokenForUser(user: User): string {
+  vi.mocked(prisma.user.findUnique).mockResolvedValue({ ...user, status: 'ACTIVE', mfaEnabled: false });
+  return signAccessToken(user);
+}
 
 const clientId = '11111111-1111-4111-8111-111111111111';
 const otherClientId = '22222222-2222-4222-8222-222222222222';
@@ -109,7 +114,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/borrow', '/photo-borrow'])('%sはJWTだけでは401を返す', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
     const route = routes.find((candidate) => candidate.path === path)!;
     const response = await app.inject({
       method: 'POST', url: path, headers: { authorization: `Bearer ${token}` }, payload: route.payload,
@@ -143,7 +148,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['ADMIN', 'MANAGER', 'VIEWER'] as const)('activeは%sのJWTだけでも成功する', async (role) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role } as User);
     const response = await app.inject({ method: 'GET', url: '/active', headers: { authorization: `Bearer ${token}` } });
     expect(response.statusCode).toBe(200);
     expect(loanService.findActive).toHaveBeenCalledWith({ clientId: undefined });
@@ -151,7 +156,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/return', '/cancel'])('%sは既存のJWTだけの経路を維持する', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'MANAGER' } as User);
     for (const specifiedClientId of [undefined, clientId]) {
       const response = await app.inject({
         method: 'POST', url: path, headers: { authorization: `Bearer ${token}` },
@@ -165,7 +170,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it('/activeは不正キーでも有効なJWTがあれば閲覧できる', async () => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
     const response = await app.inject({
       method: 'GET', url: '/active',
       headers: { authorization: `Bearer ${token}`, 'x-client-key': 'fixture-only-invalid' },
@@ -174,7 +179,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/borrow', '/photo-borrow', '/return', '/cancel'])('%sはJWTがあっても不正キーを401にする', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
     const route = routes.find((candidate) => candidate.path === path);
     const response = await app.inject({
       method: route ? 'POST' : 'GET', url: path,
@@ -190,11 +195,11 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it('deleteはVIEWERのJWTを403にし、ADMIN/MANAGERだけ許可する', async () => {
-    const viewer = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const viewer = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
     const viewerResponse = await app.inject({ method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${viewer}` } });
     expect(viewerResponse.statusCode).toBe(403);
     for (const role of ['ADMIN', 'MANAGER'] as const) {
-      const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role } as User);
+      const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role } as User);
       const response = await app.inject({
         method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${token}`, 'x-client-key': clientKey },
       });
