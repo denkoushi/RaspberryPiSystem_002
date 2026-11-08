@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardToolbar } from './PlanningBoardToolbar';
@@ -187,5 +188,48 @@ describe('PlanningBoardToolbar forward controls', () => {
     render(<PlanningBoardToolbar {...props()} canUndoOrder={false} feedback={<span>保存中</span>} />);
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
     expect(screen.getByText('保存中').parentElement).toHaveClass('min-w-0', 'flex-1');
+  });
+});
+
+function SingleResourceToolbar() {
+  const [resource, setResource] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return <PlanningBoardToolbar {...props()} singleResourceCd={resource} singleResourceLanes={['305', '306']}
+    singleResourceNameMap={{ '305': ['NC旋盤'], '306': ['研削盤'] }} singleResourcePickerAnchor={anchor}
+    onOpenSingleResourcePicker={setAnchor} onCloseSingleResourcePicker={() => setAnchor(null)}
+    onSingleResourceChange={(next) => { setResource(next); setAnchor(null); }} />;
+}
+describe('single resource toolbar', () => {
+  it('opens a portaled picker inside the Gantt group, chooses a machine and exits with ✕', () => {
+    render(<SingleResourceToolbar />);
+    const button = screen.getByRole('button', { name: '1台', exact: true });
+    expect(button.parentElement).toContainElement(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(button);
+    const picker = screen.getByRole('group', { name: '1台の資源CD' });
+    expect(picker.parentElement).toBe(document.body);
+    expect(within(picker).getByRole('button', { name: '305 NC旋盤' })).toHaveFocus();
+    fireEvent.click(within(picker).getByRole('button', { name: '306 研削盤' }));
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    expect(button).toHaveTextContent('306 ✕');
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1台');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('closes on outside click and Escape, returns focus, and makes scale/picker mutually exclusive', () => {
+    render(<SingleResourceToolbar />);
+    const button = screen.getByRole('button', { name: '1台', exact: true });
+    fireEvent.click(button);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(button);
+    fireEvent.pointerDown(document.body);
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
+    fireEvent.click(button);
+    expect(screen.queryByRole('group', { name: '他の幅' })).toBeNull();
+    expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
   });
 });

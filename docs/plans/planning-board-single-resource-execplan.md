@@ -16,7 +16,9 @@ The approved visual reference is mock v7 (claude.ai artifact DDUSwWzRpN2R3KyGA3p
 
 - [x] (2026-11-09) Investigation of current code (storage, minutes path, gantt structure, toolbar, tests).
 - [x] (2026-11-09) Milestone A: API storage, resolution of effective minutes on the server, shared types, tests. Local implementation complete; database-backed verification remains environment-dependent.
-- [ ] Milestone B: 1台表示 on the web (toolbar button, picker, folded rows, `.sh` row without the value sheet, localStorage memory, all existing operations).
+- [x] (2026-11-09) Milestone B: 1台表示 on the web. Added the toolbar/picker, device-local resource memory, 360-working-minute / calendar-day folded rows, and the 40px machine/capacity/uptime row with a comment slot for C. Scheduling still includes all resources; rendering, drag/drop, queue anchors, chain links and jumps use each folded window. Existing item IDs and write callbacks are retained.
+  - Validation: requested web feature/page suites passed 1,275 tests in 77 files; after the final folded-row visual adjustment, the affected view/window subset passed 205 tests in two files. Web tsc (`tsconfig.json --noEmit --incremental false`) passed. Web lint passed with zero errors/warnings after fixing the page's existing line-count limit.
+  - Browser visual verification remains unperformed: the sandbox denied the local preview listener and the bundled Chromium headless shell's Mach port initialization. No installed Chrome was launched. Milestone C, commit, push, PR, merge and deployment remain undone; no git commands or secret-file reads were performed.
 - [ ] Milestone C: 独自の値 on the web (source switch, 品番の値 sheet, "独自" mark, data hooks).
 - [ ] Verification, commit, PR.
 

@@ -70,7 +70,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   useEffect(() => {
     if (!focusedSeiban) return;
     // document runs before Dialog's window Escape handler; preserve focus only for the piece popup.
-    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-planning-board-piece-dialog]')) setFocusedSeiban(null); };
+    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-planning-board-piece-dialog], [data-planning-board-popover], [data-forward-queue]')) setFocusedSeiban(null); };
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
   }, [focusedSeiban]);
@@ -675,29 +675,29 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}
         ganttEnabled={ganttEnabled}
+        singleResourceCd={gantt.singleResourceCd} singleResourceLanes={gantt.singleResourceLanes}
+        singleResourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
+        singleResourcePickerAnchor={gantt.singleResourcePickerAnchor} onOpenSingleResourcePicker={gantt.openSingleResourcePicker}
+        onCloseSingleResourcePicker={gantt.closeSingleResourcePicker}
+        onSingleResourceChange={(resource) => { if (resource) setView('resource'); gantt.changeSingleResource(resource); }}
         onToggleGantt={() => { setFocusedSeiban(null); setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
-        ganttScale={gantt.scale}
-        onGanttScaleChange={gantt.changeScale}
+        ganttScale={gantt.scale} onGanttScaleChange={gantt.changeScale}
         ganttMode={gantt.mode} onGanttModeChange={(mode) => { setPinMode(false); gantt.changeMode(mode); }}
-        lateCount={ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
+        lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => group.resource === gantt.singleResourceCd).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
         pinMode={pinMode} onTogglePinMode={() => setPinMode((value) => !value)}
         orderPreview={orderPreview} previewPending={writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict}
         onApplyOrder={applyResourceOrder} onCancelOrder={() => setOrderPreview(null)}
         onProposeOrder={proposeResourceOrder} onSortDue={sortResourceOrdersByDue} onUndoOrder={undoResourceOrder}
-        orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)}
-        overlapCount={ganttLayout.overlapCount}
-        onNextOverlap={gantt.scrollToNextOverlap}
-        category={category}
-        view={view}
-        status={status}
-        allocation={allocation}
+        orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)} overlapCount={ganttLayout.overlapCount} onNextOverlap={gantt.scrollToNextOverlap}
+        category={category} view={view}
+        status={status} allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
         scopeDisabled={writeQueue.pending || Boolean(orderPreview)}
         bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
         onCategoryChange={(value) => { if (!writeQueue.pending) changeCategory(value); }}
-        onViewChange={(next) => { setPinMode(false); setView(next); }}
+        onViewChange={(next) => { setPinMode(false); if (next !== 'resource') gantt.changeSingleResource(null); setView(next); }}
         onStatusChange={(value) => { if (!writeQueue.pending) setStatus(value); }}
         onAllocationChange={(value) => { if (!writeQueue.pending) setAllocation(value); }}
         onOpenDueEditor={() => openEditor(toolbarSelectedItems)}

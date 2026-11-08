@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
@@ -6,6 +6,7 @@ import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoa
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
 import { usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
+import { usePersistedPlanningBoardSingleResource } from './usePersistedPlanningBoardSingleResource';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';
@@ -40,9 +41,30 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     } catch { /* Storage is optional. */ }
     return paneResources;
   }, [enabled, preferenceScope, paneResources]);
+  const { resourceCd: singleResourceCd, changeResource } = usePersistedPlanningBoardSingleResource(preferenceScope, paneResources);
+  const [singleResourcePickerAnchor, setSingleResourcePickerAnchor] = useState<HTMLElement | null>(null);
+  const closeSingleResourcePicker = useCallback(() => setSingleResourcePickerAnchor(null), []);
+  const openSingleResourcePicker = useCallback((anchor: HTMLElement) => setSingleResourcePickerAnchor((current) => current === anchor ? null : anchor), []);
+  const changeSingleResource = useCallback((resource: string | null) => {
+    changeResource(resource);
+    setSingleResourcePickerAnchor(null);
+    if (resource) changeMode('forward');
+  }, [changeResource, changeMode]);
+  useEffect(() => {
+    if (!enabled) setSingleResourcePickerAnchor(null);
+    if (!enabled || !singleResourceCd) return;
+    const escape = (event: KeyboardEvent) => {
+      // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) changeSingleResource(null);
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [enabled, singleResourceCd, changeSingleResource]);
+  const effectiveMode = singleResourceCd ? 'forward' : mode;
+  const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
-  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
+  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
@@ -52,6 +74,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const changeBreaks = useCallback((resourceCd: string, runsThroughBreaks: boolean) => {
     if (!isPending) mutate({ resourceCd, runsThroughBreaks });
   }, [isPending, mutate]);
-  return { mode, changeMode, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+  return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
+    singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }

@@ -15,7 +15,7 @@ export function PlanningBoardDragArrow({ preview, viewport }: {
     const id = preview.bar.item.itemId;
     const origin = preview.source === 'queue'
       ? document.querySelector<HTMLElement>(`[data-testid="planning-forward-queue-card-${id}"]`)
-      : viewport.current?.querySelector<HTMLElement>(`[data-testid="planning-gantt-bar-${id}"]`);
+      : (preview.rowKey ? Array.from(viewport.current?.querySelectorAll<HTMLElement>('[data-gantt-window-row]') ?? []).find((row) => row.dataset.ganttWindowRow === preview.rowKey) : viewport.current)?.querySelector<HTMLElement>(`[data-testid="planning-gantt-bar-${id}"]`);
     const from = origin?.getBoundingClientRect();
     const insertion = document.querySelector<HTMLElement>('[data-testid="planning-forward-queue-insertion"]') ??
       viewport.current?.querySelector<HTMLElement>('[data-testid="planning-gantt-insertion"]');

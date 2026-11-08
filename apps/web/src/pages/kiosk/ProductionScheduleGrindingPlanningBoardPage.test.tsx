@@ -1285,6 +1285,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem('kiosk-planning-board-gantt-mode');
     localStorage.removeItem(LARGE_SCREEN_STORAGE_KEY);
     localStorage.removeItem(CATEGORY_STORAGE_KEY);
+    for (const category of ['grinding', 'cutting', 'all']) localStorage.removeItem(`kiosk.planning-board.single-resource:site-1:${category}`);
     mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset();
     mocks.completion.mockReset();
     mocks.completion.mockResolvedValue({});
@@ -2196,6 +2197,50 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(parseFloat(screen.getByTestId('planning-gantt-bar-b').style.left)).toBeLessThan(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.left));
 
+  });
+
+  it('persists single-resource mode, selects for bulk edit, and handles Escape dialog → picker → single mode', () => {
+    const data = fixture();
+    data.items[3]!.originalResourceCd = '584';
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    const first = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '305 研削機Ａ' }));
+    expect(screen.queryByTestId('planning-gantt-bar-d')).toBeNull();
+    const key = 'kiosk.planning-board.single-resource:site-1:grinding';
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({ schemaVersion: 1, resourceCd: '305' });
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    expect(screen.getByRole('button', { name: '一括変更' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    // Open the picker behind the existing dialog to exercise the priority, too.
+    fireEvent.click(screen.getByRole('button', { name: '1台の資源CDを選ぶ' }));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    expect(screen.getByTestId('planning-single-resource-head')).toBeInTheDocument();
+    first.unmount();
+    const second = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-single-resource-head')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('planning-single-resource-head')).toBeNull();
+    expect(localStorage.getItem(key)).toBeNull();
+    second.unmount();
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.queryByTestId('planning-single-resource-head')).toBeNull();
+    expect(screen.getByTestId('planning-gantt-bar-d')).toBeInTheDocument();
+  });
+  it('exits single-resource mode with toolbar ✕ and keeps the cleared preference on remount', () => {
+    const first = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '305 研削機Ａ' }));
+    fireEvent.click(screen.getByRole('button', { name: '305 1台表示をやめる' }));
+    expect(screen.queryByTestId('planning-single-resource-head')).toBeNull();
+    first.unmount();
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('資源CDの表示で開く', () => {

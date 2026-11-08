@@ -12,6 +12,7 @@ import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStar
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, RefObject } from 'react';
 
@@ -26,8 +27,9 @@ export type ForwardQueueHandle = {
   close: () => void;
 };
 type Props = {
+  folded?: boolean;
   viewport: RefObject<HTMLDivElement | null>;
-  lanes: readonly { resource: string; bars: GanttBar[] }[];
+  lanes: readonly ForwardDragLane[];
   start: number;
   dayWidth: number;
   labelWidth: number;
@@ -50,7 +52,7 @@ type Props = {
 };
 
 export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, Props>(function PlanningBoardForwardQueuePopover({
-  viewport, lanes, start, dayWidth, labelWidth, viewportWidth, onDragPreview, draggedItemId, onResourceMove, canMoveResource,
+  folded = false, viewport, lanes, start, dayWidth, labelWidth, viewportWidth, onDragPreview, draggedItemId, onResourceMove, canMoveResource,
   layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError
 }, ref) {
   const [open, setOpen] = useState<OpenQueue | null>(null);
@@ -106,7 +108,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     const outside = (event: globalThis.PointerEvent) => {
       if (event.target instanceof Node && !panel.current?.contains(event.target) && (!open.anchor.contains(event.target) || pinned.current)) close();
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) { event.preventDefault(); close(); } };
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape);
     window.addEventListener('resize', closeUnlessPinned);
@@ -171,6 +173,13 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     return { queue: next, gantt: ganttDrop };
   };
   const isVisible = (bar: GanttBar) => {
+    if (folded) {
+      return Array.from(viewport.current?.querySelectorAll<HTMLElement>(`[data-testid="planning-gantt-bar-${bar.item.itemId}"]`) ?? []).some((element) => {
+        const bounds = element.getBoundingClientRect();
+        const view = viewport.current!.getBoundingClientRect();
+        return bounds.bottom > view.top && bounds.top < view.bottom;
+      });
+    }
     if (bar.start == null || bar.end == null) return false;
     const segments = bar.unknown ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? [{ start: bar.start, end: bar.end }];
     return segments.some((segment) => (segment.start - start) * dayWidth < visibleRange.right && (segment.end - start) * dayWidth > visibleRange.left);
