@@ -63,7 +63,7 @@ describe('createKioskSettingsPinGuard.authorize', () => {
   it('returns the client device id when key and PIN header are valid', async () => {
     const guard = createKioskSettingsPinGuard(OPTIONS);
     await expect(guard.authorize(makeRequest({ pin: CORRECT_PIN }))).resolves.toEqual({ clientDeviceId: 'device-a' });
-    expect(mocks.verifyDueManagementAccessPassword).toHaveBeenCalledWith({ location: 'shared-location', password: CORRECT_PIN });
+    expect(mocks.verifyDueManagementAccessPassword).toHaveBeenCalledWith({ location: 'shared-location', password: CORRECT_PIN, clientDeviceId: 'device-a', ip: '10.0.0.1' });
   });
 
   it('trims whitespace around the PIN and uses the first value of a repeated header', async () => {

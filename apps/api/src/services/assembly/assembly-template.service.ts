@@ -157,6 +157,8 @@ export type AssemblyTemplateAreaInput = {
 };
 
 export type AssemblyTemplateUpsertInput = {
+  clientDeviceId?: string | null;
+  ip?: string;
   modelCode: string;
   procedurePattern: string;
   name: string;
@@ -690,7 +692,7 @@ export class AssemblyTemplateService {
       );
     }
     if ((procedureItems || procedureSteps) && options.requireProcedurePassword !== false) {
-      await this.accessService.requireAccessPassword(input.accessPassword);
+      await this.accessService.requireAccessPassword(input.accessPassword, input);
     }
     const normalizedAreas = normalizeAreas(input.areas, traceabilityMode);
     const areas = procedureItems
@@ -876,7 +878,7 @@ export class AssemblyTemplateService {
     ) {
       throw new ApiError(400, '改版では手順パターンを変更できません。「複製して新規」を使用してください');
     }
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input);
     const areas =
       input.areas ??
       source.areas.map((area) => ({
@@ -967,8 +969,8 @@ export class AssemblyTemplateService {
     );
   }
 
-  async retire(id: string, accessPassword?: string) {
-    await this.accessService.requireAccessPassword(accessPassword);
+  async retire(id: string, accessPassword?: string, caller: { clientDeviceId?: string | null; ip?: string } = {}) {
+    await this.accessService.requireAccessPassword(accessPassword, caller);
     try {
       await prisma.assemblyTemplate.update({
         where: { id },

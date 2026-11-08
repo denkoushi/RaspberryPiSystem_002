@@ -13,7 +13,9 @@ export function readAssemblyProcedureEditToken(request: FastifyRequest) {
 
 export async function resolveAssemblyProcedureEditWriter(request: FastifyRequest) {
   const actor = await resolveAssemblyProcedureEditActor(request);
-  return { holderKey: actor?.holderKey ?? null, holderToken: readAssemblyProcedureEditToken(request) };
+  const key = parseKioskApiClientKeyHeader(request.headers['x-client-key']);
+  const client = key ? await findClientDeviceByApiKey(key) : null;
+  return { clientDeviceId: client?.id ?? null, ip: request.ip, holderKey: actor?.holderKey ?? null, holderToken: readAssemblyProcedureEditToken(request) };
 }
 
 const service = new AssemblyProcedureDocumentEditLeaseService();

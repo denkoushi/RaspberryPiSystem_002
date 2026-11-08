@@ -152,7 +152,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const onClose = () => { if (!reply.raw.writableEnded) abortController.abort(); };
     reply.raw.once('close', onClose);
     try {
-      return await new ProcedureLayoutSuggestionService().suggest({ documentId: id, ...body, signal: abortController.signal });
+      return await new ProcedureLayoutSuggestionService().suggest({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request), signal: abortController.signal });
     } finally {
       reply.raw.off('close', onClose);
     }
@@ -203,7 +203,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     async (request) => {
       const params = idParamsSchema.parse(request.params);
       const body = createRevisionBodySchema.parse(request.body ?? {});
-      const document = await service.createRevision(params.id, body.accessPassword);
+      const document = await service.createRevision(params.id, body.accessPassword, await resolveAssemblyProcedureEditWriter(request));
       return { document: serializeAssemblyProcedureDocumentRevision(document) };
     }
   );
@@ -251,6 +251,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
       const params = idParamsSchema.parse(request.params);
       const body = assemblyProcedureOverlayRegionInputSchema.parse(request.body ?? {});
       const candidates = await assetsService.findTextCandidates({
+        ...await resolveAssemblyProcedureEditWriter(request),
         documentId: params.id,
         accessPassword: body.accessPassword,
         pageIndex: body.pageIndex,

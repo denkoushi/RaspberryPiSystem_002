@@ -106,7 +106,7 @@ async function correctionWrite(request: FastifyRequest, reply: FastifyReply): Pr
 async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const rawPassword = request.headers['x-kiosk-access-password'];
   if (rawPassword) {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     if (inventorySettingsAttemptsBlocked(request)) {
       throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'INVENTORY_SETTINGS_ACCESS_RATE_LIMITED');
     }
@@ -117,6 +117,8 @@ async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyRep
     }
     const result = await verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: clientDevice.id,
+      ip: request.ip,
       password: password.trim()
     });
     if (!result.success) {
@@ -183,10 +185,12 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   const services = getItemInventoryServices();
 
   app.post('/kiosk/item-inventory/settings/verify-access-password', { config: { rateLimit: inventorySettingsRateLimit } }, async (request) => {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = inventorySettingsAccessPasswordBody.parse(request.body ?? {});
     return verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: clientDevice.id,
+      ip: request.ip,
       password: body.password
     });
   });

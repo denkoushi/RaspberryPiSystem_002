@@ -6,6 +6,7 @@ import { SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } from '../services/production-
 export const configureTestDueManagementAccessPassword = async (
   password = '2520'
 ): Promise<void> => {
+  await prisma.productionScheduleAccessPasswordAttempt.deleteMany({ where: { location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION } });
   const dueManagementPasswordHash = await bcrypt.hash(password, 4);
   await prisma.productionScheduleAccessPasswordConfig.upsert({
     where: { location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION },

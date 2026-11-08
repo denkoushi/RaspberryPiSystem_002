@@ -79,7 +79,7 @@ describe('procedure layout suggestion routes', () => {
     expect(result.addedElementIds).toEqual([]);
     expect(result.changes.length).toBeLessThanOrEqual(8);
     expect(result.elements.find((element: { id: string }) => element.id === 'photo').bbox).toMatchObject({ widthRatio: 0.3, heightRatio: 0.2 });
-    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).toHaveBeenCalledWith('1234');
+    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).toHaveBeenCalledWith('1234', expect.objectContaining({ clientDeviceId: null, ip: '127.0.0.1' }));
     expect(AssemblyProcedureImageStorage.readImage).toHaveBeenCalledWith('/page.png');
     const request = vi.mocked(text.complete).mock.calls[0][0];
     expect(request).toMatchObject({ useCase: 'business_hermes', jsonOutput: true, temperature: 0, enableThinking: false });

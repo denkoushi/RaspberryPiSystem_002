@@ -89,7 +89,7 @@ describe('item inventory cancellation authorization', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(verifyDueManagementAccessPasswordMock).toHaveBeenCalledWith({ location: 'shared', password: '2520' });
+    expect(verifyDueManagementAccessPasswordMock).toHaveBeenCalledWith({ location: 'shared', password: '2520', clientDeviceId: 'terminal-b', ip: '127.0.0.1' });
     expect(listPendingImportsMock).toHaveBeenCalledOnce();
     await app.close();
   });

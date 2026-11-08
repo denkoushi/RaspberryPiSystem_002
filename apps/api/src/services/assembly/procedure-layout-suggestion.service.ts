@@ -12,6 +12,7 @@ import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import type { VisionCompletionPort } from '../inference/ports/vision-completion.port.js';
+import type { AccessPasswordCaller } from '../production-schedule/production-schedule-settings.service.js';
 import { AssemblyTemplateAccessService } from './assembly-template-access.service.js';
 import { buildProcedureCaptionLearningPrompt } from './procedure-caption-learning-prompt.js';
 import { buildProcedureTextLearningPrompt } from './procedure-text-learning-prompt.js';
@@ -61,7 +62,7 @@ ${site === 'grinding'
 - はっきり分からないときは「不明」とだけ書く。
 ${learningPrompt}1行だけを返す。`;
 
-type SuggestParams = ProcedureLayoutSuggestionRequest & { documentId: string; signal: AbortSignal };
+type SuggestParams = ProcedureLayoutSuggestionRequest & AccessPasswordCaller & { documentId: string; signal: AbortSignal };
 export class ProcedureLayoutSuggestionService {
   constructor(
     private readonly text: TextCompletionPort = getInferenceRuntime().createTextCompletionPort(),
@@ -111,7 +112,7 @@ export class ProcedureLayoutSuggestionService {
   }
 
   private async buildSuggestion(params: SuggestParams, feedback: Prisma.AssemblyProcedureCaptionFeedbackCreateManyInput[], textFeedback: Prisma.AssemblyProcedureTextFeedbackCreateManyInput[]): Promise<ProcedureLayoutSuggestionResponse> {
-    await this.access.requireAccessPassword(params.accessPassword);
+    await this.access.requireAccessPassword(params.accessPassword, params);
     const document = await prisma.assemblyProcedureDocument.findUnique({
       where: { id: params.documentId },
       select: { name: true, status: true, isActive: true, revisionMetadata: { select: { revisionRootId: true, isRevisionHead: true } } },
