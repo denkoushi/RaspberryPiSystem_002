@@ -61,7 +61,7 @@ describe('pieceNotchClipPath', () => {
       return;
     }
     expect(clipPath).toContain('polygon(evenodd,');
-    expect(clipPath).toContain('-4px -4px,calc(100% + 4px) -4px');
+    expect(clipPath).toContain('-12px -12px,calc(100% + 12px) -12px');
     expect(clipPath?.includes('3px 50%')).toBe(left);
     expect(clipPath?.includes('calc(100% - 3px) 50%')).toBe(right);
   });
