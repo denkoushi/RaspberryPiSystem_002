@@ -82,7 +82,8 @@ describe('client registration routes', () => {
       isSignage: true, signagePreviewTargetDeviceId: target.id,
     } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().client).toMatchObject({ isSignage: true, signagePreviewTargetDeviceId: target.id, apiKey: body.apiKey });
+    expect(response.json().client).toMatchObject({ isSignage: true, signagePreviewTargetDeviceId: target.id });
+    expect(response.json().client).not.toHaveProperty('apiKey');
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       isSignage: true, signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.id,
     }) }));
@@ -118,12 +119,57 @@ describe('client registration routes', () => {
     expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
-  it('includes signage fields and the legacy credential in the client list', async () => {
-    const row = { id: 'device-1', apiKey: body.apiKey, isSignage: true, signagePreviewTargetDeviceId: null };
+  it('includes signage fields without the API key in the client list', async () => {
+    const row = { id: 'device-1', isSignage: true, signagePreviewTargetDeviceId: null };
     vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([row] as never);
     const response = await app.inject({ method: 'GET', url: '/clients' });
     expect(response.statusCode).toBe(200);
     expect(response.json().clients).toEqual([row]);
+    expect(response.json().clients[0]).not.toHaveProperty('apiKey');
+    expect(prisma.clientDevice.findMany).toHaveBeenCalledWith({ orderBy: { name: 'asc' }, omit: { apiKey: true } });
+  });
+
+  it('omits the API key from PUT responses', async () => {
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1', apiKey: body.apiKey, name: 'updated' } as never);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { name: 'updated' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().client).toEqual({ id: 'device-1', name: 'updated' });
+  });
+
+  it('returns the API key only on demand for ADMIN without caching', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ apiKey: body.apiKey } as never);
+    const response = await app.inject({ method: 'GET', url: `/clients/${id}/api-key` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ apiKey: body.apiKey });
+    expect(response.headers['cache-control']).toBe('no-store');
+    expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { id }, select: { apiKey: true } });
+  });
+
+  it.each(['MANAGER', 'VIEWER'] as const)('denies API key access to %s', async role => {
+    const token = tokenForUser({ id: role.toLowerCase(), username: 'user', role } as User);
+    const response = await app.inject({ method: 'GET', url: '/clients/11111111-1111-4111-8111-111111111111/api-key', headers: { authorization: `Bearer ${token}` } });
+    expect(response.statusCode).toBe(403);
+    expect(prisma.clientDevice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for an unknown API key device', async () => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(null);
+    const response = await app.inject({ method: 'GET', url: '/clients/11111111-1111-4111-8111-111111111111/api-key' });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it('rejects a non-uuid API key device id', async () => {
+    const response = await app.inject({ method: 'GET', url: '/clients/not-a-uuid/api-key' });
+    expect(response.statusCode).toBe(400);
+    expect(prisma.clientDevice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('keeps the API key in the registration response', async () => {
+    vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({ id: 'device-1', apiKey: body.apiKey } as never);
+    const response = await app.inject({ method: 'POST', url: '/clients', payload: body });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().client.apiKey).toBe(body.apiKey);
   });
 
   it('stores statusClientId on create and on upsert update', async () => {

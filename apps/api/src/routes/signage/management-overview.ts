@@ -18,11 +18,10 @@ export function registerManagementOverviewRoutes(app: FastifyInstance, signageSe
 
   // 端末ごとの「最後に取りに来た時刻」と「いま順番に映している予定」。ファイルは読まない（メモリと DB だけ）
   app.get('/management/overview', { preHandler: canManage }, async () => {
-    const devices = await listClientDevices();
+    const devices = await listClientDevices({ omitApiKey: true });
     const clients = await Promise.all(
-      devices.map(async ({ id: clientDeviceId, apiKey }) => ({
+      devices.map(async ({ id: clientDeviceId }) => ({
         clientDeviceId,
-        apiKey,
         lastFetchedAt: getSignageImageLastFetchedAt(clientDeviceId)?.toISOString() ?? null,
         rotation: await signageService.getRotationForClient(clientDeviceId),
       })),
