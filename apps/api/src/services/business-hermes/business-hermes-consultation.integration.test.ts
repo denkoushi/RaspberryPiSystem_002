@@ -62,7 +62,7 @@ describeIntegration('Business Hermes consultation persistence (isolated integrat
         createdAt: new Date(Date.UTC(2026, 8, 7, 0, 0, index))
       }))
     });
-    await service.update(second.id, { relatedIdentifiers: ['PN-SECOND'] });
+    await service.update(second.id, { relatedIdentifiers: ['PN-SECOND'] }, { kind: 'user', userId: 'manager', role: 'MANAGER' });
 
     const firstPage = await service.getPage(first.id);
     expect(firstPage?.messages).toHaveLength(40);

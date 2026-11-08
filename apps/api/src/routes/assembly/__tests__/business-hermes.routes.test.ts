@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
+import { BusinessHermesConsultationService } from '../../../services/business-hermes/business-hermes-consultation.service.js';
 import { registerBusinessHermesRoutes } from '../business-hermes.js';
 
 function createApp() {
@@ -147,15 +148,15 @@ describe('business Hermes routes', () => {
     expect((await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/consultations', headers, payload: { title: '相談' } })).statusCode).toBe(200);
     expect((await fixture.app.inject({ method: 'GET', url: `/assembly/business-hermes/consultations/${consultation.id}`, headers })).statusCode).toBe(200);
     expect((await fixture.app.inject({ method: 'PATCH', url: `/assembly/business-hermes/consultations/${consultation.id}`, headers, payload: { relatedIdentifiers: ['PN-1'] } })).statusCode).toBe(200);
-    expect(consultationService.update).toHaveBeenCalledWith(consultation.id, { relatedIdentifiers: ['PN-1'] });
+    expect(consultationService.update).toHaveBeenCalledWith(consultation.id, { relatedIdentifiers: ['PN-1'] }, { kind: 'user', userId: 'manager', role: 'MANAGER' });
     expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${consultation.id}/cancel`, headers })).json()).toEqual({ cancelled: true });
-    expect(consultationService.cancel).toHaveBeenCalledWith(consultation.id);
+    expect(consultationService.cancel).toHaveBeenCalledWith(consultation.id, { kind: 'user', userId: 'manager', role: 'MANAGER' });
     const feedbackUrl = `/assembly/business-hermes/consultations/${consultation.id}/feedback`;
     const feedbackBody = { messageId: '00000000-0000-0000-0000-000000000020', verdict: 'helpful' };
     expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, payload: feedbackBody })).statusCode).toBe(401);
     expect(consultationService.feedback).not.toHaveBeenCalled();
     expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: feedbackBody })).statusCode).toBe(200);
-    expect(consultationService.feedback).toHaveBeenCalledWith(consultation.id, feedbackBody.messageId, 'helpful');
+    expect(consultationService.feedback).toHaveBeenCalledWith(consultation.id, feedbackBody.messageId, 'helpful', { kind: 'user', userId: 'manager', role: 'MANAGER' });
     expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: { ...feedbackBody, answer: '偽の回答' } })).statusCode).toBe(400);
     consultationService.feedback.mockResolvedValue(false);
     expect((await fixture.app.inject({ method: 'POST', url: feedbackUrl, headers, payload: feedbackBody })).statusCode).toBe(409);
@@ -259,4 +260,110 @@ describe('business Hermes routes', () => {
     expect(tooLong.statusCode).not.toBe(200);
     expect(consultationService.chat).not.toHaveBeenCalled();
   });
+  async function ownerFixture(owner: 'user' | 'device' | 'legacy' = 'user') {
+    const fixture = createApp();
+    const row = {
+      id: '00000000-0000-0000-0000-000000000010', title: '相談',
+      createdByUserId: owner === 'user' ? 'manager' : null,
+      createdByClientDeviceId: owner === 'device' ? 'device-a' : null,
+      relatedIdentifiers: [], confirmedFacts: [], openQuestions: [], summary: null,
+      updatedAt: new Date(), messages: []
+    };
+    const db = { businessHermesConsultation: {
+      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => where.id === row.id ? row : null),
+      findMany: vi.fn().mockResolvedValue([row]),
+      update: vi.fn(async ({ data }: { data: object }) => Object.assign(row, data)),
+      create: vi.fn(async ({ data }: { data: object }) => Object.assign(row, data))
+    }, businessHermesConsultationMessage: { create: vi.fn(), findFirst: vi.fn().mockResolvedValue(null), update: vi.fn() } };
+    const fetchImpl = vi.fn();
+    const service = new BusinessHermesConsultationService({ db: db as never, fetchImpl,
+      config: { baseUrl: 'http://hermes.local', apiKey: 'test', model: 'chat' } });
+    fixture.requireClientDevice.mockImplementation(async (raw: unknown) => ({
+      clientKey: String(raw), clientDevice: { id: String(raw), apiKey: String(raw), name: '端末', location: null, statusClientId: null }
+    }));
+    vi.spyOn(prisma.clientDevice, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.apiKey, canProxyOtherDevices: true }) as never);
+    await registerBusinessHermesRoutes(fixture.app, { requireClientDevice: fixture.requireClientDevice,
+      service: fixture.service, chatService: fixture.chatService, consultationService: service });
+    return { ...fixture, row, db, fetchImpl };
+  }
+
+  function callerHeaders(caller: string) {
+    return caller.startsWith('device-') ? { 'x-client-key': caller } : {
+      authorization: `Bearer ${jwt.sign({ sub: caller, username: caller, role: caller === 'admin' ? 'ADMIN' : 'MANAGER' }, env.JWT_ACCESS_SECRET)}`,
+      'x-client-key': 'device-a'
+    };
+  }
+
+  it.each([
+    ['user', 'manager', 200], ['user', 'other-manager', 403], ['user', 'admin', 200],
+    ['user', 'device-a', 403], ['device', 'device-a', 200], ['device', 'device-b', 403],
+    ['device', 'manager', 403], ['device', 'admin', 200],
+    ['legacy', 'manager', 200], ['legacy', 'admin', 200], ['legacy', 'device-a', 403]
+  ] as const)('checks PATCH for %s consultation and %s (%s)', async (owner, caller, status) => {
+    const fixture = await ownerFixture(owner);
+    try {
+      const response = await fixture.app.inject({ method: 'PATCH', url: `/assembly/business-hermes/consultations/${fixture.row.id}`,
+        headers: callerHeaders(caller), payload: { title: '更新' } });
+      expect(response.statusCode).toBe(status);
+      if (status === 403) {
+        expect(response.json().code).toBe('BUSINESS_HERMES_CONSULTATION_NOT_OWNER');
+        expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
+      } else expect(fixture.row.title).toBe('更新');
+    } finally { await fixture.app.close(); }
+  });
+
+  it.each(['cancel', 'feedback', 'chat'] as const)('rejects another manager for %s before side effects', async (operation) => {
+    const fixture = await ownerFixture();
+    try {
+      const response = await fixture.app.inject({ method: 'POST',
+        url: operation === 'chat' ? '/assembly/business-hermes/chat' : `/assembly/business-hermes/consultations/${fixture.row.id}/${operation}`,
+        headers: callerHeaders('other-manager'),
+        payload: operation === 'chat' ? { consultationId: fixture.row.id, message: '追加の質問' }
+          : operation === 'feedback' ? { messageId: fixture.row.id, verdict: 'helpful' } : {} });
+      expect(response.statusCode).toBe(403);
+      expect(response.json().code).toBe('BUSINESS_HERMES_CONSULTATION_NOT_OWNER');
+      expect(fixture.fetchImpl).not.toHaveBeenCalled();
+      expect(fixture.db.businessHermesConsultationMessage.create).not.toHaveBeenCalled();
+      expect(fixture.db.businessHermesConsultationMessage.update).not.toHaveBeenCalled();
+      expect(fixture.row.messages).toHaveLength(0);
+    } finally { await fixture.app.close(); }
+  });
+
+  it.each(['other-manager', 'device-b'])('keeps list and detail shared with %s', async (caller) => {
+    const fixture = await ownerFixture();
+    try {
+      for (const suffix of ['', `/${fixture.row.id}`]) {
+        const response = await fixture.app.inject({ method: 'GET', url: `/assembly/business-hermes/consultations${suffix}`, headers: callerHeaders(caller) });
+        expect(response.statusCode).toBe(200);
+        expect(response.body).not.toContain('createdBy');
+      }
+    } finally { await fixture.app.close(); }
+  });
+
+  it.each(['device-a', 'manager'])('records the creator on POST for %s', async (caller) => {
+    const fixture = await ownerFixture('legacy');
+    try {
+      const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/consultations', headers: callerHeaders(caller), payload: {} });
+      expect(response.statusCode).toBe(200);
+      expect(fixture.db.businessHermesConsultation.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        createdByUserId: caller === 'manager' ? 'manager' : null,
+        createdByClientDeviceId: caller === 'device-a' ? 'device-a' : null
+      }) }));
+    } finally { await fixture.app.close(); }
+  });
+
+  it('preserves missing consultation results', async () => {
+    const fixture = await ownerFixture();
+    const id = '00000000-0000-0000-0000-000000000099';
+    const headers = callerHeaders('other-manager');
+    try {
+      expect((await fixture.app.inject({ method: 'PATCH', url: `/assembly/business-hermes/consultations/${id}`, headers, payload: {} })).statusCode).toBe(404);
+      expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${id}/cancel`, headers })).json()).toEqual({ cancelled: false });
+      expect((await fixture.app.inject({ method: 'POST', url: `/assembly/business-hermes/consultations/${id}/feedback`, headers, payload: { messageId: id, verdict: 'helpful' } })).statusCode).toBe(409);
+      const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers, payload: { consultationId: id, message: '質問' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_CONSULTATION_NOT_FOUND' });
+    } finally { await fixture.app.close(); }
+  });
+
 });

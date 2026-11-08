@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { Prisma, PrismaClient, UserRole } from '@prisma/client';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 import { env } from '../../config/env.js';
 import { logger } from '../../lib/logger.js';
@@ -9,6 +9,7 @@ import { createKioskInquiryThread } from '../kiosk-inquiry/kiosk-inquiry.service
 import { sendSlackNotification } from '../notifications/slack-webhook.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import type { LocalLlmRuntimeControllerPort } from '../inference/runtime/local-llm-runtime-control.port.js';
+import { assertConsultationWritable, type BusinessHermesConsultationCaller, type BusinessHermesConsultationActor } from './business-hermes-consultation-owner.js';
 import { BusinessHermesScanResolver, type BusinessHermesScanResolution } from './business-hermes-scan.service.js';
 import { BusinessHermesAnswerCache, CACHED_QUESTION_PREFIX, SOURCE_QUESTION_PREFIX, experienceSchema, EXPERIENCE_KIND } from './business-hermes-answer-cache.js';
 import { BusinessHermesPreparedAnswer } from './business-hermes-prepared-answer.js';
@@ -52,6 +53,7 @@ import { businessHermesSourceDefinition, businessHermesSourceDefinitionList } fr
 import { isOperationHowToQuestion, kioskOperationGuide, kioskOperationGuideSourceDefinition, type KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
 import { PrismaSubjectResolver, type AsyncSubjectResolver, type GuideFamily } from '../assembly/kiosk-operation-guide-subject.js';
 
+export type { BusinessHermesConsultationCaller, BusinessHermesConsultationActor } from './business-hermes-consultation-owner.js';
 export type { BusinessHermesConsultationConfirmation } from './business-hermes-responses.js';
 export type { ConsultationEvidence } from './business-hermes-evidence.js';
 
@@ -109,11 +111,6 @@ export type BusinessHermesConsultationDetail = BusinessHermesConsultation & {
 export type BusinessHermesSelection = {
   prompt: string;
   option: string;
-};
-
-export type BusinessHermesConsultationActor = {
-  userId: string;
-  role: UserRole;
 };
 
 export type BusinessHermesConsultationChatResponse = {
@@ -728,11 +725,12 @@ export class BusinessHermesConsultationService {
     return rows.map((row) => toConsultationView(row, this.isConfigured()));
   }
 
-  async create(input: { title?: string | null; createdByUserId?: string | null } = {}): Promise<BusinessHermesConsultationDetail> {
+  async create(input: { title?: string | null; createdByUserId?: string | null; createdByClientDeviceId?: string | null } = {}): Promise<BusinessHermesConsultationDetail> {
     const row = await this.db.businessHermesConsultation.create({
       data: {
         title: input.title?.trim().slice(0, 200) || null,
         createdByUserId: input.createdByUserId ?? null,
+        createdByClientDeviceId: input.createdByClientDeviceId ?? null,
         hermesConversationId: randomUUID(),
         relatedIdentifiers: asJson([]),
         confirmedFacts: asJson([]),
@@ -781,7 +779,8 @@ export class BusinessHermesConsultationService {
     return Boolean(config.baseUrl && config.apiKey && config.model);
   }
 
-  async update(id: string, input: { title?: string | null; relatedIdentifiers?: ReadonlyArray<string> }): Promise<BusinessHermesConsultationDetail | null> {
+  async update(id: string, input: { title?: string | null; relatedIdentifiers?: ReadonlyArray<string> }, caller: BusinessHermesConsultationCaller): Promise<BusinessHermesConsultationDetail | null> {
+    if (!await assertConsultationWritable(this.db, id, caller)) return null;
     discardPrefetch(id);
     const data: Record<string, unknown> = {};
     if (input.title !== undefined) data.title = input.title?.trim().slice(0, 200) || null;
@@ -798,7 +797,8 @@ export class BusinessHermesConsultationService {
     return detail;
   }
 
-  async cancel(consultationId: string): Promise<boolean> {
+  async cancel(consultationId: string, caller: BusinessHermesConsultationCaller): Promise<boolean> {
+    if (!await assertConsultationWritable(this.db, consultationId, caller)) return false;
     const speculative = discardPrefetch(consultationId);
     const controller = activeControllers.get(consultationId);
     controller?.abort();
@@ -806,7 +806,8 @@ export class BusinessHermesConsultationService {
     return Boolean(controller || speculative);
   }
 
-  async chat(input: { consultationId: string; message: string; selection?: BusinessHermesSelection; scanValue?: string; actor?: BusinessHermesConsultationActor; signal?: AbortSignal; clientDeviceId?: string }): Promise<BusinessHermesConsultationChatResponse> {
+  async chat(input: { caller: BusinessHermesConsultationCaller; consultationId: string; message: string; selection?: BusinessHermesSelection; scanValue?: string; actor?: BusinessHermesConsultationActor; signal?: AbortSignal; clientDeviceId?: string }): Promise<BusinessHermesConsultationChatResponse> {
+    if (!await assertConsultationWritable(this.db, input.consultationId, input.caller)) return this.failure(input.consultationId, 'HERMES_CONSULTATION_NOT_FOUND');
     const message = cleanMessage(input.message);
     if (!message) return this.failure(input.consultationId, 'HERMES_EMPTY_REQUEST');
     const selection = input.selection ? {
@@ -861,7 +862,8 @@ export class BusinessHermesConsultationService {
     }
   }
 
-  async feedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful'): Promise<boolean> {
+  async feedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful', caller: BusinessHermesConsultationCaller): Promise<boolean> {
+    if (!await assertConsultationWritable(this.db, consultationId, caller)) return false;
     // Resolve all content server-side under the same business authorization as chat.
     const message = await this.db.businessHermesConsultationMessage.findFirst({ where: { id: messageId, consultationId, role: 'assistant' } });
     if (!message) return false;
