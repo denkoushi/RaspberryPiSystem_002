@@ -36,7 +36,6 @@
         append: false
         create_home: true
         shell: /bin/bash
-        password: '!'
         password_lock: true
         generate_ssh_key: false
         state: present

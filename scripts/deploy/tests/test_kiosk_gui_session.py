@@ -129,7 +129,6 @@ class KioskGuiSessionTests(unittest.TestCase):
         self.assertIn('kiosk_unprivileged_session_enabled', account['when'])
         user = next(t['ansible.builtin.user'] for t in account['block'] if 'ansible.builtin.user' in t)
         self.assertTrue(user['password_lock'])
-        self.assertEqual(user['password'], '!')
         self.assertFalse(user['generate_ssh_key'])
         self.assertFalse(user['append'])
         self.assertEqual(load('group_vars/all.yml')['kiosk_unprivileged_session_groups'], [])
