@@ -29,7 +29,15 @@ export async function getSignagePreviewTarget(clientDeviceId: string) {
     where: { id: clientDeviceId },
     select: { signagePreviewTargetDeviceId: true, signagePreviewTargetApiKey: true }
   });
-  return row ? { signagePreviewTargetDeviceId: resolveStoredSignagePreviewTarget(row) } : null;
+  if (!row) return null;
+  const stored = resolveStoredSignagePreviewTarget(row);
+  if (stored === null || stored === row.signagePreviewTargetDeviceId) return { signagePreviewTargetDeviceId: stored };
+  // Older versions may have stored a key instead of an ID.
+  const device = await prisma.clientDevice.findFirst({
+    where: { OR: [{ id: stored }, { apiKey: stored }] },
+    select: { id: true }
+  });
+  return { signagePreviewTargetDeviceId: device?.id ?? null };
 }
 
 export async function resolveSignagePreviewTargetInput(input: {

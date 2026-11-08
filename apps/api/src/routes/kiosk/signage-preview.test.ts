@@ -96,6 +96,7 @@ describe('kiosk signage preview credential boundary', () => {
     { name: 'legacy cleared', id: signage.id, legacy: null, expected: null },
     { name: 'equal columns', id: signage.id, legacy: signage.id, expected: signage.id },
     { name: 'legacy only', id: null, legacy: signage.id, expected: signage.id },
+    { name: 'legacy key value', id: signage.id, legacy: signage.apiKey, expected: signage.id },
   ])('uses the saved target for $name in options and images', async ({ id, legacy, expected }) => {
     storedTarget = id;
     legacyTarget = legacy;
