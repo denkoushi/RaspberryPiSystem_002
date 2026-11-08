@@ -36,38 +36,61 @@ export function signRefreshToken(user: User): string {
   return jwt.sign(payload, secret, options);
 }
 
-export function signDueManagementToken(clientDeviceId: string | undefined): string {
+export type KioskAccessPurpose = 'due-management' | 'assembly-record-approval';
+
+function kioskAccessTokenContext(purpose: KioskAccessPurpose) {
+  return {
+    code: purpose.replaceAll('-', '_').toUpperCase(),
+    label: purpose === 'due-management' ? '納期管理' : '組立記録確認'
+  };
+}
+
+export function signKioskAccessToken(
+  purpose: KioskAccessPurpose,
+  clientDeviceId: string | undefined,
+  expiresIn: SignOptions['expiresIn'] = '12h'
+): string {
+  const { code } = kioskAccessTokenContext(purpose);
   if (!clientDeviceId) {
-    throw new ApiError(403, '操作端末を特定できません', undefined, 'DUE_MANAGEMENT_TOKEN_INVALID');
+    throw new ApiError(403, '操作端末を特定できません', undefined, `${code}_TOKEN_INVALID`);
   }
-  return jwt.sign({ purpose: 'due-management', clientDeviceId }, env.JWT_ACCESS_SECRET, {
+  return jwt.sign({ purpose, clientDeviceId }, env.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
-    expiresIn: '12h'
+    expiresIn
   });
 }
 
-export function requireDueManagementToken(rawToken: unknown, clientDeviceId: string | undefined): void {
+export function requireKioskAccessToken(rawToken: unknown, purpose: KioskAccessPurpose, clientDeviceId: string | undefined): void {
+  const { code, label } = kioskAccessTokenContext(purpose);
   if (!rawToken) {
-    throw new ApiError(403, '納期管理のパスワード確認が必要です', undefined, 'DUE_MANAGEMENT_TOKEN_REQUIRED');
+    throw new ApiError(403, `${label}のパスワード確認が必要です`, undefined, `${code}_TOKEN_REQUIRED`);
   }
   let payload: jwt.JwtPayload | string;
   try {
     if (typeof rawToken !== 'string') throw new Error('Invalid token header');
     payload = jwt.verify(rawToken, env.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
   } catch (error) {
-    const code = error instanceof jwt.TokenExpiredError ? 'DUE_MANAGEMENT_TOKEN_EXPIRED' : 'DUE_MANAGEMENT_TOKEN_INVALID';
-    throw new ApiError(403, '納期管理のパスワードを再確認してください', undefined, code);
+    const errorCode = error instanceof jwt.TokenExpiredError ? `${code}_TOKEN_EXPIRED` : `${code}_TOKEN_INVALID`;
+    throw new ApiError(403, `${label}のパスワードを再確認してください`, undefined, errorCode);
   }
   if (
-    typeof payload === 'string' || payload.purpose !== 'due-management' ||
+    typeof payload === 'string' || payload.purpose !== purpose ||
     typeof payload.exp !== 'number' || typeof payload.clientDeviceId !== 'string' ||
     payload.sub !== undefined || payload.role !== undefined
   ) {
-    throw new ApiError(403, '納期管理の認証が無効です', undefined, 'DUE_MANAGEMENT_TOKEN_INVALID');
+    throw new ApiError(403, `${label}の認証が無効です`, undefined, `${code}_TOKEN_INVALID`);
   }
   if (payload.clientDeviceId !== clientDeviceId) {
-    throw new ApiError(403, '操作端末でパスワードを再確認してください', undefined, 'DUE_MANAGEMENT_TOKEN_DEVICE_MISMATCH');
+    throw new ApiError(403, '操作端末でパスワードを再確認してください', undefined, `${code}_TOKEN_DEVICE_MISMATCH`);
   }
+}
+
+export function signDueManagementToken(clientDeviceId: string | undefined): string {
+  return signKioskAccessToken('due-management', clientDeviceId);
+}
+
+export function requireDueManagementToken(rawToken: unknown, clientDeviceId: string | undefined): void {
+  requireKioskAccessToken(rawToken, 'due-management', clientDeviceId);
 }
 
 export function isAdminMfaRequired(role: User['role']): boolean {

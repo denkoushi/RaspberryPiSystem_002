@@ -161,6 +161,17 @@ export async function approveSelfInspectionRecordApproval(
       throw new ApiError(404, '承認者の社員NFCタグが登録されていません');
     }
     if (approver.status !== 'ACTIVE') throw new ApiError(403, '有効な社員のみ承認できます');
+    const approverOperation = await tx.selfInspectionMeasurementOperation.findFirst({
+      where: { sessionId, authentication: { employeeId: approver.id } },
+      select: { id: true }
+    });
+    if (
+      approverOperation ||
+      existing.entries.some((entry) => entry.createdByEmployeeId === approver.id) ||
+      existing.inspectorEntries.some((entry) => entry.inspectorEmployeeId === approver.id)
+    ) {
+      throw new ApiError(403, '同じ人は承認できません', undefined, 'RECORD_APPROVAL_SAME_PERSON');
+    }
     const duplicateInstrumentTag = await tx.measuringInstrumentTag.findUnique({
       where: { rfidTagUid: approver.nfcTagUid },
       select: { id: true }

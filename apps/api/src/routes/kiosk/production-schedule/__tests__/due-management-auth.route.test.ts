@@ -1,3 +1,4 @@
+import { registerProductionScheduleDueDateRoute } from '../due-date.js';
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +12,7 @@ vi.mock('../../../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'test-du
 vi.mock('../../../../services/production-schedule/production-schedule-settings.service.js', () => ({
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify
 }));
+vi.mock('../../../../services/production-schedule/production-schedule-command.service.js', () => ({ upsertProductionScheduleDueDate: mocks.command }));
 vi.mock('../../../../services/production-schedule/due-management-command.service.js', () => ({
   upsertProductionScheduleDueManagementPartProcessingType: mocks.command,
   upsertProductionScheduleDueManagementPartNote: mocks.command,
@@ -102,7 +104,7 @@ beforeEach(async () => {
     registerProductionScheduleDueManagementNoteRoute, registerProductionScheduleDueManagementPartPrioritiesRoute,
     registerProductionScheduleDueManagementTriageRoute, registerProductionScheduleDueManagementGlobalRankRoute,
     registerProductionScheduleDueManagementActualHoursRoute, registerProductionScheduleDueManagementDueDateRoute,
-    registerProductionScheduleDueManagementProcessingDueDateRoute]) await register(app, deps);
+    registerProductionScheduleDueManagementProcessingDueDateRoute, registerProductionScheduleDueDateRoute]) await register(app, deps);
   app.get('/user', { preHandler: authenticate }, async (request) => request.user);
 });
 afterEach(async () => { await app.close(); });
@@ -132,10 +134,11 @@ describe('due-management authorization', () => {
     expect(service).toHaveBeenCalledOnce();
   });
 
-  it.each(['/seiban/A/due-date', '/seiban/A/processing/LSLH/due-date'])('keeps %s available without a token', async (path) => {
-    const response = await app.inject({ method: 'PUT', url: base + path, headers: { 'x-client-key': 'device' }, payload: { dueDate: '2026-10-07' } });
+  it.each(['/seiban/A/due-date', '/seiban/A/processing/LSLH/due-date', '/row'])('keeps %s available without a token', async (path) => {
+    const response = await app.inject({ method: 'PUT', url: path === '/row' ? '/kiosk/production-schedule/00000000-0000-4000-8000-000000000001/due-date' : base + path, headers: { 'x-client-key': 'device' }, payload: { dueDate: '2026-10-07' } });
     expect(response.statusCode).toBe(200);
     expect(mocks.command).toHaveBeenCalledOnce();
+    expect(mocks.command).toHaveBeenCalledWith(expect.objectContaining({ actorClientDeviceId: 'device', actorDeviceName: 'terminal' }));
   });
 
   it('issues a device token for twelve hours only after password confirmation', async () => {

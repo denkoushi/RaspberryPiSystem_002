@@ -60,6 +60,7 @@ vi.mock('../../../lib/prisma.js', () => ({
     productionScheduleOrderSplitAssignment: {
       deleteMany: vi.fn(),
     },
+    productionScheduleDueDateAuditLog: { create: vi.fn() },
     productionScheduleRowNote: {
       findUnique: vi.fn(),
       deleteMany: vi.fn(),

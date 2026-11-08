@@ -143,7 +143,7 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     mockApprove.mockReset();
     mockUseNfcStream.mockReset();
     mockUseNfcStream.mockReturnValue(null);
-    mockVerifyPassword.mockResolvedValue({ success: true });
+    mockVerifyPassword.mockResolvedValue({ success: true, token: 'assembly-token' });
     mockListSummaries.mockResolvedValue([summary]);
     mockGetSession.mockResolvedValue(detail);
     vi.spyOn(window, 'prompt').mockReturnValue('2520');
@@ -382,7 +382,7 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     expect(mockApprove).not.toHaveBeenCalled();
     fireEvent.click(approve);
     expect(await screen.findByRole('status', { name: '承認状態' })).toHaveTextContent('承認済み 高橋 07/06 11:30');
-    expect(mockApprove).toHaveBeenCalledWith('session-1', { approverEmployeeTagUid: 'tag-2' });
+    expect(mockApprove).toHaveBeenCalledWith('session-1', { approverEmployeeTagUid: 'tag-2', accessToken: 'assembly-token' });
     await waitFor(() => expect(mockListSummaries).toHaveBeenCalledTimes(2));
     expect(mockResolveOperatorNfc).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: '未承認 0', exact: true })).toBeInTheDocument();
@@ -438,6 +438,36 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     fireEvent.click(approve);
     await waitFor(() => expect(screen.getByRole('status', { name: '承認者照合' })).toHaveTextContent('承認処理に失敗しました。'));
     expect(approve).toBeEnabled();
+  });
+
+  it('displays the same-person approval message without reopening the PIN dialog', async () => {
+    mockResolveOperatorNfc.mockResolvedValue({ employeeId: 'employee-1', displayName: '作業者' });
+    mockApprove.mockRejectedValue({ isAxiosError: true, response: { status: 403, data: {
+      errorCode: 'RECORD_APPROVAL_SAME_PERSON', message: '同じ人は承認できません'
+    } } });
+    renderPage();
+    await screen.findByRole('button', { name: '承認: タグをかざす' });
+    mockUseNfcStream.mockReturnValue({ uid: 'tag-1', timestamp: '1' });
+    fireEvent.click(screen.getByRole('button', { name: '全て', exact: true }));
+    fireEvent.click(await screen.findByRole('button', { name: '承認: 作業者で承認' }));
+    await waitFor(() => expect(screen.getByRole('status', { name: '承認者照合' })).toHaveTextContent('同じ人は承認できません'));
+    expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument();
+  });
+
+  it.each(['EXPIRED', 'INVALID', 'DEVICE_MISMATCH', 'REQUIRED'])('reopens the PIN dialog for %s approval confirmation', async (suffix) => {
+    mockResolveOperatorNfc.mockResolvedValue({ employeeId: 'employee-2', displayName: '高橋' });
+    renderPage();
+    await screen.findByRole('button', { name: '承認: タグをかざす' });
+    mockUseNfcStream.mockReturnValue({ uid: 'tag-2', timestamp: '2026-07-06T02:29:00.000Z' });
+    fireEvent.click(screen.getByRole('button', { name: '全て', exact: true }));
+    const approve = await screen.findByRole('button', { name: '承認: 高橋で承認' });
+    mockApprove.mockRejectedValue({ isAxiosError: true, response: { status: 403, data: { errorCode: `ASSEMBLY_RECORD_APPROVAL_TOKEN_${suffix}` } } });
+    fireEvent.click(approve);
+    await screen.findByRole('dialog', { name: '記録確認の暗証番号' });
+    expect(mockApprove).toHaveBeenCalledWith('session-1', { approverEmployeeTagUid: 'tag-2', accessToken: 'assembly-token' });
+    mockVerifyPassword.mockResolvedValue({ success: true, token: 'renewed-token' });
+    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
   });
 
   it('keeps both tables visible when the record has no checks', async () => {

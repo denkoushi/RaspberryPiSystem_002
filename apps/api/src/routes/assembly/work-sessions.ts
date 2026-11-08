@@ -1,3 +1,4 @@
+import { requireKioskAccessToken } from '../../lib/auth.js';
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
@@ -153,6 +154,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
     if (agentBody.success && 'sourceEventKey' in agentBody.data) {
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
       const result = await traceabilityService.recordAgent({
+        actorDevice: request.user ? null : clientDevice,
         sessionId: params.id,
         clientDeviceId: clientDevice.id,
         ...agentBody.data
@@ -235,6 +237,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
     const params = idParamSchema.parse(request.params);
     const body = approveAssemblyRecordApprovalBodySchema.parse(request.body ?? {});
     const clientDevice = await tryGetClientDevice(request.headers);
+    if (!request.user) requireKioskAccessToken(body.accessToken, 'assembly-record-approval', clientDevice?.id);
     const session = await recordApprovalService.approve(params.id, {
       approverEmployeeTagUid: body.approverEmployeeTagUid,
       comment: body.comment,

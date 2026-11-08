@@ -6522,3 +6522,21 @@ model ProductionScheduleOutsourceNamedTarget {
 
   @@unique([configId, kind, key])
 }
+
+model ProductionScheduleDueDateAuditLog {
+  id                  String   @id @default(uuid())
+  createdAt           DateTime @default(now())
+  actorClientDeviceId String?
+  actorDeviceName     String?
+  location            String
+  action              String
+  csvDashboardRowId   String?
+  fseiban             String?
+  processingType      String?
+  beforeDueDate       DateTime? @db.Date
+  afterDueDate        DateTime? @db.Date
+
+  @@index([createdAt])
+  @@index([csvDashboardRowId, createdAt])
+  @@index([fseiban, processingType, createdAt], map: "ProductionScheduleDueDateAuditLog_target_idx")
+}

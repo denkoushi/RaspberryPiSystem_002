@@ -65,6 +65,13 @@ export class AssemblyWorkSessionRecordApprovalService {
         throw new ApiError(403, '有効な社員のみ承認できます');
       }
 
+      if (
+        session.operatorEmployeeId === approver.id ||
+        session.operatorAccesses.some((access) => access.employeeId === approver.id)
+      ) {
+        throw new ApiError(403, '同じ人は承認できません', undefined, 'RECORD_APPROVAL_SAME_PERSON');
+      }
+
       const clientDevice = input.clientDeviceId
         ? await tx.clientDevice.findUnique({
             where: { id: input.clientDeviceId },
