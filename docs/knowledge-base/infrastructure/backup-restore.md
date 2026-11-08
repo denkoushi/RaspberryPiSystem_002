@@ -2027,6 +2027,14 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
   - デプロイ成功（Run ID: `20260216-105415-23252`）
   - 実機検証: 正常動作を確認
 
+**再発事例（2026-11-05）**:
+- **事象**: 2026-11-05（UTC）以降、Dropbox へのバックアップ送信がすべて失敗した。最後の成功は 2026-11-04 19:05 UTC。Pi5 内のバックアップは取れていた。
+- **症状**: `Upload from file failed` の原因が `Certificate pinning failed for content.dropboxapi.com`。Pi5 の API ログの `actual` 指紋は、手元で取得した新しい証明書と一致した。
+- **根本原因**: Dropbox が `api` / `content` の証明書を 2026-11-05 00:00 UTC 発行のものに更新した（`notify` は 2026-10-01 発行）。今回は発行元の中間 CA も `DigiCert G5 TLS ECC SHA384 2021 CA1` に変わったため、中間 CA で固定していても防げなかった。
+- **切り分け**: 同時期に進めていた Dropbox アプリの移行とは無関係。失敗は TLS 接続の段階で起き、トークンの更新や認証には届いていない。
+- **解決方法**: `DROPBOX_CERTIFICATE_FINGERPRINTS` に 2026-11-09 確認の指紋を3件追加し、`dropbox-cert-pinning.test.ts` で受け入れと拒否を確かめる。
+- **見直しの論点**: 葉証明書の固定は、Dropbox の証明書更新（おおむね数か月ごと）のたびに外部バックアップを止める。2025-01・2026-01・2026-02・2026-06・2026-11 と繰り返している。固定のやり方を変えるかは別途判断する。
+
 **関連ファイル**:
 - `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
 - `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（証明書フィンガープリント取得スクリプト）
