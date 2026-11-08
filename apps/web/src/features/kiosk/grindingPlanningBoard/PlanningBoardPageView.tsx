@@ -31,6 +31,7 @@ type Props = {
   toggleCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => Promise<void>;
   completionPendingItemIds: ReadonlySet<string>;
   onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
   arrivalPending?: boolean;
   arrivalError?: boolean;
   moveDueByDrag: (item: GrindingPlanningBoardItem, date: string) => void;
@@ -69,7 +70,7 @@ type Props = {
 export function PlanningBoardPageView({
   data, ganttEnabled, focusedSeiban, setFocusedSeiban, colorBySeiban, registeredFseibans, gantt, ganttLayout,
   view, orderPreview, category, resourcesQuery, pinMode, togglePin, selectedItemIds, toggleItem,
-  toggleCompletion, completionPendingItemIds, onArrivalChange, arrivalPending, arrivalError, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
+  toggleCompletion, completionPendingItemIds, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
   canMoveResource, interactionLocked, writeQueue, allocation, writeBlocked, piecesWriting, rankMutationReady,
   focusedFseiban, focusItems, machineNames, returnFromFocus, toggleFocusAll, openEditorForItem,
   changeRank, rankDisabled, bulkReady, activeFseibans, itemsBySeiban, paneActionsBySeiban,
@@ -95,7 +96,7 @@ export function PlanningBoardPageView({
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
-          onArrivalChange={onArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
+          onArrivalChange={onArrivalChange} onFirstProcessArrivalChange={onFirstProcessArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && view === 'resource' && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}

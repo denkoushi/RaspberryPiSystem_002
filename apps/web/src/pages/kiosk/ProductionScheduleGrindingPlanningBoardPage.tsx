@@ -192,7 +192,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [notify]);
 
   const data = usePlanningBoardQueryData(boardQuery.data);
-  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs);
+  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs);
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -735,7 +735,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         colorBySeiban={colorBySeiban} registeredFseibans={registeredFseibans} gantt={gantt} ganttLayout={ganttLayout}
         view={view} orderPreview={orderPreview} category={category} resourcesQuery={resourcesQuery}
         pinMode={pinMode} togglePin={togglePin} selectedItemIds={selectedItemIds} toggleItem={toggleItem}
-        toggleCompletion={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onArrivalChange={changeArrival} arrivalPending={arrivalPending} arrivalError={arrivalError}
+        toggleCompletion={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onArrivalChange={changeArrival} onFirstProcessArrivalChange={changeFirstProcessArrival} arrivalPending={arrivalPending} arrivalError={arrivalError}
         moveDueByDrag={moveDueByDrag} reorderResourceByDrag={reorderResourceByDrag} moveResourceInGantt={moveResourceInGantt}
         canMoveResource={canMoveResource} interactionLocked={interactionLocked} writeQueue={writeQueue}
         allocation={allocation} writeBlocked={writeBlocked} piecesWriting={piecesWriting} rankMutationReady={rankMutationReady}

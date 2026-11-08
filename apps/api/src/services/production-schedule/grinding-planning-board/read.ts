@@ -279,6 +279,17 @@ async function findPlacementByProductNo(items: readonly GrindingPlanningBoardIte
   return placements;
 }
 
+// スマートフォンの照合で一致した製造オーダは社内で加工する品なので、最初の工程は来ているとみなす。
+async function findLatestVerifyMatchByProductNo(productNos: readonly string[]) {
+  if (!productNos.length) return new Map<string, Date>();
+  const rows = await prisma.mobileSlipVerifyRecord.groupBy({
+    by: ['transferOrderBarcodeRaw'],
+    where: { outcome: 'match', transferOrderBarcodeRaw: { in: [...productNos] } },
+    _max: { verifiedAt: true }
+  });
+  return new Map(rows.flatMap((row) => row._max.verifiedAt ? [[row.transferOrderBarcodeRaw, row._max.verifiedAt] as const] : []));
+}
+
 export async function getGrindingPlanningBoard(params: { includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
@@ -340,23 +351,42 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
   const arrivalRows = await perf.measure('processArrival', () => enrichRowsWithProcessArrival(page.map((item) => ({
     id: item.itemId, sourceRowId: item.sourceRowId,
     rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
-  })), { siteKey: params.siteKey, locationKey: params.siteKey, placedProductNos: new Set(placementByProductNo.keys()) }));
+  })), { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(placementByProductNo.keys()) }));
   const arrivalDate = planningBoardArrivalDate();
   const manualArrivals = page.length ? await perf.measure('manualArrival', () => prisma.productionScheduleGrindingPlanningBoardArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
       arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`), itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
     select: { itemKey: true }
   })) : [];
+  const firstProcessArrivals = page.length ? await perf.measure('firstProcessArrival', () => prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
+      itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
+    select: { itemKey: true, state: true, recordedAt: true }
+  })) : [];
+  const verifyMatchByProductNo = page.length ? await perf.measure('verifyMatch', () => findLatestVerifyMatchByProductNo(
+    [...new Set(arrivalRows.filter((row) => row.isFirstProcess).map((row) => String(row.rowData.ProductNo ?? '').trim()).filter(Boolean))])) : new Map<string, Date>();
+  const firstProcessByKey = new Map(firstProcessArrivals.map((arrival) => [arrival.itemKey, arrival]));
   const manualArrivalIds = new Set(manualArrivals.map((arrival) => arrival.itemKey));
-  const arrivalById = new Map(arrivalRows.map((row) => [row.id, row.arrived]));
+  const arrivalById = new Map(arrivalRows.map((row) => [row.id, row]));
   const lslhSurface = await perf.measure('lslhSurface', () => findLslhSurface(page));
   const pageWithMaterialArrival = page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
+    const isFirstProcess = arrivalById.get(item.itemId)?.isFirstProcess ?? false;
+    const manual = isFirstProcess ? firstProcessByKey.get(item.parentItemId ?? item.itemId) : undefined;
+    const verifiedAt = verifyMatchByProductNo.get(item.productNo.trim());
+    const newerPlacement = manual && (placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime())
+      || (verifiedAt != null && verifiedAt.getTime() > manual.recordedAt.getTime()));
+    const firstProcessState = manual?.state === 'arrived' ? 'arrived' as const
+      : manual?.state === 'excluded' && !newerPlacement ? 'excluded' as const : null;
+    const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
+      : Boolean(placement) || verifiedAt != null || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
     return {
       ...item,
+      isFirstProcess,
+      firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
-      arrived: manualArrivalIds.has(item.parentItemId ?? item.itemId) || (arrivalById.get(item.itemId) ?? true),
+      arrived: isFirstProcess ? firstProcessArrived : manualArrivalIds.has(item.parentItemId ?? item.itemId) || (arrivalById.get(item.itemId)?.arrived ?? true),
       manualArrivalDate: manualArrivalIds.has(item.parentItemId ?? item.itemId) ? arrivalDate : null,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),

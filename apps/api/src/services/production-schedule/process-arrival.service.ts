@@ -18,14 +18,26 @@ const partKey = (p: Pick<ArrivalProcess, 'fseiban' | 'fhincd' | 'productNo'>) =>
   JSON.stringify([p.fseiban.trim(), p.fhincd.trim(), isUnassignedProductionSeiban(p.fseiban) ? p.productNo.trim() : '']);
 const order = (value: string) => /^\d+$/.test(value.trim()) ? Number(value) : null;
 
-/** Only strictly earlier, non-excluded processes block arrival. Completion is already effective (manual OR external). */
+type ProcessArrival = { arrived: boolean; isFirstProcess: boolean };
 export function buildProcessArrivalByRowId(rows: readonly ArrivalRow[], processes: readonly ArrivalProcess[],
-  isExcluded: (resourceCd: string) => boolean, placedProductNos: ReadonlySet<string> = new Set()): Map<string, boolean> {
+  isExcluded: (resourceCd: string) => boolean, placedProductNos: ReadonlySet<string> | undefined,
+  options: { includeFirstProcess: true }): Map<string, ProcessArrival>;
+export function buildProcessArrivalByRowId(rows: readonly ArrivalRow[], processes: readonly ArrivalProcess[],
+  isExcluded: (resourceCd: string) => boolean, placedProductNos?: ReadonlySet<string>,
+  options?: { includeFirstProcess?: false }): Map<string, boolean>;
+export function buildProcessArrivalByRowId(rows: readonly ArrivalRow[], processes: readonly ArrivalProcess[],
+  isExcluded: (resourceCd: string) => boolean, placedProductNos: ReadonlySet<string> = new Set(),
+  options?: { includeFirstProcess?: boolean }): Map<string, boolean | ProcessArrival> {
   const incompleteByPart = new Map<string, number[]>();
+  const allByPart = new Map<string, number[]>();
   for (const process of processes) {
     const processOrder = order(process.processOrder);
-    if (process.isCompleted || isExcluded(process.resourceCd.trim()) || processOrder == null) continue;
+    if (isExcluded(process.resourceCd.trim()) || processOrder == null) continue;
     const key = partKey(process);
+    const all = allByPart.get(key) ?? [];
+    all.push(processOrder);
+    allByPart.set(key, all);
+    if (process.isCompleted) continue;
     const earlier = incompleteByPart.get(key) ?? [];
     earlier.push(processOrder);
     incompleteByPart.set(key, earlier);
@@ -34,21 +46,24 @@ export function buildProcessArrivalByRowId(rows: readonly ArrivalRow[], processe
     const productNo = field(row.rowData, 'ProductNo');
     const key = partKey({ fseiban: field(row.rowData, 'FSEIBAN'), fhincd: field(row.rowData, 'FHINCD'), productNo });
     const ownOrder = order(field(row.rowData, 'FKOJUN'));
-    return [row.id, Boolean(row.placement) || placedProductNos.has(productNo) || ownOrder == null ||
-      !(incompleteByPart.get(key) ?? []).some((previous) => previous < ownOrder)];
+    const arrived = Boolean(row.placement) || placedProductNos.has(productNo) || ownOrder == null ||
+      !(incompleteByPart.get(key) ?? []).some((previous) => previous < ownOrder);
+    const isFirstProcess = ownOrder == null || !(allByPart.get(key) ?? []).some((previous) => previous < ownOrder);
+    return [row.id, options?.includeFirstProcess ? { arrived, isFirstProcess } : arrived];
   }));
 }
 
 /** Read every process of each part, across grinding/cutting and completion filters. */
 export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: readonly T[], params: {
-  siteKey?: string; locationKey: string; includeSpecialDue?: boolean; placedProductNos?: ReadonlySet<string>;
-}): Promise<Array<T & { arrived: boolean; specialDue?: GrindingPlanningBoardSpecialDue | null }>> {
+  siteKey?: string; locationKey: string; includeSpecialDue?: boolean; placedProductNos?: ReadonlySet<string>; includeFirstProcess?: boolean; client?: Prisma.TransactionClient; policy?: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
+}): Promise<Array<T & { arrived: boolean; isFirstProcess?: boolean; specialDue?: GrindingPlanningBoardSpecialDue | null }>> {
   if (!rows.length) return [];
+  const client = params.client ?? prisma;
   const keys = [...new Map(rows.map((row) => {
     const p = { fseiban: field(row.rowData, 'FSEIBAN'), fhincd: field(row.rowData, 'FHINCD'), productNo: field(row.rowData, 'ProductNo') };
     return [partKey(p), p];
   })).values()].filter((p) => p.fseiban && p.fhincd);
-  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey, deviceScopeKey: params.locationKey });
+  const policy = params.policy ?? await getResourceCategoryPolicy({ siteKey: params.siteKey, deviceScopeKey: params.locationKey });
   const preferredIds = [...new Set(rows.map((row) => row.sourceRowId ?? row.id))];
   const fseibans = keys.map((key) => key.fseiban);
   const fhincds = keys.map((key) => key.fhincd);
@@ -56,7 +71,7 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
   // Footer chips match ProductNo even for ordinary parts; arrival intentionally spans
   // those ProductNos. Keys are unique per ordinary part or unassigned ProductNo,
   // so joining them keeps the same candidates as EXISTS and permits indexed lookups.
-  const processes = keys.length ? await prisma.$queryRaw<ArrivalProcess[]>(Prisma.sql`
+  const processes = keys.length ? await client.$queryRaw<ArrivalProcess[]>(Prisma.sql`
     WITH "winnerRows" AS (
       SELECT DISTINCT ON (
         BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'),
@@ -84,14 +99,14 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
     LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext" ON "ext"."csvDashboardRowId" = "winnerRows"."id" AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     `) : [];
   const productNos = [...new Set(rows.map((r) => field(r.rowData, 'ProductNo')).filter(Boolean))];
-  const placements = !params.placedProductNos && productNos.length ? await prisma.orderPlacementBranchState.findMany({
+  const placements = !params.placedProductNos && productNos.length ? await client.orderPlacementBranchState.findMany({
     where: { slipKind: 'manufacturing_order', manufacturingOrderBarcodeRaw: { in: productNos } },
     select: { manufacturingOrderBarcodeRaw: true }
   }) : [];
   const arrival = buildProcessArrivalByRowId(rows, processes,
-    (cd) => isProductionScheduleExcludedCuttingResourceCd(cd, policy), params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)));
+    (cd) => isProductionScheduleExcludedCuttingResourceCd(cd, policy), params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)), { includeFirstProcess: true });
   const itemKey = (row: T) => row.id.startsWith('piece:') ? row.id : buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
-  const overrides = params.includeSpecialDue ? await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+  const overrides = params.includeSpecialDue ? await client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey ?? params.locationKey, itemKey: { in: rows.map(itemKey) } }
   }) : [];
   const byKey = new Map(overrides.map((o) => [o.itemKey, o]));
@@ -99,6 +114,6 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
     const override = params.includeSpecialDue ? byKey.get(itemKey(row)) : undefined;
     const specialDue = override && (override.specialDueKind === 'today' || override.specialDueKind === 'overnight') && override.specialDueExpiresAt
       ? { kind: override.specialDueKind, expiresAt: override.specialDueExpiresAt.toISOString() } as GrindingPlanningBoardSpecialDue : null;
-    return { ...row, arrived: arrival.get(row.id) ?? true, ...(params.includeSpecialDue ? { specialDue } : {}) };
+    return { ...row, arrived: arrival.get(row.id)?.arrived ?? true, ...(params.includeFirstProcess ? { isFirstProcess: arrival.get(row.id)?.isFirstProcess ?? true } : {}), ...(params.includeSpecialDue ? { specialDue } : {}) };
   });
 }

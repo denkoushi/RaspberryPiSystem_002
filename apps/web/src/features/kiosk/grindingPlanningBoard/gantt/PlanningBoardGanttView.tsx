@@ -34,6 +34,7 @@ import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours
 type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   onResourceReorder?: ForwardReorder;
   onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
   arrivalPending?: boolean;
   arrivalError?: boolean;
   onResourceMove?: ForwardMove;

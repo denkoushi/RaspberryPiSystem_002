@@ -12,6 +12,7 @@ import {
   getGrindingPlanningBoardLoad,
   scheduleGrindingPlanningBoardRewarm,
   updateGrindingPlanningBoardArrival,
+  updateGrindingPlanningBoardFirstProcessArrival,
   updateGrindingPlanningBoardOverrides,
   updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardRank,
@@ -263,6 +264,13 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       }
     });
   }
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/first-process-arrival', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = arrivalBodySchema.extend({ state: z.enum(['arrived', 'excluded']).nullable() }).parse(request.body);
+    return updateGrindingPlanningBoardFirstProcessArrival({ siteKey: scope.siteKey, ...body });
+  });
 
   app.put('/kiosk/production-schedule/grinding-planning-board/pins', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);

@@ -21,6 +21,7 @@ import {
   getKioskGrindingPlanningBoardSnapshot,
   getKioskGrindingPlanningBoardSeibanCandidates,
   updateKioskGrindingPlanningBoardArrival,
+  updateKioskGrindingPlanningBoardFirstProcessArrival,
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardPins,
   updateKioskGrindingPlanningBoardRank,
@@ -35,6 +36,7 @@ import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule'
 
 import type {
   SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
+  GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardResourceCapacityRequest,
@@ -550,4 +552,14 @@ export function useKioskSessakuPieceMutations() {
   const completion = useMutation({ mutationFn: ({ pieceId, ...payload }: SessakuPieceCompletionRequest & { pieceId: string }) =>
     setKioskSessakuPieceCompletion(pieceId, payload), retry: false, onSuccess });
   return { split, merge, completion };
+}
+
+export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardFirstProcessArrivalRequest) => updateKioskGrindingPlanningBoardFirstProcessArrival(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
 }

@@ -1692,6 +1692,46 @@ describe('forward PlanningBoardGanttView', () => {
     expect(onArrivalChange).toHaveBeenLastCalledWith(items[2], false);
   });
 
+  it('shows first-process 着/外 on both waiting and arrived cards and toggles the selected state', () => {
+    const onFirstProcessArrivalChange = vi.fn();
+    const items = [item({ requiredMinutes: 60, alternateRank: 1 }),
+      item({ itemId: 'first', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2, arrived: false, isFirstProcess: true, firstProcessState: null }),
+      item({ itemId: 'arrived-first', fhincd: 'P3', requiredMinutes: 60, alternateRank: 3, arrived: true, isFirstProcess: true, firstProcessState: 'arrived' })];
+    const makeProps = () => ({ ...forwardProps(items), layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', arrivalFilterEnabled: true,
+      allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'], dailyHoursByResource: {},
+      today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }), onFirstProcessArrivalChange });
+    const view = render(<PlanningBoardGanttView {...makeProps()} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    const buttons = (id = 'first') => {
+      const card = within(screen.getByTestId(`planning-forward-queue-card-${id}`));
+      expect(card.queryByRole('button', { name: '取り消し' })).not.toBeInTheDocument();
+      return [card.getByRole('button', { name: '着', exact: true }), card.getByRole('button', { name: '外', exact: true })];
+    };
+    expect(buttons()[0].parentElement).toHaveClass('grid', 'grid-cols-2');
+    expect(buttons()[0]).toHaveAttribute('aria-pressed', 'false');
+    expect(buttons()[1]).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(buttons()[1]);
+    expect(onFirstProcessArrivalChange).toHaveBeenLastCalledWith(items[1], 'excluded');
+    items[1] = { ...items[1]!, firstProcessState: 'excluded' };
+    view.rerender(<PlanningBoardGanttView {...makeProps()} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    expect(buttons()[1]).toHaveAttribute('aria-pressed', 'true');
+    expect(buttons()[1]).toHaveClass('bg-white', 'text-slate-950');
+    fireEvent.click(buttons()[1]);
+    expect(onFirstProcessArrivalChange).toHaveBeenLastCalledWith(items[1], null);
+    fireEvent.click(buttons()[0]);
+    expect(onFirstProcessArrivalChange).toHaveBeenLastCalledWith(items[1], 'arrived');
+    items[1] = { ...items[1]!, firstProcessState: 'arrived', arrived: true };
+    view.rerender(<PlanningBoardGanttView {...makeProps()} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    expect(buttons()[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(buttons()[1]).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(buttons()[0]);
+    expect(onFirstProcessArrivalChange).toHaveBeenLastCalledWith(items[1], null);
+    expect(buttons('arrived-first')[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(buttons('arrived-first')[1]).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('clamps the fixed popover inside the viewport near the bottom-right corner', () => {
     const measure = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       return this.getAttribute('role') === 'region'

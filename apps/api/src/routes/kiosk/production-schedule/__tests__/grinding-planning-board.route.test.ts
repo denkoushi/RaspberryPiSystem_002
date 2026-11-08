@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getCapacity: vi.fn(),
   updateCapacity: vi.fn(),
   updateArrival: vi.fn(),
+  updateFirstProcessArrival: vi.fn(),
   updateOverrides: vi.fn(),
   updatePins: vi.fn(),
   updateRank: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board.servic
   getGrindingPlanningBoardLoad: mocks.getLoad,
   scheduleGrindingPlanningBoardRewarm: mocks.rewarm,
   updateGrindingPlanningBoardArrival: mocks.updateArrival,
+  updateGrindingPlanningBoardFirstProcessArrival: mocks.updateFirstProcessArrival,
   updateGrindingPlanningBoardOverrides: mocks.updateOverrides,
   updateGrindingPlanningBoardPins: mocks.updatePins,
   updateGrindingPlanningBoardRank: mocks.updateRank,
@@ -580,6 +582,46 @@ describe('planning board seiban checks', () => {
     try {
       expect((await app.inject({ method: 'PUT', url, payload: { sourceRevision: 'r', uncheckedFseibans: [] } })).statusCode).toBe(401);
       expect(mocks.updateChecks).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});
+
+describe('grinding planning board first-process arrival', () => {
+  const url = '/kiosk/production-schedule/grinding-planning-board/first-process-arrival';
+  const payload = { itemId: 'row:item-a', itemRevision: 'revision-a', overrideVersion: 1 };
+  afterEach(() => mocks.updateFirstProcessArrival.mockReset());
+  it.each(['arrived', 'excluded', null] as const)('accepts state %s and uses authenticated site', async (state) => {
+    const auth = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(auth);
+    const result = { itemId: payload.itemId, firstProcessState: state };
+    mocks.updateFirstProcessArrival.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' }, payload: { ...payload, state, siteKey: 'foreign' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(auth).toHaveBeenCalledWith('key-1');
+      expect(mocks.updateFirstProcessArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, state, siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
+  it('rejects invalid states, item identity and missing authorization', async () => {
+    const app = await createApp(async (key) => {
+      if (!key) throw Object.assign(new Error('unauthorized'), { statusCode: 401 });
+      return { id: 'device-1' };
+    });
+    try {
+      expect((await app.inject({ method: 'PUT', url, payload: { ...payload, state: 'arrived' } })).statusCode).toBe(401);
+      for (const invalid of [{ ...payload }, ...['pending', '', true, 1, {}].map((state) => ({ ...payload, state })),
+        { ...payload, state: 'arrived', itemId: '' }, { ...payload, state: 'arrived', itemRevision: '' }, { ...payload, state: 'arrived', overrideVersion: -1 }]) {
+        expect((await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' }, payload: invalid })).statusCode).toBe(400);
+      }
+      expect(mocks.updateFirstProcessArrival).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('returns conflict for a later process', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.updateFirstProcessArrival.mockRejectedValue(Object.assign(new Error('最初の工程ではありません'), { statusCode: 409 }));
+    try {
+      expect((await app.inject({ method: 'PUT', url, headers: { 'x-client-key': 'key-1' }, payload: { ...payload, state: 'excluded' } })).statusCode).toBe(409);
     } finally { await app.close(); }
   });
 });

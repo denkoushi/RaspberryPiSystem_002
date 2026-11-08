@@ -9,7 +9,7 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
   it('separates board and snapshot piece requests while keeping one load cache key', () => {
@@ -54,6 +54,14 @@ describe('grinding planning board requests', () => {
     const url = '/kiosk/production-schedule/grinding-planning-board/arrival';
     if (recorded) expect(put).toHaveBeenCalledExactlyOnceWith(url, body);
     else expect(remove).toHaveBeenCalledExactlyOnceWith(url, { data: body });
+  });
+
+  it.each(['arrived', 'excluded', null] as const)('sends first-process state %s with the item revision', async (state) => {
+    const body = { itemId: 'row:a', itemRevision: 'r1', overrideVersion: 2, state };
+    const data = { itemId: body.itemId, firstProcessState: state };
+    put.mockResolvedValue({ data });
+    await expect(updateKioskGrindingPlanningBoardFirstProcessArrival(body)).resolves.toEqual(data);
+    expect(put).toHaveBeenCalledExactlyOnceWith('/kiosk/production-schedule/grinding-planning-board/first-process-arrival', body);
   });
 
   it('chunks chip requests at 1000 parts and merges their maps', async () => {

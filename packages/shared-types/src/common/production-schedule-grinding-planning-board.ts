@@ -131,6 +131,8 @@ export interface GrindingPlanningBoardItem {
   isCompleted: boolean;
   lslhSurface: boolean;
   arrived?: boolean;
+  isFirstProcess?: boolean;
+  firstProcessState?: GrindingPlanningBoardFirstProcessState;
   manualArrivalDate?: string | null;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
@@ -301,6 +303,17 @@ export interface GrindingPlanningBoardArrivalRequest {
   itemId: string;
   itemRevision: string;
   overrideVersion?: number;
+}
+
+export type GrindingPlanningBoardFirstProcessState = 'arrived' | 'excluded' | null;
+
+export interface GrindingPlanningBoardFirstProcessArrivalRequest extends GrindingPlanningBoardArrivalRequest {
+  state: GrindingPlanningBoardFirstProcessState;
+}
+
+export interface GrindingPlanningBoardFirstProcessArrivalResponse {
+  itemId: string;
+  firstProcessState: GrindingPlanningBoardFirstProcessState;
 }
 
 export interface GrindingPlanningBoardArrivalResponse {

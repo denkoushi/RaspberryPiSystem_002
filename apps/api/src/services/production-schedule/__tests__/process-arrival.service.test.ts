@@ -33,6 +33,39 @@ describe('process arrival', () => {
     expect(buildProcessArrivalByRowId([row('a', '10')], [process('10', '305')], excluded).get('a')).toBe(true);
   });
 
+  it.each([
+    [[process('10', '10'), process('20', 'MSZ')], '30', true],
+    [[process('10', '305', true)], '30', false],
+    [[process('10', '305')], '', true],
+    [[process('30', '305')], '30', true]
+  ] as const)('identifies first processes independently of completion (%j, %s)', (processes, ownOrder, isFirstProcess) => {
+    const rows = [row('target', ownOrder)];
+    const legacy = buildProcessArrivalByRowId(rows, processes, excluded);
+    const detailed = buildProcessArrivalByRowId(rows, processes, excluded, undefined, { includeFirstProcess: true });
+    expect(detailed.get('target')).toEqual({ arrived: legacy.get('target'), isFirstProcess });
+    expect(typeof legacy.get('target')).toBe('boolean');
+  });
+
+  it('treats null FKOJUN as first and keeps unassigned ProductNos isolated', () => {
+    const noOrder = { ...row('no-order', ''), rowData: { ...row('no-order', '').rowData, FKOJUN: null } };
+    expect(buildProcessArrivalByRowId([noOrder], [process('10', '305')], excluded, undefined, { includeFirstProcess: true }).get('no-order'))
+      .toEqual({ arrived: true, isFirstProcess: true });
+    const unassigned = { ...row('unassigned', '30', '200'), rowData: { ...row('unassigned', '30', '200').rowData, FSEIBAN: '********' } };
+    expect(buildProcessArrivalByRowId([unassigned], [{ ...process('10', '305', true), fseiban: '********' }], excluded, undefined,
+      { includeFirstProcess: true }).get('unassigned')).toEqual({ arrived: true, isFirstProcess: true });
+    expect([...buildProcessArrivalByRowId([noOrder], [], excluded, undefined, { includeFirstProcess: false }).values()]).toEqual([true]);
+  });
+
+  it('includes first-process metadata only when explicitly requested', async () => {
+    mocks.query.mockResolvedValue([process('10', '305', true)]);
+    const rows = [row('target', '30'), row('no-order', '')];
+    const legacy = await enrichRowsWithProcessArrival(rows, { locationKey: 'site' });
+    expect(legacy.every((item) => !('isFirstProcess' in item))).toBe(true);
+    const detailed = await enrichRowsWithProcessArrival(rows, { locationKey: 'site', includeFirstProcess: true });
+    expect(detailed.map((item) => item.isFirstProcess)).toEqual([false, true]);
+    expect(detailed.map((item) => item.arrived)).toEqual(legacy.map((item) => item.arrived));
+  });
+
   it('waits for every earlier process across grinding → cutting → grinding, with strict FKOJUN comparison', () => {
     const rows = [row('a', '10'), row('cut', '20'), row('b', '30'), row('same-order', '20')];
     const processes = [process('10', '305', true), process('20', '001'), process('30', '305')];
