@@ -783,7 +783,7 @@ export async function approveSelfInspectionOutOfToleranceReview(
 
 export async function approveSelfInspectionRecordApproval(
   sessionId: string,
-  body: { approverEmployeeTagUid: string; comment?: string | null }
+  body: { accessToken?: string; approverEmployeeTagUid: string; comment?: string | null }
 ): Promise<SelfInspectionSessionSummaryDto> {
   const { data } = await api.post<{ session: SelfInspectionSessionSummaryDto }>(
     `/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
@@ -793,7 +793,7 @@ export async function approveSelfInspectionRecordApproval(
 }
 
 export async function verifyKioskSelfInspectionRecordApprovalAccessPassword(payload: { password: string }) {
-  const { data } = await api.post<{ success: boolean }>(
+  const { data } = await api.post<{ success: boolean; token?: string }>(
     '/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
     payload
   );

@@ -322,53 +322,42 @@ export async function upsertProductionScheduleNote(params: {
 }
 
 export async function upsertProductionScheduleDueDate(params: {
+  actorClientDeviceId?: string;
+  actorDeviceName?: string;
   rowId: string;
   dueDateText: string;
   locationKey: string;
 }): Promise<{ success: true; dueDate: Date | null }> {
   const { rowId, dueDateText } = params;
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: { id: true, rowData: true }
-  });
-  if (!row) {
-    throw new ApiError(404, '対象の行が見つかりません');
-  }
-
   const dueDateValue = dueDateText.trim();
-  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
-
-  if (dueDateValue.length === 0) {
-    const existingNote = existing?.note?.trim() ?? '';
-    const existingProcessing = existing?.processingType?.trim() ?? '';
-    if (existingNote.length === 0 && existingProcessing.length === 0) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
+  if (dueDateValue && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
+    throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
+  }
+  const dueDate = dueDateValue ? new Date(`${dueDateValue}T00:00:00.000Z`) : null;
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.csvDashboardRow.findFirst({
+      where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, rowData: true }
+    });
+    if (!row) throw new ApiError(404, '対象の行が見つかりません');
+    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
+    const note = existing?.note?.trim() ?? '';
+    const processingType = existing?.processingType ?? null;
+    if (!dueDate && !note && !processingType?.trim()) {
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: row.id,
-        note: existingNote,
-        dueDate: null,
-        processingType: existing?.processingType ?? null
-      });
+        csvDashboardRowId: row.id, note, dueDate, processingType
+      }, tx);
     }
-    resetSelfInspectionMachineBoardScheduleRowCaches();
-    return { success: true, dueDate: null };
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
-    throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
-  }
-
-  const dueDate = new Date(`${dueDateValue}T00:00:00.000Z`);
-  await sharedScheduleFieldsRepository.upsertRowNote({
-    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    csvDashboardRowId: row.id,
-    note: existing?.note?.trim() ?? '',
-    dueDate,
-    processingType: existing?.processingType ?? null
-  });
-
+    await tx.productionScheduleDueDateAuditLog.create({ data: {
+      actorClientDeviceId: params.actorClientDeviceId,
+      actorDeviceName: params.actorDeviceName,
+      location: params.locationKey, action: 'row', csvDashboardRowId: row.id,
+      beforeDueDate: existing?.dueDate ?? null, afterDueDate: dueDate
+    } });
+  }, { isolationLevel: 'Serializable' });
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return { success: true, dueDate };
 }

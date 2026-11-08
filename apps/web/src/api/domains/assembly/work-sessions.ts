@@ -149,7 +149,7 @@ export async function downloadAssemblyWorkSessionXlsx(sessionId: string) {
 }
 
 export async function verifyKioskAssemblyRecordApprovalAccessPassword(payload: { password: string }) {
-  const { data } = await api.post<{ success: boolean }>(
+  const { data } = await api.post<{ success: boolean; token?: string }>(
     '/kiosk/assembly/record-approvals/verify-access-password',
     payload
   );
@@ -158,7 +158,7 @@ export async function verifyKioskAssemblyRecordApprovalAccessPassword(payload: {
 
 export async function approveAssemblyWorkSessionRecordApproval(
   sessionId: string,
-  payload: { approverEmployeeTagUid: string; comment?: string | null }
+  payload: { accessToken?: string; approverEmployeeTagUid: string; comment?: string | null }
 ) {
   const { data } = await api.post<{ session: AssemblyWorkSessionDto }>(
     `/assembly/work-sessions/${sessionId}/record-approval/approve`,

@@ -1,7 +1,8 @@
+import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
-import { getResolvedClientKey } from '../../api/client';
+import { getResolvedClientKey, verifyKioskSelfInspectionRecordApprovalAccessPassword } from '../../api/client';
 import {
   useApproveSelfInspectionRecordApproval,
   useResolveSelfInspectionRecordApprovalApprover,
@@ -12,6 +13,7 @@ import {
   useSelfInspectionRegistrationPolicy,
   useUpdateSelfInspectionRegistrationPolicy
 } from '../../api/hooks';
+import { KioskPinDialog, kioskPinErrorResult } from '../../features/kiosk/KioskPinDialog';
 import { SelfInspectionRecordApprovalDetail } from '../../features/part-measurement/selfInspectionRecordApproval/SelfInspectionRecordApprovalDetail';
 import { SelfInspectionRecordApprovalList } from '../../features/part-measurement/selfInspectionRecordApproval/SelfInspectionRecordApprovalList';
 import { SelfInspectionRecordApprovalToolbar } from '../../features/part-measurement/selfInspectionRecordApproval/SelfInspectionRecordApprovalToolbar';
@@ -52,6 +54,8 @@ export function KioskSelfInspectionRecordApprovalPage() {
     displayName: string;
     nfcTagUid: string;
   } | null>(null);
+  const [accessToken, setAccessToken] = useState<string>();
+  const [accessDialogOpen, setAccessDialogOpen] = useState(false);
   const [approvalOperationActive, setApprovalOperationActive] = useState(false);
   const [nfcReading, setNfcReading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -194,12 +198,16 @@ export function KioskSelfInspectionRecordApprovalPage() {
 
   const handleStartApproval = useCallback(() => {
     if (!canStartApproval) return;
+    if (!accessToken) {
+      setAccessDialogOpen(true);
+      return;
+    }
     setApprovalOperationActive(true);
     setNfcReading(false);
     setApprover(null);
     lastProcessedNfcKeyRef.current = null;
     setStatusMessage('承認者の社員NFCタグをタッチしてください。');
-  }, [canStartApproval]);
+  }, [accessToken, canStartApproval]);
 
   const handleCancelApproval = useCallback(() => {
     clearApprovalOperation();
@@ -212,14 +220,21 @@ export function KioskSelfInspectionRecordApprovalPage() {
       await approveMutation.mutateAsync({
         sessionId: selectedSession.id,
         approverEmployeeTagUid: approver.nfcTagUid,
-        comment: null
+        comment: null,
+        accessToken
       });
       clearApprovalOperation(false);
       setStatusMessage('検査記録を承認し、自主検査を完了しました。');
     } catch (error: unknown) {
+      if (isAxiosError(error) && error.response?.status === 403 &&
+        String(error.response.data?.errorCode).startsWith('SELF_INSPECTION_RECORD_APPROVAL_TOKEN_')) {
+        setAccessToken(undefined);
+        clearApprovalOperation();
+        setAccessDialogOpen(true);
+      }
       setStatusMessage(readApiErrorMessage(error, '承認処理に失敗しました。'));
     }
-  }, [approveMutation, approver, canApprove, clearApprovalOperation, selectedSession]);
+  }, [accessToken, approveMutation, approver, canApprove, clearApprovalOperation, selectedSession]);
 
   const isActiveRoute = location.pathname.startsWith(
     '/kiosk/part-measurement/self-inspection/record-approvals'
@@ -304,6 +319,17 @@ export function KioskSelfInspectionRecordApprovalPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 bg-slate-800 p-3 text-white">
+      {accessDialogOpen ? <KioskPinDialog title="記録確認の暗証番号" onBack={() => setAccessDialogOpen(false)} onSubmit={async pin => {
+        let result;
+        try { result = await verifyKioskSelfInspectionRecordApprovalAccessPassword({ password: pin }); }
+        catch (error) { return kioskPinErrorResult(error); }
+        if (!result.success || !result.token) return false;
+        setAccessToken(result.token);
+        setAccessDialogOpen(false);
+        setApprovalOperationActive(true);
+        setStatusMessage('承認者の社員NFCタグをタッチしてください。');
+        return true;
+      }} /> : null}
       <SelfInspectionRecordApprovalToolbar
         filter={filter}
         onFilterChange={handleFilterChange}

@@ -1,3 +1,4 @@
+import { signKioskAccessToken } from '../../lib/auth.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -1776,7 +1777,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${session.id}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approve.statusCode).toBe(200);
 
@@ -2423,7 +2424,7 @@ describe('assembly torque management API', () => {
         method: 'POST',
         url: `/api/assembly/work-sessions/${approvalRace.sessionId}/record-approval/approve`,
         headers,
-        payload: { approverEmployeeTagUid: approver.nfcTagUid }
+        payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
       }),
       invalidate(approvalRace.serial.workUnitId, '完了承認との競合')
     ]);
@@ -2530,7 +2531,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${approved.session.id}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approval.statusCode).toBe(200);
     const invalidation = await invalidate(approved.workUnit.id, '承認済み誤登録');
@@ -3378,7 +3379,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approve.statusCode).toBe(200);
     expect(approve.json().session.approval).toMatchObject({
@@ -3390,7 +3391,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(duplicateApprove.statusCode).toBe(409);
 
@@ -3469,7 +3470,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG' }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: 'UNKNOWN-TAG' }
     });
     expect(inProgressApprove.statusCode).toBe(409);
 
@@ -3492,7 +3493,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG-404' }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: 'UNKNOWN-TAG-404' }
     });
     expect(unknownTagApprove.statusCode).toBe(404);
   });
@@ -3517,7 +3518,7 @@ describe('assembly torque management API', () => {
       payload: { password: '2520' }
     });
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toEqual({ success: true });
+    expect(ok.json()).toEqual({ success: true, token: expect.any(String) });
   });
 
   describe('assembly unified workflow phase 2 API', () => {

@@ -151,12 +151,14 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
   app.post(
     '/torque-wrenches/:id/connection-lease/acquire',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
-    async (request) => {
+    async (request, reply) => {
+      if (request.headers.authorization) await canWrite(request, reply);
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const body = torqueWrenchConnectionLeaseAcquireSchema.parse(request.body);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
       return {
         lease: await connectionLeaseService.acquire({
+          actorDevice: request.user ? null : clientDevice,
           torqueWrenchProfileId: id,
           clientDeviceId: clientDevice.id,
           ...body
@@ -168,12 +170,14 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
   app.post(
     '/torque-wrenches/:id/connection-lease/takeover',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
-    async (request) => {
+    async (request, reply) => {
+      if (request.headers.authorization) await canWrite(request, reply);
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const body = torqueWrenchConnectionLeaseTakeoverSchema.parse(request.body);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
       return {
         lease: await connectionLeaseService.takeover({
+          actorDevice: request.user ? null : clientDevice,
           torqueWrenchProfileId: id,
           clientDeviceId: clientDevice.id,
           ...body
@@ -242,10 +246,12 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
   });
 
   app.post('/assembly/work-sessions/:id/torque-wrench-confirmations', async (request, reply) => {
+    if (request.headers.authorization) await canWrite(request, reply);
     const { id } = assemblyWorkSessionParamsSchema.parse(request.params);
     const body = torqueWrenchConfirmationCreateSchema.parse(request.body);
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const confirmation = await traceabilityService.confirm({
+      actorDevice: request.user ? null : clientDevice,
       sessionId: id,
       clientDeviceId: clientDevice.id,
       clientDeviceName: clientDevice.name,

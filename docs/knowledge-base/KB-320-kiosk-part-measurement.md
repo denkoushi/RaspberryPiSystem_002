@@ -576,6 +576,8 @@ Runbook: [§NFC・手元カメラ](../runbooks/kiosk-part-measurement.md#自主�
 | **コメント** | DB/API は任意コメントを持つが、初期 UI では入力不要 |
 | **旧 UI/API 境界** | 管理画面 `/admin/part-measurement/self-inspection-reviews` と旧承認 API は `recordApprovalWorkflowStartedAt=null` の legacy 用。新方式セッションの旧承認 API は 409 |
 
+2026-11-08追補: 組立記録確認と自主検査記録承認は、暗証番号の確認成功時に用途別・呼び出し端末別の12時間トークンを返し、端末キーによる承認APIで本文の `accessToken` を確認する。ADMIN/MANAGERのJWT利用者は従来どおりトークン不要。Webは確認結果をメモリだけに保持し、期限切れ・無効時は暗証番号を再確認する。自主検査の一覧・詳細の閲覧境界は維持し、承認開始時に確認する。
+
 追加 API:
 
 - legacy:

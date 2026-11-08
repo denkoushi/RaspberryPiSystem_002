@@ -1,3 +1,4 @@
+import { requireKioskAccessToken } from '../../lib/auth.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
@@ -415,6 +416,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
         const params = selfInspectionSessionIdParamsSchema.parse(request.params);
         const body = approveSelfInspectionRecordApprovalBodySchema.parse(request.body ?? {});
         const clientDeviceId = await tryGetClientDeviceId(request.headers);
+        if (!request.user) requireKioskAccessToken(body.accessToken, 'self-inspection-record-approval', clientDeviceId);
         const session = await selfInspectionService.approveRecordApproval(params.id, {
           approverEmployeeTagUid: body.approverEmployeeTagUid,
           comment: body.comment,

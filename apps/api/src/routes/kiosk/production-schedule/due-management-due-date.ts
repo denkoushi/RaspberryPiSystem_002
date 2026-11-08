@@ -27,6 +27,8 @@ export async function registerProductionScheduleDueManagementDueDateRoute(
       const body = productionScheduleDueManagementSeibanDueDateBodySchema.parse(request.body);
 
       return upsertProductionScheduleSeibanDueDate({
+        actorClientDeviceId: clientDevice.id,
+        actorDeviceName: clientDevice.name,
         locationKey,
         fseiban: params.fseiban,
         dueDateText: body.dueDate

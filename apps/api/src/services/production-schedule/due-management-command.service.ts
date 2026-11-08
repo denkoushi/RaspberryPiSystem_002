@@ -1,3 +1,5 @@
+import type { Prisma } from '@prisma/client';
+import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import { randomUUID } from 'node:crypto';
 
 import { ApiError } from '../../lib/errors.js';
@@ -26,8 +28,8 @@ const normalizeOrderedFhincds = (orderedFhincds: string[]): string[] => {
 
 const normalizeProcessingType = (processingType: string): string => processingType.trim();
 
-const listOverriddenProcessingTypes = async (fseiban: string): Promise<string[]> => {
-  const rows = await prisma.$queryRaw<Array<{ processingType: string }>>`
+const listOverriddenProcessingTypes = async (fseiban: string, client: Prisma.TransactionClient): Promise<string[]> => {
+  const rows = await client.$queryRaw<Array<{ processingType: string }>>`
     SELECT "processingType"
     FROM "ProductionScheduleSeibanProcessingDueDate"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
@@ -40,8 +42,8 @@ const upsertSeibanProcessingDueDateRecord = async (params: {
   fseiban: string;
   processingType: string;
   dueDate: Date;
-}): Promise<void> => {
-  await prisma.$executeRaw`
+}, client: Prisma.TransactionClient): Promise<void> => {
+  await client.$executeRaw`
     INSERT INTO "ProductionScheduleSeibanProcessingDueDate" (
       "id",
       "csvDashboardId",
@@ -67,8 +69,8 @@ const upsertSeibanProcessingDueDateRecord = async (params: {
   `;
 };
 
-const deleteSeibanProcessingDueDateRecord = async (params: { fseiban: string; processingType: string }): Promise<void> => {
-  await prisma.$executeRaw`
+const deleteSeibanProcessingDueDateRecord = async (params: { fseiban: string; processingType: string }, client: Prisma.TransactionClient): Promise<void> => {
+  await client.$executeRaw`
     DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND "fseiban" = ${params.fseiban}
@@ -76,8 +78,8 @@ const deleteSeibanProcessingDueDateRecord = async (params: { fseiban: string; pr
   `;
 };
 
-const deleteSeibanProcessingDueDateRecordsBySeiban = async (fseiban: string): Promise<void> => {
-  await prisma.$executeRaw`
+const deleteSeibanProcessingDueDateRecordsBySeiban = async (fseiban: string, client: Prisma.TransactionClient): Promise<void> => {
+  await client.$executeRaw`
     DELETE FROM "ProductionScheduleSeibanProcessingDueDate"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND "fseiban" = ${fseiban}
@@ -85,6 +87,8 @@ const deleteSeibanProcessingDueDateRecordsBySeiban = async (fseiban: string): Pr
 };
 
 export async function upsertProductionScheduleSeibanDueDate(params: {
+  actorClientDeviceId?: string;
+  actorDeviceName?: string;
   locationKey: string;
   fseiban: string;
   dueDateText: string;
@@ -98,44 +102,44 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
     throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
   }
 
-  const trimmedDueDate = dueDateText.trim();
-  if (trimmedDueDate.length === 0) {
-    await sharedScheduleFieldsRepository.deleteSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban);
-    await deleteSeibanProcessingDueDateRecordsBySeiban(trimmedFseiban);
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await sharedScheduleFieldsRepository.findSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban, tx);
+    const trimmedDueDate = dueDateText.trim();
+    const dueDate = trimmedDueDate ? new Date(`${trimmedDueDate}T00:00:00.000Z`) : null;
+    let overriddenProcessingTypes: string[] = [];
+    if (dueDate === null) {
+      await sharedScheduleFieldsRepository.deleteSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban, tx);
+      await deleteSeibanProcessingDueDateRecordsBySeiban(trimmedFseiban, tx);
+    } else {
+      await sharedScheduleFieldsRepository.upsertSeibanDueDate({
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: trimmedFseiban, dueDate
+      }, tx);
+      overriddenProcessingTypes = await listOverriddenProcessingTypes(trimmedFseiban, tx);
+    }
     const writebackResult = await writebackSeibanDueDateToRowNotes({
-      locationKey,
-      fseiban: trimmedFseiban,
-      dueDateText: ''
+      client: tx, locationKey, fseiban: trimmedFseiban,
+      dueDateText: trimmedDueDate, excludeProcessingTypes: overriddenProcessingTypes
     });
-    return {
-      success: true,
-      dueDate: null,
-      affectedRows: writebackResult.affectedRows
-    };
-  }
-
-  const dueDate = new Date(`${trimmedDueDate}T00:00:00.000Z`);
-  await sharedScheduleFieldsRepository.upsertSeibanDueDate({
-    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    fseiban: trimmedFseiban,
-    dueDate
-  });
-  const overriddenProcessingTypes = await listOverriddenProcessingTypes(trimmedFseiban);
-
-  const writebackResult = await writebackSeibanDueDateToRowNotes({
-    locationKey,
-    fseiban: trimmedFseiban,
-    dueDateText: trimmedDueDate,
-    excludeProcessingTypes: overriddenProcessingTypes
-  });
-  return {
-    success: true,
-    dueDate,
-    affectedRows: writebackResult.affectedRows
-  };
+    await tx.productionScheduleDueDateAuditLog.create({
+      data: {
+        actorClientDeviceId: params.actorClientDeviceId,
+        actorDeviceName: params.actorDeviceName,
+        location: locationKey,
+        action: 'seiban',
+        fseiban: trimmedFseiban,
+        beforeDueDate: before?.dueDate ?? null,
+        afterDueDate: dueDate
+      }
+    });
+    return { dueDate, affectedRows: writebackResult.affectedRows };
+  }, { isolationLevel: 'Serializable' });
+  resetSelfInspectionMachineBoardScheduleRowCaches();
+  return { ...result, success: true };
 }
 
 export async function upsertProductionScheduleSeibanProcessingDueDate(params: {
+  actorClientDeviceId?: string;
+  actorDeviceName?: string;
   locationKey: string;
   fseiban: string;
   processingType: string;
@@ -154,66 +158,60 @@ export async function upsertProductionScheduleSeibanProcessingDueDate(params: {
     throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
   }
 
-  const processingTypeExists = await prisma.$queryRaw<Array<{ exists: boolean }>>`
-    SELECT EXISTS(
-      SELECT 1
-      FROM "CsvDashboardRow"
-      LEFT JOIN "ProductionScheduleRowNote" AS "n"
-        ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
-        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
-        ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
-      WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
-        AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
-        AND COALESCE("pp"."processingType", "n"."processingType") = ${processingType}
-    ) AS "exists"
-  `;
-  if (!processingTypeExists[0]?.exists) {
-    throw new ApiError(404, '指定された製番内に対象の表面処理が見つかりません');
-  }
+  const result = await prisma.$transaction(async (tx) => {
+    const before = await tx.productionScheduleSeibanProcessingDueDate.findUnique({ where: { csvDashboardId_fseiban_processingType: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, processingType } } });
+    const processingTypeExists = await tx.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS(
+        SELECT 1
+        FROM "CsvDashboardRow"
+        LEFT JOIN "ProductionScheduleRowNote" AS "n"
+          ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+          AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        LEFT JOIN "ProductionSchedulePartProcessingType" AS "pp"
+          ON "pp"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          AND "pp"."fhincd" = ("CsvDashboardRow"."rowData"->>'FHINCD')
+        WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+          AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
+          AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
+          AND COALESCE("pp"."processingType", "n"."processingType") = ${processingType}
+      ) AS "exists"
+    `;
+    if (!processingTypeExists[0]?.exists) {
+      throw new ApiError(404, '指定された製番内に対象の表面処理が見つかりません');
+    }
 
-  const trimmedDueDate = dueDateText.trim();
-  if (trimmedDueDate.length === 0) {
-    await deleteSeibanProcessingDueDateRecord({ fseiban, processingType });
-    const seibanDueDate = await sharedScheduleFieldsRepository.findSeibanDueDate(
-      PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      fseiban
-    );
-    const fallbackDueDateText = seibanDueDate?.dueDate ? seibanDueDate.dueDate.toISOString().slice(0, 10) : '';
+    const trimmedDueDate = dueDateText.trim();
+    const dueDate = trimmedDueDate ? new Date(`${trimmedDueDate}T00:00:00.000Z`) : null;
+    let effectiveDueDate = dueDate;
+    if (dueDate === null) {
+      await deleteSeibanProcessingDueDateRecord({ fseiban, processingType }, tx);
+      const seibanDueDate = await sharedScheduleFieldsRepository.findSeibanDueDate(
+        PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, tx
+      );
+      effectiveDueDate = seibanDueDate?.dueDate ?? null;
+    } else {
+      await upsertSeibanProcessingDueDateRecord({ fseiban, processingType, dueDate }, tx);
+    }
     const writebackResult = await writebackSeibanProcessingDueDateToRowNotes({
-      locationKey,
-      fseiban,
-      processingType,
-      dueDateText: fallbackDueDateText
+      client: tx, locationKey, fseiban, processingType,
+      dueDateText: effectiveDueDate?.toISOString().slice(0, 10) ?? ''
     });
-    return {
-      success: true,
-      processingType,
-      dueDate: seibanDueDate?.dueDate ?? null,
-      affectedRows: writebackResult.affectedRows
-    };
-  }
-
-  const dueDate = new Date(`${trimmedDueDate}T00:00:00.000Z`);
-  await upsertSeibanProcessingDueDateRecord({
-    fseiban,
-    processingType,
-    dueDate
-  });
-  const writebackResult = await writebackSeibanProcessingDueDateToRowNotes({
-    locationKey,
-    fseiban,
-    processingType,
-    dueDateText: trimmedDueDate
-  });
-  return {
-    success: true,
-    processingType,
-    dueDate,
-    affectedRows: writebackResult.affectedRows
-  };
+    await tx.productionScheduleDueDateAuditLog.create({
+      data: {
+        actorClientDeviceId: params.actorClientDeviceId,
+        actorDeviceName: params.actorDeviceName,
+        location: locationKey,
+        action: 'processing',
+        fseiban,
+        processingType,
+        beforeDueDate: before?.dueDate ?? null,
+        afterDueDate: dueDate
+      }
+    });
+    return { processingType, dueDate: effectiveDueDate, affectedRows: writebackResult.affectedRows };
+  }, { isolationLevel: 'Serializable' });
+  resetSelfInspectionMachineBoardScheduleRowCaches();
+  return { ...result, success: true };
 }
 
 export async function upsertProductionSchedulePartPriorities(params: {

@@ -1,3 +1,4 @@
+import { isAxiosError } from 'axios';
 import clsx from 'clsx';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
@@ -198,6 +199,7 @@ export function KioskAssemblyRecordApprovalPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const initialSessionId = searchParams.get('sessionId');
+  const [accessToken, setAccessToken] = useState<string>();
   const [accessGranted, setAccessGranted] = useState(false);
   const [accessDialogOpen, setAccessDialogOpen] = useState(true);
   const isActiveRoute = accessGranted && location.pathname.startsWith('/kiosk/assembly/record-approvals');
@@ -313,13 +315,21 @@ export function KioskAssemblyRecordApprovalPage() {
     setStatusMessage(null);
     try {
       const updated = await approveAssemblyWorkSessionRecordApproval(detail.id, {
-        approverEmployeeTagUid: approver.nfcTagUid
+        approverEmployeeTagUid: approver.nfcTagUid,
+        accessToken
       });
       setDetail(updated);
       setApprover(null);
       setStatusMessage(null);
       await reloadSessions();
     } catch (error: unknown) {
+      if (isAxiosError(error) && error.response?.status === 403 &&
+        String(error.response.data?.errorCode).startsWith('ASSEMBLY_RECORD_APPROVAL_TOKEN_')) {
+        setAccessToken(undefined);
+        setAccessGranted(false);
+        setAccessDialogOpen(true);
+        setApprover(null);
+      }
       setStatusMessage(readAssemblyApiErrorMessage(error, '承認処理に失敗しました。'));
     } finally {
       setApproving(false);
@@ -340,7 +350,8 @@ export function KioskAssemblyRecordApprovalPage() {
         let result;
         try { result = await verifyKioskAssemblyRecordApprovalAccessPassword({ password: pin }); }
         catch (error) { return kioskPinErrorResult(error); }
-        if (!result.success) return false;
+        if (!result.success || !result.token) return false;
+        setAccessToken(result.token);
         setAccessGranted(true);
         return true;
       }} /> : null}

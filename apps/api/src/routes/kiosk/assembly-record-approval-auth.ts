@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { signKioskAccessToken } from '../../lib/auth.js';
 
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
@@ -21,12 +22,13 @@ export async function registerKioskAssemblyRecordApprovalAuthRoute(
     '/kiosk/assembly/record-approvals/verify-access-password',
     { config: { rateLimit: assemblyRecordApprovalAccessPasswordRateLimit } },
     async (request) => {
-      await deps.requireClientDevice(request.headers['x-client-key']);
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const body = assemblyRecordApprovalAccessPasswordVerifyBodySchema.parse(request.body);
-      return verifyDueManagementAccessPassword({
+      const result = await verifyDueManagementAccessPassword({
         location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
         password: body.password
       });
+      return result.success ? { ...result, token: signKioskAccessToken('assembly-record-approval', clientDevice.id) } : result;
     }
   );
 }

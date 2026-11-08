@@ -193,6 +193,7 @@ export const recordTorqueBodySchema = z.object({
 });
 
 export const approveAssemblyRecordApprovalBodySchema = z.object({
+  accessToken: z.unknown().optional(),
   approverEmployeeTagUid: z.string().min(1).max(200),
   comment: z.string().max(500).optional().nullable()
 });
