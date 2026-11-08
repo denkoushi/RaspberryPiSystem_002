@@ -70,7 +70,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   useEffect(() => {
     if (!focusedSeiban) return;
     // document runs before Dialog's window Escape handler; preserve focus only for the piece popup.
-    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-planning-board-piece-dialog], [data-planning-board-popover], [data-forward-queue]')) setFocusedSeiban(null); };
+    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[data-planning-board-piece-dialog], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
   }, [focusedSeiban]);

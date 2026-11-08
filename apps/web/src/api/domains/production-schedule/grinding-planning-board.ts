@@ -8,6 +8,9 @@ import type {
   GrindingPlanningBoardArrivalResponse,
   GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardProcessChipsResponse,
+  GrindingPlanningBoardResourceMinutesResponse,
+  GrindingPlanningBoardResourceMinutesSourceRequest,
+  GrindingPlanningBoardResourcePartMinutesRequest,
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
@@ -227,5 +230,18 @@ export async function setKioskSessakuPieceCompletion(pieceId: string, payload: S
 export async function updateKioskGrindingPlanningBoardFirstProcessArrival(payload: GrindingPlanningBoardFirstProcessArrivalRequest) {
   const { data } = await api.put<GrindingPlanningBoardFirstProcessArrivalResponse>(
     '/kiosk/production-schedule/grinding-planning-board/first-process-arrival', payload);
+  return data;
+}
+
+export async function getKioskGrindingPlanningBoardResourceMinutes() {
+  const { data } = await api.get<GrindingPlanningBoardResourceMinutesResponse>('/kiosk/production-schedule/grinding-planning-board/resource-minutes');
+  return data;
+}
+export async function updateKioskGrindingPlanningBoardResourceMinutesSource(payload: GrindingPlanningBoardResourceMinutesSourceRequest) {
+  const { data } = await api.put<GrindingPlanningBoardResourceMinutesResponse>('/kiosk/production-schedule/grinding-planning-board/resource-minutes/source', payload);
+  return data;
+}
+export async function updateKioskGrindingPlanningBoardResourcePartMinutes(payload: GrindingPlanningBoardResourcePartMinutesRequest) {
+  const { data } = await api.put<GrindingPlanningBoardResourceMinutesResponse>('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', payload);
   return data;
 }

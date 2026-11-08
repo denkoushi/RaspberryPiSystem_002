@@ -9,7 +9,7 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
   it('separates board and snapshot piece requests while keeping one load cache key', () => {
@@ -102,5 +102,20 @@ describe('grinding planning board requests', () => {
     });
     await expect(getKioskGrindingPlanningBoardLoad('cutting')).resolves.toEqual({ load: [], unknownRequiredMinutesCount: 1 });
     expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/load', { params: { category: 'cutting' } });
+  });
+});
+
+describe('resource minutes requests', () => {
+  it('uses the settings GET and both PUT endpoints and preserves clearing', async () => {
+    const settings = { ownSourceResourceCds: [], values: [] };
+    get.mockResolvedValue({ data: settings }); put.mockResolvedValue({ data: settings });
+    expect(await getKioskGrindingPlanningBoardResourceMinutes()).toEqual(settings);
+    expect(get).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board/resource-minutes');
+    const source = { resourceCd: '305', source: 'own' as const };
+    expect(await updateKioskGrindingPlanningBoardResourceMinutesSource(source)).toEqual(settings);
+    expect(put).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board/resource-minutes/source', source);
+    const value = { resourceCd: '305', fhincd: 'P1', perUnitMinutes: null, setupMinutes: 0 };
+    expect(await updateKioskGrindingPlanningBoardResourcePartMinutes(value)).toEqual(settings);
+    expect(put).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', value);
   });
 });

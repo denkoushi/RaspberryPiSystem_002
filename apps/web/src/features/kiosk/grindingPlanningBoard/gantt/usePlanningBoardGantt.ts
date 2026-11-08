@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
+import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
@@ -22,6 +22,9 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
+  const minutes = useKioskGrindingPlanningBoardResourceMinutes(enabled);
+  const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
+  const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
   const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
@@ -46,6 +49,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const closeSingleResourcePicker = useCallback(() => setSingleResourcePickerAnchor(null), []);
   const openSingleResourcePicker = useCallback((anchor: HTMLElement) => setSingleResourcePickerAnchor((current) => current === anchor ? null : anchor), []);
   const changeSingleResource = useCallback((resource: string | null) => {
+    setValueSheetResource(null);
     changeResource(resource);
     setSingleResourcePickerAnchor(null);
     if (resource) changeMode('forward');
@@ -55,11 +59,14 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     if (!enabled || !singleResourceCd) return;
     const escape = (event: KeyboardEvent) => {
       // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
-      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) changeSingleResource(null);
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
+        if (valueSheetResource === singleResourceCd) setValueSheetResource(null);
+        else changeSingleResource(null);
+      }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [enabled, singleResourceCd, changeSingleResource]);
+  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource]);
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
@@ -75,6 +82,9 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     if (!isPending) mutate({ resourceCd, runsThroughBreaks });
   }, [isPending, mutate]);
   return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
+    resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError,
+    changeMinutesSource: sourceMutation.mutate, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
+    toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
     singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }

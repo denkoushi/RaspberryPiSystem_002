@@ -73,6 +73,8 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardArrival: () => useMutation({ mutationFn: (args: unknown) => mocks.arrival(args) }),
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
+  useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: { ownSourceResourceCds: ['305'], values: [] } }),
+  useUpdateKioskGrindingPlanningBoardResourceMinutesSource: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskGrindingPlanningBoardResourceCapacity: (enabled: boolean) => mocks.capacity(enabled),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskProductionScheduleResources: () => ({
@@ -2199,7 +2201,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   });
 
-  it('persists single-resource mode, selects for bulk edit, and handles Escape dialog → picker → single mode', () => {
+  it('persists single-resource mode, selects for bulk edit, and handles Escape dialog → picker → sheet → single mode', () => {
     const data = fixture();
     data.items[3]!.originalResourceCd = '584';
     mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
@@ -2213,6 +2215,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '一括変更' })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
+    expect(screen.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
     // Open the picker behind the existing dialog to exercise the priority, too.
     fireEvent.click(screen.getByRole('button', { name: '1台の資源CDを選ぶ' }));
     fireEvent.keyDown(window, { key: 'Escape' });
@@ -2220,6 +2224,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    expect(screen.getByTestId('planning-single-resource-head')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: '品番の値' })).toBeNull();
     expect(screen.getByTestId('planning-single-resource-head')).toBeInTheDocument();
     first.unmount();
     const second = render(<ProductionScheduleGrindingPlanningBoardPage />);

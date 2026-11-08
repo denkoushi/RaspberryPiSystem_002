@@ -77,6 +77,7 @@ export const productionScheduleQueryKeys = {
     ['kiosk-grinding-planning-board', 'seiban-candidates', params] as const,
   grindingPlanningBoardDueDetail: (fseiban: string | null) =>
     ['kiosk-grinding-planning-board-due-detail', fseiban] as const,
+  planningBoardResourceMinutesAll: ['kiosk-planning-board-resource-minutes'] as const,
   planningBoardResourceCapacityAll: ['kiosk-planning-board-resource-capacity'] as const,
   leaderboardShellAll: ['kiosk-production-schedule', 'leaderboard-shell'] as const,
   leaderboardShell: (params?: Parameters<typeof getKioskProductionScheduleLeaderboardShell>[0]) =>

@@ -22,6 +22,7 @@ import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
+import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
@@ -32,9 +33,14 @@ import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
 type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+  resourceMinutesItems?: readonly GrindingPlanningBoardItem[];
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  minutesPending?: boolean; minutesError?: boolean;
+  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
+  valueSheetOpen?: boolean; onToggleValueSheet?: () => void;
   singleResourceCd?: string | null;
   singleResourcePickerOpen?: boolean;
   onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
@@ -93,6 +99,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
+  resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -205,6 +212,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const forward = layout.mode === 'forward';
   const singleGroup = forward && singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
   const singleMode = Boolean(singleGroup);
+  const singleItems = useMemo(() => {
+    const items = resourceMinutesItems ?? singleGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
+    return [...new Map(items.filter((item) => (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
+      .map((item) => [item.itemId, item])).values()];
+  }, [resourceMinutesItems, singleGroup, singleResourceCd]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
@@ -257,7 +269,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   }, [focusedSeiban, seibanColors, setFocusedSeiban]);
   useEffect(() => {
     if (focusedSeiban === null) return;
-    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) setFocusedSeiban(null); };
+    const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
     document.addEventListener('keydown', clear);
     return () => document.removeEventListener('keydown', clear);
   }, [focusedSeiban, setFocusedSeiban]);
@@ -336,7 +348,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain]);
-  const bottomInset = showChain ? chainStripHeight : 0;
+  const sheetHeight = valueSheetOpen && singleGroup ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar) => {
     setFocusedPartKey((current) => current === bar.partKey ? null : bar.partKey);
     setCurrentItemId(null);
@@ -483,6 +496,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
   const resourceLabel = useCallback((resource: string, label: string) => <>
     {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-5 font-bold')}
+    {resourceMinutes?.ownSourceResourceCds.includes(resource) && <span className="rounded bg-amber-400/15 px-1 text-[10px] font-bold text-amber-300">独自</span>}
     <div className="flex gap-1" role="group" aria-label={`${resource}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
         className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
@@ -496,7 +510,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       <span className="text-[12px] font-bold text-slate-300">月平均</span>
       <span className="font-mono text-[15px] font-bold tabular-nums text-emerald-300">{(uptimeByResource.get(normalizeMachineName(resource))! / 3600).toFixed(1)}h</span>
     </div>}
-  </>, [laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
+  </>, [resourceMinutes, laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
   const previousLabels = useRef<{ render: typeof resourceLabel; labels: Map<string, { text: string; node: React.ReactNode }> } | null>(null);
   const resourceLabels = useMemo(() => new Map(layout.groups.filter((group) => group.resource).map((group) => {
     const old = previousLabels.current?.render === resourceLabel ? previousLabels.current.labels.get(group.resource!) : undefined;
@@ -506,8 +520,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+      {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {singleGroup && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={onToggleValueSheet}
+        onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} />}
@@ -548,6 +565,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               <div data-gantt-lane-label className="sticky left-0 z-20 flex min-h-11 shrink-0 items-center gap-1 bg-slate-800 px-2 text-xs" style={{ width: labelWidth }}>
                 {group.resource ? laneHandle(group.resource, ganttResourceLabel(normalizeMachineName(group.label), resourceNameMap[group.resource]), 'min-h-11 min-w-0 flex-1 font-bold')
                   : <strong className="min-w-0 flex-1 truncate" title={group.label}>{normalizeMachineName(group.label)}</strong>}
+                {group.resource && resourceMinutes?.ownSourceResourceCds.includes(group.resource) && <span className="rounded bg-amber-400/15 px-1 text-[10px] font-bold text-amber-300">独自</span>}
                 {group.resource && group.resource !== '未設定' && <div className="flex shrink-0 gap-1" role="group" aria-label={`${group.resource}の1日の稼働時間`}>
                   {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((hours) => <button key={hours} type="button"
                     className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
@@ -588,7 +606,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           {showChain && <PlanningBoardChainLinks barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
-      {showChain && <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={legendHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+      {showChain && <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
       {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex max-h-[52px] snap-y snap-mandatory scroll-pt-1 flex-wrap gap-2 overflow-y-auto overscroll-contain border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
@@ -601,6 +619,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {singleGroup && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
+        values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} />}
       {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"

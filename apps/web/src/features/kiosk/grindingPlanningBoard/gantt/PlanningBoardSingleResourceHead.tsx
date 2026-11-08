@@ -1,9 +1,15 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 
-import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange }: {
+export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false }: {
+  items?: GrindingPlanningBoardItem[];
+  minutes?: GrindingPlanningBoardResourceMinutesResponse;
+  onSourceChange?: (source: 'original' | 'own') => void;
+  sheetOpen?: boolean;
+  onToggleSheet?: () => void;
+  minutesPending?: boolean;
   resourceCd: string;
   names: string[] | undefined;
   hours: GrindingPlanningBoardResourceDailyHours;
@@ -32,6 +38,11 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
       <span className="text-[13px] font-bold text-slate-300">月平均</span><span className="font-mono text-base font-bold text-emerald-300">{(averageSeconds / 3600).toFixed(1)}h</span>
     </div>}
     <div className="flex-1" />
-    {/* Milestone C slot: 元の値 / 独自の値 switch and 品番の値 sheet trigger. */}
+    <div className="flex shrink-0 rounded-md border border-slate-600" role="group" aria-label="所要時間の値">
+      {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-pressed={(minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own')}
+        className={clsx('h-8 whitespace-nowrap px-3 text-sm font-bold disabled:opacity-40', (minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own') ? 'bg-amber-400 text-slate-950' : 'text-slate-300')}
+        onClick={() => onSourceChange?.(source)}>{source === 'original' ? '元の値' : '独自の値'} <span className="font-mono">{(items.reduce((sum, item) => sum + ((source === 'own' ? item.ownRequiredMinutes ?? item.originalRequiredMinutes : item.originalRequiredMinutes) ?? 0), 0) / 60).toFixed(1)}h</span></button>)}
+    </div>
+    <button type="button" aria-expanded={sheetOpen} onClick={onToggleSheet} className="h-8 shrink-0 whitespace-nowrap rounded-md border border-amber-500 px-3 text-sm font-bold text-amber-300">品番の値 {minutes?.values.filter((value) => value.resourceCd === resourceCd).length ?? 0} {sheetOpen ? '▼' : '▲'}</button>
   </div>;
 }
