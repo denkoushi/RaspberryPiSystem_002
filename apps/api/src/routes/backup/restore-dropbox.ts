@@ -1,4 +1,5 @@
 import { promises as fs } from 'fs';
+import os from 'os';
 import path from 'path';
 import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
@@ -276,9 +277,9 @@ export async function registerBackupRestoreDropboxRoutes(
         });
       } else {
         // restoreメソッドが実装されていない場合は汎用的なリストア（ファイルとして保存）
-        const tempPath = `/tmp/restored-${Date.now()}.backup`;
-        await fs.mkdir(path.dirname(tempPath), { recursive: true });
-        await fs.writeFile(tempPath, backupData, { mode: 0o600 });
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'restored-'));
+        const tempPath = path.join(tempDir, 'restored.backup');
+        await fs.writeFile(tempPath, backupData, { flag: 'wx', mode: 0o600 });
 
         logger?.info({ backupPath: actualBackupPath, originalPath: body.backupPath, tempPath }, '[BackupRoute] Backup restored to temporary file');
 

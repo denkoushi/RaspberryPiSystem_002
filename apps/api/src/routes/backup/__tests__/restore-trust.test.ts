@@ -1,9 +1,12 @@
 import Fastify, { type FastifyError, type FastifyRequest, type FastifyReply } from 'fastify';
 import { createHash } from 'crypto';
+import { promises as fs } from 'fs';
+import os from 'os';
+import path from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  findFirst: vi.fn(), download: vi.fn(), restore: vi.fn(), createProvider: vi.fn(),
+  findFirst: vi.fn(), download: vi.fn(), restore: vi.fn(), createProvider: vi.fn(), createTarget: vi.fn(),
   createHistory: vi.fn(), completeHistory: vi.fn(), failHistory: vi.fn(), preBackup: vi.fn()
 }));
 vi.mock('../../../lib/auth.js', () => ({ authorizeRoles: () => async () => {} }));
@@ -17,7 +20,7 @@ vi.mock('../../../services/backup/storage-provider-factory.js', () => ({
   StorageProviderFactory: { create: mocks.createProvider, createFromConfig: mocks.createProvider }
 }));
 vi.mock('../../../services/backup/backup-target-factory.js', () => ({
-  BackupTargetFactory: { createFromConfig: () => ({ restore: mocks.restore }) }
+  BackupTargetFactory: { createFromConfig: mocks.createTarget }
 }));
 vi.mock('../../../services/backup/backup-history.service.js', () => ({
   BackupHistoryService: class {
@@ -46,6 +49,7 @@ describe.each(['/backup/restore', '/backup/restore/from-dropbox'])('%s restore v
     vi.stubEnv('BACKUP_ENCRYPTION_KEY', key.toString('base64'));
     mocks.createHistory.mockResolvedValue('history');
     mocks.restore.mockResolvedValue({ success: true, timestamp: new Date() });
+    mocks.createTarget.mockReturnValue({ restore: mocks.restore });
     mocks.createProvider.mockReturnValue(new EncryptedStorageProvider({
       download: mocks.download, upload: vi.fn(), delete: vi.fn(), list: vi.fn()
     }));
@@ -104,6 +108,38 @@ describe.each(['/backup/restore', '/backup/restore/from-dropbox'])('%s restore v
   });
 
   if (url.endsWith('from-dropbox')) {
+    it('saves a generic restore exclusively inside a private temporary directory', async () => {
+      mocks.createTarget.mockReturnValue({});
+      mocks.download.mockResolvedValue(encryptBackup(key, data));
+      const mkdtemp = vi.spyOn(fs, 'mkdtemp');
+      const writeFile = vi.spyOn(fs, 'writeFile');
+      try {
+        const response = await restore({ targetKind: 'image' });
+        expect(response.statusCode).toBe(200);
+        const directory = await mkdtemp.mock.results[0].value;
+        const tempPath = path.join(directory, 'restored.backup');
+        expect(mkdtemp).toHaveBeenCalledWith(path.join(os.tmpdir(), 'restored-'));
+        expect(writeFile).toHaveBeenCalledWith(tempPath, data, { flag: 'wx', mode: 0o600 });
+        expect(await fs.readFile(tempPath)).toEqual(data);
+        expect((await fs.stat(directory)).mode & 0o777).toBe(0o700);
+        expect((await fs.stat(tempPath)).mode & 0o777).toBe(0o600);
+        expect(mocks.completeHistory).toHaveBeenCalledWith('history', expect.objectContaining({
+          targetKind: 'image', sizeBytes: data.length, path: 'database/snapshot/db.sql.gz'
+        }));
+        expect(response.json()).toEqual({
+          success: true, message: 'Backup restored successfully',
+          backupPath: 'database/snapshot/db.sql.gz', originalPath: 'database/snapshot/db.sql.gz',
+          timestamp: expect.any(String), historyId: 'history'
+        });
+        expect(mocks.restore).not.toHaveBeenCalled();
+        expect(mocks.failHistory).not.toHaveBeenCalled();
+      } finally {
+        const directory = await mkdtemp.mock.results[0]?.value;
+        vi.restoreAllMocks();
+        if (directory) await fs.rm(directory, { recursive: true, force: true });
+      }
+    });
+
     it('ignores a caller-supplied size', async () => {
       mocks.download.mockResolvedValue(encryptBackup(key, data));
       const response = await restore({ expectedSize: 999 });

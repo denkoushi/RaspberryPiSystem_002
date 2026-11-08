@@ -62,7 +62,7 @@ export const registerRateLimit = fp(async (app: FastifyInstance) => {
     keyGenerator: async (request: FastifyRequest) => {
       const routePattern = request.routeOptions.url ?? normalizeRateLimitPath(request.url);
       const apiKey = normalizeClientKey(request.headers['x-client-key']);
-      const deviceId = apiKey ? await lookupDevice(apiKey) : null;
+      const deviceId = apiKey ? await lookupDevice(apiKey, request.ip) : null;
       return deviceId ? `device:${deviceId}:${routePattern}` : `${request.ip}:${routePattern}`;
     },
     // 特定パスをスキップ
