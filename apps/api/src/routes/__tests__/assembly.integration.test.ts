@@ -1604,6 +1604,7 @@ describe('assembly torque management API', () => {
   it('registers an assembly lot, starts serial work lazily, and updates lot completion counts', async () => {
     const client = await createTestClientDevice();
     const approver = await createTestEmployee({ displayName: '承認者' });
+    const lotOperator = await createTestEmployee({ displayName: 'ロット作業者' });
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
 
     const upload = buildMultipartProcedure('ロット 手順書');
@@ -1717,7 +1718,7 @@ describe('assembly torque management API', () => {
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
       payload: {
-        operatorNfcTagUid: approver.nfcTagUid,
+        operatorNfcTagUid: lotOperator.nfcTagUid,
         requestId: startRequestId
       }
     });
@@ -1736,7 +1737,7 @@ describe('assembly torque management API', () => {
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
       payload: {
-        operatorNfcTagUid: approver.nfcTagUid,
+        operatorNfcTagUid: lotOperator.nfcTagUid,
         requestId: startRequestId
       }
     });
