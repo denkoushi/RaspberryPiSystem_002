@@ -119,6 +119,11 @@ Design goal: legitimate kiosk (client-key) and admin (JWT) flows keep working; o
 - Production verification (2026-10-12): confirmed by the operator on the Pi5 admin UI after the release above. Admin login works, and the
   MFA setup screen asks for the login password before activation. Result: OK. No further action for this item.
 - Operator-visible changes: the MFA setup form asks for the password (and the current code on re-enrollment); admins who set up MFA before this release and still hold an old refresh token must log in again once. Access tokens issued before activation stay valid until they expire (15 min), which is accepted.
+- Login accounting (2026-11-08): failed logins are counted in `AuthLoginAttempt` per exact username (case and whitespace preserved), using a 15-minute database-timed window with a limit of 10. Further attempts return 429 `AUTH_LOGIN_RATE_LIMITED`, including correct credentials; a successful login clears the count. Unknown usernames are also counted and receive one dummy password comparison. Expired rows are removed in batches of up to 100 during reservations.
+- Login TOTP codes can be used once per user and 30-second step; the matched step must exceed `User.totpLastUsedStep`, with a conditional database update. MFA activation and backup-code behavior remain unchanged.
+- When the attempt that reaches the limit fails for a registered user, one `auth-login-limit` alert (WARNING, Slack delivery via the default route) is created per window, so an unexpected lockout is noticed.
+- If the login limit is reached, wait 15 minutes before retrying; waiting is the standard response even when urgent, rather than having an ADMIN delete the database row.
+
 - Verify: `pnpm --filter @raspi-system/api exec vitest run src/routes/__tests__/admin-mfa-enforcement.test.ts`; on the device, re-enrollment without the current code returns 401 `MFA_REAUTH_REQUIRED`.
 
 ### C-12. Gmail HTML attachments rendered to PDF with JavaScript and network enabled (High)

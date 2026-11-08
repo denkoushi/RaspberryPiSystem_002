@@ -920,6 +920,7 @@ model User {
   status                      UserStatus     @default(ACTIVE)
   mfaEnabled                  Boolean        @default(false)
   totpSecret                  String?
+  totpLastUsedStep            Int?
   mfaBackupCodes              String[]       @default([])
   createdAt                   DateTime       @default(now())
   updatedAt                   DateTime       @updatedAt
@@ -927,6 +928,15 @@ model User {
   auditLogsActor              RoleAuditLog[] @relation("RoleAuditActor")
   auditLogsTarget             RoleAuditLog[] @relation("RoleAuditTarget")
   photoToolHumanReviewedLoans Loan[]         @relation("PhotoToolHumanReviewer")
+}
+
+model AuthLoginAttempt {
+  username     String   @id
+  count        Int
+  windowEndsAt DateTime @db.Timestamp(3)
+  updatedAt    DateTime @updatedAt @db.Timestamp(3)
+
+  @@index([windowEndsAt])
 }
 
 model RoleAuditLog {

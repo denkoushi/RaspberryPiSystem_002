@@ -13,11 +13,15 @@ const mocks = vi.hoisted(() => ({
     TOKEN_EXPIRES_IN: '15m',
     REFRESH_TOKEN_EXPIRES_IN: '7d'
   },
-  findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn()
+  findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(),
+  updateMany: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(), deleteMany: vi.fn()
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
-  user: { findUnique: mocks.findUnique, update: mocks.update },
+  user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
+  $queryRaw: mocks.queryRaw, $executeRaw: mocks.executeRaw,
+  authLoginAttempt: { deleteMany: mocks.deleteMany },
   roleAuditLog: { findMany: mocks.findMany }
 } }));
 vi.mock('../../services/auth/auth-role-admin.service.js', () => ({ AuthRoleAdminService: class {} }));
@@ -38,7 +42,7 @@ beforeEach(async () => {
   user = {
     id: 'test-user', username: 'admin', role: 'ADMIN', status: 'ACTIVE',
     passwordHash: await bcrypt.hash(password, 4), mfaEnabled: false,
-    totpSecret: null, mfaBackupCodes: [], createdAt: new Date(), updatedAt: new Date()
+    totpSecret: null, totpLastUsedStep: null, mfaBackupCodes: [], createdAt: new Date(), updatedAt: new Date()
   };
   mocks.findUnique.mockImplementation(async () => user);
   mocks.update.mockImplementation(async ({ data }: { data: Partial<User> }) => {
@@ -46,6 +50,10 @@ beforeEach(async () => {
     return user;
   });
   mocks.findMany.mockResolvedValue([]);
+  mocks.queryRaw.mockResolvedValue([{ username: user.username }]);
+  mocks.executeRaw.mockResolvedValue(0);
+  mocks.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.updateMany.mockResolvedValue({ count: 1 });
   app = Fastify();
   registerErrorHandler(app);
   await app.register(registerAuthRoutes, { prefix: '/api' });

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { isAdminMfaRequired, signAccessToken, signRefreshToken, type JwtPayload } from '../../lib/auth.js';
+import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import {
   generateBackupCodes,
@@ -10,8 +11,10 @@ import {
   hashBackupCodes,
   matchAndConsumeBackupCode,
   verifyTotpCode,
+  verifyTotpCodeStep,
 } from '../../lib/mfa.js';
 import { prisma } from '../../lib/prisma.js';
+import { LOGIN_ATTEMPT_LIMIT, notifyLoginAttemptLimitReached } from './login-limit-alert.js';
 
 export type LoginInput = {
   username: string;
@@ -100,10 +103,65 @@ function buildTokenPair(user: User): Pick<LoginResult, 'accessToken' | 'refreshT
   };
 }
 
+const MAX_LOGIN_USERNAME_LENGTH = 128;
+const DUMMY_PASSWORD_HASH = '$2a$10$0aHEpcYrWdHZqOlUGHK9pOJIATM.o8owRzLFFGc6JqgFhSBRpJwdu';
+
+async function deleteExpiredLoginAttempts(username: string): Promise<void> {
+  await prisma.$executeRaw`
+    DELETE FROM "AuthLoginAttempt" WHERE "username" IN (
+      SELECT "username" FROM "AuthLoginAttempt"
+      WHERE "windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC')
+        AND "username" <> ${username}
+      ORDER BY "windowEndsAt"
+      LIMIT 100 FOR UPDATE SKIP LOCKED
+    )
+  `;
+}
+
+async function reserveLoginAttempt(username: string): Promise<number> {
+  try {
+    await deleteExpiredLoginAttempts(username);
+  } catch (error) {
+    logger.warn({ err: error }, 'Failed to delete expired login attempts');
+  }
+  const reserved = await prisma.$queryRaw<Array<{ username: string; count: number }>>`
+    INSERT INTO "AuthLoginAttempt" ("username", "count", "windowEndsAt", "updatedAt")
+    VALUES (${username}, 1,
+      (statement_timestamp() AT TIME ZONE 'UTC') + INTERVAL '15 minutes',
+      (statement_timestamp() AT TIME ZONE 'UTC'))
+    ON CONFLICT ("username") DO UPDATE SET
+      "count" = CASE
+        WHEN "AuthLoginAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN 1
+        ELSE "AuthLoginAttempt"."count" + 1 END,
+      "windowEndsAt" = CASE
+        WHEN "AuthLoginAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC')
+          THEN (statement_timestamp() AT TIME ZONE 'UTC') + INTERVAL '15 minutes'
+        ELSE "AuthLoginAttempt"."windowEndsAt" END,
+      "updatedAt" = (statement_timestamp() AT TIME ZONE 'UTC')
+    WHERE "AuthLoginAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC')
+      OR "AuthLoginAttempt"."count" < ${LOGIN_ATTEMPT_LIMIT}
+    RETURNING "username", "count"
+  `;
+  if (reserved.length === 0) {
+    throw new ApiError(429, 'ログインの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'AUTH_LOGIN_RATE_LIMITED');
+  }
+  return Number(reserved[0].count);
+}
+
 export class AuthService {
   async login(input: LoginInput): Promise<LoginResult> {
+    if (input.username.length > MAX_LOGIN_USERNAME_LENGTH) {
+      await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
+      throw new ApiError(401, 'ユーザー名またはパスワードが違います');
+    }
+    const attemptCount = await reserveLoginAttempt(input.username);
+    const failAttempt = async (error: ApiError): Promise<never> => {
+      if (attemptCount === LOGIN_ATTEMPT_LIMIT) await notifyLoginAttemptLimitReached(input.username);
+      throw error;
+    };
     const user = await prisma.user.findUnique({ where: { username: input.username } });
     if (!user) {
+      await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
       throw new ApiError(401, 'ユーザー名またはパスワードが違います');
     }
     if (user.status !== 'ACTIVE') {
@@ -111,11 +169,22 @@ export class AuthService {
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
-      throw new ApiError(401, 'ユーザー名またはパスワードが違います');
+      await failAttempt(new ApiError(401, 'ユーザー名またはパスワードが違います'));
     }
 
     if (user.mfaEnabled) {
-      const totpOk = user.totpSecret ? verifyTotpCode(user.totpSecret, input.totpCode ?? '') : false;
+      const totpStep = user.totpSecret ? verifyTotpCodeStep(user.totpSecret, input.totpCode ?? '') : null;
+      let totpOk = false;
+      if (totpStep !== null) {
+        const consumed = await prisma.user.updateMany({
+          where: {
+            id: user.id,
+            OR: [{ totpLastUsedStep: null }, { totpLastUsedStep: { lt: totpStep } }]
+          },
+          data: { totpLastUsedStep: totpStep }
+        });
+        totpOk = consumed.count === 1;
+      }
       let backupOk = false;
       let remainingCodes = user.mfaBackupCodes;
       if (!totpOk && user.mfaBackupCodes.length > 0) {
@@ -130,11 +199,12 @@ export class AuthService {
         }
       }
       if (!totpOk && !backupOk) {
-        throw new ApiError(401, 'MFAコードが必要です');
+        await failAttempt(new ApiError(401, 'MFAコードが必要です'));
       }
     }
 
     const tokens = buildTokenPair(user);
+    await prisma.authLoginAttempt.deleteMany({ where: { username: input.username } });
     return {
       ...tokens,
       user: toAuthUserDto(user),
