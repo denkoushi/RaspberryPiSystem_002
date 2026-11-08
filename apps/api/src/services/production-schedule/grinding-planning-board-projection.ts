@@ -1,3 +1,4 @@
+import { compareProcessOrder } from './process-order.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
 import { createHash } from 'node:crypto';
@@ -228,12 +229,6 @@ function compareNullableRank(a: number | null, b: number | null): number {
   return (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER);
 }
 
-function compareProcessOrder(a: string, b: string): number {
-  const left = Number(a);
-  const right = Number(b);
-  if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
-  return a.localeCompare(b);
-}
 
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, 'ja');
@@ -487,7 +482,7 @@ function buildItems(
     items.push({
       itemId,
       kind: 'row',
-      ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
+      ...(pieceSet ? { isLaterProcess: Boolean(pieceSet.sourcePieceSetId), pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
       itemRevision: createItemRevision(revisionInput),
       version: override?.version ?? 0,
       sourceRowId: row.id,
@@ -532,7 +527,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const inherited = params.overrides.get(parent.itemId);
       const own = params.overrides.get(itemId);
       const override = own ?? inherited;
-      const total = parent.plannedQuantity;
+      const total = parent.plannedQuantity ?? (set.sourcePieceSetId || piece.sourcePieceId ? set.plannedQuantity : null);
       const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.requiredMinutes != null && parent.requiredMinutes > 0
         ? parent.requiredMinutes * piece.quantity / total : null;
       const isCompleted = external || piece.isCompleted;
@@ -543,6 +538,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       });
       return {
         ...parent, itemId, kind: 'piece', parentItemId: parent.itemId, pieceId: piece.id,
+        ...(piece.sourcePieceId ? { sourcePieceId: piece.sourcePieceId } : {}),
         piecePosition: piece.position, pieceSetVersion: set.version, quantity: piece.quantity,
         parentPlannedQuantity: total, plannedQuantity: piece.quantity,
         quantityWarning: set.quantityWarning as GrindingPlanningBoardItem['quantityWarning'],

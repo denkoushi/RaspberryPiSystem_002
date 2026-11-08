@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
-import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, type SessakuLaneSourceScope } from '../../grinding-planning-board/source.js';
+import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByLogicalKeyFseibans, type SessakuLaneSourceScope } from '../../grinding-planning-board/source.js';
 import { prisma } from '../../../../lib/prisma.js';
-import { findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceParentItemId, type SessakuPieceSet } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceParentItemId, type SessakuPieceSet } from '../piece-key.js';
 import { splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.service.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $transaction: vi.fn() } }));
 vi.mock('../../grinding-planning-board/state.js', () => ({ ensurePlanningBoardState: vi.fn(), stateOrder: (state: { seibanOrder: string[] }) => state.seibanOrder }));
-vi.mock('../../grinding-planning-board/source.js', () => ({ readOverrides: vi.fn(), readRanks: vi.fn(), readRowDetails: vi.fn(), readWinnerRowsByFseibans: vi.fn() }));
+vi.mock('../../grinding-planning-board/source.js', () => ({ readOverrides: vi.fn(), readRanks: vi.fn(), readRowDetails: vi.fn(), readWinnerRowsByFseibans: vi.fn(), readWinnerRowsByLogicalKeyFseibans: vi.fn() }));
 vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: vi.fn(), isProductionScheduleCuttingResourceCd: () => true }));
 vi.mock('../../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: vi.fn() }));
 vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn() }));
@@ -29,7 +29,9 @@ const stop = new Error('stop before loading scoped rows');
 beforeEach(() => {
   vi.resetAllMocks();
   vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+  vi.mocked(acquireSessakuPieceLogicalLocks).mockResolvedValue(new Set([JSON.stringify(Object.values(key))]));
   vi.mocked(findSessakuPieceWinner).mockResolvedValue(row);
+  vi.mocked(readWinnerRowsByLogicalKeyFseibans).mockResolvedValue([row]);
   vi.mocked(readRowDetails).mockResolvedValue(new Map([[row.id, detail]]));
   vi.mocked(readRanks).mockResolvedValue({ rows: new Map() });
 });
@@ -63,6 +65,7 @@ describe('sessaku affected lane discovery', () => {
         if (query.where.itemKey) return overrides.filter((o) => query.where.itemKey.in.includes(o.itemKey));
         return overrides.filter((o) => o.overrideResourceCd != null);
       }) },
+      productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
       productionScheduleSessakuPiece: { findMany: pieceLookup }
     };
     vi.mocked(prisma.$transaction).mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);

@@ -88,13 +88,55 @@ describe('PlanningBoardPiecePopover', () => {
   it('checks a 1000-piece merge selection once before rows render', () => {
     const items = Array.from({ length: 1000 }, (_, index) => piece(String(index), 1));
     const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: false, enabled: true,
-      resourceCategories: undefined, selectedItems: items, changePieces: vi.fn() }));
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: items, changePieces: vi.fn() }));
     const getParent = vi.spyOn(result.current.selectedItemsByParent, 'get');
     render(<PlanningBoardPiecesContext.Provider value={result.current}>
       {items.map((item) => <PlanningBoardPiecePopover key={item.itemId} item={item} selected />)}
     </PlanningBoardPiecesContext.Provider>);
     expect(getParent).toHaveBeenCalledTimes(1000);
     expect(screen.getAllByRole('button').every((button) => !button.hasAttribute('disabled'))).toBe(true);
+  });
+  it('hides merge for selected siblings whose original resource is not cutting', () => {
+    const items = [piece('a', 2), piece('b', 3)];
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'grinding' }, selectedItems: items, changePieces: vi.fn() }));
+    expect(result.current.selectedItemsByParent.get(row.itemId)).toEqual(items);
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardPiecePopover item={items[0]} selected /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByText('2／5')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('2／5'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('まとめる')).not.toBeInTheDocument();
+  });
+  it.each(['table', 'gantt'] as const)('shows linked later quantity without split/merge controls (%s)', (variant) => {
+    const items = [piece('a', 2, { sourcePieceId: 'cut-a', isLaterProcess: true }), piece('b', 3, { sourcePieceId: 'cut-b', isLaterProcess: true })];
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: items, changePieces: vi.fn() }));
+    expect(result.current.selectedItemsByParent.size).toBe(0);
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardPiecePopover item={items[0]} selected variant={variant} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByText('2／5')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.queryByText('▾')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('2／5'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByText('分ける')).not.toBeInTheDocument();
+    expect(screen.queryByText('まとめる')).not.toBeInTheDocument();
+  });
+  it.each(['table', 'gantt'] as const)('hides split and merge for uncompleted detached later pieces (%s)', (variant) => {
+    const items = [piece('a', 2, { isLaterProcess: true }), piece('b', 3, { isLaterProcess: true })];
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: items, changePieces: vi.fn() }));
+    expect(result.current.selectedItemsByParent.size).toBe(0);
+    render(<PlanningBoardPiecesContext.Provider value={result.current}><PlanningBoardPiecePopover item={items[0]} selected variant={variant} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByText('2／5')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('2／5'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  it('hides split for an empty linked set on a second cutting row', () => {
+    setup({ ...row, isLaterProcess: true });
+    expect(screen.getByText('5個')).toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
   it('splits five into 2+3, bounds count choices and restores focus on Escape', async () => {
     const { onSplit } = setup();

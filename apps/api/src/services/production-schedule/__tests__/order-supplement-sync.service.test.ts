@@ -1,3 +1,4 @@
+import { lockSessakuPieceSourceRows } from '../sessaku-pieces/piece-sync.js';
 vi.mock('../sessaku-pieces/piece-sync.js', () => ({ lockSessakuPieceSourceRows: vi.fn().mockResolvedValue([]), assertSessakuPieceWinnerTargets: vi.fn().mockResolvedValue(undefined), synchronizeSessakuPieceSources: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceSet: vi.fn().mockResolvedValue(null) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -77,6 +78,8 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('order-supplement-sync.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(lockSessakuPieceSourceRows).mockResolvedValue([]);
+    prismaMock.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
     prismaMock.$transaction.mockImplementation(async (fn: (tx: PrismaMock) => Promise<unknown>, _opts?: unknown) =>
       fn(prismaMock)
     );
@@ -619,8 +622,12 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
   });
 
-  it('既存行ありで CSV の plannedQuantity が0以下のとき既存数量を維持し split を削除しない', async () => {
-    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+  it.each(['none', 'empty-cutting', 'cutting', 'empty-later'] as const)('CSV 0 は片がある部品か後工程setだけに保存する (set=%s)', async (kind) => {
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '503', fkojun: '200' };
+    vi.mocked(lockSessakuPieceSourceRows).mockResolvedValue([key]);
+    const active = kind === 'cutting' || kind === 'empty-later';
+    prismaMock.productionScheduleSessakuPieceSet.findMany.mockResolvedValue(kind === 'none' ? [] : [{ ...key, id: 'cutting-set', fsigencd: '1', fkojun: '1', sourcePieceSetId: kind === 'empty-later' ? 'source-set' : null, pieces: kind === 'cutting' ? [{ id: 'cutting-piece' }] : [] }]);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([{ id: 'winner-1', rowData: { FSEIBAN: 'S', FHINCD: 'P', FSIGENCD: '503', FKOJUN: '200' } }] as never).mockResolvedValueOnce([
       {
         id: 'src-invalid-quantity',
         rowData: {
@@ -659,9 +666,11 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
       where: { id: 'existing-1' },
       data: expect.objectContaining({
-        plannedQuantity: 5,
+        plannedQuantity: active ? 0 : 5,
       }),
     });
+    expect(lockSessakuPieceSourceRows).toHaveBeenCalled();
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [{ fseiban: 'S', fhincd: 'P' }] } }));
     expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();

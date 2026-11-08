@@ -189,7 +189,7 @@ export class CsvDashboardIngestor {
       const pieceSets = isProductionScheduleDashboard
         ? await readSessakuPieceSets(prisma, ingestRows.map((row) => ({ rowData: row.data })))
         : new Map();
-      const hasSessakuPieces = [...pieceSets.values()].some((set) => set.pieces.length > 0);
+      const hasSessakuPieces = [...pieceSets.values()].some((set) => set.pieces.length > 0 || set.sourcePieceSetId);
 
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
