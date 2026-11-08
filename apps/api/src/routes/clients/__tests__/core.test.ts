@@ -93,7 +93,7 @@ describe('client registration routes', () => {
     vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(target as never);
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetApiKey: target.apiKey } });
     expect(response.statusCode).toBe(200);
-    expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { apiKey: target.apiKey }, select: { id: true, apiKey: true, isSignage: true } });
+    expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { apiKey: target.apiKey }, select: { id: true, isSignage: true } });
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.id,
     }) }));
