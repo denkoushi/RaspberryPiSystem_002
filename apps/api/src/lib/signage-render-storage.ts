@@ -1,4 +1,3 @@
-import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
@@ -16,12 +15,11 @@ function legacyCurrentImagePath(): string {
   return path.join(getRenderDir(), LEGACY_CURRENT_IMAGE_NAME);
 }
 
-function storageIdForClientDeviceId(clientDeviceId: string): string {
-  return createHash('sha256').update(clientDeviceId, 'utf8').digest('hex');
-}
+const CLIENT_DEVICE_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function pathForClientCurrentImage(clientDeviceId: string): string {
-  return path.join(getRenderDir(), `current-${storageIdForClientDeviceId(clientDeviceId)}.jpg`);
+  if (!CLIENT_DEVICE_ID_PATTERN.test(clientDeviceId)) throw new Error('Invalid client device id');
+  return path.join(getRenderDir(), `current-${clientDeviceId.toLowerCase()}.jpg`);
 }
 
 export class SignageRenderStorage {
@@ -44,7 +42,7 @@ export class SignageRenderStorage {
 
     let filename = path.basename(filePath);
     if (KEEP_HISTORY) {
-      filename = `signage_${storageIdForClientDeviceId(clientDeviceId)}_${Date.now()}.jpg`;
+      filename = `signage_${clientDeviceId.toLowerCase()}_${Date.now()}.jpg`;
       const historyPath = path.join(getRenderDir(), filename);
       await writeAtomicFileAtRoot(getRenderDir(), filename, buffer, 'create');
       return { filename, filePath: historyPath };
@@ -75,6 +73,7 @@ export class SignageRenderStorage {
    */
   static async readCurrentImage(clientDeviceId?: string | null): Promise<Buffer | null> {
     if (clientDeviceId && clientDeviceId.length > 0) {
+      if (!CLIENT_DEVICE_ID_PATTERN.test(clientDeviceId)) return null;
       try {
         return await fs.readFile(pathForClientCurrentImage(clientDeviceId));
       } catch (error) {
