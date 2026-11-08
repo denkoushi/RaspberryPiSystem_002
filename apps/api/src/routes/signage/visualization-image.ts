@@ -1,3 +1,5 @@
+import { ApiError } from '../../lib/errors.js';
+import { prisma } from '../../lib/prisma.js';
 import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import { requireDeviceKeyOrViewer } from '../../lib/device-or-viewer.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -25,6 +27,8 @@ export function registerVisualizationImageRoute(
     async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
       await requireDeviceKeyOrViewer(request, reply);
       const { id } = paramsSchema.parse(request.params);
+      const dashboard = await prisma.visualizationDashboard.findUnique({ where: { id }, select: { id: true } });
+      if (!dashboard) throw new ApiError(404, '可視化が見つかりません');
       const buffer = await cache.get(id, () =>
         new SignageRenderer(signageService).renderVisualizationToBuffer(id)
       );

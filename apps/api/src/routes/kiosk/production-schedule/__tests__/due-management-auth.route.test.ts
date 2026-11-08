@@ -7,10 +7,10 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(), command: vi.fn(), selection: vi.fn(), dailyPlan: vi.fn(),
   rank: vi.fn(), auto: vi.fn(), importHours: vi.fn(), proposal: vi.fn(), learning: vi.fn()
 }));
-vi.mock('../../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
+vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
 vi.mock('../../../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'test-due-management-secret' } }));
 vi.mock('../../../../services/production-schedule/production-schedule-settings.service.js', () => ({
-  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify, verifyDueManagementAccessPasswordForToken: mocks.verify
 }));
 vi.mock('../../../../services/production-schedule/production-schedule-command.service.js', () => ({ upsertProductionScheduleDueDate: mocks.command }));
 vi.mock('../../../../services/production-schedule/due-management-command.service.js', () => ({
@@ -141,6 +141,14 @@ describe('due-management authorization', () => {
     expect(mocks.command).toHaveBeenCalledWith(expect.objectContaining({ actorClientDeviceId: 'device', actorDeviceName: 'terminal' }));
   });
 
+  it('records the verified PIN generation in the token and returns only the result and token', async () => {
+    mocks.verify.mockResolvedValueOnce({ success: true, passwordChangedAt: new Date(5_000) });
+    const response = await app.inject({ method: 'POST', url: base + '/verify-access-password', headers: { 'x-client-key': 'device' }, payload: { password: 'test-password' } });
+    expect(response.statusCode).toBe(200);
+    expect(Object.keys(response.json()).sort()).toEqual(['success', 'token']);
+    expect(jwt.verify(response.json().token as string, secret)).toMatchObject({ pwv: 5_000 });
+  });
+
   it('issues a device token for twelve hours only after password confirmation', async () => {
     const request = { method: 'POST' as const, url: base + '/verify-access-password', headers: { 'x-client-key': 'device' }, payload: { password: 'test-password' } };
     const response = await app.inject(request);
@@ -148,7 +156,7 @@ describe('due-management authorization', () => {
     const token = response.json().token as string;
     const claims = jwt.verify(token, secret) as jwt.JwtPayload;
     expect(claims).toMatchObject({ purpose: 'due-management', clientDeviceId: 'device' });
-    expect(claims.exp! - claims.iat!).toBe(12 * 60 * 60);
+    expect(claims.exp! - Math.floor(claims.iat!)).toBe(12 * 60 * 60);
     expect(claims).not.toHaveProperty('sub');
     expect(claims).not.toHaveProperty('role');
     const update = await app.inject({ method: 'PUT', url: base + '/seiban/A/parts/X/note', payload: { note: 'memo' }, headers: { 'x-client-key': 'device', 'x-due-management-token': token } });

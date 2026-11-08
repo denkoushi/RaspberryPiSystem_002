@@ -379,7 +379,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.restoreImport(id) };
   });
 
-  app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
+  app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk], config: { rateLimit: { max: 4, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
       z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid() }).strict(),
       z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid() }).strict(),
@@ -396,7 +396,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     } finally { reply.raw.off('close', abort); }
   });
 
-  app.post('/item-inventory/photos/read-region', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
+  app.post('/item-inventory/photos/read-region', { preHandler: [authorizeManageOrKiosk], config: { rateLimit: { max: 4, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
       z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),
       z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),

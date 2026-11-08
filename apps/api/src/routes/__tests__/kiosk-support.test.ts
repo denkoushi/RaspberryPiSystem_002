@@ -4,13 +4,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveLocationScopeContext } from '../../lib/location-scope-resolver.js';
 import { registerKioskSupportRoute } from '../kiosk/support.js';
 
-const mocks = vi.hoisted(() => ({ log: vi.fn(), thread: vi.fn(), transaction: vi.fn(), slack: vi.fn(), device: vi.fn() }));
+const mocks = vi.hoisted(() => ({ log: vi.fn(), thread: vi.fn(), transaction: vi.fn(), slack: vi.fn(), device: vi.fn(), rateLimit: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }));
 vi.mock('../../services/tools/employee.service.js', () => ({ EmployeeService: class {} }));
 vi.mock('../../services/clients/client-device-auth.service.js', () => ({ findClientDeviceByApiKey: mocks.device }));
 vi.mock('../../services/notifications/slack-webhook.js', () => ({ sendSlackNotification: mocks.slack }));
 
 beforeEach(() => {
+  mocks.rateLimit.mockReset().mockResolvedValue(true);
   mocks.log.mockReset().mockResolvedValue({});
   mocks.thread.mockReset().mockResolvedValue({ id: 'created-thread' });
   mocks.transaction.mockReset().mockImplementation(async callback => callback({
@@ -24,7 +25,7 @@ async function sendSupport(clientId?: string) {
   const app = Fastify();
   await registerKioskSupportRoute(app, {
     normalizeClientKey: raw => typeof raw === 'string' ? raw : undefined,
-    checkRateLimit: async () => true,
+    checkRateLimit: mocks.rateLimit,
     resolveLocationScopeContext
   });
   try {
@@ -50,6 +51,20 @@ describe('kiosk support response', () => {
     }) });
     expect(mocks.slack).toHaveBeenCalledWith({ clientId: 'device', clientName: '現場端末', location: '工場',
       page: '/kiosk/borrow', message: '送信者: 機械 一郎\n依頼内容: 現場まで来てください。', requestId: response.json().requestId });
+  });
+
+  it('counts a confirmed device ID rather than the supplied key', async () => {
+    expect((await sendSupport()).statusCode).toBe(200);
+    expect(mocks.rateLimit).toHaveBeenCalledWith('device', '');
+  });
+
+  it('uses the IP bucket for an invalid key and honors rejection', async () => {
+    mocks.device.mockResolvedValue(null);
+    mocks.rateLimit.mockResolvedValue(false);
+    const response = await sendSupport();
+    expect(response.statusCode).toBe(429);
+    expect(mocks.rateLimit).toHaveBeenCalledWith('', '127.0.0.1');
+    expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
   it('does not return a thread ID or send Slack after transaction failure', async () => {

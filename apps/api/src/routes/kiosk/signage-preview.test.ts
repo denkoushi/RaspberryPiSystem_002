@@ -132,16 +132,20 @@ describe('kiosk signage preview credential boundary', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it.each(['id', 'legacy', 'legacy-id', 'cached-id'] as const)('accepts %s selection input and stores the ID in both fields', async (format) => {
-    const payload = format === 'id' ? { signagePreviewTargetDeviceId: signage.id }
-      : format === 'cached-id' ? { signagePreviewTargetClientDeviceId: signage.id }
-      : { signagePreviewTargetApiKey: format === 'legacy-id' ? signage.id : signage.apiKey };
+  it.each(['id', 'cached-id'] as const)('accepts %s selection input and stores the ID in both fields', async (format) => {
+    const payload = format === 'id' ? { signagePreviewTargetDeviceId: signage.id } : { signagePreviewTargetClientDeviceId: signage.id };
     const response = await (await buildApp()).inject({ method: 'PUT', url: '/kiosk/signage-preview/selection', headers: { 'x-client-key': kiosk.apiKey }, payload });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ ok: true, signagePreviewTargetDeviceId: signage.id, signagePreviewTargetClientDeviceId: signage.id });
     expect(mocks.update).toHaveBeenCalledWith({ where: { id: kiosk.id }, data: { signagePreviewTargetDeviceId: signage.id, signagePreviewTargetApiKey: signage.id } });
     expect(storedTarget).toBe(signage.id);
     expect(response.body).not.toContain(signage.apiKey);
+  });
+
+  it.each([signage.id, signage.apiKey, null])('rejects the removed key selection field (%s)', async value => {
+    const response = await (await buildApp()).inject({ method: 'PUT', url: '/kiosk/signage-preview/selection', headers: { 'x-client-key': kiosk.apiKey }, payload: { signagePreviewTargetApiKey: value } });
+    expect(response.statusCode).toBe(400);
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 
   it('rejects a device without isSignage even when its key contains signage', async () => {

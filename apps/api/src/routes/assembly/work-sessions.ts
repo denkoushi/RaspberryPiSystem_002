@@ -237,7 +237,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
     const params = idParamSchema.parse(request.params);
     const body = approveAssemblyRecordApprovalBodySchema.parse(request.body ?? {});
     const clientDevice = await tryGetClientDevice(request.headers);
-    if (!request.user) requireKioskAccessToken(body.accessToken, 'assembly-record-approval', clientDevice?.id);
+    if (!request.user) await requireKioskAccessToken(body.accessToken, 'assembly-record-approval', clientDevice?.id);
     const session = await recordApprovalService.approve(params.id, {
       approverEmployeeTagUid: body.approverEmployeeTagUid,
       comment: body.comment,

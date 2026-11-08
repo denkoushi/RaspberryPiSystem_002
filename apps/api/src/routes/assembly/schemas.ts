@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { TORQUE_INPUT_PORT_SOURCES } from '../../services/assembly/index.js';
 
 export const optionalTrueOnlyBooleanSchema = z
   .union([z.literal('true'), z.literal(true)])
@@ -188,7 +187,7 @@ export const createAssemblyLotBodySchema = z
 
 export const recordTorqueBodySchema = z.object({
   value: z.coerce.number(),
-  source: z.enum(TORQUE_INPUT_PORT_SOURCES).default('manual'),
+  source: z.enum(['manual', 'mock']).default('manual'),
   rawPayload: z.unknown().optional()
 });
 

@@ -786,7 +786,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${session.id}/record-torque`,
       headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: { value: 20, source: 'mock' }
+      payload: { value: 20, source: 'manual' }
     });
     expect(secondOk.statusCode).toBe(200);
     expect(secondOk.json().outcome.areaCompleted).toBe(true);

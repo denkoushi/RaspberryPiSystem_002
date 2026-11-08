@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findUnique: vi.fn(),
+  findPinConfig: vi.fn(),
   env: {
     ADMIN_MFA_REQUIRED: false as boolean,
     JWT_ACCESS_SECRET: 'unit-access-secret',
@@ -14,7 +15,7 @@ const mocks = vi.hoisted(() => ({
   }
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.findUnique } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.findUnique }, productionScheduleAccessPasswordConfig: { findUnique: mocks.findPinConfig } } }));
 
 import {
   authenticate,
@@ -85,6 +86,7 @@ function captureSyncError(fn: () => void): ApiError {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
+  mocks.findPinConfig.mockReset().mockResolvedValue(null);
   mocks.env.ADMIN_MFA_REQUIRED = false;
   mocks.findUnique.mockReset().mockResolvedValue(makeUser());
 });
@@ -388,11 +390,42 @@ describe('signDueManagementToken / requireDueManagementToken', () => {
     }
   });
 
-  it('accepts a freshly signed token for the same device', () => {
+  it('accepts a freshly signed token for the same device', async () => {
     const token = signDueManagementToken('dev-1');
-    expect(() => requireDueManagementToken(token, 'dev-1')).not.toThrow();
+    await expect(requireDueManagementToken(token, 'dev-1')).resolves.toBeUndefined();
     const payload = jwt.verify(token, ACCESS) as jwt.JwtPayload;
     expect(payload.exp! - payload.iat!).toBe(12 * 60 * 60);
+  });
+
+  it('invalidates tokens verified against an earlier PIN once the PIN changes', async () => {
+    const token = signDueManagementToken('dev-1');
+    mocks.findPinConfig.mockResolvedValue({ passwordChangedAt: new Date(FIXED_NOW.getTime() + 100) });
+    await expect(requireDueManagementToken(token, 'dev-1')).rejects.toMatchObject({
+      statusCode: 403, code: 'DUE_MANAGEMENT_TOKEN_EXPIRED'
+    });
+    expect(mocks.findPinConfig).toHaveBeenLastCalledWith({ where: { location: 'shared' }, select: { passwordChangedAt: true } });
+  });
+
+  it('accepts a token verified against the current PIN', async () => {
+    const changedAt = new Date(FIXED_NOW.getTime() - 60_000);
+    mocks.findPinConfig.mockResolvedValue({ passwordChangedAt: changedAt });
+    await expect(requireDueManagementToken(signDueManagementToken('dev-1', changedAt), 'dev-1')).resolves.toBeUndefined();
+  });
+
+  it('rejects a token verified against the old PIN even when it is issued after the change', async () => {
+    const oldChangedAt = new Date(FIXED_NOW.getTime() - 60_000);
+    const newChangedAt = new Date(FIXED_NOW.getTime() - 1);
+    mocks.findPinConfig.mockResolvedValue({ passwordChangedAt: newChangedAt });
+    await expect(requireDueManagementToken(signDueManagementToken('dev-1', oldChangedAt), 'dev-1')).rejects.toMatchObject({
+      code: 'DUE_MANAGEMENT_TOKEN_EXPIRED'
+    });
+  });
+
+  it('keeps tokens without a PIN generation valid until the PIN is first changed', async () => {
+    const legacy = jwt.sign({ purpose: 'due-management', clientDeviceId: 'dev-1', iat: FIXED_NOW.getTime() / 1000 }, ACCESS, { algorithm: 'HS256', expiresIn: '12h' });
+    await expect(requireDueManagementToken(legacy, 'dev-1')).resolves.toBeUndefined();
+    mocks.findPinConfig.mockResolvedValue({ passwordChangedAt: new Date(FIXED_NOW.getTime() - 1) });
+    await expect(requireDueManagementToken(legacy, 'dev-1')).rejects.toMatchObject({ code: 'DUE_MANAGEMENT_TOKEN_EXPIRED' });
   });
 
   it.each([undefined, null, ''])('requires a token (%s)', (raw) => {

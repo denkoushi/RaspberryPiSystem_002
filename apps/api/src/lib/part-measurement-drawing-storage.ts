@@ -1,3 +1,4 @@
+import { validateImageBuffer, IMAGE_INPUT_MAX_PIXELS } from './validated-image.js';
 import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import path from 'path';
@@ -79,7 +80,7 @@ async function generateDerivativeWebp(
   derivativeKey: string,
   width: DerivativeWidth
 ): Promise<void> {
-  const buffer = await sharp(sourceBuffer, { failOn: 'none' })
+  const buffer = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: IMAGE_INPUT_MAX_PIXELS })
     .resize({ width, withoutEnlargement: true })
     .webp({ quality: DERIVATIVE_WEBP_QUALITY })
     .toBuffer();
@@ -187,6 +188,7 @@ export class PartMeasurementDrawingStorage {
       throw new Error(`画像サイズが大きすぎます（最大 ${MAX_BYTES} バイト）`);
     }
     const ext = this.assertMime(mimetype);
+    await validateImageBuffer(buffer, mimetype);
     const id = randomUUID();
     const filename = `${id}${ext}`;
     await getFileStorageRuntime().store.write({
@@ -233,7 +235,7 @@ export class PartMeasurementDrawingStorage {
       getFileStorageRuntime().store.stat(sourceKey),
       getFileStorageRuntime().store.read(sourceKey, { verifyIntegrity: true }),
     ]);
-    const metadata = await sharp(sourceBuffer, { failOn: 'none' }).metadata();
+    const metadata = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: IMAGE_INPUT_MAX_PIXELS }).metadata();
     const sourceWidth = metadata.width ?? 0;
 
     if (sourceWidth > 0 && sourceWidth <= width) {
@@ -260,6 +262,7 @@ export class PartMeasurementDrawingStorage {
     if (buffer.length === 0) {
       throw new Error('図面原本が空です');
     }
+    if (kind === 'tiff') await validateImageBuffer(buffer, 'image/tiff');
     const storageKey = `${DRAWING_SOURCE_KEY_PREFIX}${randomUUID()}${DRAWING_SOURCE_EXT[kind]}`;
     await getFileStorageRuntime().store.write({
       key: storageKey,

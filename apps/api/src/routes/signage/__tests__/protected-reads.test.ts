@@ -29,6 +29,7 @@ describe.each([
 ])('protected read %s', (url, cacheControl) => {
   let app: ReturnType<typeof Fastify>;
   beforeEach(async () => {
+    vi.spyOn(prisma.visualizationDashboard, 'findUnique').mockResolvedValue({ id: 'dashboard' } as never);
     vi.spyOn(prisma.user, 'findUnique').mockResolvedValue(viewer as never);
     app = Fastify();
     await app.register(async (routes) => {

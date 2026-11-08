@@ -45,6 +45,15 @@
 - 貸出の返却と取消は、ログイン利用者では ADMIN と MANAGER だけにした。端末キーからの利用は従来どおり。
 - 端末の登録は ADMIN だけ。端末設定の更新は MANAGER も可能だが、「代理操作」の値を変えるのは ADMIN だけ（管理画面のスイッチも ADMIN 以外は押せない）。
 
+## API hardening follow-up (2026-11-08)
+
+- API の小さな安全上の修正を追加。正常な端末・管理画面の操作を維持し、入力境界と一時状態の扱いを対象テストで確認する。
+- サイネージ対象の指定は端末 ID に統一。Web は既に ID を送信しているため変更不要。既存 DB データの移行は不要。
+- heartbeat は位置を更新せず、位置の変更は管理画面の端末更新を使用する（最大100文字）。
+- PIN 変更時刻を保持する nullable 列の migration を追加。反映時は通常の migration 手順を適用する。
+- OAuth callback の未認証での既存フローを維持する。
+- この作業はローカル実装まで。commit、push、本番反映は含まない。
+
 ## Operational Notes
 
 - バックアップの SSH 設定（`StrictHostKeyChecking=yes`、専用 `known_hosts`）が実際に効くようになる。専用 known_hosts に載っていない端末のクライアントバックアップは失敗するので、反映後の初回バックアップ結果を確認する。
@@ -57,6 +66,8 @@
 - 回帰テスト: `plugins/__tests__/rate-limit-path-normalization.test.ts`、`lib/__tests__/log-url.test.ts`、`services/backup/__tests__/backup-ssh-policy.test.ts`、`routes/backup/__tests__/config-read.internal.test.ts`、`routes/tools/loans/__tests__/device-auth.test.ts`（delete）、`services/tools/__tests__/loan.service.test.ts`（performedByUserId）。
 
 ## Validation
+
+- 2026-11-08 follow-up: API build 型検査成功。変更対象 Vitest は397件成功・6件skip。DB統合は3件成功・88件失敗・47件skip（DBアクセスがEPERM、変更前コードでも1件の同症状を再現）。DB関連の動作検証は未完了。
 
 - `cd apps/api && npx vitest run src/plugins src/lib src/routes/kiosk src/routes/tools src/routes/backup src/services/backup src/services/tools` → 854 passed、DB 接続が必要な `csv-backup.target.test.ts` の2件のみ失敗（ローカルに Postgres なし、変更と無関係）。
 - ansible-core（scratch venv）で JSON extra vars が分割されず `ansible_ssh_common_args` 全体が渡ること、旧形式では `-o` だけになることを確認。
@@ -72,7 +83,6 @@
 
 | 場所 | 影響 | 直し方の案 |
 | --- | --- | --- |
-| `routes/clients/core.ts` heartbeat の `location` | 端末が自分の location（スコープキー）を変更でき、他端末やサイトの割当範囲を乗っ取れる | heartbeat から location を外す（初回のみ受理）か、管理者 PUT でのみ変更可能にする |
 | `routes/kiosk/production-schedule/due-management-global-rank.ts` | 代理権限のない端末でも任意の `targetLocation` の全体ランクを読み書きできる | 他ルートと同じく `canProxyTargetLocation` でない場合は actorLocation 以外を 403（意図確認が必要） |
 | `routes/assembly/procedure-documents.ts` ほか | 手順書の割当解除・下書き削除・改名などがキオスク端末キーだけで実行でき、PIN は UI でのみ確認 | どの操作を PIN 必須にするか決め、サーバー側で `requireAccessPassword` か短期トークンを要求 |
 | 監査メタデータの `actorClientKey`（global rank、order split、学習イベント） | 端末キーが DB の監査 JSON に平文で残る | 今後は端末IDかハッシュを保存。既存行の整理は移行が必要 |

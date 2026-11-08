@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { registerRateLimit } from '../../plugins/rate-limit.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { db, suggest, verify } = vi.hoisted(() => ({
@@ -26,6 +27,20 @@ async function post(payload: object, credentials: Record<string, string> = heade
 }
 
 describe('inventory photo suggestion route', () => {
+  it('limits photo inference to four calls per minute', async () => {
+    const app = Fastify();
+    registerErrorHandler(app);
+    await app.register(registerRateLimit);
+    registerItemInventoryRoutes(app);
+    try {
+      for (let n = 0; n < 5; n++) {
+        const response = await app.inject({ method: 'POST', url: '/item-inventory/import-photos/suggest-tool-fields', headers, payload: body });
+        expect(response.statusCode).toBe(n < 4 ? 200 : 429);
+      }
+      expect(suggest).toHaveBeenCalledTimes(4);
+    } finally { await app.close(); }
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     db.clientDevice.findUnique.mockImplementation(async ({ where }: { where: { apiKey: string } }) => where.apiKey === 'kiosk-key' ? { id: 'terminal' } : null);
