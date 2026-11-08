@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     productionScheduleDScheduleMinutes: { findMany: vi.fn() },
     orderPlacementBranchState: { findMany: vi.fn() },
     mobilePlacementShelf: { findMany: vi.fn() },
+    mobileSlipVerifyRecord: { groupBy: vi.fn().mockResolvedValue([]) },
     productionScheduleGrindingPlanningBoardState: {
       findUnique: vi.fn(),
       create: vi.fn(),
@@ -175,6 +176,7 @@ function configurePersistence(): void {
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([]);
+  prisma.mobileSlipVerifyRecord.groupBy.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   prisma.productionScheduleOrderAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
@@ -324,6 +326,29 @@ describe('grinding planning board service orchestration', () => {
     const projection = mocks.projectGrindingPlanningBoard.mock.results[0]?.value.items[0];
     expect(projection).not.toHaveProperty('isFirstProcess');
     expect(projection).not.toHaveProperty('firstProcessState');
+  });
+
+  it.each([
+    [null, 'unordered', '2026-11-05T00:00:00Z', true, null],
+    [null, 'ordered', null, false, null],
+    ['excluded', 'unordered', '2026-11-06T00:00:01Z', true, null],
+    ['excluded', 'unordered', '2026-11-05T23:59:59Z', false, 'excluded']
+  ] as const)('treats a phone verify match as arrived state=%s material=%s verifiedAt=%s', async (state, status, verifiedAt, arrived, effective) => {
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+    mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue(state ? [
+      { itemKey: 'row:item-a', state, recordedAt: new Date('2026-11-06T00:00:00Z') }
+    ] : []);
+    mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map([['ORDER-A\tPART-A', { status, basis: 'material' }]]));
+    mocks.prisma.mobileSlipVerifyRecord.groupBy.mockResolvedValue(verifiedAt ? [
+      { transferOrderBarcodeRaw: '1', _max: { verifiedAt: new Date(verifiedAt) } }
+    ] : []);
+    const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+    expect(result.items[0]).toMatchObject({ isFirstProcess: true, firstProcessState: effective, arrived });
+    expect(mocks.prisma.mobileSlipVerifyRecord.groupBy).toHaveBeenCalledWith({
+      by: ['transferOrderBarcodeRaw'],
+      where: { outcome: 'match', transferOrderBarcodeRaw: { in: ['1'] } },
+      _max: { verifiedAt: true }
+    });
   });
 
   it.each([true, false])('uses first-process state only on first processes and ignores old daily arrival there (%s)', async (isFirstProcess) => {

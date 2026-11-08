@@ -279,6 +279,17 @@ async function findPlacementByProductNo(items: readonly GrindingPlanningBoardIte
   return placements;
 }
 
+// スマートフォンの照合で一致した製造オーダは社内で加工する品なので、最初の工程は来ているとみなす。
+async function findLatestVerifyMatchByProductNo(productNos: readonly string[]) {
+  if (!productNos.length) return new Map<string, Date>();
+  const rows = await prisma.mobileSlipVerifyRecord.groupBy({
+    by: ['transferOrderBarcodeRaw'],
+    where: { outcome: 'match', transferOrderBarcodeRaw: { in: [...productNos] } },
+    _max: { verifiedAt: true }
+  });
+  return new Map(rows.flatMap((row) => row._max.verifiedAt ? [[row.transferOrderBarcodeRaw, row._max.verifiedAt] as const] : []));
+}
+
 export async function getGrindingPlanningBoard(params: { includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
@@ -352,6 +363,8 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
       itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
     select: { itemKey: true, state: true, recordedAt: true }
   })) : [];
+  const verifyMatchByProductNo = page.length ? await perf.measure('verifyMatch', () => findLatestVerifyMatchByProductNo(
+    [...new Set(arrivalRows.filter((row) => row.isFirstProcess).map((row) => String(row.rowData.ProductNo ?? '').trim()).filter(Boolean))])) : new Map<string, Date>();
   const firstProcessByKey = new Map(firstProcessArrivals.map((arrival) => [arrival.itemKey, arrival]));
   const manualArrivalIds = new Set(manualArrivals.map((arrival) => arrival.itemKey));
   const arrivalById = new Map(arrivalRows.map((row) => [row.id, row]));
@@ -361,11 +374,13 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
     const placement = placementByProductNo.get(item.productNo.trim());
     const isFirstProcess = arrivalById.get(item.itemId)?.isFirstProcess ?? false;
     const manual = isFirstProcess ? firstProcessByKey.get(item.parentItemId ?? item.itemId) : undefined;
-    const newerPlacement = manual && placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime());
+    const verifiedAt = verifyMatchByProductNo.get(item.productNo.trim());
+    const newerPlacement = manual && (placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime())
+      || (verifiedAt != null && verifiedAt.getTime() > manual.recordedAt.getTime()));
     const firstProcessState = manual?.state === 'arrived' ? 'arrived' as const
       : manual?.state === 'excluded' && !newerPlacement ? 'excluded' as const : null;
     const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
-      : Boolean(placement) || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
+      : Boolean(placement) || verifiedAt != null || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
     return {
       ...item,
       isFirstProcess,

@@ -252,11 +252,12 @@ Webは保存成功時に当日着を即時反映し、ボードのクエリを�
 
 ### First-process Arrival State (2026-11-08)
 
-製番ボードだけ、最初の工程は材料・配膳・永続する手動状態で到着を判定する。
+製番ボードだけ、最初の工程は材料・配膳・スマートフォン照合・永続する手動状態で到着を判定する。
 部品キーは製番・品番（未割当製番 `********` のみ ProductNo も含む）。
 除外資源以外の前工程が完了済みを含めて存在しなければ最初の工程で、工順なしも同様に扱う。
-優先順位は、手動「着」→有効な手動「外」→配膳あり→材料 `unordered` / `ordered` は未着→その他は到着。
-「外」の記録時刻より後の配膳があれば、GETではDBを書き換えず手動状態を `null` として自動判定へ戻す。
+優先順位は、手動「着」→有効な手動「外」→配膳あり、または照合一致あり→材料 `unordered` / `ordered` は未着→その他は到着。
+照合は `MobileSlipVerifyRecord` の `outcome = 'match'` を `transferOrderBarcodeRaw` = ProductNo で引き、最新の `verifiedAt` を使う（照合一致は社内で加工する品の意味）。
+「外」の記録時刻より後の配膳または照合一致があれば、GETではDBを書き換えず手動状態を `null` として自動判定へ戻す。
 同時刻・過去の配膳では「外」を維持する。「着」「外」は日付で失効しない。
 
 `PUT /kiosk/production-schedule/grinding-planning-board/first-process-arrival` は既存のitem識別・revisionに
