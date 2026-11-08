@@ -60,7 +60,7 @@ alwaysApply: false
 - 反映の仕組み: `infrastructure/**`、`scripts/deploy/**`、`scripts/update-all-clients.sh`、`scripts/server/**`、`scripts/ci/**`、`.github/workflows/**`、`.github/actions/**`
 - 秘密の扱い: `**/vault.yml*`、`**/.env*`、秘密を読む・渡すコード
 
-軽い変更はCodexのレビュー1回とする。重い変更は、毎回Codexと別のモデル（Claude環境ではFable）の両方でレビューし、次の止め方まで繰り返す（例: PR #2616）。
+軽い変更はCodexのレビュー1回とする。重大・中は直し、重大を直したときだけもう1回見る。重い変更は、毎回Codexと別のモデル（Claude環境ではFable）の両方でレビューし、次の止め方まで繰り返す（例: PR #2616）。
 
 - 重大または中が出たら、直してもう1回。両方のモデルで重大・中が0件なら終える。
 - 中が同じ運用の場面に集まったら、次の回の前にその場面を一文で決めてレビュー記録に書く。後から場面を広げない。
