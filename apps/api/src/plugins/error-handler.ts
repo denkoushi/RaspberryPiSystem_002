@@ -533,7 +533,9 @@ export function registerErrorHandler(app: FastifyInstance): void {
       'Unhandled error',
     );
 
-    const message = getMessage(error) || 'サーバーエラー';
+    const message = isProduction && classification.status >= 500
+      ? 'サーバーエラー'
+      : getMessage(error) || 'サーバーエラー';
 
     reply
       .status(classification.status)

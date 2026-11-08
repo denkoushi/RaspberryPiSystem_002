@@ -2,6 +2,9 @@ import { trustImmediateProxy } from '../../lib/trust-proxy.js';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique } } }));
+
 // Replace the auth services so the real auth routes can be registered without a DB.
 vi.mock('../../services/auth/auth.service.js', () => ({
   AuthService: class {
@@ -21,6 +24,7 @@ const BASE_TIME = new Date('2026-01-15T00:00:00.000Z');
 let app: FastifyInstance;
 
 beforeEach(async () => {
+  findUnique.mockReset().mockResolvedValue(null);
   // Only Date is faked: @fastify/rate-limit's LocalStore measures windows with Date.now().
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(BASE_TIME);
@@ -34,6 +38,7 @@ beforeEach(async () => {
   app.get('/api/kiosk/config', ok);
   app.get('/api/admin/thing', ok);
   app.get('/api/admin/other', ok);
+  app.get('/api/admin/items/:id', ok);
   // Generic catch-all used for allow-list checks so every prefix hits a real route.
   app.get('/*', ok);
   await app.register(registerAuthRoutes, { prefix: '/api' });
@@ -122,14 +127,37 @@ describe('registerRateLimit', () => {
     expect((await hit('/api/kiosk/other', 121)).at(-1)).toBe(429);
   });
 
-  it('counts kiosk requests per client key, normalising JSON-quoted keys', async () => {
+  it('shares a bucket across parameter values on the same route', async () => {
+    await hit('/api/admin/items/first', 120);
+    expect((await hit('/api/admin/items/second', 1))).toEqual([429]);
+  });
+
+  it('shares an IP bucket for unregistered and changing client key headers', async () => {
     await hit('/api/kiosk/config', 120, { 'x-client-key': 'kiosk-a' });
-    // Same key spelled as JSON string shares the counter.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': '"kiosk-a"' } })).statusCode).toBe(429);
-    // A different kiosk on the same IP is not affected.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config', headers: { 'x-client-key': 'kiosk-b' } })).statusCode).toBe(200);
-    // Requests without a key share an "anonymous" bucket separate from keyed kiosks.
-    expect((await app.inject({ method: 'GET', url: '/api/kiosk/config' })).statusCode).toBe(200);
+    expect(await hit('/api/kiosk/config', 1, { 'x-client-key': 'kiosk-b' })).toEqual([429]);
+    expect(await hit('/api/kiosk/config', 1)).toEqual([429]);
+  });
+
+  it('separates registered devices behind the same IP and normalizes their keys', async () => {
+    findUnique.mockImplementation(async ({ where: { apiKey } }) =>
+      apiKey === 'kiosk-a' ? { id: 'device-a' } : apiKey === 'kiosk-b' ? { id: 'device-b' } : null);
+    await hit('/api/kiosk/config', 120, { 'x-client-key': '"kiosk-a"' });
+    expect(await hit('/api/kiosk/config', 1, { 'x-client-key': 'kiosk-a' })).toEqual([429]);
+    expect(await hit('/api/kiosk/config', 1, { 'x-client-key': 'kiosk-b' })).toEqual([200]);
+    expect(findUnique).toHaveBeenCalledWith({ where: { apiKey: 'kiosk-a' }, select: { id: true } });
+  });
+
+  it('shares a registered device bucket across parameter values', async () => {
+    findUnique.mockResolvedValue({ id: 'device-a' });
+    const headers = { 'x-client-key': 'kiosk-a' };
+    await hit('/api/admin/items/first', 120, headers);
+    expect(await hit('/api/admin/items/second', 1, headers)).toEqual([429]);
+  });
+
+  it('falls back to the IP bucket when the device lookup fails', async () => {
+    findUnique.mockRejectedValue(new Error('Database unavailable'));
+    await hit('/api/kiosk/config', 120);
+    expect(await hit('/api/kiosk/config', 1, { 'x-client-key': 'kiosk-a' })).toEqual([429]);
   });
 
   it.each([

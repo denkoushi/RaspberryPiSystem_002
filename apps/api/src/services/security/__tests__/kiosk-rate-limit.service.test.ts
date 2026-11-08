@@ -165,8 +165,9 @@ describe('getKioskRateLimitService', () => {
     expect(await limiter.isAllowed(one)).toBe(true);
     expect(await limiter.isAllowed(one)).toBe(false);
     expect(mocks.warn).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: 'kiosk-support', key: 'kiosk:kiosk-support:key-a:10.0.0.1' }),
+      expect.objectContaining({ scope: 'kiosk-support' }),
       expect.stringContaining('Falling back')
     );
+    expect(mocks.warn.mock.calls[0]?.[0]).not.toHaveProperty('key');
   });
 });

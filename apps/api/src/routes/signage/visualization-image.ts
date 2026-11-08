@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { SignageRenderer } from '../../services/signage/signage.renderer.js';
 import { SignageService } from '../../services/signage/index.js';
+import { VisualizationImageCache } from '../../services/signage/visualization-image-cache.js';
 
 const paramsSchema = z.object({
   id: z.string().guid(),
@@ -15,14 +16,15 @@ export function registerVisualizationImageRoute(
   app: FastifyInstance,
   signageService: SignageService
 ): void {
+  const cache = new VisualizationImageCache();
   app.get(
     '/visualization-image/:id',
     { config: { rateLimit: false } },
     async (request: FastifyRequest<{ Params: { id: string } }>, reply) => {
       const { id } = paramsSchema.parse(request.params);
-      const renderer = new SignageRenderer(signageService);
-
-      const buffer = await renderer.renderVisualizationToBuffer(id);
+      const buffer = await cache.get(id, () =>
+        new SignageRenderer(signageService).renderVisualizationToBuffer(id)
+      );
 
       reply
         .type('image/jpeg')
