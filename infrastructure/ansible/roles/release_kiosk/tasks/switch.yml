@@ -28,7 +28,7 @@
   ansible.builtin.file:
     path: "{{ release_kiosk_labwc_dir }}"
     state: directory
-    owner: "{{ ansible_user }}"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
     group: "{{ release_kiosk_user_gid.stdout }}"
     mode: '0755'
   register: release_kiosk_labwc_directory_install
@@ -105,11 +105,19 @@
   changed_when: release_kiosk_labwc_edit.stdout == 'changed'
   when: manage_kiosk_browser | default(false) | bool
 
+- name: Switch the GUI autologin account before starting the browser
+  ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-session-switch.yml"
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Reconfigure labwc for the kiosk user
   ansible.builtin.command:
     argv: [/usr/bin/python3, /usr/local/bin/kiosk-hotcorner.py, --reconfigure]
   become: true
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ release_kiosk_user_uid.stdout }}"
   changed_when: true

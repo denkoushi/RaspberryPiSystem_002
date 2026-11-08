@@ -162,14 +162,22 @@
     - release_kiosk_labwc_edit_attempted | default(false) | bool
     - release_kiosk_legacy_autostart_obsolete | default(false) | bool
 
+- name: Restore the previous GUI session before restarting display services
+  ansible.builtin.import_tasks: rollback_gui_session.yml
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Reconfigure the restored labwc session
   ansible.builtin.command:
     argv: [/usr/bin/python3, '-', --reconfigure]
     stdin: "{{ lookup('ansible.builtin.file', role_path ~ '/files/kiosk-hotcorner.py') }}"
   become: true
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ release_kiosk_previous_gui_owner.stdout | default(kiosk_gui_user | default(ansible_user), true) }}"
   environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ release_kiosk_user_uid.stdout }}"
+    XDG_RUNTIME_DIR: "/run/user/{{ release_kiosk_previous_gui_uid.stdout | default(release_kiosk_user_uid.stdout, true) }}"
   register: release_kiosk_labwc_rollback_reconfigure
   changed_when: true
   # The restored rc.xml is read at the next login anyway; a missing session

@@ -3,12 +3,27 @@
 set -euo pipefail
 
 export DISPLAY={{ kiosk_display | default(':0') }}
-export XAUTHORITY=/home/{{ ansible_user }}/.Xauthority
+export XAUTHORITY={{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.Xauthority
 export GTK_USE_PORTAL=0
 export XDG_CURRENT_DESKTOP={{ kiosk_desktop | default('LXDE') }}
 export XDG_SESSION_TYPE=x11
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u)/bus
-# キーリングを無効化（パスワードダイアログを表示しない）
+{% if kiosk_unprivileged_session_enabled | default(false) | bool %}export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# A graphical target can be active before this user's desktop is ready.
+for attempt in $(seq 1 60); do
+  if [[ -S /tmp/.X11-unix/X0 && -S "${XDG_RUNTIME_DIR}/bus" ]] \
+    && pgrep -u "$(id -u)" -x labwc >/dev/null \
+    && xset q >/dev/null 2>&1 \
+    && dbus-send --session --type=method_call --print-reply --dest=org.freedesktop.DBus / org.freedesktop.DBus.ListNames >/dev/null 2>&1; then
+    break
+  fi
+  if [[ "${attempt}" == 60 ]]; then
+    echo "GUI session is not ready for $(id -un)" >&2
+    exit 1
+  fi
+  sleep 1
+done
+{% endif %}# キーリングを無効化（パスワードダイアログを表示しない）
 export GNOME_KEYRING_CONTROL=""
 export SSH_AUTH_SOCK=""
 # NetworkManagerの認証ダイアログを抑制
@@ -24,7 +39,7 @@ BROWSER_MODE="{{ kiosk_browser_mode | default('app-like') | lower }}"
 BROWSER_BIN="{{ kiosk_browser_exec_path | default(kiosk_browser_chromium_binary | default('/usr/bin/chromium-browser')) }}"
 {# split lines so rendered file never concatenates 1 + FF_PROFILE into one token #}
 KIOSK_FF_MINIMIZE="{% if kiosk_firefox_minimize_chrome_enabled | default(true) | bool %}1{% else %}0{% endif %}"
-FF_PROFILE="/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
+FF_PROFILE="{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
 REPO_PATH="{{ repo_path | default('/opt/RaspberryPiSystem_002') }}"
 
 # Pi5 上の Web SPA 更新を Pi4 Firefox に届ける（clientKey だけでは URL が不変でキャッシュされ得る）
@@ -56,7 +71,7 @@ if [[ "${BROWSER_ENGINE}" == "chromium" ]]; then
 {% if kiosk_server_cert_spki_sha256 | default('') | length > 0 %}
     # Trust only the pinned server key; Chromium honours the list only with an explicit profile dir.
     --ignore-certificate-errors-spki-list={{ kiosk_server_cert_spki_sha256 }}
-    --user-data-dir=/home/{{ ansible_user }}/.config/chromium
+    --user-data-dir={{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/chromium
 {% else %}
     --ignore-certificate-errors
 {% endif %}

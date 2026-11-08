@@ -1501,7 +1501,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertLess(names.index("Apply the validated kiosk labwc configuration"), names.index("Reconfigure labwc for the kiosk user"))
         self.assertLess(names.index("Reconfigure labwc for the kiosk user"), names.index("Restart the kiosk browser to apply the exact release SHA"))
         self.assertEqual(sum(task.get("ansible.builtin.systemd", {}).get("name") == "kiosk-browser.service" for task in switch_list), 1)
-        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ ansible_user }}")
+        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ kiosk_gui_user | default(ansible_user) }}")
         stop = rollback["Stop the candidate hotcorner before restoring files"]["ansible.builtin.systemd"]
         self.assertEqual((stop["state"], stop["enabled"]), ("stopped", False))
         restore = rollback["Restore backed-up Pi4 release files"]["ansible.builtin.copy"]
@@ -1530,7 +1530,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         # release source on stdin under the kiosk user's Wayland environment.
         reconfigure = rollback["Reconfigure the restored labwc session"]
         self.assertEqual(reconfigure["ansible.builtin.command"]["argv"], ["/usr/bin/python3", "-", "--reconfigure"])
-        self.assertEqual(reconfigure["become_user"], "{{ ansible_user }}")
+        self.assertEqual(reconfigure["become_user"], "{{ release_kiosk_previous_gui_owner.stdout | default(kiosk_gui_user | default(ansible_user), true) }}")
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(

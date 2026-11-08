@@ -1,0 +1,47 @@
+---
+- name: Prepare the optional kiosk GUI user
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when: kiosk_unprivileged_session_enabled | default(false) | bool
+  block:
+    - name: Validate the optional GUI account boundary
+      ansible.builtin.assert:
+        that:
+          - not (release_kiosk_first_install | default(false) | bool)
+          - "'kiosk' in group_names"
+          - kiosk_unprivileged_session_user is match('^[a-z_][a-z0-9_-]{0,31}$')
+          - kiosk_unprivileged_session_user not in [ansible_user, 'root', 'sudo', 'wheel', 'admin', 'docker', 'disk', 'shadow']
+          - kiosk_unprivileged_session_groups | intersect(['sudo', 'wheel', 'admin', 'docker', 'root', 'disk', 'shadow']) | length == 0
+        fail_msg: >-
+          The optional GUI session requires a separate kiosk account without
+          administrative groups and is not supported during first-install.
+
+    - name: Ensure ACL tools for switching between unprivileged accounts
+      ansible.builtin.apt:
+        name: acl
+        state: present
+
+    - name: Create the dedicated GUI primary group
+      ansible.builtin.group:
+        name: '{{ kiosk_unprivileged_session_user }}'
+        state: present
+
+    - name: Create the locked GUI account without SSH keys
+      ansible.builtin.user:
+        name: '{{ kiosk_unprivileged_session_user }}'
+        group: '{{ kiosk_unprivileged_session_user }}'
+        groups: '{{ kiosk_unprivileged_session_groups }}'
+        append: false
+        create_home: true
+        shell: /bin/bash
+        password: '!'
+        password_lock: true
+        generate_ssh_key: false
+        state: present
+
+    - name: Resolve the dedicated GUI home and UID
+      ansible.builtin.getent:
+        database: passwd
+        key: '{{ kiosk_unprivileged_session_user }}'

@@ -1,0 +1,27 @@
+---
+- name: Wait for the GUI user's X0 and D-Bus session
+  ansible.builtin.shell: |
+    set -eu
+    uid="$(id -u)"
+    export DISPLAY=:0
+    export XDG_RUNTIME_DIR="/run/user/${uid}"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    export XAUTHORITY="${HOME}/.Xauthority"
+    test -S /tmp/.X11-unix/X0
+    test -S "${XDG_RUNTIME_DIR}/bus"
+    pgrep -u "${uid}" -x labwc >/dev/null
+    xset q >/dev/null
+    dbus-send --session --type=method_call --print-reply --dest=org.freedesktop.DBus / org.freedesktop.DBus.ListNames >/dev/null
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: '{{ kiosk_gui_user | default(ansible_user) }}'
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  register: kiosk_gui_session_ready
+  retries: 30
+  delay: 2
+  until: kiosk_gui_session_ready.rc == 0
+  changed_when: false

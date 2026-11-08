@@ -96,16 +96,16 @@ class DistrustedIntermediatesTests(unittest.TestCase):
 
     def test_nss_uses_session_owner_and_preserves_existing_database(self) -> None:
         self.assertEqual(task_with("ansible.builtin.apt")["ansible.builtin.apt"], {"name": "libnss3-tools", "state": "present"})
-        self.assertEqual(task_with("ansible.builtin.getent")["ansible.builtin.getent"]["key"], "{{ ansible_user }}")
+        self.assertEqual(task_with("ansible.builtin.getent")["ansible.builtin.getent"]["key"], "{{ distrusted_nss_user }}")
         directories = next(t for t in TASKS if t.get("loop") == [".pki", ".pki/nssdb"])
-        self.assertEqual(directories["ansible.builtin.file"]["owner"], "{{ ansible_user }}")
+        self.assertEqual(directories["ansible.builtin.file"]["owner"], "{{ distrusted_nss_user }}")
         init = next(t for t in TASKS if "-N" in t.get("ansible.builtin.command", {}).get("argv", []))
         self.assertTrue(init["ansible.builtin.command"]["creates"].endswith("/.pki/nssdb/cert9.db"))
         self.assertIn("--empty-password", init["ansible.builtin.command"]["argv"])
         for task in TASKS:
             if "certutil" in task.get("ansible.builtin.command", {}).get("argv", []):
-                self.assertEqual(task["become_user"], "{{ ansible_user }}")
-        self.assertEqual(POLICY["vars"]["distrusted_nss_home"], "{{ getent_passwd[ansible_user][4] }}")
+                self.assertEqual(task["become_user"], "{{ distrusted_nss_user }}")
+        self.assertEqual(POLICY["vars"]["distrusted_nss_home"], "{{ getent_passwd[distrusted_nss_user][4] }}")
 
     def test_nss_listing_skips_only_explicitly_prohibited_nicknames(self) -> None:
         listing, install = TASKS[-2:]

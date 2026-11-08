@@ -1,4 +1,8 @@
 ---
+- name: Prepare the optional GUI account for full provisioning
+  ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Validate manifest-backed kiosk destinations for release
   ansible.builtin.assert:
     that:
@@ -139,10 +143,10 @@
 
 - name: Ensure labwc config directory exists for kiosk user
   ansible.builtin.file:
-    path: "/home/{{ ansible_user }}/.config/labwc"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc"
     state: directory
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: '0755'
   when:
     - terminal_release_mode | default('full') == 'full'
@@ -150,7 +154,7 @@
 
 - name: Check labwc configuration directory before release
   ansible.builtin.stat:
-    path: "/home/{{ ansible_user }}/.config/labwc"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc"
   register: labwc_config_directory
   when:
     - terminal_release_mode | default('full') == 'release-only'
@@ -168,7 +172,7 @@
 
 - name: Check if labwc user rc.xml exists
   ansible.builtin.stat:
-    path: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc/rc.xml"
   when: manage_kiosk_browser | default(false) | bool
   register: labwc_rc_stat
 
@@ -185,9 +189,9 @@
 - name: Copy system labwc rc.xml to user config (first run)
   ansible.builtin.copy:
     src: /etc/xdg/labwc/rc.xml
-    dest: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc/rc.xml"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: '0644'
     remote_src: true
   when:
@@ -198,7 +202,7 @@
 
 - name: Add Super+Shift+P keybind to labwc rc.xml (show panel for Wi-Fi GUI)
   ansible.builtin.blockinfile:
-    path: "/home/{{ ansible_user }}/.config/labwc/rc.xml"
+    path: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc/rc.xml"
     block: |
       <keybind key="W-S-p">
         <action name="Execute">
@@ -208,3 +212,22 @@
     marker: "<!-- {mark} ANSIBLE MANAGED: show-kiosk-panel -->"
     insertbefore: "</keyboard>"
   when: manage_kiosk_browser | default(false) | bool
+
+- name: Apply the optional GUI autologin account after full provisioning
+  ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-session-switch.yml"
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - manage_kiosk_browser | default(false) | bool
+
+- name: Start the browser after the full-provisioning GUI session is ready
+  ansible.builtin.systemd:
+    name: kiosk-browser.service
+    state: started
+  when:
+    - terminal_release_mode | default('full') == 'full'
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)

@@ -2100,3 +2100,4 @@ APIの概要と詳細。
 - [コード保守性の改善プログラム](plans/code-health-refactor-execplan.md) — ファイル行数の歯止め、重複関数の共通化、Hermes の独立、巨大ファイル分割を段階ごとに進める計画と進捗。
 - [コード健全化 第2期](plans/code-health-phase2-execplan.md) — 画面の鍵の集約の続き、ファイル配信のエラー応答の共通化、大きいファイルのテストと分割、ESLint 9 への更新を段階ごとに進める計画と進捗。
 - 配膳スマホの日程・製番からの照合: [ExecPlan](./plans/mobile-placement-schedule-execplan.md)
+- [Pi4 kiosk screen session account](plans/kiosk-unprivileged-session-execplan.md) — Optional screen account, disabled mechanism delivery, trial, physical verification, and gradual rollout.
