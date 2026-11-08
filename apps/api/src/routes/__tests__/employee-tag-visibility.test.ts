@@ -12,6 +12,9 @@ import { registerEmployeeListRoute } from '../tools/employees/list.js';
 vi.mock('../../config/env.js', () => ({
   env: { JWT_ACCESS_SECRET: 'employee-visibility-test-secret' }
 }));
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { user: { findUnique: vi.fn() } }
+}));
 
 const employee: Employee = {
   id: '123e4567-e89b-42d3-a456-426614174000',

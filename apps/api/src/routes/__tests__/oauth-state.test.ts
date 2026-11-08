@@ -15,6 +15,9 @@ import { registerGmailOAuthRoutes } from '../gmail/oauth.js';
 vi.mock('../../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'oauth-test-access-secret' }
 }));
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { user: { findUnique: vi.fn() } }
+}));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 }));

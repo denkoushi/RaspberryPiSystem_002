@@ -162,6 +162,7 @@ describe('Hermes search trial authorization',()=>{
     const url = '/assembly/hermes-search-trial/answer';
     try {
       for (const role of ['VIEWER', 'MANAGER', 'ADMIN']) {
+        vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'reader', username: 'reader', role, status: 'ACTIVE', mfaEnabled: false } as never);
         const token = jwt.sign({ sub: 'reader', username: 'reader', role }, env.JWT_ACCESS_SECRET);
         const headers = { authorization: `Bearer ${token}` };
         expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
