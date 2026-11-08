@@ -967,7 +967,8 @@ export class AssemblyTemplateService {
     );
   }
 
-  async retire(id: string) {
+  async retire(id: string, accessPassword?: string) {
+    await this.accessService.requireAccessPassword(accessPassword);
     try {
       await prisma.assemblyTemplate.update({
         where: { id },

@@ -154,7 +154,8 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
 
   app.delete('/assembly/templates/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
-    const result = await templateService.retire(params.id);
+    const body = z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
+    const result = await templateService.retire(params.id, body.accessPassword);
     if (result === 'not_found') throw new DomainHttpError(404, 'テンプレートが見つかりません');
     return reply.status(204).send();
   });

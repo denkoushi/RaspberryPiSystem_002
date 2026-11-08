@@ -4,15 +4,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KioskAssemblyPage } from './KioskAssemblyPage';
 
-const { ingestMock } = vi.hoisted(() => ({
-  ingestMock: vi.fn()
+const { ingestMock, retireMock, pageState } = vi.hoisted(() => ({
+  ingestMock: vi.fn(),
+  retireMock: vi.fn(),
+  pageState: { focus: 'procedures' }
 }));
 
 vi.mock('../../api/client', () => ({
   ingestAssemblyProcedureDocumentsFromGmail: ingestMock,
   listAssemblyTemplateSummaries: vi.fn(async () => []),
   listAssemblyProcedureDocumentSummaries: vi.fn(async () => []),
-  retireAssemblyTemplate: vi.fn()
+  retireAssemblyTemplate: retireMock
 }));
 
 vi.mock('../../features/assembly', () => ({
@@ -42,11 +44,13 @@ vi.mock('../../features/assembly', () => ({
   AssemblyProcedurePreviewDialog: () => null,
   AssemblyProcedureUploadModal: () => null,
   AssemblyTemplateHistoryDialog: () => null,
-  AssemblyTemplateLibraryTable: () => null,
+  AssemblyTemplateLibraryTable: (props: { onRetireClick: (template: object) => void }) => (
+    <button onClick={() => props.onRetireClick({ id: 'template-1', modelCode: 'MODEL', procedurePattern: '標準', version: 2 })}>無効</button>
+  ),
   KIOSK_ASSEMBLY_HOME_PATH: '/kiosk/assembly',
   kioskAssemblyLibraryPath: ({ focus }: { focus: string }) => `/kiosk/assembly/library?focus=${focus}`,
   kioskAssemblyTemplateNewPath: () => '/kiosk/assembly/templates/new',
-  parseAssemblyLibrarySearch: () => ({}),
+  parseAssemblyLibrarySearch: () => ({ focus: pageState.focus }),
   readAssemblyApiErrorMessage: (error: unknown, fallback: string) => {
     const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
     return typeof message === 'string' ? message : fallback;
@@ -123,6 +127,24 @@ function startGmailImport() {
 describe('KioskAssemblyPage Gmail procedure import', () => {
   beforeEach(() => {
     ingestMock.mockReset();
+    retireMock.mockReset();
+    pageState.focus = 'procedures';
+  });
+
+  it('confirms template retirement with a password and keeps API errors in the dialog', async () => {
+    pageState.focus = 'templates';
+    retireMock.mockRejectedValueOnce(new Error('request failed')).mockResolvedValueOnce(undefined);
+    renderPage();
+    fireEvent.click(screen.getByRole('button', { name: '無効' }));
+    expect(screen.getByRole('button', { name: '無効化する' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('管理パスワード'), { target: { value: '2520' } });
+    fireEvent.click(screen.getByRole('button', { name: '無効化する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('テンプレートの無効化に失敗しました。');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '無効化する' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(retireMock).toHaveBeenLastCalledWith('template-1', '2520');
+    expect(screen.getByText('テンプレートを無効化しました: MODEL / 標準')).toBeInTheDocument();
   });
 
   it('disables the action while importing and refreshes the library after a new draft', async () => {

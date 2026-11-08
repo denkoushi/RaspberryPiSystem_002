@@ -125,6 +125,6 @@ export async function reviseAssemblyTemplate(id: string, payload: Partial<Assemb
   return data.template;
 }
 
-export async function retireAssemblyTemplate(id: string) {
-  await api.delete(`/assembly/templates/${id}`);
+export async function retireAssemblyTemplate(id: string, accessPassword: string) {
+  await api.delete(`/assembly/templates/${id}`, { data: { accessPassword } });
 }

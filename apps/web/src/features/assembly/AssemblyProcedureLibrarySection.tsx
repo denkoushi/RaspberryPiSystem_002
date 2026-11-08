@@ -10,6 +10,7 @@ import { Button, buttonClassName } from '../../components/ui/Button';
 import { IconActionTooltip } from '../../components/ui/IconActionTooltip';
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
+import { AssemblyAccessPasswordConfirmDialog } from './AssemblyAccessPasswordConfirmDialog';
 import { AssemblyLibraryActionIcon } from './AssemblyLibraryActionIcon';
 import { AssemblyProcedureRenameModal } from './AssemblyProcedureRenameModal';
 import { kioskAssemblyProcedureDocumentEditPath, kioskAssemblyTemplateNewPath } from './assemblyRoutes';
@@ -70,6 +71,8 @@ export function AssemblyProcedureLibrarySection({
   const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const isPreview = previewDocuments != null;
   const [previewSearchQuery, setPreviewSearchQuery] = useState(initialSearchQuery);
+  const [unpublishTarget, setUnpublishTarget] = useState<AssemblyProcedureDocumentSummaryDto | null>(null);
+  const [unpublishError, setUnpublishError] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<AssemblyProcedureDocumentSummaryDto | null>(null);
   const [busyDocumentId, setBusyDocumentId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -114,19 +117,19 @@ export function AssemblyProcedureLibrarySection({
     reload();
   };
 
-  const handleUnpublish = async (document: AssemblyProcedureDocumentSummaryDto) => {
-    if (isPreview) return;
-    if (!window.confirm(`手順書「${document.name}」の公開を取り消します。使用中の場合はできません。よろしいですか。`)) {
-      return;
-    }
+  const handleUnpublish = async (accessPassword: string) => {
+    if (isPreview || !unpublishTarget) return;
+    const document = unpublishTarget;
+    setUnpublishError(null);
     setBusyDocumentId(document.id);
     setActionError(null);
     try {
-      await unpublishAssemblyProcedureDocument(document.id);
+      await unpublishAssemblyProcedureDocument(document.id, accessPassword);
+      setUnpublishTarget(null);
       onChanged?.(`手順書「${document.name}」を下書きに戻しました。`);
       reload();
     } catch (e: unknown) {
-      setActionError(readAssemblyApiErrorMessage(e, '公開取り消しに失敗しました。'));
+      setUnpublishError(readAssemblyApiErrorMessage(e, '公開取り消しに失敗しました。'));
     } finally {
       setBusyDocumentId(null);
     }
@@ -279,7 +282,7 @@ export function AssemblyProcedureLibrarySection({
                               variant="ghostOnDark"
                               className="flex h-11 w-11 shrink-0 items-center justify-center rounded !p-0"
                               disabled={isPreview || busy}
-                              aria-label="公開取消" onClick={() => void handleUnpublish(document)}
+                              aria-label="公開取消" onClick={() => { setUnpublishError(null); setUnpublishTarget(document); }}
                             >
                               <AssemblyLibraryActionIcon action="unpublish" />
                             </Button></IconActionTooltip>
@@ -312,6 +315,21 @@ export function AssemblyProcedureLibrarySection({
         </div>
 
       </div>
+      {unpublishTarget ? <AssemblyAccessPasswordConfirmDialog
+        key={unpublishTarget.id}
+        title="手順書の公開を取り消す"
+        note="下書きに戻します。使用中の場合はできません。"
+        summaryRows={[
+          { label: '手順書', value: unpublishTarget.name },
+          ...(unpublishTarget.revisionNumber != null ? [{ label: '版', value: `v${unpublishTarget.revisionNumber}` }] : [])
+        ]}
+        confirmLabel="公開を取り消す"
+        busyLabel="取り消し中…"
+        busy={busyDocumentId != null}
+        error={unpublishError}
+        onConfirm={(password) => void handleUnpublish(password)}
+        onCancel={() => setUnpublishTarget(null)}
+      /> : null}
       <AssemblyProcedureRenameModal
         isOpen={renameTarget != null}
         document={renameTarget}

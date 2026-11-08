@@ -225,9 +225,10 @@ export async function approvePublishAssemblyProcedureDocument(input: {
   return data.document;
 }
 
-export async function unpublishAssemblyProcedureDocument(id: string) {
+export async function unpublishAssemblyProcedureDocument(id: string, accessPassword: string) {
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
-    `/assembly/procedure-documents/${id}/unpublish`
+    `/assembly/procedure-documents/${id}/unpublish`,
+    { accessPassword }
   );
   return data.document;
 }

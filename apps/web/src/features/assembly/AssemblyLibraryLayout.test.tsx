@@ -137,9 +137,30 @@ describe('assembly dense library', () => {
     expect(within(unusedRow).getByRole('button', { name: '削除' })).toBeEnabled();
     fireEvent.click(within(unusedRow).getByRole('button', { name: '削除' }));
     fireEvent.click(within(usedRow).getByRole('button', { name: '公開取消' }));
-    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: '手順書の公開を取り消す' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '公開を取り消す' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(deleteDocument).not.toHaveBeenCalled();
     expect(unpublishDocument).not.toHaveBeenCalled();
+  });
+
+  it('keeps unpublication errors in the dialog and reloads after confirmation succeeds', async () => {
+    listDocuments.mockResolvedValue([document]);
+    unpublishDocument.mockRejectedValueOnce({}).mockResolvedValueOnce({});
+    const onChanged = vi.fn();
+    render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} onChanged={onChanged} /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: '公開取消' }));
+    fireEvent.change(screen.getByLabelText('管理パスワード'), { target: { value: '2520' } });
+    fireEvent.click(screen.getByRole('button', { name: '公開を取り消す' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('公開取り消しに失敗しました。');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onChanged).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '公開を取り消す' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(unpublishDocument).toHaveBeenLastCalledWith(document.id, '2520');
+    expect(onChanged).toHaveBeenCalledWith(`手順書「${document.name}」を下書きに戻しました。`);
   });
 
   it('shows assignment chips, filters unused documents with a count, and reports filter changes', () => {

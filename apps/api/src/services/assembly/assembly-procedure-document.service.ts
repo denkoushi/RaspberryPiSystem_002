@@ -445,7 +445,8 @@ export class AssemblyProcedureDocumentService {
     return { document, changed: true };
   }
 
-  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
+  async unpublish(id: string, accessPassword?: string): Promise<AssemblyProcedureDocumentRecord> {
+    await this.accessService.requireAccessPassword(accessPassword);
     return runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
       const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });
