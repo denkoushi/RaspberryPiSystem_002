@@ -3287,6 +3287,24 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(detail.json().session.approval?.approverEmployeeNameSnapshot).toBe(approver.displayName);
+
+    const viewer = await createTestUser('VIEWER');
+    for (const readHeaders of [createAuthHeader(viewer.token), { 'x-client-key': client.apiKey }]) {
+      for (const url of [
+        '/api/assembly/work-sessions/summary?status=completed&productNo=ASM-APPROVAL-001',
+        `/api/assembly/work-sessions/${sessionId}`
+      ]) {
+        const response = await app.inject({ method: 'GET', url, headers: readHeaders });
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        const approval = body.session?.approval ?? body.sessions[0].approval;
+        expect(approval.approverEmployeeNameSnapshot).toBe(approver.displayName);
+        expect(approval).not.toHaveProperty('approverNfcTagUidSnapshot');
+        expect(response.body).not.toContain(approver.nfcTagUid!);
+      }
+    }
+    const savedApproval = await prisma.assemblyWorkSessionApproval.findUnique({ where: { sessionId } });
+    expect(savedApproval?.approverNfcTagUidSnapshot).toBe(approver.nfcTagUid);
   });
 
   it('rejects assembly record approval for non-completed sessions and unknown NFC tags', async () => {

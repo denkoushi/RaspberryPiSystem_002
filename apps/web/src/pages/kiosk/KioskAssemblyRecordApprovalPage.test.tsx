@@ -215,7 +215,7 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     const approval = {
       approvedAt: '2026-07-06T02:30:00.000Z', approverEmployeeId: 'employee-2',
       approverEmployeeCodeSnapshot: 'E002', approverEmployeeNameSnapshot: '高橋',
-      approverNfcTagUidSnapshot: 'tag-2', comment: null, clientDeviceId: null, clientDeviceNameSnapshot: null
+      comment: null, clientDeviceId: null, clientDeviceNameSnapshot: null
     };
     mockListSummaries.mockResolvedValue([summary, { ...summary, id: 'session-2', productNo: 'ASM-002', approval }]);
     mockGetSession.mockImplementation(async (id: string) => id === 'session-2' ? { ...detail, id, productNo: 'ASM-002', approval } : detail);
@@ -368,7 +368,7 @@ describe('KioskAssemblyRecordApprovalPage', () => {
     const approval = {
       approvedAt: '2026-07-06T02:30:00.000Z', approverEmployeeId: 'employee-2',
       approverEmployeeCodeSnapshot: 'E002', approverEmployeeNameSnapshot: '高橋',
-      approverNfcTagUidSnapshot: 'tag-2', comment: null, clientDeviceId: null, clientDeviceNameSnapshot: null
+      comment: null, clientDeviceId: null, clientDeviceNameSnapshot: null
     };
     mockResolveOperatorNfc.mockResolvedValue({ employeeId: 'employee-2', displayName: '高橋' });
     mockApprove.mockResolvedValue({ ...detail, approval });

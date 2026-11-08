@@ -134,7 +134,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       }
     );
 
-    app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowView }, async (request) => {
+    app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowWriteKiosk }, async (request) => {
       const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);
       const result = await resolveSelfInspectionNfcTagUid(body.uid);
       return { result };
@@ -226,7 +226,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       return { session: await selfInspectionService.getRecordApprovalSessionDetail(params.id) };
     });
 
-    app.post('/part-measurement/self-inspection/record-approvals/approver/resolve', { preHandler: allowView }, async (request) => {
+    app.post('/part-measurement/self-inspection/record-approvals/approver/resolve', { preHandler: allowWriteKiosk }, async (request) => {
       const body = resolveSelfInspectionRecordApprovalApproverBodySchema.parse(request.body);
       return { result: await selfInspectionService.resolveRecordApprovalApprover(body.uid) };
     });
