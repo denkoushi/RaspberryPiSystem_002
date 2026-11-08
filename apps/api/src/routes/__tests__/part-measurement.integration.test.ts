@@ -3686,6 +3686,29 @@ describe('part-measurement templates API', () => {
     ]);
     const completedAtAfterFirst = approveRes.json().session.completedAt as string;
 
+    for (const readHeaders of [createAuthHeader(viewerToken), { 'x-client-key': kioskClient.apiKey }]) {
+      for (const url of [
+        `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+        `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-measurements`,
+        `/api/part-measurement/self-inspection/record-approvals/sessions/${sessionId}`,
+        '/api/part-measurement/self-inspection/record-approvals?state=approved'
+      ]) {
+        const response = await app.inject({ method: 'GET', url, headers: readHeaders });
+        expect(response.statusCode).toBe(200);
+        expect(response.body).not.toContain('approverEmployeeNfcTagUidSnapshot');
+        expect(response.body).not.toContain('inspectorEmployeeNfcTagUidSnapshot');
+        expect(response.body).not.toContain(activeApprover.nfcTagUid!);
+        const body = response.json();
+        if (url.includes('/record-approvals')) {
+          const session = body.session ?? body.sessions.find((row: { id: string }) => row.id === sessionId);
+          expect(session.recordApproval.approverEmployeeNameSnapshot).toBe('Record Approver');
+          if (body.session) expect(session.requiredEntries[0].inspectorEntry).not.toBeNull();
+        } else if (url.endsWith('/inspector-measurements')) {
+          expect(body.session.entries.length).toBeGreaterThan(0);
+        }
+      }
+    }
+
     const approvalRow = await prisma.selfInspectionRecordApproval.findUnique({
       where: { sessionId }
     });

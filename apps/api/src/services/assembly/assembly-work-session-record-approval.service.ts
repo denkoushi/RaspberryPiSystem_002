@@ -22,7 +22,6 @@ export function serializeAssemblyWorkSessionApproval(
     approverEmployeeId: approval.approverEmployeeId,
     approverEmployeeCodeSnapshot: approval.approverEmployeeCodeSnapshot,
     approverEmployeeNameSnapshot: approval.approverEmployeeNameSnapshot,
-    approverNfcTagUidSnapshot: approval.approverNfcTagUidSnapshot,
     comment: approval.comment,
     clientDeviceId: approval.clientDeviceId,
     clientDeviceNameSnapshot: approval.clientDeviceNameSnapshot
