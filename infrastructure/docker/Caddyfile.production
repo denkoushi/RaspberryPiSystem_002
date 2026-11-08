@@ -94,5 +94,16 @@
       roll_keep 300
       roll_keep_for 168h
     }
+    format filter {
+      request>headers>X-Client-Key delete
+      request>headers>Referer query {
+        delete clientKey
+        delete key
+      }
+      request>uri query {
+        delete clientKey
+        delete key
+      }
+    }
   }
 }

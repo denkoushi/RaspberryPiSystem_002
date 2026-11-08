@@ -10,7 +10,13 @@ import { RiggingLoanService } from '../../services/rigging/index.js';
 import { registerMeasuringInstrumentRoutes } from '../measuring-instruments/index.js';
 import { registerRiggingRoutes } from '../rigging/index.js';
 
-vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique: vi.fn() } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } } }));
+
+function tokenForUser(user: User): string {
+  const activeUser = { ...user, status: 'ACTIVE' as const, mfaEnabled: true };
+  vi.mocked(prisma.user.findUnique).mockResolvedValue(activeUser);
+  return signAccessToken(activeUser);
+}
 
 const ownId = '11111111-1111-4111-8111-111111111111';
 const otherId = '22222222-2222-4222-8222-222222222222';
@@ -52,13 +58,13 @@ describe.each([
     expect(service.prototype.return).toHaveBeenCalledWith(expect.objectContaining({ clientId: otherId }));
   });
   it('checks the device key when a VIEWER JWT falls back to device authentication', async () => {
-    const token = signAccessToken({ id: 'viewer', username: 'viewer', role: 'VIEWER' } as User);
+    const token = tokenForUser({ id: 'viewer', username: 'viewer', role: 'VIEWER' } as User);
     const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'x-client-key': 'key' }, payload: { loanId, clientId: otherId } });
     expect(response.statusCode).toBe(403);
     expect(service.prototype.return).not.toHaveBeenCalled();
   });
   it.each(['ADMIN', 'MANAGER'] as const)('allows %s JWT with an unrelated device key', async role => {
-    const token = signAccessToken({ id: 'user', username: 'user', role } as User);
+    const token = tokenForUser({ id: 'user', username: 'user', role } as User);
     const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'x-client-key': 'key' }, payload: { loanId, clientId: otherId } });
     expect(response.statusCode).toBe(200);
     expect(service.prototype.return).toHaveBeenCalledWith(expect.objectContaining({ clientId: otherId }));
