@@ -382,14 +382,12 @@ export function useApproveSelfInspectionRecordApproval() {
     mutationFn: ({
       sessionId,
       approverEmployeeTagUid,
-      comment,
-      accessToken
+      comment
     }: {
       sessionId: string;
       approverEmployeeTagUid: string;
       comment?: string | null;
-      accessToken?: string;
-    }) => approveSelfInspectionRecordApproval(sessionId, { approverEmployeeTagUid, comment, accessToken }),
+    }) => approveSelfInspectionRecordApproval(sessionId, { approverEmployeeTagUid, comment }),
     onSuccess: (session) => {
       void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalsAll });
       void queryClient.invalidateQueries({ queryKey: selfInspectionQueryKeys.recordApprovalSession(session.id) });

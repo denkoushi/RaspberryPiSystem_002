@@ -17,7 +17,6 @@ const mockUseResolveApprover = vi.fn();
 const mockUseApproveRecordApproval = vi.fn();
 const mockUseSelfInspectionInvalidations = vi.fn();
 const mockUseSelfInspectionInvalidation = vi.fn();
-const mockVerifyPassword = vi.fn();
 const mockGetResolvedClientKey = vi.fn();
 
 const nfcState: {
@@ -26,7 +25,6 @@ const nfcState: {
 } = { event: null, enabledCalls: [] };
 
 vi.mock('../../api/client', () => ({
-  verifyKioskSelfInspectionRecordApprovalAccessPassword: (...args: unknown[]) => mockVerifyPassword(...args),
   getResolvedClientKey: () => mockGetResolvedClientKey()
 }));
 
@@ -132,8 +130,6 @@ function renderPage(
 
 describe('KioskSelfInspectionRecordApprovalPage', () => {
   beforeEach(() => {
-    mockVerifyPassword.mockReset();
-    mockVerifyPassword.mockResolvedValue({ success: true, token: 'self-token' });
     mockUseSelfInspectionRegistrationPolicy.mockReset();
     mockUpdateRegistrationPolicy.mockReset();
     mockUseSelfInspectionRecordApprovals.mockReset();
@@ -262,8 +258,6 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     renderPage();
     await screen.findAllByText('ORDER-active-1');
     fireEvent.click(screen.getByRole('button', { name: '承認を開始' }));
-    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
     expect(nfcState.enabledCalls.at(-1)).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: '完了記録' }));
@@ -340,8 +334,6 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     expect(nfcState.enabledCalls.at(-1)).toBe(false);
 
     fireEvent.click(screen.getByRole('button', { name: '承認を開始' }));
-    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
     expect(nfcState.enabledCalls.at(-1)).toBe(true);
 
     nfcState.event = { uid: 'employee-tag', timestamp: '2026-08-21T01:00:00.000Z' };
@@ -379,29 +371,7 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     expect(nfcState.enabledCalls.at(-1)).toBe(false);
   });
 
-  it.each(['EXPIRED', 'INVALID', 'DEVICE_MISMATCH', 'REQUIRED'])('sends the in-memory token and reopens the PIN dialog for %s', async (suffix) => {
-    const session = makeSession('confirmation', { recordApprovalState: 'approvable' });
-    mockUseSelfInspectionRecordApprovals.mockReturnValue({ data: { sessions: [session] }, isLoading: false });
-    mockUseSelfInspectionRecordApprovalSession.mockReturnValue({ data: makeDetail(session), isLoading: false });
-    const approve = vi.fn().mockRejectedValue({ isAxiosError: true, response: { status: 403, data: { errorCode: `SELF_INSPECTION_RECORD_APPROVAL_TOKEN_${suffix}` } } });
-    mockUseApproveRecordApproval.mockReturnValue({ mutateAsync: approve, isPending: false });
-    mockUseResolveApprover.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ kind: 'employee', employee: { employeeCode: 'E001', displayName: '承認者A', nfcTagUid: 'tag' } }), isPending: false });
-    const view = renderPage();
-    fireEvent.click(await screen.findByRole('button', { name: '承認を開始' }));
-    expect(nfcState.enabledCalls.at(-1)).toBe(false);
-    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
-    nfcState.event = { uid: 'tag', timestamp: '2026-11-08T01:00:00Z' };
-    view.rerender(<MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection/record-approvals']}><Routes><Route path="/kiosk/part-measurement/self-inspection/record-approvals" element={<KioskSelfInspectionRecordApprovalPage />} /></Routes></MemoryRouter>);
-    const button = await screen.findByRole('button', { name: '承認して完了' });
-    await waitFor(() => expect(button).toBeEnabled());
-    fireEvent.click(button);
-    await screen.findByRole('dialog', { name: '記録確認の暗証番号' });
-    expect(approve).toHaveBeenCalledWith({ sessionId: session.id, approverEmployeeTagUid: 'tag', comment: null, accessToken: 'self-token' });
-    expect(nfcState.enabledCalls.at(-1)).toBe(false);
-  });
-
-  it('displays the same-person approval message without reopening the PIN dialog', async () => {
+  it('starts approval without a PIN and displays the same-person approval message', async () => {
     const session = makeSession('confirmation', { recordApprovalState: 'approvable' });
     mockUseSelfInspectionRecordApprovals.mockReturnValue({ data: { sessions: [session] }, isLoading: false });
     mockUseSelfInspectionRecordApprovalSession.mockReturnValue({ data: makeDetail(session), isLoading: false });
@@ -410,8 +380,6 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     mockUseResolveApprover.mockReturnValue({ mutateAsync: vi.fn().mockResolvedValue({ kind: 'employee', employee: { employeeCode: 'E001', displayName: '承認者A', nfcTagUid: 'tag' } }), isPending: false });
     const view = renderPage();
     fireEvent.click(await screen.findByRole('button', { name: '承認を開始' }));
-    for (const digit of '2520') fireEvent.click(screen.getByRole('button', { name: digit, exact: true }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument());
     nfcState.event = { uid: 'tag', timestamp: '2026-11-08T01:00:00Z' };
     view.rerender(<MemoryRouter initialEntries={['/kiosk/part-measurement/self-inspection/record-approvals']}><Routes><Route path="/kiosk/part-measurement/self-inspection/record-approvals" element={<KioskSelfInspectionRecordApprovalPage />} /></Routes></MemoryRouter>);
     const button = await screen.findByRole('button', { name: '承認して完了' });
@@ -419,7 +387,7 @@ describe('KioskSelfInspectionRecordApprovalPage', () => {
     fireEvent.click(button);
     expect(await screen.findByText('同じ人は承認できません')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '記録確認の暗証番号' })).not.toBeInTheDocument();
-    expect(approve).toHaveBeenCalledWith({ sessionId: session.id, approverEmployeeTagUid: 'tag', comment: null, accessToken: 'self-token' });
+    expect(approve).toHaveBeenCalledWith({ sessionId: session.id, approverEmployeeTagUid: 'tag', comment: null });
   });
 
   it('keeps inspector-final records read-only and renders deletion history without approval controls', async () => {

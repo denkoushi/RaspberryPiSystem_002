@@ -8,9 +8,8 @@ vi.mock('../http', () => ({ api: mocks }));
 beforeEach(() => { vi.clearAllMocks(); });
 describe.each([
   { name: 'assembly', verify: verifyKioskAssemblyRecordApprovalAccessPassword, approve: approveAssemblyWorkSessionRecordApproval,
-    verifyUrl: '/kiosk/assembly/record-approvals/verify-access-password', approveUrl: '/assembly/work-sessions/session/record-approval/approve' },
-  { name: 'self-inspection', verify: verifyKioskSelfInspectionRecordApprovalAccessPassword, approve: approveSelfInspectionRecordApproval,
-    verifyUrl: '/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password', approveUrl: '/part-measurement/self-inspection/sessions/session/record-approval/approve' }
+    verifyUrl: '/kiosk/assembly/record-approvals/verify-access-password', approveUrl: '/assembly/work-sessions/session/record-approval/approve' }
+
 ])('$name approval access contract', ({ verify, approve, verifyUrl, approveUrl }) => {
   it('returns the password confirmation token', async () => {
     mocks.post.mockResolvedValue({ data: { success: true, token: 'confirmation' } });
@@ -21,5 +20,18 @@ describe.each([
     mocks.post.mockResolvedValue({ data: { session: { id: 'session' } } });
     await approve('session', { approverEmployeeTagUid: 'employee', accessToken: 'confirmation' });
     expect(mocks.post).toHaveBeenCalledWith(approveUrl, { approverEmployeeTagUid: 'employee', accessToken: 'confirmation' });
+  });
+});
+
+describe('self-inspection approval access contract', () => {
+  it('keeps the password confirmation response free of tokens', async () => {
+    mocks.post.mockResolvedValue({ data: { success: true } });
+    expect(await verifyKioskSelfInspectionRecordApprovalAccessPassword({ password: '2520' })).toEqual({ success: true });
+    expect(mocks.post).toHaveBeenCalledWith('/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password', { password: '2520' });
+  });
+  it('sends only the employee tag for approval', async () => {
+    mocks.post.mockResolvedValue({ data: { session: { id: 'session' } } });
+    await approveSelfInspectionRecordApproval('session', { approverEmployeeTagUid: 'employee' });
+    expect(mocks.post).toHaveBeenCalledWith('/part-measurement/self-inspection/sessions/session/record-approval/approve', { approverEmployeeTagUid: 'employee' });
   });
 });

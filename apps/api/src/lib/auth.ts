@@ -36,12 +36,12 @@ export function signRefreshToken(user: User): string {
   return jwt.sign(payload, secret, options);
 }
 
-export type KioskAccessPurpose = 'due-management' | 'assembly-record-approval' | 'self-inspection-record-approval';
+export type KioskAccessPurpose = 'due-management' | 'assembly-record-approval';
 
 function kioskAccessTokenContext(purpose: KioskAccessPurpose) {
   return {
     code: purpose.replaceAll('-', '_').toUpperCase(),
-    label: purpose === 'due-management' ? '納期管理' : purpose === 'assembly-record-approval' ? '組立記録確認' : '自主検査記録確認'
+    label: purpose === 'due-management' ? '納期管理' : '組立記録確認'
   };
 }
 

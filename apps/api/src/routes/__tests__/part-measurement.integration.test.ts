@@ -1,4 +1,3 @@
-import { signKioskAccessToken } from '../../lib/auth.js';
 import { execFile } from 'child_process';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -3459,7 +3458,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: auditEmployee.nfcTagUid }
+      payload: { approverEmployeeTagUid: auditEmployee.nfcTagUid }
     });
     expect(requiredPolicyApproveRes.statusCode).toBe(409);
     expect(requiredPolicyApproveRes.json().message).toContain('計測機器');
@@ -3489,7 +3488,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: auditEmployee.nfcTagUid }
+      payload: { approverEmployeeTagUid: auditEmployee.nfcTagUid }
     });
     expect(approveBeforeInspectorRes.statusCode).toBe(409);
     expect(approveBeforeInspectorRes.json().message).toContain('検査員');
@@ -3666,7 +3665,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: inactiveApprover.nfcTagUid }
+      payload: { approverEmployeeTagUid: inactiveApprover.nfcTagUid }
     });
     expect(inactiveRecordApproveRes.statusCode).toBe(403);
 
@@ -3674,7 +3673,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: instrumentTagUid }
+      payload: { approverEmployeeTagUid: instrumentTagUid }
     });
     expect(duplicateRecordApproveRes.statusCode).toBe(409);
 
@@ -3696,7 +3695,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${sessionId}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: activeApprover.nfcTagUid }
+      payload: { approverEmployeeTagUid: activeApprover.nfcTagUid }
     });
     expect(approveRes.statusCode).toBe(200);
     expect(approveRes.json().session.status).toBe('completed');
@@ -4086,7 +4085,7 @@ describe('part-measurement templates API', () => {
       method: 'POST',
       url: `/api/part-measurement/self-inspection/sessions/${session.id}/record-approval/approve`,
       headers: { 'x-client-key': kioskClient.apiKey },
-      payload: { accessToken: signKioskAccessToken('self-inspection-record-approval', kioskClient.id), approverEmployeeTagUid: inspector.nfcTagUid }
+      payload: { approverEmployeeTagUid: inspector.nfcTagUid }
     });
     expect(legacyApprovalAttemptRes.statusCode).toBe(409);
     expect(legacyApprovalAttemptRes.json().message).toContain('検査員');

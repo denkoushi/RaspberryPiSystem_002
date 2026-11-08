@@ -533,7 +533,6 @@ export const resolveSelfInspectionRecordApprovalApproverBodySchema = z.object({
 });
 
 export const approveSelfInspectionRecordApprovalBodySchema = z.object({
-  accessToken: z.unknown().optional(),
   approverEmployeeTagUid: z.string().min(1).max(200),
   comment: z.string().max(500).optional().nullable()
 });

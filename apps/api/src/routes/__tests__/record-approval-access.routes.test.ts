@@ -52,27 +52,50 @@ beforeEach(async () => {
 afterEach(async () => { await app.close(); });
 
 describe.each(cases)('$purpose access confirmation', ({ purpose, approve, verify }) => {
-  it.each(['missing', 'device', 'purpose', 'expired'] as const)('returns 403 for %s confirmation', async (kind) => {
-    const accessToken = kind === 'missing' ? undefined : signKioskAccessToken(
-      kind === 'purpose' ? 'due-management' : purpose,
-      kind === 'device' ? 'other' : 'device', kind === 'expired' ? -1 : '12h'
-    );
-    const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
-      payload: { approverEmployeeTagUid: 'employee', accessToken } });
-    expect(response.statusCode).toBe(403);
-    const suffix = { missing: 'REQUIRED', device: 'DEVICE_MISMATCH', purpose: 'INVALID', expired: 'EXPIRED' }[kind];
-    expect(response.json().errorCode).toBe(`${purpose.replaceAll('-', '_').toUpperCase()}_TOKEN_${suffix}`);
-    expect(mocks.approve).not.toHaveBeenCalled();
-  });
-  it('returns a device-bound token and accepts it for approval', async () => {
-    const verified = await app.inject({ method: 'POST', url: verify, headers: { 'x-client-key': 'device' }, payload: { password: '2520' } });
-    expect(verified.statusCode).toBe(200);
-    expect(verified.json()).toEqual({ success: true, token: expect.any(String) });
-    const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
-      payload: { approverEmployeeTagUid: 'employee', accessToken: verified.json().token } });
-    expect(response.statusCode).toBe(200);
-    expect(mocks.approve).toHaveBeenCalledOnce();
-  });
+  if (purpose === 'assembly-record-approval') {
+    it.each(['missing', 'device', 'purpose', 'expired'] as const)('returns 403 for %s confirmation', async (kind) => {
+      const accessToken = kind === 'missing' ? undefined : signKioskAccessToken(
+        kind === 'purpose' ? 'due-management' : purpose,
+        kind === 'device' ? 'other' : 'device', kind === 'expired' ? -1 : '12h'
+      );
+      const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
+        payload: { approverEmployeeTagUid: 'employee', accessToken } });
+      expect(response.statusCode).toBe(403);
+      const suffix = { missing: 'REQUIRED', device: 'DEVICE_MISMATCH', purpose: 'INVALID', expired: 'EXPIRED' }[kind];
+      expect(response.json().errorCode).toBe(`${purpose.replaceAll('-', '_').toUpperCase()}_TOKEN_${suffix}`);
+      expect(mocks.approve).not.toHaveBeenCalled();
+    });
+    it('returns a device-bound token and accepts it for approval', async () => {
+      const verified = await app.inject({ method: 'POST', url: verify, headers: { 'x-client-key': 'device' }, payload: { password: '2520' } });
+      expect(verified.statusCode).toBe(200);
+      expect(verified.json()).toEqual({ success: true, token: expect.any(String) });
+      const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
+        payload: { approverEmployeeTagUid: 'employee', accessToken: verified.json().token } });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.approve).toHaveBeenCalledOnce();
+    });
+  } else {
+    it('accepts an employee tag without password confirmation or a token', async () => {
+      const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
+        payload: { approverEmployeeTagUid: 'employee' } });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.approve).toHaveBeenCalledWith(id, expect.objectContaining({ approverEmployeeTagUid: 'employee' }));
+      expect(mocks.verify).not.toHaveBeenCalled();
+    });
+    it('keeps the password confirmation response free of tokens', async () => {
+      const response = await app.inject({ method: 'POST', url: verify, headers: { 'x-client-key': 'device' }, payload: { password: '2520' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ success: true });
+    });
+    it('preserves the same-person refusal without password confirmation', async () => {
+      mocks.approve.mockRejectedValue(new ApiError(403, '同じ人は承認できません', undefined, 'RECORD_APPROVAL_SAME_PERSON'));
+      const response = await app.inject({ method: 'POST', url: approve, headers: { 'x-client-key': 'device' },
+        payload: { approverEmployeeTagUid: 'employee' } });
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ errorCode: 'RECORD_APPROVAL_SAME_PERSON', message: '同じ人は承認できません' });
+      expect(mocks.verify).not.toHaveBeenCalled();
+    });
+  }
   it.each(['ADMIN', 'MANAGER'] as const)('accepts a %s user JWT without an access confirmation', async (role) => {
     mocks.role = role;
     const token = signAccessToken({ id: 'user', username: 'manager', role, mfaEnabled: true } as User);
