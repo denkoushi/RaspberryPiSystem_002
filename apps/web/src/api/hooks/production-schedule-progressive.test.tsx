@@ -7,6 +7,7 @@ import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
 
 import {
   useUpdateKioskGrindingPlanningBoardArrival,
+  useUpdateKioskGrindingPlanningBoardFirstProcessArrival,
   useKioskGrindingPlanningBoardProgressive,
   useKioskGrindingPlanningBoardLoad,
   useUpdateKioskGrindingPlanningBoardSeibanOrder
@@ -15,7 +16,7 @@ import {
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn(), updateArrival: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getBoard: vi.fn(), getLoad: vi.fn(), updateOrder: vi.fn(), updateArrival: vi.fn(), updateFirstArrival: vi.fn() }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
@@ -24,6 +25,7 @@ vi.mock('../../api/client', async (importOriginal) => {
     getKioskGrindingPlanningBoard: mocks.getBoard,
     getKioskGrindingPlanningBoardLoad: mocks.getLoad,
     updateKioskGrindingPlanningBoardArrival: mocks.updateArrival,
+    updateKioskGrindingPlanningBoardFirstProcessArrival: mocks.updateFirstArrival,
     updateKioskGrindingPlanningBoardSeibanOrder: mocks.updateOrder
   };
 });
@@ -619,6 +621,20 @@ describe('planning board arrival mutation', () => {
     const payload = { itemId: 'a', itemRevision: 'r1', recorded };
     await act(async () => { await result.current.mutateAsync(payload); });
     expect(mocks.updateArrival).toHaveBeenLastCalledWith(payload);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kiosk-grinding-planning-board'] });
+  });
+});
+
+describe('planning board first-process arrival mutation', () => {
+  it.each(['arrived', 'excluded', null] as const)('refreshes board queries after state=%s', async (state) => {
+    const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue();
+    const response = { itemId: 'a', firstProcessState: state };
+    mocks.updateFirstArrival.mockResolvedValue(response);
+    const { result } = renderHook(() => useUpdateKioskGrindingPlanningBoardFirstProcessArrival(), { wrapper: wrapper(client) });
+    const payload = { itemId: 'a', itemRevision: 'r1', state };
+    await act(async () => { await result.current.mutateAsync(payload); });
+    expect(mocks.updateFirstArrival).toHaveBeenLastCalledWith(payload);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['kiosk-grinding-planning-board'] });
   });
 });

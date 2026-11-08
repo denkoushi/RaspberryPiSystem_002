@@ -2,6 +2,8 @@ import { api } from '../../http';
 
 import type {
   SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
+  GrindingPlanningBoardFirstProcessArrivalRequest,
+  GrindingPlanningBoardFirstProcessArrivalResponse,
   GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardArrivalResponse,
   GrindingPlanningBoardProcessChipsRequest,
@@ -219,5 +221,11 @@ export async function mergeKioskSessakuPieces(payload: SessakuPiecesMergeRequest
 }
 export async function setKioskSessakuPieceCompletion(pieceId: string, payload: SessakuPieceCompletionRequest) {
   const { data } = await api.put<SessakuPiecesMutationResponse>(`/kiosk/production-schedule/grinding-planning-board/pieces/${encodeURIComponent(pieceId)}/completion`, payload);
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardFirstProcessArrival(payload: GrindingPlanningBoardFirstProcessArrivalRequest) {
+  const { data } = await api.put<GrindingPlanningBoardFirstProcessArrivalResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/first-process-arrival', payload);
   return data;
 }

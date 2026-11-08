@@ -1539,6 +1539,7 @@ model CsvDashboard {
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
   grindingPlanningBoardArrivals ProductionScheduleGrindingPlanningBoardArrival[]
+  grindingPlanningBoardFirstProcessArrivals ProductionScheduleGrindingPlanningBoardFirstProcessArrival[]
   sessakuPieceSets ProductionScheduleSessakuPieceSet[]
 
   @@index([enabled])
@@ -2027,6 +2028,20 @@ model ProductionScheduleGrindingPlanningBoardArrival {
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningArrival_dashboard_fkey")
 
   @@unique([csvDashboardId, siteKey, arrivalDate, itemKey], map: "PSGrindingPlanningArrival_dashboard_site_date_item_key")
+}
+
+/// 製番ボードの最初の工程の着/外。日付による失効はしない。
+model ProductionScheduleGrindingPlanningBoardFirstProcessArrival {
+  id             String   @id(map: "PSGrindingPlanningFirstArrival_pkey") @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  itemKey        String   @db.VarChar(1000)
+  state          String
+  recordedAt     DateTime
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningFirstArrival_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, itemKey], map: "PSGrindingPlanningFirstArrival_dashboard_site_item_key")
 }
 
 /// 研削順位ボードの行/分割片 override。元CSV・元順位は保存せず、常に正本から再解決する。

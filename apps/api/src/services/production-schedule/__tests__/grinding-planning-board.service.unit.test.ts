@@ -31,6 +31,7 @@ const mocks = vi.hoisted(() => {
       create: vi.fn(),
       update: vi.fn()
     },
+    productionScheduleGrindingPlanningBoardFirstProcessArrival: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardArrival: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn(), upsert: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
@@ -57,7 +58,7 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../process-arrival.service.js', () => ({
-  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({ ...row, arrived: true, manualArrivalDate: null })))
+  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({ ...row, arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null })))
 }));
 
 vi.mock('../../purchase-order-lookup/material-arrival-status.service.js', async (importOriginal) => ({
@@ -97,6 +98,7 @@ import {
   scheduleGrindingPlanningBoardRewarm,
   updateGrindingPlanningBoardSeibanOrder,
   updateGrindingPlanningBoardArrival,
+  updateGrindingPlanningBoardFirstProcessArrival,
   updateGrindingPlanningBoardPins,
   updateGrindingPlanningBoardResourceOrderBulk,
   updateGrindingPlanningBoardResourceOrder
@@ -172,6 +174,7 @@ function configurePersistence(): void {
   prisma.csvDashboardRow.findMany.mockResolvedValue([details]);
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
+  prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   prisma.productionScheduleOrderAssignment.findMany.mockResolvedValue([]);
   prisma.productionScheduleResourceMaster.findMany.mockResolvedValue([{ resourceCd: '305' }, { resourceCd: '581' }]);
@@ -291,6 +294,82 @@ describe('grinding planning board service orchestration', () => {
       where: { csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', fseiban: { in: ['ORDER-A'] } },
       select: { fseiban: true, assignees: true, assigneesKnown: true }
     });
+  });
+
+  it.each([
+    ['arrived', 'ordered', '2026-11-05T00:00:00Z', true, 'arrived'],
+    ['excluded', 'received', null, false, 'excluded'],
+    [null, 'ordered', '2026-11-05T00:00:00Z', true, null],
+    [null, 'unordered', null, false, null],
+    [null, 'ordered', null, false, null],
+    [null, 'received', null, true, null],
+    [null, 'partial', null, true, null],
+    [null, null, null, true, null],
+    ['excluded', 'ordered', '2026-11-06T00:00:01Z', true, null],
+    ['excluded', 'ordered', '2026-11-05T23:59:59Z', false, 'excluded'],
+    ['excluded', 'ordered', '2026-11-06T00:00:00Z', false, 'excluded']
+  ] as const)('resolves first-process priority state=%s material=%s placement=%s', async (state, status, placedAt, arrived, effective) => {
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+    mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue(state ? [
+      { itemKey: 'row:item-a', state, recordedAt: new Date('2026-11-06T00:00:00Z') }
+    ] : []);
+    mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map(status ? [['ORDER-A\tPART-A', { status, basis: 'material' }]] : []));
+    if (placedAt) mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue([
+      { manufacturingOrderBarcodeRaw: '1', shelfCodeRaw: 'A', updatedAt: new Date(placedAt) }
+    ]);
+    const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+    expect(result.items[0]).toMatchObject({ isFirstProcess: true, firstProcessState: effective, arrived });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert).not.toHaveBeenCalled();
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany).not.toHaveBeenCalled();
+    const projection = mocks.projectGrindingPlanningBoard.mock.results[0]?.value.items[0];
+    expect(projection).not.toHaveProperty('isFirstProcess');
+    expect(projection).not.toHaveProperty('firstProcessState');
+  });
+
+  it.each([true, false])('uses first-process state only on first processes and ignores old daily arrival there (%s)', async (isFirstProcess) => {
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: false, isFirstProcess })));
+    mocks.prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([{ itemKey: 'row:item-a' }]);
+    mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([
+      { itemKey: 'row:item-a', state: 'excluded', recordedAt: new Date('2026-11-06T00:00:00Z') }
+    ]);
+    const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+    expect(result.items[0]).toMatchObject({ isFirstProcess, firstProcessState: isFirstProcess ? 'excluded' : null, arrived: !isFirstProcess });
+  });
+
+  it('reads first-process state by parent key for split pieces', async () => {
+    const projection = mocks.projectGrindingPlanningBoard();
+    mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection,
+      items: [{ ...projection.items[0], itemId: 'piece:a', parentItemId: 'row:item-a' }] });
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+    mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([
+      { itemKey: 'row:item-a', state: 'excluded', recordedAt: new Date('2026-11-06T00:00:00Z') }
+    ]);
+    const result = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+    expect(result.items[0]).toMatchObject({ itemId: 'piece:a', arrived: false, firstProcessState: 'excluded' });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ itemKey: { in: ['row:item-a'] } })
+    }));
+  });
+
+  it.each(['arrived', 'excluded'] as const)('retains first-process %s across midnight and warm snapshot reads', async (state) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.mocked(enrichRowsWithProcessArrival).mockImplementation(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+      mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue([
+        { itemKey: 'row:item-a', state, recordedAt: new Date('2026-11-05T00:00:00Z') }
+      ]);
+      const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'resource' as const };
+      vi.setSystemTime(new Date('2026-11-06T14:59:00Z'));
+      const first = await getGrindingPlanningBoard(params);
+      vi.setSystemTime(new Date('2026-11-06T15:01:00Z'));
+      const next = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId });
+      for (const result of [first, next]) expect(result.items[0]).toMatchObject({ firstProcessState: state, arrived: state === 'arrived' });
+      const query = mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mock.calls[0][0];
+      expect(query.where).toEqual({ csvDashboardId: expect.any(String), siteKey: 'site-a', itemKey: { in: ['row:item-a'] } });
+    } finally {
+      vi.useRealTimers();
+      vi.mocked(enrichRowsWithProcessArrival).mockImplementation(async (rows) => rows.map((row) => ({ ...row, arrived: true })));
+    }
   });
 
   it('adds current process arrival to responses without mutating the saved projection', async () => {
@@ -873,7 +952,7 @@ describe('grinding planning board service orchestration', () => {
       expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(2);
       const continued = await getGrindingPlanningBoard({ ...params, snapshotId: reused.snapshotId, cursor: 1 });
       expect(continued.snapshotId).toBe(reused.snapshotId);
-      expect(continued.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null }]);
+      expect(continued.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null }]);
       expect(continued.nextCursor).toBeNull();
       expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
       expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(2);
@@ -946,7 +1025,7 @@ describe('grinding planning board service orchestration', () => {
     expect(larger.snapshotId).not.toBe(first.snapshotId);
     expect(larger.items).toHaveLength(2);
     const second = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1, pageSize: 1 });
-    expect(second.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null }]);
+    expect(second.items).toEqual([{ ...items[1], arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null }]);
     expect(second.nextCursor).toBeNull();
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
   });
@@ -1050,7 +1129,7 @@ describe('grinding planning board service orchestration', () => {
     for (const [cursor, pageSize] of [[160, 640], [800, 641]]) {
       vi.clearAllMocks();
       const continued = await getGrindingPlanningBoard({ ...params, cursor, pageSize, snapshotId: first.snapshotId });
-      expect(continued.items).toEqual(items.slice(cursor, cursor + 640).map((item) => ({ ...item, arrived: true, manualArrivalDate: null })));
+      expect(continued.items).toEqual(items.slice(cursor, cursor + 640).map((item) => ({ ...item, arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null })));
       expect(continued.nextCursor).toBe(String(cursor + 640));
       expect(mocks.readGrindingPlanningBoardSnapshotGenerationToken).toHaveBeenCalledTimes(1);
       expect(mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique).toHaveBeenCalledTimes(2);
@@ -1249,6 +1328,40 @@ describe('bulk grinding resource order service', () => {
       expect(mocks.prisma.productionScheduleGrindingPlanningBoardArrival.deleteMany).toHaveBeenCalledWith({ where: key });
       expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
     } finally { vi.useRealTimers(); }
+  });
+
+  it.each(['arrived', 'excluded', null] as const)('persists first-process state %s with locks and no arrival date', async (state) => {
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: true })));
+    const target = items[0]!;
+    const before = Date.now();
+    const result = await updateGrindingPlanningBoardFirstProcessArrival({ siteKey: 'site-a', itemId: target.itemId,
+      itemRevision: target.itemRevision, overrideVersion: 0, state });
+    expect(result).toEqual({ itemId: target.itemId, firstProcessState: state });
+    expect(mocks.acquireParentRowLock).toHaveBeenCalledWith(mocks.prisma, target.sourceRowId);
+    const key = { csvDashboardId: expect.any(String), siteKey: 'site-a', itemKey: target.itemId };
+    if (state) {
+      const data = { state, recordedAt: expect.any(Date) };
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert).toHaveBeenCalledWith({
+        where: { csvDashboardId_siteKey_itemKey: key }, create: { ...key, ...data }, update: data
+      });
+      expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert.mock.calls[0][0].update.recordedAt.getTime()).toBeGreaterThanOrEqual(before);
+    } else expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany).toHaveBeenCalledWith({ where: key });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardArrival.upsert).not.toHaveBeenCalled();
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each(['revision', 'version', 'completed', 'missing', 'invalid', 'later'] as const)('rejects %s first-process writes before persistence', async (guard) => {
+    const target = items[0]!;
+    if (guard === 'completed') target.isCompleted = true;
+    if (guard === 'missing') items = [];
+    vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: true, isFirstProcess: false })));
+    await expect(updateGrindingPlanningBoardFirstProcessArrival({ siteKey: 'site-a', state: 'arrived',
+      itemId: guard === 'invalid' ? 'bad-id' : target.itemId,
+      itemRevision: guard === 'revision' ? 'stale' : target.itemRevision, overrideVersion: guard === 'version' ? 99 : 0
+    })).rejects.toMatchObject({ code: guard === 'invalid' ? 'INVALID_ITEM_ID' : guard === 'completed' ? 'COMPLETED_ITEM' : guard === 'later' ? 'NOT_FIRST_PROCESS' : 'STALE_PLANNING_BOARD_ITEM' });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert).not.toHaveBeenCalled();
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany).not.toHaveBeenCalled();
+    vi.mocked(enrichRowsWithProcessArrival).mockReset().mockImplementation(async (rows) => rows.map((row) => ({ ...row, arrived: true })));
   });
 
   it.each(['revision', 'version', 'completed', 'missing', 'invalid'] as const)('rejects %s arrival writes before persistence', async (guard) => {

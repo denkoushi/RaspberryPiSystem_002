@@ -340,23 +340,38 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
   const arrivalRows = await perf.measure('processArrival', () => enrichRowsWithProcessArrival(page.map((item) => ({
     id: item.itemId, sourceRowId: item.sourceRowId,
     rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
-  })), { siteKey: params.siteKey, locationKey: params.siteKey, placedProductNos: new Set(placementByProductNo.keys()) }));
+  })), { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(placementByProductNo.keys()) }));
   const arrivalDate = planningBoardArrivalDate();
   const manualArrivals = page.length ? await perf.measure('manualArrival', () => prisma.productionScheduleGrindingPlanningBoardArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
       arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`), itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
     select: { itemKey: true }
   })) : [];
+  const firstProcessArrivals = page.length ? await perf.measure('firstProcessArrival', () => prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
+      itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
+    select: { itemKey: true, state: true, recordedAt: true }
+  })) : [];
+  const firstProcessByKey = new Map(firstProcessArrivals.map((arrival) => [arrival.itemKey, arrival]));
   const manualArrivalIds = new Set(manualArrivals.map((arrival) => arrival.itemKey));
-  const arrivalById = new Map(arrivalRows.map((row) => [row.id, row.arrived]));
+  const arrivalById = new Map(arrivalRows.map((row) => [row.id, row]));
   const lslhSurface = await perf.measure('lslhSurface', () => findLslhSurface(page));
   const pageWithMaterialArrival = page.map((item) => {
     const arrival = materialArrivalByPart.get(materialArrivalLookupKey(item.fseiban, item.fhincd));
     const placement = placementByProductNo.get(item.productNo.trim());
+    const isFirstProcess = arrivalById.get(item.itemId)?.isFirstProcess ?? false;
+    const manual = isFirstProcess ? firstProcessByKey.get(item.parentItemId ?? item.itemId) : undefined;
+    const newerPlacement = manual && placement?.shelves.some((shelf) => new Date(shelf.placedAt).getTime() > manual.recordedAt.getTime());
+    const firstProcessState = manual?.state === 'arrived' ? 'arrived' as const
+      : manual?.state === 'excluded' && !newerPlacement ? 'excluded' as const : null;
+    const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
+      : Boolean(placement) || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
     return {
       ...item,
+      isFirstProcess,
+      firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
-      arrived: manualArrivalIds.has(item.parentItemId ?? item.itemId) || (arrivalById.get(item.itemId) ?? true),
+      arrived: isFirstProcess ? firstProcessArrived : manualArrivalIds.has(item.parentItemId ?? item.itemId) || (arrivalById.get(item.itemId)?.arrived ?? true),
       manualArrivalDate: manualArrivalIds.has(item.parentItemId ?? item.itemId) ? arrivalDate : null,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),

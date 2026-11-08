@@ -1,6 +1,7 @@
+import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse, GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -578,5 +579,41 @@ export async function updateGrindingPlanningBoardArrival(params: GrindingPlannin
       await client.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: key });
     }
     return { itemId: params.itemId, manualArrivalDate: params.recorded ? arrivalDate : null };
+  }, { timeout: 30000, maxWait: 15000 });
+}
+
+export async function updateGrindingPlanningBoardFirstProcessArrival(params: GrindingPlanningBoardFirstProcessArrivalRequest & {
+  siteKey: string;
+}): Promise<GrindingPlanningBoardFirstProcessArrivalResponse> {
+  const sourceRowIds = await discoverSourceRows([params.itemId]);
+  await ensurePlanningBoardState(params.siteKey);
+  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const pieceKeys = await readLivePieceKeys(prisma, [...sourceRowIds.values()]);
+  return prisma.$transaction(async (client) => {
+    const sourceRowId = sourceRowIds.get(params.itemId)!;
+    await acquireSessakuPieceLogicalLocks(client, pieceKeys);
+    if (pieceKeys.length) await lockState(client, params.siteKey);
+    await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
+    const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey,
+      sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy, allowPieceParent: true });
+    const item = current.byItemId.get(params.itemId)!;
+    assertItemRevision(params.itemRevision, item, params.overrideVersion);
+    if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
+    const [arrival] = await enrichRowsWithProcessArrival([{
+      id: item.itemId, sourceRowId: item.sourceRowId,
+      rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
+    }], { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(), client, policy });
+    if (!arrival?.isFirstProcess) throw new ApiError(409, '最初の工程ではありません', undefined, 'NOT_FIRST_PROCESS');
+    const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
+      itemKey: item.parentItemId ?? item.itemId };
+    if (params.state !== null) {
+      const data = { state: params.state, recordedAt: new Date() };
+      await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert({
+        where: { csvDashboardId_siteKey_itemKey: key }, create: { ...key, ...data }, update: data
+      });
+    } else {
+      await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany({ where: key });
+    }
+    return { itemId: params.itemId, firstProcessState: params.state };
   }, { timeout: 30000, maxWait: 15000 });
 }

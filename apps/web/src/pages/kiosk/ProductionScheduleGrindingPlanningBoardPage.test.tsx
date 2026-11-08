@@ -69,6 +69,7 @@ vi.mock('../../api/hooks', () => ({
     split: useMutation({ mutationFn: (args: unknown) => mocks.pieceSplit(args) }),
     merge: useMutation({ mutationFn: (args: unknown) => mocks.pieceMerge(args) })
   }),
+  useUpdateKioskGrindingPlanningBoardFirstProcessArrival: () => useMutation({ mutationFn: async (args: { itemId: string; state: string | null }) => ({ itemId: args.itemId, firstProcessState: args.state }) }),
   useUpdateKioskGrindingPlanningBoardArrival: () => useMutation({ mutationFn: (args: unknown) => mocks.arrival(args) }),
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
   useSetKioskProductionScheduleRowCompletion: () => useMutation({ mutationFn: (args: { rowId: string; intent: 'complete' | 'incomplete' }) => mocks.completion(args) }),
