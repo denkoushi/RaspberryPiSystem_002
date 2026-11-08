@@ -23,6 +23,8 @@ export const GANTT_FORWARD_LABEL_WIDTH = 168;
 export const GANTT_ROW_HEIGHT = 56;
 export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6px, #334155 6px 12px)';
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
+// Notches on both ends mark a split piece. The polygon reaches 4px outside the bar so the selection outline and ring stay visible.
+export const GANTT_PIECE_NOTCH = 'polygon(-4px -4px, calc(100% + 4px) -4px, calc(100% + 4px) 30%, 100% 30%, calc(100% - 3px) 50%, 100% 70%, calc(100% + 4px) 70%, calc(100% + 4px) calc(100% + 4px), -4px calc(100% + 4px), -4px 70%, 0 70%, 3px 50%, 0 30%, -4px 30%)';
 
 type InteractionProps = {
   pieceDisabled?: boolean;
@@ -135,7 +137,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
-      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined }}>
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' ? GANTT_PIECE_NOTCH : undefined }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>

@@ -10,7 +10,7 @@ import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from 
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
-import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
+import { GANTT_IMPORT_HATCH, GANTT_PIECE_NOTCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -240,6 +240,15 @@ describe('PlanningBoardGanttView', () => {
       fireEvent.pointerUp(bar, { pointerId: 1, clientX: 500 });
       expect(values.onDueDrop).not.toHaveBeenCalled();
     }
+  });
+
+  it('notches both ends of split piece bars only', () => {
+    render(<PlanningBoardGanttView {...props([
+      item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', sourceRowId: 'source' }),
+      item({ itemId: 'row', processOrder: '20' })
+    ])} />);
+    expect((screen.getByTestId('planning-gantt-bar-piece:a').firstElementChild as HTMLElement).style.clipPath).toBe(GANTT_PIECE_NOTCH);
+    expect((screen.getByTestId('planning-gantt-bar-row').firstElementChild as HTMLElement).style.clipPath).toBe('');
   });
 
   it('stripes imported backward bars and shows a disabled import badge after tap', () => {
