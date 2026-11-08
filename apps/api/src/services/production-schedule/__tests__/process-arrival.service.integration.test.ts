@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { Prisma } from '@prisma/client';
+
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -125,5 +127,42 @@ describeIntegration('process arrival SQL integration', () => {
     expect(await arrivals([later])).toEqual([false]);
     await complete(earlier);
     expect(await arrivals([later])).toEqual([true]);
+  });
+
+  it('keeps arrival and footer winners with the part expression index present', async () => {
+    const indexes = await db().$queryRaw<Array<{ indexdef: string }>>(Prisma.sql`
+      SELECT indexdef FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND indexname = 'CsvDashboardRow_csvDashboardId_btrim_fseiban_fhincd_idx'
+    `);
+    expect(indexes).toHaveLength(1);
+    const preferred = await createRow('10', { ProductNo: '' });
+    await complete(preferred);
+    await createRow('10', { ProductNo: '' });
+    await createRow('20', { ProductNo: '200' });
+    const later = await createRow('30', { ProductNo: '' });
+    expect(await arrivals([preferred, later])).toEqual([true, false]);
+
+    const { buildLeaderboardFooterChipsByPartKeyForScheduleRows } = await import(
+      '../leaderboard/leaderboard-part-footer-processes.service.js'
+    );
+    const chips = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
+      rows: [preferred, later].map((row) => ({ ...row, seibanJoinKey: prefix })),
+      siteKey: prefix, locationKey: prefix
+    });
+    expect(chips?.[[prefix, '', `${prefix}-part`].join('\0')]).toEqual([
+      expect.objectContaining({ rowId: preferred.id, resourceCd: '305', isCompleted: true }),
+      expect.objectContaining({ rowId: later.id, resourceCd: '305', isCompleted: false })
+    ]);
+  });
+
+  it('preserves NULLIF join semantics for null, empty, whitespace and padded values', async () => {
+    const mismatches = await db().$queryRaw<Array<{ value: string | null; key: string | null }>>(Prisma.sql`
+      WITH vals(v) AS (VALUES (NULL::text), (''), (' '), ('ORDER'), (' ORDER '), ('OTHER'))
+      SELECT a.v AS value, b.v AS key FROM vals a CROSS JOIN vals b
+      WHERE ((NULLIF(BTRIM(a.v), '') = b.v) IS TRUE)
+        IS DISTINCT FROM ((BTRIM(a.v) = b.v AND b.v <> '') IS TRUE)
+    `);
+    expect(mismatches).toEqual([]);
   });
 });

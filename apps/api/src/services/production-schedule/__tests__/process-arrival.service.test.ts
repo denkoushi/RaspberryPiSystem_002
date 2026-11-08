@@ -89,8 +89,13 @@ describe('process arrival', () => {
     expect(result.every((item) => item.arrived === false)).toBe(true);
     expect(mocks.query).toHaveBeenCalledTimes(1);
     const sql = mocks.query.mock.calls[0]![0];
-    expect(sql.strings.join('?')).toContain('SELECT 1 FROM unnest(?::text[], ?::text[], ?::text[])');
-    expect(sql.values.slice(1, 4)).toEqual([
+    expect(sql.strings.join('?')).toContain('FROM unnest(?::text[], ?::text[], ?::text[])');
+    expect(sql.strings.join('?')).toContain('INNER JOIN "CsvDashboardRow"');
+    expect(sql.strings.join('?')).toContain('ON "csvDashboardId" = ?');
+    expect(sql.strings.join('?')).toContain(`BTRIM("rowData"->>'FSEIBAN') = k.fseiban`);
+    expect(sql.strings.join('?')).toContain(`BTRIM("rowData"->>'FHINCD') = k.fhincd`);
+    expect(sql.strings.join('?')).toContain(`k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no`);
+    expect(sql.values.slice(0, 3)).toEqual([
       rows.map((item) => item.rowData.FSEIBAN), rows.map((item) => item.rowData.FHINCD), Array(700).fill(null)
     ]);
     expect(sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('row-'))).toHaveLength(700);
@@ -101,7 +106,7 @@ describe('process arrival', () => {
     const unassigned = row('unassigned', '30', '');
     unassigned.rowData.FSEIBAN = '********';
     await enrichRowsWithProcessArrival([row('normal', '30'), unassigned], { locationKey: 'site' });
-    expect(mocks.query.mock.calls[0]![0].values[3]).toEqual([null, '']);
+    expect(mocks.query.mock.calls[0]![0].values[2]).toEqual([null, '']);
   });
 
   it('skips the process query when no valid part keys remain', async () => {
