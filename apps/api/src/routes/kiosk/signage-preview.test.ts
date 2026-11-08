@@ -6,10 +6,10 @@ import { requireKioskClientDevice } from '../../services/clients/client-device-a
 import { registerKioskSignagePreviewRoutes } from './signage-preview.js';
 
 const mocks = vi.hoisted(() => ({
-  findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), readImage: vi.fn(), renderMessage: vi.fn(),
+  findUnique: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), readImage: vi.fn(), renderMessage: vi.fn(),
 }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { findUnique: mocks.findUnique, findMany: mocks.findMany, update: mocks.update } },
+  prisma: { clientDevice: { findUnique: mocks.findUnique, findFirst: mocks.findFirst, findMany: mocks.findMany, update: mocks.update } },
 }));
 vi.mock('../../lib/signage-render-storage.js', () => ({ SignageRenderStorage: { readCurrentImage: mocks.readImage } }));
 vi.mock('../../services/signage/index.js', () => ({ SignageService: class {} }));
@@ -34,6 +34,10 @@ describe('kiosk signage preview credential boundary', () => {
       if (query.where.id === kiosk.id) return { signagePreviewTargetDeviceId: storedTarget };
       if (query.where.id === signage.id || query.where.apiKey === signage.apiKey) return signage;
       return null;
+    });
+    mocks.findFirst.mockImplementation(async (query) => {
+      const values = query.where.OR.flatMap((cond: Record<string, string>) => Object.values(cond));
+      return values.includes(signage.id) || values.includes(signage.apiKey) ? signage : null;
     });
     mocks.findMany.mockResolvedValue([{ ...signage, clientSecret: 'fixture-only-future-secret' }]);
     mocks.update.mockImplementation(async (query) => {
@@ -102,8 +106,10 @@ describe('kiosk signage preview credential boundary', () => {
     expect(mocks.update).not.toHaveBeenCalled();
   });
 
-  it.each(['id', 'legacy', 'cached-id'] as const)('accepts %s selection input and stores the ID in both fields', async (format) => {
-    const payload = format === 'id' ? { signagePreviewTargetDeviceId: signage.id } : format === 'cached-id' ? { signagePreviewTargetClientDeviceId: signage.id } : { signagePreviewTargetApiKey: signage.apiKey };
+  it.each(['id', 'legacy', 'legacy-id', 'cached-id'] as const)('accepts %s selection input and stores the ID in both fields', async (format) => {
+    const payload = format === 'id' ? { signagePreviewTargetDeviceId: signage.id }
+      : format === 'cached-id' ? { signagePreviewTargetClientDeviceId: signage.id }
+      : { signagePreviewTargetApiKey: format === 'legacy-id' ? signage.id : signage.apiKey };
     const response = await (await buildApp()).inject({ method: 'PUT', url: '/kiosk/signage-preview/selection', headers: { 'x-client-key': kiosk.apiKey }, payload });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ ok: true, signagePreviewTargetDeviceId: signage.id, signagePreviewTargetClientDeviceId: signage.id });

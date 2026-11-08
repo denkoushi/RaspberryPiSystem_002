@@ -29,10 +29,11 @@ export async function resolveSignagePreviewTargetInput(input: {
   const id = input.signagePreviewTargetDeviceId;
   const target = id !== undefined ? id : input.signagePreviewTargetApiKey;
   if (target == null) return { signagePreviewTargetDeviceId: null, signagePreviewTargetApiKey: null };
-  const device = await prisma.clientDevice.findUnique({
-    where: id !== undefined ? { id: target } : { apiKey: target },
-    select: { id: true, isSignage: true }
-  });
+  const select = { id: true, isSignage: true } as const;
+  // Older screens may send the stored legacy value, which is an ID.
+  const device = id !== undefined
+    ? await prisma.clientDevice.findUnique({ where: { id: target }, select })
+    : await prisma.clientDevice.findFirst({ where: { OR: [{ apiKey: target }, { id: target }] }, select });
   if (!device?.isSignage) {
     throw new ApiError(400, '登録済みサイネージ端末のみ選択できます', undefined, 'INVALID_SIGNAGE_PREVIEW_TARGET');
   }

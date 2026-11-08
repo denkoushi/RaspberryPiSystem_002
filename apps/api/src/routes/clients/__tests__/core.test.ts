@@ -9,7 +9,7 @@ import { prisma } from '../../../lib/prisma.js';
 import { registerClientCoreRoutes } from '../core.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
+  prisma: { user: { findUnique: vi.fn() }, clientDevice: { findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() } }
 }));
 
 function tokenForUser(user: User): string {
@@ -90,10 +90,10 @@ describe('client registration routes', () => {
 
   it('converts the legacy preview field and clears both fields', async () => {
     const target = { id: '11111111-1111-4111-8111-111111111111', apiKey: 'fixture-only-signage-target', isSignage: true };
-    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue(target as never);
+    vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue(target as never);
     const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { signagePreviewTargetApiKey: target.apiKey } });
     expect(response.statusCode).toBe(200);
-    expect(prisma.clientDevice.findUnique).toHaveBeenCalledWith({ where: { apiKey: target.apiKey }, select: { id: true, isSignage: true } });
+    expect(prisma.clientDevice.findFirst).toHaveBeenCalledWith({ where: { OR: [{ apiKey: target.apiKey }, { id: target.apiKey }] }, select: { id: true, isSignage: true } });
     expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       signagePreviewTargetDeviceId: target.id, signagePreviewTargetApiKey: target.id,
     }) }));
@@ -142,7 +142,7 @@ describe('client registration routes', () => {
     const response = await app.inject({ method: 'POST', url: '/clients', payload: body });
     expect(response.statusCode).toBe(200);
     const args = vi.mocked(prisma.clientDevice.upsert).mock.calls[0][0];
-    expect(args.create).toEqual({ ...body, location: undefined, siteKey: undefined, lastSeenAt: expect.any(Date) });
+    expect(args.create).toEqual({ ...body, location: undefined, siteKey: undefined, isSignage: false, lastSeenAt: expect.any(Date) });
     expect(args.update).toEqual({ location: undefined, lastSeenAt: expect.any(Date) });
   });
 

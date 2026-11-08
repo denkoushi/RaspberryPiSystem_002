@@ -165,6 +165,7 @@ export async function registerClientDeviceAdmin(params: {
       location,
       siteKey: siteKeyForNewDevice,
       apiKey: params.apiKey,
+      isSignage: params.apiKey.toLowerCase().includes('signage'),
       lastSeenAt: now,
     },
   });
