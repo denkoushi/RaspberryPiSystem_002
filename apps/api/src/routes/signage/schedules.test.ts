@@ -12,6 +12,7 @@ const publicSchedule = {
   name: '端末別予定',
   contentType: 'TOOLS',
   pdfId: null,
+  targetClientDeviceIds: ['11111111-1111-4111-8111-111111111111'],
   layoutConfig: { layout: 'FULL', slots: [{ kind: 'loans' }] },
   dayOfWeek: [1, 3, 5],
   startTime: '09:00',
@@ -21,6 +22,7 @@ const publicSchedule = {
 };
 const internalSchedule = {
   ...publicSchedule,
+  targetClientDeviceIds: ['11111111-1111-4111-8111-111111111111'],
   targetClientKeys: ['synthetic-schedule-credential'],
   apiKey: 'synthetic-future-credential',
 };

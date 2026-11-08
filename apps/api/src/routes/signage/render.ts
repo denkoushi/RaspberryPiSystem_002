@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -59,21 +60,20 @@ export function registerRenderRoutes(app: FastifyInstance, signageService: Signa
       : null;
     const keyValue = queryKey || headerKeyStr;
 
-    if (!keyValue) {
+    const query = z.object({ clientDeviceId: z.string().guid().optional() }).parse(request.query);
+    let clientDeviceId: string | null = null;
+    if (query.clientDeviceId) {
+      await canManage(request, reply);
+      clientDeviceId = query.clientDeviceId;
+    } else if (!keyValue) {
       await canView(request, reply);
     } else {
       const client = await findClientDeviceByApiKey(keyValue);
-      if (!client) {
-        throw new ApiError(401, 'クライアント API キーが不正です');
-      }
+      if (!client) throw new ApiError(401, 'クライアント API キーが不正です');
+      clientDeviceId = client.id;
+      if (!request.headers.authorization) recordSignageImageFetch(clientDeviceId);
     }
-    // 端末自身の取得だけを「受信」として記録する。管理画面のプレビューは JWT 付きで来るので除外する。
-    if (keyValue && !request.headers.authorization) {
-      recordSignageImageFetch(keyValue);
-    }
-    let imageBuffer: Buffer | null = keyValue
-      ? await SignageRenderStorage.readCurrentImage(keyValue)
-      : await SignageRenderStorage.readCurrentImage(null);
+    let imageBuffer = await SignageRenderStorage.readCurrentImage(clientDeviceId);
     if (!imageBuffer) {
       // 画像が存在しない場合はデフォルトメッセージを生成
       imageBuffer = await renderer.renderMessage('表示するコンテンツがありません');

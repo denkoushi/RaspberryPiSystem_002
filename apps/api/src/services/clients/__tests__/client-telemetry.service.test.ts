@@ -69,9 +69,18 @@ describe('client-telemetry.service', () => {
     expect(prisma.clientDevice.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { apiKey: 'api-key-1' },
-        create: expect.objectContaining({ name: 'kiosk-1', apiKey: 'api-key-1' }),
+        create: expect.objectContaining({ name: 'kiosk-1', apiKey: 'api-key-1', isSignage: false }),
       })
     );
+  });
+
+  it('marks a newly registered device as signage when its key names signage', async () => {
+    vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({ id: 'device-2' } as never);
+    await registerClientDeviceAdmin({ apiKey: 'client-key-Signage-01', name: 'signage-1', location: null });
+    expect(prisma.clientDevice.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ isSignage: true }),
+      update: expect.not.objectContaining({ isSignage: expect.anything() }),
+    }));
   });
 
   it('links a status-only report to the device authenticated by its client key', async () => {

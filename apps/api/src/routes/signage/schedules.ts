@@ -17,6 +17,7 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
         contentType: schedule.contentType,
         pdfId: schedule.pdfId,
         layoutConfig: schedule.layoutConfig,
+        targetClientDeviceIds: schedule.targetClientDeviceIds,
         dayOfWeek: schedule.dayOfWeek,
         startTime: schedule.startTime,
         endTime: schedule.endTime,

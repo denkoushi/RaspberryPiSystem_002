@@ -33,6 +33,7 @@ type ClientForm = {
   proxy: boolean;
   haizenEdge: boolean;
   shelfLayout: boolean;
+  isSignage: boolean;
   procedureBoard: boolean;
 };
 
@@ -50,6 +51,7 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   proxy: '代理操作',
   haizenEdge: 'Zero2W配膳',
   shelfLayout: '棚レイアウト編集',
+  isSignage: 'サイネージ',
   procedureBoard: '手順づくり'
 };
 const FORM_FIELDS = Object.keys(FORM_FIELD_LABELS) as Array<keyof ClientForm>;
@@ -67,6 +69,7 @@ function formFromDevice(device: ClientDevice): ClientForm {
     proxy: Boolean(device.canProxyOtherDevices),
     haizenEdge: Boolean(device.haizenEdgeEnabled),
     shelfLayout: Boolean(device.shelfLayoutEditEnabled),
+    isSignage: device.isSignage === true,
     procedureBoard: device.procedureBoardEnabled === true
   };
 }
@@ -332,6 +335,7 @@ export function ClientsPage() {
           kioskInitialRoute: form.initialRoute || null,
           haizenEdgeEnabled: form.haizenEdge,
           shelfLayoutEditEnabled: form.shelfLayout,
+          isSignage: form.isSignage,
           procedureBoardEnabled: form.procedureBoard,
           siteKey: form.siteKey || null,
           canProxyOtherDevices: form.proxy
@@ -881,6 +885,12 @@ export function ClientsPage() {
                         ariaLabel="棚レイアウト編集を許可"
                         checked={form.shelfLayout}
                         onChange={(shelfLayout) => patchForm({ shelfLayout })}
+                      />
+                      <Switch
+                        label="サイネージ"
+                        ariaLabel="サイネージを許可"
+                        checked={form.isSignage}
+                        onChange={(isSignage) => patchForm({ isSignage })}
                       />
                       <Switch
                         label="手順づくり"

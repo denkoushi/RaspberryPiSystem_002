@@ -344,7 +344,7 @@ export function useSignageScheduleEditor() {
           contentType,
           pdfId,
           layoutConfig,
-          targetClientKeys: formData.targetClientKeys?.length ? formData.targetClientKeys : [],
+          targetClientDeviceIds: formData.targetClientDeviceIds?.length ? formData.targetClientDeviceIds : [],
           dayOfWeek: formData.dayOfWeek!,
           startTime: formData.startTime!,
           endTime: formData.endTime!,
@@ -353,7 +353,7 @@ export function useSignageScheduleEditor() {
         });
         setIsCreating(false);
       } else if (editingId) {
-        const targetClientKeys = formData.targetClientKeys?.length ? formData.targetClientKeys : [];
+        const targetClientDeviceIds = formData.targetClientDeviceIds?.length ? formData.targetClientDeviceIds : [];
         await update.mutateAsync({
           id: editingId,
           payload: {
@@ -366,7 +366,7 @@ export function useSignageScheduleEditor() {
             endTime: formData.endTime,
             priority: formData.priority,
             enabled: formData.enabled,
-            targetClientKeys,
+            targetClientDeviceIds,
           },
         });
         setEditingId(null);

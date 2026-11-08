@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { resolveSignagePreviewTargetInput } from '../kiosk/kiosk-signage-preview.service.js';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
@@ -164,6 +165,7 @@ export async function registerClientDeviceAdmin(params: {
       location,
       siteKey: siteKeyForNewDevice,
       apiKey: params.apiKey,
+      isSignage: params.apiKey.toLowerCase().includes('signage'),
       lastSeenAt: now,
     },
   });
@@ -231,12 +233,20 @@ export async function updateClientDevice(params: {
   procedureBoardEnabled?: boolean;
   siteKey?: string | null;
   canProxyOtherDevices?: boolean;
+  isSignage?: boolean;
+  signagePreviewTargetDeviceId?: string | null;
+  signagePreviewTargetApiKey?: string | null;
 }) {
   try {
+    const previewTarget = params.signagePreviewTargetDeviceId !== undefined || params.signagePreviewTargetApiKey !== undefined
+      ? await resolveSignagePreviewTargetInput(params)
+      : {};
     const updated = await prisma.clientDevice.update({
       where: { id: params.id },
       data: {
         ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
+        ...previewTarget,
+        ...(params.isSignage !== undefined ? { isSignage: params.isSignage } : {}),
         name: params.name ?? undefined,
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),

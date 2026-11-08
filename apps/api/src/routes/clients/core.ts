@@ -66,6 +66,9 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       shelfLayoutEditEnabled: body.shelfLayoutEditEnabled,
       procedureBoardEnabled: body.procedureBoardEnabled,
       siteKey: body.siteKey,
+      isSignage: body.isSignage,
+      signagePreviewTargetDeviceId: body.signagePreviewTargetDeviceId,
+      signagePreviewTargetApiKey: body.signagePreviewTargetApiKey,
       canProxyOtherDevices: body.canProxyOtherDevices
     });
     return { client };

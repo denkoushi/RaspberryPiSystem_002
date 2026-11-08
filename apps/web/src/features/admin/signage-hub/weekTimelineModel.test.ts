@@ -18,7 +18,7 @@ const schedule = (partial: Partial<SignageSchedule>): SignageSchedule => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [1, 2, 3, 4, 5],
   startTime: '09:00',
   endTime: '12:00',
@@ -42,9 +42,9 @@ describe('getSignageNow', () => {
 
 describe('scheduleTargetsClient', () => {
   it('treats an empty target list as all devices', () => {
-    expect(scheduleTargetsClient({ targetClientKeys: [] }, 'key-a')).toBe(true);
-    expect(scheduleTargetsClient({ targetClientKeys: ['key-b'] }, 'key-a')).toBe(false);
-    expect(scheduleTargetsClient({ targetClientKeys: ['key-b'] }, null)).toBe(false);
+    expect(scheduleTargetsClient({ targetClientDeviceIds: [] }, 'key-a')).toBe(true);
+    expect(scheduleTargetsClient({ targetClientDeviceIds: ['key-b'] }, 'key-a')).toBe(false);
+    expect(scheduleTargetsClient({ targetClientDeviceIds: ['key-b'] }, null)).toBe(false);
   });
 });
 
@@ -90,8 +90,8 @@ describe('buildWeekTimelineBlocks', () => {
   it('hides disabled schedules and schedules for other devices', () => {
     const timeline = buildWeekTimelineBlocks(
       [
-        schedule({ id: 'mine', targetClientKeys: ['key-a'] }),
-        schedule({ id: 'other', targetClientKeys: ['key-b'] }),
+        schedule({ id: 'mine', targetClientDeviceIds: ['key-a'] }),
+        schedule({ id: 'other', targetClientDeviceIds: ['key-b'] }),
         schedule({ id: 'off', enabled: false }),
         schedule({ id: 'broken', startTime: '18:00', endTime: '09:00' }),
       ],
@@ -151,7 +151,7 @@ describe('listOffTimelineSchedules', () => {
         [
           schedule({ id: 'shown' }),
           schedule({ id: 'off', name: '休止中', enabled: false }),
-          schedule({ id: 'other', name: '事務所用', targetClientKeys: ['key-b'] }),
+          schedule({ id: 'other', name: '事務所用', targetClientDeviceIds: ['key-b'] }),
         ],
         'key-a',
       ),

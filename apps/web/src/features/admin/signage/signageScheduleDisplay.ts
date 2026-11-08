@@ -28,7 +28,7 @@ export const DEFAULT_SCHEDULE_FORM_DATA: Partial<SignageSchedule> = {
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [],
   startTime: '09:00',
   endTime: '18:00',

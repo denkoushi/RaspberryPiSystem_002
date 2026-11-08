@@ -125,10 +125,10 @@ export async function getKioskSignagePreviewOptions(): Promise<KioskSignagePrevi
 }
 
 export async function putKioskSignagePreviewSelection(payload: {
-  signagePreviewTargetClientDeviceId: string | null;
-}): Promise<{ ok: true; signagePreviewTargetClientDeviceId: string | null }> {
+  signagePreviewTargetDeviceId: string | null;
+}): Promise<{ ok: true; signagePreviewTargetDeviceId: string | null }> {
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
-  const { data } = await api.put<{ ok: true; signagePreviewTargetClientDeviceId: string | null }>(
+  const { data } = await api.put<{ ok: true; signagePreviewTargetDeviceId: string | null }>(
     '/kiosk/signage-preview/selection',
     payload,
     { headers: { 'x-client-key': key } }

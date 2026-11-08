@@ -528,6 +528,8 @@ model ClientDevice {
   name                                          String
   location                                      String?
   apiKey                                        String                                         @unique
+  isSignage                                     Boolean                                        @default(false)
+  signagePreviewTargetDeviceId                  String?
   statusClientId                                String? // ClientStatus.clientId への紐づけ（x-client-key → statusClientId）
   defaultMode                                   String?                                        @default("TAG") // 'PHOTO' | 'TAG'（デフォルト: 'TAG'）
   kioskInitialRoute                             String? // 端末ごとのキオスク開始ページ（shared-types の KIOSK_INITIAL_ROUTE_IDS。未設定は defaultMode、PIN画面は対象外）
@@ -1380,6 +1382,7 @@ model SignageSchedule {
   pdfId            String?
   pdf              SignagePdf?        @relation("SchedulePdf", fields: [pdfId], references: [id], onDelete: SetNull)
   layoutConfig     Json? // レイアウト設定（FULL/SPLIT + slots定義）。nullの場合は旧contentType/pdfIdから合成
+  targetClientDeviceIds String[]       @default([])
   targetClientKeys String[]           @default([]) // 空=全端末向け。値ありのときは列挙された apiKey（x-client-key）のみ
   dayOfWeek        Int[]
   startTime        String

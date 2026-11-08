@@ -892,7 +892,7 @@ describe('GET /api/signage/current-image with layoutConfig', () => {
       payload: {
         name: 'Test Schedule Self Inspection Machine Board',
         contentType: 'TOOLS',
-        targetClientKeys: [simbClient.apiKey],
+        targetClientDeviceIds: [simbClient.id],
         layoutConfig: {
           layout: 'FULL',
           slots: [
@@ -1526,6 +1526,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     });
     expect(targetedRes.statusCode).toBe(200);
     expect(targetedRes.json().schedule.targetClientKeys).toEqual([clientA.apiKey]);
+    expect(targetedRes.json().schedule.targetClientDeviceIds).toEqual([clientA.id]);
 
     const publicList = await app.inject({ method: 'GET', url: '/api/signage/schedules' });
     expect(publicList.statusCode).toBe(200);
@@ -1534,6 +1535,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
     );
     expect(publicTargeted).toBeDefined();
     expect(publicTargeted).not.toHaveProperty('targetClientKeys');
+    expect(publicTargeted.targetClientDeviceIds).toEqual([clientA.id]);
     expect(publicList.body).not.toContain(clientA.apiKey);
 
     const managementList = await app.inject({
@@ -1546,6 +1548,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
       (schedule: { id: string }) => schedule.id === targetedRes.json().schedule.id,
     );
     expect(managementTargeted?.targetClientKeys).toEqual([clientA.apiKey]);
+    expect(managementTargeted?.targetClientDeviceIds).toEqual([clientA.id]);
 
     const forA = await app.inject({
       method: 'GET',
@@ -1599,7 +1602,7 @@ describe('GET /api/signage/content and current-image with targetClientKeys', () 
       payload: {
         name: 'img-kiosk-a',
         contentType: 'TOOLS',
-        targetClientKeys: [clientA.apiKey],
+        targetClientDeviceIds: [clientA.id],
         layoutConfig: {
           layout: 'FULL',
           slots: [
