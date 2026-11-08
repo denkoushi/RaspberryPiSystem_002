@@ -98,6 +98,7 @@ describe('backup-execution.service', () => {
       success: true,
       path: 'backup/path.csv',
       sizeBytes: 123,
+      hash: 'plaintext-sha256',
     });
 
     const { results } = await executeBackupAcrossProviders({
@@ -136,6 +137,8 @@ describe('backup-execution.service', () => {
         path: 'backup/path.csv',
         sizeBytes: 123,
         provider: 'dropbox',
+        hash: 'plaintext-sha256',
+        encrypted: true,
       })
     );
     expect(completeHistoryMock.mock.calls[0]?.[1]?.durationMs).toEqual(expect.any(Number));

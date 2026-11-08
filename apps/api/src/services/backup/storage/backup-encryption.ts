@@ -4,10 +4,10 @@ import { pipeline } from 'stream/promises';
 import { Transform } from 'stream';
 
 /**
- * 外部ストレージ（Dropbox）へ送るバックアップの暗号化形式。
+ * 保存するバックアップの暗号化形式。
  *
  * 形式: MAGIC(8) | IV(12) | AES-256-GCM 暗号文 | 認証タグ(16)
- * MAGICで暗号化済みかを判定するため、既存の平文バックアップもそのまま復元できる。
+ * MAGICで暗号化済みかを判定する。復元の可否は呼び出し側で履歴と照合する。
  */
 export const BACKUP_ENCRYPTION_MAGIC = Buffer.from('RPBKENC1', 'ascii');
 const IV_LENGTH = 12;
@@ -87,4 +87,11 @@ export async function encryptBackupFile(key: Buffer, sourcePath: string, destina
     }
   });
   await pipeline(createReadStream(sourcePath), cipher, appendTag, output);
+}
+
+/** 書き込み時だけ鍵を必須にする。 */
+export function requireBackupEncryptionKey(): Buffer {
+  const key = loadBackupEncryptionKey();
+  if (!key) throw new BackupEncryptionError('BACKUP_ENCRYPTION_KEY is required for backup writes');
+  return key;
 }

@@ -1,3 +1,6 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -64,7 +67,6 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
       })
       : new LocalStorageProvider();
 
-    const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
 
     // バックアップパスからtargetKindとtargetSourceを推測
@@ -82,6 +84,11 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
     });
 
     try {
+      // バックアップデータをダウンロードし、復元してよいものかを先に確かめる(事前バックアップより前)
+      const backupData = await validateBackupForRestore(await storageProvider.download(body.backupPath), {
+        backupPath: body.backupPath,
+      });
+
       const preBackup = body.preBackup ?? (targetKind === 'database');
       if (preBackup) {
         await runPreRestoreBackup({
@@ -97,8 +104,6 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
         });
       }
 
-      // バックアップデータをダウンロード
-      const backupData = await storageProvider.download(body.backupPath);
 
       // 設定ファイルを読み込む
       const config = await BackupConfigLoader.load();
@@ -128,9 +133,11 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
         });
       } else {
         // restoreメソッドが実装されていない場合は通常の処理を実行
-        const result = await backupService.restore(body.backupPath, {
-          destination: body.destination,
-        });
+        if (body.destination) {
+          await fs.mkdir(path.dirname(body.destination), { recursive: true });
+          await fs.writeFile(body.destination, backupData, { mode: 0o600 });
+        }
+        const result = { success: true, timestamp: new Date() };
 
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {

@@ -154,6 +154,8 @@ export async function executeBackupAcrossProviders(
             sizeBytes: result.sizeBytes,
           });
           await historyService.completeHistory(historyId, {
+            hash: result.hash,
+            encrypted: true,
             targetKind,
             targetSource,
             sizeBytes: result.sizeBytes,

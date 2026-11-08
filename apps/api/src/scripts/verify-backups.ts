@@ -2,7 +2,11 @@ import { BackupConfigLoader } from '../services/backup/backup-config.loader.js';
 import { BackupVerifier } from '../services/backup/backup-verifier.js';
 import { StorageProviderFactory } from '../services/backup/storage-provider-factory.js';
 import { BackupService } from '../services/backup/backup.service.js';
-import { BACKUP_ENCRYPTION_OVERHEAD_BYTES } from '../services/backup/storage/backup-encryption.js';
+import {
+  BACKUP_ENCRYPTION_OVERHEAD_BYTES,
+  decryptBackupIfEncrypted,
+  loadBackupEncryptionKey
+} from '../services/backup/storage/backup-encryption.js';
 import { prisma } from '../lib/prisma.js';
 import type { BackupConfig } from '../services/backup/backup-config.js';
 import type { BackupTargetInfo } from '../services/backup/backup-types.js';
@@ -173,7 +177,11 @@ const verifyTargetBackup = async (params: {
 
     if (shouldDownload(exists.sizeBytes, maxDownloadBytes)) {
       try {
-        const data = await storageProvider.download(latestHistory.backupPath);
+        // 保存物は暗号化されているため、履歴の照合値(暗号化前の中身)と比べる前に復号する
+        const data = decryptBackupIfEncrypted(
+          loadBackupEncryptionKey(),
+          await storageProvider.download(latestHistory.backupPath)
+        );
         const verification = BackupVerifier.verify(
           data,
           latestHistory.sizeBytes ?? undefined,

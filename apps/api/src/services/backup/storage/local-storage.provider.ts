@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs';
 import path from 'path';
+import { encryptBackup, encryptBackupFile, requireBackupEncryptionKey } from './backup-encryption.js';
 import type { FileInfo, LargeFileUploadProvider, StorageProvider } from './storage-provider.interface';
 
 const getDefaultBaseDir = (): string => {
@@ -9,7 +10,7 @@ const getDefaultBaseDir = (): string => {
 };
 
 async function ensureDir(dir: string): Promise<void> {
-  await fs.mkdir(dir, { recursive: true });
+  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
 }
 
 export class LocalStorageProvider implements StorageProvider, LargeFileUploadProvider {
@@ -31,16 +32,24 @@ export class LocalStorageProvider implements StorageProvider, LargeFileUploadPro
 
   async upload(file: Buffer, targetPath: string): Promise<void> {
     const fullPath = this.resolveWithinBase(targetPath);
+    const key = requireBackupEncryptionKey();
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
-    await fs.writeFile(fullPath, file);
+    await fs.chmod(fullPath, 0o600).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    await fs.writeFile(fullPath, encryptBackup(key, file), { mode: 0o600 });
   }
 
   async uploadFromFile(filePath: string, targetPath: string): Promise<void> {
     const fullPath = this.resolveWithinBase(targetPath);
+    const key = requireBackupEncryptionKey();
     const dir = path.dirname(fullPath);
     await ensureDir(dir);
-    await fs.copyFile(filePath, fullPath);
+    await fs.chmod(fullPath, 0o600).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== 'ENOENT') throw error;
+    });
+    await encryptBackupFile(key, filePath, fullPath);
   }
 
   async download(targetPath: string): Promise<Buffer> {

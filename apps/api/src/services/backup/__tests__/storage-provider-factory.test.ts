@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { StorageProviderFactory, StorageProviderOptions } from '../storage-provider-factory.js';
 import { LocalStorageProvider } from '../storage/local-storage.provider.js';
-import { DropboxStorageProvider } from '../storage/dropbox-storage.provider.js';
+import { EncryptedStorageProvider } from '../storage/encrypted-storage.provider.js';
 import { GmailStorageProvider } from '../storage/gmail-storage.provider.js';
 import { OAuth2Client } from 'google-auth-library';
 
@@ -38,7 +38,7 @@ describe('StorageProviderFactory', () => {
 
       const provider = StorageProviderFactory.create(options);
 
-      expect(provider).toBeInstanceOf(DropboxStorageProvider);
+      expect(provider).toBeInstanceOf(EncryptedStorageProvider);
     });
 
     it('should create GmailStorageProvider', () => {

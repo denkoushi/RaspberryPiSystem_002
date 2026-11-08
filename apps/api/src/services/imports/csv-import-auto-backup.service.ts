@@ -7,7 +7,6 @@ import { CsvBackupTarget } from '../backup/targets/csv-backup.target.js';
 import { DatabaseBackupTarget } from '../backup/targets/database-backup.target.js';
 import type { BackupTarget } from '../backup/backup-target.interface.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
-import { BackupVerifier } from '../backup/backup-verifier.js';
 import { BackupOperationType } from '@prisma/client';
 import { logger } from '../../lib/logger.js';
 
@@ -43,10 +42,6 @@ type BackupServiceLike = {
   backup: BackupService['backup'];
 };
 
-type BackupVerifierLike = {
-  verify: (data: Buffer) => { hash?: string };
-};
-
 type BackupTargetLike = BackupTarget;
 
 type CsvBackupSource = 'employees' | 'items';
@@ -62,7 +57,6 @@ export class CsvImportAutoBackupService {
   private readonly createBackupService: (storageProvider: StorageProvider) => BackupServiceLike;
   private readonly createCsvBackupTarget: (source: CsvBackupSource, options: { label: string }) => BackupTargetLike;
   private readonly createDatabaseBackupTarget: (dbUrl: string) => BackupTargetLike;
-  private readonly verifier: BackupVerifierLike;
   private readonly getDatabaseUrl: () => string;
   private readonly log: LoggerLike;
 
@@ -73,20 +67,18 @@ export class CsvImportAutoBackupService {
     createBackupService?: (storageProvider: StorageProvider) => BackupServiceLike;
     createCsvBackupTarget?: (source: CsvBackupSource, options: { label: string }) => BackupTargetLike;
     createDatabaseBackupTarget?: (dbUrl: string) => BackupTargetLike;
-    verifier?: BackupVerifierLike;
     getDatabaseUrl?: () => string;
     logger?: LoggerLike;
   } = {}) {
     this.backupHistoryService = overrides.backupHistoryService ?? new BackupHistoryService();
     this.configStore = overrides.configStore ?? { load: BackupConfigLoader.load, save: BackupConfigLoader.save };
-    this.storageProviderFactory = overrides.storageProviderFactory ?? { createFromConfig: StorageProviderFactory.createFromConfig };
+    this.storageProviderFactory = overrides.storageProviderFactory ?? { createFromConfig: StorageProviderFactory.createFromConfig.bind(StorageProviderFactory) };
     this.createBackupService =
       overrides.createBackupService ?? ((storageProvider) => new BackupService(storageProvider));
     this.createCsvBackupTarget =
       overrides.createCsvBackupTarget ?? ((source, options) => new CsvBackupTarget(source, options));
     this.createDatabaseBackupTarget =
       overrides.createDatabaseBackupTarget ?? ((dbUrl) => new DatabaseBackupTarget(dbUrl));
-    this.verifier = overrides.verifier ?? { verify: (data) => BackupVerifier.verify(data) };
     this.getDatabaseUrl =
       overrides.getDatabaseUrl ??
       (() => process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/borrow_return');
@@ -162,9 +154,6 @@ export class CsvImportAutoBackupService {
             const employeesBackup = this.createCsvBackupTarget('employees', {
               label: `auto-after-import-${importSchedule.id}`,
             });
-            // バックアップデータを取得してハッシュを計算
-            const backupData = await employeesBackup.createBackup();
-            const hash = this.verifier.verify(backupData).hash;
 
             // バックアップ履歴を作成
             const historyId = await this.backupHistoryService.createHistory({
@@ -178,6 +167,7 @@ export class CsvImportAutoBackupService {
               const result = await backupService.backup(employeesBackup, {
                 label: `auto-after-import-${importSchedule.id}-employees`,
               });
+              if (!result.success) throw new Error(result.error || 'Backup failed');
               backupResults.push(result);
 
               // バックアップ履歴を完了として更新
@@ -186,7 +176,8 @@ export class CsvImportAutoBackupService {
                 targetSource: 'employees',
                 path: result.path,
                 sizeBytes: result.sizeBytes,
-                hash,
+                hash: result.hash,
+                encrypted: true,
               });
 
               this.log.info?.(
@@ -204,9 +195,6 @@ export class CsvImportAutoBackupService {
             const itemsBackup = this.createCsvBackupTarget('items', {
               label: `auto-after-import-${importSchedule.id}`,
             });
-            // バックアップデータを取得してハッシュを計算
-            const backupData = await itemsBackup.createBackup();
-            const hash = this.verifier.verify(backupData).hash;
 
             // バックアップ履歴を作成
             const historyId = await this.backupHistoryService.createHistory({
@@ -220,6 +208,7 @@ export class CsvImportAutoBackupService {
               const result = await backupService.backup(itemsBackup, {
                 label: `auto-after-import-${importSchedule.id}-items`,
               });
+              if (!result.success) throw new Error(result.error || 'Backup failed');
               backupResults.push(result);
 
               // バックアップ履歴を完了として更新
@@ -228,7 +217,8 @@ export class CsvImportAutoBackupService {
                 targetSource: 'items',
                 path: result.path,
                 sizeBytes: result.sizeBytes,
-                hash,
+                hash: result.hash,
+                encrypted: true,
               });
 
               this.log.info?.(
@@ -246,9 +236,6 @@ export class CsvImportAutoBackupService {
           // データベースバックアップ
           const dbUrl = this.getDatabaseUrl();
           const databaseBackup = this.createDatabaseBackupTarget(dbUrl);
-          // バックアップデータを取得してハッシュを計算
-          const backupData = await databaseBackup.createBackup();
-          const hash = this.verifier.verify(backupData).hash;
 
           // バックアップ履歴を作成
           const historyId = await this.backupHistoryService.createHistory({
@@ -262,6 +249,7 @@ export class CsvImportAutoBackupService {
             const result = await backupService.backup(databaseBackup, {
               label: `auto-after-import-${importSchedule.id}-database`,
             });
+            if (!result.success) throw new Error(result.error || 'Backup failed');
             backupResults.push(result);
 
             // バックアップ履歴を完了として更新
@@ -270,7 +258,8 @@ export class CsvImportAutoBackupService {
               targetSource: 'borrow_return',
               path: result.path,
               sizeBytes: result.sizeBytes,
-              hash,
+              hash: result.hash,
+              encrypted: true,
             });
 
             this.log.info?.(
@@ -289,8 +278,6 @@ export class CsvImportAutoBackupService {
             const employeesBackup = this.createCsvBackupTarget('employees', {
               label: `auto-after-import-${importSchedule.id}`,
             });
-            const backupData = await employeesBackup.createBackup();
-            const hash = this.verifier.verify(backupData).hash;
 
             const historyId = await this.backupHistoryService.createHistory({
               operationType: BackupOperationType.BACKUP,
@@ -303,13 +290,15 @@ export class CsvImportAutoBackupService {
               const result = await backupService.backup(employeesBackup, {
                 label: `auto-after-import-${importSchedule.id}-employees`,
               });
+              if (!result.success) throw new Error(result.error || 'Backup failed');
               backupResults.push(result);
               await this.backupHistoryService.completeHistory(historyId, {
                 targetKind: 'csv',
                 targetSource: 'employees',
                 path: result.path,
                 sizeBytes: result.sizeBytes,
-                hash,
+                hash: result.hash,
+                encrypted: true,
               });
             } catch (backupError) {
               const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
@@ -321,8 +310,6 @@ export class CsvImportAutoBackupService {
             const itemsBackup = this.createCsvBackupTarget('items', {
               label: `auto-after-import-${importSchedule.id}`,
             });
-            const backupData = await itemsBackup.createBackup();
-            const hash = this.verifier.verify(backupData).hash;
 
             const historyId = await this.backupHistoryService.createHistory({
               operationType: BackupOperationType.BACKUP,
@@ -335,13 +322,15 @@ export class CsvImportAutoBackupService {
               const result = await backupService.backup(itemsBackup, {
                 label: `auto-after-import-${importSchedule.id}-items`,
               });
+              if (!result.success) throw new Error(result.error || 'Backup failed');
               backupResults.push(result);
               await this.backupHistoryService.completeHistory(historyId, {
                 targetKind: 'csv',
                 targetSource: 'items',
                 path: result.path,
                 sizeBytes: result.sizeBytes,
-                hash,
+                hash: result.hash,
+                encrypted: true,
               });
             } catch (backupError) {
               const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
@@ -351,8 +340,6 @@ export class CsvImportAutoBackupService {
           }
           const dbUrl = this.getDatabaseUrl();
           const databaseBackup = this.createDatabaseBackupTarget(dbUrl);
-          const backupData = await databaseBackup.createBackup();
-          const hash = this.verifier.verify(backupData).hash;
 
           const historyId = await this.backupHistoryService.createHistory({
             operationType: BackupOperationType.BACKUP,
@@ -365,13 +352,15 @@ export class CsvImportAutoBackupService {
             const result = await backupService.backup(databaseBackup, {
               label: `auto-after-import-${importSchedule.id}-database`,
             });
+            if (!result.success) throw new Error(result.error || 'Backup failed');
             backupResults.push(result);
             await this.backupHistoryService.completeHistory(historyId, {
               targetKind: 'database',
               targetSource: 'borrow_return',
               path: result.path,
               sizeBytes: result.sizeBytes,
-              hash,
+              hash: result.hash,
+              encrypted: true,
             });
           } catch (backupError) {
             const errorMessage = backupError instanceof Error ? backupError.message : String(backupError);
