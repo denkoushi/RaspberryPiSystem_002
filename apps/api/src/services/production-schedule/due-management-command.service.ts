@@ -1,3 +1,4 @@
+import { runDueDateTransaction } from './due-date-transaction.js';
 import type { Prisma } from '@prisma/client';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
 import { randomUUID } from 'node:crypto';
@@ -102,7 +103,7 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
     throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await runDueDateTransaction(async (tx) => {
     const before = await sharedScheduleFieldsRepository.findSeibanDueDate(PRODUCTION_SCHEDULE_DASHBOARD_ID, trimmedFseiban, tx);
     const trimmedDueDate = dueDateText.trim();
     const dueDate = trimmedDueDate ? new Date(`${trimmedDueDate}T00:00:00.000Z`) : null;
@@ -132,7 +133,7 @@ export async function upsertProductionScheduleSeibanDueDate(params: {
       }
     });
     return { dueDate, affectedRows: writebackResult.affectedRows };
-  }, { isolationLevel: 'Serializable' });
+  });
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return { ...result, success: true };
 }
@@ -158,7 +159,7 @@ export async function upsertProductionScheduleSeibanProcessingDueDate(params: {
     throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await runDueDateTransaction(async (tx) => {
     const before = await tx.productionScheduleSeibanProcessingDueDate.findUnique({ where: { csvDashboardId_fseiban_processingType: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, processingType } } });
     const processingTypeExists = await tx.$queryRaw<Array<{ exists: boolean }>>`
       SELECT EXISTS(
@@ -209,7 +210,7 @@ export async function upsertProductionScheduleSeibanProcessingDueDate(params: {
       }
     });
     return { processingType, dueDate: effectiveDueDate, affectedRows: writebackResult.affectedRows };
-  }, { isolationLevel: 'Serializable' });
+  });
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return { ...result, success: true };
 }

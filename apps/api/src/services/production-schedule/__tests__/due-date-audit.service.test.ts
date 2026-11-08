@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { upsertProductionScheduleSeibanDueDate, upsertProductionScheduleSeibanProcessingDueDate } from '../due-management-command.service.js';
 import { upsertProductionScheduleDueDate } from '../production-schedule-command.service.js';
@@ -56,6 +57,20 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
     if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.deleteMany).toHaveBeenCalled();
     else expect(mocks.tx.productionScheduleRowNote.upsert).toHaveBeenCalled();
   });
+  it('retries the whole transaction after a serialization conflict', async () => {
+    mocks.transaction.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('conflict', { code: 'P2034', clientVersion: '7' }));
+    await expect(run('2026-11-10')).resolves.toMatchObject({ success: true });
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+    expect(committedAudits).toHaveLength(1);
+    expect(mocks.resetCaches).toHaveBeenCalledOnce();
+  });
+  it('returns 409 after three serialization conflicts', async () => {
+    mocks.transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('conflict', { code: 'P2034', clientVersion: '7' }));
+    await expect(run('2026-11-10')).rejects.toMatchObject({ statusCode: 409, message: '他の端末で同時に更新されました。もう一度お試しください' });
+    expect(mocks.transaction).toHaveBeenCalledTimes(3);
+    expect(committedAudits).toEqual([]);
+    expect(mocks.resetCaches).not.toHaveBeenCalled();
+  });
   it('does not write an audit when the update fails', async () => {
     mocks.tx.productionScheduleRowNote.upsert.mockRejectedValue(new Error('write failed'));
     await expect(run('2026-11-10')).rejects.toThrow('write failed');
@@ -68,5 +83,17 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
     await expect(run('2026-11-10')).rejects.toThrow('audit failed');
     expect(committedAudits).toEqual([]);
     expect(mocks.resetCaches).not.toHaveBeenCalled();
+  });
+});
+
+describe('row due-date validation order', () => {
+  it('returns 404 for a missing row even with an invalid date', async () => {
+    mocks.tx.csvDashboardRow.findFirst.mockResolvedValue(null);
+    await expect(cases[0].run('invalid')).rejects.toMatchObject({ statusCode: 404 });
+    expect(mocks.tx.productionScheduleRowNote.upsert).not.toHaveBeenCalled();
+  });
+  it('returns 400 for an existing row with an invalid date', async () => {
+    await expect(cases[0].run('invalid')).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.tx.productionScheduleRowNote.upsert).not.toHaveBeenCalled();
   });
 });

@@ -599,6 +599,15 @@ describe('torque wrench traceability API', () => {
       actor: { clientDeviceId: assembly.id, clientDeviceNameSnapshot: 'Assembly-01' }
     });
     await resume(sessions[0]!.id);
+    expect((await prisma.assemblyWorkSession.findUniqueOrThrow({ where: { id: sessions[0]!.id } })).clientDeviceId).toBe(assembly.id);
+    const previousTerminalConfirmation = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,
+      headers: { 'x-client-key': stonebase.apiKey },
+      payload: { expectedTemplateBoltId: boltId, torqueWrenchProfileId: profile.id, physicalDisplayConfirmed: true }
+    });
+    expect(previousTerminalConfirmation.statusCode).toBe(403);
+    expect(previousTerminalConfirmation.json().errorCode).toBe('CLIENT_DEVICE_SCOPE_MISMATCH');
     const confirmed = await app.inject({
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,

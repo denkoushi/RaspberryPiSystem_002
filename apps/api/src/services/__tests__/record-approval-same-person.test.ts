@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     assemblyWorkSessionApproval: { create: vi.fn() },
     assemblyWorkSession: { findUnique: vi.fn() },
     selfInspectionSession: { findUnique: vi.fn(), updateMany: vi.fn() },
+    selfInspectionMeasurementOperation: { findFirst: vi.fn() },
     selfInspectionMeasurementValue: { updateMany: vi.fn() },
     selfInspectionRecordApproval: { create: vi.fn() },
     measuringInstrumentTag: { findUnique: vi.fn() }
@@ -55,6 +56,7 @@ beforeEach(() => {
     id: 'approver', employeeCode: 'E001', displayName: '承認者', nfcTagUid: 'approver-tag', status: 'ACTIVE'
   });
   mocks.db.measuringInstrumentTag.findUnique.mockResolvedValue(null);
+  mocks.db.selfInspectionMeasurementOperation.findFirst.mockResolvedValue(null);
 });
 
 describe('assembly record approval', () => {
@@ -109,9 +111,23 @@ describe('self inspection record approval', () => {
     expect(mocks.db.selfInspectionSession.updateMany).not.toHaveBeenCalled();
   });
 
-  it('allows a different employee to approve', async () => {
+  it('rejects employee B who updated a record created by employee A', async () => {
+    mocks.db.selfInspectionSession.findUnique.mockResolvedValue(session);
+    mocks.db.selfInspectionMeasurementOperation.findFirst.mockResolvedValue({ id: 'update-by-B' });
+    await expect(service.approveRecordApproval('session', input)).rejects.toMatchObject(samePersonError);
+    expect(mocks.db.selfInspectionMeasurementOperation.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { sessionId: 'session', authentication: { employeeId: 'approver' } }, select: { id: true }
+    });
+    expect(mocks.db.selfInspectionRecordApproval.create).not.toHaveBeenCalled();
+    expect(mocks.db.selfInspectionMeasurementValue.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('allows employee C to approve a record created and operated by employee A', async () => {
     mocks.db.selfInspectionSession.findUnique.mockResolvedValue(session);
     await expect(service.approveRecordApproval('session', input)).resolves.toEqual(session);
+    expect(mocks.db.selfInspectionMeasurementOperation.findFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { sessionId: 'session', authentication: { employeeId: 'approver' } }, select: { id: true }
+    });
     expect(mocks.db.selfInspectionRecordApproval.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ approverEmployeeId: 'approver', sessionId: 'session' })
     });

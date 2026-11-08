@@ -1956,6 +1956,6 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 ### 組立・自主検査の記録承認における同一人物の制限
 
 - 社員タグで解決した承認者が記録の作業者と同じ場合、承認サービスは書き込み前に HTTP 403 / `RECORD_APPROVAL_SAME_PERSON` / 「同じ人は承認できません」を返す。ADMIN/MANAGER の JWT 経路も同じ判定を通る。
-- 組立の作業者は `AssemblyWorkSession.operatorEmployeeId` と、開始・再開履歴の `AssemblyWorkSessionOperatorAccess.employeeId`。自主検査は全入力の `SelfInspectionLotEntry.createdByEmployeeId` と `SelfInspectionInspectorEntry.inspectorEmployeeId`。複数人の場合も、いずれかの従業員 ID が一致すれば拒否する。
+- 組立の作業者は `AssemblyWorkSession.operatorEmployeeId` と、開始・再開履歴の `AssemblyWorkSessionOperatorAccess.employeeId`。自主検査は全入力の `SelfInspectionLotEntry.createdByEmployeeId` と `SelfInspectionInspectorEntry.inspectorEmployeeId`、および同じセッションの `SelfInspectionMeasurementOperation.authentication.employeeId`。複数人の場合も、いずれかの従業員 ID が一致すれば拒否する。
 - 2つの記録承認画面は既存のエラー表示でメッセージを表示する。暗証番号の再入力は要求しない。
 - 回帰確認: `record-approval-same-person.test.ts`、`record-approval-access.routes.test.ts`、`KioskAssemblyRecordApprovalPage.test.tsx`、`KioskSelfInspectionRecordApprovalPage.test.tsx`。

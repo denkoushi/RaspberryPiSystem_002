@@ -52,6 +52,19 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     if (reply.statusCode === 401) reply.code(200);
   };
 
+  const isManagerOperation = async (request: FastifyRequest, reply: FastifyReply): Promise<boolean> => {
+    if (!request.headers.authorization) return false;
+    try {
+      await canWrite(request, reply);
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'MFA_SETUP_REQUIRED') throw error;
+      if (!request.headers['x-client-key']) throw error;
+      if (reply.statusCode === 401 || reply.statusCode === 403) reply.code(200);
+      return false;
+    }
+  };
+
   app.get('/torque-wrench-models', { preHandler: allowView }, async (request) => {
     const query = torqueWrenchListQuerySchema.parse(request.query);
     return { models: await service.listModels(query.includeInactive) };
@@ -152,13 +165,13 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     '/torque-wrenches/:id/connection-lease/acquire',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      if (request.headers.authorization) await canWrite(request, reply);
+      const managerOperation = await isManagerOperation(request, reply);
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const body = torqueWrenchConnectionLeaseAcquireSchema.parse(request.body);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
       return {
         lease: await connectionLeaseService.acquire({
-          actorDevice: request.user ? null : clientDevice,
+          actorDevice: managerOperation ? null : clientDevice,
           torqueWrenchProfileId: id,
           clientDeviceId: clientDevice.id,
           ...body
@@ -171,13 +184,13 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
     '/torque-wrenches/:id/connection-lease/takeover',
     { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
     async (request, reply) => {
-      if (request.headers.authorization) await canWrite(request, reply);
+      const managerOperation = await isManagerOperation(request, reply);
       const { id } = torqueWrenchIdParamsSchema.parse(request.params);
       const body = torqueWrenchConnectionLeaseTakeoverSchema.parse(request.body);
       const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
       return {
         lease: await connectionLeaseService.takeover({
-          actorDevice: request.user ? null : clientDevice,
+          actorDevice: managerOperation ? null : clientDevice,
           torqueWrenchProfileId: id,
           clientDeviceId: clientDevice.id,
           ...body
@@ -246,12 +259,12 @@ export async function registerTorqueWrenchRoutes(app: FastifyInstance): Promise<
   });
 
   app.post('/assembly/work-sessions/:id/torque-wrench-confirmations', async (request, reply) => {
-    if (request.headers.authorization) await canWrite(request, reply);
+    const managerOperation = await isManagerOperation(request, reply);
     const { id } = assemblyWorkSessionParamsSchema.parse(request.params);
     const body = torqueWrenchConfirmationCreateSchema.parse(request.body);
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const confirmation = await traceabilityService.confirm({
-      actorDevice: request.user ? null : clientDevice,
+      actorDevice: managerOperation ? null : clientDevice,
       sessionId: id,
       clientDeviceId: clientDevice.id,
       clientDeviceName: clientDevice.name,
