@@ -300,6 +300,8 @@ async function readAggregatedLoadSummary(params: {
   });
   const overrideJson = JSON.stringify(overrideBindings);
 
+  // DISTINCT ON keeps the same first source row per logical item without the
+  // ROW_NUMBER() = 1 selectivity underestimate that caused items × overrides scans.
   const aggregateRows = await params.client.$queryRaw<LoadSummaryAggregateRow[]>(Prisma.sql`
     WITH "baseRows" AS (
       SELECT
@@ -348,22 +350,22 @@ async function readAggregatedLoadSummary(params: {
       FROM "baseRows" AS b
     ),
     "deduplicatedItems" AS (
-      SELECT *
-      FROM (
-        SELECT
-          "items".*,
-          ROW_NUMBER() OVER (
-            PARTITION BY "items"."pieceId",
-              COALESCE("items"."fseiban", ''),
-              CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
-              COALESCE("items"."fhincd", ''),
-              COALESCE("items"."processOrder", ''),
-              COALESCE("items"."originalResourceCd", '')
-            ORDER BY "items"."sourceRowId"
-          ) AS "itemRowNumber"
-        FROM "items"
-      ) AS "rankedItems"
-      WHERE "rankedItems"."itemRowNumber" = 1
+      SELECT DISTINCT ON (
+        "items"."pieceId",
+        COALESCE("items"."fseiban", ''),
+        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
+        COALESCE("items"."fhincd", ''),
+        COALESCE("items"."processOrder", ''),
+        COALESCE("items"."originalResourceCd", '')
+      ) "items".*
+      FROM "items"
+      ORDER BY "items"."pieceId",
+        COALESCE("items"."fseiban", ''),
+        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
+        COALESCE("items"."fhincd", ''),
+        COALESCE("items"."processOrder", ''),
+        COALESCE("items"."originalResourceCd", ''),
+        "items"."sourceRowId"
     ),
     "overrides" AS MATERIALIZED (
       SELECT *
