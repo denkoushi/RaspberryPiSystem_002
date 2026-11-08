@@ -92,7 +92,7 @@ describe('signage schedule response boundaries', () => {
     expect(response.json()).toEqual({ schedules: [] });
   });
 
-  it.each(['ADMIN', 'MANAGER'] as const)('preserves target assignments in the authenticated %s management response', async (role) => {
+  it.each(['ADMIN', 'MANAGER'] as const)('returns device ID targets only in the authenticated %s management response', async (role) => {
     const response = await buildApp().inject({
       method: 'GET',
       url: '/schedules/management',
@@ -100,7 +100,10 @@ describe('signage schedule response boundaries', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schedules: [internalSchedule] });
+    const { targetClientKeys: _legacy, ...expected } = internalSchedule;
+    void _legacy;
+    expect(response.json()).toEqual({ schedules: [expected] });
+    expect(response.body).not.toContain(internalSchedule.targetClientKeys[0]);
     expect(service.getSchedules).not.toHaveBeenCalled();
   });
 

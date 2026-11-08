@@ -5,7 +5,6 @@ export interface ClientDevice {
   id: string;
   name: string;
   location?: string | null;
-  apiKey: string;
   isSignage?: boolean;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
@@ -30,6 +29,11 @@ export interface ClientDevice {
 export async function getClients() {
   const { data } = await api.get<{ clients: ClientDevice[] }>('/clients');
   return data.clients;
+}
+
+export async function getClientApiKey(id: string) {
+  const { data } = await api.get<{ apiKey: string }>(`/clients/${id}/api-key`);
+  return data.apiKey;
 }
 
 export async function updateClient(

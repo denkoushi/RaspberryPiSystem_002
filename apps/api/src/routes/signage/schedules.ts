@@ -3,6 +3,13 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
 import { scheduleSchema, scheduleUpdateSchema, scheduleParamsSchema } from './schemas.js';
 
+// Management responses use device IDs only.
+function withoutLegacyTargets<T extends { targetClientKeys?: unknown }>(schedule: T): Omit<T, 'targetClientKeys'> {
+  const { targetClientKeys: _legacy, ...rest } = schedule;
+  void _legacy;
+  return rest;
+}
+
 export function registerScheduleRoutes(app: FastifyInstance, signageService: SignageService): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
 
@@ -30,14 +37,14 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
   // GET /api/signage/schedules/management - 管理画面用（有効/無効を含む全件）
   app.get('/schedules/management', { preHandler: canManage }, async () => {
     const schedules = await signageService.listSchedulesForManagement();
-    return { schedules };
+    return { schedules: schedules.map(withoutLegacyTargets) };
   });
 
   // POST /api/signage/schedules - スケジュール作成（管理画面用）
   app.post('/schedules', { preHandler: canManage }, async (request) => {
     const body = scheduleSchema.parse(request.body);
     const schedule = await signageService.createSchedule(body);
-    return { schedule };
+    return { schedule: withoutLegacyTargets(schedule) };
   });
 
   // PUT /api/signage/schedules/:id - スケジュール更新（管理画面用）
@@ -45,7 +52,7 @@ export function registerScheduleRoutes(app: FastifyInstance, signageService: Sig
     const params = scheduleParamsSchema.parse(request.params);
     const body = scheduleUpdateSchema.parse(request.body);
     const schedule = await signageService.updateSchedule(params.id, body);
-    return { schedule };
+    return { schedule: withoutLegacyTargets(schedule) };
   });
 
   // DELETE /api/signage/schedules/:id - スケジュール削除（管理画面用）

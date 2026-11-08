@@ -1,5 +1,5 @@
 vi.mock('../../services/clients/client-telemetry.service.js', () => ({
-  listClientDevices: vi.fn().mockResolvedValue([{ id: 'key-a', apiKey: 'legacy-a' }, { id: 'key-b', apiKey: 'legacy-b' }]),
+  listClientDevices: vi.fn().mockResolvedValue([{ id: 'key-a' }, { id: 'key-b' }]),
 }));
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,8 +41,8 @@ describe('signage management overview routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().clients).toEqual([
-      { clientDeviceId: 'key-a', apiKey: 'legacy-a', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
-      { clientDeviceId: 'key-b', apiKey: 'legacy-b', lastFetchedAt: null, rotation },
+      { clientDeviceId: 'key-a', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
+      { clientDeviceId: 'key-b', lastFetchedAt: null, rotation },
     ]);
     expect(response.json().scheduleSwitchIntervalSeconds).toBeGreaterThan(0);
     await app.close();
