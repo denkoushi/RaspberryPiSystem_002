@@ -5,6 +5,7 @@ import { useTransactions } from '../../api/hooks';
 import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { escapeCsvCell } from '../../utils/csv';
 
 import type { Transaction } from '../../api/types';
 
@@ -40,7 +41,7 @@ export function HistoryPage() {
     ];
     });
     const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map((cell) => escapeCsvCell(cell, true)).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
