@@ -70,7 +70,6 @@ export type AssemblyWorkSessionApprovalDto = {
   approverEmployeeId: string | null;
   approverEmployeeCodeSnapshot: string;
   approverEmployeeNameSnapshot: string;
-  approverNfcTagUidSnapshot: string;
   comment: string | null;
   clientDeviceId: string | null;
   clientDeviceNameSnapshot: string | null;

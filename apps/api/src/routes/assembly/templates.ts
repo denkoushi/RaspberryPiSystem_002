@@ -64,13 +64,6 @@ export function registerAssemblyCandidateRoutes(app: FastifyInstance, {
     return { items };
   });
 
-  app.post('/assembly/operators/resolve-nfc', { preHandler: allowView }, async (request) => {
-    const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
-    const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
-    if (!resolved) throw new DomainHttpError(404, '社員タグが見つかりません');
-    return resolved;
-  });
-
   app.get('/assembly/library/filter-options', { preHandler: allowView }, async (request) => {
     const query = z
       .object({
@@ -94,6 +87,13 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
   allowWriteKiosk: preHandlerHookHandler;
   templateService: AssemblyTemplateService;
 }): void {
+  app.post('/assembly/operators/resolve-nfc', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
+    const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
+    if (!resolved) throw new DomainHttpError(404, '社員タグが見つかりません');
+    return resolved;
+  });
+
   app.get('/assembly/templates', { preHandler: allowView }, async (request) => {
     const q = z
       .object({
