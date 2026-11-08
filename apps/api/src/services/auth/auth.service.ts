@@ -14,6 +14,7 @@ import {
   verifyTotpCodeStep,
 } from '../../lib/mfa.js';
 import { prisma } from '../../lib/prisma.js';
+import { LOGIN_ATTEMPT_LIMIT, notifyLoginAttemptLimitReached } from './login-limit-alert.js';
 
 export type LoginInput = {
   username: string;
@@ -117,13 +118,13 @@ async function deleteExpiredLoginAttempts(username: string): Promise<void> {
   `;
 }
 
-async function reserveLoginAttempt(username: string): Promise<void> {
+async function reserveLoginAttempt(username: string): Promise<number> {
   try {
     await deleteExpiredLoginAttempts(username);
   } catch (error) {
     logger.warn({ err: error }, 'Failed to delete expired login attempts');
   }
-  const reserved = await prisma.$queryRaw<Array<{ username: string }>>`
+  const reserved = await prisma.$queryRaw<Array<{ username: string; count: number }>>`
     INSERT INTO "AuthLoginAttempt" ("username", "count", "windowEndsAt", "updatedAt")
     VALUES (${username}, 1,
       (statement_timestamp() AT TIME ZONE 'UTC') + INTERVAL '15 minutes',
@@ -138,12 +139,13 @@ async function reserveLoginAttempt(username: string): Promise<void> {
         ELSE "AuthLoginAttempt"."windowEndsAt" END,
       "updatedAt" = (statement_timestamp() AT TIME ZONE 'UTC')
     WHERE "AuthLoginAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC')
-      OR "AuthLoginAttempt"."count" < 10
-    RETURNING "username"
+      OR "AuthLoginAttempt"."count" < ${LOGIN_ATTEMPT_LIMIT}
+    RETURNING "username", "count"
   `;
   if (reserved.length === 0) {
     throw new ApiError(429, 'ログインの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'AUTH_LOGIN_RATE_LIMITED');
   }
+  return Number(reserved[0].count);
 }
 
 export class AuthService {
@@ -152,7 +154,11 @@ export class AuthService {
       await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
       throw new ApiError(401, 'ユーザー名またはパスワードが違います');
     }
-    await reserveLoginAttempt(input.username);
+    const attemptCount = await reserveLoginAttempt(input.username);
+    const failAttempt = async (error: ApiError): Promise<never> => {
+      if (attemptCount === LOGIN_ATTEMPT_LIMIT) await notifyLoginAttemptLimitReached(input.username);
+      throw error;
+    };
     const user = await prisma.user.findUnique({ where: { username: input.username } });
     if (!user) {
       await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
@@ -163,7 +169,7 @@ export class AuthService {
     }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
     if (!ok) {
-      throw new ApiError(401, 'ユーザー名またはパスワードが違います');
+      await failAttempt(new ApiError(401, 'ユーザー名またはパスワードが違います'));
     }
 
     if (user.mfaEnabled) {
@@ -193,7 +199,7 @@ export class AuthService {
         }
       }
       if (!totpOk && !backupOk) {
-        throw new ApiError(401, 'MFAコードが必要です');
+        await failAttempt(new ApiError(401, 'MFAコードが必要です'));
       }
     }
 

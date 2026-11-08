@@ -18,11 +18,13 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   executeRaw: vi.fn(),
   deleteMany: vi.fn(),
-  findMany: vi.fn()
+  findMany: vi.fn(),
+  notifyLimit: vi.fn()
 }));
 
 vi.mock('../../../config/env.js', () => ({ env: mocks.env }));
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
+vi.mock('../login-limit-alert.js', () => ({ LOGIN_ATTEMPT_LIMIT: 10, notifyLoginAttemptLimitReached: mocks.notifyLimit }));
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
@@ -72,7 +74,8 @@ beforeEach(() => {
   mocks.findUnique.mockReset();
   mocks.update.mockReset();
   mocks.updateMany.mockReset().mockResolvedValue({ count: 1 });
-  mocks.queryRaw.mockReset().mockResolvedValue([{ username: 'alice' }]);
+  mocks.queryRaw.mockReset().mockResolvedValue([{ username: 'alice', count: 1 }]);
+  mocks.notifyLimit.mockReset().mockResolvedValue(undefined);
   mocks.executeRaw.mockReset().mockResolvedValue(0);
   mocks.deleteMany.mockReset().mockResolvedValue({ count: 1 });
   mocks.findMany.mockReset();
@@ -141,6 +144,23 @@ describe('AuthService.login', () => {
     } finally {
       compare.mockRestore();
     }
+  });
+
+  it('notifies once when the attempt that reaches the limit fails', async () => {
+    mocks.findUnique.mockResolvedValue(makeUser());
+    mocks.queryRaw.mockResolvedValue([{ username: 'alice', count: 10 }]);
+    const error = await captureError(service.login({ username: 'alice', password: 'wrong-password' }));
+    expect(error.statusCode).toBe(401);
+    expect(mocks.notifyLimit).toHaveBeenCalledWith('alice');
+  });
+
+  it('does not notify before the limit or when the limiting attempt succeeds', async () => {
+    mocks.findUnique.mockResolvedValue(makeUser());
+    mocks.queryRaw.mockResolvedValue([{ username: 'alice', count: 9 }]);
+    await captureError(service.login({ username: 'alice', password: 'wrong-password' }));
+    mocks.queryRaw.mockResolvedValue([{ username: 'alice', count: 10 }]);
+    await service.login({ username: 'alice', password: PASSWORD });
+    expect(mocks.notifyLimit).not.toHaveBeenCalled();
   });
 
   it('continues to reserve the attempt when deleting expired attempts fails', async () => {
