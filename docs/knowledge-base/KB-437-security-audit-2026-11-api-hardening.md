@@ -80,6 +80,15 @@
 
 検証で意見が割れたもの（参考、未修正）: MFA バックアップコードの非原子的消費（`services/auth/auth.service.ts`）、`/kiosk/support` の本文 `clientId` 信頼、WebRTC の `?clientKey=` が Caddy アクセスログに残る件、nfc/barcode agent の CORS `*` と Origin 未検査、`ADMIN_ALLOW_NETS` が `/admin*` の直接読込しか止めない件、署名配信の SSH host key 検証無効、DGX embedding イメージの Pillow 12.3.0。
 
+## Admin Session Follow-up (2026-11-08)
+
+- 管理画面の認証・権限に安全上の修正を追加。適用には `20261108200000_auth_session` migration が必要。
+- 管理画面のセッションはログインから最大7日。反映後は一度ログインし直す。ログアウトはサーバー側にも反映する。
+- MFA 有効化後は、返された新しいトークンで操作を続ける。役割変更では操作者の現在のパスワードが必要。
+- 本番の同一 JWT 署名鍵設定は起動を止めず、警告と既存 Alert/Slack 配送で通知する。弱い鍵を拒否する既存検証は維持。
+- 監視 ID の既存重複が否定できないため、一意制約を追加せず初回登録をトランザクションで調停する。
+- この追補はローカル実装の記録。migration 適用・本番反映は未実施。
+
 ## References
 
 - Audit PR: `claude/wizardly-sagan-e8q3qw`

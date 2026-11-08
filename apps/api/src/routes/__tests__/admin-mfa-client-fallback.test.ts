@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   userFindUnique: vi.fn(),
   clientKey: vi.fn(), findAll: vi.fn(), getDashboard: vi.fn(), listModels: vi.fn(), confirmations: vi.fn()
 }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.userFindUnique } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: mocks.userFindUnique } } }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
 // These routes' schemas import generated enums even though persistence is mocked.
 vi.mock('@prisma/client', () => {
@@ -78,7 +78,7 @@ afterEach(async () => { await app.close(); });
 
 function userHeaders(role = 'ADMIN') {
   mocks.userFindUnique.mockResolvedValue({ id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false });
-  const token = jwt.sign({ sub: 'user', username: 'test', role }, mocks.env.JWT_ACCESS_SECRET);
+  const token = jwt.sign({ tokenType: 'access', sessionId: 'user', sub: 'user', username: 'test', role }, mocks.env.JWT_ACCESS_SECRET);
   return { authorization: `Bearer ${token}`, 'x-client-key': 'valid-device-key' };
 }
 

@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import type { User } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { signAccessToken } from '../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import { prisma } from '../../lib/prisma.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
 import { MeasuringInstrumentLoanService } from '../../services/measuring-instruments/loan.service.js';
@@ -10,7 +10,7 @@ import { RiggingLoanService } from '../../services/rigging/index.js';
 import { registerMeasuringInstrumentRoutes } from '../measuring-instruments/index.js';
 import { registerRiggingRoutes } from '../rigging/index.js';
 
-vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } } }));
 
 function tokenForUser(user: User): string {
   const activeUser = { ...user, status: 'ACTIVE' as const, mfaEnabled: true };

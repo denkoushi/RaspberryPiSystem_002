@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../../config/env/load-dotenv.js', () => ({}));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() } } }));
 vi.mock('../../../services/clients/error-log-device.service.js', () => ({ resolveErrorLogDevice: async () => ({}) }));
 vi.mock('../../../services/inference/inference-runtime.js', () => ({ getInferenceRuntime: vi.fn() }));
 vi.mock('../../../services/system/dgx-resource/dgx-resource.service.js', () => ({ createDgxResourceService: vi.fn() }));
@@ -18,7 +18,7 @@ let app: FastifyInstance;
 const action = vi.fn(async () => ({ ok: true as const, message: '完了しました' }));
 const headers = (role = 'ADMIN') => {
   vi.mocked(prisma.user.findUnique).mockResolvedValue({ id: 'test', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
-  return { authorization: `Bearer ${jwt.sign({ sub: 'test', username: 'test', role }, env.JWT_ACCESS_SECRET)}` };
+  return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'test', sub: 'test', username: 'test', role }, env.JWT_ACCESS_SECRET)}` };
 };
 beforeEach(async () => {
   action.mockClear();

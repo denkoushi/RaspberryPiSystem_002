@@ -1,8 +1,9 @@
+import { createAuthSession, deleteExpiredAuthSessions, rotateAuthSession, updateMfaState } from './auth-session.service.js';
 import type { User, UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
-import { isAdminMfaRequired, signAccessToken, signRefreshToken, type JwtPayload } from '../../lib/auth.js';
+import { isAdminMfaRequired, type JwtPayload } from '../../lib/auth.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import {
@@ -96,13 +97,6 @@ function toAuthUserDto(user: Pick<User, 'id' | 'username' | 'role' | 'mfaEnabled
   };
 }
 
-function buildTokenPair(user: User): Pick<LoginResult, 'accessToken' | 'refreshToken'> {
-  return {
-    accessToken: signAccessToken(user),
-    refreshToken: signRefreshToken(user),
-  };
-}
-
 const MAX_LOGIN_USERNAME_LENGTH = 128;
 const DUMMY_PASSWORD_HASH = '$2a$10$0aHEpcYrWdHZqOlUGHK9pOJIATM.o8owRzLFFGc6JqgFhSBRpJwdu';
 
@@ -121,6 +115,7 @@ async function deleteExpiredLoginAttempts(username: string): Promise<void> {
 async function reserveLoginAttempt(username: string): Promise<number> {
   try {
     await deleteExpiredLoginAttempts(username);
+    await deleteExpiredAuthSessions();
   } catch (error) {
     logger.warn({ err: error }, 'Failed to delete expired login attempts');
   }
@@ -164,11 +159,8 @@ export class AuthService {
       await bcrypt.compare(input.password, DUMMY_PASSWORD_HASH);
       throw new ApiError(401, 'ユーザー名またはパスワードが違います');
     }
-    if (user.status !== 'ACTIVE') {
-      throw new ApiError(403, 'アカウントが無効化されています');
-    }
     const ok = await bcrypt.compare(input.password, user.passwordHash);
-    if (!ok) {
+    if (!ok || user.status !== 'ACTIVE') {
       await failAttempt(new ApiError(401, 'ユーザー名またはパスワードが違います'));
     }
 
@@ -203,7 +195,7 @@ export class AuthService {
       }
     }
 
-    const tokens = buildTokenPair(user);
+    const tokens = await createAuthSession(user);
     await prisma.authLoginAttempt.deleteMany({ where: { username: input.username } });
     return {
       ...tokens,
@@ -214,17 +206,21 @@ export class AuthService {
   async refresh(input: RefreshInput): Promise<LoginResult> {
     try {
       const payload = jwt.verify(input.refreshToken, env.JWT_REFRESH_SECRET) as JwtPayload;
+      if (payload.tokenType !== 'refresh' || typeof payload.sub !== 'string' || !payload.sub ||
+        typeof payload.sessionId !== 'string' || !payload.sessionId || typeof payload.tokenId !== 'string' || !payload.tokenId) {
+        throw new ApiError(401, 'リフレッシュトークンが無効です');
+      }
       const user = await prisma.user.findUnique({ where: { id: payload.sub } });
       if (!user) {
         throw new ApiError(401, 'ユーザーが見つかりません');
       }
       if (user.status !== 'ACTIVE') {
-        throw new ApiError(403, 'アカウントが無効化されています');
+        throw new ApiError(401, 'リフレッシュトークンが無効です');
       }
       if (user.mfaEnabled === true && payload.mfaEnabled !== true) {
         throw new ApiError(401, 'MFA設定後は再ログインが必要です', undefined, 'MFA_REAUTH_REQUIRED');
       }
-      const tokens = buildTokenPair(user);
+      const tokens = await rotateAuthSession(user, payload.sessionId, payload.tokenId);
       return {
         ...tokens,
         user: toAuthUserDto(user),
@@ -248,7 +244,7 @@ export class AuthService {
     return { secret, otpauthUrl, backupCodes };
   }
 
-  async activateMfa(userId: string, input: MfaActivateInput): Promise<MfaActivateResult> {
+  async activateMfa(userId: string, input: MfaActivateInput, sessionId: string): Promise<MfaActivateResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new ApiError(401, 'ユーザーが見つかりません');
@@ -270,22 +266,20 @@ export class AuthService {
       throw new ApiError(400, 'MFAコードが正しくありません');
     }
     const hashedCodes = await hashBackupCodes(input.backupCodes);
-    const updatedUser = await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaEnabled: true,
-        totpSecret: input.secret,
-        mfaBackupCodes: hashedCodes,
-      },
-    });
+    const updatedUser = await updateMfaState(user.id, {
+      mfaEnabled: true,
+      totpSecret: input.secret,
+      mfaBackupCodes: hashedCodes,
+    }, sessionId);
+    const session = await prisma.authSession.findUniqueOrThrow({ where: { id: sessionId } });
     return {
-      ...buildTokenPair(updatedUser),
+      ...await rotateAuthSession(updatedUser, sessionId, session.refreshTokenId),
       user: toAuthUserDto(updatedUser),
       backupCodes: input.backupCodes,
     };
   }
 
-  async disableMfa(userId: string, input: MfaDisableInput): Promise<MfaDisableResult> {
+  async disableMfa(userId: string, input: MfaDisableInput, sessionId?: string): Promise<MfaDisableResult> {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new ApiError(401, 'ユーザーが見つかりません');
@@ -297,14 +291,11 @@ export class AuthService {
     if (!ok) {
       throw new ApiError(401, 'パスワードが違います');
     }
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        mfaEnabled: false,
-        totpSecret: null,
-        mfaBackupCodes: [],
-      },
-    });
+    await updateMfaState(user.id, {
+      mfaEnabled: false,
+      totpSecret: null,
+      mfaBackupCodes: [],
+    }, sessionId);
     return { success: true };
   }
 

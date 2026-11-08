@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
-import { signAccessToken } from '../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import type { SignageService } from '../../services/signage/index.js';
 import { registerScheduleRoutes } from './schedules.js';
 
@@ -53,6 +53,7 @@ describe('signage schedule response boundaries', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
 
   beforeEach(() => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
     vi.spyOn(prisma.user, 'findUnique');
     vi.clearAllMocks();
     service.getSchedules.mockResolvedValue([internalSchedule]);

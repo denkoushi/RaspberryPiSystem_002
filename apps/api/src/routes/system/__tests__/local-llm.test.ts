@@ -55,6 +55,7 @@ describe('system local llm routes', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
     vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
       id: where.id, username: where.id, role: where.id === 'test-admin' ? 'ADMIN' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
     }) as never);
@@ -717,7 +718,7 @@ describe('system local llm routes', () => {
 
 function createAccessToken(role: 'ADMIN' | 'MANAGER'): string {
   return jwt.sign(
-    {
+    { tokenType: 'access', sessionId: `test-${role.toLowerCase()}`,
       sub: `test-${role.toLowerCase()}`,
       username: `test-${role.toLowerCase()}`,
       role,

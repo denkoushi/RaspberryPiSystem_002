@@ -1,3 +1,4 @@
+import { recordConsultationFeedback } from './business-hermes-consultation-feedback.js';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
 
@@ -863,21 +864,7 @@ export class BusinessHermesConsultationService {
   }
 
   async feedback(consultationId: string, messageId: string, verdict: 'helpful' | 'unhelpful', caller: BusinessHermesConsultationCaller): Promise<boolean> {
-    if (!await assertConsultationWritable(this.db, consultationId, caller)) return false;
-    // Resolve all content server-side under the same business authorization as chat.
-    const message = await this.db.businessHermesConsultationMessage.findFirst({ where: { id: messageId, consultationId, role: 'assistant' } });
-    if (!message) return false;
-    const diagnostics = Array.isArray(message.searchDiagnostics) ? message.searchDiagnostics : [];
-    const raw = diagnostics.find((d) => d && typeof d === 'object' && !Array.isArray(d) && d.kind === EXPERIENCE_KIND);
-    const parsed = experienceSchema.safeParse(raw);
-    if (!parsed.success) return false;
-    // Repair a transient missed experience write using the durable business history.
-    if (!await this.answerCache.remember?.({ id: message.id, ...parsed.data })) return false;
-    if (!await this.answerCache.feedback?.(message.id, verdict)) return false;
-    await this.db.businessHermesConsultationMessage.update({ where: { id: message.id }, data: {
-      searchDiagnostics: asJson(diagnostics.map((d) => d === raw ? { kind: EXPERIENCE_KIND, ...parsed.data, verdict } : d))
-    } });
-    return true;
+    return recordConsultationFeedback(this.db, this.answerCache, consultationId, messageId, verdict, caller);
   }
 
   private async resolveSourceGrounding(

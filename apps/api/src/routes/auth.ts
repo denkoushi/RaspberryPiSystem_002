@@ -1,3 +1,6 @@
+import bcrypt from 'bcryptjs';
+import { prisma } from '../lib/prisma.js';
+import { ApiError } from '../lib/errors.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles, authenticate } from '../lib/auth.js';
@@ -35,6 +38,7 @@ const mfaDisableSchema = z.object({
 });
 
 const updateRoleSchema = z.object({
+  currentPassword: z.string().min(1),
   role: z.enum(['ADMIN', 'MANAGER', 'VIEWER'])
 });
 
@@ -57,6 +61,11 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
     return authService.refresh(body);
   });
 
+  app.post('/auth/logout', { preHandler: authenticate }, async (request) => {
+    await prisma.authSession.updateMany({ where: { id: request.user!.sessionId!, userId: request.user!.id }, data: { revokedAt: new Date() } });
+    return { success: true };
+  });
+
   app.post('/auth/mfa/initiate', { preHandler: authorizeRoles('ADMIN', 'MANAGER') }, async (request) => {
     mfaInitiateSchema.parse(request.body ?? {});
     return authService.initiateMfa(request.user!.id);
@@ -64,18 +73,21 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
 
   app.post('/auth/mfa/activate', { preHandler: authorizeRoles('ADMIN', 'MANAGER') }, async (request) => {
     const body = mfaActivateSchema.parse(request.body);
-    return authService.activateMfa(request.user!.id, body);
+    return authService.activateMfa(request.user!.id, body, request.user!.sessionId!);
   });
 
   app.post('/auth/mfa/disable', { preHandler: authenticate }, async (request) => {
     const body = mfaDisableSchema.parse(request.body);
-    return authService.disableMfa(request.user!.id, body);
+    return authService.disableMfa(request.user!.id, body, request.user!.sessionId);
   });
 
   app.post('/auth/users/:id/role', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
     const params = z.object({ id: z.string().guid() }).parse(request.params);
     const body = updateRoleSchema.parse(request.body);
+    const actor = await prisma.user.findUniqueOrThrow({ where: { id: request.user!.id } });
+    if (!await bcrypt.compare(body.currentPassword, actor.passwordHash)) throw new ApiError(401, 'パスワードが違います');
     return authRoleAdminService.updateUserRole({
+      actorSessionId: request.user!.sessionId,
       actorUser: {
         id: request.user!.id,
         username: request.user!.username,

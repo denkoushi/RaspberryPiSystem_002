@@ -53,3 +53,18 @@ describe('reviewed answer cache', () => {
     expect(request).not.toHaveBeenCalled();
   });
 });
+
+describe('answer promotion authorization', () => {
+  it('keeps owner-only helpful feedback out of shared cache promotion', async () => {
+    const request = vi.fn();
+    const cache = new BusinessHermesAnswerCache({ call: vi.fn() }, config, request);
+    expect(await cache.feedback('answer-1', 'helpful', false)).toBe(true);
+    expect(request).not.toHaveBeenCalled();
+  });
+  it.each([['helpful', true], ['unhelpful', false]] as const)('preserves authorized %s feedback', async (verdict, allowed) => {
+    const request = vi.fn().mockResolvedValue(Response.json({ result: true }));
+    const cache = new BusinessHermesAnswerCache({ call: vi.fn() }, config, request);
+    expect(await cache.feedback('answer-1', verdict, allowed)).toBe(true);
+    expect(JSON.parse(request.mock.calls[0][1].body)).toEqual({ id: 'answer-1', verdict });
+  });
+});

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  sessionFind: vi.fn(),
   findUnique: vi.fn(),
   env: {
     ADMIN_MFA_REQUIRED: false as boolean,
@@ -14,14 +15,14 @@ const mocks = vi.hoisted(() => ({
   }
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
-vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: mocks.findUnique } } }));
+vi.mock('../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: mocks.sessionFind }, user: { findUnique: mocks.findUnique } } }));
 
 import {
   authenticate,
   authorizeRoles,
   isAdminMfaRequired,
   requireDueManagementToken,
-  signAccessToken,
+  signAccessToken as signUserAccessToken,
   signDueManagementToken,
   signRefreshToken
 } from '../auth.js';
@@ -39,6 +40,11 @@ function makeUser(overrides: Partial<User> = {}): User {
     mfaEnabled: false,
     ...overrides
   } as User;
+}
+
+function signAccessToken(user: User): string {
+  mocks.sessionFind.mockResolvedValue({ id: 'session-1', userId: user.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null });
+  return signUserAccessToken(user, 'session-1');
 }
 
 function tokenForUser(user: User): string {
@@ -86,6 +92,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
   mocks.env.ADMIN_MFA_REQUIRED = false;
+  mocks.sessionFind.mockReset().mockResolvedValue({ id: 'session-1', userId: 'user-1', expiresAt: new Date(Date.now() + 86400000), revokedAt: null });
   mocks.findUnique.mockReset().mockResolvedValue(makeUser());
 });
 
@@ -133,7 +140,7 @@ describe('authenticate', () => {
     const token = tokenForUser(makeUser({ id: 'u-1', username: 'alice', role: 'ADMIN' }));
     const request = makeRequest(`Bearer ${token}`);
     await authenticate(request, makeReply());
-    expect(request.user).toEqual({ id: 'u-1', username: 'alice', role: 'ADMIN' });
+    expect(request.user).toEqual({ id: 'u-1', username: 'alice', role: 'ADMIN', sessionId: 'session-1' });
     expect(mocks.findUnique).toHaveBeenCalledExactlyOnceWith({
       where: { id: 'u-1' },
       select: { id: true, username: true, role: true, status: true, mfaEnabled: true }
@@ -254,7 +261,7 @@ describe('authenticate', () => {
     const request = makeRequest(`Bearer ${token}`);
     const error = await captureError(authorizeRoles('ADMIN')(request, makeReply()));
     expect(error).toMatchObject({ statusCode: 403, code: 'AUTH_INSUFFICIENT_PERMISSIONS' });
-    expect(request.user).toEqual({ id: 'user-1', username: 'renamed', role: 'VIEWER' });
+    expect(request.user).toEqual({ id: 'user-1', username: 'renamed', role: 'VIEWER', sessionId: 'session-1' });
   });
 
   it.each([
@@ -307,7 +314,7 @@ describe('authenticate', () => {
       mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1', role: 'ADMIN', mfaEnabled: true }));
       const legacy = jwt.sign({ sub: 'u-1', username: 'alice', role: 'ADMIN' }, ACCESS);
       const error = await captureError(authenticate(makeRequest(`Bearer ${legacy}`), makeReply()));
-      expect(error.code).toBe('MFA_SETUP_REQUIRED');
+      expect(error.code).toBe('AUTH_TOKEN_INVALID');
     });
 
     it('allows ADMIN tokens without MFA only on POST to the MFA setup routes', async () => {
@@ -366,7 +373,8 @@ describe('authorizeRoles', () => {
 
   it('uses the DB role even when the role claim is unknown', async () => {
     mocks.findUnique.mockResolvedValue(makeUser({ id: 'u-1' }));
-    const token = jwt.sign({ sub: 'u-1', username: 'alice', role: 'SUPERUSER' }, ACCESS);
+    mocks.sessionFind.mockResolvedValue({ id: 'session-1', userId: 'u-1', expiresAt: new Date(Date.now() + 86400000), revokedAt: null });
+    const token = jwt.sign({ sub: 'u-1', username: 'alice', role: 'SUPERUSER', tokenType: 'access', sessionId: 'session-1' }, ACCESS);
     const error = await captureError(authorizeRoles('ADMIN')(makeRequest(`Bearer ${token}`), makeReply()));
     expect(error.statusCode).toBe(403);
     expect(error.code).toBe('AUTH_INSUFFICIENT_PERMISSIONS');

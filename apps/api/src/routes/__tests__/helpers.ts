@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { signAccessToken } from '../../lib/auth.js';
+import { createAuthSession } from '../../services/auth/auth-session.service.js';
 import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, User } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
@@ -87,7 +87,7 @@ export async function createTestUser(
       status: 'ACTIVE',
     },
   });
-  const token = signAccessToken(user);
+  const { accessToken: token } = await createAuthSession(user);
   return { user, token, password };
 }
 

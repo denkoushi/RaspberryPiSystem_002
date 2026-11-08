@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-import { loginRequest, setAuthToken } from '../api/client';
+import { loginRequest, logoutRequest, setAuthToken } from '../api/client';
 
 import type { AuthResponse } from '../api/types';
 import type { PropsWithChildren } from 'react';
@@ -14,14 +14,14 @@ interface AuthState {
     password: string,
     opts?: { totpCode?: string; backupCode?: string; rememberMe?: boolean }
   ) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   updateSession: (response: AuthResponse) => void;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
 
 const STORAGE_KEY = 'factory-auth';
-const REMEMBER_DAYS = 30;
+const REMEMBER_DAYS = 7;
 
 export function AuthProvider({ children }: PropsWithChildren) {
   const [token, setToken] = useState<string | null>(() => {
@@ -105,11 +105,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }, []);
 
-  const logout = useCallback(() => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem(STORAGE_KEY);
-    setAuthToken(undefined);
+  const logout = useCallback(async () => {
+    try {
+      await logoutRequest();
+    } catch {
+      // Local logout must also work while the API is unavailable.
+    } finally {
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem(STORAGE_KEY);
+      setAuthToken(undefined);
+    }
   }, []);
 
   const value = useMemo<AuthState>(

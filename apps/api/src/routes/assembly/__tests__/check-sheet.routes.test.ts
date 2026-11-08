@@ -19,14 +19,14 @@ vi.mock('../../kiosk/shared.js', () => ({ requireClientDevice: vi.fn(async (key:
   if (key !== 'kiosk') throw new ApiError(401, '端末認証が必要です');
   return { clientDevice: { id: 'synthetic-device', name: '組立1-01' } };
 }) }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() } } }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() } } }));
 vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: vi.fn() }));
 
 const id = '00000000-0000-4000-8000-000000000001';
 const headers = (role: string) => {
   vi.mocked(prisma.user.findUnique).mockResolvedValue({ id, username: 'test', role, status: 'ACTIVE', mfaEnabled: false } as never);
   return {
-    authorization: `Bearer ${jwt.sign({ sub: id, username: 'test', role }, 'check-sheet-test-only-secret')}`
+    authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: id, sub: id, username: 'test', role }, 'check-sheet-test-only-secret')}`
   };
 };
 function upload(file: Buffer, filename = 'synthetic.xlsx') {

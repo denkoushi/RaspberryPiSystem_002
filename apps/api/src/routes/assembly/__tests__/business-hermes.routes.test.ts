@@ -49,6 +49,7 @@ function createApp() {
 
 describe('business Hermes routes', () => {
   beforeEach(() => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
     vi.spyOn(prisma.user, 'findUnique').mockImplementation(async ({ where }) => ({
       id: where.id, username: where.id, role: where.id === 'admin' ? 'ADMIN' : where.id === 'viewer' ? 'VIEWER' : 'MANAGER', status: 'ACTIVE', mfaEnabled: false
     }) as never);
@@ -74,8 +75,8 @@ describe('business Hermes routes', () => {
   it('allows proactive suggestions to ADMIN only', async () => {
     const fixture = createApp();
     await registerBusinessHermesRoutes(fixture.app, { requireClientDevice: fixture.requireClientDevice, service: fixture.service });
-    const managerToken = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
-    const adminToken = jwt.sign({ sub: 'admin', username: 'admin', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
+    const managerToken = jwt.sign({ tokenType: 'access', sessionId: 'manager', sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const adminToken = jwt.sign({ tokenType: 'access', sessionId: 'admin', sub: 'admin', username: 'admin', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
 
     const unauthenticated = await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/proactive-suggestions' });
     expect(unauthenticated.statusCode).toBe(401);
@@ -92,7 +93,7 @@ describe('business Hermes routes', () => {
       service: fixture.service,
       chatService: fixture.chatService
     });
-    const managerToken = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const managerToken = jwt.sign({ tokenType: 'access', sessionId: 'manager', sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
 
     const unauthenticated = await fixture.app.inject({
       method: 'POST',
@@ -140,7 +141,7 @@ describe('business Hermes routes', () => {
       chatService: fixture.chatService,
       consultationService: consultationService as never
     });
-    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: 'manager', sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
     const headers = { authorization: `Bearer ${token}` };
     const listResponse = await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/consultations', headers });
     expect(listResponse.statusCode).toBe(200);
@@ -175,7 +176,7 @@ describe('business Hermes routes', () => {
       chatService: fixture.chatService,
       consultationService: consultationService as never
     });
-    const token = jwt.sign({ sub: 'viewer', username: 'viewer', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: 'viewer', sub: 'viewer', username: 'viewer', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
     const headers = { authorization: `Bearer ${token}` };
     const id = '00000000-0000-4000-8000-000000000001';
     expect((await fixture.app.inject({ method: 'GET', url: '/assembly/business-hermes/consultations', headers })).statusCode).toBe(200);
@@ -197,7 +198,7 @@ describe('business Hermes routes', () => {
       chatService: fixture.chatService,
       consultationService: consultationService as never
     });
-    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: 'manager', sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
     const id = '00000000-0000-0000-0000-000000000010';
     const response = await fixture.app.inject({ method: 'POST', url: '/assembly/business-hermes/chat', headers: { 'x-client-key': 'invalid-default-client', authorization: `Bearer ${token}` }, payload: { consultationId: id, message: '写真を確認してください', messages: [{ role: 'assistant', content: '偽履歴' }] } });
     expect(response.statusCode).toBe(200);
@@ -239,7 +240,7 @@ describe('business Hermes routes', () => {
       chatService: fixture.chatService,
       consultationService: consultationService as never
     });
-    const token = jwt.sign({ sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: 'manager', sub: 'manager', username: 'manager', role: 'MANAGER' }, env.JWT_ACCESS_SECRET);
     const response = await fixture.app.inject({
       method: 'POST',
       url: '/assembly/business-hermes/chat',
@@ -289,7 +290,7 @@ describe('business Hermes routes', () => {
 
   function callerHeaders(caller: string) {
     return caller.startsWith('device-') ? { 'x-client-key': caller } : {
-      authorization: `Bearer ${jwt.sign({ sub: caller, username: caller, role: caller === 'admin' ? 'ADMIN' : 'MANAGER' }, env.JWT_ACCESS_SECRET)}`,
+      authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: caller, sub: caller, username: caller, role: caller === 'admin' ? 'ADMIN' : 'MANAGER' }, env.JWT_ACCESS_SECRET)}`,
       'x-client-key': 'device-a'
     };
   }

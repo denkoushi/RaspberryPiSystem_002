@@ -250,7 +250,7 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      payload: { role: 'MANAGER' },
+      payload: { role: 'MANAGER', currentPassword: 'admin-password' },
     });
 
     expect(response.statusCode).toBe(200);
@@ -267,7 +267,7 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      payload: { role: 'MANAGER' },
+      payload: { role: 'MANAGER', currentPassword: 'admin-password' },
     });
 
     // Get audit logs
@@ -291,7 +291,7 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
       method: 'POST',
       url: `/api/auth/users/${targetUserId}/role`,
       headers: { 'Content-Type': 'application/json' },
-      payload: { role: 'MANAGER' },
+      payload: { role: 'MANAGER', currentPassword: 'admin-password' },
     });
 
     expectApiError(response, 401, '認証トークンが必要です');
@@ -312,7 +312,7 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${managerToken}`,
       },
-      payload: { role: 'VIEWER' },
+      payload: { role: 'VIEWER', currentPassword: 'manager-password' },
     });
     expectApiError(updateResponse, 403, '操作権限がありません');
 
@@ -335,7 +335,7 @@ describe('POST /api/auth/users/:id/role - Role Change with Audit', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${adminToken}`,
       },
-      payload: { role: 'MANAGER' },
+      payload: { role: 'MANAGER', currentPassword: 'admin-password' },
     });
 
     expect(response.statusCode).toBe(404);

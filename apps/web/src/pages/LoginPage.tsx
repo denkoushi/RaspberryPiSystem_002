@@ -116,7 +116,7 @@ export function LoginPage() {
             onChange={(e) => setRememberMe(e.target.checked)}
             className="h-4 w-4 accent-emerald-400"
           />
-          <span className="text-sm text-white/80">30日間この端末でサインイン状態を維持する</span>
+          <span className="text-sm text-white/80">7日間この端末でサインイン状態を維持する</span>
         </label>
         {error ? (
           <p className="text-sm text-red-400" role="alert">

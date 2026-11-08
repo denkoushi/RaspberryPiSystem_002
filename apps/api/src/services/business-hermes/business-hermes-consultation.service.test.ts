@@ -935,7 +935,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(await service.feedback(consultationId, fixture.messages[0]!.id, 'helpful', testCaller)).toBe(false);
     expect(answerCache.feedback).not.toHaveBeenCalled();
     expect(await service.feedback(consultationId, answer.id, 'helpful', testCaller)).toBe(true);
-    expect(answerCache.feedback).toHaveBeenCalledWith(answer.id, 'helpful');
+    expect(answerCache.feedback).toHaveBeenCalledWith(answer.id, 'helpful', true);
     expect((await service.get(consultationId))!.messages.at(-1)!.feedback).toBe('helpful');
     answerCache.feedback.mockResolvedValue(false);
     expect(await service.feedback(consultationId, answer.id, 'unhelpful', testCaller)).toBe(false);
