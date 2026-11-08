@@ -54,19 +54,21 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
   const fhincds = keys.map((key) => key.fhincd);
   const keyProductNos = keys.map((key) => isUnassignedProductionSeiban(key.fseiban) ? key.productNo : null);
   // Footer chips match ProductNo even for ordinary parts; arrival intentionally spans
-  // those ProductNos, so keep its winner query separate and match keys with a semi-join.
+  // those ProductNos. Keys are unique per ordinary part or unassigned ProductNo,
+  // so joining them keeps the same candidates as EXISTS and permits indexed lookups.
   const processes = keys.length ? await prisma.$queryRaw<ArrivalProcess[]>(Prisma.sql`
     WITH "winnerRows" AS (
       SELECT DISTINCT ON (
         BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'),
         BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
         CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END
-      ) * FROM "CsvDashboardRow"
-      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND EXISTS (
-        SELECT 1 FROM unnest(${fseibans}::text[], ${fhincds}::text[], ${keyProductNos}::text[]) AS k(fseiban, fhincd, product_no)
-        WHERE BTRIM("rowData"->>'FSEIBAN') = k.fseiban AND BTRIM("rowData"->>'FHINCD') = k.fhincd
-          AND (k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no)
-      )
+      ) "CsvDashboardRow".*
+      FROM unnest(${fseibans}::text[], ${fhincds}::text[], ${keyProductNos}::text[]) AS k(fseiban, fhincd, product_no)
+      INNER JOIN "CsvDashboardRow"
+        ON "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND BTRIM("rowData"->>'FSEIBAN') = k.fseiban
+        AND BTRIM("rowData"->>'FHINCD') = k.fhincd
+        AND (k.product_no IS NULL OR BTRIM("rowData"->>'ProductNo') = k.product_no)
       ORDER BY BTRIM("rowData"->>'FSEIBAN'), BTRIM("rowData"->>'FHINCD'), BTRIM("rowData"->>'FSIGENCD'), BTRIM("rowData"->>'FKOJUN'),
         CASE WHEN BTRIM("rowData"->>'FSEIBAN') = '********' THEN BTRIM("rowData"->>'ProductNo') ELSE '' END,
         ("id" IN (${Prisma.join(preferredIds)})) DESC,

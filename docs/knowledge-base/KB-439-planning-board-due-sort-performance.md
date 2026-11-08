@@ -408,3 +408,12 @@ kensaku-stonebase01(版 4b355ada)で、研削と切削を切り替えたとき�
 
 検証コマンド: `pnpm --filter web lint` / `pnpm --filter api lint`、web `pnpm exec tsc -p tsconfig.json --noEmit`、API `pnpm exec tsc -p tsconfig.build.json --noEmit`、web `pnpm exec vitest run --maxWorkers=4`。
 APIは `pnpm exec vitest run src/services/production-schedule/__tests__/grinding-planning-board-projection.test.ts src/services/production-schedule/__tests__/grinding-planning-board-load-summary.test.ts`、DB統合は両URLを `postgresql://postgres:postgres@127.0.0.1:55432/sessaku_test` に指定して `pnpm exec vitest run src/services/production-schedule/__tests__/grinding-planning-board-load-summary.integration.test.ts` を実行した。lifecycle auditは基点 `cab3d0e9` の指定branch/worktreeを `DIRTY_PROTECTED` と確認。開始時の未コミット・未追跡WIPを保持し、変更はR1〜R5の関連コード・テスト・計測JSON・本KBと計画書だけに限定した。
+
+## 2026-11-08 到着判定と工程チップの部品検索用索引
+
+- 本番 Pi5 のログ(変更前): processArrival 0.45〜1.36秒/回、process-chips 0.45〜1.3秒/回、切り替え1回で合計約3〜4秒。
+- `CsvDashboardRow` に dashboard ID・空白を除いた FSEIBAN・FHINCD の複合式索引を追加した（`20261108130000_add_planning_board_part_lookup_index`）。既存の leaderboard 用式索引と同様、migration SQL だけで管理し、`schema.prisma` は変更しない。
+- 到着判定は一意な部品キーから JOIN する形へ変更した。工程チップはキーが空でない条件と `BTRIM` の等値比較に変更した。勝ち行、並び順、完了判定、ProductNo の条件は維持する。NULL・空文字・空白だけの値は従来どおり結合しない。
+- [Prisma v7 の機能表](https://www.prisma.io/docs/orm/v7/reference/database-features)では式索引は未対応で、[migrate diff](https://www.prisma.io/docs/cli/v7/migrate/diff)は未対応機能の差分を出さない。実DBでの削除提案の有無は未確認（ローカル接続が P1001）。
+- ローカル計測(Mac・PostgreSQL 14、12万行・部品キー160件の最小テーブル): 従来の到着判定は索引なしで 45.6ms(全件走査)、索引を足しても従来の書き方では索引を使わず 73ms。新しい書き方と索引で 3.9ms(索引を使う入れ子ループ)、結果は同じ 432 行。工程チップの結合も索引を使い 1.3ms。migration 全体の適用と統合テストは、ローカル DB に pgvector が無く未実施(CI で実行する)。
+- 変更後の値: 反映後に同じログで測る。
