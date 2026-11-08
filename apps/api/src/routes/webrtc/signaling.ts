@@ -315,6 +315,13 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
               return;
             }
 
+            if ((data.type === 'reject' && call.to !== clientId) ||
+                (data.type === 'cancel' && call.from !== clientId) ||
+                (call.from !== clientId && call.to !== clientId)) {
+              socket.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized' } }));
+              return;
+            }
+
             // 相手のclientIdを特定
             const otherClientId = call.from === clientId ? call.to : call.from;
             const otherSocket = clientConnections.get(otherClientId);
@@ -359,6 +366,11 @@ export function registerWebRTCSignaling(app: FastifyInstance): void {
                   payload: { message: 'Call not found' }
                 })
               );
+              return;
+            }
+
+            if (call.from !== clientId && call.to !== clientId) {
+              socket.send(JSON.stringify({ type: 'error', payload: { message: 'Unauthorized' } }));
               return;
             }
 

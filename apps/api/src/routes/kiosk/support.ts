@@ -49,8 +49,7 @@ export async function registerKioskSupportRoute(
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorLocation = locationScopeContext.deviceScopeKey;
 
-    // clientIdはリクエストボディから取得（なければclientDevice.idを使用）
-    const clientId = (request.body as { clientId?: string })?.clientId || clientDevice.id;
+    const clientId = clientDevice.id;
 
     // クライアントログとして保存
     const threadId = await recordKioskSupportMessage({

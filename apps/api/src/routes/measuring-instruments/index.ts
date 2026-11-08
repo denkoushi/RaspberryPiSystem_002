@@ -328,9 +328,11 @@ export async function registerMeasuringInstrumentRoutes(app: FastifyInstance): P
   // 計測機器返却
   app.post('/measuring-instruments/return', { preHandler: allowWrite }, async (request) => {
     const body = instrumentReturnSchema.parse(request.body);
-    const resolvedClientId = body.eventKey
-      ? await resolveClientDeviceId(body.clientId, request.headers['x-client-key'], false)
-      : body.clientId;
+    const resolvedClientId = await resolveClientDeviceId(
+      body.clientId,
+      request.user?.role === 'ADMIN' || request.user?.role === 'MANAGER' ? undefined : request.headers['x-client-key'],
+      false
+    );
     const loan = await instrumentLoanService.return({ ...body, clientId: resolvedClientId });
     return { loan: toLoanResponse(loan) };
   });

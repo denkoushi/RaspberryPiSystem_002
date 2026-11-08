@@ -1,29 +1,67 @@
 import Fastify from 'fastify';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
+import type { User } from '@prisma/client';
+import { signAccessToken } from '../../../lib/auth.js';
+import { ApiError } from '../../../lib/errors.js';
 
 import { prisma } from '../../../lib/prisma.js';
 import { registerClientCoreRoutes } from '../core.js';
 
 vi.mock('../../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { upsert: vi.fn(), update: vi.fn() } }
+  prisma: { clientDevice: { upsert: vi.fn(), update: vi.fn(), findUnique: vi.fn() } }
 }));
-vi.mock('../../../lib/auth.js', () => ({ authorizeRoles: () => async () => {} }));
 
 const body = { apiKey: 'test-client-key', name: 'factory-pi' };
 
 describe('client registration routes', () => {
   const app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
-    reply.code(error instanceof ZodError ? 400 : 500).send({ error: 'Invalid request' });
+    reply.code(error instanceof ZodError ? 400 : error instanceof ApiError ? error.statusCode : 500).send({ error: 'Invalid request' });
+  });
+  app.addHook('onRequest', async request => {
+    request.headers.authorization ??= `Bearer ${signAccessToken({ id: 'admin', username: 'admin', role: 'ADMIN' } as User)}`;
   });
   void app.register(registerClientCoreRoutes);
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(prisma.clientDevice.upsert).mockResolvedValue({ id: 'device-1' } as never);
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: false } as never);
   });
   afterAll(async () => { await app.close(); });
+
+  it('requires ADMIN for registration', async () => {
+    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const response = await app.inject({ method: 'POST', url: '/clients', headers: { authorization: `Bearer ${token}` }, payload: body });
+    expect(response.statusCode).toBe(403);
+    expect(prisma.clientDevice.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('requires ADMIN to change canProxyOtherDevices (current %s)', async current => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: current } as never);
+    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { canProxyOtherDevices: !current } });
+    expect(response.statusCode).toBe(403);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+    const admin = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { canProxyOtherDevices: !current } });
+    expect(admin.statusCode).toBe(200);
+  });
+
+  it.each([false, true])('allows MANAGER to save an unchanged canProxyOtherDevices value (%s)', async current => {
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ canProxyOtherDevices: current } as never);
+    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { name: 'updated', canProxyOtherDevices: current } });
+    expect(response.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenCalled();
+  });
+
+  it('allows MANAGER to update ordinary fields', async () => {
+    const token = signAccessToken({ id: 'manager', username: 'manager', role: 'MANAGER' } as User);
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', headers: { authorization: `Bearer ${token}` }, payload: { name: 'updated' } });
+    expect(response.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: 'updated' }) }));
+  });
 
   it('stores statusClientId on create and on upsert update', async () => {
     const response = await app.inject({ method: 'POST', url: '/clients', payload: {

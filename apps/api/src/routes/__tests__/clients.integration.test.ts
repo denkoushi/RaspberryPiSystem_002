@@ -434,7 +434,7 @@ describe('クライアントテレメトリーAPI', () => {
     });
   });
 
-  it('POST /api/clients/status updates ClientDevice.statusClientId', async () => {
+  it('POST /api/clients/status binds and preserves ClientDevice.statusClientId', async () => {
     const statusClientId = `pi-status-${Date.now()}`;
     const payload = {
       clientId: statusClientId,
@@ -465,14 +465,14 @@ describe('クライアントテレメトリーAPI', () => {
     expect(clientDevice).toBeTruthy();
     expect(clientDevice?.statusClientId).toBe(statusClientId);
 
-    // 再度送信して、statusClientIdが更新されることを確認
+    // 再送時も登録済みの監視端末IDを維持する
     const newStatusClientId = `pi-status-updated-${Date.now()}`;
     const updatedPayload = {
       ...payload,
       clientId: newStatusClientId
     };
 
-    await app.inject({
+    const updatedResponse = await app.inject({
       method: 'POST',
       url: '/api/clients/status',
       headers: {
@@ -481,11 +481,14 @@ describe('クライアントテレメトリーAPI', () => {
       },
       payload: updatedPayload
     });
+    expect(updatedResponse.statusCode).toBe(200);
 
     const updatedClientDevice = await prisma.clientDevice.findUnique({
       where: { apiKey: clientKey }
     });
-    expect(updatedClientDevice?.statusClientId).toBe(newStatusClientId);
+    expect(updatedClientDevice?.statusClientId).toBe(statusClientId);
+    expect(await prisma.clientStatus.findUnique({ where: { clientId: newStatusClientId } })).toBeNull();
+    expect(await prisma.clientStatus.findUnique({ where: { clientId: statusClientId } })).toBeTruthy();
   });
 
   it('POST /api/clients/status does not overwrite ClientDevice.name', async () => {
@@ -680,8 +683,9 @@ describe('クライアントテレメトリーAPI', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    const logs = await prisma.clientLog.findMany({ where: { clientId } });
-    expect(logs).toHaveLength(2);
+    const device = await prisma.clientDevice.findUniqueOrThrow({ where: { apiKey: clientKey } });
+    expect(device.statusClientId).toBeNull();
+    expect(await prisma.clientLog.count({ where: { clientId } })).toBe(2);
   });
 
   it('POST /api/clients/logs returns 404 for unknown client key', async () => {

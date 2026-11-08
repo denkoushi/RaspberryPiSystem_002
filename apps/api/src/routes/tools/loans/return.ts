@@ -13,7 +13,7 @@ export function registerReturnRoute(app: FastifyInstance, loanService: LoanServi
     try {
       const body = returnSchema.parse(request.body);
       app.log.info({ body }, 'Return request body validated');
-      await requireLoanClientOrJwt(request, reply, loanService, ['ADMIN', 'MANAGER', 'VIEWER']);
+      await requireLoanClientOrJwt(request, reply, loanService, ['ADMIN', 'MANAGER']);
       const headerKey = request.headers['x-client-key'];
       const resolvedClientId = await loanService.resolveClientId(body.clientId, headerKey, false);
       // 機密情報保護: headerKeyをログから除外

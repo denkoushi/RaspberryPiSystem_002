@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { resolveClientDeviceId } from '../client-device-resolution.service.js';
+import { assertClientDeviceOperationScope, resolveClientDeviceId } from '../client-device-resolution.service.js';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 
@@ -106,5 +106,21 @@ describe('client-device-resolution.service', () => {
       .mockResolvedValueOnce({ id: 'client-1', canProxyOtherDevices: true } as never)
       .mockResolvedValueOnce(null);
     await expect(resolveClientDeviceId('missing-client', 'valid-key')).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe('operation scope per device', () => {
+  const caller = { id: 'device-a', canProxyOtherDevices: false };
+  it.each([null, undefined, 'device-a'])('allows owner %s', owner => {
+    expect(() => assertClientDeviceOperationScope(caller, owner)).not.toThrow();
+  });
+  it('allows JWT and proxy callers', () => {
+    expect(() => assertClientDeviceOperationScope(null, 'device-b')).not.toThrow();
+    expect(() => assertClientDeviceOperationScope({ ...caller, canProxyOtherDevices: true }, 'device-b')).not.toThrow();
+  });
+  it('requires a matching operation device', () => {
+    expect(() => assertClientDeviceOperationScope(caller, 'device-b')).toThrow(expect.objectContaining({
+      statusCode: 403, code: 'CLIENT_DEVICE_SCOPE_MISMATCH', message: '作業端末が一致しません'
+    }));
   });
 });

@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mutateAsync = vi.fn(async () => ({}));
 const createSiteAsync = vi.fn(async () => ({}));
+const authUser = { role: 'ADMIN' };
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: authUser })
+}));
 
 vi.mock('../../api/hooks', () => ({
   useClients: () => ({
@@ -81,6 +86,16 @@ describe('ClientsPage', () => {
   beforeEach(() => {
     mutateAsync.mockClear();
     createSiteAsync.mockClear();
+    authUser.role = 'ADMIN';
+  });
+
+  it('lets only ADMIN switch proxy operation', () => {
+    const { unmount } = render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '他端末の代理操作を許可' })).toBeEnabled();
+    unmount();
+    authUser.role = 'MANAGER';
+    render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '他端末の代理操作を許可' })).toBeDisabled();
   });
 
   it('marks a device without a site and warns in its settings', () => {

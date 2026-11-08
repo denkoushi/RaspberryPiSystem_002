@@ -20,7 +20,7 @@ beforeEach(() => {
   mocks.slack.mockReset().mockResolvedValue(undefined);
 });
 
-async function sendSupport() {
+async function sendSupport(clientId?: string) {
   const app = Fastify();
   await registerKioskSupportRoute(app, {
     normalizeClientKey: raw => typeof raw === 'string' ? raw : undefined,
@@ -30,14 +30,14 @@ async function sendSupport() {
   try {
     return await app.inject({
       method: 'POST', url: '/kiosk/support', headers: { 'x-client-key': 'key' },
-      payload: { message: '送信者: 機械 一郎\n依頼内容: 現場まで来てください。', page: '/kiosk/borrow' }
+      payload: { clientId, message: '送信者: 機械 一郎\n依頼内容: 現場まで来てください。', page: '/kiosk/borrow' }
     });
   } finally { await app.close(); }
 }
 
 describe('kiosk support response', () => {
-  it('returns the created thread ID alongside requestId and preserves log, message and Slack fields', async () => {
-    const response = await sendSupport();
+  it.each([undefined, 'other-device'])('attributes support to the authenticated device (%s)', async (clientId) => {
+    const response = await sendSupport(clientId);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ requestId: expect.any(String), threadId: 'created-thread' });
     expect(mocks.transaction).toHaveBeenCalledOnce();

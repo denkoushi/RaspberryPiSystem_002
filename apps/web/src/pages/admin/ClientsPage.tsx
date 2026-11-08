@@ -18,6 +18,7 @@ import {
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { useAuth } from '../../contexts/AuthContext';
 
 import type { ClientDevice, ClientLogLevel, ClientStatusEntry } from '../../api/client';
 
@@ -164,21 +165,24 @@ function Switch({
   label,
   ariaLabel,
   checked,
-  onChange
+  onChange,
+  disabled = false
 }: {
   label: string;
   ariaLabel: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-slate-300 py-2 first:border-t-0">
+    <label className={clsx('flex items-center justify-between gap-3 border-t border-slate-300 py-2 first:border-t-0', disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
       <span className="text-sm font-semibold text-slate-900">{label}</span>
       <input
         type="checkbox"
         role="switch"
         aria-label={ariaLabel}
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="peer sr-only"
       />
@@ -196,6 +200,8 @@ export function ClientsPage() {
   const sitesQuery = useSites();
   const createSiteMutation = useCreateSite();
   const { update } = useClientMutations();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
 
   const [tab, setTab] = useState<LeftTab>('devices');
   const [rowFilter, setRowFilter] = useState<RowFilter>('all');
@@ -861,6 +867,7 @@ export function ClientsPage() {
                         label="代理操作"
                         ariaLabel="他端末の代理操作を許可"
                         checked={form.proxy}
+                        disabled={!isAdmin}
                         onChange={(proxy) => patchForm({ proxy })}
                       />
                       <Switch
