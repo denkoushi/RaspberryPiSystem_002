@@ -20,6 +20,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { useAuth } from '../../contexts/AuthContext';
 
+import { ClientApiKey } from './ClientApiKey';
+
 import type { ClientDevice, ClientLogLevel, ClientStatusEntry } from '../../api/client';
 
 const MAX_CLIENT_NAME_LENGTH = 100;
@@ -214,7 +216,6 @@ export function ClientsPage() {
   const [drafts, setDrafts] = useState<Record<string, ClientForm>>({});
   const [editError, setEditError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [logClientFilter, setLogClientFilter] = useState<string>('all');
   const [logLevelFilter, setLogLevelFilter] = useState<'ALL' | ClientLogLevel>('ALL');
@@ -345,15 +346,6 @@ export function ClientsPage() {
       setSavedId(selectedDevice.id);
     } catch {
       setEditError('保存に失敗しました。時間をおいて再試行してください。');
-    }
-  };
-
-  const handleCopyApiKey = async (device: ClientDevice) => {
-    try {
-      await navigator.clipboard.writeText(device.apiKey);
-      setCopiedId(device.id);
-    } catch {
-      setCopiedId(null);
     }
   };
 
@@ -900,22 +892,7 @@ export function ClientsPage() {
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-slate-700">APIキー</p>
-                      <div className="flex items-center gap-2">
-                        <code className="min-w-0 flex-1 truncate rounded-md bg-slate-100 px-2 py-1.5 font-mono text-xs font-semibold">
-                          {selectedDevice.apiKey}
-                        </code>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => handleCopyApiKey(selectedDevice)}
-                          className="shrink-0 border-2 border-slate-300 px-3 py-1 text-xs"
-                        >
-                          {copiedId === selectedDevice.id ? 'コピー済み' : 'コピー'}
-                        </Button>
-                      </div>
-                    </div>
+                    {isAdmin ? <ClientApiKey key={selectedDevice.id} id={selectedDevice.id} /> : null}
                   </>
                 ) : (
                   <p className="text-sm font-semibold text-slate-700">台帳にない端末です（稼働状況のみ）。</p>

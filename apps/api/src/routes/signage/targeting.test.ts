@@ -36,7 +36,9 @@ describe('schedule target input and rollback writes', () => {
       ...input, targetClientDeviceIds: [device.id], targetClientKeys: ['ignored-old-input'],
     } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id], targetClientKeys: [device.apiKey] });
+    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id] });
+    expect(response.body).not.toContain(device.apiKey);
+    expect(JSON.stringify((method === 'POST' ? db.signageSchedule.create : db.signageSchedule.update).mock.calls[0][0].data)).toContain(device.apiKey);
     expect(db.clientDevice.findMany).toHaveBeenCalledWith({ where: { id: { in: [device.id] } }, select: { id: true, apiKey: true } });
   });
 
@@ -46,7 +48,9 @@ describe('schedule target input and rollback writes', () => {
       ...input, targetClientKeys: [device.apiKey],
     } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id], targetClientKeys: [device.apiKey] });
+    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id] });
+    expect(response.body).not.toContain(device.apiKey);
+    expect(JSON.stringify((method === 'POST' ? db.signageSchedule.create : db.signageSchedule.update).mock.calls[0][0].data)).toContain(device.apiKey);
     expect(db.clientDevice.findMany).toHaveBeenCalledWith({ where: { apiKey: { in: [device.apiKey] } }, select: { id: true, apiKey: true } });
   });
 
@@ -76,7 +80,9 @@ describe('schedule target input and rollback writes', () => {
     db.signageSchedule.findUnique.mockResolvedValue({ targetClientDeviceIds: [], targetClientKeys: [], [field]: [stale] });
     const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { [field]: [stale, valid] } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id], targetClientKeys: [device.apiKey] });
+    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [device.id] });
+    expect(response.body).not.toContain(device.apiKey);
+    expect(JSON.stringify(db.signageSchedule.update.mock.calls[0][0].data)).toContain(device.apiKey);
     expect(db.signageSchedule.findUnique).toHaveBeenCalledExactlyOnceWith({
       where: { id: scheduleId }, select: { targetClientDeviceIds: true, targetClientKeys: true },
     });
@@ -100,7 +106,8 @@ describe('schedule target input and rollback writes', () => {
     const { app, db } = fixture();
     const response = await app.inject({ method: 'PUT', url: `/schedules/${scheduleId}`, payload: { targetClientDeviceIds: [] } });
     expect(response.statusCode).toBe(200);
-    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [], targetClientKeys: [] });
+    expect(response.json().schedule).toMatchObject({ targetClientDeviceIds: [] });
+    expect(db.signageSchedule.update.mock.calls[0][0].data).toMatchObject({ targetClientKeys: [] });
     expect(db.clientDevice.findMany).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import type { ClientDevice } from '@prisma/client';
 import { resolveSignagePreviewTargetInput } from '../kiosk/kiosk-signage-preview.service.js';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
@@ -218,8 +219,13 @@ async function requireRegisteredClientDevice(clientKey: string, data: {
   }
 }
 
-export async function listClientDevices() {
-  return prisma.clientDevice.findMany({ orderBy: { name: 'asc' } });
+export function listClientDevices(options: { omitApiKey: true }): Promise<Omit<ClientDevice, 'apiKey'>[]>;
+export function listClientDevices(): Promise<ClientDevice[]>;
+export async function listClientDevices(options?: { omitApiKey: true }) {
+  return prisma.clientDevice.findMany({
+    orderBy: { name: 'asc' },
+    ...(options?.omitApiKey ? { omit: { apiKey: true } } : {})
+  });
 }
 
 export async function updateClientDevice(params: {

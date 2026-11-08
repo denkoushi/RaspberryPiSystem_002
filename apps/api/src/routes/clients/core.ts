@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import { authorizeRoles } from '../../lib/auth.js';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -43,8 +45,18 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
   });
 
   app.get('/clients', { preHandler: canManage }, async () => {
-    const clients = await listClientDevices();
+    const clients = await listClientDevices({ omitApiKey: true });
     return { clients };
+  });
+
+  app.get('/clients/:id/api-key', { preHandler: authorizeRoles('ADMIN') }, async (request, reply) => {
+    reply.header('Cache-Control', 'no-store');
+    const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+    const client = await prisma.clientDevice.findUnique({ where: { id }, select: { apiKey: true } });
+    if (!client) {
+      throw new ApiError(404, 'クライアントデバイスが見つかりません');
+    }
+    return { apiKey: client.apiKey };
   });
 
   app.put('/clients/:id', { preHandler: canManage }, async (request) => {
@@ -71,7 +83,9 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       signagePreviewTargetApiKey: body.signagePreviewTargetApiKey,
       canProxyOtherDevices: body.canProxyOtherDevices
     });
-    return { client };
+    const { apiKey, ...publicClient } = client;
+    void apiKey;
+    return { client: publicClient };
   });
 
   app.post('/clients/status', async (request) => {
