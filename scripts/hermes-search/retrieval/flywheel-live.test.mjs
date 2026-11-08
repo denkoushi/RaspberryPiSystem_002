@@ -270,3 +270,21 @@ test('live scorer uses the active question wording from its env and honors an ex
     else assert.equal(instructions, '`request` の内容条件（何が起きたか）を、`previous_plan` の内容条件と比べて一つ選ぶ。');
   }
 });
+
+test('synthetic count follow-up retains receipt resultCount and the previous filter session', async () => {
+  const catalog = loadNonconformityCatalog();
+  const score = await createLiveScorer({ records: records.map(record => ({ ...record, originDepartmentName: 'North Shop' })), catalog,
+    env: { HERMES_RETRIEVAL_DENSE_PROVIDER: 'off', HERMES_FLYWHEEL_LEARNED_ENABLED: 'false' },
+    evaluate: async ({ questions }) => ({ answers: Object.fromEntries(Object.keys(questions).map(key => [key,
+      key === 'content' ? { type: 'noul', noul: 0.05 }
+        : { type: 'choice', choice: key === 'followUpAction' ? 'count' : key === 'scope' ? 'nonconformity'
+          : key === 'sort' ? 'recent' : key === 'limit' ? 'unspecified' : key === 'contentCarry' ? 'same' : 'none' },
+    ])) }),
+  });
+  const previousPlan = { sources: ['nonconformity'], filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['North Shop'] }], semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 5 };
+  const result = await score({ kind: 'follow_up', question: '何件ある？', previousPlan, previousShown: [records[0].id] });
+  assert.equal(result.outcome, 'count');
+  assert.equal(result.resultCount, records.length);
+  assert.equal(result.followUpAction, 'count');
+  assert.deepEqual(result.shown, []);
+});
