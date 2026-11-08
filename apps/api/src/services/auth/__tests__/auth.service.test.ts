@@ -14,18 +14,26 @@ const mocks = vi.hoisted(() => ({
   },
   findUnique: vi.fn(),
   update: vi.fn(),
+  updateMany: vi.fn(),
+  queryRaw: vi.fn(),
+  executeRaw: vi.fn(),
+  deleteMany: vi.fn(),
   findMany: vi.fn()
 }));
 
 vi.mock('../../../config/env.js', () => ({ env: mocks.env }));
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
-    user: { findUnique: mocks.findUnique, update: mocks.update },
+    user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
+    $queryRaw: mocks.queryRaw,
+    $executeRaw: mocks.executeRaw,
+    authLoginAttempt: { deleteMany: mocks.deleteMany },
     roleAuditLog: { findMany: mocks.findMany }
   }
 }));
 
 import { ApiError } from '../../../lib/errors.js';
+import { verifyTotpCodeStep } from '../../../lib/mfa.js';
 import { AuthService } from '../auth.service.js';
 
 const PASSWORD = 'correct-horse';
@@ -62,6 +70,10 @@ beforeEach(() => {
   mocks.env.ADMIN_MFA_REQUIRED = false;
   mocks.findUnique.mockReset();
   mocks.update.mockReset();
+  mocks.updateMany.mockReset().mockResolvedValue({ count: 1 });
+  mocks.queryRaw.mockReset().mockResolvedValue([{ username: 'alice' }]);
+  mocks.executeRaw.mockReset().mockResolvedValue(0);
+  mocks.deleteMany.mockReset().mockResolvedValue({ count: 1 });
   mocks.findMany.mockReset();
 });
 
@@ -71,6 +83,7 @@ describe('AuthService.login', () => {
     const result = await service.login({ username: 'alice', password: PASSWORD });
 
     expect(mocks.findUnique).toHaveBeenCalledWith({ where: { username: 'alice' } });
+    expect(mocks.deleteMany).toHaveBeenCalledWith({ where: { username: 'alice' } });
     expect(result.user).toEqual({
       id: 'user-1',
       username: 'alice',
@@ -95,6 +108,53 @@ describe('AuthService.login', () => {
     expect(unknown.statusCode).toBe(401);
     expect(wrong.statusCode).toBe(401);
     expect(unknown.message).toBe(wrong.message);
+  });
+
+  it('compares a fixed dummy hash once for an unknown username', async () => {
+    const compare = vi.spyOn(bcrypt, 'compare');
+    try {
+      mocks.findUnique.mockResolvedValue(null);
+      await expect(service.login({ username: 'missing', password: PASSWORD })).rejects.toMatchObject({ statusCode: 401 });
+      expect(compare).toHaveBeenCalledTimes(1);
+      const hash = compare.mock.calls[0][1];
+      expect(bcrypt.getRounds(hash)).toBe(10);
+      compare.mockClear();
+      await expect(service.login({ username: 'other-missing', password: PASSWORD })).rejects.toMatchObject({ statusCode: 401 });
+      expect(compare.mock.calls[0][1]).toBe(hash);
+      expect(mocks.deleteMany).not.toHaveBeenCalled();
+    } finally {
+      compare.mockRestore();
+    }
+  });
+
+  it('rejects an over-long username with the same 401 without recording an attempt', async () => {
+    const compare = vi.spyOn(bcrypt, 'compare');
+    try {
+      await expect(service.login({ username: 'u'.repeat(129), password: PASSWORD })).rejects.toMatchObject({
+        statusCode: 401, message: 'ユーザー名またはパスワードが違います'
+      });
+      expect(compare).toHaveBeenCalledTimes(1);
+      expect(mocks.executeRaw).not.toHaveBeenCalled();
+      expect(mocks.queryRaw).not.toHaveBeenCalled();
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+    } finally {
+      compare.mockRestore();
+    }
+  });
+
+  it('returns 429 before user lookup and password comparison when reservation is refused', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    const compare = vi.spyOn(bcrypt, 'compare');
+    try {
+      await expect(service.login({ username: 'alice', password: PASSWORD })).rejects.toMatchObject({
+        statusCode: 429, code: 'AUTH_LOGIN_RATE_LIMITED',
+        message: 'ログインの試行回数が上限に達しました。しばらくしてから再試行してください'
+      });
+      expect(mocks.findUnique).not.toHaveBeenCalled();
+      expect(compare).not.toHaveBeenCalled();
+    } finally {
+      compare.mockRestore();
+    }
   });
 
   it('rejects an inactive account with 403 before checking the password', async () => {
@@ -139,6 +199,14 @@ describe('AuthService.login', () => {
       expect(result.user.mfaEnabled).toBe(true);
       expect(mocks.update).not.toHaveBeenCalled();
       expect((jwt.decode(result.accessToken) as jwt.JwtPayload).mfaEnabled).toBe(true);
+    });
+
+    it('rejects a TOTP step when its conditional update does not consume it', async () => {
+      mocks.findUnique.mockResolvedValue(makeUser({ mfaEnabled: true, totpSecret: TOTP_SECRET }));
+      mocks.updateMany.mockResolvedValue({ count: 0 });
+      await expect(service.login({ username: 'alice', password: PASSWORD, totpCode: authenticator.generate(TOTP_SECRET) }))
+        .rejects.toMatchObject({ statusCode: 401, message: 'MFAコードが必要です' });
+      expect(mocks.deleteMany).not.toHaveBeenCalled();
     });
 
     it('consumes a matching backup code exactly once', async () => {
@@ -289,5 +357,26 @@ describe('AuthService.getRoleAuditLogs', () => {
         targetUser: { select: { id: true, username: true } }
       }
     });
+  });
+});
+
+describe('TOTP matched steps', () => {
+  it('returns the actual current, earlier and later step within the configured window', () => {
+    const originalOptions = authenticator.options;
+    const epoch = 1_800_000_000_000;
+    try {
+      authenticator.options = { epoch, step: 30, window: 1 };
+      for (const offset of [-1, 0, 1]) {
+        const generator = authenticator.clone();
+        generator.options = { epoch: epoch + offset * 30_000 };
+        expect(verifyTotpCodeStep(TOTP_SECRET, generator.generate(TOTP_SECRET))).toBe(epoch / 30_000 + offset);
+      }
+      expect(verifyTotpCodeStep(TOTP_SECRET, 'invalid')).toBeNull();
+      expect(verifyTotpCodeStep(TOTP_SECRET, '')).toBeNull();
+      expect(verifyTotpCodeStep('', '123456')).toBeNull();
+    } finally {
+      authenticator.resetOptions();
+      authenticator.options = originalOptions;
+    }
   });
 });
