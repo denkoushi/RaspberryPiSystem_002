@@ -4,20 +4,32 @@ import { ApiError } from '../../lib/errors.js';
 type ScheduleTargets = { targetClientDeviceIds: string[]; targetClientKeys: string[] };
 type TargetDatabase = Pick<PrismaClient, 'clientDevice'>;
 
-export async function resolveLegacyScheduleTargets<T extends ScheduleTargets>(db: TargetDatabase, rows: T[]): Promise<T[]> {
-  const legacyRows = rows.filter((row) => row.targetClientDeviceIds.length === 0 && row.targetClientKeys.length > 0);
-  if (legacyRows.length === 0) return rows;
+export async function repairLegacyScheduleTargets(db: Pick<PrismaClient, 'clientDevice' | 'signageSchedule'>): Promise<number> {
+  const rows = await db.signageSchedule.findMany({
+    where: { targetClientDeviceIds: { isEmpty: true }, targetClientKeys: { isEmpty: false } },
+    select: { id: true, targetClientKeys: true, enabled: true },
+  });
+  if (rows.length === 0) return 0;
   const devices = await db.clientDevice.findMany({
-    where: { apiKey: { in: [...new Set(legacyRows.flatMap((row) => row.targetClientKeys))] } },
+    where: { apiKey: { in: [...new Set(rows.flatMap((row) => row.targetClientKeys))] } },
     select: { id: true, apiKey: true },
   });
   const byKey = new Map(devices.map((device) => [device.apiKey, device.id]));
-  return rows.map((row) => {
-    if (row.targetClientDeviceIds.length > 0 || row.targetClientKeys.length === 0) return row;
-    const ids = row.targetClientKeys.flatMap((key) => byKey.has(key) ? [byKey.get(key)!] : []);
-    // The matcher cannot match an empty string, even as a device ID.
-    return { ...row, targetClientDeviceIds: ids.length > 0 ? ids : [''] };
-  });
+  let repairedCount = 0;
+  for (const row of rows) {
+    const keys = row.targetClientKeys.filter((key) => byKey.has(key));
+    const ids = keys.map((key) => byKey.get(key)!);
+    // Already disabled rows stay as the migration left them; skip the write.
+    if (ids.length === 0 && !row.enabled) continue;
+    const result = await db.signageSchedule.updateMany({
+      where: { id: row.id, targetClientDeviceIds: { isEmpty: true } },
+      data: ids.length > 0
+        ? { targetClientDeviceIds: ids, targetClientKeys: keys }
+        : { targetClientDeviceIds: [], enabled: false },
+    });
+    repairedCount += result.count;
+  }
+  return repairedCount;
 }
 
 export async function resolveScheduleTargets(

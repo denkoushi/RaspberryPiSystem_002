@@ -22,7 +22,7 @@ const schedule = (partial: Record<string, unknown>) => ({
 });
 
 function serviceWith(schedules: Array<Record<string, unknown>>) {
-  const db = { signageSchedule: { findMany: vi.fn().mockResolvedValue(schedules) }, clientDevice: { findMany: vi.fn() } };
+  const db = { signageSchedule: { findMany: vi.fn().mockResolvedValue(schedules).mockResolvedValueOnce([]) }, clientDevice: { findMany: vi.fn() } };
   return new SignageService(db as never);
 }
 

@@ -418,6 +418,24 @@ describe('BusinessHermesMcpService signage tools', () => {
     expect(createSchedule).not.toHaveBeenCalled();
   });
 
+  it('rejects targets not configured for signage without writing', async () => {
+    const findMany = vi.fn().mockResolvedValue([{
+      id: DEVICE_ID, name: 'Fixture terminal', location: '工場A - 組立1', isSignage: false,
+    }]);
+    const { service, createSchedule, updateSchedule } = serviceWith({ findMany });
+    const response = await service.call('business_hermes_configure_signage_kiosk_progress_overview', {
+      scheduleName: '業務進捗', confirm: true, deviceScopeKey: '工場A - 組立1',
+      targetClientDeviceIds: [DEVICE_ID], dayOfWeek: [1], startTime: '08:00', endTime: '17:00', priority: 1,
+    });
+    expect(response.isError).toBe(true);
+    expect(payload(response).code).toBe('BUSINESS_HERMES_TARGET_CLIENT_DEVICE_NOT_CONFIGURED');
+    expect(findMany).toHaveBeenCalledWith({
+      where: { id: { in: [DEVICE_ID] } }, select: { id: true, name: true, location: true, isSignage: true },
+    });
+    expect(createSchedule).not.toHaveBeenCalled();
+    expect(updateSchedule).not.toHaveBeenCalled();
+  });
+
   it('rejects unknown target IDs without writing', async () => {
     const findMany = vi.fn(async (input?: { where?: unknown }) => input?.where ? [] : [{ id: DEVICE_ID, name: '業務キオスク', location: '工場A - 組立1' }]);
     const { service, createSchedule } = serviceWith({ findMany });

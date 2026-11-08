@@ -22,6 +22,7 @@ const signage = { id: '22222222-2222-4222-8222-222222222222', name: 'Fixture sig
 const otherId = '33333333-3333-4333-8333-333333333333';
 const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 0xff, 0xd9]);
 let storedTarget: string | null;
+let legacyTarget: string | null | undefined;
 
 describe('kiosk signage preview credential boundary', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
@@ -29,9 +30,10 @@ describe('kiosk signage preview credential boundary', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     storedTarget = null;
+    legacyTarget = undefined;
     mocks.findUnique.mockImplementation(async (query) => {
       if (query.where.apiKey === kiosk.apiKey) return kiosk;
-      if (query.where.id === kiosk.id) return { signagePreviewTargetDeviceId: storedTarget };
+      if (query.where.id === kiosk.id) return { signagePreviewTargetDeviceId: storedTarget, signagePreviewTargetApiKey: legacyTarget === undefined ? storedTarget : legacyTarget };
       if (query.where.id === signage.id || query.where.apiKey === signage.apiKey) return signage;
       return null;
     });
@@ -86,6 +88,29 @@ describe('kiosk signage preview credential boundary', () => {
     expect(response.json().selectedClientDeviceId).toBe(signage.id);
     expect(response.json().effectivePreviewClientDeviceId).toBe(signage.id);
     expect(response.body).not.toContain(signage.apiKey);
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'different columns', id: otherId, legacy: signage.id, expected: signage.id },
+    { name: 'legacy cleared', id: signage.id, legacy: null, expected: null },
+    { name: 'equal columns', id: signage.id, legacy: signage.id, expected: signage.id },
+    { name: 'legacy only', id: null, legacy: signage.id, expected: signage.id },
+  ])('uses the saved target for $name in options and images', async ({ id, legacy, expected }) => {
+    storedTarget = id;
+    legacyTarget = legacy;
+    const app = await buildApp();
+    const headers = { 'x-client-key': kiosk.apiKey };
+    const options = await app.inject({ method: 'GET', url: '/kiosk/signage-preview/options', headers });
+    expect(options.statusCode).toBe(200);
+    expect(options.json().selectedClientDeviceId).toBe(expected);
+    const image = await app.inject({ method: 'GET', url: '/kiosk/signage-preview/image', headers });
+    expect(image.statusCode).toBe(200);
+    expect(mocks.readImage).toHaveBeenCalledWith(expected ?? kiosk.id);
+    expect(mocks.findUnique).toHaveBeenCalledWith({
+      where: { id: kiosk.id },
+      select: { signagePreviewTargetDeviceId: true, signagePreviewTargetApiKey: true },
+    });
     expect(mocks.update).not.toHaveBeenCalled();
   });
 

@@ -1522,10 +1522,13 @@ export class BusinessHermesMcpService {
     if (input.targetClientDeviceIds !== undefined) {
       const targetRows = await this.db.clientDevice.findMany({
         where: { id: { in: input.targetClientDeviceIds } },
-        select: { id: true, name: true, location: true }
+        select: { id: true, name: true, location: true, isSignage: true }
       });
       if (targetRows.length !== input.targetClientDeviceIds.length) {
         return errorText('One or more target ClientDevices are unknown', 'BUSINESS_HERMES_UNKNOWN_TARGET_CLIENT_DEVICE');
+      }
+      if (targetRows.some((row) => row.isSignage === false)) {
+        return errorText('One or more target ClientDevices are not configured for signage', 'BUSINESS_HERMES_TARGET_CLIENT_DEVICE_NOT_CONFIGURED');
       }
       targetClientDeviceIds = input.targetClientDeviceIds;
       const targetsById = new Map(targetRows.map((row) => [row.id, row]));

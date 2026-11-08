@@ -15,11 +15,21 @@ export async function listSignagePreviewCandidates(): Promise<SignagePreviewCand
   });
 }
 
+function resolveStoredSignagePreviewTarget(row: {
+  signagePreviewTargetDeviceId: string | null;
+  signagePreviewTargetApiKey: string | null;
+}): string | null {
+  return row.signagePreviewTargetDeviceId === row.signagePreviewTargetApiKey
+    ? row.signagePreviewTargetDeviceId
+    : row.signagePreviewTargetApiKey;
+}
+
 export async function getSignagePreviewTarget(clientDeviceId: string) {
-  return prisma.clientDevice.findUnique({
+  const row = await prisma.clientDevice.findUnique({
     where: { id: clientDeviceId },
-    select: { signagePreviewTargetDeviceId: true }
+    select: { signagePreviewTargetDeviceId: true, signagePreviewTargetApiKey: true }
   });
+  return row ? { signagePreviewTargetDeviceId: resolveStoredSignagePreviewTarget(row) } : null;
 }
 
 export async function resolveSignagePreviewTargetInput(input: {

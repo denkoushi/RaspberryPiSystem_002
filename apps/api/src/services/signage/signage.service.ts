@@ -30,7 +30,7 @@ export function signageScheduleMatchesClientDeviceId(
   const ids = targetClientDeviceIds ?? [];
   return ids.length === 0 || Boolean(clientDeviceId && ids.includes(clientDeviceId));
 }
-import { resolveLegacyScheduleTargets, resolveScheduleTargets } from './schedule-targets.js';
+import { repairLegacyScheduleTargets, resolveScheduleTargets } from './schedule-targets.js';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../lib/logger.js';
 import { PdfStorage } from '../../lib/pdf-storage.js';
@@ -178,12 +178,13 @@ export class SignageService {
   private readonly scheduleSummaryOrderBy = [{ priority: 'desc' as const }, { id: 'asc' as const }];
 
   private async findScheduleSummaries(where: Prisma.SignageScheduleWhereInput): Promise<ScheduleSummary[]> {
-    const rows = await this.db.signageSchedule.findMany({
+    const repairedCount = await repairLegacyScheduleTargets(this.db);
+    if (repairedCount > 0) logger.info({ count: repairedCount }, 'Repaired legacy signage schedule targets');
+    return this.db.signageSchedule.findMany({
       where,
       orderBy: this.scheduleSummaryOrderBy,
       select: this.scheduleSummarySelect,
     });
-    return resolveLegacyScheduleTargets(this.db, rows);
   }
 
   /**

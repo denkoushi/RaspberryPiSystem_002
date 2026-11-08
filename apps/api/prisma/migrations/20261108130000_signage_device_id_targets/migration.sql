@@ -33,3 +33,8 @@ SET "signagePreviewTargetDeviceId" = target."id"
 FROM "ClientDevice" AS target
 WHERE kiosk."signagePreviewTargetDeviceId" IS NULL
   AND kiosk."signagePreviewTargetApiKey" = target."id";
+
+-- Both preview columns hold the same device ID from here on.
+UPDATE "ClientDevice"
+SET "signagePreviewTargetApiKey" = "signagePreviewTargetDeviceId"
+WHERE "signagePreviewTargetApiKey" IS DISTINCT FROM "signagePreviewTargetDeviceId";
