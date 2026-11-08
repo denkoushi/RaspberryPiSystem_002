@@ -1,3 +1,4 @@
+import { buildAssemblyTraceabilityActor } from './shared.js';
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
@@ -135,6 +136,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
     const body = templateBodySchema.parse(request.body);
     const template = await templateService.create({
       ...body,
+      ...await buildAssemblyTraceabilityActor(request),
       areas: body.areas as AssemblyTemplateAreaInput[],
       checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
     });
@@ -146,6 +148,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
     const body = templateReviseBodySchema.parse(request.body);
     const template = await templateService.revise(params.id, {
       ...body,
+      ...await buildAssemblyTraceabilityActor(request),
       areas: body.areas as AssemblyTemplateAreaInput[] | undefined,
       checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
     });
@@ -155,7 +158,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
   app.delete('/assembly/templates/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
-    const result = await templateService.retire(params.id, body.accessPassword);
+    const result = await templateService.retire(params.id, body.accessPassword, await buildAssemblyTraceabilityActor(request));
     if (result === 'not_found') throw new DomainHttpError(404, 'テンプレートが見つかりません');
     return reply.status(204).send();
   });

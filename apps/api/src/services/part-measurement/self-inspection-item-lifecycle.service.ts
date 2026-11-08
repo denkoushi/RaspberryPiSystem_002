@@ -28,6 +28,7 @@ import {
 
 export const SELF_INSPECTION_INVALIDATION_LIST_MAX = 200;
 export type SelfInspectionInvalidationActor = {
+  ip?: string;
   username: string | null;
   clientDeviceId: string | null;
   clientDeviceNameSnapshot: string | null;
@@ -158,7 +159,7 @@ export class SelfInspectionItemLifecycleService {
     reason: string;
     actor: SelfInspectionInvalidationActor;
   }): Promise<SelfInspectionItemInvalidation> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const reason = requireReason(input.reason);
     const requestId = input.requestId.trim();
 

@@ -68,6 +68,11 @@
     }
     format filter {
       request>headers>X-Client-Key delete
+      request>headers>X-Deploy-Control-Token delete
+      request>headers>X-Due-Management-Token delete
+      request>headers>X-Kiosk-Access-Password delete
+      request>headers>X-Procedure-Edit-Token delete
+      request>headers>X-Visual-Cleanup-Token delete
       request>headers>Referer query {
         delete clientKey
         delete key

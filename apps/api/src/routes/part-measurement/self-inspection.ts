@@ -107,7 +107,8 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
           actor: {
             username: request.user?.username ?? null,
             clientDeviceId: clientDeviceId ?? null,
-            clientDeviceNameSnapshot: clientDevice?.name ?? null
+            clientDeviceNameSnapshot: clientDevice?.name ?? null,
+            ip: request.ip
           }
         });
         return { invalidation };
@@ -172,7 +173,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const body = selfInspectionRegistrationPolicyBodySchema.parse(request.body);
       const clientDeviceId = request.user ? undefined : await tryGetClientDeviceId(request.headers);
       if (!request.user) {
-        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword);
+        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword, { clientDeviceId, ip: request.ip });
       }
       const policy = await updateSelfInspectionRegistrationPolicy({
         requireMeasuringInstrumentTag: body.requireMeasuringInstrumentTag,

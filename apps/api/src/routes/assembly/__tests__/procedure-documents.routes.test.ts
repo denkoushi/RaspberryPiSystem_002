@@ -84,9 +84,9 @@ describe('assembly procedure document routes', () => {
 
     const deleteResponse = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload: { accessPassword: '2520' } });
     expect(deleteResponse.statusCode).toBe(204);
-    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith('2520');
+    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith('2520', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     expect(procedureService.list).toHaveBeenCalledWith({ includeInactive: false, q: '手順書', limit: undefined });
-    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { holderKey: null, holderToken: null });
+    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
   });
 
   it('returns not found for an unknown document without changing the service contract', async () => {
@@ -191,7 +191,7 @@ describe('assembly procedure document routes', () => {
     if (usage.inProcedureManualAssignment || usage.inBoltPageRef || usage.inCheckPageRef) {
       expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();
     } else {
-      expect(procedureService.deleteIfUnused).toHaveBeenCalledWith(documentId, { holderKey: null, holderToken: null });
+      expect(procedureService.deleteIfUnused).toHaveBeenCalledWith(documentId, { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     }
   });
 
@@ -209,7 +209,7 @@ describe('assembly procedure document routes', () => {
     } as unknown as AssemblyProcedureDocumentRouteOptions);
     const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload });
     expect(response.statusCode).toBe(403);
-    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith(payload?.accessPassword ?? '');
+    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith(payload?.accessPassword ?? '', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     expect(procedureService.getReferenceUsage).not.toHaveBeenCalled();
     expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();
   });

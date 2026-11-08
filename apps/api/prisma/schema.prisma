@@ -2373,6 +2373,17 @@ model ProductionScheduleAccessPasswordConfig {
   @@unique([location], map: "ProductionScheduleAccessPasswordConfig_unique_location")
 }
 
+model ProductionScheduleAccessPasswordAttempt {
+  location     String
+  scope        String
+  count        Int      @default(0)
+  windowEndsAt DateTime
+  notified     Boolean  @default(false)
+  updatedAt    DateTime @updatedAt
+
+  @@id([location, scope])
+}
+
 model ProductionScheduleOrderSplitPilotConfig {
   key       String   @id @db.VarChar(80)
   enabled   Boolean  @default(false)

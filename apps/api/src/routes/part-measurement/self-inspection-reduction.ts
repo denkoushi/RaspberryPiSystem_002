@@ -102,7 +102,7 @@ export function registerSelfInspectionReductionRoutes(app: FastifyInstance, deps
   /** 管理者ログイン時はパスワード不要。キオスクからは共有の操作時パスワードを求める。 */
   async function requireSettingsAccess(request: FastifyRequest, password: string | undefined): Promise<string> {
     if (request.user) return request.user.username;
-    await accessService.requireAccessPassword(password);
+    await accessService.requireAccessPassword(password, { clientDeviceId: await tryGetClientDeviceId(request.headers), ip: request.ip });
     return (await tryGetClientDeviceId(request.headers)) ?? 'kiosk';
   }
 

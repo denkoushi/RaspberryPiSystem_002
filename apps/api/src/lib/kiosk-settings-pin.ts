@@ -67,7 +67,7 @@ export function createKioskSettingsPinGuard(options: KioskSettingsPinOptions): K
     }
     const trimmed = password.trim();
     const ok = /^\d{4}$/.test(trimmed)
-      && (await verifyDueManagementAccessPassword({ location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION, password: trimmed })).success;
+      && (await verifyDueManagementAccessPassword({ location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION, password: trimmed, clientDeviceId, ip: request.ip })).success;
     if (ok) failedAttempts.delete(attemptKey(request, clientDeviceId));
     else recordFailure(request, clientDeviceId);
     return ok;

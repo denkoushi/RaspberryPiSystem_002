@@ -138,13 +138,13 @@ describe('assembly procedure revision routes', () => {
     expect(assigned.json().assignmentError).toContain('割り当てに失敗');
     expect(withAssignment).toHaveBeenCalledWith('白紙2', { modelCode: 'DFD1', processId: 'cutting' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, accessPassword: '1234' } })).statusCode).toBe(200);
-    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, accessPassword: '1234' });
+    expect(harness.service.addBlankPage).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, accessPassword: '1234' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: 0 } })).statusCode).toBe(200);
-    expect(harness.service.addBlankPage).toHaveBeenLastCalledWith({ holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, afterPageIndex: 0, accessPassword: '' });
+    expect(harness.service.addBlankPage).toHaveBeenLastCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, afterPageIndex: 0, accessPassword: '' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: -1 } })).statusCode).toBe(400);
     const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
     expect(placed.json().element).toEqual(element);
-    expect(place).toHaveBeenCalledWith({ holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
+    expect(place).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
   });
 
   it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
@@ -196,7 +196,7 @@ describe('assembly procedure revision routes', () => {
       payload: { accessPassword: '2520' }
     });
     expect(created.statusCode).toBe(200);
-    expect(harness.service.createRevision).toHaveBeenCalledWith(documentId, '2520');
+    expect(harness.service.createRevision).toHaveBeenCalledWith(documentId, '2520', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
 
     const saved = await app.inject({
       method: 'PUT',
@@ -234,7 +234,7 @@ describe('assembly procedure revision routes', () => {
       payload: { accessPassword: '2520', expectedEditVersion: 4 }
     });
     expect(discarded.statusCode).toBe(200);
-    expect(harness.service.discardRevision).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
+    expect(harness.service.discardRevision).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       expectedEditVersion: 4
@@ -269,7 +269,7 @@ describe('assembly procedure revision routes', () => {
       payload: multipartPayload.body
     });
     expect(uploaded.statusCode).toBe(200);
-    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
+    expect(harness.assetsService.uploadOverlayImage).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null,
       documentId,
       accessPassword: '2520',
       bytes: Buffer.from('png'),
@@ -290,7 +290,7 @@ describe('assembly procedure revision routes', () => {
       payload: region
     });
     expect(imageRegion.statusCode).toBe(200);
-    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({ holderKey: null, holderToken: null,
+    expect(harness.assetsService.createImageRegion).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null,
       documentId,
       ...region
     });
@@ -304,6 +304,7 @@ describe('assembly procedure revision routes', () => {
     expect(textRegion.statusCode).toBe(200);
     expect(textRegion.json()).toEqual({ candidates: [] });
     expect(harness.assetsService.findTextCandidates).toHaveBeenCalledWith({
+      clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null,
       documentId,
       ...region
     });

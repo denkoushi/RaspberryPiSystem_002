@@ -100,6 +100,6 @@ describe('assembly not-found response contracts', () => {
       requestId: expect.any(String),
       timestamp: expect.any(String)
     });
-    expect(templateService.retire).toHaveBeenCalledWith(id, '2520');
+    expect(templateService.retire).toHaveBeenCalledWith(id, '2520', { clientDeviceId: null, clientDeviceNameSnapshot: null, username: null, ip: '127.0.0.1' });
   });
 });

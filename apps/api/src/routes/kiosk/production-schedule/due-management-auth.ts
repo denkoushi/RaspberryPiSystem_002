@@ -25,6 +25,8 @@ export async function registerProductionScheduleDueManagementAuthRoute(
     const body = dueManagementAccessPasswordVerifyBodySchema.parse(request.body);
     const result = await verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: clientDevice.id,
+      ip: request.ip,
       password: body.password
     });
     return result.success ? { ...result, token: signDueManagementToken(clientDevice.id) } : result;

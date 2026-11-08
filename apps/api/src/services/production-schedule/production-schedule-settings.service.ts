@@ -1,3 +1,8 @@
+import crypto from 'crypto';
+import { AlertChannel, AlertDeliveryStatus, AlertSeverity } from '@prisma/client';
+import { logger } from '../../lib/logger.js';
+import { loadAlertsDispatcherConfig, resolveRouteKey } from '../alerts/alerts-config.js';
+
 import bcrypt from 'bcryptjs';
 import { parse } from 'csv-parse/sync';
 
@@ -16,6 +21,7 @@ const normalizeLocation = (location: string): string => location.trim();
 const normalizeSiteLocation = (location: string): string => resolveSiteKeyForScopeKey(normalizeLocation(location));
 export const SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION = 'shared';
 export const ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT = 10;
+export const ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT = 50;
 export const ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS = 60_000;
 const DEFAULT_PROCESSING_TYPE_OPTIONS = [
   { code: '塗装', label: '塗装', priority: 1, enabled: true },
@@ -481,46 +487,63 @@ export async function upsertDueManagementAccessPassword(params: {
   };
 }
 
-/** Returns the end of the window the attempt was counted in, or null when the limit is reached. */
-async function reserveAccessPasswordAttempt(location: string, now: Date): Promise<Date | null> {
-  for (let tries = 0; tries < 3; tries += 1) {
-    const current = await prisma.productionScheduleAccessPasswordConfig.findUnique({
-      where: { location },
-      select: { failedAttemptWindowEndsAt: true }
-    });
-    const windowEndsAt = current?.failedAttemptWindowEndsAt ?? null;
-    if (windowEndsAt && windowEndsAt.getTime() > now.getTime()) {
-      const inWindow = await prisma.productionScheduleAccessPasswordConfig.updateMany({
-        where: {
-          location,
-          failedAttemptWindowEndsAt: windowEndsAt,
-          failedAttemptCount: { lt: ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT }
-        },
-        data: { failedAttemptCount: { increment: 1 } }
-      });
-      if (inWindow.count > 0) return windowEndsAt;
-      const latest = await prisma.productionScheduleAccessPasswordConfig.findUnique({
-        where: { location },
-        select: { failedAttemptWindowEndsAt: true }
-      });
-      if (latest?.failedAttemptWindowEndsAt?.getTime() === windowEndsAt.getTime()) return null;
-      continue;
+export type AccessPasswordCaller = { clientDeviceId?: string | null; ip?: string };
+
+const accessPasswordRateLimited = () => new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'ACCESS_PASSWORD_RATE_LIMITED');
+
+// The column stores UTC wall-clock time, so compare against UTC regardless of the session time zone.
+async function reserveAccessPasswordAttempt(location: string, scope: string) {
+  return prisma.$transaction(async (tx) => {
+    const reservations: Array<{ scope: string; windowEndsAt: Date }> = [];
+    // Always lock global before device, and roll back both when either limit is reached.
+    for (const [key, limit] of [['global', ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT], [scope, ACCESS_PASSWORD_FAILED_ATTEMPT_LIMIT]] as const) {
+      const rows = await tx.$queryRaw<Array<{ count: number; windowEndsAt: Date }>>`
+        INSERT INTO "ProductionScheduleAccessPasswordAttempt" ("location", "scope", "count", "windowEndsAt", "updatedAt", "notified")
+        VALUES (${location}, ${key}, 1, (statement_timestamp() AT TIME ZONE 'UTC') + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond', (statement_timestamp() AT TIME ZONE 'UTC'), false)
+        ON CONFLICT ("location", "scope") DO UPDATE SET
+          "count" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN 1 ELSE "ProductionScheduleAccessPasswordAttempt"."count" + 1 END,
+          "notified" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN false ELSE "ProductionScheduleAccessPasswordAttempt"."notified" END,
+          "windowEndsAt" = CASE WHEN "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') THEN (statement_timestamp() AT TIME ZONE 'UTC') + ${ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS} * interval '1 millisecond' ELSE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" END,
+          "updatedAt" = (statement_timestamp() AT TIME ZONE 'UTC')
+        WHERE "ProductionScheduleAccessPasswordAttempt"."windowEndsAt" <= (statement_timestamp() AT TIME ZONE 'UTC') OR "ProductionScheduleAccessPasswordAttempt"."count" < ${limit}
+        RETURNING "count", "windowEndsAt"
+      `;
+      const row = rows[0];
+      if (!row) throw accessPasswordRateLimited();
+      reservations.push({ scope: key, windowEndsAt: row.windowEndsAt });
     }
-    const newWindowEndsAt = new Date(now.getTime() + ACCESS_PASSWORD_FAILED_ATTEMPT_WINDOW_MS);
-    const newWindow = await prisma.productionScheduleAccessPasswordConfig.updateMany({
-      where: {
-        location,
-        OR: [{ failedAttemptWindowEndsAt: null }, { failedAttemptWindowEndsAt: { lte: now } }]
-      },
-      data: { failedAttemptCount: 1, failedAttemptWindowEndsAt: newWindowEndsAt }
-    });
-    if (newWindow.count > 0) return newWindowEndsAt;
-    // Another request opened a window between the read and the update; read it again.
-  }
-  return null;
+    return reservations;
+  }, { maxWait: 10_000, timeout: 10_000 });
 }
 
-export async function verifyDueManagementAccessPassword(params: {
+// Notify only after a failed comparison has left the global window at its limit.
+async function notifyAccessPasswordLimitIfReached(location: string, windowEndsAt: Date): Promise<void> {
+  const type = 'operation-password-global-limit';
+  const where = { location, scope: 'global', windowEndsAt };
+  const claimed = await prisma.productionScheduleAccessPasswordAttempt.updateMany({
+    where: { ...where, count: { gte: ACCESS_PASSWORD_GLOBAL_FAILED_ATTEMPT_LIMIT }, notified: false },
+    data: { notified: true }
+  });
+  if (claimed.count === 0) return;
+  try {
+    const config = await loadAlertsDispatcherConfig();
+    const routeKey = resolveRouteKey(type, config.routing);
+    await prisma.alert.create({
+      data: {
+        id: crypto.randomUUID(), type, severity: AlertSeverity.WARNING,
+        message: '操作パスワードの全体試行回数が上限に達しました',
+        timestamp: new Date(), acknowledged: false,
+        deliveries: { create: { channel: AlertChannel.SLACK, routeKey, status: AlertDeliveryStatus.PENDING, attemptCount: 0 } }
+      }
+    });
+  } catch {
+    logger.warn({ type }, 'Failed to create operation password limit alert');
+    // Let a later failure in the same window try again.
+    await prisma.productionScheduleAccessPasswordAttempt.updateMany({ where: { ...where, notified: true }, data: { notified: false } }).catch(() => undefined);
+  }
+}
+
+export async function verifyDueManagementAccessPassword(params: AccessPasswordCaller & {
   location: string;
   password: string;
 }): Promise<{ success: boolean }> {
@@ -536,20 +559,20 @@ export async function verifyDueManagementAccessPassword(params: {
   if (!config) {
     return { success: false };
   }
-  // Count the attempt before comparing, so concurrent requests cannot exceed the limit.
-  // The count is shared by every caller for this location and expires with its window.
-  const now = new Date();
-  const reservedWindowEndsAt = await reserveAccessPasswordAttempt(location, now);
-  if (!reservedWindowEndsAt) {
-    throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'ACCESS_PASSWORD_RATE_LIMITED');
-  }
+  const scope = params.clientDeviceId ? `device:${params.clientDeviceId}` : `ip:${params.ip ?? 'unknown'}`;
+  const reservations = await reserveAccessPasswordAttempt(location, scope);
   const success = await bcrypt.compare(password, config.dueManagementPasswordHash);
+  if (!success) {
+    const global = reservations.find((reservation) => reservation.scope === 'global');
+    if (global) await notifyAccessPasswordLimitIfReached(location, global.windowEndsAt);
+  }
   if (success) {
-    // Give back this attempt only; other callers' failures stay counted until the window ends.
-    await prisma.productionScheduleAccessPasswordConfig.updateMany({
-      where: { location, failedAttemptWindowEndsAt: reservedWindowEndsAt, failedAttemptCount: { gt: 0 } },
-      data: { failedAttemptCount: { decrement: 1 } }
-    });
+    await prisma.$transaction(reservations.map((reservation) =>
+      prisma.productionScheduleAccessPasswordAttempt.updateMany({
+        where: { location, scope: reservation.scope, windowEndsAt: reservation.windowEndsAt, count: { gt: 0 } },
+        data: { count: { decrement: 1 } }
+      })
+    ));
   }
   return { success };
 }

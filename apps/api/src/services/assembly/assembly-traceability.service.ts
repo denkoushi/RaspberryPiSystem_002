@@ -13,6 +13,7 @@ import {
 } from './assembly-traceability.repository.js';
 
 export type AssemblyTraceabilityActor = {
+  ip?: string;
   username: string | null;
   clientDeviceId: string | null;
   clientDeviceNameSnapshot: string | null;
@@ -114,8 +115,8 @@ export class AssemblyTraceabilityService {
     private readonly accessService = new AssemblyTraceabilityAccessService()
   ) {}
 
-  async verifyAccessPassword(password: string): Promise<{ success: boolean }> {
-    return this.accessService.verifyAccessPassword(password);
+  async verifyAccessPassword(password: string, caller: { clientDeviceId?: string | null; ip?: string } = {}): Promise<{ success: boolean }> {
+    return this.accessService.verifyAccessPassword(password, caller);
   }
 
   async listTopLevelCompleted(params: { query?: string; limit?: number } = {}) {
@@ -222,7 +223,7 @@ export class AssemblyTraceabilityService {
   }
 
   async link(input: ProtectedInput & { parentWorkId: string; childWorkId: string }) {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const parentWorkId = normalizeRequiredIdentifier(input.parentWorkId, '親の作業用ID');
     const childWorkId = normalizeRequiredIdentifier(input.childWorkId, '子の作業用ID');
     if (parentWorkId === childWorkId) throw new ApiError(409, '同じ作業用IDを親子にはできません');
@@ -269,7 +270,7 @@ export class AssemblyTraceabilityService {
   }
 
   async unlink(input: ProtectedInput & { linkId: string; reason: string }) {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const reason = requireReason(input.reason);
     return runAssemblyTransaction(async (tx) => {
       const link = await tx.assemblyWorkUnitComposition.findUnique({
@@ -285,7 +286,7 @@ export class AssemblyTraceabilityService {
   }
 
   async reassign(input: ProtectedInput & { linkId: string; parentWorkId: string; reason: string }) {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const reason = requireReason(input.reason);
     const parentWorkId = normalizeRequiredIdentifier(input.parentWorkId, '新しい親の作業用ID');
     try {
@@ -334,7 +335,7 @@ export class AssemblyTraceabilityService {
   }
 
   async assignFormalIdentifier(input: ProtectedInput & { workId: string; formalId: string }) {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const workId = normalizeRequiredIdentifier(input.workId, '作業用ID');
     const formalId = normalizeRequiredIdentifier(input.formalId, '正式ID');
     try {
@@ -364,7 +365,7 @@ export class AssemblyTraceabilityService {
   }
 
   async correctFormalIdentifier(input: ProtectedInput & { assignmentId: string; formalId: string; reason: string }) {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const formalId = normalizeRequiredIdentifier(input.formalId, '正式ID');
     const reason = requireReason(input.reason);
     try {

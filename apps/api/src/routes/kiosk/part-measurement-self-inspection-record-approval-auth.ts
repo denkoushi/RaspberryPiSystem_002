@@ -21,10 +21,12 @@ export async function registerKioskPartMeasurementSelfInspectionRecordApprovalAu
     '/kiosk/part-measurement/self-inspection/record-approvals/verify-access-password',
     { config: { rateLimit: recordApprovalAccessPasswordRateLimit } },
     async (request) => {
-      await deps.requireClientDevice(request.headers['x-client-key']);
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const body = recordApprovalAccessPasswordVerifyBodySchema.parse(request.body);
       return verifyDueManagementAccessPassword({
         location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+        clientDeviceId: clientDevice.id,
+        ip: request.ip,
         password: body.password
       });
     }

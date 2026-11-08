@@ -359,7 +359,7 @@ export class ProcedureVideoService {
   }
 
   async replacePage(params: AssemblyProcedureEditActor & { documentId: string; pageIndex: number; videoIds?: string[]; items?: Array<{ videoId: string; sceneId?: string | null }>; accessPassword?: string }) {
-    await this.access.requireAccessPassword(params.accessPassword);
+    await this.access.requireAccessPassword(params.accessPassword, params);
     if ((params.videoIds == null) === (params.items == null)) throw new ApiError(400, 'videoIdsかitemsのどちらかを指定してください');
     const items = params.items?.map((item) => ({ videoId: item.videoId, sceneId: item.sceneId ?? null })) ?? params.videoIds!.map((videoId) => ({ videoId, sceneId: null }));
     if (items.length > 50 || new Set(items.map((item) => `${item.videoId}:${item.sceneId ?? ''}`)).size !== items.length) throw new ApiError(400, '動画が重複しているか、50件を超えています');
