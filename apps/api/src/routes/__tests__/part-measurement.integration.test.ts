@@ -333,6 +333,27 @@ describe('part-measurement templates API', () => {
     }
   });
 
+  it('requires the active edit lock holder to cancel a draft sheet', async () => {
+    const owner = await createTestClientDevice();
+    const other = await createTestClientDevice();
+    const session = await prisma.partMeasurementSession.create({ data: {
+      productNo: 'CANCEL-LOCK', processGroup: 'CUTTING', resourceCd: 'LOCK'
+    } });
+    const sheet = await prisma.partMeasurementSheet.create({ data: {
+      productNo: 'CANCEL-LOCK', fseiban: 'LOCK-SEIBAN', fhincd: 'LOCK-PART', fhinmei: 'Lock test part',
+      processGroupSnapshot: 'CUTTING', sessionId: session.id,
+      editLockClientDeviceId: owner.id, editLockExpiresAt: new Date(Date.now() + 60_000)
+    } });
+    const url = `/api/part-measurement/sheets/${sheet.id}/cancel`;
+    const refused = await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload: { reason: 'Draft cancelled' } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().errorCode).toBe('PART_MEASUREMENT_EDIT_LOCKED');
+    expect((await prisma.partMeasurementSheet.findUniqueOrThrow({ where: { id: sheet.id } })).status).toBe('DRAFT');
+    const allowed = await app.inject({ method: 'POST', url, headers: { 'x-client-key': owner.apiKey }, payload: { reason: 'Draft cancelled' } });
+    expect(allowed.statusCode).toBe(200);
+    expect((await prisma.partMeasurementSheet.findUniqueOrThrow({ where: { id: sheet.id } })).status).toBe('CANCELLED');
+  });
+
   it('returns 401 without auth for GET /api/part-measurement/templates', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/part-measurement/templates' });
     expect(response.statusCode).toBe(401);

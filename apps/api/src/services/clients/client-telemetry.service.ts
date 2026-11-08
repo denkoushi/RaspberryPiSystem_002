@@ -286,15 +286,28 @@ export async function upsertClientStatus(params: {
   const { clientKey, metrics, requestId } = params;
   const now = new Date();
 
+  const registeredDevice = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+  if (!registeredDevice) {
+    throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
+  }
+  const statusClientId = registeredDevice.statusClientId ?? metrics.clientId;
+  if (registeredDevice.statusClientId != null && registeredDevice.statusClientId !== metrics.clientId) {
+    logger.warn({ storedClientId: registeredDevice.statusClientId, payloadClientId: metrics.clientId },
+      '[ClientTelemetry] status client ID differs from registered value');
+  }
+  if (registeredDevice.statusClientId == null) {
+    const existing = await prisma.clientDevice.findFirst({ where: { statusClientId: metrics.clientId, id: { not: registeredDevice.id } } });
+    if (existing) throw new ApiError(409, '監視端末IDはすでに登録されています');
+  }
   const clientDevice = await requireRegisteredClientDevice(clientKey, {
-    statusClientId: metrics.clientId,
-    lastSeenAt: now,
+    ...(registeredDevice.statusClientId == null ? { statusClientId } : {}),
+    lastSeenAt: now
   });
 
   const status = await prisma.clientStatus.upsert({
-    where: { clientId: metrics.clientId },
+    where: { clientId: statusClientId },
     create: {
-      clientId: metrics.clientId,
+      clientId: statusClientId,
       hostname: metrics.hostname,
       ipAddress: metrics.ipAddress,
       cpuUsage: metrics.cpuUsage,
@@ -324,14 +337,14 @@ export async function upsertClientStatus(params: {
   if (logEntries.length > 0) {
     await prisma.clientLog.createMany({
       data: logEntries.map((entry) => ({
-        clientId: metrics.clientId,
+        clientId: statusClientId,
         level: entry.level,
         message: entry.message.slice(0, 1000),
         context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
       }))
     });
     await createTelemetrySlackAlerts({
-      clientId: metrics.clientId,
+      clientId: statusClientId,
       logs: logEntries,
       requestId
     });
@@ -351,12 +364,12 @@ export async function storeClientLogs(params: {
   logs: ClientTelemetryLogEntry[];
   requestId: string;
 }) {
-  const { clientKey, clientId, requestId } = params;
+  const { clientKey, requestId } = params;
   const logs = params.logs
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
   const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
-  const kioskClientId = clientDevice.statusClientId ?? clientId;
+  const clientId = clientDevice.statusClientId ?? clientDevice.id;
   for (const entry of logs) {
     if (isKioskLog(entry)) {
       entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
@@ -365,14 +378,14 @@ export async function storeClientLogs(params: {
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({
-      clientId: isKioskLog(entry) ? kioskClientId : clientId,
+      clientId,
       level: entry.level,
       message: entry.message.slice(0, 1000),
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
   await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category !== 'kiosk_ui_error'), requestId });
-  await createTelemetrySlackAlerts({ clientId: kioskClientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
+  await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
 
   return { requestId, logsStored: logs.length };
 }

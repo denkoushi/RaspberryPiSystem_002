@@ -1869,6 +1869,63 @@ describe('assembly torque management API', () => {
     expect((await createAutoLot('AUTO-LOT', 1)).statusCode).toBe(409);
   });
 
+  it('checks current operation scope per device across assembly session routes', async () => {
+    const owner = await createTestClientDevice();
+    const other = await createTestClientDevice();
+    const proxy = await createTestClientDevice();
+    await prisma.clientDevice.update({ where: { id: proxy.id }, data: { canProxyOtherDevices: true } });
+    const operator = await createTestEmployee();
+    const ownerHeaders = { 'x-client-key': owner.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, ownerHeaders, 'Operation scope procedure');
+    const templateRes = await app.inject({ method: 'POST', url: '/api/assembly/templates', headers: ownerHeaders, payload: {
+      ...buildTemplatePayload(document.id, { modelCode: 'SCOPE', procedurePattern: 'SCOPE' }),
+      checkItems: [{ markerNo: 1, label: 'Check', required: false, xRatio: 0.5, yRatio: 0.5, sortOrder: 0, assemblyProcedureDocumentId: document.id, pageIndex: 0 }]
+    } });
+    expect(templateRes.statusCode, templateRes.body).toBe(200);
+    const template = templateRes.json().template;
+    const admin = await createTestUser('ADMIN');
+    const manager = await createTestUser('MANAGER');
+    for (const operation of ['record-torque', 'complete', 'advance-area', 'restart-area', 'record-check', 'cancel']) {
+      for (const actor of ['owner', 'proxy', 'admin', 'manager']) {
+        const start = await app.inject({ method: 'POST', url: '/api/assembly/work-sessions', headers: ownerHeaders, payload: {
+          templateId: template.id, productNo: 'SCOPE', workId: randomUUID(), targetUnit: 'Scope', torqueWrenchId: 'CEM20N3X10D-BTLA',
+          operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID()
+        } });
+        expect(start.statusCode).toBe(200);
+        const session = start.json().session;
+        if (operation === 'complete' || operation === 'advance-area') {
+          await prisma.assemblyTorqueRecord.create({ data: {
+            sessionId: session.id, templateBoltId: template.areas[0].bolts[0].id, attempt: 1,
+            inputSource: 'MANUAL', value: 10, judgement: 'OK', accepted: true
+          } });
+          await prisma.assemblyWorkSession.update({ where: { id: session.id }, data: { currentBoltId: null } });
+        }
+        const payload = operation === 'record-torque' ? { value: 10, source: 'manual' }
+          : operation === 'record-check' ? { checkItemId: template.checkItems[0].id, checked: true } : {};
+        const url = `/api/assembly/work-sessions/${session.id}/${operation}`;
+        const refused = await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().errorCode).toBe('CLIENT_DEVICE_SCOPE_MISMATCH');
+        const headers = actor === 'owner' ? ownerHeaders : actor === 'proxy' ? { 'x-client-key': proxy.apiKey }
+          : { ...createAuthHeader(actor === 'admin' ? admin.token : manager.token), 'x-client-key': other.apiKey };
+        const allowed = await app.inject({ method: 'POST', url, headers, payload });
+        expect(allowed.statusCode).toBe(200);
+      }
+    }
+    const start = await app.inject({ method: 'POST', url: '/api/assembly/work-sessions', headers: ownerHeaders, payload: {
+      templateId: template.id, productNo: 'SCOPE', workId: randomUUID(), targetUnit: 'Scope', torqueWrenchId: 'CEM20N3X10D-BTLA',
+      operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID()
+    } });
+    expect(start.statusCode).toBe(200);
+    const sessionId = start.json().session.id;
+    const resumed = await app.inject({ method: 'POST', url: `/api/assembly/work-sessions/${sessionId}/operator-access`,
+      headers: { 'x-client-key': other.apiKey }, payload: { operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID() } });
+    expect(resumed.statusCode).toBe(200);
+    const url = `/api/assembly/work-sessions/${sessionId}/restart-area`;
+    expect((await app.inject({ method: 'POST', url, headers: ownerHeaders, payload: {} })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload: {} })).statusCode).toBe(200);
+  });
+
   it('requires ACTIVE NFC for start/resume, records idempotent access history, and cancels WIP on invalidation', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };

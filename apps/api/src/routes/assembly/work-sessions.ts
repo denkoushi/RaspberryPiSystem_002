@@ -1,5 +1,5 @@
 import { DomainHttpError } from '../../lib/errors.js';
-import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
+import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
 import { BusinessHermesService } from '../../services/business-hermes/business-hermes.service.js';
 import { requireKioskClientDevice } from '../../services/clients/client-device-auth.service.js';
@@ -31,6 +31,12 @@ import {
   serializeSession
 } from './serializers.js';
 import { tryGetClientDevice, buildAssemblyTraceabilityActor } from './shared.js';
+
+async function getOperationActor(request: FastifyRequest) {
+  if (request.user) return null;
+  const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
+  return clientDevice;
+}
 
 export function registerAssemblyWorkSessionStartRoutes(app: FastifyInstance, {
   allowView,
@@ -167,6 +173,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
     }
     const body = recordTorqueBodySchema.parse(request.body);
     const result = await sessionService.recordTorque({
+      actorDevice: await getOperationActor(request),
       sessionId: params.id,
       value: body.value,
       inputSource: toPrismaTorqueInputSource(body.source),
@@ -192,14 +199,14 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
 
   app.post('/assembly/work-sessions/:id/advance-area', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
-    const session = await sessionService.advanceArea(params.id);
+    const session = await sessionService.advanceArea(params.id, await getOperationActor(request));
     return { session: serializeSession(session, sessionService) };
   });
 
   app.post('/assembly/work-sessions/:id/restart-area', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ areaId: z.string().guid().optional().nullable(), reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
-    const session = await sessionService.restartArea(params.id, body);
+    const session = await sessionService.restartArea(params.id, body, await getOperationActor(request));
     return { session: serializeSession(session, sessionService) };
   });
 
@@ -207,6 +214,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
     const params = idParamSchema.parse(request.params);
     const body = recordCheckBodySchema.parse(request.body);
     const result = await sessionService.recordCheck({
+      actorDevice: await getOperationActor(request),
       sessionId: params.id,
       checkItemId: body.checkItemId,
       checked: body.checked
@@ -219,7 +227,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
 
   app.post('/assembly/work-sessions/:id/complete', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
-    const session = await sessionService.complete(params.id);
+    const session = await sessionService.complete(params.id, await getOperationActor(request));
     return { session: serializeSession(session, sessionService) };
   });
 
@@ -238,7 +246,7 @@ export function registerAssemblyWorkSessionRoutes(app: FastifyInstance, {
   app.post('/assembly/work-sessions/:id/cancel', { preHandler: allowWriteKiosk }, async (request) => {
     const params = idParamSchema.parse(request.params);
     const body = z.object({ reason: z.string().max(500).optional().nullable() }).parse(request.body ?? {});
-    const session = await sessionService.cancel(params.id, body.reason);
+    const session = await sessionService.cancel(params.id, body.reason, await getOperationActor(request));
     return { session: serializeSession(session, sessionService) };
   });
 

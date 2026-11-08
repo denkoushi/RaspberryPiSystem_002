@@ -9,6 +9,7 @@ import {
   upsertClientStatus,
 } from '../client-telemetry.service.js';
 import { prisma } from '../../../lib/prisma.js';
+import { logger } from '../../../lib/logger.js';
 import { deliverTelemetryNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import { KIOSK_ALERT_COOLDOWN_MS, KIOSK_NETWORK_ALERT_COOLDOWN_MS } from '../client-telemetry-alert-policy.js';
 import { deployWindowEndedAt } from '../kiosk-deploy-window.js';
@@ -21,6 +22,8 @@ vi.mock('../../kiosk-inquiry/system-notice-sources.js', () => ({ deliverTelemetr
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     clientDevice: {
+      findUnique: vi.fn(),
+      findFirst: vi.fn(),
       upsert: vi.fn(),
       update: vi.fn(),
       findMany: vi.fn(),
@@ -39,6 +42,11 @@ vi.mock('../../alerts/alerts-config.js', () => ({
   loadAlertsDispatcherConfig: vi.fn().mockResolvedValue({ routing: { byTypePrefix: { 'terminal-agent-health-': 'ops' }, defaultRoute: 'support' } }),
   resolveRouteKey: vi.fn().mockReturnValue('ops')
 }));
+
+beforeEach(() => {
+  vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device-1', statusClientId: null } as never);
+  vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue(null);
+});
 
 describe('client-telemetry.service', () => {
   beforeEach(() => {
@@ -77,6 +85,35 @@ describe('client-telemetry.service', () => {
       where: { apiKey: 'registered-key' },
       data: { statusClientId: 'raspi4-status-only', lastSeenAt: expect.any(Date) }
     });
+  });
+
+  it.each(['stored-monitor', 'different-monitor'])('uses the stored monitoring ID for payload %s', async (payloadId) => {
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.mocked(prisma.clientDevice.findUnique).mockResolvedValue({ id: 'device-1', statusClientId: 'stored-monitor' } as never);
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1' } as never);
+    vi.mocked(prisma.clientStatus.upsert).mockResolvedValue({ id: 'status-1' } as never);
+    await upsertClientStatus({ clientKey: 'key', requestId: 'req', metrics: {
+      clientId: payloadId, hostname: 'pi', ipAddress: '192.0.2.1', cpuUsage: 0, memoryUsage: 0, diskUsage: 0,
+      logs: [{ level: 'INFO', message: 'status' }]
+    } });
+    expect(prisma.clientStatus.upsert).toHaveBeenCalledWith(expect.objectContaining({ where: { clientId: 'stored-monitor' } }));
+    if (payloadId !== 'stored-monitor') {
+      expect(warn).toHaveBeenCalledWith({ storedClientId: 'stored-monitor', payloadClientId: payloadId }, expect.any(String));
+    } else {
+      expect(warn).not.toHaveBeenCalled();
+    }
+    warn.mockRestore();
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith({ where: { apiKey: 'key' }, data: { lastSeenAt: expect.any(Date) } });
+    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'stored-monitor' })] });
+  });
+
+  it('refuses a monitoring ID already registered to another device', async () => {
+    vi.mocked(prisma.clientDevice.findFirst).mockResolvedValueOnce({ id: 'other-device' } as never);
+    await expect(upsertClientStatus({ clientKey: 'key', requestId: 'req', metrics: {
+      clientId: 'existing-monitor', hostname: 'pi', ipAddress: '192.0.2.1', cpuUsage: 0, memoryUsage: 0, diskUsage: 0
+    } })).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.clientStatus.upsert).not.toHaveBeenCalled();
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
   });
 
   it('touchClientHeartbeat は既存キーの lastSeen / location を更新する', async () => {
@@ -125,7 +162,7 @@ describe('client-telemetry.service', () => {
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
-          clientId: 'client-1',
+          clientId: 'device-1',
           level: 'ERROR',
           message: 'x'.repeat(1000),
         }),
@@ -259,20 +296,20 @@ describe('kiosk UI logs', () => {
     vi.mocked(prisma.clientLog.findMany).mockResolvedValue([]);
     vi.mocked(prisma.alert.findFirst).mockResolvedValue(null);
   });
-  it('overrides clientId and adds device context only for kiosk_ui_error', async () => {
+  it('attributes all logs to the device and adds context for kiosk_ui_error', async () => {
     await storeClientLogs({ clientKey: 'key', clientId: 'placeholder', requestId: 'req', logs: [
       { level: 'WARN', message: 'kiosk', context: { category: 'kiosk_ui_error', kind: 'api_4xx' } },
       { level: 'ERROR', message: 'legacy', context: { category: 'legacy' } }
     ] });
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [
       expect.objectContaining({ clientId: 'pi4-real', context: { category: 'kiosk_ui_error', kind: 'api_4xx', clientDeviceId: 'device-1', clientDeviceName: '組立端末' } }),
-      expect.objectContaining({ clientId: 'placeholder', context: { category: 'legacy' } })
+      expect.objectContaining({ clientId: 'pi4-real', context: { category: 'legacy' } })
     ] });
   });
-  it('preserves payload clientId when statusClientId is missing', async () => {
+  it('uses device ID when statusClientId is missing', async () => {
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1', name: '端末', statusClientId: null } as never);
     await storeClientLogs({ clientKey: 'key', clientId: 'placeholder', requestId: 'req', logs: [{ level: 'WARN', message: 'kiosk', context: { category: 'kiosk_ui_error' } }] });
-    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'placeholder' })] });
+    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'device-1' })] });
   });
   it('filters category with JSON path and preserves default querying', async () => {
     const { logListQuerySchema } = await import('../../../routes/clients/shared.js');
@@ -348,7 +385,7 @@ describe('kiosk UI logs', () => {
     ] });
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [
       expect.objectContaining({ clientId: 'pi4-real', context: { category, requests: 100, failures: 90, clientDeviceId: 'device-1', clientDeviceName: '組立端末' } }),
-      expect.objectContaining({ clientId: 'kiosk-web', context: { category: 'network_health', signalDbm: -90 } })
+      expect.objectContaining({ clientId: 'pi4-real', context: { category: 'network_health', signalDbm: -90 } })
     ] });
     expect(prisma.alert.findFirst).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();

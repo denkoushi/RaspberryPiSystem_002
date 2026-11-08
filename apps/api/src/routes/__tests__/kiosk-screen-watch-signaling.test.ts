@@ -23,6 +23,7 @@ function socket() {
 const read = (s: ReturnType<typeof socket>) => s.send.mock.calls.map(([data]) => JSON.parse(data));
 let viewer: ReturnType<typeof socket>;
 let target: ReturnType<typeof socket>;
+let third: ReturnType<typeof socket>;
 beforeEach(async () => {
   handle.mockReset().mockResolvedValue(undefined);
   let connect!: (s: ReturnType<typeof socket>, req: unknown) => Promise<void>;
@@ -30,12 +31,13 @@ beforeEach(async () => {
     get: (_path: string, _options: unknown, handler: typeof connect) => { connect = handler; },
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
   } as unknown as FastifyInstance);
-  viewer = socket(); target = socket();
+  viewer = socket(); target = socket(); third = socket();
   await connect(viewer, { url: '/signaling', headers: { 'x-client-key': 'viewer' }, query: {} });
+  await connect(third, { url: '/signaling', headers: { 'x-client-key': 'third' }, query: {} });
   await connect(target, { url: '/signaling', headers: { 'x-client-key': 'target' }, query: {} });
 });
 afterEach(async () => {
-  await viewer.disconnect(); await target.disconnect();
+  await viewer.disconnect(); await target.disconnect(); await third.disconnect();
 });
 
 describe('single signaling socket routes', () => {
@@ -63,6 +65,40 @@ describe('single signaling socket routes', () => {
     await target.receive({ type: 'hangup', callId });
     expect(read(viewer).at(-1)).toMatchObject({ type: 'hangup', callId });
     expect(callStore.getCall(callId)).toBeUndefined(); expect(handle).not.toHaveBeenCalled();
+  });
+  it.each(['reject', 'cancel', 'hangup', 'offer', 'answer', 'ice-candidate'])('requires a call participant for %s', async (type) => {
+    await viewer.receive({ type: 'invite', to: 'target' });
+    const callId = read(target).at(-1).callId;
+    viewer.send.mockClear(); target.send.mockClear();
+    await third.receive({ type, callId, from: 'viewer', payload: { sdp: 'sample' } });
+    expect(read(third).at(-1)).toMatchObject({ type: 'error' });
+    expect(viewer.send).not.toHaveBeenCalled();
+    expect(target.send).not.toHaveBeenCalled();
+    expect(callStore.getCall(callId)).toBeDefined();
+  });
+  it.each(['offer', 'answer', 'ice-candidate', 'hangup'])('allows either call participant for %s', async (type) => {
+    await viewer.receive({ type: 'invite', to: 'target' });
+    const callId = read(target).at(-1).callId;
+    await viewer.receive({ type, callId, from: 'third', payload: { sdp: 'sample' } });
+    expect(read(target).at(-1)).toMatchObject({ type, from: 'viewer', to: 'target' });
+    if (type === 'hangup') {
+      await viewer.receive({ type: 'invite', to: 'target' });
+    }
+    const nextCallId = read(target).at(-1).callId;
+    await target.receive({ type, callId: nextCallId, from: 'third' });
+    expect(read(viewer).at(-1)).toMatchObject({ type, from: 'target', to: 'viewer' });
+  });
+  it.each([{ type: 'reject', allowed: 'target' }, { type: 'cancel', allowed: 'viewer' }])('requires the designated party for $type', async ({ type, allowed }) => {
+    await viewer.receive({ type: 'invite', to: 'target' });
+    const callId = read(target).at(-1).callId;
+    const party = allowed === 'target' ? target : viewer;
+    const other = allowed === 'target' ? viewer : target;
+    await other.receive({ type, callId });
+    expect(read(other).at(-1)).toMatchObject({ type: 'error' });
+    expect(callStore.getCall(callId)).toBeDefined();
+    await party.receive({ type, callId });
+    expect(read(other).at(-1)).toMatchObject({ type });
+    expect(callStore.getCall(callId)).toBeUndefined();
   });
   it('preserves ping and call disconnect notification', async () => {
     await viewer.receive({ type: 'ping', payload: { timestamp: 123 } });

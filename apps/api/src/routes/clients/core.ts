@@ -1,3 +1,6 @@
+import { authorizeRoles } from '../../lib/auth.js';
+import { ApiError } from '../../lib/errors.js';
+import { prisma } from '../../lib/prisma.js';
 import type { FastifyInstance } from 'fastify';
 
 import {
@@ -23,7 +26,7 @@ import {
 } from './shared.js';
 
 export async function registerClientCoreRoutes(app: FastifyInstance): Promise<void> {
-  app.post('/clients', { preHandler: canManage }, async (request) => {
+  app.post('/clients', { preHandler: authorizeRoles('ADMIN') }, async (request) => {
     const body = registerClientBodySchema.parse(request.body);
     const client = await registerClientDeviceAdmin(body);
     return { client };
@@ -47,6 +50,12 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
   app.put('/clients/:id', { preHandler: canManage }, async (request) => {
     const { id } = request.params as { id: string };
     const body = updateClientSchema.parse(request.body);
+    if (body.canProxyOtherDevices !== undefined && request.user?.role !== 'ADMIN') {
+      const current = await prisma.clientDevice.findUnique({ where: { id }, select: { canProxyOtherDevices: true } });
+      if (current && current.canProxyOtherDevices !== body.canProxyOtherDevices) {
+        throw new ApiError(403, '管理者権限が必要です');
+      }
+    }
     const client = await updateClientDevice({
       id,
       statusClientId: body.statusClientId,

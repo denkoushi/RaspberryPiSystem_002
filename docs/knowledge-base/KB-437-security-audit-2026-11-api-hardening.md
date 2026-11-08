@@ -37,6 +37,14 @@
 - `services/tools/loan.service.ts`: 返却の実施者は認証済みユーザーからのみ決める（本文の値は互換のため受理するが使わない）。
 - `routes/backup/config-read.ts`: 内部ヘルスを `isLoopbackAddress` に限定。
 
+## 端末ごとの操作範囲の確認（2026-11-08）
+
+- 端末キーで呼ぶ操作は、対象の端末が呼び出し端末と同じか、呼び出し端末に「代理操作」が許可されているときだけ受け付ける。判定は `services/clients/client-device-resolution.service.ts` の `assertClientDeviceOperationScope` にまとめた。管理画面のログイン利用者は従来どおり。
+- 対象: 組立の作業記録、計測機器と吊具の返却、キオスク問い合わせ、稼働状況とログの送信、通話の中継。組立のエージェント記録と再開の流れは変えていない。
+- 稼働状況の送信は、登録済みの監視 ID をそのまま使う。初回の紐付けで他の端末と重なる ID は受け付けない。
+- 貸出の返却と取消は、ログイン利用者では ADMIN と MANAGER だけにした。端末キーからの利用は従来どおり。
+- 端末の登録は ADMIN だけ。端末設定の更新は MANAGER も可能だが、「代理操作」の値を変えるのは ADMIN だけ（管理画面のスイッチも ADMIN 以外は押せない）。
+
 ## Operational Notes
 
 - バックアップの SSH 設定（`StrictHostKeyChecking=yes`、専用 `known_hosts`）が実際に効くようになる。専用 known_hosts に載っていない端末のクライアントバックアップは失敗するので、反映後の初回バックアップ結果を確認する。
@@ -65,7 +73,6 @@
 | 場所 | 影響 | 直し方の案 |
 | --- | --- | --- |
 | `routes/clients/core.ts` heartbeat の `location` | 端末が自分の location（スコープキー）を変更でき、他端末やサイトの割当範囲を乗っ取れる | heartbeat から location を外す（初回のみ受理）か、管理者 PUT でのみ変更可能にする |
-| `routes/clients/core.ts` status の `clientId` | 任意端末が他端末の `statusClientId` を名乗り、状態・最終確認時刻を上書きできる | 初回バインド後は不一致を 409、`statusClientId` に一意制約（既存重複の確認と再バインド手段が必要） |
 | `routes/kiosk/production-schedule/due-management-global-rank.ts` | 代理権限のない端末でも任意の `targetLocation` の全体ランクを読み書きできる | 他ルートと同じく `canProxyTargetLocation` でない場合は actorLocation 以外を 403（意図確認が必要） |
 | `routes/assembly/procedure-documents.ts` ほか | 手順書の割当解除・下書き削除・改名などがキオスク端末キーだけで実行でき、PIN は UI でのみ確認 | どの操作を PIN 必須にするか決め、サーバー側で `requireAccessPassword` か短期トークンを要求 |
 | 監査メタデータの `actorClientKey`（global rank、order split、学習イベント） | 端末キーが DB の監査 JSON に平文で残る | 今後は端末IDかハッシュを保存。既存行の整理は移行が必要 |
