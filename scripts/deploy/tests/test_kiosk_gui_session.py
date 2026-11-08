@@ -48,6 +48,10 @@ def load(path):
     return yaml.safe_load((ANSIBLE / path).read_text())
 
 
+# Hosts allowed to enable the dedicated GUI account during the trial.
+TRIAL_HOSTS = {'raspi4-kensaku-stonebase01'}
+
+
 class KioskGuiSessionTests(unittest.TestCase):
     def context(self, user, flag=None):
         context = dict(release_kiosk_previous_gui_owner={}, ansible_user=user, item='fixture.desktop', group_names=['kiosk'],
@@ -71,8 +75,9 @@ class KioskGuiSessionTests(unittest.TestCase):
         inventory = load('inventory.yml')['all']['children']['clients']['children']['kiosk']['hosts']
         self.assertEqual(set(inventory), set(BASELINE['hosts']))
         self.assertIs(load('group_vars/all.yml')['kiosk_unprivileged_session_enabled'], False)
-        self.assertTrue(all(not values.get('kiosk_unprivileged_session_enabled', False)
-                            for values in inventory.values()))
+        enabled = {host for host, values in inventory.items()
+                   if values.get('kiosk_unprivileged_session_enabled', False)}
+        self.assertEqual(enabled, TRIAL_HOSTS)
         env = environment()
         for host, host_context in BASELINE['hosts'].items():
             for flag in (None, False):
