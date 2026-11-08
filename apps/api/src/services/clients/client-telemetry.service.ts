@@ -369,7 +369,12 @@ export async function storeClientLogs(params: {
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
   const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
-  const clientId = clientDevice.statusClientId ?? clientDevice.id;
+  let clientId = clientDevice.statusClientId;
+  if (clientId == null) {
+    const existing = await prisma.clientDevice.findFirst({ where: { statusClientId: params.clientId, id: { not: clientDevice.id } } });
+    if (existing) throw new ApiError(409, '監視端末IDはすでに登録されています');
+    clientId = params.clientId;
+  }
   for (const entry of logs) {
     if (isKioskLog(entry)) {
       entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };

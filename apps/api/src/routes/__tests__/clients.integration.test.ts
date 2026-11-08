@@ -684,9 +684,8 @@ describe('クライアントテレメトリーAPI', () => {
 
     expect(response.statusCode).toBe(200);
     const device = await prisma.clientDevice.findUniqueOrThrow({ where: { apiKey: clientKey } });
-    const logs = await prisma.clientLog.findMany({ where: { clientId: device.statusClientId ?? device.id } });
-    expect(await prisma.clientLog.count({ where: { clientId } })).toBe(0);
-    expect(logs).toHaveLength(2);
+    expect(device.statusClientId).toBeNull();
+    expect(await prisma.clientLog.count({ where: { clientId } })).toBe(2);
   });
 
   it('POST /api/clients/logs returns 404 for unknown client key', async () => {

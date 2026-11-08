@@ -162,7 +162,7 @@ describe('client-telemetry.service', () => {
     expect(prisma.clientLog.createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
-          clientId: 'device-1',
+          clientId: 'client-1',
           level: 'ERROR',
           message: 'x'.repeat(1000),
         }),
@@ -306,10 +306,19 @@ describe('kiosk UI logs', () => {
       expect.objectContaining({ clientId: 'pi4-real', context: { category: 'legacy' } })
     ] });
   });
-  it('uses device ID when statusClientId is missing', async () => {
+  it('uses the sent clientId while statusClientId is missing', async () => {
     vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1', name: '端末', statusClientId: null } as never);
-    await storeClientLogs({ clientKey: 'key', clientId: 'placeholder', requestId: 'req', logs: [{ level: 'WARN', message: 'kiosk', context: { category: 'kiosk_ui_error' } }] });
-    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'device-1' })] });
+    vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue(null);
+    await storeClientLogs({ clientKey: 'key', clientId: 'pi4-new', requestId: 'req', logs: [{ level: 'WARN', message: 'kiosk', context: { category: 'kiosk_ui_error' } }] });
+    expect(prisma.clientLog.createMany).toHaveBeenCalledWith({ data: [expect.objectContaining({ clientId: 'pi4-new' })] });
+  });
+
+  it('rejects logs for a clientId registered to another device while statusClientId is missing', async () => {
+    vi.mocked(prisma.clientDevice.update).mockResolvedValue({ id: 'device-1', name: '端末', statusClientId: null } as never);
+    vi.mocked(prisma.clientDevice.findFirst).mockResolvedValue({ id: 'device-2' } as never);
+    await expect(storeClientLogs({ clientKey: 'key', clientId: 'pi4-other', requestId: 'req', logs: [{ level: 'WARN', message: 'kiosk' }] }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.clientLog.createMany).not.toHaveBeenCalled();
   });
   it('filters category with JSON path and preserves default querying', async () => {
     const { logListQuerySchema } = await import('../../../routes/clients/shared.js');

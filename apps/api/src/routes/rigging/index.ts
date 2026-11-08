@@ -176,7 +176,11 @@ export async function registerRiggingRoutes(app: FastifyInstance): Promise<void>
   // 返却
   app.post('/rigging-gears/return', { preHandler: allowWrite }, async (request) => {
     const body = riggingReturnSchema.parse(request.body);
-    const resolvedClientId = await resolveClientDeviceId(body.clientId, request.user ? undefined : request.headers['x-client-key'], false);
+    const resolvedClientId = await resolveClientDeviceId(
+      body.clientId,
+      request.user?.role === 'ADMIN' || request.user?.role === 'MANAGER' ? undefined : request.headers['x-client-key'],
+      false
+    );
     const loan = await loanService.return({ ...body, clientId: resolvedClientId });
     return { loan: toLoanResponse(loan) };
   });

@@ -51,6 +51,12 @@ describe.each([
     expect(response.statusCode).toBe(200);
     expect(service.prototype.return).toHaveBeenCalledWith(expect.objectContaining({ clientId: otherId }));
   });
+  it('checks the device key when a VIEWER JWT falls back to device authentication', async () => {
+    const token = signAccessToken({ id: 'viewer', username: 'viewer', role: 'VIEWER' } as User);
+    const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'x-client-key': 'key' }, payload: { loanId, clientId: otherId } });
+    expect(response.statusCode).toBe(403);
+    expect(service.prototype.return).not.toHaveBeenCalled();
+  });
   it.each(['ADMIN', 'MANAGER'] as const)('allows %s JWT with an unrelated device key', async role => {
     const token = signAccessToken({ id: 'user', username: 'user', role } as User);
     const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}`, 'x-client-key': 'key' }, payload: { loanId, clientId: otherId } });
