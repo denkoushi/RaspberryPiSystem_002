@@ -1079,7 +1079,8 @@ describe('assembly torque management API', () => {
     const inUseDelete = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${documentAId}`,
-      headers
+      headers,
+      payload: { accessPassword: '2520' }
     });
     expect(inUseDelete.statusCode).toBe(409);
 
@@ -1117,7 +1118,8 @@ describe('assembly torque management API', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${unusedDocumentId}`,
-      headers
+      headers,
+      payload: { accessPassword: '2520' }
     });
     expect(deleted.statusCode).toBe(204);
 
@@ -1136,7 +1138,7 @@ describe('assembly torque management API', () => {
     expect(imageAfterDelete.statusCode).toBe(404);
   });
 
-  it('requires the operation password for template retirement and procedure unpublication', async () => {
+  it('requires the operation password for template retirement, procedure unpublication and deletion', async () => {
     const client = await createTestClientDevice();
     const headers = { 'x-client-key': client.apiKey };
     const document = await uploadPublishedProcedureDocument(app, headers, 'Operation manual');
@@ -1158,6 +1160,8 @@ describe('assembly torque management API', () => {
       expect(await prisma.assemblyTemplate.findUniqueOrThrow({ where: { id: templateId } })).toMatchObject({ isActive: true });
       const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
       expect(unpublished.statusCode).toBe(403);
+      const deleted = await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload });
+      expect(deleted.statusCode).toBe(403);
       expect(await prisma.assemblyProcedureDocument.findUniqueOrThrow({ where: { id: unusedDocument.id } })).toMatchObject({
         status: 'PUBLISHED', publishedAt: expect.any(Date)
       });
@@ -1168,9 +1172,12 @@ describe('assembly torque management API', () => {
     const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
     expect(unpublished.statusCode).toBe(200);
     expect(unpublished.json().document).toMatchObject({ status: 'draft', publishedAt: null });
+    expect((await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload })).statusCode).toBe(204);
+    expect(await prisma.assemblyProcedureDocument.findUnique({ where: { id: unusedDocument.id } })).toBeNull();
     for (const [method, url] of [
       ['DELETE', `/api/assembly/templates/${randomUUID()}`],
-      ['POST', `/api/assembly/procedure-documents/${randomUUID()}/unpublish`]
+      ['POST', `/api/assembly/procedure-documents/${randomUUID()}/unpublish`],
+      ['DELETE', `/api/assembly/procedure-documents/${randomUUID()}`]
     ] as const) {
       expect((await app.inject({ method, url, headers, payload })).statusCode).toBe(404);
     }
@@ -3221,7 +3228,8 @@ describe('assembly torque management API', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${procedureDocumentId}`,
-      headers: { 'x-client-key': client.apiKey }
+      headers: { 'x-client-key': client.apiKey },
+      payload: { accessPassword: '2520' }
     });
     expect(deleted.statusCode).toBe(409);
     expect(deleted.json()).toMatchObject({

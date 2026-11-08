@@ -38,7 +38,7 @@ function renderProcedures(documents: AssemblyProcedureDocumentSummaryDto[] = [do
   return render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} previewDocuments={documents} /></MemoryRouter>);
 }
 
-afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); imageHook.mockClear(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); imageHook.mockClear(); deleteDocument.mockClear(); });
 
 describe('assembly dense library', () => {
   it('keeps close on the left and publication on the right without changing publication', async () => {
@@ -129,15 +129,16 @@ describe('assembly dense library', () => {
 
   it('keeps delete reference guards and confirmation before unpublish/delete', async () => {
     listDocuments.mockResolvedValueOnce([document, { ...document, id: 'unused', name: '未参照手順', totalTemplateCount: 0, manualAssignments: [], activeTemplateCount: 0 }]);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} /></MemoryRouter>);
     const usedRow = (await screen.findByText(document.name)).closest('tr')!;
     const unusedRow = screen.getByText('未参照手順').closest('tr')!;
     expect(within(usedRow).getByRole('button', { name: '削除' })).toBeDisabled();
     expect(within(unusedRow).getByRole('button', { name: '削除' })).toBeEnabled();
     fireEvent.click(within(unusedRow).getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('dialog', { name: '手順書を削除' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
     fireEvent.click(within(usedRow).getByRole('button', { name: '公開取消' }));
-    expect(confirm).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('dialog', { name: '手順書の公開を取り消す' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '公開を取り消す' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'キャンセル' }));
@@ -161,6 +162,31 @@ describe('assembly dense library', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(unpublishDocument).toHaveBeenLastCalledWith(document.id, '2520');
     expect(onChanged).toHaveBeenCalledWith(`手順書「${document.name}」を下書きに戻しました。`);
+  });
+
+  it('confirms deletion with the password, shows errors in the dialog and reloads on success', async () => {
+    const unusedDocument = { ...document, totalTemplateCount: 0, activeTemplateCount: 0 };
+    listDocuments.mockResolvedValue([unusedDocument]);
+    deleteDocument.mockRejectedValueOnce({}).mockResolvedValueOnce(undefined);
+    const onChanged = vi.fn();
+    render(<MemoryRouter><AssemblyProcedureLibrarySection onRegisterClick={vi.fn()} onChanged={onChanged} /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole('button', { name: '削除' }));
+    const dialog = screen.getByRole('dialog', { name: '手順書を削除' });
+    expect(within(dialog).getByText(document.name)).toBeInTheDocument();
+    expect(within(dialog).getByText('v2')).toBeInTheDocument();
+    expect(within(dialog).getByText('この手順書を削除します。元に戻せません。')).toBeInTheDocument();
+    expect(deleteDocument).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText('管理パスワード'), { target: { value: '2520' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: '削除する' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('手順書の削除に失敗しました。');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onChanged).not.toHaveBeenCalled();
+    const listCalls = listDocuments.mock.calls.length;
+    fireEvent.click(within(dialog).getByRole('button', { name: '削除する' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(deleteDocument).toHaveBeenLastCalledWith(document.id, '2520');
+    expect(onChanged).toHaveBeenCalledWith(`手順書を削除しました: ${document.name}`);
+    await waitFor(() => expect(listDocuments.mock.calls.length).toBeGreaterThan(listCalls));
   });
 
   it('shows assignment chips, filters unused documents with a count, and reports filter changes', () => {

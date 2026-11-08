@@ -301,6 +301,8 @@ export function registerAssemblyProcedureDocumentRoutes(
 
   app.delete('/assembly/procedure-documents/:id', { preHandler: [allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
+    const body = z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
+    await procedureService.requireAccessPassword(body.accessPassword);
     const usage = await procedureService.getReferenceUsage(params.id);
     if (usage.inProcedureManualAssignment) {
       throw new DomainHttpError(409, procedureService.buildInUseMessage(usage));

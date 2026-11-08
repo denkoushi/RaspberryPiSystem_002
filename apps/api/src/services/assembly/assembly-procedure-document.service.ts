@@ -445,6 +445,10 @@ export class AssemblyProcedureDocumentService {
     return { document, changed: true };
   }
 
+  async requireAccessPassword(accessPassword: string): Promise<void> {
+    await this.accessService.requireAccessPassword(accessPassword);
+  }
+
   async unpublish(id: string, accessPassword?: string): Promise<AssemblyProcedureDocumentRecord> {
     await this.accessService.requireAccessPassword(accessPassword);
     return runAssemblyTransaction(async (tx) => {
