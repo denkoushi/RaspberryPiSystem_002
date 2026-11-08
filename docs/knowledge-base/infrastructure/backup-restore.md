@@ -1976,6 +1976,14 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 
 ## KB-199: Dropbox証明書ピニング検証失敗によるバックアップ500エラー
 
+**現行の方針（2026-11-09 以降）**
+
+葉証明書の固定を廃止し、Node標準のCA検証（`rejectUnauthorized: true`）と既定のホスト名検証を使用する。`minVersion: 'TLSv1.2'` によりTLS 1.2以上（TLS 1.3を含む）を許可する。
+証明書更新のたびにバックアップが停止してきたため、指紋の固定リストによる検証を終了した。2026-11には中間CAが `DigiCert TLS RSA SHA256 2020 CA1` から `DigiCert G5 TLS ECC SHA384 2021 CA1` へ、上位も `DigiCert TLS ECC P384 Root G5`（`DigiCert Global Root G3` による相互署名）へ変わったため、中間CA・ルートの固定でも同様に停止する。バックアップは送信前に暗号化済みである。
+信頼するCA一覧はNodeの更新に含まれるため、APIイメージのNodeを古いまま放置しない。
+
+以下は過去の障害と対処の履歴であり、指紋追加の手順は現在使用しない。
+
 **発生日**: 2026-01-28
 
 **事象**:
@@ -2028,14 +2036,15 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
   - 実機検証: 正常動作を確認
 
 **関連ファイル**:
-- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
-- `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（証明書フィンガープリント取得スクリプト）
+- `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（標準TLS検証とHTTPSエージェント設定）
+- `apps/api/src/services/backup/storage/encrypted-storage.provider.ts`（送信前の暗号化）
+- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（2026-11-09 に削除）
+- `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（2026-11-09 に削除）
 
 **再発防止策**:
-- Dropboxが証明書を更新した場合は、`get-dropbox-cert-fingerprint.ts`スクリプトで新しいフィンガープリントを取得し、`dropbox-cert-pinning.ts`に追加する
-- 証明書更新の監視（Dropbox公式からの通知や定期的な検証）を検討
-- 証明書ピニング失敗時のエラーメッセージを明確化（「証明書が更新された可能性」を明記）
-- **学んだこと**: 証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコード（401/400）まで到達せず、トークンリフレッシュロジックは発動しない。証明書更新は定期的に発生する可能性があるため、監視と迅速な対応が必要。
+- 葉証明書・中間CA・ルートの固定リストを使用せず、標準のCA検証とホスト名検証を維持する
+- APIイメージのNodeを更新し、信頼するCA一覧を保守する
+- TLSエラー時はNodeの版とCA一覧、端末の時刻ずれを確認する。TLSハンドシェイク段階の失敗ではトークンリフレッシュは発動しない
 
 **関連ナレッジ**:
 - KB-020: バックアップ・リストア機能の実装

@@ -2,6 +2,8 @@
 
 最終更新: 2025-12-14
 
+> **2026-11-09 注記**: Dropbox接続の葉証明書の固定は廃止し、標準のCA検証とホスト名検証、TLS 1.2以上へ変更しました。理由と経緯は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください。
+
 ## 概要
 
 SharePointリストからPowerAutomateでCSV出力し、DropboxにCSV保存して、Pi5がDropboxからCSVデータを取得するスキームについて、セキュリティの観点から評価します。
