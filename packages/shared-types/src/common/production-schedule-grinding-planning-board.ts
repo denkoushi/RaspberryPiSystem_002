@@ -382,6 +382,7 @@ export interface GrindingPlanningBoardResourcePartMinutesRequest {
 }
 
 export interface GrindingPlanningBoardResourcePartOpMinutes {
+  setupMinutes?: number | null;
   opNo: number;
   minutes: number;
 }
