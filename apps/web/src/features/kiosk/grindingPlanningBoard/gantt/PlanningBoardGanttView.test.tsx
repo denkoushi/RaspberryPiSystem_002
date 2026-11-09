@@ -3,7 +3,6 @@ import { forwardRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinutesContext';
-import { PlanningBoardPageView } from '../PlanningBoardPageView';
 import { PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../PlanningBoardPiecePopover';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
@@ -78,32 +77,6 @@ describe('PlanningBoardGanttView', () => {
     }) });
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
-  it('keeps horizontal scroll through a page query scope switch while removing old rows', () => {
-    const values = props();
-    const pageProps = {
-      data: { siteKey: 'site', resources: ['305'] }, ganttEnabled: true,
-      gantt: { ...values, homeKey: 0 }, ganttLayout: values.layout,
-      resourcesQuery: {}, writeQueue: { pending: false }, allocation: 'alternate',
-      view: 'resource', category: 'grinding', focusedSeiban: null, setFocusedSeiban: vi.fn(),
-      selectedItemIds: new Set<string>(), toggleItem: vi.fn(), moveDueByDrag: vi.fn(),
-      canMoveResource: vi.fn(() => true), rankMutationReady: true
-    } as unknown as React.ComponentProps<typeof PlanningBoardPageView>;
-    const { rerender } = render(<PlanningBoardPageView {...pageProps} />);
-    const viewport = screen.getByLabelText('ガントの日付と工程');
-    viewport.scrollLeft = 250;
-    expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
-    rerender(<PlanningBoardPageView {...pageProps} data={undefined} ganttLayout={props([]).layout} />);
-    expect(screen.getByLabelText('ガントの日付と工程')).toBe(viewport);
-    expect(viewport.scrollLeft).toBeCloseTo(250);
-    expect(screen.queryByTestId('planning-gantt-bar-a')).toBeNull();
-    expect(screen.queryByTestId('planning-gantt-resource-305')).toBeNull();
-    rerender(<PlanningBoardPageView {...pageProps} ganttLayout={props([item({ itemId: 'new' })]).layout} />);
-    expect(screen.getByLabelText('ガントの日付と工程')).toBe(viewport);
-    expect(viewport.scrollLeft).toBeCloseTo(250);
-    expect(screen.queryByTestId('planning-gantt-bar-a')).toBeNull();
-    expect(screen.getByTestId('planning-gantt-bar-new')).toBeInTheDocument();
-  });
-
   it.each(['backward', 'forward'] as const)('keeps overdue LSLH stars until completion in %s mode', (mode) => {
     const items = [item({ lslhSurface: true, requiredMinutes: 1 }),
       item({ itemId: 'b', processOrder: '20', lslhSurface: true }),

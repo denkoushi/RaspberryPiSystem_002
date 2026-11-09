@@ -26,7 +26,6 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
       ? { ...item, arrived: true, manualArrivalDate: arrival.date } : item;
   }, [overlay, firstProcessOverlay, siteKey, arrivalDate]);
   useEffect(() => {
-    if (!data) return;
     setOverlay((previous) => {
       const next = new Map([...previous].filter(([id, entry]) => entry.siteKey === data?.siteKey &&
         entry.date === arrivalDate && !data?.items.some((item) => item.itemId === id && item.manualArrivalDate === entry.date)));
@@ -34,7 +33,6 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
     });
   }, [data, arrivalDate]);
   useEffect(() => {
-    if (!data) return;
     setFirstProcessOverlay((previous) => {
       // The mutation invalidates the board, so the next response for the item is authoritative.
       const next = new Map([...previous].filter(([id, entry]) => entry.siteKey === data?.siteKey &&

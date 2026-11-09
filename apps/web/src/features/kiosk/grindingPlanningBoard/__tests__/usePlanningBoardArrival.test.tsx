@@ -21,7 +21,7 @@ const beforeMidnight = new Date('2026-11-06T14:59:00Z').getTime();
 const afterMidnight = new Date('2026-11-06T15:01:00Z').getTime();
 const initialBoard = board();
 const setup = () => renderHook(({ data, now }) => usePlanningBoardArrival(data, now), {
-  initialProps: { data: initialBoard as GrindingPlanningBoardResponse | undefined, now: beforeMidnight }
+  initialProps: { data: initialBoard, now: beforeMidnight }
 });
 
 beforeEach(() => {
@@ -38,7 +38,7 @@ describe('usePlanningBoardArrival', () => {
     expect(mocks.first).toHaveBeenCalledWith({ itemId: 'first', itemRevision: 'revision', overrideVersion: 2, state });
     const expected = { firstProcessState: state, arrived: state === 'arrived' };
     expect(hook.result.current.applyArrival(item)).toMatchObject(expected);
-    hook.rerender({ data: initialBoard as GrindingPlanningBoardResponse | undefined, now: afterMidnight });
+    hook.rerender({ data: initialBoard, now: afterMidnight });
     expect(hook.result.current.applyArrival(item)).toMatchObject(expected);
     hook.rerender({ data: board([{ ...item, ...expected }]), now: afterMidnight });
     // Passing the old object now proves that the acknowledged overlay was removed.
@@ -80,21 +80,6 @@ describe('usePlanningBoardArrival', () => {
     expect(hook.result.current.applyArrival(later)).toMatchObject({ arrived: true, manualArrivalDate: '2026-11-06' });
     hook.rerender({ data: board([later]), now: afterMidnight });
     expect(hook.result.current.applyArrival(later)).toBe(later);
-  });
-
-  it('retains both arrival overlays through an unavailable board and still clears them for another site', async () => {
-    const later = { ...item, itemId: 'later', isFirstProcess: false };
-    const hook = setup();
-    mocks.arrival.mockResolvedValue({ itemId: later.itemId, manualArrivalDate: '2026-11-06' });
-    await act(async () => { await hook.result.current.changeArrival(later, true); });
-    await act(async () => { await hook.result.current.changeFirstProcessArrival(item, 'excluded'); });
-    hook.rerender({ data: undefined, now: beforeMidnight });
-    hook.rerender({ data: board([]), now: beforeMidnight });
-    expect(hook.result.current.applyArrival(later)).toMatchObject({ arrived: true });
-    expect(hook.result.current.applyArrival(item)).toMatchObject({ firstProcessState: 'excluded' });
-    hook.rerender({ data: board([], 'site-b'), now: beforeMidnight });
-    expect(hook.result.current.applyArrival(later)).toBe(later);
-    expect(hook.result.current.applyArrival(item)).toBe(item);
   });
 
   it('retains the current state on failure and exposes the existing error and pending flags', async () => {
