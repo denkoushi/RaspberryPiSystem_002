@@ -23,7 +23,7 @@ function unrelatedMessage(id: string): GmailMessage {
     labelIds: ['INBOX', 'UNREAD'],
     snippet: '',
     internalDateMs: 1,
-    payload: { headers: [{ name: 'Subject', value: 'other mailbox owner' }] },
+    payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'other mailbox owner' }] },
   };
 }
 

@@ -22,7 +22,7 @@ const message = (id: string, names: string[]): GmailMessage => ({
   labelIds: [],
   snippet: '',
   internalDateMs: 0,
-  payload: {
+  payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }],
     mimeType: 'multipart/mixed',
     parts: names.map((filename, index) => ({
       filename,

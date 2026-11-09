@@ -72,6 +72,16 @@ describe('backup config secrets', () => {
     expect(JSON.stringify(saved)).not.toContain('[REDACTED]');
   });
 
+  it.each([{ domains: ['thkintechs.co.jp'] }, { domains: ['example.com'] }, { domains: [] }])('round trips Gmail sender domains $domains', async ({ domains }) => {
+    const stored = await readFile();
+    stored.gmailIngestSenderPolicy = { allowedSenderDomains: domains };
+    await fs.writeFile(configPath, JSON.stringify(stored));
+    const config = await get();
+    expect(config.gmailIngestSenderPolicy).toEqual({ allowedSenderDomains: domains });
+    expect((await put(config)).statusCode).toBe(200);
+    expect((await readFile()).gmailIngestSenderPolicy).toEqual({ allowedSenderDomains: domains });
+  });
+
   it.each(['fields', 'provider', 'options'])('restores undefined secrets when omitting %s', async (omitted) => {
     const config = await get();
     if (omitted === 'options') delete config.storage.options;

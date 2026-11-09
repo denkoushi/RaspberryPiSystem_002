@@ -188,6 +188,14 @@ describe('GmailApiClient', () => {
   });
 
   describe('getMessage', () => {
+    it.each([{ status: 404 }, { code: 404 }, { response: { status: 404 } }])('preserves not-found metadata and cause: %j', async (metadata) => {
+      const error = Object.assign(new Error('Not Found'), metadata);
+      mockGmailMessages.get.mockRejectedValueOnce(error);
+      await expect(gmailClient.getMessage('gone')).rejects.toMatchObject({
+        message: 'Failed to get message: Not Found', cause: error,
+        ...('code' in metadata ? { code: 404 } : { status: 404 }),
+      });
+    });
     it('should get message details', async () => {
       const mockMessageId = 'msg1';
       const mockResponse = {

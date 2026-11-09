@@ -57,7 +57,7 @@ beforeEach(async () => {
   const fixture = buildWorkbook();
   buffer = Buffer.from(await fixture.workbook.xlsx.writeBuffer());
   message = { id: 'mail-1', threadId: 'thread-1', labelIds: ['UNREAD'], snippet: '', internalDateMs: Date.parse('2026-05-15Z'), payload: {
-    headers: [{ name: 'Subject', value: '転送 D社日程会議議事録 5/15' }], parts: [
+    headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '転送 D社日程会議議事録 5/15' }], parts: [
       { filename: 'signature.png', body: { attachmentId: 'image' } },
       { filename: 'wrong.xlsx', body: { attachmentId: 'wrong' } },
       { filename: '20260515 D社日程会議議事録.XLSX', body: { attachmentId: 'minutes' } },
@@ -196,7 +196,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
   });
 
   it('imports minutes by content with a variable subject and arbitrary filename', async () => {
-    message.payload!.headers = [{ name: 'Subject', value: '日程会議議事録　10/30' }];
+    message.payload!.headers = [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '日程会議議事録　10/30' }];
     message.payload!.parts = [{ filename: '議事録.xlsx', body: { attachmentId: 'minutes' } }];
     message.internalDateMs = Date.parse('2026-11-01Z');
     const result = await ingestion.runOnce({ config, allowWait: false });
@@ -211,7 +211,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
     '[Kakou-Dandori-photo] item', '[ItemlistRaspi-photo] item', '[Procedure-material] material',
     'ProcedureMaterial item', '転送 DocumentASM item', '転送 AirGridFlexSignal item'
   ])('leaves another intake subject untouched: %s', async (subject) => {
-    message.payload!.headers = [{ name: 'Subject', value: subject }];
+    message.payload!.headers = [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: subject }];
     // Even an already imported message belongs to the reserved intake.
     run = { gmailMessageId: 'mail-1', status: 'SUCCESS' } as ProductionScheduleDScheduleMinutesImportRun;
     const result = await ingestion.runOnce({ config, allowWait: false });

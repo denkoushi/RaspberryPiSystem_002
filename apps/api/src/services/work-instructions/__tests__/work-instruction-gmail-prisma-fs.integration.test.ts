@@ -44,7 +44,7 @@ const config: BackupConfig = {
   workInstructionGmailIngest: {
     enabled: true,
     subjectTokens: ['[Kakou-Dandori-photo]'],
-    fromEmail: 'sharepoint@example.com',
+    fromEmail: 'sharepoint@thkintechs.co.jp',
   },
 };
 
@@ -139,9 +139,9 @@ function fixtureMessage(input: {
       internalDateMs: input.modified.getTime(),
       payload: {
         mimeType: 'multipart/mixed',
-        headers: [
+        headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
           { name: 'Subject', value: `[Kakou-Dandori-photo] ${input.id}` },
-          { name: 'From', value: 'SharePoint <sharepoint@example.com>' },
+          { name: 'From', value: 'SharePoint <sharepoint@thkintechs.co.jp>' },
         ],
         parts,
       },
@@ -430,7 +430,8 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
 
     const second = await service.ingestMessage({ config: configForSubject(), allowWait: false, messageId: fixture.message.id });
     expect(second).toMatchObject({ applied: 1, acknowledged: 1, acknowledgementPending: 0 });
-    expect(mail.getMessage).toHaveBeenCalledTimes(1);
+    // Each run re-verifies the sender before acknowledging; attachments are not fetched again.
+    expect(mail.getMessage).toHaveBeenCalledTimes(2);
     expect(mail.getAttachment).toHaveBeenCalledTimes(2);
     expect(mail.markAsRead).toHaveBeenCalledTimes(2);
     expect(mail.trashMessage).toHaveBeenCalledTimes(1);

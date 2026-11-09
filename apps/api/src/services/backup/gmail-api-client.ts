@@ -364,7 +364,7 @@ export class GmailApiClient {
         { err: error, messageId },
         '[GmailApiClient] Failed to get message'
       );
-      throw new Error(`Failed to get message: ${error instanceof Error ? error.message : String(error)}`);
+      throw wrapGmailOperationError('Failed to get message', error);
     }
   }
 

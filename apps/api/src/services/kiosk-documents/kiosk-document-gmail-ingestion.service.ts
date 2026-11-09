@@ -1,7 +1,9 @@
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
+import { GmailSenderRejectedError } from '../gmail/gmail-sender-verification.js';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
 import type { BackupConfig } from '../backup/backup-config.js';
-import type { GmailMessage } from '../backup/gmail-api-client.js';
+import type { GmailApiClient, GmailMessage } from '../backup/gmail-api-client.js';
 import { KioskDocumentService } from './kiosk-document.service.js';
 import { PrismaKioskDocumentRepository } from './adapters/prisma-kiosk-document.repository.js';
 import { PdfStorageFileStoreAdapter } from './adapters/pdf-storage-file-store.adapter.js';
@@ -70,7 +72,9 @@ export async function findEligibleKioskMessages(
     for (const messageId of candidateIds) {
       if (seen.has(messageId) || ids.length >= MAX_MESSAGES_PER_RUN) continue;
       seen.add(messageId);
-      const message = await gmailClient.getMessage(messageId);
+      let message;
+      try { message = await gmailClient.getMessage(messageId); }
+      catch (error) { if (error instanceof GmailSenderRejectedError) continue; throw error; }
       scanned += 1;
       const subject = message.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
       if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject) || isProcedureMaterialGmailSubject(subject)) {
@@ -113,7 +117,7 @@ export class KioskDocumentGmailIngestionService {
   async ingestSchedule(params: {
     config: BackupConfig;
     schedule: NonNullable<BackupConfig['kioskDocumentGmailIngest']>[number];
-  }): Promise<KioskDocumentGmailIngestSummary> {
+  }, sharedSession?: GmailSenderVerificationSession): Promise<KioskDocumentGmailIngestSummary> {
     const { config, schedule } = params;
     const summary: KioskDocumentGmailIngestSummary = {
       scheduleId: schedule.id,
@@ -133,7 +137,20 @@ export class KioskDocumentGmailIngestionService {
       return summary;
     }
 
-    const gmailClient = await resolveGmailApiClientFromBackupConfig(config);
+    const senderSession = sharedSession ?? GmailSenderVerificationSession.forRun(config);
+    try {
+      if (senderSession.disabled) return summary;
+      return await this.ingestVerifiedSchedule(schedule, summary, senderSession.wrap(await resolveGmailApiClientFromBackupConfig(config)));
+    } finally {
+      if (!sharedSession) await senderSession.notify();
+    }
+  }
+
+  private async ingestVerifiedSchedule(
+    schedule: NonNullable<BackupConfig['kioskDocumentGmailIngest']>[number],
+    summary: KioskDocumentGmailIngestSummary,
+    gmailClient: GmailApiClient,
+  ): Promise<KioskDocumentGmailIngestSummary> {
     const query = buildKioskDocumentGmailSearchQuery(schedule.subjectPattern, schedule.fromEmail);
 
     let messageIds: string[];
@@ -255,16 +272,21 @@ export class KioskDocumentGmailIngestionService {
   }
 
   async ingestAllEnabledSchedules(config: BackupConfig): Promise<KioskDocumentGmailIngestSummary[]> {
-    const schedules = config.kioskDocumentGmailIngest ?? [];
-    const results: KioskDocumentGmailIngestSummary[] = [];
-    for (const schedule of schedules) {
-      if (!schedule.enabled) {
-        continue;
+    const senderSession = GmailSenderVerificationSession.forRun(config);
+    try {
+      const schedules = config.kioskDocumentGmailIngest ?? [];
+      const results: KioskDocumentGmailIngestSummary[] = [];
+      for (const schedule of schedules) {
+        if (!schedule.enabled) {
+          continue;
+        }
+        // eslint-disable-next-line no-await-in-loop
+        results.push(await this.ingestSchedule({ config, schedule }, senderSession));
       }
-      // eslint-disable-next-line no-await-in-loop
-      results.push(await this.ingestSchedule({ config, schedule }));
+      return results;
+    } finally {
+      await senderSession.notify();
     }
-    return results;
   }
 
   async ingestByScheduleId(config: BackupConfig, scheduleId: string): Promise<KioskDocumentGmailIngestSummary> {

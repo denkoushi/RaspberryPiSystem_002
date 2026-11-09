@@ -100,6 +100,13 @@
 - 監視 ID の既存重複が否定できないため、一意制約を追加せず初回登録をトランザクションで調停する。
 - この追補はローカル実装の記録。migration 適用・本番反映は未実施。
 
+## Gmail Ingest Sender Policy (2026-11-09)
+
+- Gmail からの取込は全経路で、共通の設定 `gmailIngestSenderPolicy.allowedSenderDomains`（既定 `["thkintechs.co.jp"]`）と Gmail の認証結果を確かめてから本文・添付を読む。既存の `fromEmail` と手順書資料の `allowedSenderDomains` はそのまま併用する。
+- 対象外のメールは受信箱に残し、実行ごとに通知 `gmail-sender-rejected`（WARNING）を出す。空 `[]` は取込停止として扱う。
+- 設定手順と確認方法は [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md) の「メールが見つからない」を正本とする。
+- この追補はローカル実装の記録。本番反映は未実施。
+
 ## References
 
 - Audit PR: `claude/wizardly-sagan-e8q3qw`

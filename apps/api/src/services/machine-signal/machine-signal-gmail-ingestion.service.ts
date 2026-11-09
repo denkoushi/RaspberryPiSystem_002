@@ -1,3 +1,4 @@
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
 import { logger } from '../../lib/logger.js';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
 import type { BackupConfig } from '../backup/backup-config.js';
@@ -62,8 +63,10 @@ export class MachineSignalGmailIngestionService {
     const summary: MachineSignalGmailCycleSummary = { scanned: 0, processed: 0, skipped: 0, discarded: 0, runs: [] };
     if (this.running) return summary;
     this.running = true;
+    const senderSession = GmailSenderVerificationSession.forRun(options.config);
     try {
-      const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
+      if (senderSession.disabled) return summary;
+      const gmail = senderSession.wrap(await this.gmailFactory(options.config, { allowWait: options.allowWait }));
       const messageIds = await gmail.searchMessagesLimited(MACHINE_SIGNAL_GMAIL_QUERY, MACHINE_SIGNAL_GMAIL_BATCH_LIMIT);
       summary.scanned = messageIds.length;
 
@@ -77,6 +80,7 @@ export class MachineSignalGmailIngestionService {
           continue;
         }
 
+        if (!(await senderSession.filterMessageIds(gmail, [messageId])).length) { summary.skipped++; continue; }
         const message = await gmail.getMessage(messageId);
         const csvAttachments = collectGmailAttachments(message).filter(
           (attachment) => !attachment.isInline && attachment.filename.toLowerCase().endsWith('.csv')
@@ -108,6 +112,7 @@ export class MachineSignalGmailIngestionService {
       return summary;
     } finally {
       this.running = false;
+      await senderSession.notify();
     }
   }
 

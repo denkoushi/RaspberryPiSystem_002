@@ -18,7 +18,7 @@ vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 
 vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: () => ({ kick: vi.fn() }) }));
 
-vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn() } }));
+vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn() } }));
 
 let image: Buffer;
 let inlineImage: Buffer;
@@ -44,7 +44,7 @@ const photoPart = (name = 'photo.png', overrides: Partial<GmailMessagePart> = {}
 const pdfPart = (overrides: Partial<GmailMessagePart> = {}): GmailMessagePart => ({ filename: '組立.v1.pdf', partId: 'pdf-1', mimeType: 'application/pdf', body: { attachmentId: 'pdf' }, ...overrides });
 function message(parts: GmailMessagePart[], subject = '[Procedure-material] DFD1 組立'): GmailMessage {
   return { id: 'mail-1', threadId: 'thread', labelIds: ['INBOX', 'UNREAD'], snippet: '', internalDateMs: Date.parse('2026-10-05T03:00:00Z'), payload: {
-    mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: subject }, { name: 'From', value: '送信者 <sender@thkintechs.co.jp>' }], parts,
+    mimeType: 'multipart/mixed', headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: subject }, { name: 'From', value: '送信者 <sender@thkintechs.co.jp>' }], parts,
   } };
 }
 const client = () => ({ getAttachment: vi.fn().mockImplementation(async () => image) });
@@ -773,11 +773,11 @@ describe('procedure-material Gmail ingestion', () => {
   ] as const)('checks domain and optional exact sender: %s / %j / %s', async (sender, domains, fromEmail, allowed) => {
     const h = harness();
     const mail = message([textPart('手順'), photoPart()]);
-    mail.payload.headers = [{ name: 'Subject', value: '[Procedure-material]' }, ...(sender ? [{ name: 'From', value: `送信者 <${sender}>` }] : [])];
+    mail.payload.headers = [{ name: 'Authentication-Results', value: 'mx.google.com; dmarc=pass' }, { name: 'Subject', value: '[Procedure-material]' }, ...(sender ? [{ name: 'From', value: `送信者 <${sender}>` }] : [])];
     h.gmail.getMessage.mockResolvedValue(mail);
-    const config = { ...h.config, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, allowedSenderDomains: [...domains], fromEmail } };
+    const config = { ...h.config, gmailIngestSenderPolicy: { allowedSenderDomains: ['thkintechs.co.jp', 'example.com', 'mail.thkintechs.co.jp'] }, procedureMaterialGmailIngest: { ...h.config.procedureMaterialGmailIngest, allowedSenderDomains: [...domains], fromEmail } };
     const result = await h.service.runOnce({ config, allowWait: false });
-    expect(result).toMatchObject(allowed ? { saved: 2, skipped: 0 } : { saved: 0, skipped: 1, messages: [{ trashed: false, reason: fromEmail === 'other@thkintechs.co.jp' ? '送信元が設定と一致しません' : '送信元のドメインが許可されていません' }] });
+    expect(result).toMatchObject(allowed ? { saved: 2, skipped: 0 } : { saved: 0, skipped: 1, messages: [{ trashed: false, reason: !sender ? 'no_from' : fromEmail === 'other@thkintechs.co.jp' ? '送信元が設定と一致しません' : '送信元のドメインが許可されていません' }] });
     if (!allowed) {
       expect(h.gmail.trashMessage).not.toHaveBeenCalled();
       expect(h.gmail.getAttachment).not.toHaveBeenCalled();
@@ -814,7 +814,7 @@ describe('procedure-material Gmail ingestion', () => {
     if (skip === 'sender' || skip === 'domain') {
       h.gmail.getMessage.mockImplementation(async (id: string) => ({
         ...message([textPart('手順')]), id,
-        payload: { ...message([]).payload, parts: [textPart('手順')], headers: [
+        payload: { ...message([]).payload, parts: [textPart('手順')], headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
           { name: 'Subject', value: '[Procedure-material]' },
           { name: 'From', value: id === 'mail-21' ? 'allowed@thkintechs.co.jp' : skip === 'domain' ? 'other@example.com' : 'other@thkintechs.co.jp' },
         ] },

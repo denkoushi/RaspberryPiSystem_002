@@ -1,3 +1,4 @@
+import { defaultBackupConfig } from '../../backup/backup-config.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
@@ -30,7 +31,7 @@ function makeMessage(params: {
     snippet: '',
     internalDateMs: params.internalDateMs,
     payload: {
-      headers: [{ name: 'Subject', value: params.subject ?? 'DocumentASM' }],
+      headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: params.subject ?? 'DocumentASM' }],
       parts:
         params.parts ??
         [
@@ -95,6 +96,7 @@ function createHarness(
   };
   const createMailGateway = vi.fn(async () => gateway);
   const service = new AssemblyProcedureGmailImportService({
+    loadConfig: async () => defaultBackupConfig,
     createMailGateway,
     draftWriter: writer,
     csvImportActivity: {
