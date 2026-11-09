@@ -350,8 +350,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   }, [showChain]);
   const sheetHeight = valueSheetOpen && singleGroup ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
   const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
-  const focusChain = useCallback((bar: GanttBar) => {
-    setFocusedPartKey((current) => current === bar.partKey ? null : bar.partKey);
+  const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
+    setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
     setCurrentItemId(null);
   }, []);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {

@@ -69,7 +69,7 @@ type Props = {
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   focusedPartKey: string | null;
   chainPositions: ReadonlyMap<string, number>;
-  onFocusChain: (bar: GanttBar) => void;
+  onFocusChain: (bar: GanttBar, keepOpen?: boolean) => void;
 };
 
 export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, dayLoad = 0, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
@@ -323,7 +323,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) onTogglePin?.(bar.item); else { if (foldedWindow) onToggleItem(bar.item, !selected); onFocusChain(bar); }
+                if (pinMode) onTogglePin?.(bar.item); else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
