@@ -21,7 +21,7 @@ describe('arrival preference', () => {
     const button = screen.getByRole('button', { name: '前工程が済んだものだけ表示' });
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button).toHaveClass('h-[46px]', 'w-[46px]', 'text-base', 'font-bold', 'bg-sky-400');
-    expect(button.previousElementSibling).toBe(screen.getByRole('group', { name: '工程' }));
+    expect(button.previousElementSibling).toBe(screen.getByRole('button', { name: '工程' }).parentElement);
     fireEvent.click(button);
     expect(button).toHaveAttribute('aria-pressed', 'false');
     expect(button).toHaveClass('border-slate-600', 'text-sky-300');
