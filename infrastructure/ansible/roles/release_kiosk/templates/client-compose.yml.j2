@@ -88,6 +88,9 @@ services:
       - {{ (release_kiosk_project_dir ~ '/clients/torque-agent/.env') | to_json }}
     volumes:
       - torque-agent-data:/data
+{% if client_server_cert_pin_enabled | default(false) | bool %}
+      - /etc/raspi-client:/etc/raspi-client:ro
+{% endif %}
 {% if client_agents_hardened | default(false) | bool %}
       - /dev/input:/dev/input:ro
 {% else %}

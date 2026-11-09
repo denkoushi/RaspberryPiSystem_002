@@ -1,0 +1,49 @@
+---
+- name: Install the pinned client server certificate
+  when: client_server_cert_pin_enabled | default(false) | bool
+  block:
+    - name: Inspect the controller Pi5 certificate
+      ansible.builtin.stat:
+        path: "{{ client_server_cert_source | default(playbook_dir ~ '/../../../certs/cert.pem') }}"
+        checksum_algorithm: sha256
+      delegate_to: localhost
+      become: false
+      register: client_server_controller_cert
+
+    - name: Require the exact pinned Pi5 certificate
+      ansible.builtin.assert:
+        that:
+          - client_server_cert_sha256 | default('') is match('^[0-9a-f]{64}$')
+          - client_server_controller_cert.stat.exists | default(false)
+          - client_server_controller_cert.stat.isreg | default(false)
+          - not (client_server_controller_cert.stat.islnk | default(false))
+          - client_server_controller_cert.stat.checksum | default('') == client_server_cert_sha256 | default('')
+        fail_msg: >-
+          Pi5 証明書が存在しないか、固定した SHA-256 と一致しません。
+          client_server_cert_source と client_server_cert_sha256 を確認してください。
+      delegate_to: localhost
+      become: false
+
+    - name: Require the signage SPKI pin
+      ansible.builtin.assert:
+        that:
+          - kiosk_server_cert_spki_sha256 | default('') is match('^[A-Za-z0-9+/]{43}=$')
+        fail_msg: signage 用の kiosk_server_cert_spki_sha256 を確認してください。
+      when: "'signage' in group_names"
+
+    - name: Create client certificate directory
+      ansible.builtin.file:
+        path: /etc/raspi-client
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy the pinned Pi5 client certificate
+      ansible.builtin.copy:
+        src: "{{ client_server_cert_source | default(playbook_dir ~ '/../../../certs/cert.pem') }}"
+        dest: /etc/raspi-client/server-cert.pem
+        owner: root
+        group: root
+        mode: '0644'
+      register: client_server_cert_pin_copy_result

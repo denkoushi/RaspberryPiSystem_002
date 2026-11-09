@@ -1,4 +1,8 @@
 ---
+- name: Prepare the client server certificate pin before configuring agents
+  ansible.builtin.import_role:
+    name: client_server_cert_pin
+
 # Full provisioning quiesces only the unit files that already exist in
 # prestage-signage-runtime.yml. This role can therefore create a fresh unit set.
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -30,7 +31,7 @@ class TorqueRecordApi(Protocol):
 
 
 class HttpxTorqueRecordApi:
-    def __init__(self, api_base_url: str, client_key: str, *, tls_verify: bool) -> None:
+    def __init__(self, api_base_url: str, client_key: str, *, tls_verify: bool | ssl.SSLContext) -> None:
         self._api_base_url = api_base_url
         self._client_key = client_key
         self._client = httpx.AsyncClient(timeout=10, verify=tls_verify)
@@ -63,7 +64,7 @@ class OutboxSender:
         client_key: str,
         queue: QueueStore,
         *,
-        tls_verify: bool = True,
+        tls_verify: bool | ssl.SSLContext = True,
         wake_signal: OutboxWakeSignal | None = None,
         notifier: DeliveryNotifier | None = None,
         acknowledged_at_factory: Callable[[], str] | None = None,

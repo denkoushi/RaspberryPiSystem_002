@@ -20,6 +20,22 @@ class HaizenScanResponse:
     error_text: str | None
 
 
+def build_tls_context(tls_skip_verify: bool, tls_ca_file: str | None = None) -> ssl.SSLContext:
+    if tls_ca_file:
+        ctx = ssl.create_default_context(cafile=tls_ca_file)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        # The pinned self-signed leaf has no X.509 extensions. Trust is the pin
+        # itself; Python 3.13's strict CA-extension requirements do not apply.
+        ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+        return ctx
+    ctx = ssl.create_default_context()
+    if tls_skip_verify:
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
 def post_haizen_scan(
     *,
     api_base_url: str,
@@ -29,6 +45,7 @@ def post_haizen_scan(
     distribution_number: int | None,
     raw_barcode: str | None,
     timeout_sec: float = 30.0,
+    tls_ca_file: str | None = None,
 ) -> HaizenScanResponse:
     url = f"{api_base_url.rstrip('/')}/api/mobile-placement/haizen-scans"
     payload: dict[str, Any] = {
@@ -40,12 +57,7 @@ def post_haizen_scan(
         payload["rawBarcode"] = raw_barcode
 
     data = json.dumps(payload).encode("utf-8")
-    ctx = ssl.create_default_context()
-    if tls_skip_verify:
-        ctx.check_hostname = False
-        ctx.verify_mode = ssl.CERT_NONE
-    else:
-        ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx = build_tls_context(tls_skip_verify, tls_ca_file)
 
     req = urllib.request.Request(
         url,

@@ -9,7 +9,7 @@ from typing import Literal
 
 from haizen_agent.classifier import DistributionClassificationMode
 
-TlsVerifyMode = Literal["insecure", "system"]
+TlsVerifyMode = Literal["insecure", "system", "pinned"]
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,7 @@ class HaizenAgentConfig:
     tls_verify_mode: TlsVerifyMode
     hid_device: str | None
     distribution_mode: DistributionClassificationMode
+    tls_ca_file: str | None = None
 
     @property
     def tls_skip_verify(self) -> bool:
@@ -61,7 +62,10 @@ def _parse_distribution_mode(file_vals: dict[str, str]) -> DistributionClassific
 
 
 def _parse_tls_verify_mode(file_vals: dict[str, str]) -> TlsVerifyMode:
-    """互換: TLS_SKIP_VERIFY が優先。次に HAIZEN_TLS_VERIFY_MODE。未指定は insecure。"""
+    """明示 pin を優先し、それ以外は従来の TLS_SKIP_VERIFY の優先順を維持する。"""
+    mode_raw = os.environ.get("HAIZEN_TLS_VERIFY_MODE") or file_vals.get("HAIZEN_TLS_VERIFY_MODE") or ""
+    if mode_raw.strip().lower() == "pinned":
+        return "pinned"
     skip_raw = os.environ.get("TLS_SKIP_VERIFY")
     if skip_raw is None:
         skip_raw = file_vals.get("TLS_SKIP_VERIFY")
@@ -72,7 +76,6 @@ def _parse_tls_verify_mode(file_vals: dict[str, str]) -> TlsVerifyMode:
         if v in ("0", "false", "no", "off"):
             return "system"
 
-    mode_raw = os.environ.get("HAIZEN_TLS_VERIFY_MODE") or file_vals.get("HAIZEN_TLS_VERIFY_MODE") or ""
     m = mode_raw.strip().lower()
     if m in ("system", "verify", "strict"):
         return "system"
@@ -93,12 +96,16 @@ def load_haizen_config() -> HaizenAgentConfig:
         raise SystemExit("X_CLIENT_KEY is required (env or CONFIG file)")
 
     tls_verify_mode = _parse_tls_verify_mode(file_vals)
+    tls_ca_file = os.environ.get("HAIZEN_TLS_CA_FILE") or file_vals.get("HAIZEN_TLS_CA_FILE")
+    if tls_verify_mode == "pinned" and not tls_ca_file:
+        raise ValueError("HAIZEN_TLS_CA_FILE is required for pinned mode")
     hid_device = hid.strip() or None
     distribution_mode = _parse_distribution_mode(file_vals)
     return HaizenAgentConfig(
         api_base_url=api.rstrip("/"),
         x_client_key=key,
         tls_verify_mode=tls_verify_mode,
+        tls_ca_file=tls_ca_file if tls_verify_mode == "pinned" else None,
         hid_device=hid_device,
         distribution_mode=distribution_mode,
     )

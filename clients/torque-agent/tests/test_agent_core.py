@@ -831,3 +831,22 @@ def test_config_rejects_wildcard_browser_origin(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(ValueError, match=r"must be an http\(s\) origin"):
         AgentConfig.from_env()
+
+
+def test_pinned_ssl_context_is_passed_to_httpx_clients(monkeypatch: pytest.MonkeyPatch) -> None:
+    import ssl
+
+    from torque_agent.api_client import HttpxTorqueRecordApi
+    from torque_agent.connection_lease import LeaseApiClient
+
+    ctx = ssl.create_default_context()
+    captured: dict[str, Any] = {}
+
+    class FakeAsyncClient:
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr("torque_agent.api_client.httpx.AsyncClient", FakeAsyncClient)
+    HttpxTorqueRecordApi("https://127.0.0.1", "fixture", tls_verify=ctx)
+    assert captured["verify"] is ctx
+    assert LeaseApiClient("https://127.0.0.1", "fixture", tls_verify=ctx)._tls_verify is ctx

@@ -310,6 +310,20 @@ def post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
             network_health.record_post(config, (time.monotonic() - started) * 1000, ok)
 
 
+def build_tls_context(config: Dict[str, str]) -> ssl.SSLContext:
+    ca_file = config.get("TLS_CA_FILE", "")
+    if ca_file:
+        ctx = ssl.create_default_context(cafile=ca_file)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_REQUIRED
+        # The pinned self-signed leaf has no X.509 extensions. Trust is the pin
+        # itself; Python 3.13's strict CA-extension requirements do not apply.
+        ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+        return ctx
+    skip_verify = config.get("TLS_SKIP_VERIFY", "0").lower() in ("1", "true", "yes")
+    return ssl._create_unverified_context() if skip_verify else ssl.create_default_context()
+
+
 def _post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     api_base = config["API_BASE_URL"].rstrip("/")
     url = f"{api_base}/clients/status"
@@ -321,8 +335,7 @@ def _post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     request = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     timeout = float(config.get("REQUEST_TIMEOUT", "10"))
-    skip_verify = config.get("TLS_SKIP_VERIFY", "0").lower() in ("1", "true", "yes")
-    context = ssl._create_unverified_context() if skip_verify else ssl.create_default_context()
+    context = build_tls_context(config)
 
     with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
         body = response.read().decode("utf-8")
