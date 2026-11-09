@@ -368,6 +368,9 @@ export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
 export interface GrindingPlanningBoardResourceMinutesResponse {
   ownSourceResourceCds: string[];
   values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number; ops?: GrindingPlanningBoardResourcePartOpMinutes[] }>;
+  /** Updated row's operations read within the save transaction, in matching order. */
+  savedOpIds?: string[];
+  savedOpNos?: number[];
 }
 export interface GrindingPlanningBoardResourceMinutesSourceRequest {
   resourceCd: string;
@@ -379,9 +382,11 @@ export interface GrindingPlanningBoardResourcePartMinutesRequest {
   perUnitMinutes: number | null;
   setupMinutes: number;
   ops?: GrindingPlanningBoardResourcePartOpMinutes[];
+  expectedOpIds?: string[];
 }
 
 export interface GrindingPlanningBoardResourcePartOpMinutes {
+  id?: string;
   setupMinutes?: number | null;
   opNo: number;
   minutes: number;
