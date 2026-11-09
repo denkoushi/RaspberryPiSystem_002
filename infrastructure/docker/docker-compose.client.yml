@@ -56,6 +56,7 @@ services:
       - ../../clients/torque-agent/.env
     volumes:
       - torque-agent-data:/data
+      - /etc/raspi-client:/etc/raspi-client:ro
       - /dev/input:/dev/input
       - /run/torque-bluetooth-guard:/run/torque-bluetooth-guard
     healthcheck:

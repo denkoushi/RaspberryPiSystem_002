@@ -5,7 +5,10 @@
 API_BASE_URL="{{ haizen_agent_api_base_url }}"
 X_CLIENT_KEY="{{ haizen_agent_client_key | default(status_agent_client_key | default('')) }}"
 # insecure: 自己署名 TLS を許容 / system: OS 証明書ストアで検証（Let's Encrypt 等を Pi5 に載せた後に使用）
-HAIZEN_TLS_VERIFY_MODE="{{ haizen_agent_tls_verify_mode | default('insecure') }}"
+HAIZEN_TLS_VERIFY_MODE="{{ 'pinned' if (client_server_cert_pin_enabled | default(false) | bool) else (haizen_agent_tls_verify_mode | default('insecure')) }}"
+{% if client_server_cert_pin_enabled | default(false) | bool %}
+HAIZEN_TLS_CA_FILE="/etc/raspi-client/server-cert.pem"
+{% endif %}
 # 分配番号認識: 省略または legacy_short_numeric（既定・短い整数のみ）。誤認を抑える場合は prefixed_dist とし QR は DIST:n 形式を使用。
 # HAIZEN_DISTRIBUTION_MODE=prefixed_dist
 {% if haizen_agent_hid_device | default('') | length > 0 %}

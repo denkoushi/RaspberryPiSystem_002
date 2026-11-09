@@ -10,6 +10,10 @@
       from ansible_user. Use full provisioning for custom sudoers paths.
   when: terminal_release_mode | default('full') == 'release-only'
 
+- name: Prepare the client server certificate pin before configuring agents
+  ansible.builtin.import_role:
+    name: client_server_cert_pin
+
 - name: Verify NetworkManager release baseline
   ansible.builtin.import_tasks: network-preflight.yml
   when: terminal_release_mode | default('full') == 'release-only'

@@ -11,6 +11,10 @@
       Pi3 Signage requires one exact source SHA, a safe run ID, one final tar
       SHA-256, and either a controller-local tar or a SHA-bound GHCR image.
 
+- name: Prepare the client server certificate pin before configuring agents
+  ansible.builtin.import_role:
+    name: client_server_cert_pin
+
 - name: Define controller and Pi3 staging paths
   ansible.builtin.set_fact:
     release_signage_remote_stage: "{{ release_signage_stage_root }}/{{ release_run_id }}"

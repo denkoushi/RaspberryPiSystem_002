@@ -48,6 +48,18 @@ class LocalTlsRolloutBoundaryTest(unittest.TestCase):
         self.assertIn('status_agent_tls_skip_verify: "1"', INVENTORY)
         self.assertIn('torque_agent_tls_verify_mode: "insecure"', INVENTORY)
 
+        import yaml
+        def check(group, inherited):
+            variables = {**inherited, **group.get("vars", {})}
+            for host, values in group.get("hosts", {}).items():
+                config = {**variables, **(values or {})}
+                enabled = str(config.get("client_server_cert_pin_enabled", False)).lower() in ("true", "1", "yes")
+                for key in ("haizen_agent_tls_verify_mode", "torque_agent_tls_verify_mode"):
+                    self.assertTrue(config.get(key) != "pinned" or enabled, host)
+            for child in group.get("children", {}).values():
+                check(child or {}, variables)
+        check(yaml.safe_load(INVENTORY)["all"], {})
+
 
 if __name__ == "__main__":
     unittest.main()

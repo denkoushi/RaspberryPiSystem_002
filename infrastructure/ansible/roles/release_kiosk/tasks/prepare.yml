@@ -21,6 +21,10 @@
       Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
       the supported torque protocol when selected, and an inventory host in the kiosk group.
 
+- name: Prepare the client server certificate pin before configuring agents
+  ansible.builtin.import_role:
+    name: client_server_cert_pin
+
 - name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
     release_kiosk_enabled_services: >-
