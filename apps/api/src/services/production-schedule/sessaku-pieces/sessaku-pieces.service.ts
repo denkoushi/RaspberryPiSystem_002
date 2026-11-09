@@ -428,6 +428,10 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     if (params.quantities.length < 2 || params.quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || params.quantities.reduce((a, b) => a + b, 0) !== total) {
       throw new ApiError(400, '分割数量の合計が指示数と一致しません', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
+    // Same 50-piece cap as quantity sync; reject before touching later processes or history.
+    if ((c.set?.pieces.length ?? 0) - (target ? 1 : 0) + params.quantities.length > 50) {
+      throw new ApiError(400, '片は50までです', undefined, 'PIECE_QUANTITY_CONFLICT');
+    }
     await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit);
