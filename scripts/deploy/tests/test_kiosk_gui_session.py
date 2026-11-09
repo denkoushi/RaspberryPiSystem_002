@@ -49,7 +49,13 @@ def load(path):
 
 
 # Hosts allowed to enable the dedicated GUI account during the trial.
-TRIAL_HOSTS = {'raspi4-kensaku-stonebase01', 'raspi4-kensaku-02'}
+TRIAL_HOSTS = {
+    'raspi4-kensaku-stonebase01',
+    'raspi4-kensaku-02',
+    'raspi4-sessaku-01',
+    'raspi4-fjv60-80',
+    'raspi4-robodrill01',
+}
 
 
 class KioskGuiSessionTests(unittest.TestCase):
