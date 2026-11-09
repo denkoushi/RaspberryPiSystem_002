@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
+import { GmailApiClient } from '../../backup/gmail-api-client.js';
 
 const { resolvePacketMock, savePhotoMock } = vi.hoisted(() => ({
   resolvePacketMock: vi.fn(),
@@ -93,7 +94,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     savePhotoMock.mockResolvedValue({ relativePath: '/api/storage/photos/2026/09/photo.jpg' });
     const gmail = {
       searchMessagesAll: vi.fn().mockResolvedValue(ids),
-      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -101,8 +102,10 @@ describe('ItemInventoryGmailIngestionService', () => {
     const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
 
     await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ scanned: 21, pending: 1 });
-    expect(gmail.getMessage).toHaveBeenCalledTimes(1);
+    // Verify the new message and all 19 selected cleanup-only messages before acknowledging.
+    expect(gmail.getMessage).toHaveBeenCalledTimes(20);
     expect(gmail.getMessage).toHaveBeenCalledWith('valid-message');
+    for (const id of ids.slice(0, 19)) expect(gmail.getMessage).toHaveBeenCalledWith(id);
     expect(payloadCreate).toHaveBeenCalledTimes(1);
     expect(gmail.markAsRead).toHaveBeenCalledWith('valid-message');
     expect(gmail.trashMessage).toHaveBeenCalledWith('valid-message');
@@ -116,7 +119,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     savePhotoMock.mockResolvedValue({ relativePath: '/api/storage/photos/2026/09/photo.jpg' });
     const gmail = {
       searchMessagesAll: vi.fn(),
-      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -137,7 +140,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     savePhotoMock.mockResolvedValue({ relativePath: '/api/storage/photos/2026/09/photo.jpg' });
     const gmail = {
       searchMessagesAll: vi.fn(),
-      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +162,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     resolvePacketMock.mockResolvedValue(validPacket);
     const gmail = {
       searchMessagesAll: vi.fn().mockResolvedValue(['original', 'resent']),
-      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -178,7 +181,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     resolvePacketMock.mockRejectedValueOnce(new Error('manifest is invalid'));
     const gmail = {
       searchMessagesAll: vi.fn().mockResolvedValue(['invalid-message']),
-      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[ItemlistRaspi-photo] 2' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -199,7 +202,7 @@ describe('ItemInventoryGmailIngestionService', () => {
     });
     const gmail = {
       searchMessagesAll: vi.fn().mockResolvedValue([]),
-      getMessage: vi.fn(),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; dmarc=pass' }] } }),
       getAttachment: vi.fn(),
       markAsRead: vi.fn().mockResolvedValue(undefined),
       trashMessage: vi.fn().mockResolvedValue(undefined),
@@ -208,17 +211,48 @@ describe('ItemInventoryGmailIngestionService', () => {
 
     await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ pending: 1 });
     await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ scanned: 0, processed: 0, pending: 0, duplicate: 0, skipped: 0 });
-    expect(gmail.getMessage).not.toHaveBeenCalled();
+    expect(gmail.getMessage).toHaveBeenCalledExactlyOnceWith('old-success');
+    expect(gmail.getAttachment).not.toHaveBeenCalled();
     expect(gmail.trashMessage).toHaveBeenCalledTimes(1);
     expect(messageStore.get('old-success')).toMatchObject({ mailCleanupCompleted: true, mailCleanupPending: false });
   });
+  it.each([true, false])('completes cleanup when sender verification finds a deleted message (markAsRead: %s)', async (hasMarkAsRead) => {
+    const existing = { gmailMessageId: 'gone', outcome: 'PENDING', payloadId: 'payload-1', errorMessage: null, nextRetryAt: null, updatedAt: new Date() };
+    const { db, messageStore, payloadCreate } = createFakeDb(new Map([['gone', existing]]));
+    db.inventoryImportMessage.findMany.mockImplementation(async () => {
+      const record = messageStore.get('gone');
+      return record?.mailCleanupCompleted ? [] : [record];
+    });
+    const client = new GmailApiClient({ setCredentials: vi.fn() } as never, {
+      gate: { execute: vi.fn().mockRejectedValue(Object.assign(new Error('Not Found'), { response: { status: 404 } })) } as never,
+    });
+    const gmail = {
+      searchMessagesAll: vi.fn().mockResolvedValue([]),
+      getMessage: vi.fn((id: string) => client.getMessage(id)),
+      markAsRead: hasMarkAsRead ? vi.fn() : undefined,
+      trashMessage: vi.fn(),
+    };
+    const service = new ItemInventoryGmailIngestionService(vi.fn().mockResolvedValue(gmail), db as never);
+
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ pending: 1 });
+    expect(messageStore.get('gone')).toMatchObject({ mailCleanupCompleted: true, mailCleanupPending: false, nextRetryAt: null, errorMessage: null });
+    await expect(service.runOnce({ config: config(), allowWait: true })).resolves.toMatchObject({ scanned: 0, pending: 0 });
+    // The batch filter and acknowledgement each check the missing message; the next run does neither.
+    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.getMessage).toHaveBeenNthCalledWith(1, 'gone');
+    expect(gmail.getMessage).toHaveBeenNthCalledWith(2, 'gone');
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    if (gmail.markAsRead) expect(gmail.markAsRead).not.toHaveBeenCalled();
+    expect(payloadCreate).not.toHaveBeenCalled();
+  });
+
   it('answers a retry pressed during the scheduled run with a 409 business error and leaves the record untouched', async () => {
     const record = { id: 'record-1', gmailMessageId: 'retry-message', outcome: 'RETRYABLE', errorMessage: 'Referenced image is missing', nextRetryAt: new Date('2026-10-19T03:00:00Z'), updatedAt: new Date() };
     const { db, messageStore } = createFakeDb(new Map([['record-1', record]]));
     let releaseScheduled!: () => void;
     const gmail = {
       searchMessagesAll: vi.fn().mockImplementationOnce(() => new Promise<string[]>((resolve) => { releaseScheduled = () => resolve([]); })).mockResolvedValue([]),
-      getMessage: vi.fn(),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; dmarc=pass' }] } }),
       getAttachment: vi.fn(),
       trashMessage: vi.fn(),
     };

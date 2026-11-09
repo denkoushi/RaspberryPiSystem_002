@@ -1,3 +1,4 @@
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
 import sharp from 'sharp';
 
 import { InventoryImportOutcome, Prisma } from '@prisma/client';
@@ -92,8 +93,10 @@ export class ItemInventoryGmailIngestionService {
     if (!options.manual && !options.config.itemInventoryGmailIngest?.enabled) return emptySummary();
     this.running = true;
     const summary = emptySummary();
+    const senderSession = GmailSenderVerificationSession.forRun(options.config);
     try {
-      const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
+      if (senderSession.disabled) return summary;
+      const gmail = senderSession.wrap(await this.gmailFactory(options.config, { allowWait: options.allowWait }));
       const now = new Date();
       const searchedMessageIds = options.messageId
         ? [options.messageId]
@@ -133,6 +136,7 @@ export class ItemInventoryGmailIngestionService {
         // Gmail requests and photo writes are intentionally sequential to keep
         // source order deterministic and stay within the shared Gmail quota.
         // eslint-disable-next-line no-await-in-loop
+        if (!(await senderSession.filterMessageIds(gmail, [messageId])).length) { summary.skipped++; continue; }
         const result = await this.processMessage(gmail, messageId, options.config, options.forceRetry && options.messageId === messageId);
         if (result === 'pending') summary.pending++;
         else if (result === 'duplicate') summary.duplicate++;
@@ -146,6 +150,7 @@ export class ItemInventoryGmailIngestionService {
       throw error;
     } finally {
       this.running = false;
+      await senderSession.notify();
     }
   }
 

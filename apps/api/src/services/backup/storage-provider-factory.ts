@@ -29,6 +29,7 @@ export interface StorageProviderOptions {
   onTokenUpdate?: (token: string) => Promise<void>;
   // Gmail rate limit gate用（manual実行などで待機を許容するか）
   gmailAllowWait?: boolean;
+  gmailIngestSenderPolicy?: BackupConfig['gmailIngestSenderPolicy'];
 }
 
 type StorageProviderCreateOptions = {
@@ -113,6 +114,7 @@ export class StorageProviderFactory {
           fromEmail: options.fromEmail,
           oauthService,
           onTokenUpdate: options.onTokenUpdate,
+          gmailIngestSenderPolicy: options.gmailIngestSenderPolicy,
           allowWait: options.gmailAllowWait
         });
       }
@@ -161,6 +163,7 @@ export class StorageProviderFactory {
     };
 
     // local/dropbox/gmail共通
+    providerOptions.gmailIngestSenderPolicy = config.gmailIngestSenderPolicy;
     providerOptions.basePath = config.storage.options?.basePath as string | undefined;
     providerOptions.gmailAllowWait = gmailAllowWait;
 
@@ -365,6 +368,7 @@ export class StorageProviderFactory {
     };
 
     // basePathは全体設定から取得（対象ごとの設定は将来の拡張用）
+    providerOptions.gmailIngestSenderPolicy = config.gmailIngestSenderPolicy;
     providerOptions.basePath = config.storage.options?.basePath as string | undefined;
 
     if (provider === 'gmail') {

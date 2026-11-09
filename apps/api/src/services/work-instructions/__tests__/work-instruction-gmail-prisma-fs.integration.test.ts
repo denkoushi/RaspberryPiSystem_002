@@ -44,7 +44,7 @@ const config: BackupConfig = {
   workInstructionGmailIngest: {
     enabled: true,
     subjectTokens: ['[Kakou-Dandori-photo]'],
-    fromEmail: 'sharepoint@example.com',
+    fromEmail: 'sharepoint@thkintechs.co.jp',
   },
 };
 
@@ -139,9 +139,9 @@ function fixtureMessage(input: {
       internalDateMs: input.modified.getTime(),
       payload: {
         mimeType: 'multipart/mixed',
-        headers: [
+        headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
           { name: 'Subject', value: `[Kakou-Dandori-photo] ${input.id}` },
-          { name: 'From', value: 'SharePoint <sharepoint@example.com>' },
+          { name: 'From', value: 'SharePoint <sharepoint@thkintechs.co.jp>' },
         ],
         parts,
       },

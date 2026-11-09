@@ -1,3 +1,6 @@
+import type { BackupConfig } from '../backup/backup-config.js';
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
+import { GmailSenderRejectedError } from '../gmail/gmail-sender-verification.js';
 import path from 'node:path';
 
 import { ApiError } from '../../lib/errors.js';
@@ -220,7 +223,8 @@ export class AssemblyProcedureGmailImportService {
 
   constructor(
     private readonly deps: {
-      createMailGateway: () => Promise<AssemblyProcedureMailGateway>;
+      loadConfig: () => Promise<BackupConfig>;
+      createMailGateway: (config: BackupConfig) => Promise<AssemblyProcedureMailGateway>;
       draftWriter: AssemblyProcedureDraftWriter;
       jpegNormalizer?: AssemblyProcedureJpegNormalizer;
       csvImportActivity?: CsvImportActivityReader;
@@ -246,16 +250,23 @@ export class AssemblyProcedureGmailImportService {
           'ASSEMBLY_PROCEDURE_GMAIL_CSV_BUSY'
         );
       }
-      return await this.ingestUnlocked();
+      const config = await this.deps.loadConfig();
+      const senderSession = GmailSenderVerificationSession.forRun(config);
+      try { return await this.ingestUnlocked(config, senderSession); }
+      finally { await senderSession.notify(); }
     } finally {
       this.isRunning = false;
     }
   }
 
-  private async ingestUnlocked(): Promise<AssemblyProcedureGmailImportSummary> {
+  private async ingestUnlocked(config: BackupConfig, senderSession: GmailSenderVerificationSession): Promise<AssemblyProcedureGmailImportSummary> {
+    if (senderSession.disabled) return {
+      query: ASSEMBLY_PROCEDURE_GMAIL_QUERY, scanned: 0, exactMatched: 0, subjectMismatchSkipped: 0,
+      attempted: 0, imported: 0, duplicates: 0, trashed: 0, failed: 0, remainingInInbox: 0, items: [],
+    };
     let gateway: AssemblyProcedureMailGateway;
     try {
-      gateway = await this.deps.createMailGateway();
+      gateway = senderSession.wrap(await this.deps.createMailGateway(config));
     } catch (error) {
       if (error instanceof ApiError) throw error;
       throw new ApiError(
@@ -311,6 +322,7 @@ export class AssemblyProcedureGmailImportService {
           exactMessages.push(message);
         }
       } catch (error) {
+        if (error instanceof GmailSenderRejectedError) continue;
         scanFailures.push({
           messageId,
           filename: null,

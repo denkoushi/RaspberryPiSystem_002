@@ -1,3 +1,4 @@
+import { GmailSenderVerificationSession } from '../../gmail/gmail-sender-verification-session.js';
 import { createHash } from 'node:crypto';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -51,8 +52,10 @@ export class DScheduleMinutesGmailIngestionService {
     const summary: DScheduleMinutesCycleSummary = { ...summarizeMinutes(undefined, []), processed: 0, runs: [] };
     if (this.running) return summary;
     this.running = true;
+    const senderSession = GmailSenderVerificationSession.forRun(options.config);
     try {
-      const gmail = await this.deps.gmailFactory({ ...options.config, storage: { ...options.config.storage, provider: 'gmail' } }, { allowWait: options.allowWait });
+      if (senderSession.disabled) return summary;
+      const gmail = senderSession.wrap(await this.deps.gmailFactory({ ...options.config, storage: { ...options.config.storage, provider: 'gmail' } }, { allowWait: options.allowWait }));
       const fromEmail = options.config.storage.options?.gmail?.fromEmail ?? options.config.storage.options?.fromEmail;
       const label = (process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim();
       const query = `in:inbox is:unread -label:${label} filename:xlsx newer_than:60d${fromEmail ? ` from:${fromEmail}` : ''}`;
@@ -60,7 +63,7 @@ export class DScheduleMinutesGmailIngestionService {
       const failures: string[] = [];
       const permanentFailures: string[] = [];
       const candidates = [];
-      for (const gmailMessageId of ids) {
+      for (const gmailMessageId of await senderSession.filterMessageIds(gmail, ids)) {
         try {
           candidates.push({ gmailMessageId, message: await gmail.getMessage(gmailMessageId) });
         } catch (error) {
@@ -130,6 +133,7 @@ export class DScheduleMinutesGmailIngestionService {
       return summary;
     } finally {
       this.running = false;
+      await senderSession.notify();
     }
   }
 }

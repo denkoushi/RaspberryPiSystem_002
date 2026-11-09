@@ -1,3 +1,4 @@
+import { runWithGmailSenderVerification } from '../gmail/gmail-sender-verification-session.js';
 import { DScheduleMinutesContentError, getDScheduleMinutesGmailIngestionService, type DScheduleMinutesCycleSummary, type DScheduleMinutesGmailIngestionService } from '../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
 import { createHash } from 'crypto';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialCycleSummary, type ProcedureMaterialGmailIngestionService } from '../assembly/procedure-material-gmail-ingestion.service.js';
@@ -142,6 +143,14 @@ export class CsvImportExecutionService {
     importSchedule: NonNullable<BackupConfig['csvImports']>[0];
     skipRetry?: boolean;
   }): Promise<CsvImportExecutionSummary> {
+    if ((params.importSchedule.provider ?? params.config.storage.provider) !== 'gmail') return this.executeInSession(params);
+    return runWithGmailSenderVerification(params.config, async () => {
+      if (params.config.gmailIngestSenderPolicy?.allowedSenderDomains.length === 0) return {};
+      return this.executeInSession(params);
+    });
+  }
+
+  private async executeInSession(params: Parameters<CsvImportExecutionService['execute']>[0]): Promise<CsvImportExecutionSummary> {
     const { config, importSchedule, skipRetry = false } = params;
 
     // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
