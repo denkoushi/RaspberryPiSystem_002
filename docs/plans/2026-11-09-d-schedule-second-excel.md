@@ -37,6 +37,10 @@ Decision: inspect all XLSX attachments and finish independent attachments even w
 
 Decision: retain production-number membership separately for each kind without deleting it when later files omit the number. Update provenance only when `lastMeetingDate` is no newer than the incoming meeting date, including aliases and warning-only numbers even when latest values are skipped. Read membership through `listDScheduleMinutesKinds`. Rationale: the shared latest-value row cannot represent membership in both formats. Date/Author: 2026-11-09 / Codex.
 
+Decision: register INTERNAL main/alias production numbers with a readable parts-complete date in ascending date order (past dates included, ties in block order), excluding NOT_IN_SCHEDULE.
+For each destination, preserve D_COMPANY ownership and manual entries, reserve ten manual slots, and select at most `max(0, 100 - protected entries - 10)` other numbers. Remove prior/saved INTERNAL entries outside that selection from both boards and history without REGISTRATION_LIMIT warnings.
+Preserve new-board inheritance, conflict retries and destination progress saves. When D_COMPANY additions exceed the cap, evict only INTERNAL-owned entries, farthest parts-complete date first (missing dates treated as farthest), and release their INTERNAL ownership so manual re-registration stays manual. Rationale: the user prioritizes D company and near-dated internal work while keeping manual capacity; the cap remains 100. Date/Author: 2026-11-09 / User decision, implemented by Codex.
+
 ## After deploy: importing the 2026-11-07 email once
 
 
