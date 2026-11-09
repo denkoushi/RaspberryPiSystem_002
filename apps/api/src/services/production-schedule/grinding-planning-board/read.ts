@@ -1,3 +1,4 @@
+import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { Prisma } from '@prisma/client';
 import { LSLH_SURFACE_PROCESS_CODES, PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
@@ -5,7 +6,7 @@ import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardScheduleSource, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardLoadResponse, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
@@ -40,7 +41,7 @@ async function projectCurrentBoard(params: { resourceMinutes: GrindingPlanningBo
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 
-type PlanningPayloadRequest = { includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore };
+type PlanningPayloadRequest = { scheduleSource?: GrindingPlanningBoardScheduleSource; includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore };
 type PlanningPayloadBuild = { orderedIds: readonly string[]; payload: PlanningSnapshotPayload; generationToken: string };
 const inFlightPlanningPayloads = new WeakMap<LeaderboardShellSnapshotStore, Map<string, Promise<PlanningPayloadBuild>>>();
 
@@ -56,18 +57,20 @@ async function preparePlanningPayload(params: PlanningPayloadRequest, perf: Retu
   const order = stateOrder(stateForRead);
   const requestedFseibans = params.fseibans && params.fseibans.length > 0 ? uniqueFseibans(params.fseibans) : undefined;
   const requested = requestedFseibans ? new Set(requestedFseibans) : undefined;
-  const selected = requested ? order.filter((value) => requested.has(value)) : order;
+  const excludedFseibans = await readScheduleSourceExcludedFseibans(params.scheduleSource, params.includeLoad === false ? order : undefined);
+  const excluded = new Set(excludedFseibans);
+  const selected = order.filter((value) => (!requested || requested.has(value)) && !excluded.has(value));
   const completionFilter = params.completionFilter ?? 'all';
   const includeLoad = params.includeLoad !== false;
-  const filterFingerprint = JSON.stringify({ dueSource: params.dueSource ?? 'excel', siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad, includePieces: params.includePieces ?? false });
+  const filterFingerprint = JSON.stringify({ scheduleSource: params.scheduleSource ?? 'both', excludedFseibans, dueSource: params.dueSource ?? 'excel', siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad, includePieces: params.includePieces ?? false });
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
   let reusablePayloads = reusablePlanningPayloads.get(store);
   if (!reusablePayloads) {
     reusablePayloads = new Map();
     reusablePlanningPayloads.set(store, reusablePayloads);
   }
-  const request: ReusablePlanningPayload['request'] = { dueSource: params.dueSource ?? 'excel', category: params.category, view: params.view, requestedFseibans, completionFilter, includeLoad, includePieces: params.includePieces ?? false };
-  return { params, perf, stateForRead, generationBeforeRead, order, selected, completionFilter, includeLoad, filterFingerprint, store, reusablePayloads, request };
+  const request: ReusablePlanningPayload['request'] = { scheduleSource: params.scheduleSource ?? 'both', dueSource: params.dueSource ?? 'excel', category: params.category, view: params.view, requestedFseibans, completionFilter, includeLoad, includePieces: params.includePieces ?? false };
+  return { params, perf, stateForRead, generationBeforeRead, order, selected, excludedFseibans, completionFilter, includeLoad, filterFingerprint, store, reusablePayloads, request };
 }
 
 type PlanningPayloadContext = Awaited<ReturnType<typeof preparePlanningPayload>>;
@@ -84,7 +87,7 @@ async function findReusablePlanningPayload(context: PlanningPayloadContext): Pro
 }
 
 async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ orderedIds: readonly string[]; payload: PlanningSnapshotPayload }> {
-  const { params, perf, stateForRead, generationBeforeRead, order, selected, completionFilter, includeLoad } = context;
+  const { params, perf, stateForRead, generationBeforeRead, order, selected, excludedFseibans, completionFilter, includeLoad } = context;
   const source = await perf.measure('source', () => readPlanningSource({
     siteKey: params.siteKey,
     category: params.category,
@@ -99,11 +102,12 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
   const loadSummary = includeLoad ? await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     resourceMinutes,
     client: prisma,
-    leaderboardMaterializedBaseWhere: source.baseWhere,
+    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(source.baseWhere, excludedFseibans),
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy),
     cache: {
+      scheduleSource: params.scheduleSource ?? 'both',
       generationToken: generationBeforeRead.generationToken,
       readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey),
       performance: perf
@@ -293,7 +297,7 @@ async function findLatestVerifyMatchByProductNo(productNos: readonly string[]) {
   return new Map(rows.flatMap((row) => row._max.verifiedAt ? [[row.transferOrderBarcodeRaw, row._max.verifiedAt] as const] : []));
 }
 
-export async function getGrindingPlanningBoard(params: { includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
+export async function getGrindingPlanningBoard(params: { scheduleSource?: GrindingPlanningBoardScheduleSource; includePieces?: boolean; dueSource?: BoardDueSource; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; fseibans?: string[]; cursor?: number; pageSize?: number; snapshotId?: string; completionFilter?: 'all' | 'complete' | 'incomplete'; includeLoad?: boolean; snapshotStore?: LeaderboardShellSnapshotStore }): Promise<GrindingPlanningBoardResponse> {
   if ((params.cursor ?? 0) > 0 && !params.snapshotId) throw new ApiError(400, '続きの cursor には snapshotId が必要です', undefined, 'INVALID_PLANNING_BOARD_CURSOR');
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board');
   const context = await preparePlanningPayload(params, perf);
@@ -428,6 +432,7 @@ export async function getGrindingPlanningBoard(params: { includePieces?: boolean
 }
 
 export async function getGrindingPlanningBoardLoad(params: {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   siteKey: string;
   category: GrindingPlanningBoardCategory;
 }): Promise<GrindingPlanningBoardLoadResponse> {
@@ -438,13 +443,15 @@ export async function getGrindingPlanningBoardLoad(params: {
     resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken: generationBeforeRead.leaderboardGenerationToken }),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
+  const excludedFseibans = await readScheduleSourceExcludedFseibans(params.scheduleSource);
   const summary = await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     client: prisma,
-    leaderboardMaterializedBaseWhere: baseWhere,
+    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(baseWhere, excludedFseibans),
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy),
     cache: {
+      scheduleSource: params.scheduleSource ?? 'both',
       generationToken: generationBefore,
       readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey),
       performance: perf

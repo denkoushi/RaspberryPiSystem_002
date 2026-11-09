@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 import { pageZoom } from './pageZoom';
+import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
 import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
 
@@ -14,6 +15,7 @@ import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardG
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardScheduleSource,
   GrindingPlanningBoardSpecialDueKind,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
@@ -109,6 +111,8 @@ export type PlanningBoardToolbarProps = {
   canUndoOrder?: boolean;
   overlapCount?: number;
   onNextOverlap?: () => void;
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
+  onScheduleSourceChange?: (source: GrindingPlanningBoardScheduleSource) => void;
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   status: PlanningBoardStatus;
@@ -133,6 +137,7 @@ export type PlanningBoardToolbarProps = {
 const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
 
 export function PlanningBoardToolbar({
+  scheduleSource = 'both', onScheduleSourceChange,
   onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
   scawEnabled = false, onToggleScawMode,
@@ -218,17 +223,14 @@ export function PlanningBoardToolbar({
         製番
         <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
-      <SegmentGroup ariaLabel="工程">
-        <SegmentButton disabled={scopeDisabled} pressed={category === 'cutting'} onClick={() => onCategoryChange('cutting')}>
-          切削
-        </SegmentButton>
-        <SegmentButton disabled={scopeDisabled} pressed={category === 'grinding'} onClick={() => onCategoryChange('grinding')}>
-          研削
-        </SegmentButton>
-        <SegmentButton disabled={scopeDisabled} pressed={category === 'all'} onClick={() => onCategoryChange('all')}>
-          両方
-        </SegmentButton>
-      </SegmentGroup>
+      <PlanningBoardDropdown ariaLabel="区分" value={scheduleSource}
+        closedLabel={scheduleSource === 'both' ? '一般・D社' : scheduleSource === 'general' ? '一般' : 'D社'}
+        options={[{ value: 'general', label: '一般' }, { value: 'dCompany', label: 'D社' }, { value: 'both', label: '両方' }]}
+        disabled={scopeDisabled} onChange={(value) => onScheduleSourceChange?.(value)} />
+      <PlanningBoardDropdown ariaLabel="工程" value={category}
+        closedLabel={category === 'all' ? '切削・研削' : category === 'cutting' ? '切削' : '研削'}
+        options={[{ value: 'cutting', label: '切削' }, { value: 'grinding', label: '研削' }, { value: 'all', label: '両方' }]}
+        disabled={scopeDisabled} onChange={onCategoryChange} />
       <button type="button" aria-label="前工程が済んだものだけ表示" aria-pressed={arrivalFilterEnabled}
         onClick={onToggleArrivalFilter} disabled={Boolean(orderPreview)}
         className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-base font-bold', arrivalFilterEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>着</button>

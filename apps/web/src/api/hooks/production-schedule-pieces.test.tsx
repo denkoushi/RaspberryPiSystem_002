@@ -39,7 +39,7 @@ function setupProgressive() {
   mocks.load.mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });
   const hook = renderHook(() => ({
     board: useKioskGrindingPlanningBoardProgressive({ category: 'cutting', view: 'seiban', includePieces: true }),
-    load: useKioskGrindingPlanningBoardLoad('cutting', true),
+    load: useKioskGrindingPlanningBoardLoad('cutting'),
     mutations: useKioskSessakuPieceMutations()
   }), { wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
   return { ...hook, client, loadKey };

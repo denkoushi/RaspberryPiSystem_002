@@ -14,6 +14,7 @@ import type {
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardScheduleSource,
   GrindingPlanningBoardOverridesResponse,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardLoadResponse,
@@ -33,13 +34,14 @@ import type {
   GrindingPlanningBoardSeibanCandidatesResponse
 } from '@raspi-system/shared-types';
 
-export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPlanningBoardProcessChipsRequest) {
+export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPlanningBoardProcessChipsRequest, scheduleSource?: GrindingPlanningBoardScheduleSource) {
   const chipsByPartKey: GrindingPlanningBoardProcessChipsResponse['chipsByPartKey'] = {};
   // Progressive board loading can exceed the endpoint's per-request limit.
   for (let offset = 0; offset < body.parts.length; offset += 1000) {
     const { data } = await api.post<GrindingPlanningBoardProcessChipsResponse>(
       '/kiosk/production-schedule/grinding-planning-board/process-chips',
-      { parts: body.parts.slice(offset, offset + 1000) }
+      { parts: body.parts.slice(offset, offset + 1000) },
+      ...(scheduleSource == null ? [] : [{ params: { scheduleSource } }])
     );
     Object.assign(chipsByPartKey, data.chipsByPartKey);
   }
@@ -47,6 +49,7 @@ export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPl
 }
 
 export type KioskGrindingPlanningBoardQuery = {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   includePieces?: boolean;
   dueSource?: 'excel' | 'scaw';
   category: GrindingPlanningBoardCategory;
@@ -62,6 +65,7 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
   const { data } = await api.get<GrindingPlanningBoardResponse>('/kiosk/production-schedule/grinding-planning-board', {
     params: {
       ...(params.dueSource == null ? {} : { dueSource: params.dueSource }),
+      ...(params.scheduleSource == null ? {} : { scheduleSource: params.scheduleSource }),
       category: params.category,
       view: params.view,
       includeLoad: false,
@@ -76,9 +80,9 @@ export async function getKioskGrindingPlanningBoard(params: KioskGrindingPlannin
   return data;
 }
 
-export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+export async function getKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, scheduleSource?: GrindingPlanningBoardScheduleSource) {
   const { data } = await api.get<GrindingPlanningBoardLoadResponse>('/kiosk/production-schedule/grinding-planning-board/load', {
-    params: { category }
+    params: { category, ...(scheduleSource == null ? {} : { scheduleSource }) }
   });
   return data;
 }

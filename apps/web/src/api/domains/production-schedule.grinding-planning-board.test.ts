@@ -75,6 +75,25 @@ describe('grinding planning board requests', () => {
     expect(post).toHaveBeenNthCalledWith(2, '/kiosk/production-schedule/grinding-planning-board/process-chips', { parts: parts.slice(1000) });
   });
 
+  it.each(['general', 'dCompany', 'both'] as const)('scopes every page, load, chips and query keys to %s', async (scheduleSource) => {
+    const first = { items: [{ itemId: 'first' }], sourceRevision: 'r1', snapshotId: 's1', nextCursor: '1' };
+    const second = { ...first, items: [{ itemId: 'second' }], nextCursor: null };
+    get.mockResolvedValueOnce({ data: first }).mockResolvedValueOnce({ data: second });
+    await getKioskGrindingPlanningBoardSnapshot({ category: 'grinding', view: 'seiban', scheduleSource });
+    for (const call of get.mock.calls) expect(call[1].params).toEqual(expect.objectContaining({ scheduleSource }));
+    get.mockResolvedValue({ data: { load: [] } });
+    await getKioskGrindingPlanningBoardLoad('grinding', scheduleSource);
+    expect(get).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/load', { params: { category: 'grinding', scheduleSource } });
+    const parts = [{ fseiban: 'ORDER', productNo: '001', fhincd: 'PART' }];
+    post.mockResolvedValue({ data: { chipsByPartKey: {} } });
+    await getKioskGrindingPlanningBoardProcessChips({ parts }, scheduleSource);
+    expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/process-chips', { parts }, { params: { scheduleSource } });
+    expect(productionScheduleQueryKeys.grindingPlanningBoardLoad('grinding', scheduleSource)).toContain(scheduleSource);
+    expect(productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts, scheduleSource)).toContain(scheduleSource);
+    expect(productionScheduleQueryKeys.grindingPlanningBoard({ category: 'grinding', view: 'seiban', scheduleSource }))
+      .toContainEqual(expect.objectContaining({ scheduleSource }));
+  });
+
   it('does not request chips for an empty board', async () => {
     await expect(getKioskGrindingPlanningBoardProcessChips({ parts: [] })).resolves.toEqual({ chipsByPartKey: {} });
     expect(post).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -20,6 +20,7 @@ export type ReusablePlanningPayload = {
   expiresAtMs: number;
   lastUsedAtMs: number;
   request: {
+    scheduleSource?: GrindingPlanningBoardScheduleSource;
     dueSource?: 'excel' | 'scaw';
     category: GrindingPlanningBoardCategory;
     view: GrindingPlanningBoardView;
