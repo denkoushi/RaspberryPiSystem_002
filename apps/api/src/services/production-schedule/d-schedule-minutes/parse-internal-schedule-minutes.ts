@@ -80,6 +80,8 @@ export async function parseInternalScheduleMinutesXlsx(input: {
       warn('MERGED_ACROSS_HEADERS', block.seiban, partsCell);
     } else if (formulaWithoutResult(partsCell)) {
       warn('FORMULA_NO_RESULT', block.seiban, partsCell);
+    } else if (/完$/.test(normalize(cellText(partsCell)))) {
+      // 「完」「支給品以外完」 mean the parts are done; there is no date to read.
     } else {
       const parsed = readDate(partsCell, meetingDate, workbook.properties.date1904,
         () => warn('AMBIGUOUS_YEAR', block.seiban, partsCell), true);
