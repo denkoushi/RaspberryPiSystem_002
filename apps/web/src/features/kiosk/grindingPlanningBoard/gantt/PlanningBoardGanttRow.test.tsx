@@ -5,11 +5,12 @@ import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinut
 
 import { dateToDay } from './planningBoardGanttLayout';
 import { PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { LATE_STAR_BUTTON_HEIGHT, LATE_STAR_GAP } from './planningBoardLateStars';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 
 describe('PlanningBoardGanttRow', () => {
-  it.each([0, 1, 8])('allows all %i late seiban buttons to wrap below the truncated machine label', (count) => {
+  it.each([0, 1, 3, 8])('allows all %i late seiban buttons to wrap below the truncated machine label', (count) => {
     const start = dateToDay('2026-11-04');
     const seibans = Array.from({ length: count }, (_, index) => `A000000${index}`);
     const bars = seibans.map((fseiban): GanttBar => ({
@@ -30,6 +31,7 @@ describe('PlanningBoardGanttRow', () => {
     const element = container.firstElementChild as HTMLDivElement;
     expect(element.style.minHeight).toBe('56px');
     expect(element.style.height).toBe('');
+    expect(element.style.containIntrinsicSize).toBe(`auto ${Math.max(56, 32 + Math.ceil(count / 5) * LATE_STAR_BUTTON_HEIGHT + Math.max(0, Math.ceil(count / 5) - 1) * LATE_STAR_GAP)}px`);
     expect(screen.getByText(row.label).classList.contains('truncate')).toBe(true);
     expect(screen.getByText(row.detail).classList.contains('truncate')).toBe(true);
     if (count === 0) {

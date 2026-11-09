@@ -138,11 +138,11 @@ describe('PlanningBoardToolbar forward controls', () => {
     fireEvent.click(trigger);
     expect(screen.queryByRole('group', { name: label })).not.toBeInTheDocument();
   });
-  it.each(['工程', '区分'])('closes %s on outside click, Escape, resize and outside scroll', (label) => {
+  it.each(['工程', '区分'])('closes %s on outside click, Escape, resize and ancestor scroll', (label) => {
     render(<PlanningBoardToolbar {...props()} />);
     const trigger = screen.getByRole('button', { name: label, exact: true });
     for (const close of [() => fireEvent.pointerDown(document.body), () => fireEvent.keyDown(document, { key: 'Escape' }),
-      () => fireEvent.resize(window), () => fireEvent.scroll(window)]) {
+      () => fireEvent.resize(window), () => fireEvent.scroll(document)]) {
       fireEvent.click(trigger);
       const panel = screen.getByRole('group', { name: label });
       fireEvent.pointerDown(within(panel).getAllByRole('button')[0]!);
@@ -152,6 +152,15 @@ describe('PlanningBoardToolbar forward controls', () => {
       expect(trigger).toHaveAttribute('aria-expanded', 'false');
       expect(trigger).toHaveFocus();
     }
+  });
+  it('keeps dropdowns open on sibling Gantt scroll and closes on anchor ancestor scroll', () => {
+    const { container } = render(<div><PlanningBoardToolbar {...props()} /><div data-testid="gantt-scroll" /></div>);
+    const trigger = screen.getByRole('button', { name: '区分', exact: true });
+    fireEvent.click(trigger);
+    fireEvent.scroll(screen.getByTestId('gantt-scroll'));
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.scroll(container.firstElementChild!);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
   it('toggles mode and navigates late work', () => {
     const values = props();
