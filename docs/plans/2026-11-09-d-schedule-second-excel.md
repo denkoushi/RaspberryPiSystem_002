@@ -22,7 +22,7 @@ A verified sender can attach both D社日程会議議事録 and the internal pro
 
 The existing D parser rejects workbooks if fewer than 80% of production numbers have readable dates. Internal schedules frequently contain 完 and other text, so the separate parser reuses the strict date reader but does not impose that D-specific ratio. The first focused run passed all 22 new parser cases; the apply/registration suites could not resolve the unbuilt workspace package `@raspi-system/shared-types`. Build that package before retrying.
 
-Read-only check against the real 2026-11-07 email on Pi5 (2026-11-09, by Claude): the D parser still reads `20261107D社日程会議議事録.xlsx` as before (58 blocks, meeting date 2026-11-07) and the internal parser returns MISSING_HEADERS for it. For `日程会議議事録_1106.xlsx` the D parser returns NO_BASE_DATE, and the internal parser reads sheet `1106結果` (meeting date 2026-11-06, 312 production numbers, 207 with a parts date, 5+ line-break aliases such as BA1S9209(BA1RA201)). The undated values are 完, `-`, empty cells and free text such as 支給品以外完 or 11/6？. All 72 warnings are UNREADABLE_DATE for that free text.
+Read-only check against the real 2026-11-07 email on Pi5 (2026-11-09, by Claude): the D parser still reads `20261107D社日程会議議事録.xlsx` as before (58 blocks, meeting date 2026-11-07) and the internal parser returns MISSING_HEADERS for it. For `日程会議議事録_1106.xlsx` the D parser returns NO_BASE_DATE, and the internal parser reads sheet `1106結果` (meeting date 2026-11-06, 312 production numbers, 207 with a parts date, 5+ line-break aliases such as BA1S9209(BA1RA201)). The undated values are 完, `-`, empty cells and free text such as 支給品以外完 or 11/6？. All 72 warnings are UNREADABLE_DATE: 42 for 完 and the rest for free text. In the production schedule, 215 of the 320 production numbers (aliases included) exist and 151 of them have a dated row. The registration cap is 100 (`KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX`), so registering the internal file like the D file would overflow every board and the shared history. The user must decide how to register the internal file before this is merged.
 
 ## Decision Log
 
@@ -38,7 +38,7 @@ Decision: inspect all XLSX attachments and finish independent attachments even w
 ## After deploy: importing the 2026-11-07 email once
 
 
-Gmail message `1a1bd5b14ff055a8` was already trashed and marked read by the old code, and only its D社 attachment was imported. After the deploy, move that email from the trash back to the inbox and mark it unread. On the next cycle the existing D_COMPANY SUCCESS run is reused, so only the INTERNAL attachment is applied. The D notice is not sent twice because it is delivered with `once: true`. After that cycle the email goes back to the trash. This changes production mail, so it needs explicit approval.
+Gmail message `1a1bd5b14ff055a8` was already trashed and marked read by the old code, and only its D社 attachment was imported. After the deploy, move that email from the trash back to the inbox, remove the `rps_processed` label (moving to trash adds it, and the intake query excludes it), and mark it unread. On the next cycle the existing D_COMPANY SUCCESS run is reused, so only the INTERNAL attachment is applied. The D notice is not sent twice because it is delivered with `once: true`. After that cycle the email goes back to the trash. This changes production mail, so it needs explicit approval.
 
 ## Outcomes & Retrospective
 
