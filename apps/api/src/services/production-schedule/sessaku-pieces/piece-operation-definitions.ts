@@ -152,7 +152,8 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
   for (const { pieceIds, opNos } of deletionGroups.values()) {
     for (let start = 0; start < pieceIds.length; start += 300) {
       await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({
-        where: { pieceId: { in: pieceIds.slice(start, start + 300) }, opNo: { notIn: opNos } }
+        where: opNos.length ? { pieceId: { in: pieceIds.slice(start, start + 300) }, opNo: { notIn: opNos } }
+          : { pieceId: { in: pieceIds.slice(start, start + 300) } }
       });
     }
   }

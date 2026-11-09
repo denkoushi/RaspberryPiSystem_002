@@ -1,6 +1,6 @@
 # Sessaku 021/022 unit split and operations — PR1
 
-This living ExecPlan follows `.agent/PLANS.md`. Its scope is local DB/API implementation only; web, commit, push, branch changes, PR, merge and deployment are not authorized.
+This living ExecPlan follows `.agent/PLANS.md`. Its scope is local DB/API implementation only; web, commit, push, branch changes, PR, merge and deployment are not authorized. The seventh-review decisions below supersede the historical cache/fingerprint decisions in reviews three through six. DB integration execution remains with the user.
 
 ## Purpose / Big Picture
 
@@ -9,7 +9,7 @@ Prepare the 製番ボード API to split eligible cutting lots into single units
 ## Progress
 
 - [x] 2026-11-09: Read required rules and inspect clean working tree and existing contracts.
-- [x] 2026-11-09: Add nullable resource setting, two child tables and durable logical-key history in one additive migration.
+- [x] 2026-11-09: Add nullable resource setting, two child tables and durable logical-key history, including audit backfill, in one schema/data migration.
 - [x] 2026-11-09: Implement settings, bounded automatic splitting, operation completion and optional projection fields.
 - [x] 2026-11-09: Add focused service/route tests and run related suites: 486 passed, 155 DB integration cases skipped. API/web type checks and both lint checks passed.
 - [ ] Run DB integration tests and apply migration in an isolated DB (blocked by sandbox shared-memory and Docker socket permissions).
@@ -27,7 +27,7 @@ Prepare the 製番ボード API to split eligible cutting lots into single units
 
 ## Milestones / Plan of Work
 
-First add unitSplitEnabled Boolean? to ResourceCapacity, operation definitions under ResourcePartMinutes, completion records under Piece, and durable logical-key history under CsvDashboard. Add FK cascade, unique parent/operation pairs and SQL range constraints. No existing data is rewritten. Then extend the settings APIs and keep default-valued capacity rows removable. Null means the code default: 021/022 true, others false.
+First add unitSplitEnabled Boolean? to ResourceCapacity, operation definitions under ResourcePartMinutes, completion records under Piece, and durable logical-key history under CsvDashboard. Add FK cascade, unique parent/operation pairs and SQL range constraints. Read successful legacy split/merge audits and backfill their exact raw logical keys into History with INSERT ... SELECT ... ON CONFLICT DO NOTHING. Existing domain rows are not rewritten, but this is a data migration as well as DDL. Then extend the settings APIs and keep default-valued capacity rows removable. Null means the code default: 021/022 true, others false.
 
 Next introduce POST pieces/auto-unit-split.
 
@@ -35,32 +35,36 @@ Read the authenticated site's registered lots; filter existing PieceSets or hist
 
 A global pg_try_advisory_xact_lock admits one automatic runner; a busy runner returns { splitCount: 0, skippedCount: 0, hasMore: true } immediately.
 
-Read candidates once with LIMIT 6 before loading projection sources (enabled effective resource, quantity 2–50, incomplete and earliest part process). After zero candidates, reuse that result for 5 seconds per site without fingerprint/candidate SQL; on expiry, skip the CTE if the refreshed input fingerprint is unchanged.
+Read candidates once with LIMIT 6 before loading projection sources (enabled effective resource, quantity 2–50, incomplete and earliest part process). Run this order-scoped candidate SQL on every request, even after an empty result. There is no input fingerprint, inputKey, process-local exclusion or empty-result TTL.
 
 Initial PieceSet/history reads select logical keys only.
 
 Attempt at most 5 eligible lots through separate split transactions, checking PieceSet/history before heavy locks and again inside them.
 
-Mark the existing permanent structural 409s in History and continue. All per-lot ApiErrors below 500 are skipped with a warning and do not set retryNeeded; P2034 retains its retry flag. Cache only AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE by the SQL winner-key input generation without adding History. Temporary AUTO_UNIT_SPLIT_INELIGIBLE (resource OFF, quantity outside 2–50, or missing projected item) is never structurally cached. Only BUSY and the deadline stop the loop.
+Mark the existing permanent structural 409s in History and continue. All per-lot ApiErrors below 500 are skipped with a warning and do not set retryNeeded; P2034 retains its retry flag. AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE and temporary AUTO_UNIT_SPLIT_INELIGIBLE (resource OFF, quantity outside 2–50, or missing projected item) create neither a cache entry nor History and are re-evaluated on the next opening. Only BUSY and the deadline stop the loop.
 
 Propagate connection failures and unexpected errors.
 
 skippedCount counts only SQL-selected lots actually skipped in this request due to existing keys/history, recoverable conflicts or P2034. Already touched siblings loaded for projection do not contribute.
 
-Capped or time-budgeted candidates set hasMore.
+If all SQL candidates are rejected by TS or already touched, return hasMore:false regardless of the sixth row. If all attempted lots receive non-retryable rejections and neither splitting nor permanent History exclusion progresses, also return false. Do not fetch another page within this request. Successful splitting or permanent History exclusion can advance capped candidates with hasMore:true; lock contention, transient retry and budget exhaustion retain hasMore:true.
 
-The normal work budget is 3 seconds; if discovery exhausts it, allow the first split up to 1 additional second, capped at the runner deadline. Later attempts use the original deadline. The outer runner timeout is 10 seconds (3-second budget + 1-second grace + 6-second headroom). Reserve the final runner second for transaction acquisition/commit; start no new split at or after this safe deadline. Check this deadline after each preprocessing stage and return hasMore:true immediately on expiry. Execute the fingerprint, candidate and projection-source queries on the runner connection, refreshing its transaction-local statement_timeout to the remaining safe budget before each database stage.
+The normal work budget is 3 seconds; if discovery exhausts it, allow the first split up to 1 additional second, capped at the runner deadline. Later attempts use the original deadline. The outer runner timeout is 10 seconds (3-second budget + 1-second grace + 6-second headroom). Reserve the final runner second for transaction acquisition/commit; start no new split at or after this safe deadline. Check this deadline after each preprocessing stage and return hasMore:true immediately on expiry. Execute the candidate and projection-source queries on the runner connection, refreshing its transaction-local statement_timeout to the remaining safe budget before each database stage.
 
 Finally implement PUT pieces/:pieceId/ops/:opNo/completion using operate and a shared piece-completion writer so the operation record, piece completion and parent aggregation commit together. Add optional projection unitRequiredMinutes/setupMinutes/ops/completedOpNos using maps. Preserve requiredMinutes and existing API inputs.
 
 ## Decision Log
 
-- Decision: Add a small logical-key history table and write it in split/merge transactions and before later-process set deletion. Rationale: an empty origin PieceSet can be adopted by a new earlier process and later deleted; its existence alone cannot preserve manual history. The deletion path also protects pre-feature manual sets without a data backfill.
+- Decision (seventh review): remove all automatic-split input caches and fingerprints; evaluate the order-scoped LIMIT 6 query on every request and stop pagination when rejection makes no progress. Backfill exact raw manual-operation keys from successful split/merge audit parentItemId values. The migration now includes data population; use the pre-deploy audit count SQL below.
+
+- Decision: Add a small logical-key history table and write it in split/merge transactions and before later-process set deletion. Rationale: an empty origin PieceSet can be adopted by a new earlier process and later deleted; its existence alone cannot preserve manual history. The deletion path protects still-existing pre-feature manual sets; the audit backfill also protects keys whose sets were already deleted before PR1.
 - Decision: Use existing completion intent complete/incomplete. Rationale: match the established piece completion API.
 - Decision: Omitted ops preserves existing definitions; an explicit empty array removes them. With supplied definitions the server derives perUnitMinutes from their sum. Older callers omitting ops must send a numeric perUnitMinutes within absolute tolerance 1e-6 of the saved sum, otherwise return 400 OPERATION_MINUTES_MISMATCH; null retains the explicit delete behavior.
 - Decision: Keep separate time fields consistent with requiredMinutesSource: own time excludes its setup; original time has setupMinutes zero because no original setup breakdown exists. Operations are looked up by effective resource and FHINCD regardless of selected time source.
 
 ## Surprises & Discoveries
+
+- Seventh review: the pre-PR1 baseline already stored all four raw logical keys in successful split/merge audit parentItemId values, even when the corresponding PieceSet was later removed. No live DB audit query was run here.
 
 - Independent review found a legacy manual tombstone can be adopted and removed through later-process propagation. Durable history prevents automatic splitting even after that set is gone.
 - Reviews also corrected preservation of the existing resource-code contract and default lookup for unset dictionary keys.
@@ -74,13 +78,15 @@ From the repository, generate Prisma with `pnpm --filter @raspi-system/api prism
 
 ## Idempotence and Recovery
 
-No migration is applied to production. The migration adds only nullable columns and empty child tables. Automatic splitting is idempotent through existing PieceSet presence and logical locks. Local edits remain uncommitted; inspect git diff for review or recovery. Do not reset or delete user work.
+No migration is applied to production. The migration adds a nullable column and child tables, then reads existing successful manual-operation audits and inserts recovered keys into History. It is not DDL-only: History starts populated. The backfill is idempotent through ON CONFLICT DO NOTHING; do not rerun the complete DDL as a retry. Automatic splitting is idempotent through PieceSet/History presence and logical locks. Before rollout, count audit-derived keys with the SQL below and take the standard DB backup. On rollback, disable creation or restore the prior API while retaining History; do not delete the backfilled rows. DB restore follows the standard recovery procedure if needed. Local edits remain uncommitted; inspect git diff for review or recovery. Do not reset or delete user work.
 
 ## Interfaces and Dependencies
 
 Use existing Prisma, Zod, Fastify and Vitest; no new dependency. Resource capacity response adds optional unitSplitEnabledByResource. Resource minutes values and requests add optional ops with opNo 1..20 and minutes >0 up to 100000; at most 20 distinct operations and total at most 100000. Resource codes use the existing 20-character capacity, validated as a trimmed nonempty string as before, with no new character restriction.
 
 ## Outcomes & Retrospective
+
+Seventh review removes automatic-split caching and adds exact legacy-audit History backfill. The work began with a clean tree and remains as nine uncommitted changed files. Migration and DB integration execution remain the user’s responsibility; local verification is limited to unit tests, lint and type checks. Earlier review outcomes below are historical.
 
 Local DB/API implementation and the A/B review corrections are implemented; database execution remains pending. Focused tests pass, while persistence and real PostgreSQL concurrency remain unverified because the environment cannot provision an isolated database. No repository integration or deployment is part of this task. Web source files are unchanged. The initial implementation began from a clean tree. This second-review task began with existing uncommitted PR1 changes, including the user’s test correction; those changes remain preserved.
 
@@ -346,18 +352,17 @@ Docs: this plan and `docs/INDEX.md` (one-line navigation link).
 
 ### EXPLAIN SQL (after PR1 migration, not executed here)
 
-以下は本番関数 `autoUnitSplitCandidateSql` が生成するSQLのbind値を、説明用の1行CTE `explain_params` に置き換えたもの。`site` と `seiban_order` を対象現場の値に変更し、資源カテゴリの除外リストも実設定に合わせる。まず全切削キーがPieceSet/History済みの定常状態、次に未接触候補がある状態で比較する。`untouched` が0行ならwinner/前工程/入力世代の計算が未実行または0回になることを確認する。キャッシュ再現時は `excluded_inputs` に初回候補のparentId/inputKeyを入れる（CSV変更後は再び候補になる）。資源/警告の同値とlocaleCompareの最終判定は統合テストで確認し、SQLの件数を最終分割件数として扱わない。
+以下は本番関数 `autoUnitSplitCandidateSql` が生成するSQLのbind値を、説明用の1行CTE `explain_params` に置き換えたもの。`site` と `seiban_order` を対象現場の値に変更し、資源カテゴリの除外リストも実設定に合わせる。まず全切削キーがPieceSet/History済みの定常状態、次に未接触候補がある状態で比較する。`untouched` が0行ならwinner/前工程の計算が未実行または0回になることを確認する。毎要求でこの候補SQLを1回実行し、入力世代やキャッシュ用の集約は実行しない。資源/警告の同値とlocaleCompareの最終判定は統合テストで確認し、SQLの件数を最終分割件数として扱わない。
 
 ```sql
 EXPLAIN (ANALYZE, BUFFERS, VERBOSE)
 WITH explain_params AS (
-  '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'::text AS dashboard,
+  SELECT '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'::text AS dashboard,
   ARRAY['target-seiban']::text[] AS seiban_order,
   U&'\0009\000A\000B\000C\000D\0020\00A0\1680\2000\2001\2002\2003\2004\2005\2006\2007\2008\2009\200A\2028\2029\202F\205F\3000\FEFF'::text AS ws,
   ARRAY['305','581','582','583','584','585','586','587','588','589','10','MSZ']::text[] AS excluded_resources,
   'target-site'::text AS site,
-  '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]{1,2})?$'::text AS decimal_pattern,
-  '[]'::jsonb AS excluded_inputs
+  '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]{1,2})?$'::text AS decimal_pattern
 ), untouched AS MATERIALIZED (SELECT r.*
     FROM "CsvDashboardRow" r
     WHERE r."csvDashboardId" = (SELECT dashboard
@@ -564,49 +569,12 @@ WITH explain_params AS (
       LIMIT 1
     )
   )
-    ), input_keys AS (
-      SELECT DISTINCT r."rowData"->>'FSEIBAN' AS "fseiban", 'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
-    '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
-    to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'
-', ''), '+/', '-_'), '=') AS "parentId"
-
-    FROM "CsvDashboardRow" r WHERE r."csvDashboardId" = (SELECT dashboard
-    FROM explain_params)
-
-      AND r."rowData"->>'FSEIBAN' = ANY(ARRAY(SELECT DISTINCT "fseiban"
-    FROM eligible))
-      AND r."id" = (SELECT r2."id" FROM "CsvDashboardRow" r2
-        WHERE r2."csvDashboardId" = r."csvDashboardId"
-          AND COALESCE(r2."rowData"->>'FSEIBAN', '') = COALESCE(r."rowData"->>'FSEIBAN', '')
-          AND COALESCE(r2."rowData"->>'FHINCD', '') = COALESCE(r."rowData"->>'FHINCD', '')
-          AND COALESCE(r2."rowData"->>'FSIGENCD', '') = COALESCE(r."rowData"->>'FSIGENCD', '')
-          AND COALESCE(r2."rowData"->>'FKOJUN', '') = COALESCE(r."rowData"->>'FKOJUN', '')
-          AND (BTRIM(COALESCE(r."rowData"->>'FSEIBAN', '')) <> '********'
-            OR BTRIM(COALESCE(r2."rowData"->>'ProductNo', '')) = BTRIM(COALESCE(r."rowData"->>'ProductNo', '')))
-        ORDER BY CASE WHEN r2."rowData"->>'ProductNo' ~ '^[0-9]+$'
-          THEN (r2."rowData"->>'ProductNo')::bigint ELSE -1 END DESC,
-          r2."createdAt" DESC, r2."id" DESC LIMIT 1)
-    ), input_generations AS MATERIALIZED (
-      SELECT "fseiban", MD5(STRING_AGG("parentId", ',' ORDER BY "parentId" COLLATE "C")) AS "inputKey"
-
-    FROM input_keys GROUP BY "fseiban"
-    ), inputs AS (
-      SELECT r."id", r."fseiban", r."parentId", g."inputKey"
-    FROM eligible r
-        JOIN input_generations g ON g."fseiban" = r."fseiban"
-    ) SELECT "id", "fseiban", "parentId", "inputKey"
-    FROM inputs r
-      WHERE NOT EXISTS (SELECT 1
-    FROM JSONB_TO_RECORDSET((SELECT excluded_inputs
-    FROM explain_params)::jsonb)
-        AS excluded("parentId" text, "inputKey" text)
-        WHERE excluded."parentId" = r."parentId"
-      AND excluded."inputKey" = r."inputKey")
+    ) SELECT "id", "fseiban", "parentId" FROM eligible
       ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"
 LIMIT 6;
 ```
 
-第4回修正で独立したEXISTS経路は廃止した。上のLIMIT 6の取得を1回だけ行い、入力指紋が前回の候補0件時と同じならCTE全体を省略する。
+第4回修正で独立したEXISTS経路は廃止した。第7回修正では指紋とキャッシュも廃止し、上のLIMIT 6の取得を毎要求1回だけ行う。
 
 ### Changed files (third review only)
 
@@ -632,7 +600,7 @@ Docs: this plan (`docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md`).
 
 ## Fourth Review Corrections — 2026-11-09
 
-候補0件キャッシュ・比較許容差は第5回修正、対象外キャッシュ・エラー継続・前処理期限は第6回修正の現行仕様を優先する。
+以下の第4〜6回は過去の判断記録。キャッシュ・指紋・inputKeyに関する判断は第7回で廃止した。比較許容差・エラー継続・前処理期限の変更は維持する。
 
 ### Decided behavior
 
@@ -711,3 +679,69 @@ Docs: this plan (`docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md`).
 - Production: `sessaku-pieces/{auto-unit-split.service.ts,sessaku-pieces.service.ts,piece-operation-definitions.ts}`。
 - Tests: `sessaku-pieces/__tests__/{auto-unit-split.service.test.ts,piece-op-completion.service.test.ts,piece-operation-definitions.test.ts}`。
 - Documentation: this plan only. 既存WIPを保持し、commit/push/branch操作、DB接続・migration、`.env`や秘密ファイルの読込は実施しない。
+
+
+## Seventh Review Corrections — 2026-11-09
+
+### Decided behavior
+
+- 入力指紋SQL（8表のctid/xmin集約）、excludedInputsBySite、emptyInputsBySite、5秒TTL、inputKeyと対応テストを削除。機能ON・orderあり・runner取得時は、毎要求でorderに絞った候補SQLをLIMIT 6で1回だけ実行する。追加ページは取得しない。SQLのFSEIBAN条件と既存式インデックス利用を維持し、winner/投影は候補製番だけを読む。
+- OFF・数量2〜50範囲外・通常の数値工程の後工程はSQLで除外し、既存SQL/TS一致テストを保持する。非数値・特殊Number表記のSQL上位集合とTSのisLaterProcessOrder最終判定は従来どおり（DB照合順序でJSのlocaleCompareを置換しない）。このTS却下も6行目だけを理由にhasMoreを立てない。
+- TS候補0件、既処理候補のみ、ロット再検証の非再試行却下のみで分割/恒久除外が進まない場合はhasMore:falseとし、次の画面表示で再評価する。予算/ロック/P2034の再試行は維持。成功分割または既存3種の構造的409のHistory記録で進めた場合は、上限による残り候補をhasMore:trueで返せる。前工程/生キー不適格にはHistoryを新設しない。
+- 工程定義の保持opNoが空ならdeleteManyのwhereをpieceId.inだけにする。空のnotInの意味には依存しない。
+
+### Audit evidence and migration impact
+
+基準コミット`b23fc8e8`の`piece-key.ts`はparentItemIdを`row:` + base64url(JSON.stringify([fseiban, fhincd, fsigencd, fkojun]))として生成する。同コミットの`operate`は監査contextへparentItemIdとfseibanを設定し、`piece-audit.ts`は成功split/mergeもDBのProductionScheduleSessakuPieceAuditLogへ保存する。ルート経由・サービス直接呼出しともこの経路を通る。したがって品番・元資源・工程順まで生の値で復元できる方式を採用し、製番全体を一律に触った扱いにはしない。実DBの記録内容・件数はここでは未照会。
+
+`20261109130000_sessaku_unit_split_ops/migration.sql`末尾に、成功split/mergeのparentItemIdをdecodeし、4つの非空文字列をDISTINCTしてHistoryへ補完するINSERT ... SELECT ... ON CONFLICT DO NOTHINGを追加した。現在のCSV/PieceSetへのJOINはしないため、既に採用・削除された手動ロットやCSVから消えたキーも残る。rejected/failed/complete等は補完しない。監査書込自体が過去に失敗した操作は復元できない。
+
+Deploy影響は「nullable列と空テーブルの追加だけ」から「DDLと既存監査に基づくデータ補完」へ変更する。監査成功件数に応じた読み取り・decode・History書込・unique/FK確認と実行時間が増える。反映前に以下の件数、migrationのDB統合ケース、候補SQLのEXPLAINをユーザー環境で確認する。復元キー数は初回History補完予定数、existing_set_missing_keysは既存PieceSetだけでは保護できないキー数。invalid_recordsは0が前提で、非0またはdecodeエラーなら反映を止めて該当監査を確認する。確認とmigrationの間は手動split/mergeの書込を停止して件数を確定する。
+
+### Pre-deploy audit backfill count SQL
+
+History未作成でも実行可能な読み取り専用SQL。全split/merge成功記録が対象なのでsiteで絞らない。生キーの空白・全半角を保持する。実行結果は未取得。
+
+```sql
+WITH audited_keys AS MATERIALIZED (
+  SELECT "parentItemId", CONVERT_FROM(DECODE(
+    TRANSLATE(SUBSTRING("parentItemId" FROM 5), '-_', '+/')
+      || REPEAT('=', (4 - LENGTH(SUBSTRING("parentItemId" FROM 5)) % 4) % 4),
+    'base64'), 'UTF8')::jsonb AS key
+  FROM "ProductionScheduleSessakuPieceAuditLog"
+  WHERE "action" IN ('split', 'merge') AND "outcome" = 'success'
+), checked AS (
+  SELECT *, COALESCE("parentItemId" LIKE 'row:%'
+    AND CASE WHEN jsonb_typeof(key) = 'array' THEN jsonb_array_length(key) = 4 ELSE false END
+    AND jsonb_typeof(key->0) = 'string' AND key->>0 <> ''
+    AND jsonb_typeof(key->1) = 'string' AND key->>1 <> ''
+    AND jsonb_typeof(key->2) = 'string' AND key->>2 <> ''
+    AND jsonb_typeof(key->3) = 'string' AND key->>3 <> '', false) AS valid
+  FROM audited_keys
+)
+SELECT COUNT(*) AS successful_records,
+  COUNT(*) FILTER (WHERE NOT valid) AS invalid_records,
+  COUNT(DISTINCT key) FILTER (WHERE valid) AS recovered_logical_keys,
+  COUNT(DISTINCT key) FILTER (WHERE valid AND NOT EXISTS (
+    SELECT 1 FROM "ProductionScheduleSessakuPieceSet" s
+    WHERE s."csvDashboardId" = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01'
+      AND s."fseiban" = key->>0 AND s."fhincd" = key->>1
+      AND s."fsigencd" = key->>2 AND s."fkojun" = key->>3
+  )) AS existing_set_missing_keys
+FROM checked;
+```
+
+### Validation
+
+- 対象unitは最初に3ファイル・119件成功、約1秒。投影欠落・構造不適格の全却下を追加後、自動分割serviceの86件も成功、約2秒（最終合計121件、重複実行分を除く）。毎要求のLIMIT 6、連続空結果からの即時復帰、OFF→ON/数量復帰、6件全却下/既処理/ロック内不適格時の停止、空保持工程のpieceId単独削除を確認。
+- 成功split/mergeの生キー復元、重複/再実行、失敗記録の除外、PieceSet/CSV消失後の補完、同キー再出現時の候補除外と別キーの許可をDB統合ケースへ追加した。DB統合テスト・migration実行はユーザーが担当。
+- `pnpm --filter @raspi-system/api lint` / `pnpm --filter @raspi-system/web lint`、API `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit --incremental false` / web `pnpm --filter @raspi-system/web exec tsc -p tsconfig.json --noEmit --incremental false` は全て成功（並列で数分）。後から追加したserviceテストも対象ファイルのeslintで成功を確認。`git diff --check`も成功。
+- unitは空の一時cwd/envDirと一時Vitest設定で実行し、dotenv読込モジュール・prisma・loggerをmockした。TEST_DATABASE_URLをunset、DATABASE_URLを非稼働URLとし、DB統合ファイルをexcludeした。最初の一時setupはVitestのmock API解決に失敗したが、globals設定へ修正後に上記unitが成功した。
+- 最終statusは対象9ファイルのみの未コミット差分。開始時WIPはなく、git commit/push/branch操作、DB接続・migration実行、.env/秘密ファイルの読込は未実施。
+
+### Changed files (seventh review only)
+
+- Production: `sessaku-pieces/{auto-unit-split-candidates.ts,auto-unit-split.service.ts,piece-operation-definitions.ts}`。
+- Migration: `apps/api/prisma/migrations/20261109130000_sessaku_unit_split_ops/migration.sql`。
+- Tests: `sessaku-pieces/__tests__/{auto-unit-split-candidates.test.ts,auto-unit-split.service.test.ts,piece-operation-definitions.test.ts,sessaku-pieces.integration.test.ts}`。
+- Documentation: this plan only. 開始時の作業ツリーはclean。上記9ファイルの未コミット差分として残す。

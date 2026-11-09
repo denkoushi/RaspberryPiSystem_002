@@ -46,7 +46,7 @@ beforeEach(() => {
   tx.productionScheduleSessakuPieceOpCompletion.createMany.mockImplementation(async ({ data }) => { records.push(...data); return { count: data.length }; });
   tx.productionScheduleSessakuPieceOpCompletion.deleteMany.mockImplementation(async ({ where }) => {
     const count = records.length;
-    records = records.filter((record) => !where.pieceId.in.includes(record.pieceId) || where.opNo.notIn.includes(record.opNo));
+    records = records.filter((record) => !where.pieceId.in.includes(record.pieceId) || (where.opNo?.notIn.includes(record.opNo) ?? false));
     return { count: count - records.length };
   });
 });
@@ -120,6 +120,7 @@ describe('operation definition replacement', () => {
   it.each([true, false])('preserves completion=%s when the definition is emptied', async (isCompleted) => {
     set.pieces[0].isCompleted = isCompleted; await reconcile([]);
     expect(records).toEqual([]); expect(set.pieces[0].isCompleted).toBe(isCompleted);
+    expect(tx.productionScheduleSessakuPieceOpCompletion.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { pieceId: { in: ['p'] } } });
     expect(tx.productionScheduleSessakuPiece.update).not.toHaveBeenCalled();
   });
   it('does not touch externally completed pieces or records', async () => {

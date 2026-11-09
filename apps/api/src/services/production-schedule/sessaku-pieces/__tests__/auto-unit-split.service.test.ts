@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 const mocks = vi.hoisted(() => ({ split: vi.fn(), items: [] as GrindingPlanningBoardItem[], query: vi.fn(),
-  transaction: vi.fn(), fingerprint: "initial", tryLock: vi.fn(), timeout: vi.fn(), state: vi.fn(), ensureState: vi.fn(), policy: vi.fn(), capacity: vi.fn(), details: vi.fn(), warn: vi.fn(), sets: vi.fn(), history: vi.fn(), projection: vi.fn(), rows: vi.fn(), mark: vi.fn(), audit: vi.fn() }));
+  transaction: vi.fn(), tryLock: vi.fn(), timeout: vi.fn(), state: vi.fn(), ensureState: vi.fn(), policy: vi.fn(), capacity: vi.fn(), details: vi.fn(), warn: vi.fn(), sets: vi.fn(), history: vi.fn(), projection: vi.fn(), rows: vi.fn(), mark: vi.fn(), audit: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: {
   $transaction: mocks.transaction,
   $queryRaw: mocks.query,
@@ -21,8 +21,7 @@ vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split
 vi.mock('../piece-audit.js', () => ({ runSessakuPieceOperation: mocks.audit }));
 import { autoSplitSessakuUnits, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS,
   AUTO_UNIT_SPLIT_BUDGET_MS, AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS, AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS,
-  AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS, AUTO_UNIT_SPLIT_EMPTY_TTL_MS } from '../auto-unit-split.service.js';
-import { autoUnitSplitInputKey } from '../auto-unit-split-candidates.js';
+  AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS } from '../auto-unit-split.service.js';
 import { sessakuPieceParentItemId } from '../piece-key.js';
 import { ApiError } from '../../../../lib/errors.js';
 
@@ -30,7 +29,6 @@ const item = (patch: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningB
   itemId: 'row:one', kind: 'row', fseiban: 'S', fhincd: 'PART', processOrder: '10', originalResourceCd: '021', effectiveResourceCd: '021',
   plannedQuantity: 3, itemRevision: 'a'.repeat(64), isCompleted: false, sourceRowId: 'source', ...patch
 } as GrindingPlanningBoardItem);
-let generation = 0;
 const capacity = { dailyHoursByResource: {}, runsThroughBreaksResources: [] };
 const candidates = (items: GrindingPlanningBoardItem[]) => autoUnitSplitCandidates(items, capacity, (cd) => cd !== '305');
 
@@ -49,9 +47,8 @@ describe('automatic unit split', () => {
     mocks.state.mockResolvedValue({ seibanOrder: ['S'] });
     mocks.policy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
     mocks.capacity.mockResolvedValue({}); mocks.details.mockResolvedValue(new Map());
-    mocks.fingerprint = String(++generation);
-    vi.spyOn(performance, 'now').mockReturnValue(generation * 20000);
-    mocks.tryLock.mockResolvedValue([{ acquired: true }]); mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : [{ id: 'source', fseiban: 'S' }]);
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    mocks.tryLock.mockResolvedValue([{ acquired: true }]); mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S' }]);
     mocks.sets.mockResolvedValue([]); mocks.history.mockResolvedValue([]); mocks.rows.mockResolvedValue([]);
     mocks.projection.mockImplementation(() => ({ items: mocks.items }));
   });
@@ -114,7 +111,7 @@ describe('automatic unit split', () => {
     } finally { release(); await first; }
   });
   it('returns without loading winners or projecting when no untouched cutting key exists', async () => {
-    mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : []);
+    mocks.query.mockResolvedValue([]);
     expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
     expect(mocks.rows).not.toHaveBeenCalled(); expect(mocks.projection).not.toHaveBeenCalled();
     expect(mocks.sets).not.toHaveBeenCalled(); expect(mocks.audit).not.toHaveBeenCalled();
@@ -150,8 +147,7 @@ describe('automatic unit split', () => {
     });
   it('does not count SQL-capped lots from the same seiban as skipped', async () => {
     mocks.items = Array.from({ length: 7 }, (_, i) => item({ itemId: `row:${i}`, fhincd: `PART-${i}`, sourceRowId: `source-${i}` }));
-    mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }]
-      : mocks.items.slice(0, 6).map((item) => ({ id: item.sourceRowId, fseiban: 'S' })));
+    mocks.query.mockResolvedValue(mocks.items.slice(0, 6).map((item) => ({ id: item.sourceRowId, fseiban: 'S' })));
     expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 5, skippedCount: 0, hasMore: true });
   });
   it('gets past 5 permanent conflicts on the next request', async () => {
@@ -186,50 +182,24 @@ describe('automatic unit split', () => {
     expect(await autoSplitSessakuUnits({ siteKey: `no-retry-${code}` })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
     expect(mocks.mark).not.toHaveBeenCalled();
   });
-  it('caches STRUCTURALLY_INELIGIBLE with the SQL input even when projection input differs, and invalidates it on input change', async () => {
-    mocks.items = [item()];
-    const siteKey = 'ineligible-racing-input';
-    const oldInput = 'sql-before-csv-change';
-    let inputKey = oldInput;
-    mocks.query.mockImplementation(async (sql) => {
-      if (sql.sql.startsWith('SELECT MD5')) return [{ fingerprint: mocks.fingerprint }];
-      const exclusions = JSON.parse(sql.values.find((value: unknown) => typeof value === 'string' && value.startsWith('[')) as string);
-      return exclusions.some((entry: { parentId: string; inputKey: string }) => entry.parentId === 'row:one' && entry.inputKey === inputKey)
-        ? [] : [{ id: 'source', fseiban: 'S', parentId: 'row:one', inputKey }];
-    });
-    mocks.split.mockRejectedValueOnce(new ApiError(409, 'predecessor', undefined, 'AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE'));
-    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
-    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
-    expect(mocks.rows).toHaveBeenCalledTimes(1);
-    expect(mocks.query.mock.calls.at(-1)?.[0].values).toContain(JSON.stringify([{ parentId: 'row:one', inputKey: oldInput, fseiban: 'S' }]));
-    vi.mocked(performance.now).mockReturnValue(performance.now() + AUTO_UNIT_SPLIT_EMPTY_TTL_MS);
-    mocks.fingerprint = 'csv-key-changed'; inputKey = 'new-winner-input';
-    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
-    expect(mocks.split).toHaveBeenCalledTimes(2);
-  });
   it.each(['OFF→ON', 'quantity 2→1→2'])('does not cache temporary ineligibility after %s with unchanged logical keys', async (change) => {
     mocks.items = [item({ plannedQuantity: 2 })];
     let enabled = true;
     let quantity = 2;
     const siteKey = `temporary-${change}`;
-    mocks.query.mockImplementation(async (sql) => {
-      if (sql.sql.startsWith('SELECT MD5')) return [{ fingerprint: mocks.fingerprint }];
-      const exclusions = JSON.parse(sql.values.find((value: unknown) => typeof value === 'string' && value.startsWith('[')) as string);
-      expect(exclusions).toEqual([]);
-      return enabled && quantity >= 2 ? [{ id: 'source', fseiban: 'S', parentId: 'row:one', inputKey: 'unchanged-keys' }] : [];
+    mocks.query.mockImplementation(async () => {
+      return enabled && quantity >= 2 ? [{ id: 'source', fseiban: 'S', parentId: 'row:one' }] : [];
     });
     // The setting/quantity changes after discovery but before the locked recheck.
     mocks.split.mockImplementationOnce(async () => {
       if (change === 'OFF→ON') enabled = false;
       else quantity = 1;
-      mocks.fingerprint = 'temporary-state';
       throw new ApiError(409, 'temporarily ineligible', undefined, 'AUTO_UNIT_SPLIT_INELIGIBLE');
     }).mockResolvedValue({});
     expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
     expect(mocks.split).toHaveBeenCalledTimes(1);
     expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
-    enabled = true; quantity = 2; mocks.fingerprint = 'restored-state';
-    vi.mocked(performance.now).mockReturnValue(performance.now() + AUTO_UNIT_SPLIT_EMPTY_TTL_MS);
+    enabled = true; quantity = 2;
     expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
     expect(mocks.split).toHaveBeenCalledTimes(2);
     expect(mocks.mark).not.toHaveBeenCalled();
@@ -250,7 +220,7 @@ describe('automatic unit split', () => {
     expect(await autoSplitSessakuUnits({ siteKey: `quantity-${statusCode}` })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
     expect(mocks.split).toHaveBeenCalledTimes(1);
   });
-  it.each(['lock', 'ensureState', 'state', 'policy', 'fingerprint', 'candidate', 'winners', 'parallel', 'projection'])(
+  it.each(['lock', 'ensureState', 'state', 'policy', 'candidate', 'winners', 'parallel', 'projection'])(
     'stops preprocessing immediately after %s exhausts the runner deadline', async (stage) => {
       const now = vi.mocked(performance.now).mockReturnValue(0);
       const expire = () => now.mockReturnValue(AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS - AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS);
@@ -261,20 +231,18 @@ describe('automatic unit split', () => {
         case 'ensureState': mocks.ensureState.mockImplementationOnce(async () => { expire(); }); break;
         case 'state': mocks.state.mockImplementationOnce(async () => { expire(); return { seibanOrder: ['S'] }; }); break;
         case 'policy': mocks.policy.mockImplementationOnce(async () => { expire(); return {}; }); break;
-        case 'fingerprint': mocks.query.mockImplementationOnce(async () => { expire(); return [{ fingerprint: mocks.fingerprint }]; }); break;
-        case 'candidate': mocks.query.mockResolvedValueOnce([{ fingerprint: mocks.fingerprint }])
-          .mockImplementationOnce(async () => { expire(); return []; }); break;
+        case 'candidate': mocks.query.mockImplementationOnce(async () => { expire(); return []; }); break;
         case 'winners': mocks.rows.mockImplementationOnce(async () => { expire(); return []; }); break;
         case 'parallel': mocks.details.mockImplementationOnce(async () => { expire(); return new Map(); }); break;
         case 'projection': mocks.projection.mockImplementationOnce(() => { expire(); return { items: mocks.items }; }); break;
       }
       expect(await autoSplitSessakuUnits({ siteKey: `preprocessing-${stage}` })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
-      const nextIndex = { lock: 1, ensureState: 2, state: 3, policy: 4, fingerprint: 5, candidate: 5, winners: 6, parallel: 7, projection: 8 }[stage]!;
+      const nextIndex = { lock: 1, ensureState: 2, state: 3, policy: 4, candidate: 5, winners: 6, parallel: 7, projection: 8 }[stage]!;
       for (const fn of stages.slice(nextIndex)) expect(fn).not.toHaveBeenCalled();
       expect(mocks.audit).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
-      // Expiry must not populate the empty cache, even for an empty SQL result.
+      // The next request must re-evaluate, even after an empty SQL result.
       now.mockReturnValue(AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS);
-      mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : [{ id: 'source', fseiban: 'S' }]);
+      mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S' }]);
       expect(await autoSplitSessakuUnits({ siteKey: `preprocessing-${stage}` })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
     });
   it('bounds preprocessing statement timeouts by the remaining runner budget on the runner connection', async () => {
@@ -282,7 +250,7 @@ describe('automatic unit split', () => {
     mocks.items = [item()];
     mocks.rows.mockImplementation(async () => { now.mockReturnValue(8500); return []; });
     await autoSplitSessakuUnits({ siteKey: 'statement-timeout' });
-    expect(mocks.timeout.mock.calls.map(([, value]) => value)).toEqual(['9000ms', '9000ms', '9000ms', '9000ms', '500ms']);
+    expect(mocks.timeout.mock.calls.map(([, value]) => value)).toEqual(['9000ms', '9000ms', '9000ms', '500ms']);
     expect(mocks.rows.mock.calls[0][0]).toEqual(expect.objectContaining({ $queryRaw: expect.any(Function) }));
     expect(mocks.rows.mock.calls[0][0].$queryRaw).not.toBe(mocks.query);
     expect(mocks.sets.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.timeout.mock.invocationCallOrder.at(-1)!);
@@ -295,22 +263,6 @@ describe('automatic unit split', () => {
   });
   it.each([' PART', 'PART ', 'ＰＡＲＴ'])('excludes different raw part keys that cannot propagate: %j', (fhincd) => {
     expect(candidates([item(), item({ itemId: 'later', processOrder: '20', fhincd })])).toEqual([]);
-  });
-  it.each([true, false])('caches structural rejections only with a matching CSV input snapshot (match=%s)', async (matching) => {
-    mocks.items = [item({ processOrder: 'A' }), item({ itemId: 'lower', sourceRowId: 'lower', processOrder: 'a' })];
-    const keys = ['A', 'a'].map((fkojun) => ({ fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun }));
-    mocks.rows.mockResolvedValue(keys.map((key) => ({ rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun } })));
-    const inputKey = matching ? autoUnitSplitInputKey(keys.map(sessakuPieceParentItemId)) : 'another-csv-snapshot';
-    mocks.query.mockImplementation(async (sql) => {
-      const excluded = sql.values.find((value: unknown) => typeof value === 'string' && value.startsWith('[{'));
-      if (sql.sql.startsWith('SELECT MD5')) return [{ fingerprint: mocks.fingerprint }];
-      return excluded ? [] : [{ id: 'source', fseiban: 'S', parentId: 'row:one', inputKey }];
-    });
-    const siteKey = `cache-${matching}`;
-    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
-    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
-    expect(mocks.rows).toHaveBeenCalledTimes(matching ? 1 : 2); expect(mocks.mark).not.toHaveBeenCalled(); expect(mocks.audit).not.toHaveBeenCalled();
-    if (matching) expect(mocks.query.mock.calls.at(-1)?.[0].values).toContain(JSON.stringify([{ parentId: 'row:one', inputKey, fseiban: 'S' }]));
   });
   it('uses separate request and lot audit actions and scopes key reads to candidate seibans', async () => {
     mocks.items = [item()];
@@ -342,44 +294,47 @@ describe('automatic unit split', () => {
     });
     expect(await autoSplitSessakuUnits({ siteKey: 'runner-exit' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
   });
-  it('queries candidates once with LIMIT 6 and bypasses the CTE for unchanged empty inputs', async () => {
-    mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : []);
-    await autoSplitSessakuUnits({ siteKey: 'empty' });
-    await autoSplitSessakuUnits({ siteKey: 'empty' });
-    const queries = mocks.query.mock.calls.map(([sql]) => sql);
-    expect(queries.filter((sql) => sql.sql.includes('WITH untouched'))).toHaveLength(1);
-    expect(queries.filter((sql) => sql.sql.startsWith('SELECT MD5'))).toHaveLength(1);
-    expect(queries.find((sql) => sql.sql.includes('WITH untouched')).values.at(-1)).toBe(6);
-    expect(queries.some((sql) => sql.sql.startsWith('SELECT EXISTS'))).toBe(false);
-    mocks.fingerprint = 'changed-csv-quantity-settings-progress';
-    vi.mocked(performance.now).mockReturnValue(performance.now() + AUTO_UNIT_SPLIT_EMPTY_TTL_MS);
+  it('queries candidates with LIMIT 6 on every request, including consecutive empty results', async () => {
+    mocks.query.mockResolvedValue([]);
+    for (const siteKey of ['site', 'site', 'other']) {
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    }
+    expect(mocks.query).toHaveBeenCalledTimes(3);
+    for (const [sql] of mocks.query.mock.calls) {
+      expect(sql.sql).toContain('WITH untouched');
+      expect(sql.values.at(-1)).toBe(6);
+    }
     mocks.items = [item()];
-    mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : [{ id: 'source', fseiban: 'S' }]);
-    expect(await autoSplitSessakuUnits({ siteKey: 'empty' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S' }]);
+    expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    expect(mocks.query).toHaveBeenCalledTimes(4);
   });
-  it('caches empty results per site for 5 seconds, then checks the fingerprint and renews the TTL', async () => {
-    const now = vi.mocked(performance.now).mockReturnValue(0);
-    mocks.query.mockImplementation(async (sql) => sql.sql.startsWith('SELECT MD5') ? [{ fingerprint: mocks.fingerprint }] : []);
-    await autoSplitSessakuUnits({ siteKey: 'ttl' });
-    now.mockReturnValue(AUTO_UNIT_SPLIT_EMPTY_TTL_MS - 1);
-    await autoSplitSessakuUnits({ siteKey: 'ttl' });
+  it.each(['projection', 'missing-projection', 'touched', 'locked-ineligible', 'locked-structural'])('ends pagination when a full page is skipped by %s without progress', async (stage) => {
+    const keys = Array.from({ length: 6 }, (_, i) => ({ fseiban: 'S', fhincd: `PART-${i}`, fsigencd: '021', fkojun: '10' }));
+    mocks.items = keys.map((key, i) => item({ itemId: sessakuPieceParentItemId(key), fhincd: key.fhincd, sourceRowId: `source-${i}`,
+      plannedQuantity: stage === 'projection' ? 1 : 3 }));
+    mocks.query.mockResolvedValue(mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId })));
+    if (stage === 'touched') mocks.history.mockResolvedValue(keys);
+    if (stage === 'missing-projection') mocks.items = [];
+    const locked = stage.startsWith('locked');
+    if (locked) mocks.split.mockRejectedValue(new ApiError(409, 'ineligible', undefined,
+      stage === 'locked-structural' ? 'AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE' : 'AUTO_UNIT_SPLIT_INELIGIBLE'));
+    for (let call = 0; call < 2; call++) {
+      expect(await autoSplitSessakuUnits({ siteKey: 'rejected-page' })).toEqual({ splitCount: 0,
+        skippedCount: stage === 'touched' ? 6 : locked ? 5 : 0, hasMore: false });
+    }
     expect(mocks.query).toHaveBeenCalledTimes(2);
-    await autoSplitSessakuUnits({ siteKey: 'ttl-other' });
-    expect(mocks.query).toHaveBeenCalledTimes(4);
-    now.mockReturnValue(AUTO_UNIT_SPLIT_EMPTY_TTL_MS);
-    await autoSplitSessakuUnits({ siteKey: 'ttl' });
-    expect(mocks.query).toHaveBeenCalledTimes(5);
-    expect(mocks.query.mock.calls.at(-1)?.[0].sql).toMatch(/^SELECT MD5/);
-    now.mockReturnValue(AUTO_UNIT_SPLIT_EMPTY_TTL_MS * 2 - 1);
-    await autoSplitSessakuUnits({ siteKey: 'ttl' });
-    expect(mocks.query).toHaveBeenCalledTimes(5);
+    expect(mocks.split).toHaveBeenCalledTimes(locked ? 10 : 0);
+    expect(mocks.mark).not.toHaveBeenCalled();
+    if (!locked) expect(mocks.audit).not.toHaveBeenCalled();
   });
-  it('does not apply the empty TTL to a positive candidate result', async () => {
-    mocks.items = [item()];
-    await autoSplitSessakuUnits({ siteKey: 'positive' });
-    await autoSplitSessakuUnits({ siteKey: 'positive' });
-    expect(mocks.query).toHaveBeenCalledTimes(4);
-    expect(mocks.split).toHaveBeenCalledTimes(2);
+  it('re-evaluates TS process-order rejections on every opening without permanent history', async () => {
+    mocks.items = [item({ processOrder: 'A' }), item({ itemId: 'lower', sourceRowId: 'lower', processOrder: 'a' })];
+    for (let call = 0; call < 2; call++) {
+      expect(await autoSplitSessakuUnits({ siteKey: 'process-rejected' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    }
+    expect(mocks.query).toHaveBeenCalledTimes(2); expect(mocks.rows).toHaveBeenCalledTimes(2);
+    expect(mocks.split).not.toHaveBeenCalled(); expect(mocks.mark).not.toHaveBeenCalled();
   });
   it('attempts the first lot even if candidate discovery consumes the budget', async () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(0);

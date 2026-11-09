@@ -3,7 +3,6 @@ import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess } from '../auto-
 import { isLaterProcessOrder } from '../../process-order.js';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { STRING_TRIM_CHARACTERS } from '../../grinding-planning-board/shared.js';
-import { buildMaxProductNoWinnerCondition } from '../../row-resolver/index.js';
 
 describe('automatic candidate SQL contract', () => {
   it.each([
@@ -29,9 +28,11 @@ describe('automatic candidate SQL contract', () => {
     expect('\t\u3000PART\ufeff'.trim()).toBe('PART');
     for (const char of ['\t', '\u3000', '\ufeff']) expect(STRING_TRIM_CHARACTERS).toContain(char);
   });
-  it('fingerprints only winner logical keys, matching the projection snapshot', () => {
+  it('keeps candidate discovery scoped to the board order without input-generation scans', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
-    const inputKeys = sql.sql.split('input_keys AS (')[1].split('input_generations AS MATERIALIZED')[0];
-    expect(inputKeys).toContain(buildMaxProductNoWinnerCondition('r').sql);
+    expect(sql.sql).toContain(`r."rowData"->>'FSEIBAN' = ANY(`);
+    for (const removed of ['input_keys', 'input_generations', 'inputKey', 'ctid', 'xmin', 'JSONB_TO_RECORDSET']) {
+      expect(sql.sql).not.toContain(removed);
+    }
   });
 });

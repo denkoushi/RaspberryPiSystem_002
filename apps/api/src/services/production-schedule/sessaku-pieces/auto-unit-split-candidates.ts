@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { isLaterProcessOrder } from '../process-order.js';
 import { Prisma } from '@prisma/client';
@@ -10,12 +9,6 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 // Only this bounded decimal subset is safe to prefilter numerically in PostgreSQL.
 // Locale-sensitive and other JS Number forms are always left to isLaterProcessOrder.
 const decimalOrderPattern = '^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]{1,2})?$';
-export function autoUnitSplitInputKey(parentIds: Iterable<string>): string {
-  return createHash('md5').update([...new Set(parentIds)].sort().join(',')).digest('hex');
-}
-
-export type AutoUnitSplitExcludedInput = { parentId: string; inputKey: string };
-
 export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, items: readonly GrindingPlanningBoardItem[]): boolean {
   return !items.some((other) => other.fseiban === item.fseiban && other.fhincd.trim() !== ''
     && other.originalResourceCd?.trim() && other.processOrder.trim()
@@ -23,23 +16,8 @@ export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, ite
       : other.fhincd.normalize('NFKC').trim() === item.fhincd.normalize('NFKC').trim()));
 }
 
-/** Lightweight generation gate. MVCC tuple versions change on insert/update/delete, including bulk SQL writes.
- * Broad dashboard invalidation is intentional; no rowData, winner or predecessor evaluation is needed.
- */
-export function autoUnitSplitInputFingerprintSql(siteKey: string): Prisma.Sql {
-  const tables = ['CsvDashboardRow', 'ProductionScheduleOrderSupplement', 'ProductionScheduleProgress',
-    'ProductionScheduleExternalCompletion', 'ProductionScheduleSessakuPieceSet', 'ProductionScheduleSessakuPieceHistory',
-    'ProductionScheduleGrindingPlanningBoardOverride', 'ProductionScheduleGrindingPlanningBoardResourceCapacity'];
-  const generations = tables.map((table) => Prisma.sql`SELECT ${table} AS source,
-      COUNT(*)::text || ':' || COALESCE(bit_xor(hashtextextended(t.ctid::text || ':' || t.xmin::text, 0)), 0)::text AS generation
-    FROM ${Prisma.raw('"' + table + '"')} t WHERE t."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      ${table.includes('Override') || table.includes('ResourceCapacity') ? Prisma.sql`AND t."siteKey" = ${siteKey}` : Prisma.empty}`);
-  return Prisma.sql`SELECT MD5(STRING_AGG(source || ':' || generation, ',' ORDER BY source)) AS fingerprint
-    FROM (${Prisma.join(generations, ' UNION ALL ')}) generations`;
-}
-
 /** The same predicate is executable in pre-deploy counts and SQL/TS contract integration tests. */
-export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy, excludedInputs: AutoUnitSplitExcludedInput[] = []): Prisma.Sql {
+export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy): Prisma.Sql {
   const trim = (value: Prisma.Sql) => Prisma.sql`BTRIM(COALESCE(${value}, ''), ${STRING_TRIM_CHARACTERS})`;
   const resource = trim(Prisma.sql`r."rowData"->>'FSIGENCD'`);
   const part = trim(Prisma.sql`r."rowData"->>'FHINCD'`);
@@ -88,20 +66,6 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         AND ${trim(Prisma.sql`e."rowData"->>'FSIGENCD'`)} <> '' AND ${earlierProcess} <> ''
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})
-    ), input_keys AS (
-      SELECT DISTINCT r."rowData"->>'FSEIBAN' AS "fseiban", ${parentId} AS "parentId"
-      FROM "CsvDashboardRow" r WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND r."rowData"->>'FSEIBAN' = ANY(ARRAY(SELECT DISTINCT "fseiban" FROM eligible))
-        AND ${buildMaxProductNoWinnerCondition('r')}
-    ), input_generations AS MATERIALIZED (
-      SELECT "fseiban", MD5(STRING_AGG("parentId", ',' ORDER BY "parentId" COLLATE "C")) AS "inputKey"
-      FROM input_keys GROUP BY "fseiban"
-    ), inputs AS (
-      SELECT r."id", r."fseiban", r."parentId", g."inputKey" FROM eligible r
-        JOIN input_generations g ON g."fseiban" = r."fseiban"
-    ) SELECT "id", "fseiban", "parentId", "inputKey" FROM inputs r
-      WHERE NOT EXISTS (SELECT 1 FROM JSONB_TO_RECORDSET(${JSON.stringify(excludedInputs)}::jsonb)
-        AS excluded("parentId" text, "inputKey" text)
-        WHERE excluded."parentId" = r."parentId" AND excluded."inputKey" = r."inputKey")
+    ) SELECT "id", "fseiban", "parentId" FROM eligible
       ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
 }

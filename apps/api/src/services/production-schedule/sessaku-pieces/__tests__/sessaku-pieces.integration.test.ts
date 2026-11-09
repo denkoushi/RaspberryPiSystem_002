@@ -1,4 +1,5 @@
-import { autoUnitSplitCandidateSql, autoUnitSplitInputFingerprintSql, autoUnitSplitInputKey } from '../auto-unit-split-candidates.js';
+import { readFileSync } from 'node:fs';
+import { autoUnitSplitCandidateSql } from '../auto-unit-split-candidates.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../../grinding-planning-board-resource-capacity.service.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../../policies/resource-category-policy.service.js';
 import { autoUnitSplitCandidates, autoSplitSessakuUnits } from '../auto-unit-split.service.js';
@@ -102,19 +103,42 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
-  it('invalidates empty-candidate fingerprints after CSV, quantity, flags and progress changes', async () => {
-    const fingerprint = async () => (await prisma.$queryRaw<Array<{ fingerprint: string }>>(autoUnitSplitInputFingerprintSql(site)))[0].fingerprint;
-    let previous = await fingerprint();
-    const changed = async () => { const current = await fingerprint(); expect(current).not.toBe(previous); previous = current; };
-    expect(await fingerprint()).toBe(previous);
-    await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData: { ...rowData, FKOJUN: '3' } } }); await changed();
-    await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: rowId }, data: { plannedQuantity: 1 } }); await changed();
-    await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.create({ data: {
-      csvDashboardId: dashboardId, siteKey: site, resourceCd: '021', dailyHours: 8, unitSplitEnabled: false
-    } }); await changed();
-    await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.updateMany({ where: { siteKey: site }, data: { unitSplitEnabled: true } }); await changed();
-    await prisma.productionScheduleProgress.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: rowId, isCompleted: true } }); await changed();
-    await prisma.productionScheduleProgress.delete({ where: { csvDashboardRowId: rowId } }); await changed();
+  it('backfills deleted pre-feature manual keys from successful split/merge audits exactly and idempotently', async () => {
+    const keys = [
+      { fseiban: seiban, fhincd: '\t手動 品番\u3000', fsigencd: ' 021', fkojun: '０１０' },
+      { fseiban: seiban, fhincd: 'MERGED', fsigencd: '022', fkojun: '20' }
+    ];
+    const ignored = { ...keys[0], fhincd: 'REJECTED' };
+    const audit = (key: typeof ignored, action: string, outcome = 'success') => ({
+      action, outcome, fseiban: seiban, parentItemId: `row:${Buffer.from(encodeSessakuPieceKey(key)).toString('base64url')}`,
+      httpStatus: outcome === 'success' ? 200 : 409, pieceIds: [], beforeJson: {}, afterJson: {}, itemRevisions: {}
+    });
+    await prisma.productionScheduleSessakuPieceAuditLog.createMany({ data: [
+      audit(keys[0], 'split'), audit(keys[0], 'merge'), audit(keys[1], 'merge'),
+      audit(ignored, 'split', 'rejected'), audit(ignored, 'merge', 'failed'), audit(ignored, 'complete'),
+      // Malformed parentItemId values must be skipped without aborting the migration.
+      ...['row:', 'row:!!!', 'abc', `row:${Buffer.from([0xff, 0xfe]).toString('base64url')}`, `row:${Buffer.from('{oops').toString('base64url')}`,
+        `row:${Buffer.from('[1,2,3,4]').toString('base64url')}`].map((parentItemId) => ({ ...audit(ignored, 'split'), parentItemId })),
+      { ...audit(ignored, 'merge'), parentItemId: null }
+    ] });
+    // Neither a PieceSet nor a current CSV row remains for these logical keys.
+    const migration = readFileSync(new URL('../../../../../prisma/migrations/20261109130000_sessaku_unit_split_ops/migration.sql', import.meta.url), 'utf8');
+    const backfill = migration.slice(migration.indexOf('DO $$'));
+    for (let run = 0; run < 2; run++) {
+      await prisma.$executeRawUnsafe(backfill);
+      const saved = await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
+      expect(saved.map(encodeSessakuPieceKey).sort()).toEqual(keys.map(encodeSessakuPieceKey).sort());
+    }
+    const policy = await getResourceCategoryPolicy({ siteKey: site });
+    // A disappeared manual key returning in CSV must stay excluded; a different raw key stays eligible.
+    for (const key of [keys[0], { ...keys[0], fhincd: 'UNTOUCHED' }]) {
+      const data = { ...rowData, FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun };
+      const created = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data, occurredAt: new Date(), dataHash: `${site}-${key.fhincd}` } });
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: created.id,
+        sourceCsvDashboardId: site, productNo: key.fhincd === 'UNTOUCHED' ? '124' : '123', resourceCd: key.fsigencd, processOrder: key.fkojun, plannedQuantity: 3 } });
+      const candidates = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
+      expect(candidates.some((candidate) => candidate.id === created.id)).toBe(key.fhincd === 'UNTOUCHED');
+    }
   });
   it('preserves other-site operation evidence while filling only the saved site definition', async () => {
     const save = (siteKey: string, opNos: number[]) => updateGrindingPlanningBoardResourcePartMinutes({
@@ -410,7 +434,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(sql.map((row) => row.id).sort()).toEqual(ts.map((item) => item.sourceRowId).sort());
   });
   it.each([['A', 'a'], ['a', 'A'], ['0x20', '10'], ['∞', '20'], ['２０', '10'], ['10', '010'], ['2e1', '10']])(
-    'keeps the SQL process prefilter a superset and invalidates TS exclusions after CSV change: %s/%s', async (process, earlier) => {
+    'keeps the SQL process prefilter a superset and re-evaluates after CSV change: %s/%s', async (process, earlier) => {
       rowData = { ...rowData, FSIGENCD: '021', FKOJUN: process };
       await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
       await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FKOJUN: earlier, FSIGENCD: '305' } } });
@@ -420,21 +444,16 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         return projectGrindingPlanningBoard({ rows, details: await readRowDetails(prisma, rows.map((row) => row.id)),
           overrides: new Map(), ranks: { rows: new Map() }, seibanOrder: [seiban], category: 'all' }).items;
       };
-      const sql = await prisma.$queryRaw<Array<{ id: string; parentId: string; inputKey: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
-      const inputRows = await readWinnerRowsByFseibans(prisma, [seiban]);
-      for (const row of sql) expect(row.inputKey).toBe(autoUnitSplitInputKey(inputRows.map((source) => buildGrindingPlanningBoardRowItemId(source.rowData))));
+      const sql = await prisma.$queryRaw<Array<{ id: string; parentId: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
       const ts = autoUnitSplitCandidates(await load(), await getGrindingPlanningBoardResourceCapacity({ siteKey: site }),
         (cd) => isProductionScheduleCuttingResourceCd(cd, policy));
       for (const item of ts) expect(sql.map((row) => row.id)).toContain(item.sourceRowId);
       const rejected = sql.filter((row) => !ts.some((item) => item.sourceRowId === row.id));
-      const cached = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, rejected));
-      expect(cached.map((row) => row.id)).toEqual(ts.map((item) => item.sourceRowId));
       if (rejected.length) {
-        // Same raw parent ID, different upstream CSV input: the former rejection must expire.
+        // Each call evaluates the current rows again without request-to-request exclusions.
         await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FSIGENCD: '305' } } });
-        const refreshed = await prisma.$queryRaw<Array<{ id: string; inputKey: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, rejected));
+        const refreshed = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
         expect(refreshed.map((row) => row.id)).toContain(rowId);
-        expect(refreshed.find((row) => row.id === rowId)?.inputKey).not.toBe(rejected[0].inputKey);
       }
     });
   it('reconciles a piece selected by another site override and honors that site own override', async () => {
