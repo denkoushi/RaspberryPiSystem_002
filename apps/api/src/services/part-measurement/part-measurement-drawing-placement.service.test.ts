@@ -428,7 +428,7 @@ describe('semantic placement', () => {
     const unavailable = new InferenceUnavailableError();
     mocks.vision.completeMany.mockResolvedValueOnce({ rawText: '{"items":[]}' })
       .mockResolvedValueOnce({ rawText: '{"items":[]}' }).mockRejectedValueOnce(unavailable);
-    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(170_000).mockReturnValue(340_000);
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(60_000).mockReturnValue(120_000);
     try {
       await expect(service.ensureRun('target', { processGroup: 'CUTTING' })).rejects.toBe(unavailable);
     } finally {
@@ -514,8 +514,8 @@ describe('semantic placement', () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
-  it('saves a failed run when the call ran out its whole timeout', async () => {
-    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(280_000);
+  it.each([280_000, 121_000])('saves a failed run when the call failed after %i ms', async (elapsed) => {
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(elapsed);
     mocks.vision.completeMany.mockRejectedValue(new InferenceUnavailableError());
     await service.ensureRun('target', { processGroup: 'CUTTING' });
     now.mockRestore();

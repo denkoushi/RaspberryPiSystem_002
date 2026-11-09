@@ -88,7 +88,10 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
             const data = line.slice(5).trim();
             if (data === '[DONE]') return true;
             if (!data) return false;
-            const payload = JSON.parse(data) as { choices?: Array<{ delta?: { content?: unknown } }> };
+            let payload: { choices?: Array<{ delta?: { content?: unknown } }> };
+            try {
+              payload = JSON.parse(data) as typeof payload;
+            } catch { throw new InferenceUnavailableError(); }
             const content = payload.choices?.[0]?.delta?.content;
             if (typeof content === 'string') rawText += content;
             return false;
@@ -109,7 +112,8 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
                 if (consumeLine(line)) { finished = true; break; }
               }
               if (chunk.done) {
-                if (!finished && pending) finished = consumeLine(pending);
+                // Only a complete [DONE] may end without a newline; any other tail is a cut line.
+                if (!finished) finished = pending.startsWith('data:') && pending.slice(5).trim() === '[DONE]';
                 // The gateway closes the connection without [DONE] when the upstream is cut mid-stream.
                 if (!finished) throw new InferenceUnavailableError();
                 break;

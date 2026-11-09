@@ -71,6 +71,10 @@ describe('multi-image vision streaming', () => {
     const h = setup(sse(['data: {"choices":[{"delta":{"content":"ok"}}]}\n', 'data: [DONE]']));
     expect((await h.adapter.completeMany(input)).rawText).toBe('ok');
   });
+  it.each([['a cut line', 'data: {"choices":[{"delta":{"content":"x"'], ['a malformed line', 'data: {oops}\n']])('treats %s as unavailable', async (_name, tail) => {
+    const h = setup(sse(['data: {"choices":[{"delta":{"content":"ok"}}]}\n', tail]));
+    await expect(h.adapter.completeMany(input)).rejects.toBeInstanceOf(InferenceUnavailableError);
+  });
   it('treats a stream that ends without DONE as unavailable', async () => {
     const h = setup(sse(['data: {"choices":[{"delta":{"content":"{\\"items\\":["}}]}\n']));
     await expect(h.adapter.completeMany(input)).rejects.toBeInstanceOf(InferenceUnavailableError);
