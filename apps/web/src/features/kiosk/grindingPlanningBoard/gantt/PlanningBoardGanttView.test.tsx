@@ -1046,6 +1046,24 @@ describe('forward PlanningBoardGanttView', () => {
     await act(async () => {});
     expect(changePieces).toHaveBeenCalledExactlyOnceWith(updated);
   });
+  it('keeps the chain open while tapping two pieces in single-resource mode so they can be merged', async () => {
+    vi.useFakeTimers();
+    const entries = [['a', 1], ['b', 4]].map(([id, quantity]) => item({ itemId: `piece:${id}`, kind: 'piece', pieceId: String(id), parentItemId: 'parent',
+      plannedQuantity: Number(quantity), parentPlannedQuantity: 5, requiredMinutes: 60 }));
+    const changePieces = vi.fn().mockResolvedValue(undefined);
+    render(<PieceGantt items={entries} singleResourceCd="305" changePieces={changePieces} />);
+    for (const entry of entries) {
+      const bar = screen.getAllByTestId(`planning-gantt-bar-${entry.itemId}`)[0]!;
+      tap(bar);
+      expect(bar).toHaveAttribute('aria-pressed', 'true');
+      expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    }
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })[0]!);
+    act(() => vi.advanceTimersByTime(350));
+    fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+    await act(async () => {});
+    expect(changePieces).toHaveBeenCalledExactlyOnceWith(entries);
+  });
   it.each([false, true])('places the backward quantity control immediately before completion (resourceView=%s)', (resourceView) => {
     render(<PieceGantt resourceView={resourceView} items={[item({ kind: 'piece', parentItemId: 'parent', quantity: 1000, plannedQuantity: 1000, parentPlannedQuantity: 2000 })]} mode="backward" />);
     fireEvent.click(screen.getByTestId('planning-gantt-bar-a'));
