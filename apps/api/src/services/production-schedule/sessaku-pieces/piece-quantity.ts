@@ -5,7 +5,7 @@ import { acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, readSessaku
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 export type QuantityPiece = { id: string; position: number; quantity: number; isCompleted: boolean };
-export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number): {
+export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, protectedIds: ReadonlySet<string> = new Set()): {
   pieces: QuantityPiece[]; quantityWarning: SessakuPieceQuantityWarning | null; nextPosition: number;
 } {
   const sorted = [...pieces].sort((a, b) => a.position - b.position).map((p) => ({ ...p }));
@@ -13,10 +13,10 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
   if (nextTotal == null || !Number.isSafeInteger(nextTotal) || nextTotal < 0 || nextTotal > 2_147_483_647) {
     return { pieces: sorted.filter((p) => p.quantity > 0), quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition };
   }
-  const completedTotal = sorted.filter((p) => p.isCompleted || externalCompleted).reduce((n, p) => n + p.quantity, 0);
+  const completedTotal = sorted.filter((p) => p.isCompleted || externalCompleted || protectedIds.has(p.id)).reduce((n, p) => n + p.quantity, 0);
   if (completedTotal > nextTotal) return { pieces: sorted.filter((p) => p.quantity > 0), quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN', nextPosition };
   let delta = nextTotal - sorted.reduce((n, p) => n + p.quantity, 0);
-  const unfinished = sorted.filter((p) => !p.isCompleted && !externalCompleted).reverse();
+  const unfinished = sorted.filter((p) => !p.isCompleted && !externalCompleted && !protectedIds.has(p.id)).reverse();
   if (delta > 0) {
     if (unfinished[0]) unfinished[0].quantity += delta;
     else sorted.push({ id: randomUUID(), position: nextPosition++, quantity: delta, isCompleted: false });
@@ -34,7 +34,7 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
 type LinkedQuantityPiece = QuantityPiece & { sourcePieceId: string | null };
 
 /** Cutting quantities are the baseline; the later row's own plan absorbs the difference at its tail. */
-export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityPiece[], sources: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, consolidateUnfinished = false) {
+export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityPiece[], sources: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, consolidateUnfinished = false, protectedIds: ReadonlySet<string> = new Set()) {
   if (nextTotal == null || !Number.isSafeInteger(nextTotal) || nextTotal < 0 || nextTotal > 2_147_483_647) {
     return { pieces: pieces.filter((piece) => piece.quantity > 0).map((piece) => ({ ...piece })), quantityWarning: 'INVALID_PLANNED_QUANTITY' as const, nextPosition };
   }
@@ -45,14 +45,14 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
   }
   let lastPosition = 0;
   // Reserve detached work first, even after cancellation; source-linked work absorbs the difference at the tail.
-  const baseline: LinkedQuantityPiece[] = pieces.filter((piece) => piece.sourcePieceId === null)
+  const baseline: LinkedQuantityPiece[] = pieces.filter((piece) => piece.sourcePieceId === null || protectedIds.has(piece.id) && !sources.some((source) => source.id === piece.sourcePieceId))
     .map((piece) => ({ ...piece, position: ++lastPosition }));
   baseline.push(...sources.flatMap((source): LinkedQuantityPiece[] => {
     const previous = pieces.filter((piece) => piece.sourcePieceId === source.id);
-    const completedTotal = previous.filter((piece) => piece.isCompleted || externalCompleted).reduce((sum, piece) => sum + piece.quantity, 0);
+    const completedTotal = previous.filter((piece) => piece.isCompleted || externalCompleted || protectedIds.has(piece.id)).reduce((sum, piece) => sum + piece.quantity, 0);
     let assignedUnfinished = false;
     const mapped = previous.flatMap((piece) => {
-      if (piece.isCompleted || externalCompleted) return { ...piece };
+      if (piece.isCompleted || externalCompleted || protectedIds.has(piece.id)) return { ...piece };
       if (assignedUnfinished && consolidateUnfinished) return [];
       const quantity = assignedUnfinished ? 0 : Math.max(0, source.quantity - completedTotal);
       assignedUnfinished = true;
@@ -66,7 +66,7 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
       return { ...piece, position: lastPosition };
     });
   }));
-  const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1));
+  const plan = planSessakuPieceQuantities(baseline, nextTotal, externalCompleted, Math.max(nextPosition, lastPosition + 1), protectedIds);
   // Additional work after all later pieces completed still belongs to the final cutting piece.
   lastPosition = 0;
   const linked = plan.pieces.map((piece) => {
@@ -105,9 +105,16 @@ async function saveQuantityPlan(tx: Prisma.TransactionClient, set: SessakuPieceS
   return true;
 }
 async function removeQuantityPieces(tx: Prisma.TransactionClient, csvDashboardId: string, ids: string[]) {
+  if (!ids.length) return;
+  // Defence in depth: quantity correction must never cascade-delete operation evidence.
+  const removable = await tx.productionScheduleSessakuPiece.findMany({
+    where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } }, select: { id: true }
+  });
+  ids = removable.map((piece) => piece.id);
+  if (!ids.length) return;
   await acquireSessakuPieceBoardStateLocks(tx);
   await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
-  await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
+  await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } } });
 }
 async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
   const winner = await findSessakuPieceWinner(tx, key);
@@ -124,6 +131,11 @@ async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPiec
 export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null, consolidateUnfinished = false): Promise<boolean> {
   const set = await readSessakuPieceSet(tx, key);
   if (!set || !set.pieces.length && !set.sourcePieceSetId) return false;
+  const records = await tx.productionScheduleSessakuPieceOpCompletion.findMany({
+    where: { piece: { pieceSet: { csvDashboardId: set.csvDashboardId, fseiban: key.fseiban, fhincd: key.fhincd } } },
+    select: { pieceId: true, piece: { select: { sourcePieceId: true } } }
+  });
+  const protectedIds = new Set(records.flatMap((record) => record.piece.sourcePieceId ? [record.pieceId, record.piece.sourcePieceId] : [record.pieceId]));
   const source = await readQuantitySource(tx, key);
   const linked = set.pieces.filter((piece) => piece.sourcePieceId);
   if (linked.length || set.sourcePieceSetId) {
@@ -135,7 +147,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     if (!set.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: cutting.id } });
     const cuttingSource = await readQuantitySource(tx, cutting);
     const total = nextTotal ?? cuttingSource.plannedQuantity ?? cutting.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
-    const plan = planLaterProcessPieceQuantities(set.pieces, cutting.pieces, total, source.external, set.nextPosition, consolidateUnfinished);
+    const plan = planLaterProcessPieceQuantities(set.pieces, cutting.pieces, total, source.external, set.nextPosition, consolidateUnfinished, protectedIds);
     if (!set.pieces.length && source.manualCompleted) plan.pieces = plan.pieces.map((piece) => ({ ...piece, isCompleted: true }));
     return saveQuantityPlan(tx, set, plan, total, new Map(plan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
   }
@@ -143,7 +155,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     where: { csvDashboardId: set.csvDashboardId, OR: [{ sourcePieceSetId: set.id }, { pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } }] },
     include: { pieces: { orderBy: { position: 'asc' } } }
   });
-  const plan = planSessakuPieceQuantities(set.pieces, nextTotal, source.external, set.nextPosition);
+  const plan = planSessakuPieceQuantities(set.pieces, nextTotal, source.external, set.nextPosition, protectedIds);
   const removed = set.pieces.filter((piece) => !plan.pieces.some((next) => next.id === piece.id)).map((piece) => piece.id);
   // Never discard completed evidence in a later process to satisfy a reduced cutting plan.
   const laterDetails = await Promise.all(later.map((process) => readQuantitySource(tx, process)));
@@ -165,7 +177,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     const detail = laterDetails[index];
     if (!detail.hasWinner) return false;
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
-    return planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition).pieces
+    return planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition, false, protectedIds).pieces
       .some((piece) => piece.sourcePieceId !== null && removed.includes(piece.sourcePieceId));
   })) {
     plan.pieces = set.pieces;
@@ -178,15 +190,15 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     if (!detail.hasWinner) {
       const references = process.pieces.filter((piece) => piece.sourcePieceId && removed.includes(piece.sourcePieceId));
       if (references.length) {
-        await removeQuantityPieces(tx, set.csvDashboardId, references.filter((piece) => !piece.isCompleted).map((piece) => piece.id));
-        await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: references.filter((piece) => piece.isCompleted).map((piece) => piece.id) } }, data: { sourcePieceId: null } });
+        await removeQuantityPieces(tx, set.csvDashboardId, references.filter((piece) => !piece.isCompleted && !protectedIds.has(piece.id)).map((piece) => piece.id));
+        await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: references.filter((piece) => piece.isCompleted || protectedIds.has(piece.id)).map((piece) => piece.id) } }, data: { sourcePieceId: null } });
         await tx.productionScheduleSessakuPieceSet.update({ where: { id: process.id }, data: { version: { increment: 1 } } });
       }
       continue;
     }
     if (!process.sourcePieceSetId) await tx.productionScheduleSessakuPieceSet.update({ where: { id: process.id }, data: { sourcePieceSetId: set.id } });
     const total = detail.plannedQuantity ?? nextTotal ?? plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
-    const laterPlan = planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition);
+    const laterPlan = planLaterProcessPieceQuantities(process.pieces as LinkedQuantityPiece[], plan.pieces, total, detail.external, process.nextPosition, false, protectedIds);
     if (!process.pieces.length && detail.manualCompleted) laterPlan.pieces = laterPlan.pieces.map((piece) => ({ ...piece, isCompleted: true }));
     await saveQuantityPlan(tx, process, laterPlan, total, new Map(laterPlan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
     await reconcileSessakuPieceProgress(tx, process, { emptyIsIncomplete: true });

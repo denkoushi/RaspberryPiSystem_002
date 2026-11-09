@@ -16,7 +16,7 @@ import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
-import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
+import { STRING_TRIM_CHARACTERS, asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 
 
 export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
@@ -68,7 +68,6 @@ export async function readWinnerRowsByFseibans(client: DbClient, fseibans: reado
   let scope = Prisma.sql`TRUE`;
   if (laneScope) {
     // Match String.trim() in the projection, including tabs and Unicode whitespace.
-    const trimCharacters = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff';
     const inbound = laneScope.inboundKeys.length ? Prisma.sql`(
       COALESCE("r"."rowData"->>'FSEIBAN', ''), COALESCE("r"."rowData"->>'FHINCD', ''),
       COALESCE("r"."rowData"->>'FSIGENCD', ''), COALESCE("r"."rowData"->>'FKOJUN', '')
@@ -76,7 +75,7 @@ export async function readWinnerRowsByFseibans(client: DbClient, fseibans: reado
     // Each predicate depends only on logical-key columns, so it keeps entire winner partitions.
     // Include the target seiban and overridden inbound parents even when their original lane differs.
     scope = Prisma.sql`("r"."rowData"->>'FSEIBAN' = ${laneScope.targetFseiban}
-      OR BTRIM("r"."rowData"->>'FSIGENCD', ${trimCharacters}) = ANY(${[...laneScope.resourceCds]}::text[])
+      OR BTRIM("r"."rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ANY(${[...laneScope.resourceCds]}::text[])
       OR ${inbound})`;
   }
   return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[]) AND ${scope}`);

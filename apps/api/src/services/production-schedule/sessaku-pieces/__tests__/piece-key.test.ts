@@ -1,11 +1,24 @@
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
 describe('piece identity and monotonic generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
     expect(() => sessakuPieceConflict(error)).toThrowError(expect.objectContaining({ statusCode: 409, code: expected }));
+  });
+  it('preserves serialization failures for automatic runners', () => {
+    const error = new Prisma.PrismaClientKnownRequestError('serialization', { code: 'P2034', clientVersion: 'test' });
+    expect(() => sessakuPieceConflict(error, { preserveSerializationFailure: true })).toThrow(error);
+  });
+  it('keeps plain piece reads scalar and loads operation records only for projection reads', async () => {
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1' };
+    const findUnique = vi.fn().mockResolvedValue(null); const findMany = vi.fn().mockResolvedValue([]);
+    const client = { productionScheduleSessakuPieceSet: { findUnique, findMany } } as never;
+    await readSessakuPieceSet(client, key);
+    expect(findUnique.mock.calls[0][0].include).toEqual({ pieces: { orderBy: { position: 'asc' } } });
+    await readSessakuPieceSets(client, [{ rowData: { FSEIBAN: 'S', FHINCD: 'P', FSIGENCD: '021', FKOJUN: '1' } }]);
+    expect(findMany.mock.calls[0][0].include.pieces.include).toEqual({ opCompletions: { select: { opNo: true } } });
   });
   it('preserves exact winner key strings across encoding', () => {
     const key = sessakuPieceKeyFromRow({ FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' });

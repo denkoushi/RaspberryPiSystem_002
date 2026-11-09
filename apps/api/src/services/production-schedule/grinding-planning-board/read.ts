@@ -1,3 +1,4 @@
+import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { Prisma } from '@prisma/client';
@@ -37,7 +38,8 @@ async function projectCurrentBoard(params: { resourceMinutes: GrindingPlanningBo
     return params.selectedFseibans.has(valueAsString(asRowData(row.rowData), 'FSEIBAN'));
   }).map((row) => row.id);
   const ranks = await readRanks(params.client, displayRowIds, params.siteKey);
-  const projection = projectGrindingPlanningBoard({ resourceMinutes: params.resourceMinutes, pieceSets: source.pieceSets, includePieces: params.includePieces, dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
+  const resourceCapacity = params.includePieces ? await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, params.client) : undefined;
+  const projection = projectGrindingPlanningBoard({ resourceCapacity, resourceMinutes: params.resourceMinutes, pieceSets: source.pieceSets, includePieces: params.includePieces, dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 

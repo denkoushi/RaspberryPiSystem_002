@@ -55,6 +55,37 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it.each([true, false])('adds separate setup/operation fields only on enabled effective resources (enabled=%s)', (enabled) => {
+    const source = sourceRow({ FSIGENCD: '021' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const updatedAt = new Date('2026-11-09');
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 2, nextPosition: 3,
+      sourcePieceSetId: null, plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `op-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt,
+        opCompletions: [{ opNo: 2 }, { opNo: 19 }] })) };
+    const ops = [{ opNo: 1, minutes: 4 }, { opNo: 2, minutes: 6 }];
+    const params = baseParams({ rows: [source], includePieces: true, isResourceInCategory: () => true,
+      pieceSets: new Map([[encodeSessakuPieceKey(key), set]]),
+      resourceMinutes: { ownSourceResourceCds: ['022'], values: [{ resourceCd: '022', fhincd: 'P-001', perUnitMinutes: 10, setupMinutes: 30, ops }] },
+      resourceCapacity: { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: { '022': enabled } },
+      overrides: new Map([[buildGrindingPlanningBoardRowItemId(source.rowData), {
+        overrideResourceCd: '022', overrideDueDate: null, alternateRank: null, version: 1
+      }]]) });
+    const items = projectGrindingPlanningBoard(params).items;
+    expect(items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    if (enabled) {
+      expect(items.map((item) => item.unitRequiredMinutes)).toEqual([10, 20]);
+      expect(items.every((item) => item.setupMinutes === 30 && item.fhincd === 'P-001')).toBe(true);
+      expect(items[0].ops).toEqual(ops);
+      expect(items[0].completedOpNos).toEqual([2]);
+    } else {
+      for (const item of items) expect(item).not.toHaveProperty('unitRequiredMinutes');
+    }
+    const original = projectGrindingPlanningBoard({ ...params,
+      resourceMinutes: { ...params.resourceMinutes!, ownSourceResourceCds: [] } }).items;
+    if (enabled) expect(original[0]).toMatchObject({ unitRequiredMinutes: 100 / 3, setupMinutes: 0 });
+  });
   it.each(['100', ''])('uses own minutes with CSV %j and the effective resource for rows and split bars', (csvMinutes) => {
     const source = sourceRow({ FSIGENSHOYORYO: csvMinutes, FHINCD: ' P-001 ' });
     const key = sessakuPieceKeyFromRow(source.rowData);

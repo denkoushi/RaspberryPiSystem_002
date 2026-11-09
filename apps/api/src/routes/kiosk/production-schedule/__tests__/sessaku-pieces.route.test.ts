@@ -4,8 +4,9 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { ApiError } from '../../../../lib/errors.js';
-const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn() }));
-vi.mock('../../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split, mergeSessakuPieces: mocks.merge, setSessakuPieceCompletion: mocks.completion }));
+const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), autoSplit: vi.fn() }));
+vi.mock('../../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split, mergeSessakuPieces: mocks.merge, setSessakuPieceCompletion: mocks.completion, setSessakuPieceOpCompletion: mocks.opCompletion }));
+vi.mock('../../../../services/production-schedule/sessaku-pieces/auto-unit-split.service.js', () => ({ autoSplitSessakuUnits: mocks.autoSplit }));
 import { registerSessakuPiecesRoutes } from '../sessaku-pieces.js';
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleSessakuPieceAuditLog: { create: vi.fn() } } }));
 const base = '/kiosk/production-schedule/grinding-planning-board/pieces';
@@ -66,4 +67,41 @@ describe('sessaku piece routes', () => {
     expect((await instance.inject({ method: 'PUT', headers: { 'x-client-key': 'test-client' }, url: `${base}/${pieceId}/completion`, payload })).statusCode).toBe(200);
     expect(mocks.completion).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', pieceId, audit: expect.objectContaining({ action: 'uncomplete' }) }); await instance.close();
   });
+  it('authenticates automatic split and derives the site on the server', async () => {
+    const instance = await app();
+    mocks.autoSplit.mockResolvedValue({ splitCount: 2, skippedCount: 1, hasMore: false });
+    const response = await instance.inject({ method: 'POST', url: `${base}/auto-unit-split` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ splitCount: 2, skippedCount: 1, hasMore: false });
+    expect(mocks.autoSplit).toHaveBeenCalledWith({ siteKey: 'server-site', audit: expect.objectContaining({ actorClientDeviceId: 'device-1' }) });
+    expect((await instance.inject({ method: 'POST', url: `${base}/auto-unit-split`, payload: { limit: 9999 } })).statusCode).toBe(400);
+    await instance.close();
+    const denied = await app(false);
+    expect((await denied.inject({ method: 'POST', url: `${base}/auto-unit-split` })).statusCode).toBe(401);
+    await denied.close();
+  });
+  it('does not start a route audit for an automatic no-op', async () => {
+    const instance = await app();
+    mocks.autoSplit.mockResolvedValue({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect((await instance.inject({ method: 'POST', url: `${base}/auto-unit-split` })).json()).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
+    await instance.close();
+  });
+  it('validates operation identity and completion intent and ignores an untrusted site', async () => {
+    const instance = await app(); const pieceId = randomUUID();
+    const payload = { intent: 'incomplete', expectedPieceSetVersion: 2, itemRevision: 'a'.repeat(64), siteKey: 'untrusted' };
+    mocks.opCompletion.mockResolvedValue({ parentIsCompleted: false });
+    expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/20/completion`, payload })).statusCode).toBe(200);
+    expect(mocks.opCompletion).toHaveBeenCalledWith({ intent: 'incomplete', expectedPieceSetVersion: 2, itemRevision: payload.itemRevision,
+      siteKey: 'server-site', pieceId, opNo: 20, audit: expect.objectContaining({ action: 'op_uncomplete' }) });
+    for (const opNo of ['0', '21', '1.5', 'x']) {
+      expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/${opNo}/completion`, payload })).statusCode).toBe(400);
+    }
+    expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/1/completion`, payload: { ...payload, intent: 'unknown' } })).statusCode).toBe(400);
+    await instance.close();
+    const denied = await app(false);
+    expect((await denied.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/1/completion`, payload })).statusCode).toBe(401);
+    await denied.close();
+  });
+
 });

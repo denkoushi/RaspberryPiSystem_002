@@ -186,3 +186,27 @@ describe('later process quantity planning', () => {
   });
 
 });
+
+
+describe('quantity correction with partial operation evidence', () => {
+  it('removes an unrecorded unfinished piece before recorded work at the tail', () => {
+    const source = pieces(false);
+    expect(planSessakuPieceQuantities(source, 3, false, 3, new Set(['b']))).toMatchObject({
+      pieces: [source[1]], quantityWarning: null
+    });
+  });
+  it('keeps evidence and raises the existing warning when unrecorded quantity is insufficient', () => {
+    const source = pieces(false);
+    expect(planSessakuPieceQuantities(source, 2, false, 3, new Set(['b']))).toMatchObject({
+      pieces: source, quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN'
+    });
+  });
+  it('protects recorded later pieces even during consolidation and source removal', () => {
+    const source = pieces(false).map((piece) => ({ ...piece, sourcePieceId: 'source' }));
+    const plan = planLaterProcessPieceQuantities(source, [{ id: 'source', quantity: 3, position: 1, isCompleted: false }], 3, false, 3, true, new Set(['b']));
+    expect(plan.pieces).toMatchObject([{ ...source[1], position: 1 }]);
+    expect(planLaterProcessPieceQuantities(source, [], 2, false, 3, false, new Set(['b']))).toMatchObject({
+      pieces: [{ ...source[1], position: 1 }], quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN'
+    });
+  });
+});

@@ -5,7 +5,9 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string };
 export type SessakuPieceClient = Prisma.TransactionClient | PrismaClient;
-export type SessakuPieceSet = Prisma.ProductionScheduleSessakuPieceSetGetPayload<{ include: { pieces: true } }>;
+export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPayload<{ include: { pieces: true } }>, 'pieces'> & {
+  pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { opCompletions?: Array<{ opNo: number }> }>;
+};
 const columns = ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'] as const;
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
@@ -79,7 +81,7 @@ export async function readSessakuPieceSets(client: SessakuPieceClient, rows: rea
   if (!keys.size) return new Map();
   const sets = await client.productionScheduleSessakuPieceSet.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },
-    include: { pieces: { orderBy: { position: 'asc' } } }
+    include: { pieces: { orderBy: { position: 'asc' }, include: { opCompletions: { select: { opNo: true } } } } }
   });
   return new Map(sets.filter((set) => keys.has(encodeSessakuPieceKey(set))).map((set) => [encodeSessakuPieceKey(set), set]));
 }
@@ -105,7 +107,8 @@ export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, it
     return [id, key];
   }));
 }
-export function sessakuPieceConflict(error: unknown): never {
+export function sessakuPieceConflict(error: unknown, options: { preserveSerializationFailure?: boolean } = {}): never {
+  if (options.preserveSerializationFailure && error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') throw error;
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
     throw new ApiError(409, '片が参照されています。再読み込みしてください', undefined, 'PIECE_REFERENCED');
   }

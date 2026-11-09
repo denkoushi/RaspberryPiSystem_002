@@ -1554,6 +1554,7 @@ model CsvDashboard {
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
   grindingPlanningBoardArrivals ProductionScheduleGrindingPlanningBoardArrival[]
   grindingPlanningBoardFirstProcessArrivals ProductionScheduleGrindingPlanningBoardFirstProcessArrival[]
+  sessakuPieceHistory ProductionScheduleSessakuPieceHistory[]
   sessakuPieceSets ProductionScheduleSessakuPieceSet[]
 
   @@index([enabled])
@@ -2037,6 +2038,7 @@ model ProductionScheduleGrindingPlanningBoardResourcePartMinutes {
   fhincd         String   @db.VarChar(120)
   perUnitMinutes Float
   setupMinutes   Int
+  ops ProductionScheduleGrindingPlanningBoardResourcePartOpMinutes[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -2052,6 +2054,7 @@ model ProductionScheduleGrindingPlanningBoardResourceCapacity {
   resourceCd     String   @db.VarChar(20)
   dailyHours     Int
   runsThroughBreaks Boolean @default(false)
+  unitSplitEnabled Boolean?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -6513,6 +6516,7 @@ model ProductionScheduleSessakuPiece {
   updatedAt DateTime @updatedAt
   sourcePieceId String?
   sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: NoAction, map: "PSSPiece_source_fk")
+  opCompletions ProductionScheduleSessakuPieceOpCompletion[]
   laterProcessPieces ProductionScheduleSessakuPiece[] @relation("LaterProcessPieces")
   @@index([sourcePieceId], map: "PSSPiece_source_idx")
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
@@ -6632,4 +6636,35 @@ model AuthSession {
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
+}
+
+model ProductionScheduleGrindingPlanningBoardResourcePartOpMinutes {
+  id String @id(map: "PSGrindingPlanningOpMinutes_pkey") @default(uuid())
+  partMinutesId String
+  opNo Int
+  minutes Float
+  partMinutes ProductionScheduleGrindingPlanningBoardResourcePartMinutes @relation(fields: [partMinutesId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningOpMinutes_part_fk")
+  @@unique([partMinutesId, opNo], map: "PSGrindingPlanningOpMinutes_part_op_key")
+}
+
+model ProductionScheduleSessakuPieceOpCompletion {
+  id String @id @default(uuid())
+  pieceId String
+  opNo Int
+  completedAt DateTime @default(now())
+  piece ProductionScheduleSessakuPiece @relation(fields: [pieceId], references: [id], onDelete: Cascade, map: "PSSPieceOpCompletion_piece_fk")
+  @@unique([pieceId, opNo], map: "PSSPieceOpCompletion_piece_op_key")
+}
+
+// Retain a logical-key marker even when an adopted later-process set is removed.
+model ProductionScheduleSessakuPieceHistory {
+  id String @id @default(uuid())
+  csvDashboardId String
+  fseiban String
+  fhincd String
+  fsigencd String
+  fkojun String
+  createdAt DateTime @default(now())
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSSPieceHistory_dashboard_fk")
+  @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceHistory_logical_key")
 }

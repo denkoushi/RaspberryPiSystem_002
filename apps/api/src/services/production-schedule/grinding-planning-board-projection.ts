@@ -1,3 +1,4 @@
+import { isUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { compareProcessOrder } from './process-order.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
@@ -7,6 +8,7 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type {
   GrindingPlanningBoardResourceMinutesResponse,
+  GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
@@ -85,6 +87,7 @@ export type GrindingPlanningBoardProgressProjection = {
 
 export type GrindingPlanningBoardProjectionInput = {
   resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  resourceCapacity?: GrindingPlanningBoardResourceCapacityResponse;
   includePieces?: boolean;
   pieceSets?: ReadonlyMap<string, SessakuPieceSet>;
   dueSource?: BoardDueSource;
@@ -519,8 +522,10 @@ function buildItems(
 }
 
 function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, parents: GrindingPlanningBoardItem[]): GrindingPlanningBoardItem[] {
+  const rowsById = new Map(params.rows.map((row) => [row.id, row]));
+  const minutesByPart = new Map(params.resourceMinutes?.values.map((value) => [JSON.stringify([value.resourceCd, value.fhincd]), value]));
   return parents.flatMap((parent) => {
-    const row = params.rows.find((row) => row.id === parent.sourceRowId);
+    const row = rowsById.get(parent.sourceRowId);
     const set = row && params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
     if (!set?.pieces.length) return [parent];
     const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
@@ -535,6 +540,17 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
         quantity: piece.quantity, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         fhincd: parent.fhincd }, params.resourceMinutes);
+      const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd);
+      const partMinutes = minutesByPart.get(JSON.stringify([effectiveResourceCd, parent.fhincd.trim()]));
+      const ops = partMinutes?.ops ?? [];
+      const opNos = new Set(ops.map((op) => op.opNo));
+      const unitFields = isUnitSplitEnabled(effectiveResourceCd, params.resourceCapacity) ? {
+        unitRequiredMinutes: resolvedMinutes.requiredMinutesSource === 'own' && partMinutes
+          ? partMinutes.perUnitMinutes * piece.quantity : resolvedMinutes.originalRequiredMinutes,
+        setupMinutes: resolvedMinutes.requiredMinutesSource === 'own' ? partMinutes?.setupMinutes ?? 0 : 0,
+        ops,
+        completedOpNos: (piece.opCompletions ?? []).map((completion) => completion.opNo).filter((opNo) => opNos.has(opNo)).sort((a, b) => a - b)
+      } : {};
       const isCompleted = external || piece.isCompleted;
       const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
         originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
@@ -552,7 +568,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         effectiveDueDate, alternateRank: override?.alternateRank ?? null,
         orderPinned: override?.orderPinned ?? false, specialDue: specialDueForOverride(override),
-        version: own?.version ?? 0, ...resolvedMinutes,
+        version: own?.version ?? 0, ...resolvedMinutes, ...unitFields,
         itemRevision: createItemRevision({ parentRevision: parent.itemRevision, pieceId: piece.id, position: piece.position,
           pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
           quantityWarning: set.quantityWarning, external, inherited, own })

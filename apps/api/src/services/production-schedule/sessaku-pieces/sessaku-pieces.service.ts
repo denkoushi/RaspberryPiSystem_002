@@ -1,3 +1,10 @@
+import { isAutoUnitSplitBusyError } from './piece-db-error.js';
+import { isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
+import { readPieceOperationNumbers, syncWholePieceOperationCompletions } from './piece-operation-definitions.js';
+import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
+import { isUnitSplitEnabled } from './unit-split-policy.js';
+import { getGrindingPlanningBoardResourceMinutes, resourcePartOpMinutesSchema } from '../grinding-planning-board-resource-minutes.service.js';
+import { sessakuPieceCompletionSchema } from './sessaku-pieces.schemas.js';
 import { isLaterProcessOrder } from '../process-order.js';
 import { runSessakuPieceOperation, readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, type PieceAuditContext, type PieceOperationTiming } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
@@ -101,7 +108,9 @@ async function projection(tx: Prisma.TransactionClient, siteKey: string, key: Se
     ...[...shared.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
   const overrides = await timed(audit, 'overridesMs', () => readOverrides(tx, siteKey, itemKeys));
   const ranks = await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
-  const input = { rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
+  const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
+  const resourceCapacity = await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
+  const input = { resourceMinutes, resourceCapacity, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
   return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides }));
 }
@@ -261,11 +270,15 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     if (previous.length || added.length) for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
       previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit);
     await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true });
-    if (!source?.pieces.length) await tx.productionScheduleSessakuPieceSet.delete({ where: { id: set.id } });
+    if (!source?.pieces.length) {
+      // Existing pre-feature manual sets can be adopted; preserve their history before removal.
+      await rememberPieceHistory(tx, process.key);
+      await tx.productionScheduleSessakuPieceSet.delete({ where: { id: set.id } });
+    }
   }
 }
 
-async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
+async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
   external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
@@ -276,9 +289,23 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
   const retryWithExpandedLocks = new Error('Later process lock scope changed');
   const discoveredKeys = new Map<string, SessakuPieceLogicalKey>();
   const execute = () => {
+    if (params.deadline !== undefined && performance.now() >= params.deadline) conflict('AUTO_UNIT_SPLIT_BUDGET');
+    const remainingMs = params.deadline === undefined ? 30000 : Math.max(1, Math.floor(params.deadline - performance.now()));
     const lockStarted = performance.now();
     return prisma.$transaction(async (tx) => {
       if (params.audit?.timing) params.audit.timing.lockWaitMs += performance.now() - lockStarted;
+      if (params.deadline !== undefined) {
+        await tx.$queryRaw`SELECT set_config('lock_timeout', ${`${Math.min(250, remainingMs)}ms`}, true),
+          set_config('statement_timeout', ${`${remainingMs}ms`}, true)`;
+      }
+      if (params.autoUnitSplit) {
+        const where = { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(key) };
+        const [set, history] = await Promise.all([
+          tx.productionScheduleSessakuPieceSet.findUnique({ where, select: { id: true } }),
+          tx.productionScheduleSessakuPieceHistory.findUnique({ where, select: { id: true } })
+        ]);
+        if (set || history) conflict('AUTO_UNIT_SPLIT_ALREADY_TOUCHED');
+      }
       let lockedKeys: ReadonlySet<string> = new Set();
       const lockedRowIds = new Set<string>();
       await timed(params.audit, 'lockWaitMs', async () => {
@@ -332,7 +359,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         }
       })();
       const after = await timed(params.audit, 'afterProjectionMs', () => projection(tx, params.siteKey, key));
-      if (params.audit) Object.assign(params.audit, { resultPieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null } });
+      if (params.audit) Object.assign(params.audit, { resultPieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { ...params.audit.afterJson, count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null } });
       if (params.audit) {
         const changes = collectLaterPiecePropagationAudits(laterBefore, await readLaterPieceAuditSnapshots(tx, [key], laterBefore), params.siteKey);
         if (changes.length) {
@@ -345,13 +372,16 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         quantityWarning: saved?.quantityWarning as SessakuPiecesMutationResponse['quantityWarning'],
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
         sourceRowId: winner.id, parentIsCompleted: result?.parentIsCompleted ?? false };
-    }, { timeout: 30000, maxWait: 15000 });
+    }, { timeout: remainingMs, maxWait: params.deadline === undefined ? 15000 : Math.min(250, remainingMs) });
   };
   for (let attempt = 0; attempt < 3; attempt++) {
     try { return await execute(); }
     catch (error) {
       if (error === retryWithExpandedLocks) continue;
-      sessakuPieceConflict(error);
+      if (params.autoUnitSplit) {
+        if (isAutoUnitSplitBusyError(error)) conflict('AUTO_UNIT_SPLIT_BUSY');
+      }
+      sessakuPieceConflict(error, { preserveSerializationFailure: params.autoUnitSplit });
     }
   }
   conflict();
@@ -359,7 +389,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
 function assertRevision(item: GrindingPlanningBoardItem | undefined, expected: string | undefined) {
   if (!item || item.itemRevision !== expected) conflict();
 }
-export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { siteKey: string; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number }): Promise<SessakuPiecesMutationResponse> {
   if (!params.audit) return runSessakuPieceOperation({ action: 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
     requestedQuantities: params.quantities, parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
   params.audit.requestedQuantities = params.quantities;
@@ -367,6 +397,20 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
   return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
+    if (params.autoUnitSplit) {
+      // Recheck inside the same logical-key lock as every manual edit.
+      const history = await tx.productionScheduleSessakuPieceHistory.findUnique({
+        where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(c.key) }
+      });
+      if (c.set || history) conflict('AUTO_UNIT_SPLIT_ALREADY_TOUCHED');
+      const item = c.current.parents.find((item) => item.itemId === params.parentItemId);
+      const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
+      if (!item || !isUnitSplitEnabled(item.effectiveResourceCd, capacity)
+        || !Number.isSafeInteger(c.plannedQuantity) || c.plannedQuantity! < 2 || c.plannedQuantity! > 50) {
+        conflict('AUTO_UNIT_SPLIT_INELIGIBLE');
+      }
+      if (!isFirstAutoUnitSplitProcess(item, c.current.parents)) conflict('AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE');
+    }
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ分割できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');
     if (Object.values(c.key).some((value) => !value) || c.key.fseiban === '********') conflict('UNSUPPORTED_PIECE_PARENT');
@@ -376,14 +420,18 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     if (params.targetPieceId && !target || !params.targetPieceId && c.set?.pieces.length) conflict();
     const itemId = target ? `piece:${target.id}` : params.parentItemId;
     const item = target ? c.current.pieces.find((p) => p.itemId === itemId) : c.current.parents.find((p) => p.itemId === itemId);
-    assertRevision(item, params.itemRevision);
+    if (params.autoUnitSplit && params.audit) params.audit.itemRevision = item?.itemRevision;
+    // Earlier lots in this request can re-rank this lane; use its locked current revision.
+    assertRevision(item, params.autoUnitSplit ? item?.itemRevision : params.itemRevision);
     if (target?.isCompleted || item?.isCompleted) conflict('COMPLETED_PIECE');
     const total = target?.quantity ?? c.plannedQuantity;
     if (params.quantities.length < 2 || params.quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || params.quantities.reduce((a, b) => a + b, 0) !== total) {
       throw new ApiError(400, '分割数量の合計が指示数と一致しません', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
+    await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit);
+    await rememberPieceHistory(tx, c.key);
     const set = c.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(c.key), plannedQuantity: total } });
     const pieces = c.set?.pieces ?? [];
     const insertAt = target ? pieces.findIndex((p) => p.id === target.id) : 0;
@@ -396,7 +444,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
     for (const [index, piece] of ordered.entries()) {
       if (pieces.some((p) => p.id === piece.id)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { position: index + 1 } });
-      else await tx.productionScheduleSessakuPiece.create({ data: { ...piece, pieceSetId: set.id, position: index + 1 } });
+      else await tx.productionScheduleSessakuPiece.create({ data: { id: piece.id, quantity: piece.quantity, pieceSetId: set.id, position: index + 1 } });
     }
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { ...(!pieces.length ? { plannedQuantity: total } : {}), nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit);
@@ -419,8 +467,10 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
       if (piece.isCompleted) conflict('COMPLETED_PIECE');
       assertRevision(c.current.pieces.find((item) => item.pieceId === piece.id), params.itemRevisions[`piece:${piece.id}`]);
     }
+    await assertNoOperationCompletions(tx, [...params.pieceIds, ...c.later.flatMap(({ set }) => set?.pieces.map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), c.later, params.audit);
+    await rememberPieceHistory(tx, c.key);
     await removeLaterPieces(tx, c.later, params.pieceIds);
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });
     const all = selected.length === c.set.pieces.length;
@@ -443,10 +493,75 @@ export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRe
     if (c.external && params.intent === 'incomplete') conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.external) return;
     const completed = params.intent === 'complete';
-    if (piece.isCompleted !== completed) {
-      await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { isCompleted: completed, completedAt: completed ? new Date() : null } });
-      await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 } } });
-    }
+    const item = c.current.pieces.find((item) => item.pieceId === piece.id);
+    if (!item) conflict('STALE_SESSAKU_PIECES');
+    const operationChanged = await syncWholePieceOperationCompletions(tx, params.siteKey, piece.id, item, completed);
+    await writePieceCompletion(tx, c.set.id, piece, completed, operationChanged);
     await reconcileSessakuPieceQuantities(tx, c.key, c.plannedQuantity);
   });
+}
+
+// Shared by direct piece completion and operation aggregation, inside operate's transaction.
+async function writePieceCompletion(tx: Prisma.TransactionClient, pieceSetId: string,
+  piece: { id: string; isCompleted: boolean }, completed: boolean, operationChanged = false) {
+  if (piece.isCompleted !== completed) {
+    await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id },
+      data: { isCompleted: completed, completedAt: completed ? new Date() : null } });
+  }
+  if (piece.isCompleted !== completed || operationChanged) {
+    await tx.productionScheduleSessakuPieceSet.update({ where: { id: pieceSetId }, data: { version: { increment: 1 } } });
+  }
+}
+
+export async function setSessakuPieceOpCompletion(params: SessakuPieceCompletionRequest & {
+  siteKey: string; pieceId: string; opNo: number; audit?: PieceAuditContext;
+}): Promise<SessakuPiecesMutationResponse> {
+  const body = sessakuPieceCompletionSchema.parse(params);
+  const opNo = resourcePartOpMinutesSchema.shape.opNo.parse(params.opNo);
+  if (!params.audit) return runSessakuPieceOperation({ action: body.intent === 'complete' ? 'op_complete' : 'op_uncomplete',
+    siteKey: params.siteKey, expectedVersion: body.expectedPieceSetVersion, pieceIds: [params.pieceId], itemRevision: body.itemRevision },
+    (audit) => setSessakuPieceOpCompletion({ ...params, audit }));
+  const keys = await resolveSessakuPieceItemKeys(prisma, [`piece:${params.pieceId}`]);
+  const key = keys.get(`piece:${params.pieceId}`)!;
+  return operate({ ...params, parentItemId: sessakuPieceParentItemId(key) }, async (tx, c) => {
+    const piece = c.set?.pieces.find((piece) => piece.id === params.pieceId);
+    const item = c.current.pieces.find((item) => item.pieceId === params.pieceId);
+    if (!piece || !c.set || !item) conflict();
+    assertRevision(item, body.itemRevision);
+    const definitions = await readPieceOperationNumbers(tx, params.siteKey, item);
+    if (!definitions.length || !definitions.some((op) => op.opNo === opNo)) {
+      throw new ApiError(400, '登録されていない工程です', undefined, 'PIECE_OPERATION_NOT_CONFIGURED');
+    }
+    if (c.external && body.intent === 'incomplete') conflict('EXTERNALLY_COMPLETED_ITEM');
+    if (c.external) return;
+    const where = { pieceId: piece.id, opNo };
+    const before = await tx.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: piece.id }, select: { opNo: true } });
+    if (body.intent === 'complete') {
+      await tx.productionScheduleSessakuPieceOpCompletion.upsert({ where: { pieceId_opNo: where }, create: where, update: {} });
+    } else {
+      await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({ where });
+    }
+    const after = new Set(before.map((op) => op.opNo));
+    if (body.intent === 'complete') after.add(opNo); else after.delete(opNo);
+    const completed = body.intent === 'complete' && (piece.isCompleted || definitions.every((op) => after.has(op.opNo)));
+    await writePieceCompletion(tx, c.set.id, piece, completed, before.some((op) => op.opNo === opNo) !== after.has(opNo));
+    await reconcileSessakuPieceQuantities(tx, c.key, c.plannedQuantity);
+    params.audit!.beforeJson = { ...params.audit!.beforeJson, opNo, completedOpNos: before.map((op) => op.opNo).sort((a, b) => a - b) };
+    params.audit!.afterJson = { opNo, completedOpNos: [...after].sort((a, b) => a - b) };
+  });
+}
+
+async function rememberPieceHistory(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
+  const logicalKey = sessakuPieceSetWhere(key);
+  await tx.productionScheduleSessakuPieceHistory.upsert({
+    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: logicalKey }, create: logicalKey, update: {}
+  });
+}
+
+async function assertNoOperationCompletions(tx: Prisma.TransactionClient, pieceIds: string[]) {
+  if (!pieceIds.length) return;
+  const completion = await tx.productionScheduleSessakuPieceOpCompletion.findFirst({
+    where: { pieceId: { in: pieceIds } }, select: { pieceId: true }
+  });
+  if (completion) conflict('PIECE_OPERATION_COMPLETED');
 }

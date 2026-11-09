@@ -1,5 +1,7 @@
+import { syncWholePiecesOperationCompletions } from './sessaku-pieces/piece-operation-definitions.js';
+import { readOverrides } from './grinding-planning-board/source.js';
 import { runDueDateTransaction } from './due-date-transaction.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, readSessakuPieceSet, sessakuPieceKeyFromRow, supportsSessakuPieceRelations } from './sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, sessakuPieceParentItemId, readSessakuPieceSet, sessakuPieceKeyFromRow, supportsSessakuPieceRelations } from './sessaku-pieces/piece-key.js';
 import { reconcileSessakuPieceQuantities } from './sessaku-pieces/piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './sessaku-pieces/piece-completion.js';
 import { performance } from 'node:perf_hooks';
@@ -166,7 +168,15 @@ export async function driveProductionScheduleRowCompletion(params: {
         const external = await tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: row.id } });
         if (external?.isExternallyCompleted && !nextIsCompleted) throw new ApiError(409, '外部完了は取消できません', undefined, 'EXTERNALLY_COMPLETED_ITEM');
         if (external?.isExternallyCompleted) { unchanged = true; nextIsCompleted = true; return; }
+        const siteKey = resolveSiteKeyForScopeKey(locationKey);
+        const parentId = sessakuPieceParentItemId(key);
+        const overrides = await readOverrides(tx, siteKey, [parentId, ...set.pieces.map((piece) => `piece:${piece.id}`)]);
+        const operationChanged = await syncWholePiecesOperationCompletions(tx, siteKey, set.pieces.map((piece) => {
+          const override = overrides.get(`piece:${piece.id}`) ?? overrides.get(parentId);
+          return { id: piece.id, effectiveResourceCd: (override?.overrideResourceCd ?? key.fsigencd).trim(), fhincd: key.fhincd };
+        }), nextIsCompleted);
         const changed = set.pieces.some((piece) => piece.isCompleted !== nextIsCompleted);
+        if (operationChanged && !changed) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 } } });
         if (changed) {
           await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { isCompleted: nextIsCompleted, completedAt: nextIsCompleted ? new Date() : null } });
           await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 } } });
@@ -175,7 +185,7 @@ export async function driveProductionScheduleRowCompletion(params: {
         await reconcileSessakuPieceQuantities(tx, key, supplement?.plannedQuantity ?? null);
         const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
         nextIsCompleted = result?.parentIsCompleted ?? false;
-        unchanged = !changed && nextIsCompleted === isCompleted;
+        unchanged = !changed && !operationChanged && nextIsCompleted === isCompleted;
         return;
       }
       if (unchanged) return;
