@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { PlanningBoardGanttView } from './gantt/PlanningBoardGanttView';
 import { PlanningBoardFocusView } from './PlanningBoardFocusView';
@@ -77,6 +77,15 @@ export function PlanningBoardPageView({
   sortedItemsBySeiban, openFseibans, scanFocusKey, visibleItems, moveResourceByDrag, specialDueMode,
   updateSpecialDue, nowMs, resourceDragDisabled
 }: Props) {
+  const previousGantt = useRef<{ layout: Props['ganttLayout']; siteKey: string } | null>(null);
+  useLayoutEffect(() => {
+    if (data) previousGantt.current = { layout: ganttLayout, siteKey: data.siteKey };
+  }, [data, ganttLayout]);
+  // Keep the axis and mounted viewport during a scope switch, without exposing old rows.
+  const displayLayout = useMemo(() => data || !previousGantt.current ? ganttLayout : {
+    ...previousGantt.current.layout, groups: [], forwardQueue: [], overlapCount: 0, lateCount: 0
+  }, [data, ganttLayout]);
+  const ganttSiteKey = data?.siteKey ?? previousGantt.current?.siteKey;
   const writingRef = useRef(piecesWriting);
   useLayoutEffect(() => { writingRef.current = piecesWriting; }, [piecesWriting]);
   // Only write controls in this DOM subtree are gated. Portaled rank choices
@@ -90,20 +99,20 @@ export function PlanningBoardPageView({
   }, []);
   const content = (
     <>
-      {data && ganttEnabled ? (
-        <PlanningBoardGanttView resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
-          onMinutesSourceChange={gantt.changeMinutesSource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
+      {ganttEnabled && (data || previousGantt.current) ? (
+        <PlanningBoardGanttView resourceMinutesItems={data ? gantt.resourceMinutesItems : []} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
+          onMinutesSourceChange={gantt.changeMinutesSource} valueSheetOpen={Boolean(data) && gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={displayLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}
-          resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
+          resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${ganttSiteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
           runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           onArrivalChange={onArrivalChange} onFirstProcessArrivalChange={onFirstProcessArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && (Boolean(gantt.singleResourceCd) || view === 'resource') && pinMode} onTogglePin={togglePin}
           selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
-          onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
-          pieceDisabled={allocation === 'original' || writeBlocked || Boolean(specialDueMode)}
-          disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
+          onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => Boolean(data?.resources.includes(resource)) && canMoveResource(item, resource)}
+          pieceDisabled={!data || allocation === 'original' || writeBlocked || Boolean(specialDueMode)}
+          disabled={!data || interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={!data || allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (
         <div className="mt-2">
           <PlanningBoardFocusView

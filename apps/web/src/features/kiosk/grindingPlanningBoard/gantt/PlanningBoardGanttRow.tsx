@@ -11,7 +11,7 @@ import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import {
-  LATE_STAR_BUTTON_HEIGHT, LATE_STAR_TEXT_HEIGHT, LATE_STAR_GAP,
+  estimateLateStarLabelHeight,
   PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars
 } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
@@ -182,8 +182,9 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
   const chipsByPart = usePlanningBoardProcessChips();
   const lateStars = usePlanningBoardLateStars(row.bars, dateToDay(today));
-  const estimatedHeight = GANTT_ROW_HEIGHT + lateStars.groups.length *
-    ((onToggleSeiban ? LATE_STAR_BUTTON_HEIGHT : LATE_STAR_TEXT_HEIGHT) + LATE_STAR_GAP);
+  // px-2 on both sides; reserve space for the optional warning and missing-due labels.
+  const labelWidth = GANTT_LABEL_WIDTH - 16 - (row.flagged ? 16 : 0) - (row.bars.some((bar) => bar.due == null) ? 52 : 0);
+  const estimatedHeight = Math.max(GANTT_ROW_HEIGHT, estimateLateStarLabelHeight(lateStars.groups, labelWidth, Boolean(onToggleSeiban)));
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
   for (const bar of row.bars) {
