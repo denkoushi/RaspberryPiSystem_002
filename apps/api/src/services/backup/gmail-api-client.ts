@@ -112,6 +112,7 @@ export class GmailApiClient {
   private readonly gate: GmailRequestGateService;
   private readonly allowWait: boolean;
   private readonly requestTimeoutMs: number;
+  private readonly addedLabelIds = new Map<string, string>();
   private static readonly DEFAULT_PDF_FILENAME = 'document.pdf';
   private static readonly DEFAULT_HTML_FILENAME = 'document.html';
   private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -475,7 +476,8 @@ export class GmailApiClient {
 
   async addLabelToMessage(messageId: string, labelName: string): Promise<void> {
     try {
-      const labelId = await this.ensureLabel(labelName);
+      const labelId = this.addedLabelIds.get(labelName) ?? await this.ensureLabel(labelName);
+      this.addedLabelIds.set(labelName, labelId);
       await this.gateExecute('gmail.users.messages.modify(addLabel)', async () =>
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (this.gmail.users.messages.modify as any)(
@@ -484,6 +486,10 @@ export class GmailApiClient {
         )
       );
     } catch (error) {
+      const source = error as { status?: unknown; code?: unknown; response?: { status?: unknown } } | null;
+      if (source?.status === 404 || source?.code === 404 || source?.response?.status === 404) {
+        this.addedLabelIds.delete(labelName);
+      }
       if (error instanceof GmailRateLimitedDeferredError) {
         throw error;
       }

@@ -6,6 +6,7 @@ import { GMAIL_SENDER_REJECTED_LABEL, GmailSenderRejectedError } from '../gmail-
 import { prisma } from '../../../lib/prisma.js';
 import { defaultBackupConfig } from '../../backup/backup-config.js';
 import type { GmailMessage } from '../../backup/gmail-api-client.js';
+import { GmailRateLimitedDeferredError } from '../../backup/gmail-request-gate.service.js';
 import { GmailStorageProvider } from '../../backup/storage/gmail-storage.provider.js';
 import { MachineSignalGmailIngestionService } from '../../machine-signal/machine-signal-gmail-ingestion.service.js';
 import { AssemblyProcedureGmailImportService } from '../../assembly/assembly-procedure-gmail-import.service.js';
@@ -165,7 +166,7 @@ describe('Gmail sender policy ingestion boundaries', () => {
 });
 
 describe('GmailSenderVerificationSession cache', () => {
-  it('labels concurrent rejected reads once and blocks later operations on them', async () => {
+  it('labels concurrent rejected reads and blocks later operations on them', async () => {
     const gmail = port();
     const session = new GmailSenderVerificationSession(defaultBackupConfig);
     const client = session.wrap(gmail);
@@ -176,18 +177,39 @@ describe('GmailSenderVerificationSession cache', () => {
     await expect(client.trashMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
     await expect(client.getAttachment('bad-1', 'bad-1-attachment')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
     expect(gmail.getMessage).toHaveBeenCalledTimes(2);
-    expect(gmail.addLabelToMessage).toHaveBeenCalledExactlyOnceWith('bad-1', GMAIL_SENDER_REJECTED_LABEL);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledWith('bad-1', GMAIL_SENDER_REJECTED_LABEL);
     expect(gmail.trashMessage).not.toHaveBeenCalled();
     expect(gmail.getAttachment).not.toHaveBeenCalled();
     await client.getMessage('good');
     await client.markAsRead('good');
     expect(gmail.getMessage).toHaveBeenCalledTimes(3);
     expect(gmail.markAsRead).toHaveBeenCalledWith('good');
-    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(1);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
   });
 });
 
 describe('Gmail sender rejection labels', () => {
+  it.each(['searchMessages', 'searchMessagesAll', 'searchMessagesLimited'] as const)('uses only the label exclusion for empty queries in %s', async (method) => {
+    const gmail = port();
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);
+    for (const query of ['', ' \t\n ']) {
+      await client[method](query, 3);
+    }
+    expect(gmail[method]).toHaveBeenCalledTimes(2);
+    expect(gmail[method]).toHaveBeenNthCalledWith(1, '-label:rps_sender_rejected', 3);
+    expect(gmail[method]).toHaveBeenNthCalledWith(2, '-label:rps_sender_rejected', 3);
+  });
+  it('preserves deferred label errors and refetches the message on retry', async () => {
+    const gmail = port();
+    const deferred = new GmailRateLimitedDeferredError({ cooldownUntil: new Date('2026-11-09T00:00:00Z'), retryAfterMs: 1000, operation: 'gmail.users.messages.modify(addLabel)' });
+    gmail.addLabelToMessage.mockRejectedValueOnce(deferred);
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);
+    await expect(client.getMessage('bad')).rejects.toBe(deferred);
+    await expect(client.getMessage('bad')).rejects.toBeInstanceOf(GmailSenderRejectedError);
+    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
+  });
   it.each(['searchMessages', 'searchMessagesAll', 'searchMessagesLimited'] as const)('excludes rejected labels in %s and preserves other arguments', async (method) => {
     const gmail = port();
     const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);

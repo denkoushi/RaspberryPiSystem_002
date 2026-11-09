@@ -573,6 +573,35 @@ describe('GmailApiClient', () => {
   });
 
   describe('addLabelToMessage', () => {
+    it.each([false, true])('reuses the label ID after lookup or creation (already exists: %s)', async (exists) => {
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: exists ? [{ id: 'label-rejected', name: 'rps_sender_rejected' }] : [] } });
+      if (!exists) mockGmailLabels.create.mockResolvedValueOnce({ data: { id: 'label-rejected' } });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} }).mockResolvedValueOnce({ data: {} });
+      await gmailClient.addLabelToMessage('msg-1', 'rps_sender_rejected');
+      await gmailClient.addLabelToMessage('msg-2', 'rps_sender_rejected');
+      expect(mockGmailLabels.list).toHaveBeenCalledTimes(1);
+      expect(mockGmailLabels.create).toHaveBeenCalledTimes(exists ? 0 : 1);
+      expect(mockGmailMessages.modify).toHaveBeenNthCalledWith(2, { userId: 'me', id: 'msg-2', requestBody: { addLabelIds: ['label-rejected'] } }, { retry: false, timeout: 30_000 });
+    });
+    it.each(['list', 'create'] as const)('does not cache failed label %s', async (operation) => {
+      if (operation === 'create') mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [] } });
+      mockGmailLabels[operation].mockRejectedValueOnce(new Error('API Error'));
+      await expect(gmailClient.addLabelToMessage('msg-1', 'rps_sender_rejected')).rejects.toThrow('Failed to add label to message');
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [{ id: 'label-rejected', name: 'rps_sender_rejected' }] } });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} });
+      await gmailClient.addLabelToMessage('msg-1', 'rps_sender_rejected');
+      expect(mockGmailLabels.list).toHaveBeenCalledTimes(2);
+    });
+    it('discards the cached label ID after a 404 modification failure', async () => {
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [{ id: 'label-old', name: 'rps_sender_rejected' }] } });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} }).mockRejectedValueOnce({ response: { status: 404 } }).mockResolvedValueOnce({ data: {} });
+      await gmailClient.addLabelToMessage('msg-1', 'rps_sender_rejected');
+      await expect(gmailClient.addLabelToMessage('msg-2', 'rps_sender_rejected')).rejects.toThrow('Failed to add label to message');
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [{ id: 'label-new', name: 'rps_sender_rejected' }] } });
+      await gmailClient.addLabelToMessage('msg-2', 'rps_sender_rejected');
+      expect(mockGmailLabels.list).toHaveBeenCalledTimes(2);
+      expect(mockGmailMessages.modify).toHaveBeenNthCalledWith(3, { userId: 'me', id: 'msg-2', requestBody: { addLabelIds: ['label-new'] } }, { retry: false, timeout: 30_000 });
+    });
     it.each([false, true])('adds a label (already exists: %s)', async (exists) => {
       mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: exists ? [{ id: 'label-rejected', name: 'rps_sender_rejected' }] : [] } });
       if (!exists) mockGmailLabels.create.mockResolvedValueOnce({ data: { id: 'label-rejected' } });
