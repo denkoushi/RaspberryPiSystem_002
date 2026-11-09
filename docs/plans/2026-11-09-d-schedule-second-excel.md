@@ -38,7 +38,7 @@ Decision: inspect all XLSX attachments and finish independent attachments even w
 ## After deploy: importing the 2026-11-07 email once
 
 
-Gmail message `1a1bd5b14ff055a8` was already trashed and marked read by the old code, and only its D社 attachment was imported. After the deploy, move that email from the trash back to the inbox, remove the `rps_processed` label (moving to trash adds it, and the intake query excludes it), and mark it unread. On the next cycle the existing D_COMPANY SUCCESS run is reused, so only the INTERNAL attachment is applied. The D notice is not sent twice because it is delivered with `once: true`. After that cycle the email goes back to the trash. This changes production mail, so it needs explicit approval.
+Gmail message `1a1bd5b14ff055a8` already has a D_COMPANY SUCCESS run, and only its D社 attachment was imported. Restoring the same email would skip D社, so BA1S7325 (missed by the old D parser) would stay at the 10/30 value. Decision (user, 2026-11-09): after this change is deployed, the user forwards that email (no subject, both workbooks attached) to the same Gmail account. No sender filter is configured. The forward gets a new message id, so the standard cycle applies both kinds. Do not forward before this change is deployed. Afterwards, check that BA1S7325 has parts complete 11/07 and ★LSLH処理出 11/02, and that other production numbers are unchanged.
 
 ## Outcomes & Retrospective
 
