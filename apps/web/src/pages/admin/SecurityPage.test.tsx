@@ -42,7 +42,7 @@ beforeEach(() => {
 function remember(storedUser = user) {
   localStorage.setItem('factory-auth', JSON.stringify({
     token: session.accessToken, refresh: session.refreshToken, user: storedUser,
-    expiresAt: '2099-01-01T00:00:00.000Z'
+    loginId: 'remembered-login', expiresAt: '2099-01-01T00:00:00.000Z'
   }));
 }
 
@@ -74,7 +74,7 @@ describe('SecurityPage MFA setup', () => {
     if (remembered) {
       expect(JSON.parse(localStorage.getItem('factory-auth')!)).toEqual({
         token: activation.accessToken, refresh: activation.refreshToken,
-        user: activation.user, expiresAt: '2099-01-01T00:00:00.000Z'
+        loginId: 'remembered-login', user: activation.user, expiresAt: '2099-01-01T00:00:00.000Z'
       });
     } else {
       expect(localStorage.getItem('factory-auth')).toBeNull();
