@@ -109,7 +109,9 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
                 if (consumeLine(line)) { finished = true; break; }
               }
               if (chunk.done) {
-                if (!finished && pending) consumeLine(pending);
+                if (!finished && pending) finished = consumeLine(pending);
+                // The gateway closes the connection without [DONE] when the upstream is cut mid-stream.
+                if (!finished) throw new InferenceUnavailableError();
                 break;
               }
             }

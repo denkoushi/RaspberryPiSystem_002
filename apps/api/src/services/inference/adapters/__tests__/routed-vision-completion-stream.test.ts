@@ -67,9 +67,13 @@ describe('multi-image vision streaming', () => {
     const h = setup(sse(['data: [DONE]\n']));
     await expect(h.adapter.completeMany(input)).rejects.toThrow('Inference vision response missing assistant text');
   });
-  it('consumes a final data line without a newline', async () => {
-    const h = setup(sse(['data: {"choices":[{"delta":{"content":"ok"}}]}']));
+  it('consumes a final DONE line without a newline', async () => {
+    const h = setup(sse(['data: {"choices":[{"delta":{"content":"ok"}}]}\n', 'data: [DONE]']));
     expect((await h.adapter.completeMany(input)).rawText).toBe('ok');
+  });
+  it('treats a stream that ends without DONE as unavailable', async () => {
+    const h = setup(sse(['data: {"choices":[{"delta":{"content":"{\\"items\\":["}}]}\n']));
+    await expect(h.adapter.completeMany(input)).rejects.toBeInstanceOf(InferenceUnavailableError);
   });
   it('keeps the non-stream request body unchanged', async () => {
     const h = setup(new Response('{"choices":[{"message":{"content":"ok"}}]}'));
