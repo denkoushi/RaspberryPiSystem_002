@@ -83,7 +83,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     const pending = drag.current;
     drag.current = null;
     setAutoScrolling(false);
-    if (pending?.moved) onDragPreview(null);
+    if (pending?.ready) onDragPreview(null);
     setDrop(null);
     if (pending) pending.element.style.touchAction = '';
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
@@ -240,8 +240,6 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           if (event.pointerType === 'touch') longPress.current = setTimeout(() => {
             if (!drag.current) return;
             drag.current.ready = true;
-            drag.current.moved = true;
-            setAutoScrolling(true);
             onDragPreview({ source: 'queue', bar, x: drag.current.x, y: drag.current.y, allowed: drag.current.allowed, drop: null });
             element.setPointerCapture?.(event.pointerId);
             element.style.touchAction = 'none';

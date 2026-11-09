@@ -3,14 +3,15 @@ import ExcelJS from 'exceljs';
 import { calendarDate, cellText, formulaWithoutResult, normalize, readDate } from './date-cell.js';
 import type { DScheduleMinutesBlock, DScheduleMinutesParseResult, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
 
-// Allow the same 45-day date discrepancy used by the D company parser before rolling back a year.
+// Match the D company parser's nearest-year inference for meeting dates.
 function dateFromMMDD(mmdd: string, receivedAt: Date): string | null {
   const month = Number(mmdd.slice(0, 2));
   const day = Number(mmdd.slice(2));
   const year = receivedAt.getUTCFullYear();
-  const date = calendarDate(year, month, day);
-  if (!date) return null;
-  return Date.parse(date) - receivedAt.getTime() > 45 * 86400000 ? calendarDate(year - 1, month, day) : date;
+  return [year - 1, year, year + 1]
+    .map((candidate) => calendarDate(candidate, month, day))
+    .filter((date): date is string => date !== null)
+    .sort((a, b) => Math.abs(Date.parse(a) - receivedAt.getTime()) - Math.abs(Date.parse(b) - receivedAt.getTime()))[0] ?? null;
 }
 
 export async function parseInternalScheduleMinutesXlsx(input: {
@@ -80,7 +81,7 @@ export async function parseInternalScheduleMinutesXlsx(input: {
       warn('MERGED_ACROSS_HEADERS', block.seiban, partsCell);
     } else if (formulaWithoutResult(partsCell)) {
       warn('FORMULA_NO_RESULT', block.seiban, partsCell);
-    } else if (/完$/.test(normalize(cellText(partsCell)))) {
+    } else if (/(?<!未)完$/.test(normalize(cellText(partsCell)))) {
       // 「完」「支給品以外完」 mean the parts are done; there is no date to read.
     } else {
       const parsed = readDate(partsCell, meetingDate, workbook.properties.date1904,

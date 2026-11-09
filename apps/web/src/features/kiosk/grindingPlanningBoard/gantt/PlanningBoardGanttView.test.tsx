@@ -2086,7 +2086,7 @@ describe('forward PlanningBoardGanttView', () => {
       expect(strip.scrollLeft).toBe(0);
     });
 
-    it('starts touch scrolling only after the long press and preserves touch scroll prevention', () => {
+    it('starts touch scrolling only after moving 8px after the long press and preserves touch scroll prevention', () => {
       vi.useFakeTimers();
       const { strip, card, panel, frame, move } = setup();
       fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 400, clientY: 150, button: 0 });
@@ -2096,6 +2096,12 @@ describe('forward PlanningBoardGanttView', () => {
       act(() => vi.advanceTimersByTime(1));
       expect(card.style.touchAction).toBe('none');
       expect(fireEvent.touchMove(panel)).toBe(false);
+      frame(2);
+      expect(strip.scrollLeft).toBe(0);
+      move(393);
+      frame(2);
+      expect(strip.scrollLeft).toBe(0);
+      move(408);
       frame(2);
       expect(strip.scrollLeft).toBe(48);
       move(250);
