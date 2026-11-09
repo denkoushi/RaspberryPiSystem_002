@@ -473,6 +473,27 @@ test('relevance sort and filter-only questions keep the previous candidate order
   assert.equal(filterOnly.timings.relevanceMs, null);
 });
 
+// A follow-up that dropped the only condition (「全部門で」, 2026-11-08) arrives with no filter and no
+// query; ordered by date it lists the newest records instead of returning nothing.
+test('a date-ordered plan without filters or query lists the newest records', async () => {
+  const dated = [];
+  for (let index = 0; index < 8; index += 1) {
+    dated.push(bodyRecord(`old-${index}`, `2020-01-0${index + 1}`, 'qxrare'));
+  }
+  dated.push(bodyRecord('newest', '2026-06-01', 'qxrare once'));
+  const listed = await execute(plan({
+    sort: { field: 'discoveredOn', direction: 'desc' },
+    limit: 5,
+    display: ['discoveredOn'],
+    diagnostics: { contentDecision: { jev: false, residualTokens: [], final: false, dropWidened: true }, limitExplicit: false },
+  }), { records: dated, catalog });
+  assert.deepEqual(listed.results.map((result) => result.recordId), ['newest', 'old-7', 'old-6', 'old-5', 'old-4']);
+  assert.equal(listed.timings.relevanceMs, null);
+
+  const relevance = await execute(plan({ sort: 'relevance', limit: 5, display: ['discoveredOn'] }), { records: dated, catalog });
+  assert.deepEqual(relevance.results, []);
+});
+
 test('hybrid recent content also admits a dense hit near the top cosine', () => {
   for (const verbatimIds of [undefined, new Set()]) {
     assert.equal(RECENT_CONTENT_DENSE_FRACTION, 0.75);
