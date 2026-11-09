@@ -1,4 +1,3 @@
-import { writeDebugLog } from '../../lib/debug-log.js';
 import { ApiError } from '../../lib/errors.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
 import type { BackupConfig } from '../backup/backup-config.js';
@@ -223,87 +222,21 @@ export class ImportScheduleAdminService {
   }
 
   async runSchedule(scheduleId: string, context: RunScheduleContext): Promise<unknown> {
-    await writeDebugLog({
-      sessionId: 'debug-session',
-      runId: 'run2',
-      hypothesisId: 'H1',
-      location: 'imports.ts:1249',
-      message: 'manual run request received (file log)',
-      data: { scheduleId, reqId: context.requestId },
-      timestamp: Date.now(),
-    });
-
+    void context;
     const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
     }
     const schedule = config.csvImports?.find((item) => item.id === scheduleId);
-    await writeDebugLog({
-      sessionId: 'debug-session',
-      runId: 'run2',
-      hypothesisId: 'H2',
-      location: 'imports.ts:1253',
-      message: 'loaded csv import schedules (file log)',
-      data: {
-        scheduleId,
-        hasCsvImports: Array.isArray(config.csvImports),
-        csvImportCount: config.csvImports?.length ?? 0,
-        scheduleIds: (config.csvImports ?? []).map((item) => item.id),
-        backupConfigPath: process.env.BACKUP_CONFIG_PATH ?? null,
-      },
-      timestamp: Date.now(),
-    });
-
     if (!schedule) {
-      await writeDebugLog({
-        sessionId: 'debug-session',
-        runId: 'run2',
-        hypothesisId: 'H1',
-        location: 'imports.ts:1256',
-        message: 'schedule not found (file log)',
-        data: { scheduleId },
-        timestamp: Date.now(),
-      });
       throw new ApiError(404, `スケジュールが見つかりません: ${scheduleId}`);
     }
 
     const scheduler = this.getScheduler();
-    await writeDebugLog({
-      sessionId: 'debug-session',
-      runId: 'run2',
-      hypothesisId: 'H4',
-      location: 'imports.ts:1261',
-      message: 'about to run scheduler import (file log)',
-      data: { scheduleId, hasScheduler: !!scheduler },
-      timestamp: Date.now(),
-    });
-
     try {
       const summary = await scheduler.runImport(scheduleId);
-      await writeDebugLog({
-        sessionId: 'debug-session',
-        runId: 'run2',
-        hypothesisId: 'H4',
-        location: 'imports.ts:1263',
-        message: 'scheduler.runImport succeeded (file log)',
-        data: { scheduleId },
-        timestamp: Date.now(),
-      });
       return summary;
     } catch (error) {
-      await writeDebugLog({
-        sessionId: 'debug-session',
-        runId: 'run2',
-        hypothesisId: 'H4',
-        location: 'imports.ts:1267',
-        message: 'scheduler.runImport failed (file log)',
-        data: {
-          scheduleId,
-          errorName: error instanceof Error ? error.name : 'unknown',
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-        timestamp: Date.now(),
-      });
       throw mapManualImportRunError(error, scheduleId);
     }
   }
@@ -312,6 +245,7 @@ export class ImportScheduleAdminService {
     scheduleId: string,
     context: RunScheduleContext
   ): Promise<{ response: RunScheduleAcceptedResponse; completion: Promise<unknown> }> {
+    void context;
     const { config, repaired } = await this.loadConfigEnsured();
     if (repaired) {
       await this.getScheduler().reload();
@@ -328,16 +262,6 @@ export class ImportScheduleAdminService {
     if (this.backgroundRuns.has(scheduleId) || scheduler.isImportRunning?.(scheduleId)) {
       throw new ApiError(409, `インポートは既に実行中です: ${scheduleId}`);
     }
-
-    await writeDebugLog({
-      sessionId: 'debug-session',
-      runId: 'run2',
-      hypothesisId: 'H1',
-      location: 'imports.ts:background',
-      message: 'manual run accepted for background execution (file log)',
-      data: { scheduleId, reqId: context.requestId },
-      timestamp: Date.now(),
-    });
 
     this.backgroundRuns.add(scheduleId);
     const completion = Promise.resolve()
