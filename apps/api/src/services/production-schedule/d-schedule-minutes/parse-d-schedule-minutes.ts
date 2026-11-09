@@ -72,7 +72,8 @@ export async function parseDScheduleMinutesXlsx(input: {
       const seiban = sheet.getCell(row + offset, col);
       return Number(number.master.row) >= row && Number(number.master.row) <= row + 3
         && Number(seiban.master.row) >= row && Number(seiban.master.row) <= row + 3
-        && normalize(cellText(number)) === String(offset + 1) && seibanText(seiban) === key;
+        && (normalize(cellText(number)) === String(offset + 1) || (offset === 0 && normalize(cellText(number)) === ''))
+        && seibanText(seiban) === key;
     });
   };
   const sheetName = (candidate: ExcelJS.Worksheet) => normalize(candidate.name).replace(/\s+/g, '');
@@ -179,7 +180,9 @@ export async function parseDScheduleMinutesXlsx(input: {
   const coveredRows = new Set<number>();
   for (let row = 1; row <= sheet.rowCount; row++) {
     const seibanCell = sheet.getCell(row, seibanColumn);
-    if (normalize(cellText(sheet.getCell(row, 1))) !== '1') {
+    const missingFirst = normalize(cellText(sheet.getCell(row, 1))) === ''
+      && !coveredRows.has(row) && shapeValid(sheet, row, seibanColumn);
+    if (normalize(cellText(sheet.getCell(row, 1))) !== '1' && !missingFirst) {
       const match = seibanText(seibanCell).match(seibanPattern);
       if (match && !coveredRows.has(row) && !hidden(sheet.getRow(row))) {
         warn('BLOCK_SHAPE', match[1], seibanCell);
@@ -221,6 +224,7 @@ export async function parseDScheduleMinutesXlsx(input: {
       continue;
     }
     const alias = match[2].match(aliasPattern);
+    if (missingFirst && !hidden(sheet.getRow(row))) warn('MISSING_BLOCK_NUMBER', match[1], sheet.getCell(row, 1));
     if (match[2] && !alias) warn('UNREADABLE_ALIAS', match[1], seibanCell);
     const partsCell = safeCell(row, columns.get('部品完成')!, row, match[1]);
     blocks.push({ seiban: match[1], aliasSeibans: alias ? [alias[1]] : [], partsCompleteDate: null,
