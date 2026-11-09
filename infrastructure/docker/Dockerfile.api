@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Isolated search worker runtime with the same pinned Node 24 base as the API.
-FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS hermes-search-runtime
+FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS hermes-search-runtime
 WORKDIR /opt/hermes-runtime
 RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates \
   && rm -rf /var/lib/apt/lists/*
@@ -13,7 +13,7 @@ RUN install -D -m 0755 /usr/local/bin/node /opt/hermes-node/bin/node \
   && test -s /opt/hermes-node/bin/node \
   && /opt/hermes-node/bin/node --version | grep -Eq '^v24\.'
 
-FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS workspace
+FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS workspace
 WORKDIR /app
 ENV NODE_OPTIONS=--max-old-space-size=4096
 
@@ -69,7 +69,7 @@ WORKDIR /app/apps/api
 RUN nice -n 10 pnpm prisma generate
 RUN nice -n 10 pnpm run build
 
-FROM node:24-trixie-slim@sha256:54f84b4cf8432b21aaffd5d3ce8d41e12cea0d10d33c09d2f3c9879d49d6b446 AS api-runtime
+FROM node:24-trixie-slim@sha256:0820eaa85e07d0490446dd01d14707e17e6108a36988cf374899cd057eb3812d AS api-runtime
 WORKDIR /app
 COPY --from=hermes-search-runtime /opt/hermes-node /opt/hermes-node
 COPY --from=hermes-search-runtime /opt/hermes-runtime /opt/hermes-runtime
