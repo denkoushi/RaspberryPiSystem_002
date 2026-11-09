@@ -74,7 +74,7 @@ beforeEach(async () => {
   mocks.createNotice.mockImplementation(({ data }) => { mocks.notice = { ...data, id: 'notice-1', messages: [{ createdAt: new Date() }] }; return mocks.notice; });
   ingestion = new DScheduleMinutesGmailIngestionService({
     gmailFactory: vi.fn().mockResolvedValue(gmail),
-    db: { productionScheduleDScheduleMinutesImportRun: { findUnique: vi.fn(async ({ where }) => run?.gmailMessageId === where.gmailMessageId || run?.id === 'partial' ? run : null) } } as unknown as PrismaClient,
+    db: { productionScheduleDScheduleMinutesImportRun: { findUnique: vi.fn(async ({ where }) => run?.gmailMessageId === where.gmailMessageId_kind.gmailMessageId || run?.id === 'partial' ? run : null) } } as unknown as PrismaClient,
     parse, apply, saveOriginal: saveDScheduleMinutesOriginal, notify: deliverDScheduleMinutesNotice,
   });
   execution = new CsvImportExecutionService({ createDScheduleMinutesGmailIngestionService: () => ingestion,
@@ -99,7 +99,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
       seibansRead: 6, dateChanged: 4, unchanged: 2, autoRegistered: 1, unregistered: 1, skipped: 1,
       warnings: [expect.objectContaining({ code: 'UNKNOWN_STAR' })],
     } } });
-    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(`in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d from:synthetic@example.com`, 10);
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(`(in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d from:synthetic@example.com) -label:rps_sender_rejected`, 10);
     expect(gmail.searchMessagesLimited.mock.calls[0][0]).toContain('from:synthetic@example.com');
     // trashMessage is the existing Gmail operation that adds rps_processed before moving to trash.
     expect(gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-1');
@@ -111,17 +111,17 @@ describe('D schedule Gmail intake and scheduler history', () => {
     gmail.searchMessagesLimited.mockResolvedValue([]);
     await ingestion.runOnce({ config: { ...config, storage: { provider: 'gmail', options: {} } }, allowWait: false });
     expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(
-      `in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d`, 10);
+      `(in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d) -label:rps_sender_rejected`, 10);
   });
 
-  it('skips missing headers and applies only the first recognized attachment', async () => {
+  it('inspects all attachments and applies a recognized kind once', async () => {
     const other = buildWorkbook();
     other.sheet.getCell(3, other.parts).value = 'other';
     const otherBuffer = Buffer.from(await other.workbook.xlsx.writeBuffer());
     message.payload!.parts!.push({ filename: 'another.xlsx', body: { attachmentId: 'later' } });
     gmail.getAttachment.mockImplementation(async (_id: string, attachmentId: string) => attachmentId === 'wrong' ? otherBuffer : buffer);
     await ingestion.runOnce({ config, allowWait: false });
-    expect(gmail.getAttachment.mock.calls).toEqual([['mail-1', 'wrong'], ['mail-1', 'minutes']]);
+    expect(gmail.getAttachment.mock.calls).toEqual([['mail-1', 'wrong'], ['mail-1', 'minutes'], ['mail-1', 'later']]);
     expect(apply).toHaveBeenCalledOnce();
     expect(mocks.write).toHaveBeenCalledOnce();
     expect(mocks.write.mock.calls[0][0].data).toBe(buffer);
@@ -169,7 +169,8 @@ describe('D schedule Gmail intake and scheduler history', () => {
   });
 
   it('continues past fatal parse, finalizes good mail, and fails history with the fatal ID', async () => {
-    const fatal = { ...message, id: 'fatal-mail', internalDateMs: message.internalDateMs - 1000 };
+    const fatal = { ...message, id: 'fatal-mail', internalDateMs: message.internalDateMs - 1000,
+      payload: { ...message.payload, parts: [message.payload!.parts![2]] } };
     gmail.searchMessagesLimited.mockResolvedValue(['fatal-mail', 'mail-1']);
     gmail.getMessage.mockImplementation(async (id: string) => id === 'fatal-mail' ? fatal : message);
     parse.mockResolvedValueOnce({ ok: false, reason: 'ZERO_BLOCKS', warnings: [] });
@@ -322,7 +323,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
     await execute();
     mocks.notice!.noticeResolvedAt = new Date();
     await execute();
-    expect(apply).toHaveBeenCalledOnce(); expect(parse).toHaveBeenCalledTimes(2); expect(mocks.write).toHaveBeenCalledOnce();
+    expect(apply).toHaveBeenCalledOnce(); expect(parse).toHaveBeenCalledTimes(4); expect(mocks.write).toHaveBeenCalledOnce();
     expect(mocks.createNotice).toHaveBeenCalledOnce(); expect(mocks.updateNotice).not.toHaveBeenCalled();
   });
 

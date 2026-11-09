@@ -47,6 +47,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   category: GrindingPlanningBoardCategory;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
+    scheduleSource?: 'general' | 'dCompany' | 'both';
     generationToken: string;
     readGenerationToken: () => Promise<string>;
     performance: GrindingPlanningBoardPerformance;
@@ -453,6 +454,7 @@ async function readMaterializedLoadAggregates(
   // order is immaterial; normalize it so the resolver's row order cannot miss.
   const key = JSON.stringify({
     siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
+    scheduleSource: context.scheduleSource ?? 'both',
     baseWhere: {
       strings: params.leaderboardMaterializedBaseWhere.strings,
       values: params.leaderboardMaterializedBaseWhere.values.map((value) => Array.isArray(value) ? [...value].sort() : value)

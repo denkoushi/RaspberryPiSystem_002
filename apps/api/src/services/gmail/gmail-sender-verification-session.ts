@@ -1,12 +1,17 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { logger } from '../../lib/logger.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import type { GmailMessage } from '../backup/gmail-api-client.js';
+import { GmailRateLimitedDeferredError } from '../backup/gmail-request-gate.service.js';
 import { notifyGmailSenderRejected } from './gmail-sender-rejection-alert.js';
-import { DEFAULT_GMAIL_SENDER_DOMAINS, GmailSenderRejectedError, verifyGmailSender } from './gmail-sender-verification.js';
+import { DEFAULT_GMAIL_SENDER_DOMAINS, GMAIL_SENDER_REJECTED_LABEL, GmailSenderRejectedError, verifyGmailSender } from './gmail-sender-verification.js';
 
 const activeSession = new AsyncLocalStorage<GmailSenderVerificationSession>();
 
-type MessageReader = { getMessage(messageId: string): Promise<GmailMessage> };
+type MessageReader = {
+  getMessage(messageId: string): Promise<GmailMessage>;
+  addLabelToMessage?(messageId: string, labelName: string): Promise<void>;
+};
 
 /** One ingestion invocation; only verified messages can reach body, attachment or acknowledgement code. */
 export class GmailSenderVerificationSession {
@@ -33,6 +38,16 @@ export class GmailSenderVerificationSession {
       if (!result.ok) {
         const error = new GmailSenderRejectedError(result.reason, result.domain);
         this.rejected.set(id, error);
+        if (result.reason !== 'policy_empty' && client.addLabelToMessage) {
+          try { await client.addLabelToMessage(id, GMAIL_SENDER_REJECTED_LABEL); }
+          catch (labelError) {
+            if (labelError instanceof GmailRateLimitedDeferredError) {
+              this.rejected.delete(id);
+              throw labelError;
+            }
+            logger.warn({ messageId: id }, 'Failed to label rejected Gmail message');
+          }
+        }
         throw error;
       }
       this.messages.set(id, message);
@@ -44,7 +59,7 @@ export class GmailSenderVerificationSession {
         const method = Reflect.get(target, property);
         if (typeof method !== 'function') return method;
         if (['searchMessages', 'searchMessagesAll', 'searchMessagesLimited'].includes(String(property))) {
-          return (...args: unknown[]) => this.disabled ? Promise.resolve([]) : method.apply(target, args);
+          return (query: string, ...args: unknown[]) => this.disabled ? Promise.resolve([]) : method.call(target, `${query.trim() ? `(${query}) ` : ''}-label:${GMAIL_SENDER_REJECTED_LABEL}`, ...args);
         }
         if (['getAttachment', 'getFirstAttachment', 'listPdfAttachments', 'listHtmlAttachments', 'trashMessage', 'markAsRead', 'archiveMessage'].includes(String(property))) {
           return async (id: string, ...args: unknown[]) => { await getMessage(id); return method.call(target, id, ...args); };

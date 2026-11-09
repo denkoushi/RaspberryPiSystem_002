@@ -19,6 +19,18 @@ last_verified: 2026-08-18
 - Pi4: exact `--limit`のhostを`serial: [1, 5, "25%", "100%"]`の波（1台、5台、約25%、残り）で、image pull完了後に`--no-build`で変更serviceだけを切り替える。ある波で1台でも失敗すると、その波の他hostは自分の更新を終え、後続波のhostは準備データを回収し、切り替えずに止まる。最後の波で失敗したときはPi3（signage）に進まずに止まる。最初の1台は指定試験端末 `raspi4-kensaku-stonebase01` が対象ならその端末、それ以外はinventory順で選ぶ。トルク切り替え（`--torque-cutover`）は従来どおり一台ずつ。他hostは停止しない。
 - Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
 
+### SSH ホスト鍵の登録・更新
+
+初回デプロイ前に、Pi5 controller で `ssh-keyscan -t ed25519 <接続先IP>` を実行し、
+候補鍵を一時ファイルへ保存する。`ssh-keygen -lf <一時ファイル>` の fingerprint を、
+端末コンソールで実行した `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` と比較する。
+一致を確認してから、候補鍵の先頭のIPを `inventory.yml` のホスト名へ置き換え、
+`infrastructure/ansible/known_hosts` にホストごとに1行の `ssh-ed25519` 鍵として登録する。
+SSH は接続IPによらず、このホスト名を `HostKeyAlias` として参照する。
+
+再イメージ後も同じ手順で fingerprint を確認し、該当ホストの既存行を新しい鍵へ置き換える。
+更新したファイルを controller のデプロイ用リポジトリへ反映してから、デプロイを再開する。
+
 ### 標準更新入口
 
 公開CLIは次のとおり。

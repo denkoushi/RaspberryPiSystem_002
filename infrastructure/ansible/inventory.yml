@@ -1,4 +1,10 @@
 all:
+  vars:
+    ansible_ssh_common_args: >-
+      -o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }}
+      -o GlobalKnownHostsFile=/dev/null
+      -o HostKeyAlias={{ inventory_hostname }}
+      -o StrictHostKeyChecking=yes
   children:
     server:
       hosts:
@@ -594,7 +600,6 @@ all:
       vars:
         kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
         client_server_cert_sha256: "9a104cdf9ef4c95cf55aab988e508388fe99e09fd3b02957793600adbbcbcce3"
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"

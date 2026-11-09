@@ -69,7 +69,7 @@ type Props = {
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   focusedPartKey: string | null;
   chainPositions: ReadonlyMap<string, number>;
-  onFocusChain: (bar: GanttBar) => void;
+  onFocusChain: (bar: GanttBar, keepOpen?: boolean) => void;
 };
 
 export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, dayLoad = 0, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
@@ -277,7 +277,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
-                inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
+                selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : inChain && 'outline outline-2 outline-offset-1 outline-white',
                 focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
                 bar.item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
@@ -323,7 +323,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) onTogglePin?.(bar.item); else { if (foldedWindow) onToggleItem(bar.item, !selected); onFocusChain(bar); }
+                if (pinMode) onTogglePin?.(bar.item); else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}

@@ -1998,6 +1998,7 @@ class SshTargetTransport:
         allowed_staging_root: Path = DEFAULT_STAGING_ROOT,
     ) -> None:
         self.target = _validated_target(target)
+        self.known_hosts_path = Path(__file__).resolve().parents[3] / "infrastructure/ansible/known_hosts"
         self.stage_source = stage_source
         self.verifier_source = verifier_source
         self.allowed_staging_root = Path(allowed_staging_root)
@@ -2010,8 +2011,10 @@ class SshTargetTransport:
             "-o", "ConnectTimeout=12",
             "-o", "ServerAliveInterval=5",
             "-o", "ServerAliveCountMax=2",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", f"UserKnownHostsFile={self.known_hosts_path}",
+            "-o", "GlobalKnownHostsFile=/dev/null",
+            "-o", f"HostKeyAlias={self.target['host']}",
             "-p", str(self.target["port"]),
             "--", f"{self.target['user']}@{self.target['address']}",
         ]
@@ -2084,8 +2087,10 @@ class SshTargetTransport:
             "-q", "-C",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=12",
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "UserKnownHostsFile=/dev/null",
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", f"UserKnownHostsFile={self.known_hosts_path}",
+            "-o", "GlobalKnownHostsFile=/dev/null",
+            "-o", f"HostKeyAlias={self.target['host']}",
             "-P", str(self.target["port"]),
             "--", os.fspath(source),
             f"{self.target['user']}@{self.target['address']}:{destination}",

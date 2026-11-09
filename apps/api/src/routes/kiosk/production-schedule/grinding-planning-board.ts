@@ -1,3 +1,4 @@
+import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import type { FastifyInstance } from 'fastify';
@@ -32,7 +33,10 @@ import {
 } from '../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js';
 import { grindingPlanningBoardCategorySchema, type KioskRouteDeps } from './shared.js';
 
+const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('both');
+
 const querySchema = z.object({
+  scheduleSource: scheduleSourceSchema,
   dueSource: z.enum(['excel', 'scaw']).default('excel'),
   view: z.enum(['seiban', 'resource']).default('seiban'),
   category: grindingPlanningBoardCategorySchema,
@@ -107,6 +111,7 @@ const rankBodySchema = z.object({
 });
 
 const resourceOrderBodySchema = z.object({
+  scheduleSource: scheduleSourceSchema,
   sourceRevision: sourceRevisionSchema,
   itemId: z.string().min(1).max(2_000),
   itemRevision: z.string().min(1).max(200),
@@ -118,6 +123,7 @@ const resourceOrderBodySchema = z.object({
 });
 
 const resourceOrderBulkBodySchema = z.object({
+  scheduleSource: scheduleSourceSchema,
   sourceRevision: sourceRevisionSchema,
   resourceCd: z.string().trim().min(1).max(20),
   items: z.array(z.object({
@@ -169,11 +175,14 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const { parts } = processChipsBodySchema.parse(request.body);
+    const { scheduleSource } = z.object({ scheduleSource: scheduleSourceSchema }).parse(request.query);
     if (parts.length === 0) return { chipsByPartKey: {} };
-    const uniqueParts = new Map(parts.map((part) => [
+    const excluded = new Set(await readScheduleSourceExcludedFseibans(scheduleSource, [...new Set(parts.map((part) => part.fseiban))]));
+    const uniqueParts = new Map(parts.filter((part) => !excluded.has(part.fseiban)).map((part) => [
       buildLeaderboardPartFooterChipLookupKey({ seibanJoinKey: part.fseiban, productNo: part.productNo, fhincd: part.fhincd }),
       part
     ]));
+    if (uniqueParts.size === 0) return { chipsByPartKey: {} };
     const chipsByPartKey = await buildLeaderboardFooterChipsByPartKeyForScheduleRows({
       rows: [...uniqueParts].map(([id, part]) => ({
         id,
@@ -193,6 +202,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const query = querySchema.parse(request.query);
     return getGrindingPlanningBoard({
+      scheduleSource: query.scheduleSource,
       dueSource: query.dueSource,
       siteKey: scope.siteKey,
       category: query.category,
@@ -245,8 +255,8 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     // Older clients may send includePieces; load always includes pieces, so accept and ignore it.
-    const query = z.object({ category: grindingPlanningBoardCategorySchema, includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true') }).parse(request.query);
-    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category });
+    const query = z.object({ scheduleSource: scheduleSourceSchema, category: grindingPlanningBoardCategorySchema, includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true') }).parse(request.query);
+    return getGrindingPlanningBoardLoad({ siteKey: scope.siteKey, category: query.category, scheduleSource: query.scheduleSource });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/seiban/:fseiban/due-detail', { config: { rateLimit: false } }, async (request) => {

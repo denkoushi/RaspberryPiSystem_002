@@ -1,6 +1,7 @@
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
+export type GrindingPlanningBoardScheduleSource = 'general' | 'dCompany' | 'both';
 
 export interface GrindingPlanningBoardProcessChipsRequest {
   parts: Array<{ fseiban: string; productNo: string; fhincd: string }>;
@@ -231,6 +232,7 @@ export interface GrindingPlanningBoardRankResponse {
 export type GrindingPlanningBoardResourceOrderPlacement = 'before' | 'after';
 
 export interface GrindingPlanningBoardResourceOrderRequest {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   itemId: string;
   itemRevision: string;
@@ -242,6 +244,7 @@ export interface GrindingPlanningBoardResourceOrderRequest {
 }
 
 export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   resourceCd: string;
   items: { itemId: string; itemRevision: string; overrideVersion?: number }[];

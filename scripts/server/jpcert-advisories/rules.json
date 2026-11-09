@@ -452,8 +452,8 @@
     ],
     "evidence": [
       {
-        "path": "infrastructure/ansible/roles/common/tasks/tailscale.yml",
-        "pattern": "name: curl"
+        "path": "infrastructure/ansible/roles/signage/templates/signage-update.sh.j2",
+        "pattern": "curl \"\\$\\{CURL_OPTIONS"
       }
     ],
     "probes": [

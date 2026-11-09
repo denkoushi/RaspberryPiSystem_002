@@ -75,11 +75,14 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const panel = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const drag = useRef<Drag | null>(null);
+  const dragPointer = useRef({ x: 0, y: 0 });
+  const [autoScrolling, setAutoScrolling] = useState(false);
   const cancelHide = useCallback(() => { clearTimeout(timer.current); }, []);
   const clearDrag = useCallback(() => {
     clearTimeout(longPress.current);
     const pending = drag.current;
     drag.current = null;
+    setAutoScrolling(false);
     if (pending?.moved) onDragPreview(null);
     setDrop(null);
     if (pending) pending.element.style.touchAction = '';
@@ -137,28 +140,57 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     const card = scroll.current?.querySelector<HTMLElement>(`[data-testid="planning-forward-queue-card-${open.itemId}"]`);
     if (scroll.current && card) scroll.current.scrollLeft = Math.max(0, card.offsetLeft - 160);
   }, [open]);
-  if (!open || !openBar) return null;
-  const cards = forwardQueueWindow(layout, openBar);
-  // The drop target can vanish in a refresh before the drag is cleared, so look it up once and tolerate a miss.
-  const dropCard = drop ? cards.find((entry) => entry.bar.item.itemId === drop.bar.item.itemId) : undefined;
-  const gapFrom = drop && dropCard ? dropCard.position + (drop.placement === 'after' ? 1 : 0) : null;
-  const findDrop = (clientX: number, source: GanttBar): Drop | null => {
+  const findDrop = useCallback((clientX: number, source: GanttBar): Drop | null => {
+    const cards = openBar ? forwardQueueWindow(layout, openBar) : [];
     const others = cards.filter(({ bar }) => bar.item.itemId !== source.item.itemId).map(({ bar, position: queuePosition }) => ({ bar,
       rect: panel.current?.querySelector<HTMLElement>(`[data-queue-position="${queuePosition}"]`)?.getBoundingClientRect()
     })).filter((entry) => entry.rect);
     const before = others.find(({ rect }) => clientX < rect!.left + rect!.width / 2);
     const target = before ?? others[others.length - 1];
     return target && canReorderForwardBars(source, target.bar) ? { bar: target.bar, placement: before ? 'before' : 'after' } : null;
-  };
+  }, [layout, openBar]);
+  useEffect(() => {
+    if (!autoScrolling) return;
+    let frame: number;
+    const tick = () => {
+      const pending = drag.current;
+      if (!pending?.moved) return;
+      const element = scroll.current;
+      const bounds = panel.current?.getBoundingClientRect();
+      const { x, y } = dragPointer.current;
+      if (element && bounds && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom) {
+        const strip = element.getBoundingClientRect();
+        const distance = x <= strip.left + 64 ? x - strip.left : x >= strip.right - 64 ? strip.right - x : null;
+        const delta = distance === null ? 0 : (x <= strip.left + 64 ? -1 : 1) * (2 + 22 * (1 - Math.max(0, distance) / 64));
+        if (delta) {
+          const previous = element.scrollLeft;
+          element.scrollLeft += delta;
+          if (element.scrollLeft !== previous) {
+            setDrop(findDrop(x, pending.bar));
+            onDragPreview({ source: 'queue', bar: pending.bar, x, y, allowed: pending.allowed, drop: null });
+          }
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [autoScrolling, findDrop, onDragPreview]);
+  if (!open || !openBar) return null;
+  const cards = forwardQueueWindow(layout, openBar);
+  // The drop target can vanish in a refresh before the drag is cleared, so look it up once and tolerate a miss.
+  const dropCard = drop ? cards.find((entry) => entry.bar.item.itemId === drop.bar.item.itemId) : undefined;
+  const gapFrom = drop && dropCard ? dropCard.position + (drop.placement === 'after' ? 1 : 0) : null;
   const move = (event: PointerEvent<HTMLDivElement>) => {
     const pending = drag.current;
     if (!pending || pending.pointerId !== event.pointerId) return null;
+    dragPointer.current = { x: event.clientX, y: event.clientY };
     const distance = Math.hypot(event.clientX - pending.x, event.clientY - pending.y);
     if (!pending.ready) {
       if (distance > 0) clearDrag();
       return null;
     }
-    if (distance >= 8) pending.moved = true;
+    if (distance >= 8) { pending.moved = true; setAutoScrolling(true); }
     if (!pending.moved) return null;
     const rect = panel.current?.getBoundingClientRect();
     const hits = document.elementsFromPoint?.(event.clientX, event.clientY) ?? [];
@@ -204,10 +236,12 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           const element = event.currentTarget;
           drag.current = { bar, x: event.clientX, y: event.clientY, pointerId: event.pointerId, element, moved: false, ready: event.pointerType !== 'touch',
             allowed: new Set(lanes.filter((lane) => lane.resource === bar.resource || canMoveResource?.(bar.item, lane.resource)).map((lane) => lane.resource)) };
+          dragPointer.current = { x: event.clientX, y: event.clientY };
           if (event.pointerType === 'touch') longPress.current = setTimeout(() => {
             if (!drag.current) return;
             drag.current.ready = true;
             drag.current.moved = true;
+            setAutoScrolling(true);
             onDragPreview({ source: 'queue', bar, x: drag.current.x, y: drag.current.y, allowed: drag.current.allowed, drop: null });
             element.setPointerCapture?.(event.pointerId);
             element.style.touchAction = 'none';
