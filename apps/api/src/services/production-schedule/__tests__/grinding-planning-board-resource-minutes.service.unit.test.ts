@@ -84,8 +84,8 @@ describe('resource minutes storage', () => {
     const ops = [{ opNo: 1, minutes: 1.5 }, { opNo: 3, minutes: 2.25 }];
     await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops });
     expect(mocks.ops.deleteMany).toHaveBeenCalledWith({ where: { partMinutesId: 'part-id' } });
-    expect(mocks.ops.createMany).toHaveBeenCalledWith({ data: ops.map((op) => ({ ...op, partMinutesId: 'part-id' })) });
-    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 3.75 } });
+    expect(mocks.ops.createMany).toHaveBeenCalledWith({ data: ops.map((op) => ({ ...op, setupMinutes: null, partMinutesId: 'part-id' })) });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 3.75, setupMinutes: 0 } });
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
   });
   it.each([
@@ -108,9 +108,9 @@ describe('resource minutes storage', () => {
   });
   it('preserves operations and their total when an older caller omits ops', async () => {
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4 }, { opNo: 2, minutes: 3 }] });
-    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: 7 });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, setupMinutes: 0, perUnitMinutes: 7 });
     expect(mocks.ops.deleteMany).not.toHaveBeenCalled();
-    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 7 } });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 7, setupMinutes: 0 } });
   });
   it('rejects an omitted ops update that disagrees with the saved operation total', async () => {
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4 }] });
@@ -121,8 +121,8 @@ describe('resource minutes storage', () => {
   });
   it.each([0.3, 0.3000005, 0.2999995])('accepts floating-point totals within 1e-6: %s', async (perUnitMinutes) => {
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 0.1 }, { opNo: 2, minutes: 0.2 }] });
-    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes });
-    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 0.1 + 0.2 } });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, setupMinutes: 0, perUnitMinutes });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 0.1 + 0.2, setupMinutes: 0 } });
     expect(mocks.ops.deleteMany).not.toHaveBeenCalled();
   });
   it.each([0.300002, 0.299998])('rejects totals outside 1e-6: %s', async (perUnitMinutes) => {
@@ -132,11 +132,11 @@ describe('resource minutes storage', () => {
     expect(mocks.values.update).not.toHaveBeenCalled();
   });
   it('reads ordered operations for each part', async () => {
-    const ops = [{ opNo: 1, minutes: 2 }];
+    const ops = [{ opNo: 1, minutes: 2, setupMinutes: 15 }];
     mocks.values.findMany.mockResolvedValue([{ ...value, ops }]);
     expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: key.siteKey })).values[0].ops).toEqual(ops);
     expect(mocks.values.findMany).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({
-      ops: { select: { opNo: true, minutes: true }, orderBy: { opNo: 'asc' } }
+      ops: { select: { opNo: true, minutes: true, setupMinutes: true }, orderBy: { opNo: 'asc' } }
     }) }));
   });
   it.each([
@@ -148,6 +148,47 @@ describe('resource minutes storage', () => {
   ])('rejects invalid operations %j', async (...ops) => {
     await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops })).rejects.toThrow();
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it('derives both totals and preserves omitted setup by fixed operation number', async () => {
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [
+      { opNo: 1, minutes: 4, setupMinutes: 20 }, { opNo: 3, minutes: 3, setupMinutes: 10 }
+    ] });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops: [
+      { opNo: 3, minutes: 2 }, { opNo: 1, minutes: 5, setupMinutes: null }, { opNo: 2, minutes: 1 }
+    ] });
+    expect(mocks.ops.createMany).toHaveBeenCalledWith({ data: [
+      { partMinutesId: 'part-id', opNo: 3, minutes: 2, setupMinutes: 10 },
+      { partMinutesId: 'part-id', opNo: 1, minutes: 5, setupMinutes: null },
+      { partMinutesId: 'part-id', opNo: 2, minutes: 1, setupMinutes: null }
+    ] });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 8, setupMinutes: 10 } });
+  });
+  it('keeps matching setup totals when ops is omitted', async () => {
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4, setupMinutes: 30 }, { opNo: 3, minutes: 3, setupMinutes: null }] });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: 7 });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 7, setupMinutes: 30 } });
+    expect(mocks.ops.deleteMany).not.toHaveBeenCalled();
+    expect(reconcileOperationDefinitionPieces).not.toHaveBeenCalled();
+  });
+  it('rejects mismatching setup totals when ops is omitted', async () => {
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4, setupMinutes: 20 }] });
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: 4 }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'OPERATION_SETUP_MISMATCH' });
+    expect(mocks.values.update).not.toHaveBeenCalled();
+    expect(mocks.ops.deleteMany).not.toHaveBeenCalled();
+  });
+  it.each([-1, 0.5, 100001, NaN, Infinity])('rejects invalid operation setup %s', async (setupMinutes) => {
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops: [{ opNo: 1, minutes: 1, setupMinutes }] })).rejects.toThrow();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('accepts setup total 100000 and rejects overflow including preserved setup', async () => {
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 1, setupMinutes: 100000 }] });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops: [{ opNo: 1, minutes: 1 }] });
+    expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 1, setupMinutes: 100000 } });
+    mocks.ops.deleteMany.mockClear();
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops: [{ opNo: 1, minutes: 1 }, { opNo: 2, minutes: 1, setupMinutes: 1 }] })).rejects.toMatchObject({ statusCode: 400 });
+    expect(mocks.ops.deleteMany).not.toHaveBeenCalled();
   });
 
 });
