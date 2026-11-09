@@ -29,8 +29,15 @@ existing operation. This mechanism change leaves every host disabled; enabling
 - [x] (2026-11-09) Physical checks on the dedicated account accepted.
 - [x] (2026-11-09) Return PR #2665 to the deployment account; standard release
   run `20261109-021644-8d33a8`; physical checks after return accepted.
-- [ ] Approve and perform gradual fleet enablement after the trial is accepted
-  (requires separate approval; no host is enabled now).
+- [x] (2026-11-09) Gradual fleet enablement approved in four rounds, at least
+  one day apart: (1) `kensaku-stonebase01`, `kensaku-02`; (2) `sessaku-01`,
+  `fjv60-80`, `robodrill01`; (3) `assembly-01`, `assembly-02`; (4) `raspberrypi4`.
+  Each round is its own PR and a standard release limited to that round's hosts;
+  rollback is a PR that removes the flag. Zero 2W and Pi3 are excluded.
+- [ ] Round 1 enabled (`kensaku-stonebase01`, `kensaku-02`).
+- [ ] Round 2 enabled.
+- [ ] Round 3 enabled.
+- [ ] Round 4 enabled.
 
 ## Surprises & Discoveries
 
