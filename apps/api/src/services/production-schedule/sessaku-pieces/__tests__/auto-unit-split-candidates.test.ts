@@ -22,7 +22,7 @@ describe('automatic candidate SQL contract', () => {
     expect(sql.sql).toContain('NORMALIZE(e."rowData"');
     expect(sql.sql).toContain('ELSE false END');
     expect(sql.sql).toContain('WITH untouched AS MATERIALIZED');
-    expect(sql.sql).toContain('ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
+    expect(sql.sql).toContain('ORDER BY array_position(?::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
     expect(sql.sql).toContain(`e."rowData"->>'FHINCD' = r."rowData"->>'FHINCD'`);
     expect(sql.values).toContain(STRING_TRIM_CHARACTERS);
     expect('\t\u3000PART\ufeff'.trim()).toBe('PART');
@@ -44,6 +44,6 @@ describe('automatic candidate SQL contract', () => {
     const paged = autoUnitSplitCandidateSql('site', ['S'], policy, excluded);
     expect(paged.sql).toContain(') <> ALL(?::text[])');
     expect(paged.values).toContainEqual(excluded);
-    expect(paged.sql).toContain('ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
+    expect(paged.sql).toContain('ORDER BY array_position(?::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
   });
 });

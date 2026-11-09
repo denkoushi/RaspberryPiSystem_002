@@ -69,5 +69,5 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})
     ) SELECT "id", "fseiban", "parentId" FROM eligible
-      ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
+      ORDER BY array_position(${order}::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
 }

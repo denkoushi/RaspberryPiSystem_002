@@ -428,7 +428,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     if (params.quantities.length < 2 || params.quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || params.quantities.reduce((a, b) => a + b, 0) !== total) {
       throw new ApiError(400, '分割数量の合計が指示数と一致しません', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
-    await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.map((piece) => piece.id) ?? [])]);
+    await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit);
     await rememberPieceHistory(tx, c.key);
@@ -467,13 +467,14 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
       if (piece.isCompleted) conflict('COMPLETED_PIECE');
       assertRevision(c.current.pieces.find((item) => item.pieceId === piece.id), params.itemRevisions[`piece:${piece.id}`]);
     }
-    await assertNoOperationCompletions(tx, [...params.pieceIds, ...c.later.flatMap(({ set }) => set?.pieces.map((piece) => piece.id) ?? [])]);
+    const all = selected.length === c.set.pieces.length;
+    // Merging every piece removes the later sets as a whole, including pieces no longer linked to a cutting piece.
+    await assertNoOperationCompletions(tx, [...params.pieceIds, ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => all || (piece.sourcePieceId && params.pieceIds.includes(piece.sourcePieceId))).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), c.later, params.audit);
     await rememberPieceHistory(tx, c.key);
     await removeLaterPieces(tx, c.later, params.pieceIds);
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });
-    const all = selected.length === c.set.pieces.length;
     const id = randomUUID();
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null } });
@@ -495,7 +496,7 @@ export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRe
     const completed = params.intent === 'complete';
     const item = c.current.pieces.find((item) => item.pieceId === piece.id);
     if (!item) conflict('STALE_SESSAKU_PIECES');
-    const operationChanged = await syncWholePieceOperationCompletions(tx, params.siteKey, piece.id, item, completed);
+    const operationChanged = await syncWholePieceOperationCompletions(tx, params.siteKey, piece, item, completed);
     await writePieceCompletion(tx, c.set.id, piece, completed, operationChanged);
     await reconcileSessakuPieceQuantities(tx, c.key, c.plannedQuantity);
   });

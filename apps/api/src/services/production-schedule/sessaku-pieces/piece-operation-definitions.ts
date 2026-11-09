@@ -45,24 +45,29 @@ export async function readPieceOperationNumbers(tx: Prisma.TransactionClient, si
 
 /** Whole-piece APIs share this synchronization, including cancellation after a definition was removed. */
 export async function syncWholePieceOperationCompletions(tx: Prisma.TransactionClient, siteKey: string,
-  pieceId: string, item: { effectiveResourceCd: string | null; fhincd: string }, completed: boolean): Promise<boolean> {
+  piece: { id: string; isCompleted: boolean }, item: { effectiveResourceCd: string | null; fhincd: string }, completed: boolean): Promise<boolean> {
   if (!completed) {
-    return (await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({ where: { pieceId } })).count > 0;
+    if (!piece.isCompleted) return false;
+    return (await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({ where: { pieceId: piece.id } })).count > 0;
   }
   const definitions = await readPieceOperationNumbers(tx, siteKey, item);
   if (!definitions.length) return false;
   return (await tx.productionScheduleSessakuPieceOpCompletion.createMany({
-    data: definitions.map(({ opNo }) => ({ pieceId, opNo })), skipDuplicates: true
+    data: definitions.map(({ opNo }) => ({ pieceId: piece.id, opNo })), skipDuplicates: true
   })).count > 0;
 }
 
 /** Parent-row actions load each resource/part definition together, including missing definitions. */
 export async function syncWholePiecesOperationCompletions(tx: Prisma.TransactionClient, siteKey: string,
-  pieces: Array<{ id: string; effectiveResourceCd: string | null; fhincd: string }>, completed: boolean): Promise<boolean> {
+  pieces: Array<{ id: string; isCompleted: boolean; effectiveResourceCd: string | null; fhincd: string }>, completed: boolean): Promise<boolean> {
   if (!pieces.length) return false;
-  if (!completed) return (await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({
-    where: { pieceId: { in: pieces.map((piece) => piece.id) } }
-  })).count > 0;
+  if (!completed) {
+    const completedIds = pieces.filter((piece) => piece.isCompleted).map((piece) => piece.id);
+    if (!completedIds.length) return false;
+    return (await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({
+      where: { pieceId: { in: completedIds } }
+    })).count > 0;
+  }
   const pairs = new Map(pieces.filter((piece) => piece.effectiveResourceCd !== null)
     .map((piece) => [JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()]), piece]));
   if (!pairs.size) return false;
