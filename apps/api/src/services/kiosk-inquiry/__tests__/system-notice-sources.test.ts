@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ device: vi.fn(), deliver: vi.fn(), expire: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { clientDevice: { findFirst: mocks.device } } }));
 vi.mock('../system-notice.service.js', async (original) => ({ ...await original<object>(), deliverSystemNotice: mocks.deliver, resolveInactiveFileNotices: mocks.expire }));
-import { deliverFileAlertNotice, deliverTelemetryNotice, expireFileAlertNotice } from '../system-notice-sources.js';
+import { deliverDScheduleMinutesNotice, deliverFileAlertNotice, deliverTelemetryNotice, expireFileAlertNotice } from '../system-notice-sources.js';
 import { FILE_NOTICE_EXPIRY_MS } from '../system-notice.service.js';
 const now = new Date('2026-10-13T00:00:00Z');
 afterEach(() => { vi.unstubAllEnvs(); });
@@ -118,5 +118,27 @@ describe('alert notice bridges', () => {
     mocks.deliver.mockRejectedValue(new Error('unavailable'));
     await expect(deliverFileAlertNotice('rkhunter-warning', now, now)).resolves.toBeUndefined();
     await expect(deliverTelemetryNotice('raspi4-stone', { level: 'WARN', message: '', context: { category: 'storage_health', signal: 'io' } })).resolves.toBeUndefined();
+  });
+});
+
+
+describe('minutes notices by kind', () => {
+  it('distinguishes both kinds in the same email while preserving the D company notice key', async () => {
+    const warnings = [{ code: 'UNREADABLE_DATE', seiban: 'BA1SB203', cell: 'F4', rawText: '完' }];
+    await deliverDScheduleMinutesNotice('same-mail', warnings);
+    await deliverDScheduleMinutesNotice('same-mail', warnings, 'INTERNAL');
+    expect(mocks.deliver).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      key: 'd-schedule-minutes:same-mail', title: 'D社日程会議議事録の確認',
+      body: expect.stringContaining('D社日程会議議事録の取込で確認が必要な箇所が1件あります。'), once: true
+    }));
+    expect(mocks.deliver).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      key: 'd-schedule-minutes:same-mail:INTERNAL', title: '日程会議議事録の確認',
+      body: expect.stringContaining('日程会議議事録の取込で確認が必要な箇所が1件あります。'), once: true
+    }));
+  });
+
+  it('does not emit an internal notice for a workbook with no warnings', async () => {
+    await deliverDScheduleMinutesNotice('same-mail', [], 'INTERNAL');
+    expect(mocks.deliver).not.toHaveBeenCalled();
   });
 });

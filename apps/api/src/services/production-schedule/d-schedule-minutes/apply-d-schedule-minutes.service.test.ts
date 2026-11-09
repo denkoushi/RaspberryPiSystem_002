@@ -10,6 +10,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { defaultBackupConfig } from '../../backup/backup-config.js';
 import { DScheduleMinutesGmailIngestionService } from './d-schedule-minutes-gmail-ingestion.service.js';
 import { applyDScheduleMinutes, DScheduleMinutesComparisonError } from './apply-d-schedule-minutes.service.js';
+import type { DScheduleMinutesKind } from './minutes-kind.js';
 import { summarizeMinutes } from './import-summary.js';
 import type { DScheduleMinutesBlock } from './parse-d-schedule-minutes.js';
 
@@ -156,7 +157,7 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
     const incoming = failure === 'seiban count' ? [{ ...originals[0], memo: 'must not write' }]
       : [...originals.map((entry) => ({ ...entry, partsCompleteDate: '2027-01-09' })), fresh];
     await expect(apply(incoming, messageId, '2026-11-06', { minCompared: 1 })).rejects.toBeInstanceOf(DScheduleMinutesComparisonError);
-    expect(await prisma.productionScheduleDScheduleMinutesImportRun.findUnique({ where: { gmailMessageId: messageId } })).toBeNull();
+    expect(await prisma.productionScheduleDScheduleMinutesImportRun.findUnique({ where: { gmailMessageId_kind: { gmailMessageId: messageId, kind: 'D_COMPANY' } } })).toBeNull();
     expect(await Promise.all(originals.map((entry) => latest(entry.seiban)))).toEqual(before);
     expect(await prisma.productionScheduleDScheduleMinutes.count({ where: { fseiban: fresh.seiban } })).toBe(0);
   });
@@ -169,7 +170,7 @@ describe('apply D schedule minutes date preservation', () => {
   it.each([null, 'unreadable', '2026-02-30'])('preserves stored due and excelChangedAt for incoming %s while updating metadata', async (partsCompleteDate) => {
     const main = block({ partsCompleteDate, memo: 'updated memo', rawPartsCompleteText: partsCompleteDate });
     const before = { ...main, partsCompleteDate: new Date('2026-11-10Z'), memo: 'previous memo',
-      excelChangedAt: new Date('2026-10-30Z'), sourceRun: { meetingDate: new Date('2026-10-30Z') },
+      excelChangedAt: new Date('2026-10-30Z'), sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') },
       isAlias: false, aliasOf: null };
     const run = { id: 'synthetic-run', status: 'APPLIED', meetingDate: new Date('2026-11-06Z') } as ProductionScheduleDScheduleMinutesImportRun;
     const upsert = vi.fn().mockResolvedValue({});
@@ -211,7 +212,7 @@ describe('apply D schedule minutes comparison before writes', () => {
       },
       productionScheduleDScheduleMinutes: {
         findUnique: vi.fn().mockResolvedValue({ partsCompleteDate: storedDate ? new Date(`${storedDate}T00:00:00Z`) : null,
-          sourceRun: { meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null }),
+          sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null }),
         upsert: vi.fn()
       }
     };
@@ -223,9 +224,9 @@ describe('apply D schedule minutes comparison before writes', () => {
       return operation(tx as unknown as Prisma.TransactionClient);
     });
     vi.spyOn(prisma.productionScheduleDScheduleMinutesImportRun, 'findUniqueOrThrow').mockResolvedValue(run);
-    return { tx, run, execute: (thresholds?: Parameters<typeof applyDScheduleMinutes>[0]['thresholds']) => applyDScheduleMinutes({
+    return { tx, run, execute: (thresholds?: Parameters<typeof applyDScheduleMinutes>[0]['thresholds'], kind: DScheduleMinutesKind = 'D_COMPANY') => applyDScheduleMinutes({
       result: { ok: true, assigneeColumnFound: true, meetingDate: '2026-11-06', blocks, warnings: [] },
-      metadata: { gmailMessageId: 'comparison-mail', subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-11-06Z') }, thresholds
+      metadata: { kind, gmailMessageId: 'comparison-mail', subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-11-06Z') }, thresholds
     }) };
   }
 
@@ -237,7 +238,7 @@ describe('apply D schedule minutes comparison before writes', () => {
     const { tx, execute } = harness([main], null);
     tx.productionScheduleDScheduleMinutes.findUnique.mockResolvedValue({
       ...main, ...stored, partsCompleteDate: new Date('2026-11-10Z'),
-      sourceRun: { meetingDate: new Date('2026-10-30Z') }, isAlias: false, aliasOf: null
+      sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') }, isAlias: false, aliasOf: null
     });
     await execute();
     expect(tx.productionScheduleDScheduleMinutes.upsert).toHaveBeenCalledOnce();
@@ -253,7 +254,7 @@ describe('apply D schedule minutes comparison before writes', () => {
     expect(tx.productionScheduleDScheduleMinutesImportRun.create).not.toHaveBeenCalled();
     expect(tx.productionScheduleDScheduleMinutes.upsert).not.toHaveBeenCalled();
     expect(tx.productionScheduleDScheduleMinutesImportRun.findFirst).toHaveBeenCalledWith({
-      where: { status: 'SUCCESS', meetingDate: { lt: new Date('2026-11-06Z') } },
+      where: { kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: { lt: new Date('2026-11-06Z') } },
       orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
     });
     expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeLessThan(tx.productionScheduleDScheduleMinutesImportRun.findUnique.mock.invocationCallOrder[0]!);
@@ -302,11 +303,33 @@ describe('apply D schedule minutes comparison before writes', () => {
     const blocks = [block({ partsCompleteDate: '2027-01-09' }), block({ partsCompleteDate: '2026-02-30' }), block()];
     const { tx, execute } = harness(blocks, 3);
     tx.productionScheduleDScheduleMinutes.findUnique.mockResolvedValueOnce({ partsCompleteDate: new Date('2026-11-10Z'),
-      sourceRun: { meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null })
-      .mockResolvedValueOnce({ partsCompleteDate: new Date('2026-11-10Z'), sourceRun: { meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null })
-      .mockResolvedValueOnce({ partsCompleteDate: null, sourceRun: { meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null });
+      sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null })
+      .mockResolvedValueOnce({ partsCompleteDate: new Date('2026-11-10Z'), sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null })
+      .mockResolvedValueOnce({ partsCompleteDate: null, sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-10-30Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null });
     await expect(execute({ minCompared: 1, maxLargeChangeRatio: 0.5 })).rejects.toThrow('1/1件');
     expect(tx.productionScheduleDScheduleMinutes.upsert).not.toHaveBeenCalled();
+  });
+
+  it('uses compound run identity and same-kind comparisons without comparing another kind’s latest value', async () => {
+    const { tx, execute } = harness([block({ partsCompleteDate: '2027-01-09' })], 1);
+    await execute({ minCompared: 1, maxLargeChangeRatio: 0 }, 'INTERNAL');
+    expect(tx.productionScheduleDScheduleMinutesImportRun.findUnique).toHaveBeenCalledWith({
+      where: { gmailMessageId_kind: { gmailMessageId: 'comparison-mail', kind: 'INTERNAL' } }
+    });
+    expect(tx.productionScheduleDScheduleMinutesImportRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { kind: 'INTERNAL', status: 'SUCCESS', meetingDate: { lt: new Date('2026-11-06Z') } }
+    }));
+    expect(tx.productionScheduleDScheduleMinutesImportRun.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: 'INTERNAL' }) }));
+    expect(tx.productionScheduleDScheduleMinutes.upsert).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a newer shared value from the other kind while recording the internal run', async () => {
+    const { tx, run, execute } = harness([block()], null);
+    tx.productionScheduleDScheduleMinutes.findUnique.mockResolvedValue({ partsCompleteDate: new Date('2026-11-15Z'),
+      sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-11-07Z') }, outsourceMarks: [], surfaceSendOutDates: [], memo: null });
+    await execute(undefined, 'INTERNAL');
+    expect(tx.productionScheduleDScheduleMinutes.upsert).not.toHaveBeenCalled();
+    expect(run.warnings).toEqual([expect.objectContaining({ code: 'STALE_FILE' })]);
   });
 
   it('returns an existing SUCCESS run before comparison queries', async () => {

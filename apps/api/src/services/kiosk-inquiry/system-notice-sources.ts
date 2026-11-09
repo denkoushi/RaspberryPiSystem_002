@@ -1,3 +1,4 @@
+import { minutesName, type DScheduleMinutesKind } from '../production-schedule/d-schedule-minutes/minutes-kind.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
@@ -99,14 +100,16 @@ const minutesWarningExplanations: Record<string, string> = {
 
 export async function deliverDScheduleMinutesNotice(
   messageId: string,
-  warnings: import('../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js').DScheduleMinutesWarning[]
+  warnings: import('../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js').DScheduleMinutesWarning[],
+  kind: DScheduleMinutesKind = 'D_COMPANY'
 ): Promise<void> {
   if (warnings.length === 0) return;
+  const name = minutesName(kind);
   const compact = (value: string | null) => (value ?? '—').replace(/\s+/g, ' ').slice(0, 120);
   const body = [
-    `D社日程会議議事録の取込で確認が必要な箇所が${warnings.length}件あります。`,
+    `${name}の取込で確認が必要な箇所が${warnings.length}件あります。`,
     ...warnings.slice(0, 20).map((warning) => `製番 ${compact(warning.seiban)} / ${compact(warning.cell)} / 「${compact(warning.rawText)}」: ${minutesWarningExplanations[warning.code] ?? '内容を確認してください'}`),
     ...(warnings.length > 20 ? [`ほか${warnings.length - 20}件（取込履歴で確認できます）。`] : []),
   ].join('\n');
-  await deliverSystemNotice({ key: `d-schedule-minutes:${messageId}`, title: 'D社日程会議議事録の確認', body, state: 'open', once: true });
+  await deliverSystemNotice({ key: kind === 'D_COMPANY' ? `d-schedule-minutes:${messageId}` : `d-schedule-minutes:${messageId}:${kind}`, title: `${name}の確認`, body, state: 'open', once: true });
 }

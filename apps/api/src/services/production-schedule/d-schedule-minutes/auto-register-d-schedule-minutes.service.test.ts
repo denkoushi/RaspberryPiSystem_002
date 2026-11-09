@@ -7,8 +7,9 @@ import type { DScheduleMinutesMetrics } from './import-summary.js';
 import type { DScheduleMinutesBlock } from './parse-d-schedule-minutes.js';
 
 const mocks = vi.hoisted(() => ({
-  run: { id: 'current', status: 'APPLIED', warnings: [] as unknown[], autoRegisteredSeibans: { planningBoards: {} as Record<string, string[]>, searchHistory: [] as string[], metrics: undefined as DScheduleMinutesMetrics | undefined } },
+  run: { id: 'current', kind: 'D_COMPANY', status: 'APPLIED', warnings: [] as unknown[], autoRegisteredSeibans: { planningBoards: {} as Record<string, string[]>, searchHistory: [] as string[], metrics: undefined as DScheduleMinutesMetrics | undefined } },
   newer: false,
+  otherRuns: [] as { kind: string; status: string; meetingDate: Date; autoRegisteredSeibans: { planningBoards: Record<string, string[]>; searchHistory: string[] } }[],
   previous: null as null | { autoRegisteredSeibans: { planningBoards: Record<string, string[]>; searchHistory: string[] } },
   boards: {} as Record<string, { id: string; seibanOrder: string[]; uncheckedFseibans?: string[]; version: number }>,
   history: [] as string[],
@@ -31,7 +32,10 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   }),
   productionScheduleDScheduleMinutesImportRun: {
     findUniqueOrThrow: () => mocks.run,
-    findFirst: ({ where }: { where: { meetingDate?: unknown } }) => where.meetingDate ? (mocks.newer ? { id: 'newer' } : null) : mocks.previous,
+    findFirst: ({ where }: { where: { kind: string; meetingDate?: unknown } }) => {
+      const other = mocks.otherRuns.find((run) => run.kind === where.kind);
+      return where.meetingDate ? (mocks.newer ? { id: 'newer' } : other) : mocks.previous ?? other;
+    },
     update: ({ data }: { data: object }) => Object.assign(mocks.run, data)
   },
   productionScheduleDScheduleMinutes: { findMany: () => mocks.minutes },
@@ -56,8 +60,8 @@ const register = (blocks: DScheduleMinutesBlock[]) => autoRegisterDScheduleMinut
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.run = { id: 'current', status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
-  mocks.minutes = []; mocks.newer = false; mocks.previous = null; mocks.rawRows = []; mocks.readWinners.mockResolvedValue([]);
+  mocks.run = { id: 'current', kind: 'D_COMPANY', status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+  mocks.otherRuns = []; mocks.minutes = []; mocks.newer = false; mocks.previous = null; mocks.rawRows = []; mocks.readWinners.mockResolvedValue([]);
   mocks.boards = { A: { id: 'A', seibanOrder: ['MANUAL-A'], version: 1 }, B: { id: 'B', seibanOrder: ['MANUAL-B'], version: 1 } };
   mocks.history = ['MANUAL-H']; mocks.historyVersion = 1; mocks.sites = ['A', 'B'];
   mocks.readBoard.mockImplementation((key: string) => mocks.boards[key]);
@@ -71,6 +75,24 @@ beforeEach(() => {
 });
 
 describe('D schedule automatic registration', () => {
+  it('keeps D company ownership and ignores its newer run when importing internal products, then alternates back', async () => {
+    await register([block('D-ONLY')]);
+    const dOwnership = structuredClone(mocks.run.autoRegisteredSeibans);
+    mocks.otherRuns = [{ kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'), autoRegisteredSeibans: dOwnership }];
+    mocks.run = { ...mocks.run, kind: 'INTERNAL', status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register([block('INTERNAL')]);
+    expect(mocks.history).toEqual(['MANUAL-H', 'D-ONLY', 'INTERNAL']);
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ searchHistory: ['INTERNAL'], planningBoards: { A: ['INTERNAL'], B: ['INTERNAL'] } });
+    const internalOwnership = structuredClone(mocks.run.autoRegisteredSeibans);
+    mocks.otherRuns.push({ kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-08Z'), autoRegisteredSeibans: internalOwnership });
+    mocks.previous = { autoRegisteredSeibans: dOwnership };
+    mocks.otherRuns = mocks.otherRuns.filter((run) => run.kind !== 'D_COMPANY');
+    mocks.run = { ...mocks.run, kind: 'D_COMPANY', status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register([block('D-NEXT')]);
+    expect(mocks.history).toEqual(['MANUAL-H', 'INTERNAL', 'D-NEXT']);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'D-ONLY', 'INTERNAL', 'D-NEXT']);
+  });
+
   it('applies a non-winner warning and finishes registration on every site and shared history', async () => {
     mocks.rawRows = ['SUPERSEDED', 'MAIN', 'ALIAS'].map((FSEIBAN) => ({ rowData: { FSEIBAN } }));
     mocks.readWinners.mockResolvedValue(mocks.rawRows.slice(1));

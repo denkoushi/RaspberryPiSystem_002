@@ -2196,7 +2196,8 @@ model KioskProductionScheduleSearchState {
 /// D社日程会議議事録の取り込み。既存の手入力納期へは書き戻さない。
 model ProductionScheduleDScheduleMinutesImportRun {
   id                    String   @id @default(uuid())
-  gmailMessageId        String   @unique
+  gmailMessageId        String
+  kind                  String   @default("D_COMPANY") @db.VarChar(30)
   subject               String
   filename              String
   meetingDate           DateTime @db.Date
@@ -2209,6 +2210,7 @@ model ProductionScheduleDScheduleMinutesImportRun {
   createdAt             DateTime @default(now())
   latestValues          ProductionScheduleDScheduleMinutes[]
 
+  @@unique([gmailMessageId, kind], map: "PSDScheduleRun_message_kind_key")
   @@index([status, createdAt], map: "PSDScheduleRun_status_created_idx")
 }
 

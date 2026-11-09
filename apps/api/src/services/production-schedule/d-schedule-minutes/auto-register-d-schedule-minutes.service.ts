@@ -22,12 +22,12 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
     const run = await prisma.productionScheduleDScheduleMinutesImportRun.findUniqueOrThrow({ where: { id: input.runId } });
     if (run.status === 'SUCCESS') return;
     const previous = await prisma.productionScheduleDScheduleMinutesImportRun.findFirst({
-      where: { status: 'SUCCESS', id: { not: run.id } }, orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
+      where: { kind: run.kind, status: 'SUCCESS', id: { not: run.id } }, orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
     });
     const previousOwnership = (previous?.autoRegisteredSeibans ?? { planningBoards: {}, searchHistory: [] }) as RegistrationOwnership;
     const ownership = run.autoRegisteredSeibans as RegistrationOwnership;
     const newerRun = await prisma.productionScheduleDScheduleMinutesImportRun.findFirst({
-      where: { status: { in: ['SUCCESS', 'APPLIED'] }, meetingDate: { gt: run.meetingDate } },
+      where: { kind: run.kind, status: { in: ['SUCCESS', 'APPLIED'] }, meetingDate: { gt: run.meetingDate } },
       orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }]
     });
     if (newerRun) {
