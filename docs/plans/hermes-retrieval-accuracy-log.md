@@ -1025,3 +1025,24 @@ Note on the night-34 learned decision: two candidates were accepted with held-ou
 What the loop now lacks is a supply of real follow-up turns: the regression file is empty, so until the kiosk produces new follow-up conversations, the only follow-up-shaped evidence each night is synthetic first-turn questions. Next step, in order: the ExecPlan's ④ follow-up-shaped synthetic questions (count, add, replace, drop, with computed expected answers), then ⑤ the acceptance rule.
 
 Private files: `work/flywheel/real-2026-11-05.jsonl`, `runner-2026-11-05.log`, `runner-2026-11-06.log`, `questions-2026-11-05.jsonl`, `questions-2026-11-06.jsonl`, `regressions.jsonl` (empty), `learned-queries.jsonl`.
+
+### 2026-11-09: nights 35 and 36, the first night of synthetic follow-up questions; count, add and replace pass 6 of 6, drop fails 2 of 2 (measurement)
+
+Night of 2026-11-07 (Pi 5 at d406534d): generated 77, kept 71, shown 49, dropped 29, live 71, `lossStages other_shown 18, not_in_pool 3, judge_rejected 1`, synthetic filter questions 10 of 10 correct, learned 2 accepted (active). Regression file empty, `real=0`.
+
+Night of 2026-11-08 (Pi 5 at 7d5efc3f, #2648 in place; the runner restarted after the 21:13 JST deploy, so the status line shows `generated=0` while the night file holds 100 first-turn rows): live 83, relevant shown 60, `lossStages other_shown 20, not_in_pool 3`, synthetic filter questions 10 of 10 correct, learned 3 accepted (active). Regression file empty, `real=0`.
+
+Synthetic follow-up questions (#2648, ExecPlan ④), first night: 8 candidates from the 10 correct filter first turns (budget 10), 6 ok, 2 failed, 0 unsupported.
+
+- `count` 2 of 2 ok (`outcome count`, `resultCount` equal to the expected matched count).
+- `add` 2 of 2 ok (「そのうち先月のは？」「今年のだけ」: the planner's period filter matched the expected `between` filter on the first turn's source, and the shown records matched).
+- `replace` 2 of 2 ok (「○○課は？」: the department value was swapped and the shown records matched).
+- `drop` 0 of 2. Both failures are planner behaviour, not a defect of the check:
+  - 「部門は問わず」: `followUpAction drop` was chosen and the department filter was removed, but the phrase itself became `semanticQuery 部門は問わず` with `sort relevance`, so the answer was `no_result`. Loss `follow_up_plan_mismatch`.
+  - 「全部門で」: the plan matched the expectation exactly (no filters, recent, limit 5), but the word 部門 was also read as a new department term with no value, `unresolved [originDepartmentName]`, and the kiosk asked a clarification instead of answering. Loss `filter_mismatch` (expected 5 records, shown 0).
+
+Reading: a drop utterance that names the field it drops (「部門」) is re-read as a mention of that field. The fix belongs in the planner (a named field inside a drop utterance is not a new condition and not query text), with these two rows as the regression. Not started; it is a separate change.
+
+The ExecPlan ④ budget rule was adjusted before merge: a candidate whose first turn failed is recorded as `first_turn_mismatch` without a live run and does not consume the follow-up budget. No such row appeared this night (all 10 first turns passed).
+
+Private files: `work/flywheel/questions-2026-11-07.jsonl`, `questions-2026-11-08.jsonl`, `runner-2026-11-07.log`, `runner-2026-11-08.log`, `flywheel-status.json`, `learned-queries.jsonl`, `regressions.jsonl` (empty).
