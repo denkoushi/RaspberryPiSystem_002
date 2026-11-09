@@ -6643,6 +6643,7 @@ model ProductionScheduleGrindingPlanningBoardResourcePartOpMinutes {
   partMinutesId String
   opNo Int
   minutes Float
+  setupMinutes Int?
   partMinutes ProductionScheduleGrindingPlanningBoardResourcePartMinutes @relation(fields: [partMinutesId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningOpMinutes_part_fk")
   @@unique([partMinutesId, opNo], map: "PSGrindingPlanningOpMinutes_part_op_key")
 }

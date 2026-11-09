@@ -15,6 +15,7 @@ import { resourceCdSchema } from './grinding-planning-board-resource-capacity.se
 // MachinePalletItem already stores production-schedule FHINCD in VARCHAR(120).
 export const resourcePartOpMinutesSchema = z.object({
   opNo: z.number().int().min(1).max(20),
+  setupMinutes: z.number().int().min(0).max(100000).nullable().optional(),
   minutes: z.number().finite().positive().max(100000)
 });
 export const resourceMinutesSourceSchema = z.object({
@@ -45,7 +46,7 @@ export async function getGrindingPlanningBoardResourceMinutes(
       where, select: { resourceCd: true }, orderBy: { resourceCd: 'asc' }
     }),
     client.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany({
-      where, select: { resourceCd: true, fhincd: true, perUnitMinutes: true, setupMinutes: true, ops: { select: { opNo: true, minutes: true }, orderBy: { opNo: 'asc' } } },
+      where, select: { resourceCd: true, fhincd: true, perUnitMinutes: true, setupMinutes: true, ops: { select: { opNo: true, minutes: true, setupMinutes: true }, orderBy: { opNo: 'asc' } } },
       orderBy: [{ resourceCd: 'asc' }, { fhincd: 'asc' }]
     })
   ]);
@@ -88,15 +89,27 @@ export async function updateGrindingPlanningBoardResourcePartMinutes(
     if (ops === undefined && saved.ops.length && Math.abs(perUnitMinutes - saved.ops.reduce((sum, op) => sum + op.minutes, 0)) > 1e-6) {
       throw new ApiError(400, '工程の合計時間と一致しません。工程表を更新してください', undefined, 'OPERATION_MINUTES_MISMATCH');
     }
-    const nextOps = ops ?? saved.ops;
+    const nextOps = ops?.map((op) => ({
+      ...op,
+      setupMinutes: op.setupMinutes === undefined
+        ? saved.ops.find((previous) => previous.opNo === op.opNo)?.setupMinutes ?? null
+        : op.setupMinutes
+    })) ?? saved.ops;
+    const operationSetup = nextOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0);
+    if (operationSetup > 100000) {
+      throw new ApiError(400, '工程の段取りの合計時間は100000分以下で指定してください');
+    }
+    if (ops === undefined && saved.ops.length && setupMinutes !== operationSetup) {
+      throw new ApiError(400, '工程の段取りの合計時間と一致しません。工程表を更新してください', undefined, 'OPERATION_SETUP_MISMATCH');
+    }
     if (ops !== undefined) {
       await tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.deleteMany({ where: { partMinutesId: saved.id } });
       if (ops.length) await tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.createMany({
-        data: ops.map((op) => ({ ...op, partMinutesId: saved.id }))
+        data: nextOps.map((op) => ({ ...op, partMinutesId: saved.id }))
       });
     }
     if (nextOps.length) await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.update({
-      where: { id: saved.id }, data: { perUnitMinutes: nextOps.reduce((sum, op) => sum + op.minutes, 0) }
+      where: { id: saved.id }, data: { perUnitMinutes: nextOps.reduce((sum, op) => sum + op.minutes, 0), setupMinutes: operationSetup }
     });
     // Minute-only edits keep the same operation set, so completion records and piece-set versions stay untouched.
     const sameOpNos = (left: readonly { opNo: number }[], right: readonly { opNo: number }[]) =>
