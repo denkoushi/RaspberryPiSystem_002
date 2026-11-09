@@ -51,7 +51,7 @@ interface AuthRefreshHandlers {
   onFailure: () => void;
 }
 
-let authRefresh: (AuthRefreshHandlers & { pending?: Promise<string | null> }) | undefined;
+let authRefresh: (AuthRefreshHandlers & { pending?: { loginId: string; promise: Promise<string | null> } }) | undefined;
 
 export function registerAuthRefresh(handlers: AuthRefreshHandlers) {
   const registration = { ...handlers };
@@ -85,17 +85,26 @@ async function refreshedToken(failedToken: string, loginId?: string): Promise<st
       if (handlers.getSession()?.loginId !== loginId) return null;
       handlers.onSuccess(data);
       return data.accessToken;
-    } catch {
+    } catch (error) {
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      if (status !== 400 && status !== 401 && status !== 403) return null;
       if (handlers.getSession()?.loginId !== loginId) return null;
       handlers.prepareSession();
       if (handlers.getSession()?.loginId === loginId) handlers.onFailure();
       return null;
     }
   };
-  if (!handlers.pending) {
-    handlers.pending = withAuthRefreshLock(refresh).finally(() => { handlers.pending = undefined; });
+  while (handlers.pending && handlers.pending.loginId !== loginId) {
+    await handlers.pending.promise;
+    if (handlers.getSession()?.loginId !== loginId) return null;
   }
-  const token = await handlers.pending;
+  if (!handlers.pending) {
+    handlers.pending = {
+      loginId,
+      promise: withAuthRefreshLock(refresh).finally(() => { handlers.pending = undefined; })
+    };
+  }
+  const token = await handlers.pending.promise;
   return handlers.getSession()?.loginId === loginId ? token : null;
 }
 

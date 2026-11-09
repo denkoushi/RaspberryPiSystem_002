@@ -15,7 +15,7 @@ let auth: ReturnType<typeof useAuth>;
 let refreshCount: number;
 let attempts: string[];
 let originalErrors: AxiosError[];
-let refreshFailure: boolean;
+let refreshFailure: false | number | 'network' | 'timeout';
 let retryFailure: boolean;
 let releaseRefresh: (() => void) | undefined;
 let refreshGate: Promise<void> | undefined;
@@ -34,7 +34,12 @@ const adapter: AxiosAdapter = async (config) => {
     refreshCount++;
     expect(JSON.parse(config.data).refreshToken).toBe(first.refreshToken);
     await refreshGate;
-    if (refreshFailure) throw unauthorized(config);
+    if (refreshFailure === 'network' || refreshFailure === 'timeout') {
+      throw new AxiosError('refresh unavailable', refreshFailure === 'timeout' ? 'ECONNABORTED' : 'ERR_NETWORK', config);
+    }
+    if (refreshFailure) throw new AxiosError('refresh rejected', 'ERR_BAD_RESPONSE', config, undefined, {
+      config, status: refreshFailure, statusText: 'Refresh failed', headers: {}, data: {}
+    });
     return response(next);
   }
   attempts.push(String(config.headers.get('Authorization')));
@@ -92,12 +97,26 @@ describe('admin auth refresh', () => {
     expect(attempts).toEqual(['Bearer old', 'Bearer old', 'Bearer new', 'Bearer new']);
   });
   it.each([true, false])('clears session and returns the original error on refresh failure (rememberMe=%s)', async (rememberMe) => {
-    await login(rememberMe); refreshFailure = true;
+    await login(rememberMe); refreshFailure = 401;
     expect(await request()).toBe(originalErrors[0]);
     expect(refreshCount).toBe(1); expect(auth.token).toBeNull(); expect(auth.user).toBeNull();
     expect(localStorage.getItem('factory-auth')).toBeNull();
     expect(api.defaults.headers.common.Authorization).toBeUndefined();
     setAuthToken('old'); await request(); expect(refreshCount).toBe(1);
+  });
+  it.each(['network', 'timeout', 500, 429] as const)('preserves session and returns the original error on transient refresh failure (%s)', async (failure) => {
+    await login(); refreshFailure = failure;
+    const stored = localStorage.getItem('factory-auth');
+    expect(await request()).toBe(originalErrors[0]);
+    expect(refreshCount).toBe(1); expect(attempts).toEqual(['Bearer old']);
+    expect(auth.token).toBe('old'); expect(auth.user).toEqual(first.user);
+    expect(localStorage.getItem('factory-auth')).toBe(stored);
+    expect(api.defaults.headers.common.Authorization).toBe('Bearer old');
+
+    refreshFailure = false;
+    await request();
+    expect(refreshCount).toBe(2); expect(attempts).toEqual(['Bearer old', 'Bearer old', 'Bearer new']);
+    expect(auth.token).toBe('new');
   });
   it('never refreshes a retried request a second time', async () => {
     await login(); retryFailure = true;
@@ -202,6 +221,56 @@ describe('admin auth refresh', () => {
       expect(localStorage.getItem('factory-auth')).toBe(stored);
     });
     expect(auth.token).toBe('old'); expect(attempts).toHaveLength(1);
+  });
+  it.each([false, true])('refreshes the new login once after an old login refresh finishes (old refresh rejected=%s)', async (oldRejected) => {
+    await login();
+    const second: AuthResponse = { ...first, accessToken: 'bob-old', refreshToken: 'bob-refresh', user: { ...first.user, id: 'u2', username: 'bob' } };
+    const secondNext: AuthResponse = { ...second, accessToken: 'bob-new', refreshToken: 'bob-refresh-new' };
+    const refreshTokens: string[] = [];
+    let releaseOld!: () => void;
+    let releaseNew!: () => void;
+    const oldGate = new Promise<void>((resolve) => { releaseOld = resolve; });
+    const newGate = new Promise<void>((resolve) => { releaseNew = resolve; });
+    api.defaults.adapter = async (config) => {
+      const response = (data: unknown) => ({ data, status: 200, statusText: 'OK', headers: {}, config });
+      if (config.url === '/auth/login') return response(second);
+      if (config.url === '/auth/refresh') {
+        const refreshToken = JSON.parse(config.data).refreshToken;
+        refreshTokens.push(refreshToken);
+        if (refreshToken === first.refreshToken) {
+          await oldGate;
+          if (oldRejected) throw unauthorized(config);
+          return response(next);
+        }
+        expect(refreshToken).toBe(second.refreshToken);
+        await newGate;
+        return response(secondNext);
+      }
+      attempts.push(String(config.headers.get('Authorization')));
+      if (config.headers.get('Authorization') === 'Bearer bob-new') return response({ ok: true });
+      const error = unauthorized(config);
+      originalErrors.push(error);
+      throw error;
+    };
+    await act(async () => {
+      const oldRequest = api.get('/alice').catch((error: unknown) => error);
+      await vi.waitFor(() => expect(refreshTokens).toEqual([first.refreshToken]));
+      await auth.login('bob', 'password', { rememberMe: true });
+      const stored = JSON.parse(localStorage.getItem('factory-auth')!);
+      const newRequests = Promise.all([api.get('/bob-one'), api.get('/bob-two')]);
+      await vi.waitFor(() => expect(attempts).toEqual(['Bearer old', 'Bearer bob-old', 'Bearer bob-old']));
+      releaseOld();
+      expect(await oldRequest).toBe(originalErrors[0]);
+      await vi.waitFor(() => expect(refreshTokens).toEqual([first.refreshToken, second.refreshToken]));
+      expect(localStorage.getItem('factory-auth')).toBe(JSON.stringify(stored));
+      releaseNew();
+      expect((await newRequests).map(({ data }) => data)).toEqual([{ ok: true }, { ok: true }]);
+      expect(JSON.parse(localStorage.getItem('factory-auth')!)).toEqual({ ...stored, token: secondNext.accessToken, refresh: secondNext.refreshToken });
+    });
+    expect(refreshTokens).toEqual([first.refreshToken, second.refreshToken]);
+    expect(attempts).toEqual(['Bearer old', 'Bearer bob-old', 'Bearer bob-old', 'Bearer bob-new', 'Bearer bob-new']);
+    expect(auth.token).toBe(secondNext.accessToken); expect(auth.user).toEqual(second.user);
+    expect(api.defaults.headers.common.Authorization).toBe('Bearer bob-new');
   });
   it('expires a non-remembered login without refreshing or writing storage', async () => {
     await login(false);
