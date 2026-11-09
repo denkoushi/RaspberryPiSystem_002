@@ -41,11 +41,11 @@ describe('internal schedule minutes parser', () => {
     expect(await parse(workbook)).toMatchObject({ ok: true, meetingDate: '2026-11-06', blocks: [{ seiban: 'BA1SB999', partsCompleteDate: '2026-11-14' }] });
   });
 
-  it.each(['完', '-', '', '11/6？', '11/10？12？', '支給品以外完', '板金11/13', '最短で10/29', '11/13以降', '10/14目標', '2026/1/8停止中', '1月以降'])('preserves raw text without inventing a date for %j', async (text) => {
+  it.each(['完', '-', '', '11/6？', '11/10？12？', '支給品以外完', '客先支給品以外完', 'ﾚﾝﾀﾙ費のみ\n12月その他完', '板金11/13', '最短で10/29', '11/13以降', '10/14目標', '2026/1/8停止中', '1月以降'])('preserves raw text without inventing a date for %j', async (text) => {
     const { workbook, sheet } = fixture(); sheet.getCell('F4').value = text;
     const result = await parse(workbook);
     expect(result).toMatchObject({ ok: true, blocks: [{ partsCompleteDate: null, rawPartsCompleteText: text || null }] });
-    if (result.ok) expect(result.warnings.map((warning) => warning.code)).toEqual(text && text !== '-' ? ['UNREADABLE_DATE'] : []);
+    if (result.ok) expect(result.warnings.map((warning) => warning.code)).toEqual(text && text !== '-' && !text.endsWith('完') ? ['UNREADABLE_DATE'] : []);
   });
 
   it.each([

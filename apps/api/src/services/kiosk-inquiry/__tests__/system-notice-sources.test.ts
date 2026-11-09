@@ -137,6 +137,18 @@ describe('minutes notices by kind', () => {
     }));
   });
 
+  it('leaves production numbers outside the schedule out of the internal notice only', async () => {
+    const outside = { code: 'NOT_IN_SCHEDULE', seiban: 'BA1SB999', cell: null, rawText: null };
+    const unreadable = { code: 'UNREADABLE_DATE', seiban: 'BA1SB998', cell: 'F5', rawText: '11/6？' };
+    await deliverDScheduleMinutesNotice('internal-only-outside', [outside], 'INTERNAL');
+    expect(mocks.deliver).not.toHaveBeenCalled();
+    await deliverDScheduleMinutesNotice('internal-mixed', [outside, unreadable], 'INTERNAL');
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('確認が必要な箇所が1件あります。') }));
+    expect(mocks.deliver.mock.calls[0][0].body).not.toContain('BA1SB999');
+    await deliverDScheduleMinutesNotice('d-company-outside', [outside]);
+    expect(mocks.deliver).toHaveBeenCalledTimes(2);
+  });
+
   it('does not emit an internal notice for a workbook with no warnings', async () => {
     await deliverDScheduleMinutesNotice('same-mail', [], 'INTERNAL');
     expect(mocks.deliver).not.toHaveBeenCalled();

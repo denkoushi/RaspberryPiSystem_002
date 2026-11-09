@@ -27,6 +27,8 @@ Read-only check against the real 2026-11-07 email on Pi5 (2026-11-09, by Claude)
 ## Decision Log
 
 
+Decision: after the first production import (2026-11-09 13:23 JST, 177 warnings in one floating-chat notice), treat a parts cell ending in 「完」 as finished with no date and no warning, and leave NOT_IN_SCHEDULE out of the INTERNAL notice (it stays in the import history). Of the 177, 54 were 「…完」 and 105 were numbers outside the schedule; the notice now lists only the remaining ambiguous dates (about 18). Rationale: the user reported the notice was flooded with messages that were not actionable. Date/Author: 2026-11-09 / Claude.
+
 Decision: store `D_COMPANY` and `INTERNAL` in the import run, with a unique `(gmailMessageId, kind)` key. Existing rows receive `D_COMPANY` through the migration default. Rationale: the approved contract has one import per format per email, while production numbers share one latest-value table. Date/Author: 2026-11-09 / Codex.
 
 Decision: scope previous-run comparisons, later-run registration suppression and ownership inheritance to the same kind. Compare a stored production number for abnormal date changes only when its source kind matches; keep the existing cross-kind meeting-date winner check for latest values. Rationale: unrelated product groups must not suppress or remove one another. Date/Author: 2026-11-09 / Codex.

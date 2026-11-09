@@ -103,6 +103,8 @@ export async function deliverDScheduleMinutesNotice(
   warnings: import('../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js').DScheduleMinutesWarning[],
   kind: DScheduleMinutesKind = 'D_COMPANY'
 ): Promise<void> {
+  // Many internal production numbers are outside the schedule by design; keep them in the import history only.
+  warnings = kind === 'INTERNAL' ? warnings.filter((warning) => warning.code !== 'NOT_IN_SCHEDULE') : warnings;
   if (warnings.length === 0) return;
   const name = minutesName(kind);
   const compact = (value: string | null) => (value ?? '—').replace(/\s+/g, ' ').slice(0, 120);
