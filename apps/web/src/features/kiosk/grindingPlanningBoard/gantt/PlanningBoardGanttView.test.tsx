@@ -1943,6 +1943,163 @@ describe('forward PlanningBoardGanttView', () => {
     open(); rerender(<PlanningBoardGanttView {...props()} />);
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).not.toBeInTheDocument();
   });
+  describe('queue edge auto-scroll', () => {
+    function setup() {
+      const frames = new Map<number, FrameRequestCallback>();
+      let frameId = 0;
+      vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+        frames.set(++frameId, callback);
+        return frameId;
+      });
+      vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+      const frame = (count = 1) => {
+        for (let i = 0; i < count; i++) act(() => {
+          const callbacks = [...frames.values()];
+          frames.clear();
+          callbacks.forEach(callback => callback(0));
+        });
+      };
+      const values = forwardProps(['a', 'b', 'c', 'd', 'e'].map((id, index) => item({
+        itemId: id, fhincd: `P${index}`, alternateRank: index + 1
+      })));
+      const view = render(<PlanningBoardGanttView {...values} />);
+      fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+      const panel = screen.getByRole('region', { name: /の次にやる順/ });
+      const strip = panel.firstElementChild as HTMLElement;
+      const rect = (left: number, top: number, width: number, height: number) => ({
+        left, right: left + width, top, bottom: top + height, width, height
+      } as DOMRect);
+      vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue(rect(80, 80, 340, 200));
+      vi.spyOn(strip, 'getBoundingClientRect').mockReturnValue(rect(100, 100, 300, 160));
+      let scrollLeft = 0;
+      Object.defineProperty(strip, 'scrollLeft', {
+        configurable: true, get: () => scrollLeft,
+        set: (value: number) => { scrollLeft = Math.max(0, Math.min(480, value)); }
+      });
+      within(panel).getAllByTestId(/planning-forward-queue-card-/).forEach((card, index) => {
+        vi.spyOn(card, 'getBoundingClientRect').mockImplementation(() => rect(100 + index * 156 - strip.scrollLeft, 100, 150, 160));
+      });
+      const card = screen.getByTestId('planning-forward-queue-card-a');
+      const move = (x: number, y = 150) => fireEvent.pointerMove(card, { clientX: x, clientY: y });
+      const begin = (x: number) => {
+        fireEvent.pointerDown(card, { clientX: 175, clientY: 150, button: 0 });
+        move(x);
+      };
+      return { ...view, values, panel, strip, card, frame, move, begin };
+    }
+
+    it('keeps scrolling with a parked mouse and ramps from 2px to 24px per frame', () => {
+      const { strip, frame, move, begin } = setup();
+      begin(336);
+      frame(2);
+      expect(strip.scrollLeft).toBe(4);
+      move(368);
+      frame();
+      expect(strip.scrollLeft).toBe(17);
+      move(400);
+      frame();
+      expect(strip.scrollLeft).toBe(41);
+      move(410);
+      frame();
+      expect(strip.scrollLeft).toBe(65);
+    });
+
+    it('stops in the middle and after pointerup', () => {
+      const { strip, card, frame, move, begin } = setup();
+      begin(400);
+      frame();
+      move(250);
+      frame(3);
+      expect(strip.scrollLeft).toBe(24);
+      move(400);
+      frame();
+      expect(strip.scrollLeft).toBe(48);
+      fireEvent.pointerUp(card, { clientX: 400, clientY: 150 });
+      frame(3);
+      expect(strip.scrollLeft).toBe(48);
+    });
+
+    it('scrolls left and clamps at both ends without refreshing the arrow at a clamp', () => {
+      const { strip, card, frame, move, begin } = setup();
+      strip.scrollLeft = 30;
+      begin(90);
+      frame();
+      expect(strip.scrollLeft).toBe(6);
+      frame();
+      expect(strip.scrollLeft).toBe(0);
+      const measure = vi.mocked(card.getBoundingClientRect);
+      measure.mockClear();
+      frame(2);
+      expect(strip.scrollLeft).toBe(0);
+      expect(measure).not.toHaveBeenCalled();
+      strip.scrollLeft = 470;
+      move(410);
+      frame();
+      expect(strip.scrollLeft).toBe(480);
+      measure.mockClear();
+      frame(2);
+      expect(strip.scrollLeft).toBe(480);
+      expect(measure).not.toHaveBeenCalled();
+    });
+
+    it('updates the insertion target and arrow while parked, then reorders at the new target', () => {
+      const { values, card, frame, begin } = setup();
+      begin(400);
+      expect(screen.getByTestId('planning-forward-queue-insertion').parentElement).toHaveAttribute('data-testid', 'planning-forward-queue-card-c');
+      const arrow = screen.getByTestId('planning-gantt-drag-arrow').querySelector('path[stroke]')!;
+      const initialPath = arrow.getAttribute('d');
+      frame(4);
+      expect(screen.getByTestId('planning-forward-queue-insertion').parentElement).toHaveAttribute('data-testid', 'planning-forward-queue-card-d');
+      expect(arrow.getAttribute('d')).not.toBe(initialPath);
+      fireEvent.pointerUp(card, { clientX: 400, clientY: 150 });
+      expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'd' }), 'before'
+      );
+    });
+
+    it.each([[400, 79], [400, 281], [79, 150], [421, 150]])('does not scroll outside the panel at (%i, %i)', (x, y) => {
+      const { strip, panel, frame, move, begin } = setup();
+      // Hit testing alone must not enable auto-scroll outside the panel rect.
+      vi.mocked(document.elementsFromPoint).mockReturnValue([panel]);
+      begin(400);
+      move(x, y);
+      frame(3);
+      expect(strip.scrollLeft).toBe(0);
+    });
+
+    it('starts touch scrolling only after the long press and preserves touch scroll prevention', () => {
+      vi.useFakeTimers();
+      const { strip, card, panel, frame, move } = setup();
+      fireEvent.pointerDown(card, { pointerType: 'touch', clientX: 400, clientY: 150, button: 0 });
+      act(() => vi.advanceTimersByTime(219));
+      frame();
+      expect(strip.scrollLeft).toBe(0);
+      act(() => vi.advanceTimersByTime(1));
+      expect(card.style.touchAction).toBe('none');
+      expect(fireEvent.touchMove(panel)).toBe(false);
+      frame(2);
+      expect(strip.scrollLeft).toBe(48);
+      move(250);
+      frame();
+      expect(strip.scrollLeft).toBe(48);
+      fireEvent.pointerCancel(card);
+      expect(card.style.touchAction).toBe('');
+    });
+
+    it.each(['pointercancel', 'lostpointercapture', 'layout', 'unmount'])('stops on %s', (reason) => {
+      const { values, strip, card, frame, begin, rerender, unmount } = setup();
+      begin(400);
+      frame();
+      expect(strip.scrollLeft).toBe(24);
+      if (reason === 'layout') rerender(<PlanningBoardGanttView {...values} layout={{ ...values.layout }} />);
+      else if (reason === 'unmount') unmount();
+      else if (reason === 'pointercancel') fireEvent.pointerCancel(card);
+      else fireEvent.lostPointerCapture(card);
+      frame(3);
+      expect(strip.scrollLeft).toBe(24);
+    });
+  });
+
   function dragQueue(source: string, destination: number) {
     vi.mocked(document.elementsFromPoint).mockReturnValue([screen.getByRole('region', { name: /の次にやる順/ })]);
     const cards = screen.getAllByTestId(/planning-forward-queue-card-/);

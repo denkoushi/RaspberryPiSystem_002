@@ -21,11 +21,16 @@ existing operation. This mechanism change leaves every host disabled; enabling
 - [x] (2026-11-08) Add a first-install guard and preserve deployment account paths.
 - [x] (2026-11-08) Finish local tests: 271 related tests passed; final focused
   session tests (10), syntax-check, and whitespace checks passed.
-- [ ] Mechanism PR: review and integrate with every host disabled.
-- [ ] Deliver the disabled mechanism to all Pi4 kiosks using the standard route.
-- [ ] Separate trial PR: enable only `kensaku-stonebase01`.
-- [ ] Complete the physical checks, including return to the deployment account.
-- [ ] Approve and perform gradual fleet enablement after the trial is accepted.
+- [x] (2026-11-08) Mechanism PR #2637: reviewed and merged with every host disabled.
+- [x] (2026-11-08) Deliver the disabled mechanism to all Pi4 kiosks using the standard route.
+- [x] (2026-11-08) Separate trial PR #2641: enable only `kensaku-stonebase01`.
+- [x] (2026-11-09) Keyboard layout fix PR #2660 for the dedicated session;
+  standard release run `20261109-010031-08cf2c` on the trial host.
+- [x] (2026-11-09) Physical checks on the dedicated account accepted.
+- [x] (2026-11-09) Return PR #2665 to the deployment account; standard release
+  run `20261109-021644-8d33a8`; physical checks after return accepted.
+- [ ] Approve and perform gradual fleet enablement after the trial is accepted
+  (requires separate approval; no host is enabled now).
 
 ## Surprises & Discoveries
 
@@ -41,6 +46,13 @@ existing operation. This mechanism change leaves every host disabled; enabling
 - Observation: releases without agents previously did not distribute browser
   files. Optional-session enablement and removal need those files even on a
   browser-only kiosk; the previous behavior remains when no transition is needed.
+- Observation: the dedicated account's labwc session had no keyboard environment
+  file, so labwc fell back to the system default layout instead of the OS layout,
+  and Japanese input switching keys moved.
+  Evidence: `/etc/xdg/labwc/environment` sets a non-Japanese layout; the deployment
+  account had its own `~/.config/labwc/environment`. PR #2660 writes that file for
+  the dedicated account from `/etc/default/keyboard`. Check the effective layout in
+  the environment of Xwayland or ibus-daemon; `setxkbmap -query` is not reliable.
 - Observation: this development sandbox requires Ansible temporary directories
   inside a writable location. Use the `/tmp` settings below for local validation.
 
@@ -71,11 +83,19 @@ existing operation. This mechanism change leaves every host disabled; enabling
 
 ## Outcomes & Retrospective
 
-The mechanism is implemented locally with all host flags left disabled. Local
-validation passed for 271 related tests, including the new session contracts.
-The final focused session run also passed all 10 tests. No commit, push, branch change, PR, merge, release,
-remote connection, or deployment has been performed. Physical behavior remains
-unverified and is a prerequisite for fleet enablement.
+The mechanism (#2637) is on every Pi4 kiosk with the flag disabled. The trial
+(#2641, #2660) ran the GUI session on `kensaku-stonebase01` as `kiosk-display`,
+outside administrative groups. Accepted on the device on 2026-11-09:
+screen, Japanese input and its switching keys, NFC, barcode, call audio, panel,
+Wi-Fi without an authentication prompt, and power requests.
+
+The return (#2665) removed the LightDM drop-in. After reboot, the GUI processes
+run as the deployment account again, the layout is Japanese, the device containers
+are up, and the device checks were accepted. Both accounts and profiles remain,
+as designed.
+
+Fleet enablement (Milestone 5) has not started and needs separate approval.
+Include the keyboard environment check from Surprises in each enablement.
 
 ## Context and Orientation
 

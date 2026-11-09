@@ -673,7 +673,10 @@ async function prepareCandidateRanking(plan, options, records) {
     ? (vectorReady ? options.retriever : 'lexical')
     : 'lexical';
   const byId = new Map(filtered.map((record) => [record.id, record]));
-  const filteredOnly = !semanticQuery && (Boolean(plan.breakdown) || options.filterOnly === true || hasAppliedHardFilter(plan, options.catalog));
+  // A plan without a query lists its filtered set; a date order with no filter left (a follow-up
+  // that dropped the only condition) lists the whole set the same way instead of returning nothing.
+  const filteredOnly = !semanticQuery && (Boolean(plan.breakdown) || options.filterOnly === true
+    || hasAppliedHardFilter(plan, options.catalog) || (plan.sort !== 'relevance' && plan.sort?.direction === 'desc'));
   let candidateIds = [];
   let ranked;
   const rowsOf = (ordered) => ordered
