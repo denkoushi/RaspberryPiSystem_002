@@ -3,7 +3,9 @@ import type { Prisma } from '@prisma/client';
 import type { SessakuPieceSet } from '../piece-key.js';
 
 const mocks = vi.hoisted(() => ({ critical: vi.fn(), logical: vi.fn(), board: vi.fn(), rowLock: vi.fn(),
-  rows: vi.fn(), details: vi.fn(), overrides: vi.fn() }));
+  quantities: vi.fn(), progress: vi.fn(), rows: vi.fn(), details: vi.fn(), overrides: vi.fn() }));
+vi.mock('../piece-quantity.js', () => ({ reconcileSessakuPieceQuantities: mocks.quantities }));
+vi.mock('../piece-completion.js', () => ({ reconcileSessakuPieceProgress: mocks.progress }));
 vi.mock('../../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: mocks.critical }));
 vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLocksInTransaction: mocks.rowLock }));
 vi.mock('../../grinding-planning-board/source.js', () => ({ readOverrides: mocks.overrides, readRowDetails: mocks.details, readWinnerRowsByLogicalKeyFseibans: mocks.rows }));
@@ -16,7 +18,7 @@ import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js
 const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10' } };
 const tx = {
-  $queryRaw: vi.fn(), productionScheduleSessakuPiece: { update: vi.fn() },
+  $queryRaw: vi.fn(), productionScheduleSessakuPiece: { update: vi.fn(), updateMany: vi.fn() },
   productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn() },
   productionScheduleGrindingPlanningBoardResourcePartOpMinutes: { findMany: vi.fn() },
   productionScheduleGrindingPlanningBoardState: { findMany: vi.fn() },
@@ -41,7 +43,7 @@ beforeEach(() => {
   tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([]);
   mocks.rows.mockResolvedValue([row]); mocks.logical.mockResolvedValue(new Set([encodeSessakuPieceKey(key)]));
   mocks.overrides.mockResolvedValue([]);
-  mocks.details.mockImplementation(async () => new Map([['row', { productionScheduleExternalCompletion: { isExternallyCompleted: external } }]]));
+  mocks.details.mockImplementation(async () => new Map([['row', { orderSupplements: [], productionScheduleExternalCompletion: { isExternallyCompleted: external } }]]));
   tx.productionScheduleSessakuPieceOpCompletion.findMany.mockImplementation(async ({ where }) => records.filter((record) => where.pieceId.in.includes(record.pieceId)));
   tx.productionScheduleSessakuPieceOpCompletion.createMany.mockImplementation(async ({ data }) => { records.push(...data); return { count: data.length }; });
   tx.productionScheduleSessakuPieceOpCompletion.deleteMany.mockImplementation(async ({ where }) => {
@@ -107,10 +109,27 @@ describe('operation definition replacement', () => {
     expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
     expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).not.toHaveBeenCalled();
   });
-  it('never completes an unfinished piece when the missing operation is removed', async () => {
+  it('completes a piece once every retained operation is recorded and synchronizes parent/later progress', async () => {
     records.push({ pieceId: 'p', opNo: 3 }); await reconcile([1]);
-    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]); expect(set.pieces[0].isCompleted).toBe(false);
-    expect(tx.productionScheduleSessakuPiece.update).not.toHaveBeenCalled();
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: { in: ['p'] } }, data: { isCompleted: true, completedAt: expect.any(Date) }
+    });
+    expect(mocks.quantities).toHaveBeenCalledExactlyOnceWith(client, set, 1);
+    expect(mocks.progress).toHaveBeenCalledExactlyOnceWith(client, set, { emptyIsIncomplete: true });
+  });
+  it('does not complete a piece with a remaining missing operation', async () => {
+    await reconcile([1, 2]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
+    expect(mocks.progress).not.toHaveBeenCalled();
+  });
+  it('requires the retained operations from other resources/sites too', async () => {
+    tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
+      { siteKey: 'other', resourceCd: '021', fhincd: 'PART', ops: [{ opNo: 2 }] }
+    ]);
+    await reconcile([1]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
+    expect(mocks.progress).not.toHaveBeenCalled();
   });
   it('keeps a completed piece closed and fills newly added operation evidence', async () => {
     set.pieces[0].isCompleted = true; const before = { ...set.pieces[0] }; await reconcile([1, 2]);

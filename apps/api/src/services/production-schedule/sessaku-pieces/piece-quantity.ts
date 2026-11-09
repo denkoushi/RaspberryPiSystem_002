@@ -1,3 +1,6 @@
+import { defaultUnitSplitEnabled } from './unit-split-policy.js';
+import { stateOrder } from '../grinding-planning-board/state.js';
+import { sessakuPieceParentItemId } from './piece-key.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { SessakuPieceQuantityWarning } from '@raspi-system/shared-types';
@@ -5,7 +8,7 @@ import { acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, readSessaku
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 export type QuantityPiece = { id: string; position: number; quantity: number; isCompleted: boolean };
-export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, protectedIds: ReadonlySet<string> = new Set()): {
+export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, protectedIds: ReadonlySet<string> = new Set(), unitSplitEnabled = false): {
   pieces: QuantityPiece[]; quantityWarning: SessakuPieceQuantityWarning | null; nextPosition: number;
 } {
   const sorted = [...pieces].sort((a, b) => a.position - b.position).map((p) => ({ ...p }));
@@ -18,8 +21,22 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
   let delta = nextTotal - sorted.reduce((n, p) => n + p.quantity, 0);
   const unfinished = sorted.filter((p) => !p.isCompleted && !externalCompleted && !protectedIds.has(p.id)).reverse();
   if (delta > 0) {
-    if (unfinished[0]) unfinished[0].quantity += delta;
-    else sorted.push({ id: randomUUID(), position: nextPosition++, quantity: delta, isCompleted: false });
+    if (unitSplitEnabled && sorted.every((piece) => piece.quantity === 1)) {
+      // Reserve the final available slot for overflow so the set never exceeds 50 pieces.
+      while (delta > 0 && sorted.length < 50) {
+        const quantity = sorted.length === 49 ? delta : 1;
+        const piece = { id: randomUUID(), position: nextPosition++, quantity, isCompleted: false };
+        sorted.push(piece);
+        unfinished.unshift(piece);
+        delta -= quantity;
+      }
+    }
+    if (delta > 0) {
+      if (unfinished[0]) unfinished[0].quantity += delta;
+      else if (sorted.length >= 50) {
+        return { pieces: sorted, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition };
+      } else sorted.push({ id: randomUUID(), position: nextPosition++, quantity: delta, isCompleted: false });
+    }
   } else {
     for (const piece of unfinished) {
       const reduction = Math.min(piece.quantity, -delta);
@@ -79,6 +96,11 @@ export function planLaterProcessPieceQuantities(pieces: readonly LinkedQuantityP
     lastPosition = Math.max(lastPosition + 1, sourcePosition);
     return { ...piece, position: lastPosition };
   });
+  // Completed later evidence can keep tails apart; never grow a later set past the 50-piece cap.
+  const current = pieces.filter((piece) => piece.quantity > 0);
+  if (linked.length > 50 && linked.length > current.length) {
+    return { pieces: current.map((piece) => ({ ...piece })), quantityWarning: 'INVALID_PLANNED_QUANTITY' as const, nextPosition };
+  }
   return { ...plan, pieces: linked };
 }
 
@@ -127,6 +149,25 @@ async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPiec
   return { hasWinner: true, manualCompleted: progress?.isCompleted === true, external: external?.isExternallyCompleted === true, plannedQuantity: supplement?.plannedQuantity ?? null };
 }
 
+/** Import callers have no site; use the resources new pieces inherit on boards displaying this lot. */
+async function readUnitSplitEnabled(tx: Prisma.TransactionClient, set: SessakuPieceSet): Promise<boolean> {
+  const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: set.csvDashboardId } });
+  const sites = states.filter((state) => stateOrder(state).includes(set.fseiban.trim())).map((state) => state.siteKey);
+  if (!sites.length) return false;
+  const parentId = sessakuPieceParentItemId(set);
+  const [overrides, capacities] = await Promise.all([
+    tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { csvDashboardId: set.csvDashboardId, siteKey: { in: sites },
+      itemKey: parentId } }),
+    tx.productionScheduleGrindingPlanningBoardResourceCapacity.findMany({ where: { csvDashboardId: set.csvDashboardId, siteKey: { in: sites } } })
+  ]);
+  return sites.some((site) => {
+    const parent = overrides.find((override) => override.siteKey === site && override.itemKey === parentId);
+    const resourceCd = (parent?.overrideResourceCd ?? set.fsigencd).trim();
+    return capacities.find((capacity) => capacity.siteKey === site && capacity.resourceCd === resourceCd)?.unitSplitEnabled
+      ?? defaultUnitSplitEnabled(resourceCd);
+  });
+}
+
 /** Caller holds all related logical locks. Progress for the requested row is published by its caller. */
 export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null, consolidateUnfinished = false): Promise<boolean> {
   const set = await readSessakuPieceSet(tx, key);
@@ -155,7 +196,9 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     where: { csvDashboardId: set.csvDashboardId, OR: [{ sourcePieceSetId: set.id }, { pieces: { some: { sourcePieceId: { in: set.pieces.map((piece) => piece.id) } } } }] },
     include: { pieces: { orderBy: { position: 'asc' } } }
   });
-  const plan = planSessakuPieceQuantities(set.pieces, nextTotal, source.external, set.nextPosition, protectedIds);
+  const unitSplitEnabled = nextTotal != null && nextTotal > set.pieces.reduce((sum, piece) => sum + piece.quantity, 0)
+    && set.pieces.every((piece) => piece.quantity === 1) && await readUnitSplitEnabled(tx, set);
+  const plan = planSessakuPieceQuantities(set.pieces, nextTotal, source.external, set.nextPosition, protectedIds, unitSplitEnabled);
   const removed = set.pieces.filter((piece) => !plan.pieces.some((next) => next.id === piece.id)).map((piece) => piece.id);
   // Never discard completed evidence in a later process to satisfy a reduced cutting plan.
   const laterDetails = await Promise.all(later.map((process) => readQuantitySource(tx, process)));

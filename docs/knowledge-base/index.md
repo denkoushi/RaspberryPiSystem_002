@@ -20,6 +20,7 @@ update-frequency: high
 
 | カテゴリ | ファイル | 件数 | 説明 |
 |---------|---------|------|------|
+| 切削片の数量増加・工程完了・親行監査 | [KB-440](./KB-440-sessaku-piece-quantity-operations-audit.md) | 1件 | 2026-11-09: 単位片の上限50・工程削除時の完了同期・親行監査・FHINCDのtrim整合。 |
 | 2026-11 セキュリティ点検（レート制限回避・端末キー漏れ・バックアップAnsible注入） | [KB-437](./KB-437-security-audit-2026-11-api-hardening.md) | 1件 | 2026-11-04: 分野別点検と反証で確定17件。小さな修正を適用、trustProxy・バックアップ設定の秘密値・端末location変更などは要判断で未修正 |
 | Power BI クエリの15MB制限による生産日程CSV欠落 | [KB-435](./KB-435-powerbi-query-15mb-csv-truncation.md) | 1件 | 2026-11-02: MSZ追加後に応答上限で後半の製番が欠落し照合が未登録。期間分割で取込復旧、日次化と現場の再スキャンは未完了 |
 | キオスクの音声入出力の検討（個人スマホ・Bluetooth・USB） | [KB-434](./KB-434-kiosk-voice-io-options.md) | 1件 | 2026-10-31: 個人スマホ+一回限りQRは可能だがWi-Fi分離が厄介で見送り。Bluetoothは不可。各Pi4にUSBスピーカーフォンの方向 |

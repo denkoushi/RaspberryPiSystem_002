@@ -86,6 +86,14 @@ describe('later process quantity planning', () => {
     if (total > 0) expect(plan.pieces.find((piece) => piece.id === detached.id)).toMatchObject({ sourcePieceId: null, quantity: Math.min(2, total) });
     expect(planLaterProcessPieceQuantities(plan.pieces, sources, total, false, plan.nextPosition)).toEqual(plan);
   });
+  it('keeps a later set at 50 pieces when cutting growth would split a completed tail', () => {
+    const cutting = Array.from({ length: 50 }, (_, i) => ({ id: `c${i}`, position: i + 1, quantity: i === 49 ? 2 : 1, isCompleted: false }));
+    const current = cutting.map((source, i) => ({ id: `l${i}`, sourcePieceId: source.id, position: i + 1, quantity: 1, isCompleted: true }));
+    const plan = planLaterProcessPieceQuantities(current, cutting, 51, false, 51);
+    expect(plan.quantityWarning).toBe('INVALID_PLANNED_QUANTITY');
+    expect(plan.pieces).toEqual(current);
+    expect(plan.nextPosition).toBe(51);
+  });
   it('retains detached completion evidence and invalid-plan warnings', () => {
     const detached = { id: 'detached', sourcePieceId: null, position: 4, quantity: 2, isCompleted: true };
     const current = [...later, detached];
@@ -208,5 +216,62 @@ describe('quantity correction with partial operation evidence', () => {
     expect(planLaterProcessPieceQuantities(source, [], 2, false, 3, false, new Set(['b']))).toMatchObject({
       pieces: [{ ...source[1], position: 1 }], quantityWarning: 'COMPLETED_QUANTITY_EXCEEDS_PLAN'
     });
+  });
+});
+
+describe('unit-split quantity growth', () => {
+  const units = (count: number, completed = false) => Array.from({ length: count }, (_, i) =>
+    ({ id: `unit-${i}`, quantity: 1, position: i + 1, isCompleted: completed }));
+  it.each([false, true])('adds one new piece per unit, preserving completed=%s and protected evidence', (completed) => {
+    const before = units(10, completed);
+    const plan = planSessakuPieceQuantities(before, 12, false, 15, new Set(['unit-9']), true);
+    expect(plan.pieces.slice(0, 10)).toEqual(before);
+    expect(plan.pieces.slice(10)).toMatchObject([{ position: 15, quantity: 1, isCompleted: false }, { position: 16, quantity: 1, isCompleted: false }]);
+    expect(new Set(plan.pieces.map((piece) => piece.id)).size).toBe(12);
+    expect(plan.nextPosition).toBe(17);
+    expect(planSessakuPieceQuantities(plan.pieces, 12, false, 17, new Set(), true)).toEqual(plan);
+  });
+  it.each([48, 49, 50])('caps a growing set of %s pieces at 50 and assigns overflow to an unfinished tail', (count) => {
+    const plan = planSessakuPieceQuantities(units(count), 53, false, count + 1, new Set(), true);
+    expect(plan.pieces).toHaveLength(50);
+    expect(plan.pieces.slice(0, 49).every((piece) => piece.quantity === 1)).toBe(true);
+    expect(plan.pieces[49].quantity).toBe(4);
+    expect(plan.pieces.reduce((sum, piece) => sum + piece.quantity, 0)).toBe(53);
+  });
+  it('keeps the cap and completion evidence when all 50 slots are protected', () => {
+    const before = units(50, true);
+    expect(planSessakuPieceQuantities(before, 51, false, 51, new Set(), true)).toMatchObject({
+      pieces: before, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 51
+    });
+  });
+  it.each([false, true])('rejects growth of 49 completed units and a completed overflow piece (unit split=%s)', (unitSplitEnabled) => {
+    const before = units(50, true);
+    before[49].quantity = 4;
+    const plan = planSessakuPieceQuantities(before, 55, false, 51, new Set(), unitSplitEnabled);
+    expect(plan).toEqual({ pieces: before, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 51 });
+    expect(plan.pieces).toHaveLength(50);
+  });
+  it('rejects non-unit growth when all 50 unfinished pieces have protected evidence', () => {
+    const before = units(50).map((piece) => ({ ...piece, quantity: 2 }));
+    const plan = planSessakuPieceQuantities(before, 102, false, 51, new Set(before.map((piece) => piece.id)));
+    expect(plan).toEqual({ pieces: before, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition: 51 });
+    expect(plan.pieces).toHaveLength(50);
+  });
+  it('leaves non-unit/manual quantities and disabled resources on the existing tail-growth policy', () => {
+    expect(planSessakuPieceQuantities(pieces(false), 7, false, 3, new Set(), true).pieces.map((piece) => piece.quantity)).toEqual([2, 5]);
+    expect(planSessakuPieceQuantities(units(2), 4, false, 3).pieces.map((piece) => piece.quantity)).toEqual([1, 3]);
+  });
+  it('still reduces unrecorded units first', () => {
+    const before = units(4);
+    expect(planSessakuPieceQuantities(before, 2, false, 5, new Set(['unit-3']), true).pieces).toEqual([before[0], before[3]]);
+  });
+  it('maps new source units and capped overflow to later pieces, preserving identities and progress', () => {
+    const before = units(48);
+    const later = before.map((piece) => ({ ...piece, id: `later-${piece.id}`, sourcePieceId: piece.id, isCompleted: true }));
+    const source = planSessakuPieceQuantities(before, 53, false, 49, new Set(), true);
+    const plan = planLaterProcessPieceQuantities(later, source.pieces, 53, false, 49);
+    expect(plan.pieces.slice(0, 48)).toEqual(later);
+    expect(plan.pieces.slice(48)).toMatchObject(source.pieces.slice(48).map((piece) => ({ sourcePieceId: piece.id, quantity: piece.quantity, isCompleted: false })));
+    expect(planLaterProcessPieceQuantities(plan.pieces, source.pieces, 53, false, plan.nextPosition)).toEqual(plan);
   });
 });

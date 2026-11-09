@@ -47,6 +47,8 @@ vi.mock('../../../lib/prisma.js', () => ({
     $queryRaw: vi.fn().mockResolvedValue([]),
     productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
     productionScheduleSessakuPiece: { updateMany: vi.fn() },
+    productionScheduleSessakuPieceOpCompletion: { findMany: vi.fn().mockResolvedValue([]) },
+    productionScheduleSessakuPieceAuditLog: { create: vi.fn() },
     productionScheduleExternalCompletion: { findUnique: vi.fn().mockResolvedValue(null) },
     productionScheduleOrderSupplement: { findFirst: vi.fn().mockResolvedValue(null) },
     csvDashboardRow: {
@@ -317,6 +319,44 @@ describe('production-schedule-command.service', () => {
         expect(prisma.productionScheduleSessakuPieceSet.update).not.toHaveBeenCalled();
         expect(prisma.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
       }
+    } finally { vi.mocked(prisma.$queryRaw).mockResolvedValue([]); }
+  });
+  it.each(['complete', 'incomplete'] as const)('audits parent %s before/after pieces, operations and versions after commit', async (intent) => {
+    const completed = intent === 'complete';
+    const rowData = { FSEIBAN: 'A', FHINCD: 'PART', FSIGENCD: '1', FKOJUN: '1' };
+    const before = { id: 'set', version: 3, plannedQuantity: 2, pieces: [
+      { id: 'p1', quantity: 1, isCompleted: !completed }, { id: 'p2', quantity: 1, isCompleted: !completed }
+    ] };
+    const after = { ...before, version: 4, pieces: before.pieces.map((piece) => ({ ...piece, isCompleted: completed })) };
+    const operations = before.pieces.map((piece) => ({ pieceId: piece.id, opNo: 1 }));
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData } as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce(before as never).mockResolvedValueOnce(after as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceOpCompletion.findMany)
+      .mockResolvedValueOnce((completed ? [] : operations) as never).mockResolvedValueOnce((completed ? operations : []) as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'row', rowData }]);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: !completed } as never);
+    vi.mocked(syncWholePiecesOperationCompletions).mockResolvedValue(true);
+    completionMocks.progress.mockResolvedValue({ parentIsCompleted: completed });
+    let committed = false;
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback: (tx: typeof prisma) => Promise<unknown>) => {
+      const result = await callback(prisma);
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
+      committed = true;
+      return result;
+    });
+    vi.mocked(prisma.productionScheduleSessakuPieceAuditLog.create).mockImplementationOnce(async () => {
+      expect(committed).toBe(true);
+      // The audit failure must not undo or fail the original completion.
+      throw new Error('audit unavailable');
+    });
+    try {
+      await expect(setProductionScheduleRowCompletionIntent({ rowId: 'row', locationKey: 'site', intent })).resolves.toMatchObject({ success: true });
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledExactlyOnceWith({ data: expect.objectContaining({
+        action: completed ? 'complete' : 'uncomplete', outcome: 'success', expectedVersion: 3, resultVersion: 4,
+        fseiban: 'A', siteKey: 'site', parentItemId: expect.stringMatching(/^row:/), pieceIds: ['p1', 'p2'],
+        beforeJson: expect.objectContaining({ count: 2, quantities: [1, 1], completedPieceIds: completed ? [] : ['p1', 'p2'], operations: completed ? [] : operations }),
+        afterJson: expect.objectContaining({ count: 2, quantities: [1, 1], completedPieceIds: completed ? ['p1', 'p2'] : [], operations: completed ? operations : [] })
+      }) });
     } finally { vi.mocked(prisma.$queryRaw).mockResolvedValue([]); }
   });
   it.each([null, { id: 'empty', pieces: [] }])('ordinary/empty-set completion skips board locks and reads Progress after row lock: %j', async (set) => {

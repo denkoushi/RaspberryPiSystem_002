@@ -1,3 +1,5 @@
+import { runSessakuPieceOperation, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
+import type { SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { syncWholePiecesOperationCompletions } from './sessaku-pieces/piece-operation-definitions.js';
 import { readOverrides } from './grinding-planning-board/source.js';
 import { runDueDateTransaction } from './due-date-transaction.js';
@@ -94,6 +96,16 @@ function buildRowDataWithProgress(
   };
 }
 
+async function parentPieceAuditSnapshot(tx: Parameters<typeof syncWholePiecesOperationCompletions>[0], set: SessakuPieceSet) {
+  const operations = await tx.productionScheduleSessakuPieceOpCompletion.findMany({
+    where: { pieceId: { in: set.pieces.map((piece) => piece.id) } }, select: { pieceId: true, opNo: true },
+    orderBy: [{ pieceId: 'asc' }, { opNo: 'asc' }]
+  });
+  return { count: set.pieces.length, quantities: set.pieces.map((piece) => piece.quantity),
+    pieceIds: set.pieces.map((piece) => piece.id), completedPieceIds: set.pieces.filter((piece) => piece.isCompleted).map((piece) => piece.id),
+    plannedQuantity: set.plannedQuantity, operations };
+}
+
 /**
  * キオスク完了状態を更新する共通実装。
  * - `toggle`: 既存互換の反転
@@ -143,6 +155,7 @@ export async function driveProductionScheduleRowCompletion(params: {
   const txStart = performance.now();
 
   let pieceHandled = false;
+  let pieceAudit: PieceAuditContext | undefined;
   const key = sessakuPieceKeyFromRow(current);
   await prisma.$transaction(async (tx) => {
       // The logical group also serializes ordinary completion with first split creation.
@@ -170,6 +183,9 @@ export async function driveProductionScheduleRowCompletion(params: {
         if (external?.isExternallyCompleted) { unchanged = true; nextIsCompleted = true; return; }
         const siteKey = resolveSiteKeyForScopeKey(locationKey);
         const parentId = sessakuPieceParentItemId(key);
+        pieceAudit = { action: nextIsCompleted ? 'complete' : 'uncomplete', siteKey, parentItemId: parentId, fseiban: key.fseiban,
+          pieceIds: set.pieces.map((piece) => piece.id), expectedVersion: set.version,
+          beforeJson: await parentPieceAuditSnapshot(tx, set) };
         const overrides = await readOverrides(tx, siteKey, [parentId, ...set.pieces.map((piece) => `piece:${piece.id}`)]);
         const operationChanged = await syncWholePiecesOperationCompletions(tx, siteKey, set.pieces.map((piece) => {
           const override = overrides.get(`piece:${piece.id}`) ?? overrides.get(parentId);
@@ -186,6 +202,9 @@ export async function driveProductionScheduleRowCompletion(params: {
         const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
         nextIsCompleted = result?.parentIsCompleted ?? false;
         unchanged = !changed && !operationChanged && nextIsCompleted === isCompleted;
+        const saved = await readSessakuPieceSet(tx, key);
+        if (saved) Object.assign(pieceAudit, { resultPieceIds: saved.pieces.map((piece) => piece.id), resultVersion: saved.version,
+          afterJson: await parentPieceAuditSnapshot(tx, saved) });
         return;
       }
       if (unchanged) return;
@@ -213,6 +232,8 @@ export async function driveProductionScheduleRowCompletion(params: {
       }
     }, { timeout: 30000, maxWait: 15000 });
   const txMs = performance.now() - txStart;
+  // Match piece APIs: audit persistence is best effort and outside the committed business transaction.
+  if (pieceAudit) await runSessakuPieceOperation(pieceAudit, async () => undefined);
 
   const respondedRowData = buildRowDataWithProgress(current, unchanged ? isCompleted : nextIsCompleted);
 

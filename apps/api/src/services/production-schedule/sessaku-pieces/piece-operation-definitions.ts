@@ -1,3 +1,5 @@
+import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
+import { reconcileSessakuPieceProgress } from './piece-completion.js';
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
@@ -87,7 +89,7 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
   return data.length > 0 && (await tx.productionScheduleSessakuPieceOpCompletion.createMany({ data, skipDuplicates: true })).count > 0;
 }
 
-/** Definition saves preserve isCompleted; only kiosk actions change completion/progress. */
+/** Keep completed pieces closed; aggregate remaining operation evidence for unfinished pieces. */
 export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionClient, params: { siteKey: string; resourceCd: string },
   keys: SessakuPieceLogicalKey[], opNos: number[]) {
   if (!keys.length) return;
@@ -165,6 +167,14 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
   const missing = targets.filter(({ piece }) => piece.isCompleted).flatMap(({ piece, fill }) => fill
     .filter((opNo) => !existing.has(`${piece.id}:${opNo}`)).map((opNo) => ({ pieceId: piece.id, opNo })));
   if (missing.length) await tx.productionScheduleSessakuPieceOpCompletion.createMany({ data: missing, skipDuplicates: true });
+  const newlyCompleted = targets.filter(({ piece, retained }) => !piece.isCompleted && retained.size > 0
+    && [...retained].every((opNo) => existing.has(`${piece.id}:${opNo}`)));
+  for (let start = 0; start < newlyCompleted.length; start += 300) {
+    await tx.productionScheduleSessakuPiece.updateMany({
+      where: { id: { in: newlyCompleted.slice(start, start + 300).map(({ piece }) => piece.id) } },
+      data: { isCompleted: true, completedAt: new Date() }
+    });
+  }
   // Every targeted set's revision changes with the definition, even if no record changed.
   const affectedSets = [...new Set(targets.map(({ piece }) => piece.pieceSetId))];
   for (let start = 0; start < affectedSets.length; start += 300) {
@@ -172,4 +182,11 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
       where: { id: { in: affectedSets.slice(start, start + 300) } }, data: { version: { increment: 1 } }
     });
   }
+  const completedSets = new Set(newlyCompleted.map(({ piece }) => piece.pieceSetId));
+  for (const set of sets.filter((set) => completedSets.has(set.id))) {
+    const row = rowsByKey.get(encodeSessakuPieceKey(set))!;
+    await reconcileSessakuPieceQuantities(tx, set, details.get(row.id)?.orderSupplements[0]?.plannedQuantity ?? set.plannedQuantity);
+    await reconcileSessakuPieceProgress(tx, set, { emptyIsIncomplete: true });
+  }
+
 }
