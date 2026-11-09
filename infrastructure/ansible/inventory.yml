@@ -1,4 +1,10 @@
 all:
+  vars:
+    ansible_ssh_common_args: >-
+      -o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }}
+      -o GlobalKnownHostsFile=/dev/null
+      -o HostKeyAlias={{ inventory_hostname }}
+      -o StrictHostKeyChecking=yes
   children:
     server:
       hosts:
@@ -592,7 +598,6 @@ all:
                 - /usr/bin/systemctl stop status-agent.timer
                 - /usr/bin/systemctl restart status-agent.timer
       vars:
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"

@@ -1,0 +1,12 @@
+# SSH host keys of the managed hosts, keyed by inventory hostname (HostKeyAlias).
+# Add a new host's key here before its first deploy (docs/guides/deployment.md).
+raspberrypi3 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKNLAqZdYNWCxJH2vaftAh+cCNdR6wJ9V5mrT3mti5RB
+raspberrypi4 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEVwpTuHPusPHunndF1MjWzxm9YW4uLEnGnSTXydFejc
+raspberrypi5 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEF9dRgXYkyh9g8wkmKFp6ViVr4phW+mQwnCkIoYyAoe
+raspi4-assembly-01 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKr1TtETj0Olo6xkJgCwg2Mw8j6XyN0W/uo2x7rZdfJq
+raspi4-assembly-02 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHdSZlTZkTrt4ishtCfGGu5YlUNUX34f3He0g0Y5sJMn
+raspi4-fjv60-80 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBrP+zXBH0sdI59DjnsAZVRm2Nu4GyZVLioyhCZ9JZwu
+raspi4-kensaku-02 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILkR32zgVHoAicixXC/QIdz6m74Bj35QLfxl+o5CbF0H
+raspi4-kensaku-stonebase01 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFZUFszeD9xbuiKR9+X8lDn/ZXW1tlLCUvasHb2N7ox+
+raspi4-robodrill01 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAID0bZmvlLjU7kbEiqm32ARNlE0SZfTsffb80Qlq2b3CI
+raspi4-sessaku-01 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINj+jm5eoeNCzE7IZCxaE84GS+b8Y/s8LIzobeOEB/bN
