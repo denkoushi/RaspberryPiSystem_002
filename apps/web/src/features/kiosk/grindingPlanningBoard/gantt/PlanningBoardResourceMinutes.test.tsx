@@ -41,33 +41,34 @@ describe('resource minutes UI', () => {
     expect(screen.getByRole('spinbutton', { name: 'P1 1台' })).toHaveValue(20);
     expect(within(row).getByText('130分')).toBeInTheDocument(); expect(save).not.toHaveBeenCalled();
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenCalledTimes(1); expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 20, setupMinutes: 5, ops: [] });
+    expect(save).toHaveBeenCalledTimes(1); expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 20, setupMinutes: 5 });
     fireEvent.change(screen.getByRole('spinbutton', { name: 'P1 1台' }), { target: { value: '' } });
     expect(within(row).queryByText('130分')).toBeNull();
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'P1', perUnitMinutes: null, setupMinutes: 0, ops: [] });
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('spinbutton', { name: 'P1 段取り' })).toHaveValue(5);
   });
   it('flushes a pending edit when the sheet closes', () => {
-    vi.useFakeTimers(); save.mockResolvedValue(undefined); const view = render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item()]} values={[]} disabled={false} />);
-    fireEvent.change(screen.getByRole('spinbutton', { name: 'P1 1台' }), { target: { value: '10' } }); view.unmount();
-    expect(save).toHaveBeenCalledWith({ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 10, setupMinutes: 0, ops: [] });
+    vi.useFakeTimers(); save.mockResolvedValue(undefined); const view = render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: 'FLUSH' })]} values={[]} disabled={false} />);
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'FLUSH 1台' }), { target: { value: '10' } }); view.unmount();
+    expect(save).toHaveBeenCalledWith({ resourceCd: '305', fhincd: 'FLUSH', perUnitMinutes: 10, setupMinutes: 0 });
   });
   it('keeps later edits visible and saves each row sequentially while a request is pending', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
     save.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; })).mockResolvedValue(undefined);
-    render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item()]} values={[{ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 10, setupMinutes: 30 }]} disabled={false} />);
-    fireEvent.click(screen.getByRole('button', { name: 'P1 1台を減らす' }));
+    render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: 'SEQ' })]} values={[{ resourceCd: '305', fhincd: 'SEQ', perUnitMinutes: 10, setupMinutes: 30 }]} disabled={false} />);
+    fireEvent.click(screen.getByRole('button', { name: 'SEQ 1台を減らす' }));
     await act(async () => vi.advanceTimersByTime(400));
     expect(save).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole('button', { name: 'P1 段取りを減らす' }));
+    fireEvent.click(screen.getByRole('button', { name: 'SEQ 段取りを減らす' }));
     await act(async () => vi.advanceTimersByTime(400));
-    expect(screen.getByRole('spinbutton', { name: 'P1 1台' })).toHaveValue(9.5);
-    expect(screen.getByRole('spinbutton', { name: 'P1 段取り' })).toHaveValue(25);
+    expect(screen.getByRole('spinbutton', { name: 'SEQ 1台' })).toHaveValue(9.5);
+    expect(screen.getByRole('spinbutton', { name: 'SEQ 段取り' })).toHaveValue(25);
     expect(save).toHaveBeenCalledTimes(1);
     await act(async () => finish());
     expect(save).toHaveBeenCalledTimes(2);
-    expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 9.5, setupMinutes: 25, ops: [] });
+    expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'SEQ', perUnitMinutes: 9.5, setupMinutes: 25 });
   });
   it('counts parent lots, sums quantity/original and retains setup-only drafts after reopening', async () => {
     vi.useFakeTimers(); save.mockResolvedValue(undefined);
@@ -85,7 +86,7 @@ describe('resource minutes UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DRAFT 1台を減らす' }));
     expect(screen.getByRole('spinbutton', { name: 'DRAFT 1台' })).toHaveValue(19);
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenCalledWith({ resourceCd: '305', fhincd: 'DRAFT', setupMinutes: 5, perUnitMinutes: 19, ops: [] });
+    expect(save).toHaveBeenCalledWith({ resourceCd: '305', fhincd: 'DRAFT', setupMinutes: 5, perUnitMinutes: 19 });
   });
   it('adds horizontal operations, waits for every unit value, and saves operation setup totals', async () => {
     vi.useFakeTimers(); save.mockResolvedValue(undefined);
@@ -130,6 +131,11 @@ describe('resource minutes UI', () => {
     expect(save).not.toHaveBeenCalled();
     expect(screen.getByLabelText('KEEP 2工程 1台')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByLabelText('KEEP 1工程 1台')).toHaveValue(10);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getByRole('button', { name: 'KEEP 2工程を外す' }));
+    expect(confirm).toHaveBeenCalledWith('KEEP の 2工程を外します。全ての片でこの工程の完了記録が消えます');
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(save).not.toHaveBeenCalled();
   });
   it('only exposes removal on the selected row, confirms reset and respects cancellation', async () => {
     vi.useFakeTimers(); save.mockResolvedValue(undefined);
@@ -194,9 +200,10 @@ describe('resource minutes UI', () => {
     received.rerender(<PlanningBoardResourceMinutesSheet {...late} values={[{ resourceCd: '305', fhincd: 'ARRIVED', perUnitMinutes: 10, setupMinutes: 15 }]} />);
     fireEvent.change(screen.getByRole('spinbutton', { name: 'ARRIVED 1台' }), { target: { value: '' } });
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenCalledWith({ resourceCd: '305', fhincd: 'ARRIVED', perUnitMinutes: null, setupMinutes: 0, ops: [] });
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getByRole('spinbutton', { name: 'ARRIVED 段取り' })).toHaveValue(15);
   });
-  it('queues a reset when a new value is cleared during its first save', async () => {
+  it('does not save a cleared value after the first save finishes', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
     save.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve; })).mockResolvedValue(undefined);
@@ -208,7 +215,7 @@ describe('resource minutes UI', () => {
     await act(async () => vi.advanceTimersByTime(400));
     expect(save).toHaveBeenCalledTimes(1);
     await act(async () => finish());
-    expect(save).toHaveBeenLastCalledWith({ resourceCd: '305', fhincd: 'INFLIGHT', perUnitMinutes: null, setupMinutes: 0, ops: [] });
+    expect(save).toHaveBeenCalledTimes(1);
   });
   it.each(['forward', 'backward'] as const)('marks only own-source lanes in the normal %s view', (mode) => {
     const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305', '584'], dailyHoursByResource: {}, today: '2026-11-09', scale: 1, mode });

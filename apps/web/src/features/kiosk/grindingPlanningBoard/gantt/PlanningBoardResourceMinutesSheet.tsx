@@ -9,6 +9,8 @@ type Value = { perUnitMinutes: number | null; setupMinutes: number | null; ops: 
 type Saved = GrindingPlanningBoardResourceMinutesResponse['values'][number];
 // Keep unfinished edits when the sheet closes or switches machines. Successful saves remove them.
 const drafts = new Map<string, Value>();
+// Values that must send ops: [] (undo, or removing the last operation). Other single-value saves omit ops.
+const clears = new WeakSet<Value>();
 const half = (value: number) => Math.round(value * 2) / 2;
 const empty = (): Value => ({ perUnitMinutes: null, setupMinutes: null, ops: [] });
 const fromSaved = (saved?: Saved): Value => saved ? { ...saved, ops: (saved.ops ?? []).map((op) => ({ ...op, setupMinutes: op.setupMinutes ?? null })) } : empty();
@@ -52,7 +54,7 @@ function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected
     saving.current = true;
     const payload: GrindingPlanningBoardResourcePartMinutesRequest = {
       resourceCd, fhincd, perUnitMinutes: unitOf(next), setupMinutes: setupOf(next),
-      ops: next.ops.map((op) => ({ ...op, minutes: op.minutes! }))
+      ...(next.ops.length || clears.has(next) ? { ops: next.ops.map((op) => ({ ...op, minutes: op.minutes! })) } : {})
     };
     void mutation.mutateAsync(payload).then(() => {
       persisted.current = payload.perUnitMinutes !== null;
@@ -69,7 +71,8 @@ function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected
     if (timer.current) clearTimeout(timer.current);
     if (pending.current) save.current(pending.current);
   }, []);
-  const change = (next: Value, reset = false) => {
+  const change = (next: Value, reset = false, clearOps = false) => {
+    if (clearOps) clears.add(next);
     if (setupOf(next) > 100000 || (unitOf(next) ?? 0) > 100000) return;
     select(); setDraft(next); drafts.set(key, next); setError(false);
     onOpsChange(next.ops.map((op) => op.opNo));
@@ -88,11 +91,10 @@ function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected
   const touched = value.ops.length > 0 || value.setupMinutes !== null || value.perUnitMinutes !== null;
   const lot = touched && unit !== null ? setupOf(value) * count + unit * quantity : original;
   const reset = () => {
-    if (value.ops.length && !window.confirm(`${fhincd} の工程を外して元の値に戻します。全ての片で全工程の完了記録が消えます`)) return;
-    change(empty(), true);
+    if ((saved?.ops?.length ?? 0) > 0 && !window.confirm(`${fhincd} の工程を外して元の値に戻します。全ての片で全工程の完了記録が消えます`)) return;
+    change(empty(), true, true);
   };
   const changeUnit = (minutes: number | null, opNo?: number) => {
-    if (minutes === null && opNo === undefined && (persisted.current || saved || saving.current)) { change(empty(), true); return; }
     if (opNo !== undefined) change({ ...value, ops: value.ops.map((op) => op.opNo === opNo ? { ...op, minutes } : op) });
     else change({ ...value, perUnitMinutes: minutes });
   };
@@ -105,9 +107,9 @@ function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected
     }
   };
   const remove = (op: Op) => {
-    if ((op.minutes !== null || op.setupMinutes !== null) && !window.confirm(`${fhincd} の ${op.opNo}工程を外します。全ての片でこの工程の完了記録が消えます`)) return;
+    if (saved?.ops?.some((entry) => entry.opNo === op.opNo) && !window.confirm(`${fhincd} の ${op.opNo}工程を外します。全ての片でこの工程の完了記録が消えます`)) return;
     const ops = value.ops.filter((entry) => entry.opNo !== op.opNo);
-    change(ops.length ? { ...value, ops } : { ops: [], perUnitMinutes: op.minutes, setupMinutes: op.minutes === null ? null : op.setupMinutes ?? 0 }, !ops.length && op.minutes === null && persisted.current);
+    change(ops.length ? { ...value, ops } : { ops: [], perUnitMinutes: op.minutes, setupMinutes: op.minutes === null ? null : op.setupMinutes ?? 0 }, !ops.length && op.minutes === null && persisted.current, !ops.length);
   };
   const cell = 'border-b border-slate-700 px-2 py-1.5';
   const bg = selected ? 'bg-[#13213a]' : 'bg-slate-900';
