@@ -361,7 +361,8 @@ describe('backfill', () => {
     const sql = db.$queryRaw.mock.calls[1][0].join('');
     expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
     expect(sql).toContain('|| p."processGroup"::text');
-    expect(sql).toContain(`r."rankingMethod" <> 'semantic-failed' OR EXISTS`);
+    expect(sql).toContain(`r."rankingMethod" NOT IN ('semantic-failed', 'semantic-failed-chunked') OR EXISTS`);
+    expect(sql).not.toContain('semantic-failed-stream');
     expect(sql).toContain('proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL');
   });
 });
@@ -375,14 +376,14 @@ describe('semantic placement', () => {
     } : null);
   });
 
-  it('rebuilds an undecided legacy failure through backfill in one transaction', async () => {
-    const old = run({ rankingMethod: 'semantic-failed', proposals: [{ ...proposal(), decidedAt: null }] });
+  it.each(['semantic-failed', 'semantic-failed-chunked'])('rebuilds an undecided %s through backfill in one transaction', async (rankingMethod) => {
+    const old = run({ rankingMethod, proposals: [{ ...proposal(), decidedAt: null }] });
     db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(old);
     db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: 'target', processGroup: 'CUTTING' }]);
     expect(await service.backfill(1)).toMatchObject({ ready: 1, failed: 0 });
     expect(db.$transaction).toHaveBeenCalledOnce();
     expect(db.partMeasurementDrawingPlacementRun.deleteMany).toHaveBeenCalledWith({ where: {
-      id: old.id, rankingMethod: 'semantic-failed', proposals: { none: { decidedAt: { not: null } } }
+      id: old.id, rankingMethod: { in: ['semantic-failed', 'semantic-failed-chunked'] }, proposals: { none: { decidedAt: { not: null } } }
     } });
     expect(db.partMeasurementDrawingPlacementRun.create).toHaveBeenCalledOnce();
     expect(db.partMeasurementDrawingPlacementRun.deleteMany.mock.invocationCallOrder[0])
@@ -391,7 +392,9 @@ describe('semantic placement', () => {
 
   it.each([
     { rankingMethod: 'semantic-failed', decidedAt: new Date(), allowInference: true },
-    { rankingMethod: 'semantic-failed-chunked', decidedAt: null, allowInference: true },
+    { rankingMethod: 'semantic-failed-chunked', decidedAt: new Date(), allowInference: true },
+    { rankingMethod: 'semantic-failed-stream', decidedAt: null, allowInference: true },
+    { rankingMethod: 'semantic-failed-chunked', decidedAt: null, allowInference: false },
     { rankingMethod: 'semantic-failed', decidedAt: null, allowInference: false }
   ])('keeps a cached run with %j', async ({ rankingMethod, decidedAt, allowInference }) => {
     const old = run({ rankingMethod, proposals: [{ ...proposal(), decidedAt }] });
@@ -425,7 +428,7 @@ describe('semantic placement', () => {
     const unavailable = new InferenceUnavailableError();
     mocks.vision.completeMany.mockResolvedValueOnce({ rawText: '{"items":[]}' })
       .mockResolvedValueOnce({ rawText: '{"items":[]}' }).mockRejectedValueOnce(unavailable);
-    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(70_000).mockReturnValue(140_000);
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValueOnce(60_000).mockReturnValue(120_000);
     try {
       await expect(service.ensureRun('target', { processGroup: 'CUTTING' })).rejects.toBe(unavailable);
     } finally {
@@ -491,7 +494,7 @@ describe('semantic placement', () => {
     if (failure === 'image') mocks.readDrawing.mockRejectedValue(new Error('image unavailable'));
     await service.ensureRun('target', { processGroup: 'CUTTING' });
     const data = db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ placementVersion: 'semantic-v1:CUTTING', rankingMethod: 'semantic-failed-chunked', proposalCount: 0, unplacedCount: 2 });
+    expect(data).toMatchObject({ placementVersion: 'semantic-v1:CUTTING', rankingMethod: 'semantic-failed-stream', proposalCount: 0, unplacedCount: 2 });
     expect(data.proposals.create).toHaveLength(2);
     expect(data.proposals.create.every((row: { status: string; markerXRatio: number | null; markerYRatio: number | null }) => row.status === 'UNPLACED' && row.markerXRatio === null && row.markerYRatio === null)).toBe(true);
     expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ visualTemplateId: 'target' }), 'drawing semantic placement failed');
@@ -511,12 +514,12 @@ describe('semantic placement', () => {
     expect(mocks.warn).not.toHaveBeenCalled();
   });
 
-  it('saves a failed run when the call ran out its whole timeout', async () => {
-    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(115_000);
+  it.each([280_000, 121_000])('saves a failed run when the call failed after %i ms', async (elapsed) => {
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(0).mockReturnValue(elapsed);
     mocks.vision.completeMany.mockRejectedValue(new InferenceUnavailableError());
     await service.ensureRun('target', { processGroup: 'CUTTING' });
     now.mockRestore();
-    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ rankingMethod: 'semantic-failed-chunked', proposalCount: 0 });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({ rankingMethod: 'semantic-failed-stream', proposalCount: 0 });
   });
 
   it('persists M3 rejections and preserves the explanation in candidates', async () => {

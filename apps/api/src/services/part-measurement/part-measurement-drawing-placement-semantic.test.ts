@@ -92,7 +92,7 @@ describe('transferItemsSemantically', () => {
     await transferItemsSemantically(input(), deps);
     expect(readDrawing.mock.calls).toEqual([['source'], ['target']]);
     const request = completeMany.mock.calls[0][0];
-    expect(request).toMatchObject({ background: true, jsonOutput: true, timeoutMs: 115_000, temperature: 0, maxTokens: 6000 });
+    expect(request).toMatchObject({ background: true, stream: true, jsonOutput: true, timeoutMs: 280_000, temperature: 0, maxTokens: 6000 });
     expect(request.userText).toContain('数値の一致では選ばない');
     expect(request.userText).toContain('最初の文字から JSON');
     expect(request.userText).toContain('"nominalValue":10');
