@@ -35,4 +35,15 @@ describe('automatic candidate SQL contract', () => {
       expect(sql.sql).not.toContain(removed);
     }
   });
+  it('optionally excludes raw parent IDs without changing the default candidate query or ordering', () => {
+    const policy = { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] };
+    const original = autoUnitSplitCandidateSql('site', ['S'], policy);
+    const empty = autoUnitSplitCandidateSql('site', ['S'], policy, []);
+    expect(empty.sql).toBe(original.sql); expect(empty.values).toEqual(original.values);
+    const excluded = ['row:first', 'row:second'];
+    const paged = autoUnitSplitCandidateSql('site', ['S'], policy, excluded);
+    expect(paged.sql).toContain(') <> ALL(?::text[])');
+    expect(paged.values).toContainEqual(excluded);
+    expect(paged.sql).toContain('ORDER BY "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
+  });
 });

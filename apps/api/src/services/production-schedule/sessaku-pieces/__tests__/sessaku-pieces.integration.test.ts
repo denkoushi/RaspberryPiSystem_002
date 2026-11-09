@@ -172,6 +172,30 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect((await readSessakuPieceSet(prisma, key()))?.pieces).toHaveLength(0);
     expect((await autoSplitSessakuUnits({ siteKey: site })).splitCount).toBe(0);
   });
+  it('pages past six nonnumeric later-process SQL candidates and splits the eligible tail in one call', async () => {
+    const lots = Array.from({ length: 8 }, (_, i) => ({ ...rowData, FHINCD: `LOT-${i}`, FSIGENCD: '021', FKOJUN: '10A' }))
+      .sort((a, b) => Buffer.compare(Buffer.from(buildGrindingPlanningBoardRowItemId(a)), Buffer.from(buildGrindingPlanningBoardRowItemId(b))));
+    const tail = lots.at(-1)!;
+    const rejectedIds: string[] = [];
+    for (const [index, data] of lots.entries()) {
+      const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data,
+        occurredAt: new Date(), dataHash: `${site}-paged-${index}` } });
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: row.id,
+        sourceCsvDashboardId: site, productNo: `paged-${index}`, resourceCd: '021', processOrder: '10A', plannedQuantity: 3 } });
+      if (data !== tail) {
+        rejectedIds.push(row.id);
+        await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+          rowData: { ...data, FSIGENCD: '305', FKOJUN: '1' }, occurredAt: new Date(), dataHash: `${site}-predecessor-${index}` } });
+      }
+    }
+    const policy = await getResourceCategoryPolicy({ siteKey: site });
+    const firstPage = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`${autoUnitSplitCandidateSql(site, [seiban], policy)} LIMIT 6`);
+    expect(firstPage).toHaveLength(6);
+    for (const row of firstPage) expect(rejectedIds).toContain(row.id);
+    expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    expect((await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(tail)))?.pieces.map((piece) => piece.quantity)).toEqual([1, 1, 1]);
+    expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(1);
+  });
   it('retains legacy manual history after adoption and removal as a later-process set', async () => {
     let result = await split();
     const merge = async (current: SessakuPiecesMutationResponse) => mergeSessakuPieces({ siteKey: site,

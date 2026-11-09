@@ -98,7 +98,12 @@ export async function updateGrindingPlanningBoardResourcePartMinutes(
     if (nextOps.length) await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.update({
       where: { id: saved.id }, data: { perUnitMinutes: nextOps.reduce((sum, op) => sum + op.minutes, 0) }
     });
-    if (ops !== undefined) await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, nextOps.map((op) => op.opNo));
+    // Minute-only edits keep the same operation set, so completion records and piece-set versions stay untouched.
+    const sameOpNos = (left: readonly { opNo: number }[], right: readonly { opNo: number }[]) =>
+      left.map((op) => op.opNo).sort((x, y) => x - y).join(',') === right.map((op) => op.opNo).sort((x, y) => x - y).join(',');
+    if (ops !== undefined && !sameOpNos(saved.ops, ops)) {
+      await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, nextOps.map((op) => op.opNo));
+    }
   }, { timeout: 30000, maxWait: 15000 });
   return getGrindingPlanningBoardResourceMinutes(params);
 }

@@ -86,9 +86,9 @@ Use existing Prisma, Zod, Fastify and Vitest; no new dependency. Resource capaci
 
 ## Outcomes & Retrospective
 
-Seventh review removes automatic-split caching and adds exact legacy-audit History backfill. The work began with a clean tree and remains as nine uncommitted changed files. Migration and DB integration execution remain the user’s responsibility; local verification is limited to unit tests, lint and type checks. Earlier review outcomes below are historical.
+Seventh review removes automatic-split caching and adds exact legacy-audit History backfill. The work began with a clean tree and remains as nine uncommitted changed files. Earlier review outcomes below are historical. Later rounds ran the migration and the full API Vitest suite against an isolated local PostgreSQL 18 container (see Validation Evidence, ninth review).
 
-Local DB/API implementation and the A/B review corrections are implemented; database execution remains pending. Focused tests pass, while persistence and real PostgreSQL concurrency remain unverified because the environment cannot provision an isolated database. No repository integration or deployment is part of this task. Web source files are unchanged. The initial implementation began from a clean tree. This second-review task began with existing uncommitted PR1 changes, including the user’s test correction; those changes remain preserved.
+Local DB/API implementation and the A/B review corrections are implemented. (Historical: at this stage database execution was pending; it was later run against an isolated container.) No repository integration or deployment is part of this task. Web source files are unchanged. The initial implementation began from a clean tree. This second-review task began with existing uncommitted PR1 changes, including the user’s test correction; those changes remain preserved.
 
 ## Artifacts and Notes
 
@@ -143,7 +143,7 @@ Result: 15 files passed, 1 DB integration file skipped; 486 passed and 155 skipp
 
 Intermediate test failures were caused by updated transaction mocks lacking new tables/exports and an empty TEST_DATABASE_URL being parsed as a URL. They were corrected without weakening assertions; the final suite passes. Temporary test-setup CLI/import configuration errors were corrected before the final run.
 
-Database availability checks: `pg_isready -h localhost -p 5432` returned no response; `docker info` could not access the Docker socket. An isolated `initdb -D /private/tmp/sessaku-pr1-postgres.UcV9fv/data -U postgres -A trust --no-locale` failed at shmget with Operation not permitted. No PostgreSQL server was started and no database migration was applied. Migration execution, FK/cascade behavior and real lock concurrency therefore remain unverified here.
+Database availability checks: `pg_isready -h localhost -p 5432` returned no response; `docker info` could not access the Docker socket. An isolated `initdb -D /private/tmp/sessaku-pr1-postgres.UcV9fv/data -U postgres -A trust --no-locale` failed at shmget with Operation not permitted. No PostgreSQL server was started and no database migration was applied. Migration execution, FK/cascade behavior and real lock concurrency were therefore unverified at that time; they were verified later (ninth review).
 
 Both final independent reviews reported zero high/medium issues. No commit, push, branch changes, PR, merge, release or deployment was performed. No .env or secret files were read.
 
@@ -745,3 +745,21 @@ FROM checked;
 - Migration: `apps/api/prisma/migrations/20261109130000_sessaku_unit_split_ops/migration.sql`。
 - Tests: `sessaku-pieces/__tests__/{auto-unit-split-candidates.test.ts,auto-unit-split.service.test.ts,piece-operation-definitions.test.ts,sessaku-pieces.integration.test.ts}`。
 - Documentation: this plan only. 開始時の作業ツリーはclean。上記9ファイルの未コミット差分として残す。
+
+
+## Eighth Review Corrections — 2026-11-09
+
+- 候補SQLに任意のparentId除外配列を追加し、既定の候補条件・順序・事前カウント/契約テストの意味は維持する。LIMIT 6の全件がTS却下または接触済みなら、そのparentIdを要求内だけ除外して再探索する。後ろが無ければhasMore:false。除外上限または探索期限で止まった場合も、再呼出しは同じ先頭から再探索するだけで進まないためhasMore:falseとする。
+- 除外配列は構造的なTS却下も含め合計60件まで(上限判定は追加後に60件を超えるかで行うため、最後のページを含め最大66行を見る)。探索は通常deadlineとrunnerのsafe deadline内に限る。1要求の分割上限5件、BUSY/4xx、候補0件時の監査省略は維持し、skippedCountはSQLが提示した接触済みparentIdをページ間で重複加算しない。
+- 限界: 除外は要求間で保持しない。1つの製番群に構造的な対象外が60件超ある場合、後方の自動分割へ到達できないことがある。上限・期限で止まった場合はhasMore:falseを返し、無駄な再呼出しを促さない。上限・期限内では後工程/品番表記ゆれを要求内で読み飛ばし、先頭ページによる永久的な停滞を解消する。
+- 検証: 複数ページのTS却下後の分割、接触済み件数、除外上限、後続なし/期限の単体ケースと、非数値の後工程7件が先行する実DB統合ケースを追加。DB統合テストはユーザーが実行する。
+- 実行結果: 対象unit 2ファイル・109件成功（約1秒）。`pnpm --filter @raspi-system/api lint`、`pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit --incremental false`、`git diff --check`も成功（静的検査は数分）。unitは一時envDirとdotenv読込moduleのmock・非稼働DATABASE_URLで実行。DB統合テスト、DB接続、migration実行、commit/push/branch操作、`.env`/秘密ファイル読込は未実施。開始時WIPはなく、今回の変更は上記SQL/サービス・対象テスト3ファイル・本計画書の6ファイルのみ。
+
+## Ninth Review (2026-11-09)
+
+- A candidate page fetched after exclusions is bounded by the discovery deadline. If it overruns (budget assertion or PostgreSQL statement timeout 57014), the request returns hasMore:false, because exclusions last only for the request and a retry would rescan the same head.
+- Saving part minutes with ops whose operation numbers are unchanged (minutes-only edits) skips piece reconciliation, so completion records and piece-set versions are untouched.
+- Validation: migration and the full API Vitest suite run against an isolated local PostgreSQL 18 Docker container (port 55432, throwaway database). Two failures also reproduce on main and are unrelated (grinding-planning-board-load-summary.integration and grinding-planning-board.integration "keeps an override…"). API/web tsc and lint pass. Production-scale EXPLAIN is not yet taken.
+- Discovery that stops at the exclusion limit or a deadline logs `sessaku_piece.auto_unit_split_discovery_stopped` (siteKey, reason). Resource capacity is read once per request, outside the page loop.
+- Known limits carried to later work: each extra page re-reads rows and re-projects (worst case about 10 pages per opening); per-fseiban caching or fseiban-level exclusion is deferred. A deadline stop depends on database speed, so a temporarily slow request can return hasMore:false while a splittable lot remains; the next opening retries. The web client must space retries (route has no rate limit).
+

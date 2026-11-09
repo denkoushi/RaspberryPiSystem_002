@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../sessaku-pieces/piece-operation-definitions.js', () => ({ lockOperationDefinitionPieces: async () => [], reconcileOperationDefinitionPieces: vi.fn() }));
+import { reconcileOperationDefinitionPieces } from '../sessaku-pieces/piece-operation-definitions.js';
 
 const mocks = vi.hoisted(() => ({
   sources: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
@@ -86,6 +87,17 @@ describe('resource minutes storage', () => {
     expect(mocks.ops.createMany).toHaveBeenCalledWith({ data: ops.map((op) => ({ ...op, partMinutesId: 'part-id' })) });
     expect(mocks.values.update).toHaveBeenCalledWith({ where: { id: 'part-id' }, data: { perUnitMinutes: 3.75 } });
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
+  });
+  it.each([
+    [[{ opNo: 2, minutes: 9 }, { opNo: 1, minutes: 1 }], false],
+    [[{ opNo: 1, minutes: 1 }], true],
+    [[{ opNo: 1, minutes: 4 }, { opNo: 3, minutes: 3 }], true]
+  ])('reconciles pieces only when the operation set changes %j', async (ops, reconciles) => {
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4 }, { opNo: 2, minutes: 3 }] });
+    vi.mocked(reconcileOperationDefinitionPieces).mockClear();
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ops });
+    expect(mocks.ops.createMany).toHaveBeenCalled();
+    expect(vi.mocked(reconcileOperationDefinitionPieces).mock.calls.length).toBe(reconciles ? 1 : 0);
   });
   it('removes all operations on an empty array and keeps the supplied per-unit value', async () => {
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [{ opNo: 1, minutes: 4 }] });

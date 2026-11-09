@@ -17,7 +17,7 @@ export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, ite
 }
 
 /** The same predicate is executable in pre-deploy counts and SQL/TS contract integration tests. */
-export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy): Prisma.Sql {
+export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy, excludedParentIds: readonly string[] = []): Prisma.Sql {
   const trim = (value: Prisma.Sql) => Prisma.sql`BTRIM(COALESCE(${value}, ''), ${STRING_TRIM_CHARACTERS})`;
   const resource = trim(Prisma.sql`r."rowData"->>'FSIGENCD'`);
   const part = trim(Prisma.sql`r."rowData"->>'FHINCD'`);
@@ -32,6 +32,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
   const parentId = Prisma.sql`'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
     '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
     to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
+  const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
   // MATERIALIZED keeps winner/predecessor work behind the cheap untouched cutting-key gate.
   const untouched = Prisma.sql`SELECT r.* FROM "CsvDashboardRow" r
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
@@ -50,6 +51,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       AND ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)} NOT IN ('', '********') AND ${part} <> '' AND ${process} <> ''
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
+      ${exclusion}
       AND COALESCE(c."unitSplitEnabled", ${effective} IN ('021', '022')) AND q."plannedQuantity" BETWEEN 2 AND 50
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleProgress" p WHERE p."csvDashboardRowId" = r."id" AND p."isCompleted")
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleExternalCompletion" x WHERE x."csvDashboardRowId" = r."id" AND x."isExternallyCompleted")
