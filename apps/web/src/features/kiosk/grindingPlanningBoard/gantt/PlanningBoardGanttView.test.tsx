@@ -781,6 +781,81 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveTextContent(/^部品続き$/);
     expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('border-dashed');
   });
+  it.each([1, 2, 4, 7, 14, 28, 56])('renders only the selected resource in full-width folded rows at scale %i', (scale) => {
+    const entries = [item({ requiredMinutes: 1200 }), item({ itemId: 'other', originalResourceCd: '306', fhincd: 'OTHER', requiredMinutes: 60 })];
+    const values = forwardProps(entries);
+    const onOpenSingleResourcePicker = vi.fn();
+    render(<PlanningBoardGanttView {...values} scale={scale} singleResourceCd="305" onOpenSingleResourcePicker={onOpenSingleResourcePicker} />);
+    expect(screen.queryByTestId('planning-gantt-bar-other')).toBeNull();
+    const rows = document.querySelectorAll<HTMLElement>('[data-gantt-window-row]');
+    expect(rows.length).toBeGreaterThanOrEqual(3);
+    expect(new Set([...rows].map((row) => row.dataset.ganttWindowRow)).size).toBe(rows.length);
+    for (const row of rows) expect(row.querySelector('[data-gantt-track]')).toHaveStyle({ width: '952px' });
+    if (scale >= 2) expect(screen.getAllByTestId('planning-single-day-tick').length).toBeGreaterThan(0);
+    else {
+      expect(rows[1]!.querySelector('[data-gantt-decoration="offHourBands"]')).toBeInTheDocument();
+      expect(within(rows[1]!).getAllByText('20時')).toHaveLength(1);
+    }
+    const head = screen.getByTestId('planning-single-resource-head');
+    expect(head).toHaveClass('h-10');
+    expect(within(head).getByRole('button', { name: '8H' })).toHaveClass('h-8');
+    fireEvent.click(within(head).getByRole('button', { name: '1台の資源CDを選ぶ' }));
+    expect(onOpenSingleResourcePicker).toHaveBeenCalledWith(within(head).getByRole('button', { name: '1台の資源CDを選ぶ' }));
+  });
+  it('keeps the single-resource scroll position on clock ticks and resets it for another scale', () => {
+    const values = forwardProps();
+    const later = { ...values.layout, now: values.layout.now! + 30 / (24 * 60 * 60) };
+    const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    viewport.scrollTop = 200;
+    rerender(<PlanningBoardGanttView {...values} layout={later} scale={1} singleResourceCd="305" />);
+    expect(viewport.scrollTop).toBe(200);
+    rerender(<PlanningBoardGanttView {...values} layout={later} scale={2} singleResourceCd="305" />);
+    expect(viewport.scrollTop).toBe(0);
+  });
+  it('keeps cross-resource predecessor timing and clips a long item into distinct registered rows', () => {
+    const entries = [item({ itemId: 'pre', originalResourceCd: '306', processOrder: '10', requiredMinutes: 600 }),
+      item({ processOrder: '20', requiredMinutes: 1200 })];
+    const values = forwardProps(entries);
+    render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" />);
+    const original = values.layout.groups.find((group) => group.resource === '305')!.rows[0]!.bars[0]!;
+    expect(original.start).toBeGreaterThan(values.layout.today + 1);
+    const bars = screen.getAllByTestId('planning-gantt-bar-a');
+    expect(bars.length).toBeGreaterThan(1);
+    for (const bar of bars) expect(bar.closest('[data-gantt-window-row]')?.getAttribute('data-gantt-window-row')).toContain(':single:');
+    const firstRow = bars[0]!.closest('[data-gantt-window-row]');
+    expect(firstRow).not.toBe(document.querySelector('[data-gantt-window-row]'));
+    expect(screen.queryByTestId('planning-gantt-bar-pre')).toBeNull();
+  });
+  it('reorders across working-minute windows after a long press, showing insertion only on the target row', () => {
+    vi.useFakeTimers();
+    const entries = [item({ requiredMinutes: 360, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 240, alternateRank: 2 })];
+    const values = forwardProps(entries);
+    render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" />);
+    const bar = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
+    const target = screen.getAllByTestId('planning-gantt-bar-b').at(-1)!;
+    expect(bar.closest('[data-gantt-window-row]')).not.toBe(target.closest('[data-gantt-window-row]'));
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    fireEvent.pointerDown(bar, { clientX: 0, clientY: 20, button: 0 });
+    act(() => vi.advanceTimersByTime(500));
+    expect(values.onToggleItem).toHaveBeenCalledWith(entries[0], true);
+    fireEvent.pointerMove(bar, { clientX: 900, clientY: 150 });
+    const insertion = screen.getByTestId('planning-gantt-insertion');
+    expect(insertion.closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
+    fireEvent.pointerUp(bar, { clientX: 900, clientY: 150 });
+    expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
+  });
+  it('tap selects the original item and opens the chain; pin mode keeps its callback', () => {
+    const values = forwardProps();
+    const onTogglePin = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" onTogglePin={onTogglePin} />);
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    expect(values.onToggleItem).toHaveBeenCalledWith(values.layout.groups[0]!.rows[0]!.bars[0]!.item, true);
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    rerender(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305" onTogglePin={onTogglePin} pinMode />);
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    expect(onTogglePin).toHaveBeenCalledOnce();
+  });
   const chainItems = () => [item({ itemId: 'b', processOrder: '20', originalResourceCd: '306', requiredMinutes: 60 }),
     item({ processOrder: '2', requiredMinutes: 480 }), item({ itemId: 'c', fhincd: 'P2', requiredMinutes: 60 })];
   const tap = (bar: HTMLElement) => {
@@ -788,8 +863,8 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 107, clientY: 20 });
     fireEvent.click(bar);
   };
-  function PieceGantt({ items, mode = 'forward', createEnabled = true, enabled = true, cutting = true, disabled = false, stripOnly = false, pieceDisabled = false, resourceView = true, completionPendingParentIds, changePieces = vi.fn() }: {
-    items: GrindingPlanningBoardItem[]; mode?: 'forward' | 'backward'; createEnabled?: boolean; enabled?: boolean; cutting?: boolean; disabled?: boolean;
+  function PieceGantt({ singleResourceCd, items, mode = 'forward', createEnabled = true, enabled = true, cutting = true, disabled = false, stripOnly = false, pieceDisabled = false, resourceView = true, completionPendingParentIds, changePieces = vi.fn() }: {
+    singleResourceCd?: string; items: GrindingPlanningBoardItem[]; mode?: 'forward' | 'backward'; createEnabled?: boolean; enabled?: boolean; cutting?: boolean; disabled?: boolean;
     pieceDisabled?: boolean; resourceView?: boolean; stripOnly?: boolean; completionPendingParentIds?: ReadonlySet<string>; changePieces?: (items: GrindingPlanningBoardItem[], quantities?: number[]) => Promise<void>;
   }) {
     const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -797,7 +872,7 @@ describe('forward PlanningBoardGanttView', () => {
       selectedItems: items.filter((entry) => selected.has(entry.itemId)), changePieces, completionPendingParentIds });
     return <PlanningBoardPiecesContext.Provider value={actions}>
       {stripOnly ? <PlanningBoardChainStrip pieceDisabled={pieceDisabled} bottom={0} bars={props(items).layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))} resourceNameMap={{}} selectedItemIds={selected} currentItemId={null} onStep={vi.fn()} onClose={vi.fn()} disabled={disabled} /> : <PlanningBoardGanttView {...(mode === 'forward' ? forwardProps(items) : props(items))} disabled={disabled}
-        pieceDisabled={pieceDisabled} resourceView={resourceView} onCompleteToggle={vi.fn()} selectedItemIds={selected} onToggleItem={(entry, checked) => setSelected((previous) => {
+        singleResourceCd={singleResourceCd} pieceDisabled={pieceDisabled} resourceView={resourceView} onCompleteToggle={vi.fn()} selectedItemIds={selected} onToggleItem={(entry, checked) => setSelected((previous) => {
           const next = new Set(previous); if (checked) next.add(entry.itemId); else next.delete(entry.itemId); return next;
         })} />}
     </PlanningBoardPiecesContext.Provider>;
@@ -850,6 +925,19 @@ describe('forward PlanningBoardGanttView', () => {
     }
     rerender(draw(new Set()));
     expect(screen.getAllByRole('button', { name: /の数量/ }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
+  });
+  it('opens the split popover from a clipped bar in single-resource mode and keeps the original item', async () => {
+    const entry = item({ plannedQuantity: 6, requiredMinutes: 1200 });
+    const changePieces = vi.fn().mockResolvedValue(undefined);
+    render(<PieceGantt items={[entry]} singleResourceCd="305" changePieces={changePieces} />);
+    const bars = screen.getAllByTestId('planning-gantt-bar-a');
+    expect(bars.length).toBeGreaterThan(1);
+    tap(bars[bars.length - 1]!);
+    fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getByRole('button', { name: /の数量/ }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('button', { name: /^[2-6]つに分ける$/ })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: /^[2-6]つに分ける$/ }));
+    await waitFor(() => expect(changePieces).toHaveBeenCalledExactlyOnceWith([entry], [3, 3]));
   });
   it('splits from the chain strip into adjusted quantities [5,4,3]', async () => {
     const entry = item({ plannedQuantity: 12 }); const changePieces = vi.fn().mockResolvedValue(undefined);

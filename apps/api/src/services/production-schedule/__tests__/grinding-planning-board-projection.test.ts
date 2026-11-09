@@ -55,6 +55,35 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it.each(['100', ''])('uses own minutes with CSV %j and the effective resource for rows and split bars', (csvMinutes) => {
+    const source = sourceRow({ FSIGENSHOYORYO: csvMinutes, FHINCD: ' P-001 ' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const updatedAt = new Date('2026-11-09');
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 3,
+      plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `own-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })) };
+    const resourceMinutes = { ownSourceResourceCds: ['G-02'], values: [
+      { resourceCd: 'G-02', fhincd: 'P-001', perUnitMinutes: 10, setupMinutes: 30 }
+    ] };
+    const overrides = new Map([[buildGrindingPlanningBoardRowItemId(source.rowData), {
+      overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1
+    }]]);
+    const params = baseParams({ rows: [source], resourceMinutes, overrides, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) });
+    const parent = projectGrindingPlanningBoard(params).items[0]!;
+    expect(parent).toMatchObject({ requiredMinutes: 60, ownRequiredMinutes: 60, requiredMinutesSource: 'own',
+      originalRequiredMinutes: csvMinutes ? 100 : null });
+    const result = projectGrindingPlanningBoard({ ...params, includePieces: true });
+    expect(result.items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    expect(result.items.map((item) => item.originalRequiredMinutes)).toEqual(csvMinutes ? [100 / 3, 200 / 3] : [null, null]);
+    expect(result.load.find((entry) => entry.resourceCd === 'G-02')?.requiredMinutes).toBe(90);
+    const moved = projectGrindingPlanningBoard({ ...params, includePieces: true,
+      overrides: new Map([...overrides, ['piece:own-0', { overrideResourceCd: 'G-03', overrideDueDate: null, alternateRank: null, version: 1 }]]) });
+    expect(moved.items.find((item) => item.pieceId === 'own-0')).toMatchObject({
+      requiredMinutesSource: 'original', ownRequiredMinutes: null
+    });
+  });
+
   it('keeps proportional piece minutes unrounded and treats zero or null parents as unknown', () => {
     const updatedAt = new Date('2026-11-06');
     const source = sourceRow({ FSIGENSHOYORYO: '1' });

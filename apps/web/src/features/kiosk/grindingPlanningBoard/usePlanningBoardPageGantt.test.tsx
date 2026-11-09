@@ -8,6 +8,8 @@ import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } 
 import type { GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 
 vi.mock('../../../api/hooks', () => ({
+  useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: { ownSourceResourceCds: ['305'], values: [] } }),
+  useUpdateKioskGrindingPlanningBoardResourceMinutesSource: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskGrindingPlanningBoardResourceCapacity: () => ({ data: undefined }),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false })
 }));

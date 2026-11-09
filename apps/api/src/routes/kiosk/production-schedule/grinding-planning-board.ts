@@ -1,3 +1,4 @@
+import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -205,6 +206,26 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       ...(query.includePieces ? { includePieces: true } : {}),
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/resource-minutes', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    return getGrindingPlanningBoardResourceMinutes({ siteKey: scope.siteKey });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/source', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourceMinutesSourceSchema.parse(request.body);
+    return updateGrindingPlanningBoardResourceMinutesSource({ siteKey: scope.siteKey, ...body });
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourcePartMinutesSchema.parse(request.body);
+    return updateGrindingPlanningBoardResourcePartMinutes({ siteKey: scope.siteKey, ...body });
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/resource-capacity', { config: { rateLimit: false } }, async (request) => {

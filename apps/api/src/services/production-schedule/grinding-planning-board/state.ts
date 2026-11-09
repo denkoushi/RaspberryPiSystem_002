@@ -93,7 +93,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
-  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -113,7 +113,15 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
-    readSessakuPieceGeneration(prisma)
+    readSessakuPieceGeneration(prisma),
+    prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
+    })
   ]);
   const boardVersion = state?.version ?? 0;
   const boardUpdatedAt = state?.updatedAt?.toISOString() ?? '';
@@ -130,7 +138,11 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
       pieceSetCount: pieces.count,
       pieceSetVersion: pieces.version,
-      payloadFormat: 3
+      minuteSourceCount: minuteSources._count._all,
+      minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
+      partMinutesCount: partMinutes._count._all,
+      partMinutesUpdatedAt: partMinutes._max.updatedAt?.toISOString() ?? '',
+      payloadFormat: 4
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,

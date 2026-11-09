@@ -157,6 +157,7 @@ export function usePlanningBoardPageGantt({
     for (const item of orderItems) {
       if (item.isCompleted) continue;
       const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
+      if (gantt.singleResourceCd && resource !== gantt.singleResourceCd) continue;
       const members = itemsByResource.get(resource);
       if (members) members.push(item);
       else itemsByResource.set(resource, [item]);

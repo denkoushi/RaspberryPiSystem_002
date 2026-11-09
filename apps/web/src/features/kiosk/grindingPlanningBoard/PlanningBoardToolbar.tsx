@@ -6,6 +6,7 @@ import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
+import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -78,6 +79,13 @@ export type PlanningBoardToolbarProps = {
   onToggleArrivalFilter?: () => void;
   scawEnabled?: boolean;
   onToggleScawMode?: () => void;
+  singleResourceCd?: string | null;
+  singleResourceLanes?: readonly string[];
+  singleResourceNameMap?: Record<string, string[]>;
+  singleResourcePickerAnchor?: HTMLElement | null;
+  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
+  onCloseSingleResourcePicker?: () => void;
+  onSingleResourceChange?: (resource: string | null) => void;
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
   colorBySeiban?: boolean;
@@ -129,6 +137,8 @@ export function PlanningBoardToolbar({
   largeScreen = false, onToggleLargeScreen,
   scawEnabled = false, onToggleScawMode,
   arrivalFilterEnabled = true, onToggleArrivalFilter,
+  singleResourceCd = null, singleResourceLanes = [], singleResourceNameMap = {}, singleResourcePickerAnchor = null,
+  onOpenSingleResourcePicker, onCloseSingleResourcePicker, onSingleResourceChange,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -163,6 +173,7 @@ export function PlanningBoardToolbar({
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
   const scaleButton = useRef<HTMLButtonElement>(null);
   const scalePanel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (singleResourcePickerAnchor) setScaleOpen(false); }, [singleResourcePickerAnchor]);
   const hiddenScale = ganttScale > 2;
   useEffect(() => { if (!ganttEnabled) setScaleOpen(false); }, [ganttEnabled]);
   // Follow the queue popover pattern; a portal avoids the toolbar's scroll clipping.
@@ -172,7 +183,7 @@ export function PlanningBoardToolbar({
       if (event.target instanceof Node && !scalePanel.current?.contains(event.target) && !scaleButton.current?.contains(event.target)) setScaleOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { setScaleOpen(false); scaleButton.current?.focus(); }
+      if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) { event.preventDefault(); setScaleOpen(false); scaleButton.current?.focus(); }
     };
     const close = () => setScaleOpen(false);
     document.addEventListener('pointerdown', outside);
@@ -242,16 +253,25 @@ export function PlanningBoardToolbar({
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
             {GANTT_SCALES.filter((days) => days <= 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
             <button ref={scaleButton} type="button" aria-label="他の幅" aria-expanded={scaleOpen} aria-pressed={hiddenScale}
-              onClick={() => setScaleOpen((open) => !open)}
+              onClick={() => { onCloseSingleResourcePicker?.(); setScaleOpen((open) => !open); }}
               className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-xs font-bold', hiddenScale ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
               {hiddenScale ? `${ganttScaleLabel(ganttScale)} ▾` : <span className="text-2xl">⋯</span>}
             </button>
-            {scaleOpen && createPortal(<div ref={scalePanel} role="group" aria-label="他の幅" style={scalePosition}
+            {scaleOpen && createPortal(<div ref={scalePanel} data-planning-board-popover role="group" aria-label="他の幅" style={scalePosition}
               className="fixed z-[100] flex flex-wrap gap-0.5 rounded-lg border border-slate-600 bg-slate-900 p-1 shadow-xl">
               {GANTT_SCALES.filter((days) => days > 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days}
                 onClick={() => { onGanttScaleChange?.(days); setScaleOpen(false); scaleButton.current?.focus(); }}>{ganttScaleLabel(days)}</SegmentButton>)}
             </div>, document.body)}
           </div>
+          {onSingleResourceChange && <button type="button" aria-pressed={Boolean(singleResourceCd)} aria-expanded={Boolean(singleResourcePickerAnchor)}
+            aria-label={singleResourceCd ? `${singleResourceCd} 1台表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
+            onClick={(event) => { setScaleOpen(false); if (singleResourceCd) onSingleResourceChange(null); else onOpenSingleResourcePicker?.(event.currentTarget); }}
+            className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+            {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
+          </button>}
+          {singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
+            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={singleResourceCd} resourceNameMap={singleResourceNameMap}
+            onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
           <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}
             className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', colorBySeiban ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">

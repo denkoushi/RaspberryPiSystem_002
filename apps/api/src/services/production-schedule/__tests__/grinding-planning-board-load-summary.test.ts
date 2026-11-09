@@ -1,3 +1,4 @@
+vi.mock('../grinding-planning-board-resource-minutes.service.js', () => ({ getGrindingPlanningBoardResourceMinutes: vi.fn().mockResolvedValue({ ownSourceResourceCds: [], values: [] }) }));
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
@@ -365,5 +366,30 @@ describe('materialized load aggregate cache', () => {
     }
     await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-0' });
     expect(aggregateCalls()).toBe(130);
+  });
+});
+
+
+describe('own minutes in load summary paths', () => {
+  const settings = { ownSourceResourceCds: ['G-02'], values: [
+    { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 10, setupMinutes: 30 }
+  ] };
+  it.each([false, true])('resolves per-bar setup and unknown CSV (materialized=%s)', async (materialized) => {
+    const sources = [1, 3].map((quantity, index) => ({ id: 'row', fseiban: 'S1', fhinCd: ' part ', productNo: '1',
+      resourceCd: 'G-02', processOrder: '1', requiredMinutesRaw: '', requiredMinutes: null, plannedQuantity: 4,
+      isCompleted: false, pieceId: `piece-${index}`, pieceQuantity: quantity, quantityWarning: null }));
+    const queryRaw = vi.fn(async (query: Prisma.Sql) => {
+      if (query.sql.includes('effectiveItems')) return [1, 3].map((quantity) => ({
+        originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: ' part ', quantity,
+        itemCount: 1n, unknownItemCount: 1n, requiredMinutesSum: null
+      }));
+      if (query.sql.includes('FROM "CsvDashboardRow"')) return sources;
+      return [];
+    });
+    const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes: settings,
+      ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
+    expect(summary.unknownRequiredMinutesCount).toBe(0);
+    expect(summary.load[0]).toMatchObject({ requiredMinutes: 100, unfinishedItemCount: 2 });
   });
 });

@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => {
   const prisma = {
     $queryRaw: vi.fn(),
     $executeRaw: vi.fn(),
+    productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn(), aggregate: vi.fn() },
+    productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
@@ -172,6 +174,10 @@ function configurePersistence(): void {
   });
   prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue(state);
   prisma.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
+  for (const table of [prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource, prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes]) {
+    table.findMany.mockResolvedValue([]);
+    table.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
+  }
   prisma.csvDashboardRow.findMany.mockResolvedValue([details]);
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
@@ -888,7 +894,7 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
   });
 
-  it.each(['csv', 'state', 'override', 'resource', 'machine-name'])('rebuilds without a supplied ID after %s changes', async (change) => {
+  it.each(['csv', 'state', 'override', 'resource', 'machine-name', 'minute-source', 'part-minutes'])('rebuilds without a supplied ID after %s changes', async (change) => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
     const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, snapshotStore };
     const first = await getGrindingPlanningBoard(params);
@@ -897,6 +903,8 @@ describe('grinding planning board service orchestration', () => {
     if (change === 'state') mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue({ ...mocks.state, version: 1 });
     if (change === 'override') mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue(revision);
     if (change === 'resource') mocks.prisma.productionScheduleResourceMaster.aggregate.mockResolvedValue(revision);
+    if (change === 'minute-source') mocks.prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.aggregate.mockResolvedValue(revision);
+    if (change === 'part-minutes') mocks.prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.aggregate.mockResolvedValue(revision);
     if (change === 'machine-name') mocks.prisma.productionScheduleSeibanMachineNameSupplement.aggregate.mockResolvedValue(revision);
     const projection = mocks.projectGrindingPlanningBoard.mock.results[0]!.value;
     mocks.projectGrindingPlanningBoard.mockReturnValue({ ...projection, items: projection.items.map((item: object) => ({ ...item, itemRevision: 'changed' })) });

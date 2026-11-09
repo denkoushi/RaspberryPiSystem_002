@@ -1,6 +1,6 @@
 import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -56,6 +56,7 @@ export type PlanningSnapshotGenerationDetails = {
   boardUpdatedAt: string;
 };
 export type CurrentProjection = {
+  resourceMinutes: GrindingPlanningBoardResourceMinutesResponse;
   state: PlanningState;
   byItemId: Map<string, GrindingPlanningBoardItem>;
   overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;

@@ -128,6 +128,9 @@ export interface GrindingPlanningBoardItem {
   plannedQuantity: number | null;
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
+  originalRequiredMinutes: number | null;
+  ownRequiredMinutes: number | null;
+  requiredMinutesSource: GrindingPlanningBoardRequiredMinutesSource;
   isCompleted: boolean;
   lslhSurface: boolean;
   arrived?: boolean;
@@ -349,4 +352,20 @@ export interface SessakuPiecesMutationResponse {
   pieces: GrindingPlanningBoardItem[];
   parentIsCompleted: boolean;
   sourceRowId: string;
+}
+
+export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
+export interface GrindingPlanningBoardResourceMinutesResponse {
+  ownSourceResourceCds: string[];
+  values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number }>;
+}
+export interface GrindingPlanningBoardResourceMinutesSourceRequest {
+  resourceCd: string;
+  source: GrindingPlanningBoardRequiredMinutesSource;
+}
+export interface GrindingPlanningBoardResourcePartMinutesRequest {
+  resourceCd: string;
+  fhincd: string;
+  perUnitMinutes: number | null;
+  setupMinutes: number;
 }
