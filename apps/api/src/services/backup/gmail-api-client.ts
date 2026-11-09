@@ -473,6 +473,24 @@ export class GmailApiClient {
     }
   }
 
+  async addLabelToMessage(messageId: string, labelName: string): Promise<void> {
+    try {
+      const labelId = await this.ensureLabel(labelName);
+      await this.gateExecute('gmail.users.messages.modify(addLabel)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.modify as any)(
+          { userId: 'me', id: messageId, requestBody: { addLabelIds: [labelId] } },
+          this.requestOptions()
+        )
+      );
+    } catch (error) {
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
+      throw wrapGmailOperationError('Failed to add label to message', error);
+    }
+  }
+
   /**
    * メールをゴミ箱へ移動
    * @param messageId メッセージID

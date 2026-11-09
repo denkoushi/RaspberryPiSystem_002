@@ -928,7 +928,7 @@ describe('procedure-material app Gmail ingestion', () => {
     const h = appHarness(appParts(), subject);
     const options = { config: h.config, allowWait: false };
     expect(await h.service.runOnce(options)).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
-    expect(h.gmail.searchMessagesAll).toHaveBeenCalledWith('(subject:"[Procedure-material]" OR subject:"ProcedureMaterial") in:inbox is:unread');
+    expect(h.gmail.searchMessagesAll).toHaveBeenCalledWith('((subject:"[Procedure-material]" OR subject:"ProcedureMaterial") in:inbox is:unread) -label:rps_sender_rejected');
     expect(h.rows).toEqual([1, 2].map((photoIndex) => expect.objectContaining({
       origin: 'APP', kind: 'PHOTO', text: null, subjectHint: '保守・7125 test', contentType: 'image/jpeg',
       appRef: { sourceSystem: 'sharepoint', sourceList: 'ProcedureMaterialList', itemId: 1, modified: appManifest.source.modified,

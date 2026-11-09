@@ -99,7 +99,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
       seibansRead: 6, dateChanged: 4, unchanged: 2, autoRegistered: 1, unregistered: 1, skipped: 1,
       warnings: [expect.objectContaining({ code: 'UNKNOWN_STAR' })],
     } } });
-    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(`in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d from:synthetic@example.com`, 10);
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(`(in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d from:synthetic@example.com) -label:rps_sender_rejected`, 10);
     expect(gmail.searchMessagesLimited.mock.calls[0][0]).toContain('from:synthetic@example.com');
     // trashMessage is the existing Gmail operation that adds rps_processed before moving to trash.
     expect(gmail.trashMessage).toHaveBeenCalledExactlyOnceWith('mail-1');
@@ -111,7 +111,7 @@ describe('D schedule Gmail intake and scheduler history', () => {
     gmail.searchMessagesLimited.mockResolvedValue([]);
     await ingestion.runOnce({ config: { ...config, storage: { provider: 'gmail', options: {} } }, allowWait: false });
     expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(
-      `in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d`, 10);
+      `(in:inbox is:unread -label:${(process.env.GMAIL_TRASH_CLEANUP_LABEL || 'rps_processed').trim()} filename:xlsx newer_than:60d) -label:rps_sender_rejected`, 10);
   });
 
   it('skips missing headers and applies only the first recognized attachment', async () => {

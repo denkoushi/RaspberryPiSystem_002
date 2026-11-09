@@ -572,6 +572,27 @@ describe('GmailApiClient', () => {
     });
   });
 
+  describe('addLabelToMessage', () => {
+    it.each([false, true])('adds a label (already exists: %s)', async (exists) => {
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: exists ? [{ id: 'label-rejected', name: 'rps_sender_rejected' }] : [] } });
+      if (!exists) mockGmailLabels.create.mockResolvedValueOnce({ data: { id: 'label-rejected' } });
+      mockGmailMessages.modify.mockResolvedValueOnce({ data: {} });
+      await gmailClient.addLabelToMessage('msg-rejected', 'rps_sender_rejected');
+      expect(mockGmailLabels.list).toHaveBeenCalledWith({ userId: 'me' }, { retry: false, timeout: 30_000 });
+      expect(mockGmailLabels.create).toHaveBeenCalledTimes(exists ? 0 : 1);
+      if (!exists) expect(mockGmailLabels.create).toHaveBeenCalledWith({ userId: 'me', requestBody: {
+        name: 'rps_sender_rejected', labelListVisibility: 'labelShow', messageListVisibility: 'show',
+      } }, { retry: false, timeout: 30_000 });
+      expect(mockGmailMessages.modify).toHaveBeenCalledExactlyOnceWith({ userId: 'me', id: 'msg-rejected', requestBody: { addLabelIds: ['label-rejected'] } }, { retry: false, timeout: 30_000 });
+      expect(gate.execute).toHaveBeenCalledWith('gmail.users.messages.modify(addLabel)', expect.any(Function), { allowWait: false });
+    });
+    it('wraps label modification failures', async () => {
+      mockGmailLabels.list.mockResolvedValueOnce({ data: { labels: [{ id: 'label-rejected', name: 'rps_sender_rejected' }] } });
+      mockGmailMessages.modify.mockRejectedValueOnce(new Error('API Error'));
+      await expect(gmailClient.addLabelToMessage('msg-rejected', 'rps_sender_rejected')).rejects.toThrow('Failed to add label to message');
+    });
+  });
+
   describe('trashMessage', () => {
     it('should add processed label then trash message', async () => {
       const messageId = 'msg-trash-1';

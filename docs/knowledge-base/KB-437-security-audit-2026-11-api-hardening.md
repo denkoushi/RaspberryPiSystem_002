@@ -104,8 +104,10 @@
 
 - Gmail からの取込は全経路で、共通の設定 `gmailIngestSenderPolicy.allowedSenderDomains`（既定 `["thkintechs.co.jp"]`）と Gmail の認証結果を確かめてから本文・添付を読む。既存の `fromEmail` と手順書資料の `allowedSenderDomains` はそのまま併用する。
 - 対象外のメールは受信箱に残し、実行ごとに通知 `gmail-sender-rejected`（WARNING）を出す。空 `[]` は取込停止として扱う。
+- 拒否したメールには `rps_sender_rejected` ラベルを付け、以後の取り込み検索から除外する（許可リストが空の場合を除く）。
+- 許可リスト修正後に再取り込みする場合は、Gmail でそのメールのラベルを外す。
 - 設定手順と確認方法は [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md) の「メールが見つからない」を正本とする。
-- この追補はローカル実装の記録。本番反映は未実施。
+- 送信元の確認は 2026-11-09 に本番反映済み。拒否したメールのラベルによる除外はその後の追加。
 
 ## References
 

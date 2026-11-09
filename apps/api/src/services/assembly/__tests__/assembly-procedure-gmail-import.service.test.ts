@@ -212,7 +212,7 @@ describe('AssemblyProcedureGmailImportService', () => {
 
     const result = await harness.service.ingest();
 
-    expect(harness.gateway.searchMessagesAll).toHaveBeenCalledWith(ASSEMBLY_PROCEDURE_GMAIL_QUERY);
+    expect(harness.gateway.searchMessagesAll).toHaveBeenCalledWith(`(${ASSEMBLY_PROCEDURE_GMAIL_QUERY}) -label:rps_sender_rejected`);
     expect(harness.writes.map((write) => write.gmailInternalDateMs)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     ]);

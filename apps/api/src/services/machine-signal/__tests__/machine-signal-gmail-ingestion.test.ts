@@ -74,7 +74,7 @@ describe('MachineSignalGmailIngestionService', () => {
 
     const summary = await service.runOnce({ config, allowWait: false });
 
-    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(MACHINE_SIGNAL_GMAIL_QUERY, 3);
+    expect(gmail.searchMessagesLimited).toHaveBeenCalledWith(`(${MACHINE_SIGNAL_GMAIL_QUERY}) -label:rps_sender_rejected`, 3);
     expect(gmail.getAttachment).toHaveBeenCalledTimes(2);
     expect(importFiles).toHaveBeenCalledWith(
       [
