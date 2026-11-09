@@ -349,6 +349,8 @@ class ClientServerCertPinCertificateTests(unittest.TestCase):
                             exchange()
 
     def test_httpx_senders_and_leases_receive_the_pinned_context(self):
+        if importlib.util.find_spec('httpx') is None:
+            self.skipTest('httpx unavailable; torque-agent CI covers this path')
         from torque_agent.api_client import HttpxTorqueRecordApi
         from torque_agent.connection_lease import LeaseApiClient
         (cert, _), _ = self.certificates
