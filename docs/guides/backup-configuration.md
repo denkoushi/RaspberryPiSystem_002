@@ -668,9 +668,8 @@ curl https://<pi5_host>/api/backup \
 
 3. **バックアップの暗号化**: Dropbox・ローカルとも、バックアップは `BACKUP_ENCRYPTION_KEY` で暗号化される。鍵が無いと書き込みは失敗する（上記「Pi5本番の現在方針」）。秘密情報そのものはDropboxの対象にしない
 
-4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上で保護され、証明書ピニングが実装されています
-   - **証明書更新時の対応**: Dropboxが証明書を更新した場合、証明書ピニング検証が失敗しバックアップが500エラーになることがあります
-   - この場合は、`apps/api/scripts/get-dropbox-cert-fingerprint.ts`で新しい証明書フィンガープリントを取得し、`apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`の`DROPBOX_CERTIFICATE_FINGERPRINTS`配列に追加してください
+4. **ネットワークセキュリティ**: Dropboxへの通信はTLS 1.2以上（TLS 1.3を含む）で保護され、Node標準のCA検証と既定のホスト名検証を使用します
+   - 2026-11-09以降、葉証明書の固定と証明書更新時の指紋追加は不要です。APIイメージのNodeを更新し、信頼するCA一覧を保守してください
    - 詳細は [KB-199](../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー) を参照してください
 
 ## 管理コンソールからの設定管理

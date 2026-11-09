@@ -1,18 +1,16 @@
 import { Dropbox } from 'dropbox';
 import * as https from 'https';
-import * as tls from 'tls';
 import { createReadStream } from 'fs';
 import fetch from 'node-fetch';
 import type { RequestInit as NodeFetchRequestInit } from 'node-fetch';
 import type { FileInfo, LargeFileUploadProvider, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { getString, isRecord, toErrorInfo } from '../../../lib/type-guards.js';
-import { verifyDropboxCertificate } from './dropbox-cert-pinning.js';
 import { DropboxOAuthService } from '../dropbox-oauth.service.js';
 
 /**
  * Dropbox APIを使用したストレージプロバイダー。
- * セキュリティ対策として証明書ピニング、TLS検証、リトライロジックを実装。
+ * 標準のCA検証とホスト名検証、TLS 1.2以上で通信し、リトライロジックを実装。
  * リフレッシュトークンによる自動アクセストークン更新機能をサポート。
  */
 export class DropboxStorageProvider implements StorageProvider, LargeFileUploadProvider {
@@ -24,7 +22,19 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
   private onTokenUpdate?: (token: string) => Promise<void>;
   private readonly uploadSessionChunkSize = 8 * 1024 * 1024; // 8MB
 
-  private createPinnedFetch(httpsAgent: https.Agent) {
+  private createHttpsAgent(): https.Agent {
+    // 標準のCA検証と既定のホスト名検証を使用し、TLS 1.2以上を許可する
+    return new https.Agent({
+      rejectUnauthorized: true,
+      keepAlive: true,
+      keepAliveMsecs: 1000,
+      maxSockets: 5,
+      timeout: 30000,
+      minVersion: 'TLSv1.2'
+    });
+  }
+
+  private createAgentFetch(httpsAgent: https.Agent) {
     return (url: string, init?: NodeFetchRequestInit) => {
       const nextInit = {
         ...(init as Record<string, unknown>),
@@ -41,27 +51,10 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
     oauthService?: DropboxOAuthService;
     onTokenUpdate?: (token: string) => Promise<void>;
   }) {
-    // HTTPSエージェントの設定（証明書検証を有効化、証明書ピニング対応）
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: true, // 証明書検証を有効化（必須）
-      keepAlive: true,
-      keepAliveMsecs: 1000,
-      maxSockets: 5,
-      timeout: 30000, // 30秒タイムアウト
-      secureProtocol: 'TLSv1_2_method', // TLS 1.2以上を強制
-      // 証明書ピニングの検証
-      checkServerIdentity: (servername: string, cert: tls.PeerCertificate) => {
-        const pinningError = verifyDropboxCertificate(servername, cert);
-        if (pinningError) {
-          return pinningError;
-        }
-        // デフォルトの検証を継続
-        return tls.checkServerIdentity(servername, cert);
-      }
-    });
+    const httpsAgent = this.createHttpsAgent();
 
     // カスタムfetch関数（HTTPSエージェントを使用）
-    const customFetch = this.createPinnedFetch(httpsAgent);
+    const customFetch = this.createAgentFetch(httpsAgent);
 
     this.accessToken = options.accessToken;
     this.refreshToken = options.refreshToken;
@@ -89,23 +82,9 @@ export class DropboxStorageProvider implements StorageProvider, LargeFileUploadP
       this.accessToken = tokenInfo.accessToken;
       
       // Dropboxインスタンスを更新
-      const httpsAgent = new https.Agent({
-        rejectUnauthorized: true,
-        keepAlive: true,
-        keepAliveMsecs: 1000,
-        maxSockets: 5,
-        timeout: 30000,
-        secureProtocol: 'TLSv1_2_method',
-        checkServerIdentity: (servername: string, cert: tls.PeerCertificate) => {
-          const pinningError = verifyDropboxCertificate(servername, cert);
-          if (pinningError) {
-            return pinningError;
-          }
-          return tls.checkServerIdentity(servername, cert);
-        }
-      });
+      const httpsAgent = this.createHttpsAgent();
 
-      const customFetch = this.createPinnedFetch(httpsAgent);
+      const customFetch = this.createAgentFetch(httpsAgent);
 
       this.dbx = new Dropbox({
         accessToken: this.accessToken,
