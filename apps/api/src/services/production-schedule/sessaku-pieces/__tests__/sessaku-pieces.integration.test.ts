@@ -439,9 +439,73 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: pieces[0].id } })).toEqual([]);
     expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: pieces[1].id }, select: { opNo: true } })).toEqual([{ opNo: 3 }]);
     await external(true);
-    const before = await readSessakuPieceSet(prisma, key());
+    const before = (await readSessakuPieceSet(prisma, key()))!;
     await update([{ opNo: 4, minutes: 1 }]);
-    expect(await readSessakuPieceSet(prisma, key())).toEqual(before);
+    // Externally completed: the obsolete opNo 3 evidence goes, but nothing is filled or re-completed.
+    const after = (await readSessakuPieceSet(prisma, key()))!;
+    expect(after.pieces).toEqual(before.pieces);
+    expect(after.version).toBe(before.version + 1);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { piece: { pieceSet: { fseiban: seiban } } } })).toBe(0);
+  });
+  it.each([false, true])('removes obsolete off-board evidence without completing or refilling pieces (CSV rows absent=%s)', async (missingRows) => {
+    const update = (opNos: number[]) => updateGrindingPlanningBoardResourcePartMinutes({
+      siteKey: site, resourceCd: '1', fhincd: 'PART-A', perUnitMinutes: 1, setupMinutes: 0,
+      ops: opNos.map((opNo) => ({ opNo, minutes: 1 })) });
+    await update([1, 2]);
+    const result = await split();
+    const pieceId = result.pieces[0].pieceId!;
+    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({
+      data: [1, 2].map((opNo) => ({ pieceId, opNo }))
+    });
+    await prisma.productionScheduleGrindingPlanningBoardState.updateMany({
+      where: { csvDashboardId: dashboardId, siteKey: { in: [site, other] } }, data: { seibanOrder: [] }
+    });
+    if (missingRows) {
+      await prisma.csvDashboardRow.deleteMany({ where: { id: { in: [rowId, nextRowId] } } });
+      expect(await findSessakuPieceWinner(prisma, key())).toBeNull();
+    }
+    await update([1]);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId }, select: { opNo: true } }))
+      .toEqual([{ opNo: 1 }]);
+    expect((await readSessakuPieceSet(prisma, key()))!.pieces.every((piece) => !piece.isCompleted && piece.completedAt === null)).toBe(true);
+    // Reusing the removed number must not resurrect evidence of the old operation.
+    await update([1, 2]);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId }, select: { opNo: true } }))
+      .toEqual([{ opNo: 1 }]);
+  });
+  it('removes obsolete off-board evidence after a piece moves from 021 to 022 without a definition', async () => {
+    rowData = { ...rowData, FSIGENCD: '021' };
+    await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
+    await prisma.productionScheduleOrderSupplement.update({ where: { csvDashboardRowId: rowId }, data: { resourceCd: '021' } });
+    const update = (opNos: number[]) => updateGrindingPlanningBoardResourcePartMinutes({
+      siteKey: site, resourceCd: '021', fhincd: 'PART-A', perUnitMinutes: 1, setupMinutes: 0,
+      ops: opNos.map((opNo) => ({ opNo, minutes: 1 })) });
+    await update([1, 2]);
+    const result = await split();
+    const pieceId = result.pieces[0].pieceId!;
+    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: [1, 2].map((opNo) => ({ pieceId, opNo })) });
+    await prisma.productionScheduleGrindingPlanningBoardState.updateMany({
+      where: { csvDashboardId: dashboardId, siteKey: { in: [site, other] } }, data: { seibanOrder: [] }
+    });
+    expect((await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({
+      where: { csvDashboardId: dashboardId, siteKey: { in: [site, other] }, itemKey: `piece:${pieceId}` },
+      data: { overrideResourceCd: '022' }
+    })).count).toBe(2);
+    expect(await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.count({
+      where: { csvDashboardId: dashboardId, siteKey: { in: [site, other] }, resourceCd: '022', fhincd: 'PART-A' }
+    })).toBe(0);
+    const before = (await readSessakuPieceSet(prisma, key()))!;
+    await update([1, 3]);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId }, select: { opNo: true } }))
+      .toEqual([{ opNo: 1 }]);
+    const after = (await readSessakuPieceSet(prisma, key()))!;
+    expect(after.pieces).toEqual(before.pieces);
+    expect(after.version).toBe(before.version + 1);
+    // Reintroducing the number cannot restore evidence for this off-board piece.
+    await update([1, 2]);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId }, select: { opNo: true } }))
+      .toEqual([{ opNo: 1 }]);
+    expect((await readSessakuPieceSet(prisma, key()))!.version).toBe(after.version);
   });
   it('definition reduction completes recorded pieces, publishes parent progress and downstream arrival', async () => {
     const update = (opNos: number[]) => updateGrindingPlanningBoardResourcePartMinutes({
@@ -631,7 +695,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await prisma.productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId, opNo: 9 } });
     await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({ where: { itemKey: `piece:${pieceId}`, siteKey: other }, data: { overrideResourceCd: null } });
     await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '021', fhincd: 'PART-A', perUnitMinutes: 1, setupMinutes: 0, ops: [] });
-    expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { pieceId, opNo: 9 } })).toBe(1);
+    // No longer on 021 anywhere, but opNo 9 is defined for none of its resources: obsolete evidence is still removed.
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { pieceId, opNo: 9 } })).toBe(0);
   });
   it.each(['split', 'merge'].flatMap((action) => ['target', 'later'].map((scope) => ({ action, scope }))))(
     'rejects $action with partial operation evidence on $scope pieces', async ({ action, scope }) => {

@@ -72,6 +72,42 @@ describe('piece identity and monotonic generation', () => {
     expect(locks[0]).toEqual([...locks[0]].sort());
   });
 
+  it('reads 601 related seiban/part pairs in 300/300/1 batches and locks all unique keys once in global order', async () => {
+    const keys = Array.from({ length: 601 }, (_, i) => ({ fseiban: `S${600 - i}`, fhincd: `P${i % 3}`, fsigencd: '021', fkojun: '1' }));
+    const related = keys.map((key) => ({ ...key, fsigencd: '022', fkojun: '2' }));
+    const findMany = vi.fn().mockImplementation(async ({ where }) => related.filter((key) =>
+      where.OR.some((part: { fseiban: string; fhincd: string }) => part.fseiban === key.fseiban && part.fhincd === key.fhincd)));
+    const queryRaw = vi.fn().mockImplementation(async (query: Prisma.Sql) => {
+      const seibans = new Set(query.values.filter((_, index) => index % 2 === 1));
+      return [...keys, ...related].filter((key) => seibans.has(key.fseiban)).map((key) => ({
+        rowData: { FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun }
+      })).reverse();
+    });
+    const tx = { productionScheduleSessakuPieceSet: { findMany }, $queryRaw: queryRaw, $executeRaw: vi.fn() };
+    const locked = await acquireSessakuPieceLogicalLocks(tx as never, [...keys, keys[0], keys[300], keys[600]]);
+    expect(findMany.mock.calls.map(([{ where }]) => where.OR.length)).toEqual([300, 300, 1]);
+    expect(findMany.mock.calls.flatMap(([{ where }]) => {
+      expect(where.csvDashboardId).toBe(PRODUCTION_SCHEDULE_DASHBOARD_ID);
+      return where.OR;
+    })).toEqual(keys.map(({ fseiban, fhincd }) => ({ fseiban, fhincd })));
+    expect(queryRaw.mock.calls.map(([query]) => (query.values.length - 1) / 2)).toEqual([300, 300, 1]);
+    queryRaw.mock.calls.forEach(([query], index) => {
+      expect(query.text).toContain(`COALESCE(r."rowData"->>'FSEIBAN', '') =`);
+      expect(query.text).toContain(`COALESCE(r."rowData"->>'FHINCD', '') =`);
+      expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        ...keys.slice(index * 300, (index + 1) * 300).flatMap(({ fseiban, fhincd }) => [fseiban, fhincd])]);
+    });
+    const expected = [...keys, ...related].map(encodeSessakuPieceKey).sort();
+    expect([...locked].sort()).toEqual(expected);
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    const [sql, locks] = tx.$executeRaw.mock.calls[0];
+    expect(sql.join('')).toContain('WITH ORDINALITY');
+    expect(sql.join('')).toContain('ORDER BY ordinal');
+    expect(locks).toEqual(expected.map((key) => `sessaku-pieces:${PRODUCTION_SCHEDULE_DASHBOARD_ID}:${key}`));
+    expect(new Set(locks).size).toBe(1202);
+    expect(tx.$executeRaw.mock.invocationCallOrder[0]).toBeGreaterThan(queryRaw.mock.invocationCallOrder[2]);
+  });
+
   it('expands only parts with sets for CSV while locking ordinary keys once', async () => {
     const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '1' };
     const later = { ...cutting, fsigencd: '2', fkojun: '2' };
