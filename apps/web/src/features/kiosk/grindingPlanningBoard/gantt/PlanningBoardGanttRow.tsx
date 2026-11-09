@@ -188,11 +188,14 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   }
   return (
     <div ref={rowRef} data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
-      style={{ height: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
+      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}
-        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small><PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={interaction.focusedSeiban} onToggleSeiban={onToggleSeiban} /></span>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small></span>
+          <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={interaction.focusedSeiban} onToggleSeiban={onToggleSeiban} />
+        </div>
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>

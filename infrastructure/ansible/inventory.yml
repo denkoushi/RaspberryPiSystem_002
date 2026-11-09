@@ -327,6 +327,8 @@ all:
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -489,6 +491,8 @@ all:
               # Kensaku-02 キオスク（Pi4 7台目）
               ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
               ansible_user: raspi4-kensaku-02
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -598,6 +602,8 @@ all:
                 - /usr/bin/systemctl stop status-agent.timer
                 - /usr/bin/systemctl restart status-agent.timer
       vars:
+        kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
+        client_server_cert_sha256: "9a104cdf9ef4c95cf55aab988e508388fe99e09fd3b02957793600adbbcbcce3"
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"

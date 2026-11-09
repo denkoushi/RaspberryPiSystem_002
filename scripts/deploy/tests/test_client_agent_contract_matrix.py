@@ -123,6 +123,12 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                             self.assertEqual(service["logging"], expected_logging)
                             self.assertEqual(static["services"][name]["logging"], expected_logging)
                             reference = dict(static["services"][name])
+                            if name == "torque-agent":
+                                # Static provisioning exposes the optional pin directory;
+                                # flag-off release templates retain their previous mounts.
+                                self.assertIn("/etc/raspi-client:/etc/raspi-client:ro", reference["volumes"])
+                                reference["volumes"] = [mount for mount in reference["volumes"]
+                                                        if mount != "/etc/raspi-client:/etc/raspi-client:ro"]
                             reference.pop("build")
                             reference.pop("profiles", None)
                             reference["image"] = f"fixture/{name}:test"
@@ -186,6 +192,10 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                     "driver": "json-file", "options": {"max-size": "10m", "max-file": "3"},
                 })
                 self.assertEqual(service.pop("user"), "0:0")
+                if name == "torque-agent":
+                    self.assertIn("/etc/raspi-client:/etc/raspi-client:ro", service["volumes"])
+                    service["volumes"] = [mount for mount in service["volumes"]
+                                          if mount != "/etc/raspi-client:/etc/raspi-client:ro"]
                 self.assertEqual(service, expected)
 
     def test_client_agent_images_run_as_dedicated_users_with_writable_data(self) -> None:

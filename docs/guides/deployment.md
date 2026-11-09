@@ -223,3 +223,22 @@ commitとcleanupの成功後に、同じgatewayイメージと確定済みCaddyf
 ## 履歴
 
 旧設計、過去の実績、ADR、ExecPlanは履歴として保持する。現行手順の判断にはこのガイドと、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md)だけを使用する。
+
+## Client server certificate pin
+
+対象ホストの inventory で `client_server_cert_pin_enabled: true` を設定すると、
+status-agent / haizen-agent / torque-agent / signage は Pi5 証明書の pin を使用する。
+既定は無効。配布元は `client_server_cert_source`（既定:
+`{{ playbook_dir }}/../../../certs/cert.pem`）、配布先は
+`/etc/raspi-client/server-cert.pem`。controller 上の PEM の SHA-256 が
+`client_server_cert_sha256` と一致しない場合、配布を停止する。
+承認済みの標準リリース手順で対象ホストへ反映する。
+
+Pi5 証明書を更新する際は、公開 PEM の SHA-256 (`client_server_cert_sha256`) と
+公開鍵の base64 SHA-256 SPKI (`kiosk_server_cert_spki_sha256`) を同時に更新し、
+対象 clients へ配布する。kiosk の個別 override も同じ値へ揃える。
+切替中は旧証明書を pin した clients が新証明書へ接続できないため、サーバーと
+clients の切替順序・保守時間を事前に調整する。
+配布した証明書はリリースの切り戻し対象に含まれない。リリースが途中で失敗して
+旧版へ戻っても、端末には新しい証明書が残る。証明書の入れ替えは他の変更と混ぜず
+単独のリリースで行い、失敗したときは旧証明書の値へ戻すリリースを流す。

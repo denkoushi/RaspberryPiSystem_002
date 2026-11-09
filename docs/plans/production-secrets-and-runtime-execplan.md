@@ -576,6 +576,12 @@ when the repository implementation is ready.
 
 ## Decision Log
 
+- Decision: status-agent、haizen-agent、torque-agent、signage は現在の Pi5
+  サーバー証明書をホスト単位で pin する（option A）。これらの agent については、
+  本計画の未実施の local-CA 移行に優先する。既定では有効化しない。
+  運用手順: [deployment guide](../guides/deployment.md#client-server-certificate-pin)。
+  Date/Author: 2026-11-09 / Codex（承認済み方針）。
+
 - Decision: split repository preparation into independently testable
   milestones even though they remain on the approved Phase 2 branch.
   Rationale: Vault migration, DB roles, SSH authority, container UID changes,

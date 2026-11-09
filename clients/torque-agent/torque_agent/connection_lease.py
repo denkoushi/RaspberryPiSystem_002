@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ssl
 import json
 import logging
 import os
@@ -49,7 +50,7 @@ def _atomic_json(path: Path, payload: dict[str, object]) -> None:
 
 
 class LeaseApiClient:
-    def __init__(self, api_base_url: str, client_key: str, *, tls_verify: bool = True) -> None:
+    def __init__(self, api_base_url: str, client_key: str, *, tls_verify: bool | ssl.SSLContext = True) -> None:
         self._api_base_url = api_base_url
         self._client_key = client_key
         self._tls_verify = tls_verify
