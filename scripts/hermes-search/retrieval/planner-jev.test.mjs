@@ -1137,17 +1137,19 @@ for (const [question, template] of [['全部門で', 'all_departments'], ['部�
   for (const action of ['drop', 'replace']) {
     test(`${template} 「${question}」 with action ${action} ${action === 'drop' ? 'lists the newest records' : 'still asks about the named field'}`, async () => {
       const filters = [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }];
+      // JEV scores the department candidates low and close together, as the receipt showed
+      // (「全部門で」), or rejects them all (「部門は問わず」, which went to semanticQuery).
+      const low = template === 'all_departments';
       let fieldKey = null;
       const { plan } = await createPlanner({ evaluate: async ({ questions }) => {
         const [key, field] = Object.entries(questions).find(([id]) => id.startsWith('field_'));
         fieldKey = key;
         const ids = Object.keys(field.criteria).filter((id) => id !== 'none');
-        // JEV scores the department candidates low and close together, as the receipt showed.
-        const probabilities = Object.fromEntries(ids.map((id, index) => [id, index === 0 ? 0.3 : 0.25]));
+        const probabilities = Object.fromEntries(ids.map((id, index) => [id, low ? (index === 0 ? 0.3 : 0.25) : 0.05]));
         return { answers: {
           followUpAction: { type: 'choice', choice: action },
           drop_0: { type: 'noul', noul: 0.9 }, add_0: { type: 'noul', noul: 0.1 },
-          [key]: { type: 'choice', probabilities: { ...probabilities, none: 0.3 } },
+          [key]: { type: 'choice', probabilities: { ...probabilities, none: low ? 0.3 : 0.9 } },
           scope: { type: 'choice', choice: 'nonconformity' },
           content: { type: 'noul', noul: 0.1 },
           sort: { type: 'choice', choice: 'relevance' },
@@ -1165,14 +1167,40 @@ for (const [question, template] of [['全部門で', 'all_departments'], ['部�
         assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
         assert.equal(plan.diagnostics.contentDecision.dropWidened, true);
         assert.equal(plan.diagnostics.rewrite, '記録');
-      } else {
+      } else if (low) {
         assert.deepEqual(plan.unresolved.map((item) => item.term), ['originDepartmentName']);
         assert.equal(plan.semanticQuery, '');
+        assert.equal(Object.hasOwn(plan.diagnostics.contentDecision, 'dropWidened'), false);
+      } else {
+        // Without the drop, a request that names no value and no content still falls back to search.
+        assert.deepEqual(plan.unresolved, []);
+        assert.equal(plan.semanticQuery, question);
         assert.equal(Object.hasOwn(plan.diagnostics.contentDecision, 'dropWidened'), false);
       }
     });
   }
 }
+
+test('a drop that widens the same field to a factory keeps the factory units, not everything', async () => {
+  const previousPlan = {
+    sources: ['nonconformity'],
+    filters: [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['西工場製造部（製造）'] }],
+    semanticQuery: '',
+    sort: 'recent',
+    limit: 5,
+  };
+  const { plan } = await createPlanner({ evaluate: async (input) => {
+    const response = await hierarchyAnswers({ prefix: 0.9, none: 0.05 })(input);
+    response.answers.followUpAction = { type: 'choice', choice: 'drop' };
+    return response;
+  } }).plan({ question: '製造部の限定を外して西工場全体で', catalog, previousPlan, valueIndex: buildValueIndex(hierarchyRecords, catalog) });
+  assert.equal(plan.filters.length, 1);
+  assert.equal(plan.filters[0].op, 'in');
+  assert.deepEqual([...plan.filters[0].values].sort(), ['西工場製造部（加工）', '西工場製造部（製造）']);
+  assert.deepEqual(plan.unresolved, []);
+  assert.equal(plan.semanticQuery, '');
+  assert.equal(Object.hasOwn(plan.diagnostics.contentDecision, 'dropWidened'), false);
+});
 
 test('a drop that keeps another hard filter neither lists everything nor searches the request', async () => {
   const filters = [

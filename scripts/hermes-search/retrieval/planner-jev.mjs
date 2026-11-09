@@ -503,7 +503,8 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
       // A drop utterance names the field it removes (「全部門で」「部門は問わず」, 2026-11-08), so that
       // field's closest values are offered as candidates and JEV scores them low; the field would then
-      // be asked about instead of answered. A field JEV has just dropped is not a new condition.
+      // be asked about instead of answered. A field JEV has just dropped is not a new condition unless
+      // JEV also chose a value for it with confidence (「製造部の限定を外して西工場全体で」 widens, not drops).
       const droppedFields = new Set(followUpAction === 'drop'
         ? previousFilters
           .filter((filter, index) => chosen(answers[`drop_${index}`], ['true', 'false']) === 'true')
@@ -514,16 +515,18 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const ambiguous = [];
       if (!outOfScope) {
         for (const [key, mapped] of optionMap) {
-          if (droppedFields.has(`${mapped.group.source}\u0000${mapped.group.field}`)) continue;
+          const dropped = droppedFields.has(`${mapped.group.source}\u0000${mapped.group.field}`);
           if (mapped.clarify) {
-            ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
+            if (!dropped) ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
             continue;
           }
           const picked = fromIndex || linked
             ? valuesFromAnswer(answers[key], mapped.options, mapped.group)
             : null;
           if (fromIndex || linked) {
-            if (picked.kind === 'clarify') {
+            if (dropped && picked.kind !== 'values') {
+              // nothing: the named field was dropped, not asked about
+            } else if (picked.kind === 'clarify') {
               ambiguous.push({ term: mapped.group.field, candidates: picked.values });
             } else if (picked.kind === 'low') {
               ambiguous.push({ term: mapped.group.field, candidates: picked.values.slice(0, 5) });
@@ -542,13 +545,13 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
           const allowed = mapped.options.map((option) => option.id);
           const pick = chosen(answers[key], allowed);
           if (!pick || pick === NONE) {
-            if (!pick) unresolved.push({ term: mapped.group.term, candidates: [...mapped.group.values] });
+            if (!pick && !dropped) unresolved.push({ term: mapped.group.term, candidates: [...mapped.group.values] });
             continue;
           }
           const option = mapped.options.find((item) => item.id === pick);
           const value = mapped.group.values[Number(pick.slice(1))];
           if (!option || option.id === NONE || typeof value !== 'string') {
-            unresolved.push({ term: mapped.group.term, candidates: [...mapped.group.values] });
+            if (!dropped) unresolved.push({ term: mapped.group.term, candidates: [...mapped.group.values] });
             continue;
           }
           selected.push({ source: mapped.group.source, field: mapped.group.field, op: 'eq', values: [value] });
@@ -659,7 +662,7 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       // Once the dropped condition is gone, a filter-only drop has no hard filter, so the first-turn
       // fallback would search the request wording itself (「部門は問わず」 → no_result). The request
       // widens the previous conditions and is not content: the plan lists the newest records.
-      const dropWidened = followUpAction === 'drop' && droppedFields.size > 0 && judged === false;
+      const dropWidened = followUpAction === 'drop' && droppedFields.size > 0 && !hardFilter && judged === false;
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
       const jev = breakdown || residualOverride ? false : judged;
       // The saved classification is one model pass over free text and often disagrees with the
