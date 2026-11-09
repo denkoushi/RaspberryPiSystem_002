@@ -277,7 +277,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
-                inChain ? 'outline outline-2 outline-offset-1 outline-white' : selected && 'outline outline-2 outline-offset-1 outline-emerald-300',
+                selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : inChain && 'outline outline-2 outline-offset-1 outline-white',
                 focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
                 bar.item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
