@@ -14,3 +14,14 @@ export async function acquireProductionScheduleParentRowLockInTransaction(
 ): Promise<void> {
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(${hashParentRowIdForAdvisoryLock(parentCsvDashboardRowId)})`;
 }
+
+/** Acquire the same advisory locks in the caller's row order with one round trip. */
+export async function acquireProductionScheduleParentRowLocksInTransaction(
+  tx: Prisma.TransactionClient,
+  parentCsvDashboardRowIds: string[]
+): Promise<void> {
+  if (!parentCsvDashboardRowIds.length) return;
+  const lockIds = parentCsvDashboardRowIds.map(hashParentRowIdForAdvisoryLock);
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(lock_id)
+    FROM unnest(${lockIds}::bigint[]) WITH ORDINALITY AS locks(lock_id, position) ORDER BY position`;
+}

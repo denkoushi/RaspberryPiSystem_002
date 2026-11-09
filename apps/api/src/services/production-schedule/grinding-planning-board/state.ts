@@ -93,7 +93,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
-  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -121,6 +121,10 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
     prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.aggregate({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
       _count: { _all: true }, _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleGrindingPlanningBoardResourceCapacity.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
     })
   ]);
   const boardVersion = state?.version ?? 0;
@@ -142,7 +146,9 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
       partMinutesCount: partMinutes._count._all,
       partMinutesUpdatedAt: partMinutes._max.updatedAt?.toISOString() ?? '',
-      payloadFormat: 4
+      capacityCount: capacity._count._all,
+      capacityUpdatedAt: capacity._max.updatedAt?.toISOString() ?? '',
+      payloadFormat: 5
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,

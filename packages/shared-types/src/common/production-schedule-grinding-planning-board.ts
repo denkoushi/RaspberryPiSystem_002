@@ -112,6 +112,10 @@ export interface GrindingPlanningBoardItem {
   parentPlannedQuantity?: number | null;
   quantityWarning?: SessakuPieceQuantityWarning | null;
   manualIsCompleted?: boolean;
+  unitRequiredMinutes?: number | null;
+  setupMinutes?: number;
+  ops?: GrindingPlanningBoardResourcePartOpMinutes[];
+  completedOpNos?: number[];
   fseiban: string;
   fhincd: string;
   fhinmei: string | null;
@@ -297,12 +301,15 @@ export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlann
 export interface GrindingPlanningBoardResourceCapacityResponse {
   dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
   runsThroughBreaksResources: string[];
+  /** 021/022 and stored resources; absent 021/022 default to true, other absent resources to false. */
+  unitSplitEnabledByResource?: Record<string, boolean>;
 }
 
 export interface GrindingPlanningBoardResourceCapacityRequest {
   resourceCd: string;
   dailyHours?: GrindingPlanningBoardResourceDailyHours;
   runsThroughBreaks?: boolean;
+  unitSplitEnabled?: boolean | null;
 }
 
 export interface GrindingPlanningBoardArrivalRequest {
@@ -360,7 +367,7 @@ export interface SessakuPiecesMutationResponse {
 export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
 export interface GrindingPlanningBoardResourceMinutesResponse {
   ownSourceResourceCds: string[];
-  values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number }>;
+  values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number; ops?: GrindingPlanningBoardResourcePartOpMinutes[] }>;
 }
 export interface GrindingPlanningBoardResourceMinutesSourceRequest {
   resourceCd: string;
@@ -371,4 +378,16 @@ export interface GrindingPlanningBoardResourcePartMinutesRequest {
   fhincd: string;
   perUnitMinutes: number | null;
   setupMinutes: number;
+  ops?: GrindingPlanningBoardResourcePartOpMinutes[];
 }
+
+export interface GrindingPlanningBoardResourcePartOpMinutes {
+  opNo: number;
+  minutes: number;
+}
+export interface SessakuPiecesAutoUnitSplitResponse {
+  splitCount: number;
+  skippedCount: number;
+  hasMore: boolean;
+}
+export type SessakuPieceOpCompletionRequest = SessakuPieceCompletionRequest;

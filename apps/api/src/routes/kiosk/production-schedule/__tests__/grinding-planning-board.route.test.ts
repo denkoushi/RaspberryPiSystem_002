@@ -52,7 +52,8 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board-due-sc
   updateGrindingPlanningBoardDueScope: mocks.updateDueScope
 }));
 
-vi.mock('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js', () => ({
+vi.mock('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js')>(),
   getGrindingPlanningBoardResourceCapacity: mocks.getCapacity,
   updateGrindingPlanningBoardResourceCapacity: mocks.updateCapacity
 }));
@@ -681,7 +682,9 @@ describe('resource minutes routes', () => {
     ['PUT', '/source', { resourceCd: ' 305 ', source: 'own', siteKey: 'foreign' }, 'updateMinutesSource'],
     ['PUT', '/source', { resourceCd: '305', source: 'original' }, 'updateMinutesSource'],
     ['PUT', '/value', { resourceCd: ' 305 ', fhincd: ' part ', perUnitMinutes: 0.5, setupMinutes: 30 }, 'updatePartMinutes'],
-    ['PUT', '/value', { resourceCd: '305', fhincd: 'x'.repeat(120), perUnitMinutes: null, setupMinutes: 0 }, 'updatePartMinutes']
+    ['PUT', '/value', { resourceCd: '305', fhincd: 'x'.repeat(120), perUnitMinutes: null, setupMinutes: 0 }, 'updatePartMinutes'],
+    ['PUT', '/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 0, ops: [{ opNo: 1, minutes: 2 }] }, 'updatePartMinutes'],
+    ['PUT', '/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 0, ops: [] }, 'updatePartMinutes']
   ] as const)('handles resource minutes %s %s in the authenticated site', async (method, suffix, payload, mockName) => {
     const auth = vi.fn(async () => ({ id: 'device-1' }));
     const app = await createApp(auth);
@@ -707,7 +710,9 @@ describe('resource minutes routes', () => {
     ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 100001, setupMinutes: 0 }],
     ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: '1', setupMinutes: 0 }],
     ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: null, setupMinutes: 0.5 }],
-    ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 100001 }]
+    ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 100001 }],
+    ...[0, 21, 1.5].map((opNo) => ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 0, ops: [{ opNo, minutes: 1 }] }]),
+    ['/value', { resourceCd: '305', fhincd: 'part', perUnitMinutes: 1, setupMinutes: 0, ops: [{ opNo: 1, minutes: 0 }] }]
   ])('rejects invalid resource minutes %s %j', async (suffix, payload) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     try {
@@ -726,4 +731,17 @@ describe('resource minutes routes', () => {
     } finally { await app.close(); }
   });
 
+});
+
+describe('resource unit split setting route', () => {
+  it.each([true, false, null])('accepts the nullable flag %s in the authenticated site', async (unitSplitEnabled) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.updateCapacity.mockResolvedValue({ unitSplitEnabledByResource: { '021': unitSplitEnabled ?? true } });
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-capacity',
+        payload: { resourceCd: '021', unitSplitEnabled, siteKey: 'foreign' } });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.updateCapacity).toHaveBeenLastCalledWith({ resourceCd: '021', unitSplitEnabled, siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
 });

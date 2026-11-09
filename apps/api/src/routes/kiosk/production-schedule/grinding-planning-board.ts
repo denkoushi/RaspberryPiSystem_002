@@ -28,6 +28,7 @@ import {
   updateGrindingPlanningBoardDueScope
 } from '../../../services/production-schedule/grinding-planning-board-due-scope.service.js';
 import {
+  resourceCapacityBodySchema,
   getGrindingPlanningBoardResourceCapacity,
   updateGrindingPlanningBoardResourceCapacity
 } from '../../../services/production-schedule/grinding-planning-board-resource-capacity.service.js';
@@ -137,12 +138,6 @@ const orderBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
   fseibans: z.array(z.string().min(1).max(100)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
 });
-
-const resourceCapacityBodySchema = z.object({
-  resourceCd: z.string().trim().min(1).max(20),
-  dailyHours: z.union([z.literal(8), z.literal(10), z.literal(24)]).optional(),
-  runsThroughBreaks: z.boolean().optional()
-}).refine((body) => body.dailyHours !== undefined || body.runsThroughBreaks !== undefined, { message: '稼働時間または休憩設定を指定してください' });
 
 const dueScopeSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('seiban') }),

@@ -1,3 +1,9 @@
+import { syncWholePiecesOperationCompletions } from '../sessaku-pieces/piece-operation-definitions.js';
+import { readOverrides } from '../grinding-planning-board/source.js';
+const completionMocks = vi.hoisted(() => ({ quantities: vi.fn(), progress: vi.fn() }));
+vi.mock('../sessaku-pieces/piece-operation-definitions.js', () => ({ syncWholePiecesOperationCompletions: vi.fn() }));
+vi.mock('../sessaku-pieces/piece-quantity.js', () => ({ reconcileSessakuPieceQuantities: completionMocks.quantities }));
+vi.mock('../sessaku-pieces/piece-completion.js', () => ({ reconcileSessakuPieceProgress: completionMocks.progress }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/errors.js';
 import {
@@ -10,7 +16,7 @@ import {
 import { prisma } from '../../../lib/prisma.js';
 import { sharedScheduleFieldsRepository } from '../shared-schedule-fields.repository.js';
 
-vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByLogicalKeyFseibans: vi.fn().mockResolvedValue([]) }));
+vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByLogicalKeyFseibans: vi.fn().mockResolvedValue([]), readOverrides: vi.fn().mockResolvedValue(new Map()) }));
 
 const resetSelfInspectionMachineBoardScheduleRowCaches = vi.hoisted(() => vi.fn());
 
@@ -39,7 +45,10 @@ vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', ()
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
     $queryRaw: vi.fn().mockResolvedValue([]),
-    productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
+    productionScheduleSessakuPieceSet: { findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), update: vi.fn() },
+    productionScheduleSessakuPiece: { updateMany: vi.fn() },
+    productionScheduleExternalCompletion: { findUnique: vi.fn().mockResolvedValue(null) },
+    productionScheduleOrderSupplement: { findFirst: vi.fn().mockResolvedValue(null) },
     csvDashboardRow: {
       findFirst: vi.fn(),
       findMany: vi.fn().mockResolvedValue([]),
@@ -264,6 +273,26 @@ describe('production-schedule-command.service', () => {
     });
 
     expect(resetSelfInspectionMachineBoardScheduleRowCaches).toHaveBeenCalledTimes(1);
+  });
+  it.each(['complete', 'incomplete'] as const)('parent-row %s uses the same whole-piece operation synchronizer, including effective resources', async (intent) => {
+    const rowData = { FSEIBAN: 'A', FHINCD: '\tPART\u3000', FSIGENCD: '1', FKOJUN: '1' };
+    const pieces = [{ id: 'p1', isCompleted: intent === 'incomplete' }, { id: 'p2', isCompleted: intent === 'incomplete' }];
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData } as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce({ id: 'set', pieces } as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'row', rowData }]);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: intent === 'incomplete' } as never);
+    vi.mocked(prisma.productionScheduleOrderAssignment.findUnique).mockResolvedValue(null);
+    vi.mocked(readOverrides).mockResolvedValueOnce(new Map([['piece:p1', { overrideResourceCd: '021' }]]) as never);
+    vi.mocked(syncWholePiecesOperationCompletions).mockResolvedValue(true);
+    completionMocks.progress.mockResolvedValue({ parentIsCompleted: intent === 'complete' });
+    try {
+      await setProductionScheduleRowCompletionIntent({ rowId: 'row', locationKey: 'site', intent });
+      expect(syncWholePiecesOperationCompletions).toHaveBeenCalledTimes(1);
+      expect(syncWholePiecesOperationCompletions).toHaveBeenCalledWith(prisma, expect.any(String), [
+        { id: 'p1', effectiveResourceCd: '021', fhincd: rowData.FHINCD },
+        { id: 'p2', effectiveResourceCd: '1', fhincd: rowData.FHINCD }
+      ], intent === 'complete');
+    } finally { vi.mocked(prisma.$queryRaw).mockResolvedValue([]); }
   });
   it.each([null, { id: 'empty', pieces: [] }])('ordinary/empty-set completion skips board locks and reads Progress after row lock: %j', async (set) => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: { FSEIBAN: 'A', FHINCD: 'P', FSIGENCD: '1', FKOJUN: '1' } } as never);

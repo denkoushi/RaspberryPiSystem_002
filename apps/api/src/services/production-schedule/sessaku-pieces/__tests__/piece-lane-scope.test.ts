@@ -65,7 +65,11 @@ describe('sessaku affected lane discovery', () => {
         if (query.where.itemKey) return overrides.filter((o) => query.where.itemKey.in.includes(o.itemKey));
         return overrides.filter((o) => o.overrideResourceCd != null);
       }) },
+      productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn().mockResolvedValue([]) },
+      productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn().mockResolvedValue([]) },
+      productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn().mockResolvedValue([]) },
       productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
+      productionScheduleSessakuPieceOpCompletion: { findFirst: vi.fn().mockResolvedValue(null) },
       productionScheduleSessakuPiece: { findMany: pieceLookup }
     };
     vi.mocked(prisma.$transaction).mockImplementation((async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx)) as never);
