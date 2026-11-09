@@ -1129,3 +1129,70 @@ for (const action of ['add', 'count', 'more', 'clarify', 'drop', 'replace', 'new
     assert.equal(plan.limit, 3);
   });
 }
+
+// Night of 2026-11-08: a drop utterance names the field it removes, so the value index offers that
+// field's closest values; the field must not come back as a new condition or as query text.
+const dropRecords = [...hierarchyRecords, { id: 'h5', originDepartmentName: '品質保証部門' }];
+for (const [question, template] of [['全部門で', 'all_departments'], ['部門は問わず', 'any_department']]) {
+  for (const action of ['drop', 'replace']) {
+    test(`${template} 「${question}」 with action ${action} ${action === 'drop' ? 'lists the newest records' : 'still asks about the named field'}`, async () => {
+      const filters = [{ source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] }];
+      let fieldKey = null;
+      const { plan } = await createPlanner({ evaluate: async ({ questions }) => {
+        const [key, field] = Object.entries(questions).find(([id]) => id.startsWith('field_'));
+        fieldKey = key;
+        const ids = Object.keys(field.criteria).filter((id) => id !== 'none');
+        // JEV scores the department candidates low and close together, as the receipt showed.
+        const probabilities = Object.fromEntries(ids.map((id, index) => [id, index === 0 ? 0.3 : 0.25]));
+        return { answers: {
+          followUpAction: { type: 'choice', choice: action },
+          drop_0: { type: 'noul', noul: 0.9 }, add_0: { type: 'noul', noul: 0.1 },
+          [key]: { type: 'choice', probabilities: { ...probabilities, none: 0.3 } },
+          scope: { type: 'choice', choice: 'nonconformity' },
+          content: { type: 'noul', noul: 0.1 },
+          sort: { type: 'choice', choice: 'relevance' },
+          limit: { type: 'choice', choice: 'unspecified' },
+        } };
+      } }).plan({ question, catalog, valueIndex: buildValueIndex(dropRecords, catalog),
+        previousPlan: { sources: ['nonconformity'], filters, semanticQuery: '', sort: { field: 'discoveredOn', direction: 'desc' }, limit: 5 },
+      });
+      assert.equal(fieldKey, 'field_0');
+      assert.deepEqual(plan.filters, []);
+      assert.equal(plan.limit, 5);
+      if (action === 'drop') {
+        assert.deepEqual(plan.unresolved, []);
+        assert.equal(plan.semanticQuery, '');
+        assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+        assert.equal(plan.diagnostics.contentDecision.dropWidened, true);
+        assert.equal(plan.diagnostics.rewrite, '記録');
+      } else {
+        assert.deepEqual(plan.unresolved.map((item) => item.term), ['originDepartmentName']);
+        assert.equal(plan.semanticQuery, '');
+        assert.equal(Object.hasOwn(plan.diagnostics.contentDecision, 'dropWidened'), false);
+      }
+    });
+  }
+}
+
+test('a drop that keeps another hard filter neither lists everything nor searches the request', async () => {
+  const filters = [
+    { source: 'nonconformity', field: 'originDepartmentName', op: 'eq', values: ['東工場製造部機械課'] },
+    { source: 'nonconformity', field: 'machineName', op: 'eq', values: ['Lathe-1'] },
+  ];
+  const { plan } = await createPlanner({ evaluate: async ({ questions }) => ({ answers: {
+    ...Object.fromEntries(Object.keys(questions).filter((key) => key.startsWith('field_')).map((key) => [key, { type: 'choice', choice: 'none' }])),
+    followUpAction: { type: 'choice', choice: 'drop' },
+    drop_0: { type: 'noul', noul: 0.9 }, add_0: { type: 'noul', noul: 0.1 },
+    drop_1: { type: 'noul', noul: 0.1 }, add_1: { type: 'noul', noul: 0.1 },
+    scope: { type: 'choice', choice: 'nonconformity' },
+    content: { type: 'noul', noul: 0.1 },
+    sort: { type: 'choice', choice: 'recent' },
+    limit: { type: 'choice', choice: 'unspecified' },
+  } }) }).plan({ question: '部署を問わずに', catalog, valueIndex: buildValueIndex(dropRecords, catalog),
+    previousPlan: { sources: ['nonconformity'], filters, semanticQuery: '', sort: 'recent', limit: 5 },
+  });
+  assert.deepEqual(plan.filters, [filters[1]]);
+  assert.deepEqual(plan.unresolved, []);
+  assert.equal(plan.semanticQuery, '');
+  assert.deepEqual(plan.sort, { field: 'discoveredOn', direction: 'desc' });
+});

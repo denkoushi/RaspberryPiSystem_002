@@ -501,11 +501,20 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const causeChoice = chosen(answers.cause, [...CAUSE_CATEGORY_IDS.filter((id) => id !== UNKNOWN_CAUSE), NONE]);
       const causeDropped = Boolean(previousCause && chosen(answers.drop_cause, ['true', 'false']) === 'true');
       const chosenCause = outOfScope ? null : (causeChoice && causeChoice !== NONE ? causeChoice : (!causeDropped ? previousCause?.id : null));
+      // A drop utterance names the field it removes (「全部門で」「部門は問わず」, 2026-11-08), so that
+      // field's closest values are offered as candidates and JEV scores them low; the field would then
+      // be asked about instead of answered. A field JEV has just dropped is not a new condition.
+      const droppedFields = new Set(followUpAction === 'drop'
+        ? previousFilters
+          .filter((filter, index) => chosen(answers[`drop_${index}`], ['true', 'false']) === 'true')
+          .map((filter) => `${filter.source}\u0000${filter.field}`)
+        : []);
       const selected = [];
       const resolvedTerms = [];
       const ambiguous = [];
       if (!outOfScope) {
         for (const [key, mapped] of optionMap) {
+          if (droppedFields.has(`${mapped.group.source}\u0000${mapped.group.field}`)) continue;
           if (mapped.clarify) {
             ambiguous.push({ term: mapped.group.field, candidates: [...mapped.group.values] });
             continue;
@@ -647,6 +656,10 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const residualTokens = contentTokens(relevanceQuery(stripListedTerms(residualQuestion, [...resolvedTerms, ...causeTerms])))
         .filter((token) => !selectedValues.some((value) => value.includes(token)));
       const hardFilter = hasAppliedHardFilter({ filters, causeCategory }, catalog);
+      // Once the dropped condition is gone, a filter-only drop has no hard filter, so the first-turn
+      // fallback would search the request wording itself (「部門は問わず」 → no_result). The request
+      // widens the previous conditions and is not content: the plan lists the newest records.
+      const dropWidened = followUpAction === 'drop' && droppedFields.size > 0 && judged === false;
       const residualOverride = judged === true && contentCarry !== 'same' && hardFilter && residualTokens.length === 0;
       const jev = breakdown || residualOverride ? false : judged;
       // The saved classification is one model pass over free text and often disagrees with the
@@ -656,7 +669,7 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
       const causeOnContent = jev === true && Boolean(causeCategory) && causeCategory !== previousCause?.id;
       const appliedCause = causeOnContent ? (causeDropped ? null : previousCause?.id ?? null) : causeCategory;
       const finalContent = jev === true && unresolved.length === 0;
-      const sortMode = breakdown ? 'recent' : resolveSort(question, jev, hardFilter);
+      const sortMode = breakdown ? 'recent' : resolveSort(question, jev, hardFilter || dropWidened);
       const sort = sortMode === 'recent' && recentField
         ? { field: recentField, direction: 'desc' }
         : 'relevance';
@@ -666,7 +679,7 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
         filters: outOfScope ? [] : filters,
         ...(appliedCause ? { causeCategory: appliedCause } : {}),
         ...(breakdown ? { breakdown } : {}),
-        semanticQuery: outOfScope || unresolved.length || shouldSkipRelevance({
+        semanticQuery: outOfScope || unresolved.length || dropWidened || shouldSkipRelevance({
           filters,
           causeCategory: appliedCause,
           breakdown,
@@ -680,7 +693,7 @@ export function createPlanner({ evaluate = defaultEvaluate, questionVersion = DE
           ...(hasPrevious ? { followUpAction: { chosen: followUpAction, confidence: answers.followUpAction?.confidence ?? null } } : {}),
           intentDecision: { chosen: intent, ...(breakdownGated ? { gated: 'no_count_cue', heard: heardIntent } : {}) },
           causeDecision: { chosen: appliedCause ?? null, ...(causeDropped ? { dropped: true } : causeOnContent ? { dropped: 'content_search', heard: causeCategory } : {}) },
-          contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), final: finalContent },
+          contentDecision: { jev, residualTokens, ...(residualOverride ? { residualOverride: true } : {}), ...(dropWidened ? { dropWidened: true } : {}), final: finalContent },
           ...(ambiguousDropped.length ? { ambiguousDropped } : {}),
           scope: outOfScope ? 'out_of_scope' : 'records',
           limitExplicit,
