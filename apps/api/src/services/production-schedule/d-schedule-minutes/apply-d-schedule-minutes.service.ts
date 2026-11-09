@@ -8,10 +8,12 @@ import { readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { asRowData, valueAsString } from '../grinding-planning-board/shared.js';
 import type { DScheduleMinutesParseResult, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
 import type { DScheduleMinutesMetrics } from './import-summary.js';
+import type { DScheduleMinutesKind } from './minutes-kind.js';
 import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 
 export type DScheduleMinutesRunMetadata = {
   gmailMessageId: string;
+  kind?: DScheduleMinutesKind;
   subject: string;
   filename: string;
   receivedAt: Date;
@@ -39,6 +41,7 @@ export async function applyDScheduleMinutes(input: {
   metadata: DScheduleMinutesRunMetadata;
   thresholds?: Partial<ComparisonThresholds>;
 }) {
+  const kind = input.metadata.kind ?? 'D_COMPANY';
   const thresholds: ComparisonThresholds = {
     minSeibanRatio: env.D_SCHEDULE_MINUTES_MIN_SEIBAN_RATIO,
     largeChangeDays: env.D_SCHEDULE_MINUTES_LARGE_CHANGE_DAYS,
@@ -50,14 +53,14 @@ export async function applyDScheduleMinutes(input: {
     // Serialize apply/registration operations for this single dashboard.
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('d-schedule-minutes'))`;
     const existingRun = await tx.productionScheduleDScheduleMinutesImportRun.findUnique({
-      where: { gmailMessageId: input.metadata.gmailMessageId }
+      where: { gmailMessageId_kind: { gmailMessageId: input.metadata.gmailMessageId, kind } }
     });
     if (existingRun) return existingRun;
     const warnings: DScheduleMinutesWarning[] = [...input.result.warnings];
     const metrics: DScheduleMinutesMetrics = { seibansRead: new Set(input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans])).size, dateChanged: 0, unchanged: 0, registeredSeibans: [], unregisteredSeibans: [] };
     const meetingDate = new Date(`${input.result.meetingDate}T00:00:00.000Z`);
     const previousRun = await tx.productionScheduleDScheduleMinutesImportRun.findFirst({
-      where: { status: 'SUCCESS', meetingDate: { lt: meetingDate } },
+      where: { kind, status: 'SUCCESS', meetingDate: { lt: meetingDate } },
       orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
     });
     const previousMetrics = (previousRun?.autoRegisteredSeibans as { metrics?: DScheduleMinutesMetrics } | null)?.metrics;
@@ -75,11 +78,11 @@ export async function applyDScheduleMinutes(input: {
         seen.add(fseiban);
         const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban };
         const previous = await tx.productionScheduleDScheduleMinutes.findUnique({
-          where: { csvDashboardId_fseiban: scope }, include: { sourceRun: { select: { meetingDate: true } } }
+          where: { csvDashboardId_fseiban: scope }, include: { sourceRun: { select: { meetingDate: true, kind: true } } }
         });
         const incomingDate = readablePartsDate(block.partsCompleteDate);
         targets.push({ block, fseiban, scope, previous, incomingDate });
-        if (previousRun && previous?.partsCompleteDate && incomingDate) {
+        if (previousRun && previous?.sourceRun.kind === kind && previous.partsCompleteDate && incomingDate) {
           compared += 1;
           if (Math.abs(incomingDate.getTime() - previous.partsCompleteDate.getTime()) >= thresholds.largeChangeDays * 86400000) {
             largeChanges += 1;
@@ -95,12 +98,31 @@ export async function applyDScheduleMinutes(input: {
     const created = await tx.productionScheduleDScheduleMinutesImportRun.create({
       data: {
         ...input.metadata,
+        kind,
         meetingDate,
         status: 'APPLIED',
         warnings: [],
         autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics }
       }
     });
+    // Membership survives skipped latest-value writes and later files that omit a seiban.
+    const membershipSeibans = new Set([
+      ...input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]),
+      ...input.result.warnings.flatMap((warning) => warning.seiban ? [warning.seiban] : [])
+    ]);
+    for (const fseiban of membershipSeibans) {
+      const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, kind };
+      const previous = await tx.productionScheduleDScheduleMinutesKindMembership.findUnique({
+        where: { csvDashboardId_fseiban_kind: scope }
+      });
+      if (previous && previous.lastMeetingDate > meetingDate) continue;
+      const values = { lastSourceRunId: created.id, lastMeetingDate: meetingDate };
+      await tx.productionScheduleDScheduleMinutesKindMembership.upsert({
+        where: { csvDashboardId_fseiban_kind: scope },
+        create: { ...scope, ...values },
+        update: values
+      });
+    }
     const winnerRows = await readWinnerRowsByFseibans(tx,
       input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]));
     const scheduled = new Set(winnerRows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')).filter(Boolean));

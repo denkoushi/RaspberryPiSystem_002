@@ -1,5 +1,7 @@
 # ドキュメント索引
 
+- 日程会議議事録の2形式取込・種類別自動登録: [ExecPlan](./plans/2026-11-09-d-schedule-second-excel.md)
+
 - 切削の片操作・障害時のrequestId追跡・監査ログ: [Plan](./plans/2026-11-05-sessaku-split-pieces.md#不具合時に操作を追う)
 - 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
 

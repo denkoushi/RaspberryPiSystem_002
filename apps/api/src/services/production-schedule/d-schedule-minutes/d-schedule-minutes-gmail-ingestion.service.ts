@@ -10,11 +10,13 @@ import { getFileStorageRuntime } from '../../file-storage/file-storage-runtime.j
 import { FileStorageAlreadyExistsError } from '../../file-storage/file-storage-errors.js';
 import { deliverDScheduleMinutesNotice } from '../../kiosk-inquiry/system-notice-sources.js';
 import { parseDScheduleMinutesXlsx, type DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
+import { parseInternalScheduleMinutesXlsx } from './parse-internal-schedule-minutes.js';
+import { minutesName, type DScheduleMinutesKind } from './minutes-kind.js';
 import { applyDScheduleMinutes, DScheduleMinutesComparisonError } from './apply-d-schedule-minutes.service.js';
 import { summarizeMinutes, type DScheduleMinutesMetrics, type DScheduleMinutesSummary } from './import-summary.js';
 
 type GmailPort = Pick<GmailApiClient, 'searchMessagesLimited' | 'getMessage' | 'getAttachment' | 'trashMessage' | 'markAsRead'>;
-export type DScheduleMinutesCycleSummary = DScheduleMinutesSummary & { processed: number; runs: Array<DScheduleMinutesSummary & { gmailMessageId: string }> };
+export type DScheduleMinutesCycleSummary = DScheduleMinutesSummary & { processed: number; runs: Array<DScheduleMinutesSummary & { gmailMessageId: string; kind: DScheduleMinutesKind }> };
 
 export class DScheduleMinutesContentError extends Error {
   constructor(readonly permanentFailures: string[], readonly retryableFailures: string[] = []) {
@@ -72,60 +74,74 @@ export class DScheduleMinutesGmailIngestionService {
       }
       candidates.sort((a, b) => a.message.internalDateMs - b.message.internalDateMs);
       for (const { gmailMessageId, message } of candidates) {
-        let permanentContentFailure = false;
-        try {
-          const subject = message.payload?.headers?.find((header) => header.name.toLowerCase() === 'subject')?.value ?? '';
-          if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)
-            || isProcedureMaterialGmailSubject(subject) || subject.includes(ASSEMBLY_PROCEDURE_GMAIL_SUBJECT)
-            || subject.includes(MACHINE_SIGNAL_GMAIL_SUBJECT)) continue;
-          let run = await this.deps.db.productionScheduleDScheduleMinutesImportRun.findUnique({ where: { gmailMessageId } });
-          if (run?.status !== 'SUCCESS') {
-            const receivedAt = new Date(message.internalDateMs);
-            let applied = false;
-            for (const attachment of collectGmailAttachments(message).filter((item) => /\.xlsx$/i.test(item.filename))) {
-              const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
-              const result = await this.deps.parse({ buffer, filename: attachment.filename, receivedAt, subject });
-              if (!result.ok && ['MISSING_HEADERS', 'INVALID_XLSX'].includes(result.reason)) continue;
+        const subject = message.payload?.headers?.find((header) => header.name.toLowerCase() === 'subject')?.value ?? '';
+        if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject)
+          || isProcedureMaterialGmailSubject(subject) || subject.includes(ASSEMBLY_PROCEDURE_GMAIL_SUBJECT)
+          || subject.includes(MACHINE_SIGNAL_GMAIL_SUBJECT)) continue;
+        const receivedAt = new Date(message.internalDateMs);
+        const runs = new Map<DScheduleMinutesKind, Awaited<ReturnType<typeof applyDScheduleMinutes>>>();
+        const contentFailures: string[] = [];
+        const transientFailures: string[] = [];
+        for (const attachment of collectGmailAttachments(message).filter((item) => /\.xlsx$/i.test(item.filename))) {
+          let permanentContentFailure = false;
+          try {
+            const buffer = await gmail.getAttachment(gmailMessageId, attachment.attachmentId);
+            const parseInput = { buffer, filename: attachment.filename, receivedAt, subject };
+            let result = await this.deps.parse(parseInput);
+            let kind: DScheduleMinutesKind = 'D_COMPANY';
+            if (!result.ok) {
+              const internal = await parseInternalScheduleMinutesXlsx(parseInput);
+              if (internal.ok || !['MISSING_HEADERS', 'INVALID_XLSX'].includes(internal.reason)) {
+                result = internal;
+                kind = 'INTERNAL';
+              }
+            }
+            if (!result.ok && ['MISSING_HEADERS', 'INVALID_XLSX'].includes(result.reason)) continue;
+            let run = runs.get(kind) ?? await this.deps.db.productionScheduleDScheduleMinutesImportRun.findUnique({
+              where: { gmailMessageId_kind: { gmailMessageId, kind } }
+            });
+            if (run?.status !== 'SUCCESS') {
               const originalFilePath = await this.deps.saveOriginal(buffer);
               if (!Number.isFinite(receivedAt.getTime()) || message.internalDateMs <= 0) {
                 permanentContentFailure = true;
-                throw new Error(`メールの受信日時を取得できません`);
+                throw new Error('メールの受信日時を取得できません');
               }
               if (!result.ok) {
                 permanentContentFailure = true;
-                throw new Error(`D社日程会議議事録を読み取れません: ${result.reason}`);
+                throw new Error(`${minutesName(kind)}を読み取れません: ${result.reason}`);
               }
-              run = await this.deps.apply({ result, metadata: { gmailMessageId, subject, filename: attachment.filename, receivedAt, originalFilePath } });
-              applied = true;
-              break;
+              run = await this.deps.apply({ result, metadata: { gmailMessageId, kind, subject, filename: attachment.filename, receivedAt, originalFilePath } });
             }
-            // No attachment had the minutes layout: leave the mail untouched for its owner.
-            if (!applied || !run) continue;
+            runs.set(kind, run);
+          } catch (error) {
+            const failure = `${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`;
+            if (permanentContentFailure || error instanceof DScheduleMinutesComparisonError) contentFailures.push(failure);
+            else transientFailures.push(failure);
           }
-          const warnings = run.warnings as DScheduleMinutesWarning[];
-          await this.deps.notify(gmailMessageId, warnings);
-          // Same post-ingest operation as CSV dashboards: processed label + trash, then read.
-          await gmail.trashMessage(gmailMessageId);
-          await gmail.markAsRead(gmailMessageId);
-          const registration = run.autoRegisteredSeibans as { metrics?: DScheduleMinutesMetrics; autoRegistrationSkipped?: 'STALE_FILE' };
-          const result = summarizeMinutes(registration.metrics, warnings, registration.autoRegistrationSkipped);
-          summary.runs.push({ gmailMessageId, ...result });
-          for (const key of ['seibansRead', 'dateChanged', 'unchanged', 'autoRegistered', 'unregistered', 'skipped'] as const) summary[key] += result[key];
-          summary.warnings.push(...warnings);
-          summary.processed += 1;
+        }
+        permanentFailures.push(...contentFailures);
+        failures.push(...transientFailures);
+        // A transient failure must remain unread even if another attachment failed permanently.
+        if (transientFailures.length > 0) continue;
+        try {
+          for (const [kind, run] of runs) {
+            const warnings = run.warnings as DScheduleMinutesWarning[];
+            await this.deps.notify(gmailMessageId, warnings, kind);
+            const registration = run.autoRegisteredSeibans as { metrics?: DScheduleMinutesMetrics; autoRegistrationSkipped?: 'STALE_FILE' };
+            const result = summarizeMinutes(registration.metrics, warnings, registration.autoRegistrationSkipped);
+            summary.runs.push({ gmailMessageId, kind, ...result });
+            for (const key of ['seibansRead', 'dateChanged', 'unchanged', 'autoRegistered', 'unregistered', 'skipped'] as const) summary[key] += result[key];
+            summary.warnings.push(...warnings);
+            summary.processed += 1;
+          }
+          // Preserve content failures; unrelated mail remains untouched.
+          if (contentFailures.length > 0) await gmail.markAsRead(gmailMessageId);
+          else if (runs.size > 0) {
+            await gmail.trashMessage(gmailMessageId);
+            await gmail.markAsRead(gmailMessageId);
+          }
         } catch (error) {
-          const failure = `${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`;
-          if (permanentContentFailure || error instanceof DScheduleMinutesComparisonError) {
-            permanentFailures.push(failure);
-            try {
-              // Exclude permanent content failures from unread searches, preserving the original mail.
-              await gmail.markAsRead(gmailMessageId);
-            } catch (markError) {
-              failures.push(`${gmailMessageId}: ${markError instanceof Error ? markError.message : String(markError)}`);
-            }
-          } else {
-            failures.push(failure);
-          }
+          failures.push(`${gmailMessageId}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
       if (permanentFailures.length > 0) throw new DScheduleMinutesContentError(permanentFailures, failures);

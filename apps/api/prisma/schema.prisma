@@ -2196,7 +2196,8 @@ model KioskProductionScheduleSearchState {
 /// D社日程会議議事録の取り込み。既存の手入力納期へは書き戻さない。
 model ProductionScheduleDScheduleMinutesImportRun {
   id                    String   @id @default(uuid())
-  gmailMessageId        String   @unique
+  gmailMessageId        String
+  kind                  String   @default("D_COMPANY") @db.VarChar(30)
   subject               String
   filename              String
   meetingDate           DateTime @db.Date
@@ -2208,7 +2209,9 @@ model ProductionScheduleDScheduleMinutesImportRun {
   autoRegisteredSeibans Json
   createdAt             DateTime @default(now())
   latestValues          ProductionScheduleDScheduleMinutes[]
+  kindMemberships       ProductionScheduleDScheduleMinutesKindMembership[]
 
+  @@unique([gmailMessageId, kind], map: "PSDScheduleRun_message_kind_key")
   @@index([status, createdAt], map: "PSDScheduleRun_status_created_idx")
 }
 
@@ -2235,6 +2238,22 @@ model ProductionScheduleDScheduleMinutes {
 
   @@unique([csvDashboardId, fseiban], map: "PSDScheduleMinutes_dashboard_seiban_key")
   @@index([sourceRunId], map: "PSDScheduleMinutes_run_idx")
+}
+
+model ProductionScheduleDScheduleMinutesKindMembership {
+  id              String   @id @default(uuid())
+  csvDashboardId  String
+  fseiban         String   @db.VarChar(20)
+  kind            String   @db.VarChar(30)
+  lastSourceRunId String
+  lastMeetingDate DateTime @db.Date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  lastSourceRun ProductionScheduleDScheduleMinutesImportRun @relation(fields: [lastSourceRunId], references: [id], onDelete: Restrict, map: "PSDScheduleKindMember_run_fkey")
+
+  @@unique([csvDashboardId, fseiban, kind], map: "PSDScheduleKindMember_dashboard_seiban_kind_key")
+  @@index([csvDashboardId, kind], map: "PSDScheduleKindMember_dashboard_kind_idx")
 }
 
 model ProductionScheduleSeibanDueDate {
