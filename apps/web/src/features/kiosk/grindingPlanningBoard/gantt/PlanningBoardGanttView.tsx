@@ -477,18 +477,18 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     else scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
   };
-  // A legend chip jumps to the seiban's earliest bar, which may sit outside the visible hours.
-  const focusSeiban = (seiban: string) => {
+  // A legend chip jumps to the seiban's earliest bar; late-star dates pass their row's starred bars to stay on that machine.
+  const focusSeiban = (seiban: string, itemIds?: readonly string[]) => {
     setFocusedSeiban(seiban);
     const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
-    const first = planningBoardVisibleBars(layout).filter((bar) => bar.item.fseiban === seiban && (!singleGroup || bar.resource === singleResourceCd))
-      .reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
+    const candidates = planningBoardVisibleBars(layout).filter((bar) => bar.item.fseiban === seiban && (!singleGroup || bar.resource === singleResourceCd));
+    const first = [candidates.filter((bar) => itemIds?.includes(bar.item.itemId)), candidates].find((bars) => bars.length)?.reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
     if (first) scrollToBar(first);
   };
   // Rows are memoized, so the late-star date buttons get one stable callback that reads the latest focus.
-  const toggleSeibanLatest = useRef((seiban: string) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban); });
-  useLayoutEffect(() => { toggleSeibanLatest.current = (seiban: string) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban); }; });
-  const toggleSeiban = useCallback((seiban: string) => toggleSeibanLatest.current(seiban), []);
+  const toggleSeibanLatest = useRef<NonNullable<PlanningBoardGanttRowProps['onToggleSeiban']>>((seiban, itemIds) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban, itemIds); });
+  useLayoutEffect(() => { toggleSeibanLatest.current = (seiban, itemIds) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban, itemIds); }; });
+  const toggleSeiban = useCallback<NonNullable<PlanningBoardGanttRowProps['onToggleSeiban']>>((seiban, itemIds) => toggleSeibanLatest.current(seiban, itemIds), []);
   const breaksButton = useCallback((resource: string) => <button type="button"
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
       !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}

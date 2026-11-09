@@ -12,7 +12,7 @@ import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout'
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import {
   estimateLateStarLabelHeight,
-  PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars
+  PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
 } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 
@@ -167,7 +167,7 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
   selectedItemIds: ReadonlySet<string>;
   selectedParts: ReadonlySet<string>;
   resourceView: boolean;
-  onToggleSeiban?: (fseiban: string) => void;
+  onToggleSeiban?: PlanningBoardToggleSeiban;
 };
 
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({

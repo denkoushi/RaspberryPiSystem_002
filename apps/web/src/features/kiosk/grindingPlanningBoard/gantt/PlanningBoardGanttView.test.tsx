@@ -136,6 +136,36 @@ describe('PlanningBoardGanttView', () => {
     expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-20');
   });
 
+  it.each(['backward', 'forward'] as const)('jumps to the starred bar in the pressed machine row, not the seiban earliest bar, in %s mode', (mode) => {
+    // Same seiban: an earlier unstarred part on 503 and the starred LSLH part on 021, queued behind another seiban.
+    const items = [item({ itemId: 'early', fhincd: 'P0', productNo: '9', originalResourceCd: '503', originalDueDate: '2026-10-15', requiredMinutes: 60 }),
+      item({ itemId: 'ahead', fseiban: '26-0999', fhincd: 'P8', productNo: '8', originalResourceCd: '021', originalDueDate: '2026-10-15', requiredMinutes: 240 }),
+      item({ itemId: 'star', fhincd: 'P1', productNo: '1', originalResourceCd: '021', originalDueDate: '2026-10-20', lslhSurface: true, requiredMinutes: 60 })];
+    const rows = new Map([['26-1001', { fseiban: '26-1001', outsourceMarks: [], memo: null, surfaceSendOutDates: [{ date: '2026-10-11', note: null }] }]]);
+    const layout = buildPlanningBoardGanttLayout({ items, mode, allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['021', '503'],
+      dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 });
+    const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
+    const startOf = (id: string) => { const bar = bars.find((entry) => entry.item.itemId === id)!; return bar.segments?.[0]?.start ?? bar.start ?? bar.end!; };
+    expect(startOf('early')).toBeLessThan(startOf('star'));
+    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(items)} layout={layout} scale={2} colorBySeiban />
+    </DScheduleMinutesContext.Provider>);
+    const rowOf = (id: string) => {
+      const button = screen.getByTestId(`planning-gantt-bar-${id}`);
+      return mode === 'forward' ? button.closest('[data-gantt-track]')!.parentElement! : button.parentElement!.parentElement!;
+    };
+    const rect = { left: 0, top: 300, right: 1000, bottom: 340, width: 1000, height: 40 } as DOMRect;
+    const starRow = vi.spyOn(rowOf('star'), 'getBoundingClientRect').mockReturnValue(rect);
+    const earlyRow = vi.spyOn(rowOf('early'), 'getBoundingClientRect').mockReturnValue(rect);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: vi.fn() });
+    const dates = screen.getAllByTestId('planning-gantt-late-star-dates');
+    expect(dates).toHaveLength(1);
+    fireEvent.click(within(dates[0]!).getByRole('button', { name: '26-1001 ★10/11' }));
+    expect(starRow).toHaveBeenCalled();
+    expect(earlyRow).not.toHaveBeenCalled();
+  });
+
   it('shows a normalized resource monthly average only in forward, without changing lane height', () => {
     uptimeQuery.mockReturnValue({ data: { resources: [{ resourceCd: ' ３０５ ', medianRunSeconds: 28080 }] } });
     const values = props();

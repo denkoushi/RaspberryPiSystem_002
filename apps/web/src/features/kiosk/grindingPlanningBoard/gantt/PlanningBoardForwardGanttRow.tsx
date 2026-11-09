@@ -13,7 +13,7 @@ import { forwardItemDetails } from './planningBoardForwardQueue';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
-import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
+import { PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
 
@@ -39,7 +39,7 @@ type Props = {
   placementByPart: PlanningBoardPlacementByPart;
   seibanColors?: ReadonlyMap<string, string>;
   focusedSeiban?: string | null;
-  onToggleSeiban?: (fseiban: string) => void;
+  onToggleSeiban?: PlanningBoardToggleSeiban;
   label?: ReactNode;
   start: number;
   end: number;
