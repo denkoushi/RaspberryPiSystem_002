@@ -1,9 +1,12 @@
 import { CsvImportExecutionService } from '../../imports/csv-import-execution.service.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { OAuth2Client } from 'google-auth-library';
+import { logger } from '../../../lib/logger.js';
+import { GMAIL_SENDER_REJECTED_LABEL, GmailSenderRejectedError } from '../gmail-sender-verification.js';
 import { prisma } from '../../../lib/prisma.js';
 import { defaultBackupConfig } from '../../backup/backup-config.js';
 import type { GmailMessage } from '../../backup/gmail-api-client.js';
+import { GmailRateLimitedDeferredError } from '../../backup/gmail-request-gate.service.js';
 import { GmailStorageProvider } from '../../backup/storage/gmail-storage.provider.js';
 import { MachineSignalGmailIngestionService } from '../../machine-signal/machine-signal-gmail-ingestion.service.js';
 import { AssemblyProcedureGmailImportService } from '../../assembly/assembly-procedure-gmail-import.service.js';
@@ -24,9 +27,10 @@ function message(id: string, passed = true): GmailMessage {
 }
 function port() {
   return {
-    searchMessages: vi.fn().mockResolvedValue(['bad-1', 'good', 'bad-2']),
-    searchMessagesLimited: vi.fn().mockResolvedValue(['bad-1', 'good', 'bad-2']),
-    searchMessagesAll: vi.fn().mockResolvedValue(['bad-1', 'good', 'bad-2']),
+    addLabelToMessage: vi.fn<(id: string, label: string) => Promise<void>>().mockResolvedValue(undefined),
+    searchMessages: vi.fn<(query: string, ...args: unknown[]) => Promise<string[]>>().mockResolvedValue(['bad-1', 'good', 'bad-2']),
+    searchMessagesLimited: vi.fn<(query: string, ...args: unknown[]) => Promise<string[]>>().mockResolvedValue(['bad-1', 'good', 'bad-2']),
+    searchMessagesAll: vi.fn<(query: string, ...args: unknown[]) => Promise<string[]>>().mockResolvedValue(['bad-1', 'good', 'bad-2']),
     getMessage: vi.fn(async (id: string) => message(id, id === 'good')),
     getAttachment: vi.fn().mockResolvedValue(Buffer.from('%PDF-1.4')),
     getFirstAttachment: vi.fn().mockResolvedValue({ buffer: Buffer.from('csv'), filename: 'valid.csv' }),
@@ -162,20 +166,98 @@ describe('Gmail sender policy ingestion boundaries', () => {
 });
 
 describe('GmailSenderVerificationSession cache', () => {
-  it('fetches a rejected message once and blocks later operations on it', async () => {
+  it('labels concurrent rejected reads and blocks later operations on them', async () => {
     const gmail = port();
     const session = new GmailSenderVerificationSession(defaultBackupConfig);
     const client = session.wrap(gmail);
-    await expect(client.getMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    await Promise.all([client.getMessage('bad-1'), client.getAttachment('bad-1', 'attachment')].map(async (request) => {
+      await expect(request).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    }));
     await expect(client.getMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
     await expect(client.trashMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
     await expect(client.getAttachment('bad-1', 'bad-1-attachment')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
-    expect(gmail.getMessage).toHaveBeenCalledTimes(1);
+    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledWith('bad-1', GMAIL_SENDER_REJECTED_LABEL);
     expect(gmail.trashMessage).not.toHaveBeenCalled();
     expect(gmail.getAttachment).not.toHaveBeenCalled();
     await client.getMessage('good');
     await client.markAsRead('good');
-    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.getMessage).toHaveBeenCalledTimes(3);
     expect(gmail.markAsRead).toHaveBeenCalledWith('good');
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Gmail sender rejection labels', () => {
+  it.each(['searchMessages', 'searchMessagesAll', 'searchMessagesLimited'] as const)('uses only the label exclusion for empty queries in %s', async (method) => {
+    const gmail = port();
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);
+    for (const query of ['', ' \t\n ']) {
+      await client[method](query, 3);
+    }
+    expect(gmail[method]).toHaveBeenCalledTimes(2);
+    expect(gmail[method]).toHaveBeenNthCalledWith(1, '-label:rps_sender_rejected', 3);
+    expect(gmail[method]).toHaveBeenNthCalledWith(2, '-label:rps_sender_rejected', 3);
+  });
+  it('preserves deferred label errors and refetches the message on retry', async () => {
+    const gmail = port();
+    const deferred = new GmailRateLimitedDeferredError({ cooldownUntil: new Date('2026-11-09T00:00:00Z'), retryAfterMs: 1000, operation: 'gmail.users.messages.modify(addLabel)' });
+    gmail.addLabelToMessage.mockRejectedValueOnce(deferred);
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);
+    await expect(client.getMessage('bad')).rejects.toBe(deferred);
+    await expect(client.getMessage('bad')).rejects.toBeInstanceOf(GmailSenderRejectedError);
+    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
+  });
+  it.each(['searchMessages', 'searchMessagesAll', 'searchMessagesLimited'] as const)('excludes rejected labels in %s and preserves other arguments', async (method) => {
+    const gmail = port();
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap(gmail);
+    await client[method]('subject:first OR subject:second', 3);
+    expect(gmail[method]).toHaveBeenCalledExactlyOnceWith('(subject:first OR subject:second) -label:rps_sender_rejected', 3);
+    const disabled = new GmailSenderVerificationSession(disabledConfig).wrap(gmail);
+    await expect(disabled[method]('subject:first', 3)).resolves.toEqual([]);
+    expect(gmail[method]).toHaveBeenCalledTimes(1);
+  });
+  it('does not label when the policy is empty', async () => {
+    const gmail = port();
+    const client = new GmailSenderVerificationSession(disabledConfig).wrap(gmail);
+    await expect(client.getMessage('bad')).rejects.toMatchObject({ reason: 'policy_empty' });
+    expect(gmail.addLabelToMessage).not.toHaveBeenCalled();
+    expect(gmail.getMessage).not.toHaveBeenCalled();
+  });
+  it('preserves rejection and continues after label failure without logging mail contents', async () => {
+    const gmail = port();
+    gmail.addLabelToMessage.mockRejectedValue(new Error('private mail contents'));
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
+    try {
+      const session = new GmailSenderVerificationSession(defaultBackupConfig);
+      const client = session.wrap(gmail);
+      await expect(client.getMessage('bad')).rejects.toBeInstanceOf(GmailSenderRejectedError);
+      await expect(client.getAttachment('bad', 'attachment')).rejects.toBeInstanceOf(GmailSenderRejectedError);
+      expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledExactlyOnceWith({ messageId: 'bad' }, 'Failed to label rejected Gmail message');
+      await expect(session.filterMessageIds(client, ['bad', 'good'])).resolves.toEqual(['good']);
+    } finally { warn.mockRestore(); }
+  });
+  it('supports gateways without label mutation', async () => {
+    const client = new GmailSenderVerificationSession(defaultBackupConfig).wrap({ getMessage: port().getMessage });
+    await expect(client.getMessage('bad')).rejects.toBeInstanceOf(GmailSenderRejectedError);
+  });
+  it('labels rejected machine signals and excludes them on the next limited run', async () => {
+    const gmail = port();
+    const labelled = new Set<string>();
+    gmail.addLabelToMessage.mockImplementation(async (id) => { labelled.add(id); });
+    gmail.searchMessagesLimited.mockImplementation(async (query: string) => {
+      expect(query).toMatch(/ -label:rps_sender_rejected$/);
+      return ['bad-1', 'good', 'bad-2'].filter((id) => !labelled.has(id));
+    });
+    const importFiles = vi.fn().mockResolvedValue({ importedCount: 1 });
+    const service = new MachineSignalGmailIngestionService(async () => gmail, importFiles, { machineSignalImportRun: { findFirst: vi.fn().mockResolvedValue(null) } } as never);
+    expect(await service.runOnce({ config: defaultBackupConfig, allowWait: false })).toMatchObject({ scanned: 3, processed: 1, skipped: 2 });
+    expect([...labelled]).toEqual(['bad-1', 'bad-2']);
+    expect(await service.runOnce({ config: defaultBackupConfig, allowWait: false })).toMatchObject({ scanned: 1, processed: 1, skipped: 0 });
+    expect(gmail.searchMessagesLimited).toHaveBeenNthCalledWith(2, '(subject:"AirGridFlexSignal" in:inbox is:unread) -label:rps_sender_rejected', 3);
+    expect(gmail.addLabelToMessage).toHaveBeenCalledTimes(2);
   });
 });

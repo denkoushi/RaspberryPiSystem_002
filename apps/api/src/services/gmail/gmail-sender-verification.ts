@@ -1,3 +1,4 @@
+export const GMAIL_SENDER_REJECTED_LABEL = 'rps_sender_rejected';
 export const DEFAULT_GMAIL_SENDER_DOMAINS = ['thkintechs.co.jp'];
 export type GmailSenderRejectionReason = 'no_from' | 'multiple_from' | 'invalid_from' | 'domain_not_allowed' | 'no_auth_results' | 'dmarc_not_pass' | 'header_from_mismatch' | 'policy_empty';
 export type GmailSenderVerification = { ok: true; domain: string } | { ok: false; reason: GmailSenderRejectionReason; domain?: string };
