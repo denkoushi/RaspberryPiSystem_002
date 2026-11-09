@@ -1312,6 +1312,20 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: downstream.pieceId! }, select: { opNo: true } }))
           .toEqual([{ opNo: 1 }]);
       });
+    it('refuses to merge every piece while an unlinked downstream piece has partial operations', async () => {
+      await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '2', fhincd: 'PART-A', perUnitMinutes: 3,
+        setupMinutes: 0, ops: [{ opNo: 1, minutes: 1 }, { opNo: 2, minutes: 2 }] });
+      const result = await splitThree();
+      const downstream = (await laterItems()).find((piece) => piece.sourcePieceId === result.pieces[0].pieceId)!;
+      await setSessakuPieceOpCompletion({ siteKey: site, pieceId: downstream.pieceId!, opNo: 1, intent: 'complete',
+        expectedPieceSetVersion: downstream.pieceSetVersion!, itemRevision: downstream.itemRevision });
+      await prisma.productionScheduleSessakuPiece.update({ where: { id: downstream.pieceId! }, data: { sourcePieceId: null } });
+      const pieces = (await board()).items.filter((piece) => piece.sourceRowId === rowId);
+      await expect(merge({ ...result, pieces, pieceSetVersion: pieces[0].pieceSetVersion! }))
+        .rejects.toMatchObject({ statusCode: 409, code: 'PIECE_OPERATION_COMPLETED' });
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: downstream.pieceId! }, select: { opNo: true } }))
+        .toEqual([{ opNo: 1 }]);
+    });
     const laterQuantity = async (total: number | null) => {
       await reader.$transaction(async (tx) => {
         const keys = await lockSessakuPieceSourceRows(tx, [nextRowId]);
