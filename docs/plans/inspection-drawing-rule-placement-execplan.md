@@ -105,6 +105,8 @@ M5 閉じた輪。最初の作業は DB 変更: 提案の状態は今 PROPOSED/A
 
 ## Idempotence and Recovery
 
+2026-11-09: 非ストリーム応答は生成中にデータを返さず、gateway の120秒 per-read timeout で切断されていた。意味写しを SSE stream に切り替え、呼び出し単位の timeout を280秒（gateway の300秒 lifetime 未満）に延長する。塊は8項目のまま。失敗済み8ランを含む `semantic-failed` / `semantic-failed-chunked` は、全 proposal の decidedAt が null の場合だけ、既存のロック・削除・再確認で1回再試行できるようにする。以後の保存対象の失敗は終端マーカー `semantic-failed-stream` として保存し、夜間再試行しない。本番の再試行は未実施。
+
 2026-11-05: 意味写しは丸数字を最大8個ずつに分けて順番に呼ぶ。各塊の画像と一覧は1から採番し、結果は元順で結合して全体の重複判定を1回行う。写し先画像と D 番号一覧は共通。115秒の時間切れは呼び出し単位で判定し、短い unavailable と deferred は再送出する。途中の失敗でも部分成功は保存せず、全件 UNPLACED の `semantic-failed-chunked` を保存する。
 
 旧 `semantic-failed` で decidedAt のある proposal がないランだけ、夜間 backfill の対象に戻す。推論後、proposal をロックして決定状態を再確認し、削除と新規作成を同一トランザクションで行う。決定済み、`semantic-failed-chunked`、キオスクの `allowInference=false` は既存ランを維持する。スキーマ・placementVersion は変更しない。
