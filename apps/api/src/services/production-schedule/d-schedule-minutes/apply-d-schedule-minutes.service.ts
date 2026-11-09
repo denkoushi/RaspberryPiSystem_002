@@ -110,11 +110,13 @@ export async function applyDScheduleMinutes(input: {
       ...input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]),
       ...input.result.warnings.flatMap((warning) => warning.seiban ? [warning.seiban] : [])
     ]);
+    const previousKindDates = new Map<string, Date>();
     for (const fseiban of membershipSeibans) {
       const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, kind };
       const previous = await tx.productionScheduleDScheduleMinutesKindMembership.findUnique({
         where: { csvDashboardId_fseiban_kind: scope }
       });
+      if (previous) previousKindDates.set(fseiban, previous.lastMeetingDate);
       if (previous && previous.lastMeetingDate > meetingDate) continue;
       const values = { lastSourceRunId: created.id, lastMeetingDate: meetingDate };
       await tx.productionScheduleDScheduleMinutesKindMembership.upsert({
@@ -129,7 +131,13 @@ export async function applyDScheduleMinutes(input: {
     const changedAt = new Date();
     for (const { block, fseiban, scope, previous, incomingDate } of targets) {
       const warn = (code: string) => warnings.push({ code, seiban: fseiban, cell: `B${block.sourceRow}`, rawText: block.rawPartsCompleteText });
-      if (previous && previous.sourceRun.meetingDate > created.meetingDate) {
+      const previousKindDate = previousKindDates.get(fseiban)
+        ?? (previous?.sourceRun.kind === kind ? previous.sourceRun.meetingDate : undefined);
+      const sameKindStale = previousKindDate !== undefined && previousKindDate > meetingDate;
+      const applyParts = !sameKindStale && (!previous || previous.sourceRun.meetingDate <= meetingDate);
+      const applyDCompany = kind === 'D_COMPANY' && !sameKindStale;
+      // STALE_FILE means the entire row was skipped, not a successful D-only update.
+      if (!applyParts && !applyDCompany) {
         if (!warnings.some((warning) => warning.code === 'STALE_FILE' && warning.seiban === fseiban)) warn('STALE_FILE');
         continue;
       }
@@ -138,34 +146,41 @@ export async function applyDScheduleMinutes(input: {
         warn('MANUAL_DUE_EXISTS_FIRST_TIME');
       }
       if (block.partsCompleteDate && !incomingDate) warn('UNREADABLE_DATE');
-      const partsCompleteDate = incomingDate ?? previous?.partsCompleteDate ?? null;
+      const partsCompleteDate = applyParts ? incomingDate ?? previous?.partsCompleteDate ?? null : previous?.partsCompleteDate ?? null;
       const dateChanged = (previous?.partsCompleteDate?.getTime() ?? null) !== (partsCompleteDate?.getTime() ?? null);
       if (dateChanged) metrics.dateChanged += 1;
       else metrics.unchanged += 1;
-      const values = {
-        assignees: block.assignees,
-        assigneesKnown: input.result.assigneeColumnFound,
-        partsCompleteDate,
-        outsourceMarks: block.outsourceMarks,
-        surfaceSendOutDates: block.surfaceSendOutDates,
-        memo: block.memo,
-        rawPartsCompleteText: block.rawPartsCompleteText,
-        sourceRow: block.sourceRow,
-        isAlias: fseiban !== block.seiban,
-        aliasOf: fseiban !== block.seiban ? block.seiban : null
+      const dCompanyValues = {
+        assignees: applyDCompany ? block.assignees : previous?.assignees ?? [],
+        assigneesKnown: applyDCompany ? input.result.assigneeColumnFound : previous?.assigneesKnown ?? false,
+        outsourceMarks: applyDCompany ? block.outsourceMarks : previous?.outsourceMarks ?? [],
+        surfaceSendOutDates: applyDCompany ? block.surfaceSendOutDates : previous?.surfaceSendOutDates ?? [],
+        memo: applyDCompany ? block.memo : previous?.memo ?? null
       };
-      // Keep provenance and updatedAt intact for an identical file, including a new message ID.
+      const partsValues = {
+        partsCompleteDate,
+        rawPartsCompleteText: applyParts ? block.rawPartsCompleteText : previous?.rawPartsCompleteText ?? null,
+        sourceRow: applyParts ? block.sourceRow : previous!.sourceRow,
+        isAlias: applyParts ? fseiban !== block.seiban : previous!.isAlias,
+        aliasOf: applyParts ? (fseiban !== block.seiban ? block.seiban : null) : previous!.aliasOf
+      };
+      const values = { ...dCompanyValues, ...partsValues };
+      // Identical content still advances the shared meeting date so an older file cannot win later.
       const unchanged = previous && !dateChanged &&
         isDeepStrictEqual(previous.assignees, values.assignees) && previous.assigneesKnown === values.assigneesKnown &&
         JSON.stringify(previous.outsourceMarks) === JSON.stringify(values.outsourceMarks) &&
         isDeepStrictEqual(previous.surfaceSendOutDates, values.surfaceSendOutDates) &&
         previous.memo === values.memo && previous.rawPartsCompleteText === values.rawPartsCompleteText &&
         previous.sourceRow === values.sourceRow && previous.isAlias === values.isAlias && previous.aliasOf === values.aliasOf;
-      if (unchanged) continue;
+      if (unchanged && !(applyParts && previous.sourceRun.meetingDate < meetingDate)) continue;
       await tx.productionScheduleDScheduleMinutes.upsert({
         where: { csvDashboardId_fseiban: scope },
-        create: { ...scope, ...values, sourceRunId: created.id, excelChangedAt: changedAt },
-        update: { ...values, sourceRunId: created.id, ...(dateChanged ? { excelChangedAt: changedAt } : {}) }
+        create: { ...scope, ...values, surfaceSendOutDates: values.surfaceSendOutDates as Prisma.InputJsonValue, sourceRunId: created.id, excelChangedAt: changedAt },
+        update: {
+          ...(applyDCompany ? { ...dCompanyValues, surfaceSendOutDates: dCompanyValues.surfaceSendOutDates as Prisma.InputJsonValue } : {}),
+          ...(applyParts ? { ...partsValues, sourceRunId: created.id } : {}),
+          ...(dateChanged ? { excelChangedAt: changedAt } : {})
+        }
       });
     }
     return tx.productionScheduleDScheduleMinutesImportRun.update({

@@ -112,7 +112,8 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
       searchMessagesLimited: vi.fn().mockResolvedValue([newId, oldId]),
       getMessage: vi.fn(async (id: string) => ({ id, threadId: id, labelIds: ['UNREAD'], snippet: '',
         internalDateMs: Date.parse(id === oldId ? '2026-10-30Z' : '2026-11-06Z'),
-        payload: { headers: [{ name: 'Subject', value: 'D社日程会議議事録' }],
+        payload: { headers: [{ name: 'Subject', value: 'D社日程会議議事録' }, { name: 'From', value: 'synthetic@example.com' },
+          { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }],
           parts: [{ filename: `${id} 日程会議議事録.xlsx`, body: { attachmentId: id } }] }
       })),
       getAttachment: vi.fn(async () => Buffer.from('synthetic workbook')),
@@ -128,7 +129,7 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
         const run = await applyDScheduleMinutes(input); runIds.push(run.id); return run;
       }
     });
-    const summary = await ingestion.runOnce({ config: defaultBackupConfig, allowWait: false });
+    const summary = await ingestion.runOnce({ config: { ...defaultBackupConfig, gmailIngestSenderPolicy: { allowedSenderDomains: ['example.com'] } }, allowWait: false });
     expect(order).toEqual([oldId, newId]); expect(summary.processed).toBe(2);
     expect((await latest(main.seiban)).partsCompleteDate).toEqual(new Date('2026-11-12Z'));
     expect(gmail.trashMessage.mock.calls).toEqual([[oldId], [newId]]);
@@ -369,7 +370,7 @@ describe('apply D schedule minutes kind memberships', () => {
       },
       // Every latest-value write is stale: membership must still be recorded.
       productionScheduleDScheduleMinutes: {
-        findUnique: vi.fn().mockResolvedValue({ sourceRun: { meetingDate: new Date('2026-12-01Z') } }),
+        findUnique: vi.fn().mockResolvedValue({ sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-12-01Z') } }),
         upsert: vi.fn()
       }
     };
@@ -422,5 +423,125 @@ describe('apply D schedule minutes kind memberships', () => {
       expect.objectContaining({ fseiban: 'SKIPPED001' })
     ]);
     expect(tx.productionScheduleDScheduleMinutesKindMembership.upsert).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('apply shared seibans from both minutes kinds', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function harness(main: DScheduleMinutesBlock) {
+    type Stored = Omit<DScheduleMinutesBlock, 'partsCompleteDate'> & {
+      partsCompleteDate: Date | null; assigneesKnown: boolean; sourceRunId: string;
+      sourceRun: { kind: DScheduleMinutesKind; meetingDate: Date }; excelChangedAt: Date;
+      isAlias: boolean; aliasOf: string | null;
+    };
+    let stored: Stored | null = null;
+    let run: ProductionScheduleDScheduleMinutesImportRun;
+    const memberships = new Map<string, { lastMeetingDate: Date }>();
+    const tx = {
+      $executeRaw: vi.fn(),
+      productionScheduleDScheduleMinutesKindMembership: {
+        findUnique: vi.fn(async ({ where }) => memberships.get(where.csvDashboardId_fseiban_kind.kind) ?? null),
+        upsert: vi.fn(async ({ create }) => { memberships.set(create.kind, create); })
+      },
+      productionScheduleDScheduleMinutesImportRun: {
+        findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(async ({ data }) => (run = { ...data, id: randomUUID() })),
+        update: vi.fn(async ({ data }) => Object.assign(run, data))
+      },
+      productionScheduleDScheduleMinutes: {
+        findUnique: vi.fn(async () => stored),
+        upsert: vi.fn(async ({ create, update }) => {
+          stored = { ...stored, ...(stored ? update : create),
+            sourceRun: !stored || update.sourceRunId ? { kind: run.kind, meetingDate: run.meetingDate } : stored.sourceRun };
+        })
+      },
+      productionScheduleSeibanDueDate: { findUnique: vi.fn().mockResolvedValue(null) }
+    };
+    vi.spyOn(scheduleSource, 'readWinnerRowsByFseibans').mockResolvedValue([
+      { id: main.seiban, updatedAt: new Date('2026-10-30Z'), rowData: { FSEIBAN: main.seiban } }
+    ]);
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (operation) => {
+      if (typeof operation !== 'function') throw new Error('Expected interactive transaction');
+      return operation(tx as unknown as Prisma.TransactionClient);
+    });
+    vi.spyOn(prisma.productionScheduleDScheduleMinutesImportRun, 'findUniqueOrThrow').mockImplementation(async () => run);
+    return { tx, latest: () => stored!, execute: (kind: DScheduleMinutesKind, meetingDate: string, entry = main) => applyDScheduleMinutes({
+      result: { ok: true, assigneeColumnFound: kind === 'D_COMPANY', meetingDate, blocks: [entry], warnings: [] },
+      metadata: { kind, gmailMessageId: randomUUID(), subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-11-09Z') }
+    }) };
+  }
+
+  it.each(['D_COMPANY', 'INTERNAL'] as const)('keeps D-only fields and the newest shared date when %s arrives first', async (first) => {
+    const d = block({ assignees: ['機械課'] });
+    const internal = { ...d, assignees: [], outsourceMarks: [], surfaceSendOutDates: [], memo: null,
+      partsCompleteDate: '2026-11-15', rawPartsCompleteText: '11/15', sourceRow: 12 };
+    const { tx, latest, execute } = harness(d);
+    const importKind = (kind: DScheduleMinutesKind) => execute(kind, kind === 'D_COMPANY' ? '2026-11-06' : '2026-11-07', kind === 'D_COMPANY' ? d : internal);
+    await importKind(first);
+    const before = latest();
+    if (first === 'INTERNAL') expect(before).toMatchObject({ assignees: [], assigneesKnown: false, outsourceMarks: [], surfaceSendOutDates: [], memo: null });
+    const second = await importKind(first === 'D_COMPANY' ? 'INTERNAL' : 'D_COMPANY');
+    expect(latest()).toMatchObject({ assignees: d.assignees, assigneesKnown: true, outsourceMarks: d.outsourceMarks,
+      surfaceSendOutDates: d.surfaceSendOutDates, memo: d.memo, partsCompleteDate: new Date('2026-11-15Z'),
+      rawPartsCompleteText: '11/15', sourceRow: 12, sourceRun: { kind: 'INTERNAL', meetingDate: new Date('2026-11-07Z') } });
+    expect(second.warnings).toEqual([]);
+    expect(second.autoRegisteredSeibans).toMatchObject({ metrics: { dateChanged: first === 'INTERNAL' ? 0 : 1, unchanged: first === 'INTERNAL' ? 1 : 0 } });
+    if (first === 'INTERNAL') {
+      expect(latest().sourceRunId).toBe(before.sourceRunId);
+      expect(latest().excelChangedAt).toEqual(before.excelChangedAt);
+      expect(tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update).not.toHaveProperty('sourceRunId');
+      expect(tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update).not.toHaveProperty('excelChangedAt');
+      expect(tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update).not.toHaveProperty('partsCompleteDate');
+      expect(tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update).not.toHaveProperty('rawPartsCompleteText');
+    } else {
+      const update = tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update;
+      for (const field of ['assignees', 'assigneesKnown', 'outsourceMarks', 'surfaceSendOutDates', 'memo']) {
+        expect(update).not.toHaveProperty(field);
+      }
+    }
+
+    const settled = latest(); const writes = tx.productionScheduleDScheduleMinutes.upsert.mock.calls.length;
+    const repeated = await importKind('D_COMPANY');
+    expect(latest()).toEqual(settled);
+    expect(tx.productionScheduleDScheduleMinutes.upsert).toHaveBeenCalledTimes(writes);
+    expect(repeated.warnings).toEqual([]);
+    expect(repeated.autoRegisteredSeibans).toMatchObject({ metrics: { dateChanged: 0, unchanged: 1 } });
+
+    const stale = await execute('D_COMPANY', '2026-11-05', { ...d, memo: 'stale', partsCompleteDate: '2026-11-01' });
+    expect(latest()).toEqual(settled);
+    expect(stale.warnings).toEqual([expect.objectContaining({ code: 'STALE_FILE' })]);
+    expect(stale.autoRegisteredSeibans).toMatchObject({ metrics: { dateChanged: 0, unchanged: 0 } });
+
+    await execute('D_COMPANY', '2026-11-08', { ...d, memo: 'new D', partsCompleteDate: '2026-11-16', rawPartsCompleteText: '11/16' });
+    expect(latest()).toMatchObject({ partsCompleteDate: new Date('2026-11-16Z'), memo: 'new D', sourceRun: { kind: 'D_COMPANY' } });
+    await execute('INTERNAL', '2026-11-09', { ...internal, partsCompleteDate: '2026-11-17' });
+    expect(latest()).toMatchObject({ partsCompleteDate: new Date('2026-11-17Z'), memo: 'new D', assignees: d.assignees,
+      assigneesKnown: true, outsourceMarks: d.outsourceMarks, surfaceSendOutDates: d.surfaceSendOutDates });
+  });
+
+  it('advances shared provenance for newer identical content without moving excelChangedAt', async () => {
+    const d = block({ assignees: ['機械課'] });
+    const { execute, latest, tx } = harness(d);
+    await execute('D_COMPANY', '2026-11-06');
+    const before = latest();
+    const internal = await execute('INTERNAL', '2026-11-09', { ...d, assignees: [], outsourceMarks: [], surfaceSendOutDates: [], memo: null });
+    expect(latest()).toMatchObject({ sourceRunId: internal.id, excelChangedAt: before.excelChangedAt });
+    expect(tx.productionScheduleDScheduleMinutes.upsert.mock.lastCall![0].update).not.toHaveProperty('excelChangedAt');
+    await execute('D_COMPANY', '2026-11-08', { ...d, partsCompleteDate: '2026-11-18', memo: 'new D metadata' });
+    expect(latest()).toMatchObject({ partsCompleteDate: before.partsCompleteDate, rawPartsCompleteText: before.rawPartsCompleteText,
+      sourceRunId: internal.id, excelChangedAt: before.excelChangedAt, memo: 'new D metadata' });
+  });
+
+  it('uses the D membership before its upsert when a newer D-only update precedes an older D file', async () => {
+    const d = block({ assignees: ['機械課'] });
+    const { execute, latest } = harness(d);
+    await execute('INTERNAL', '2026-11-09', { ...d, partsCompleteDate: '2026-11-20', rawPartsCompleteText: '11/20', assignees: [], outsourceMarks: [], surfaceSendOutDates: [], memo: null });
+    await execute('D_COMPANY', '2026-11-07', { ...d, memo: 'newer D' });
+    const before = latest();
+    const stale = await execute('D_COMPANY', '2026-11-06', d);
+    expect(latest()).toEqual(before);
+    expect(stale.warnings).toEqual([expect.objectContaining({ code: 'STALE_FILE' })]);
+    expect(latest()).toMatchObject({ memo: 'newer D', partsCompleteDate: new Date('2026-11-20Z') });
   });
 });

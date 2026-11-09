@@ -79,6 +79,47 @@ beforeEach(() => {
 });
 
 describe('D schedule automatic registration', () => {
+  it.each([
+    { first: 'INTERNAL', absent: true }, { first: 'D_COMPANY', absent: true },
+    { first: 'INTERNAL', absent: false }, { first: 'D_COMPANY', absent: false }
+  ])('retains a shared seiban after internal eligibility ends: %j', async ({ first, absent }) => {
+    const ownerships: Record<string, typeof mocks.run.autoRegisteredSeibans> = {};
+    const second = first === 'INTERNAL' ? 'D_COMPANY' : 'INTERNAL';
+    for (const kind of [first, second]) {
+      mocks.run = { ...mocks.run, kind, status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [],
+        metrics: { seibansRead: 1, dateChanged: 0, unchanged: 0, registeredSeibans: [], unregisteredSeibans: [] } } };
+      mocks.otherRuns = Object.entries(ownerships).map(([otherKind, autoRegisteredSeibans]) => ({
+        id: otherKind, kind: otherKind, status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'), autoRegisteredSeibans
+      }));
+      await register([block('SHARED')]);
+      ownerships[kind] = structuredClone(mocks.run.autoRegisteredSeibans);
+      if (kind === 'D_COMPANY' && kind === second) {
+        expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: [], unregisteredSeibans: [] });
+      }
+    }
+    expect(ownerships.D_COMPANY).toMatchObject({ planningBoards: { A: ['SHARED'], B: ['SHARED'] }, searchHistory: ['SHARED'] });
+    mocks.previous = { autoRegisteredSeibans: ownerships.INTERNAL };
+    mocks.otherRuns = [{ id: 'd', kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'), autoRegisteredSeibans: ownerships.D_COMPANY }];
+    mocks.run = { ...mocks.run, kind: 'INTERNAL', status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register(absent ? [] : [block('SHARED', null)]);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'SHARED']);
+    expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'SHARED']);
+    expect(mocks.history).toEqual(['MANUAL-H', 'SHARED']);
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: [], B: [] }, searchHistory: [] });
+    expect(mocks.otherRuns[0]!.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: ['SHARED'], B: ['SHARED'] }, searchHistory: ['SHARED'] });
+  });
+
+  it('does not take ownership of manual entries listed in D company minutes', async () => {
+    await register([block('MANUAL-H'), block('MANUAL-A')]);
+    expect(mocks.run.autoRegisteredSeibans.searchHistory).not.toContain('MANUAL-H');
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A ?? []).not.toContain('MANUAL-A');
+    mocks.previous = { autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) };
+    mocks.run = { ...mocks.run, status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register([]);
+    expect(mocks.history).toContain('MANUAL-H');
+    expect(mocks.boards.A.seibanOrder).toContain('MANUAL-A');
+  });
+
   it('budgets internal entries per destination after D company, manual entries and ten reserved slots', async () => {
     mocks.run.kind = 'INTERNAL';
     const manual = Array.from({ length: 89 }, (_, i) => `M${i}`);
