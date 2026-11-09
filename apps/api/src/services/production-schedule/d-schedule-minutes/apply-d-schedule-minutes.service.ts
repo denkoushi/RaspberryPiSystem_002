@@ -105,6 +105,24 @@ export async function applyDScheduleMinutes(input: {
         autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics }
       }
     });
+    // Membership survives skipped latest-value writes and later files that omit a seiban.
+    const membershipSeibans = new Set([
+      ...input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]),
+      ...input.result.warnings.flatMap((warning) => warning.seiban ? [warning.seiban] : [])
+    ]);
+    for (const fseiban of membershipSeibans) {
+      const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban, kind };
+      const previous = await tx.productionScheduleDScheduleMinutesKindMembership.findUnique({
+        where: { csvDashboardId_fseiban_kind: scope }
+      });
+      if (previous && previous.lastMeetingDate > meetingDate) continue;
+      const values = { lastSourceRunId: created.id, lastMeetingDate: meetingDate };
+      await tx.productionScheduleDScheduleMinutesKindMembership.upsert({
+        where: { csvDashboardId_fseiban_kind: scope },
+        create: { ...scope, ...values },
+        update: values
+      });
+    }
     const winnerRows = await readWinnerRowsByFseibans(tx,
       input.result.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]));
     const scheduled = new Set(winnerRows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')).filter(Boolean));

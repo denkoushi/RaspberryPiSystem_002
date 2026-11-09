@@ -28,6 +28,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
       update: ({ data }: { data: object }) => Object.assign(mocks.run, data)
     },
     productionScheduleDScheduleMinutes: { findUnique: () => null, upsert: vi.fn() },
+    productionScheduleDScheduleMinutesKindMembership: { findUnique: () => null, upsert: vi.fn() },
     productionScheduleSeibanDueDate: { findUnique: () => null }
   }),
   productionScheduleDScheduleMinutesImportRun: {

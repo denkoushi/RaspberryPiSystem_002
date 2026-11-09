@@ -43,6 +43,7 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
   });
   afterEach(async () => {
     await prisma.productionScheduleDScheduleMinutes.deleteMany({ where: { fseiban: { in: seibans } } });
+    await prisma.productionScheduleDScheduleMinutesKindMembership.deleteMany({ where: { fseiban: { in: seibans } } });
     await prisma.productionScheduleDScheduleMinutesImportRun.deleteMany({ where: { id: { in: runIds } } });
     await prisma.productionScheduleSeibanDueDate.deleteMany({ where: { fseiban: { in: seibans } } });
     await prisma.csvDashboardRow.deleteMany({ where: { id: { in: rowIds } } });
@@ -177,6 +178,7 @@ describe('apply D schedule minutes date preservation', () => {
     const update = vi.fn().mockResolvedValue(run);
     const tx = {
       $executeRaw: vi.fn(),
+      productionScheduleDScheduleMinutesKindMembership: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
       productionScheduleDScheduleMinutesImportRun: { findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue(run), update },
       productionScheduleDScheduleMinutes: { findUnique: vi.fn().mockResolvedValue(before), upsert },
     };
@@ -204,6 +206,7 @@ describe('apply D schedule minutes comparison before writes', () => {
     const run = { id: 'comparison-run', status: 'APPLIED', meetingDate: new Date('2026-11-06Z') } as ProductionScheduleDScheduleMinutesImportRun;
     const tx = {
       $executeRaw: vi.fn(),
+      productionScheduleDScheduleMinutesKindMembership: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
       productionScheduleDScheduleMinutesImportRun: {
         findUnique: vi.fn().mockResolvedValue(null),
         findFirst: vi.fn().mockResolvedValue(previousCount === null ? null : { autoRegisteredSeibans: { metrics: { seibansRead: previousCount } } }),
@@ -339,5 +342,85 @@ describe('apply D schedule minutes comparison before writes', () => {
     await execute();
     expect(tx.productionScheduleDScheduleMinutesImportRun.findFirst).not.toHaveBeenCalled();
     expect(tx.productionScheduleDScheduleMinutes.upsert).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('apply D schedule minutes kind memberships', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  function harness() {
+    const memberships = new Map<string, { lastSourceRunId: string; lastMeetingDate: Date }>();
+    const membership = {
+      findUnique: vi.fn(async ({ where }) => memberships.get(JSON.stringify(where.csvDashboardId_fseiban_kind)) ?? null),
+      upsert: vi.fn(async ({ where, create, update }) => {
+        const key = JSON.stringify(where.csvDashboardId_fseiban_kind);
+        memberships.set(key, memberships.has(key) ? { ...memberships.get(key)!, ...update } : create);
+      })
+    };
+    let run: ProductionScheduleDScheduleMinutesImportRun;
+    const tx = {
+      $executeRaw: vi.fn(),
+      productionScheduleDScheduleMinutesKindMembership: membership,
+      productionScheduleDScheduleMinutesImportRun: {
+        findUnique: vi.fn().mockResolvedValue(null), findFirst: vi.fn().mockResolvedValue(null),
+        create: vi.fn(async ({ data }) => (run = { ...data, id: randomUUID() })),
+        update: vi.fn(async () => run)
+      },
+      // Every latest-value write is stale: membership must still be recorded.
+      productionScheduleDScheduleMinutes: {
+        findUnique: vi.fn().mockResolvedValue({ sourceRun: { meetingDate: new Date('2026-12-01Z') } }),
+        upsert: vi.fn()
+      }
+    };
+    vi.spyOn(scheduleSource, 'readWinnerRowsByFseibans').mockResolvedValue([]);
+    vi.spyOn(prisma, '$transaction').mockImplementation(async (operation) => {
+      if (typeof operation !== 'function') throw new Error('Expected interactive transaction');
+      return operation(tx as unknown as Prisma.TransactionClient);
+    });
+    vi.spyOn(prisma.productionScheduleDScheduleMinutesImportRun, 'findUniqueOrThrow').mockImplementation(async () => run);
+    return { tx, memberships, execute: (blocks: DScheduleMinutesBlock[], kind: DScheduleMinutesKind, meetingDate = '2026-11-06', warningSeibans: Array<string | null> = []) => applyDScheduleMinutes({
+      result: { ok: true, assigneeColumnFound: true, meetingDate, blocks,
+        warnings: warningSeibans.map((seiban) => ({ code: 'UNREADABLE_DATE', seiban, cell: null, rawText: null })) },
+      metadata: { kind, gmailMessageId: randomUUID(), subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-11-06Z') }
+    }) };
+  }
+
+  it('keeps two memberships for the same seiban even when latest values are stale', async () => {
+    const { tx, memberships, execute } = harness();
+    const main = block();
+    const d = await execute([main], 'D_COMPANY');
+    const internal = await execute([main], 'INTERNAL');
+    expect([...memberships.values()]).toEqual([
+      expect.objectContaining({ kind: 'D_COMPANY', fseiban: main.seiban, lastSourceRunId: d.id }),
+      expect.objectContaining({ kind: 'INTERNAL', fseiban: main.seiban, lastSourceRunId: internal.id })
+    ]);
+    expect(tx.productionScheduleDScheduleMinutes.upsert).not.toHaveBeenCalled();
+  });
+
+  it('preserves newer membership, updates on equal/newer dates, and retains absent seibans', async () => {
+    const { tx, memberships, execute } = harness();
+    const main = block();
+    const first = await execute([main], 'INTERNAL');
+    await execute([main], 'INTERNAL', '2026-10-30');
+    expect([...memberships.values()]).toEqual([expect.objectContaining({ lastSourceRunId: first.id, lastMeetingDate: new Date('2026-11-06Z') })]);
+    expect(tx.productionScheduleDScheduleMinutesKindMembership.upsert).toHaveBeenCalledTimes(1);
+    const equal = await execute([main], 'INTERNAL');
+    expect([...memberships.values()][0].lastSourceRunId).toBe(equal.id);
+    const newer = await execute([main], 'INTERNAL', '2026-11-07');
+    await execute([], 'INTERNAL', '2026-11-08');
+    expect([...memberships.values()]).toEqual([expect.objectContaining({ lastSourceRunId: newer.id, lastMeetingDate: new Date('2026-11-07Z') })]);
+  });
+
+  it('includes aliases and warning-only seibans once and ignores warnings without seiban', async () => {
+    const { tx, memberships, execute } = harness();
+    const main = block({ aliasSeibans: ['ALIAS001', 'ALIAS001'] });
+    await execute([main], 'D_COMPANY', '2026-11-06', ['SKIPPED001', 'ALIAS001', null]);
+    expect([...memberships.values()]).toEqual([
+      expect.objectContaining({ fseiban: main.seiban }),
+      expect.objectContaining({ fseiban: 'ALIAS001' }),
+      expect.objectContaining({ fseiban: 'SKIPPED001' })
+    ]);
+    expect(tx.productionScheduleDScheduleMinutesKindMembership.upsert).toHaveBeenCalledTimes(3);
   });
 });

@@ -35,6 +35,8 @@ Decision: infer the year of an MMDD from receipt time, rolling back when more th
 
 Decision: inspect all XLSX attachments and finish independent attachments even when one fails. A transient failure leaves the mail unread. Permanent content failures preserve the mail and mark it read only after there are no transient failures. Successful mail is trashed/read once. Rationale: retries reuse successful kind-specific runs without losing the second attachment. Date/Author: 2026-11-09 / Codex.
 
+Decision: retain production-number membership separately for each kind without deleting it when later files omit the number. Update provenance only when `lastMeetingDate` is no newer than the incoming meeting date, including aliases and warning-only numbers even when latest values are skipped. Read membership through `listDScheduleMinutesKinds`. Rationale: the shared latest-value row cannot represent membership in both formats. Date/Author: 2026-11-09 / Codex.
+
 ## After deploy: importing the 2026-11-07 email once
 
 
