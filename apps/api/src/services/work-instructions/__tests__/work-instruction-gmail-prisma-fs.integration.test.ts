@@ -430,7 +430,8 @@ describeIntegration('work-instruction Gmail → Prisma → durable filesystem in
 
     const second = await service.ingestMessage({ config: configForSubject(), allowWait: false, messageId: fixture.message.id });
     expect(second).toMatchObject({ applied: 1, acknowledged: 1, acknowledgementPending: 0 });
-    expect(mail.getMessage).toHaveBeenCalledTimes(1);
+    // Each run re-verifies the sender before acknowledging; attachments are not fetched again.
+    expect(mail.getMessage).toHaveBeenCalledTimes(2);
     expect(mail.getAttachment).toHaveBeenCalledTimes(2);
     expect(mail.markAsRead).toHaveBeenCalledTimes(2);
     expect(mail.trashMessage).toHaveBeenCalledTimes(1);

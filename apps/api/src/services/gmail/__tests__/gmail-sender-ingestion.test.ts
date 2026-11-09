@@ -160,3 +160,22 @@ describe('Gmail sender policy ingestion boundaries', () => {
     await expect(provider.downloadAllWithMetadata('CSV Import')).resolves.toHaveLength(1);
   });
 });
+
+describe('GmailSenderVerificationSession cache', () => {
+  it('fetches a rejected message once and blocks later operations on it', async () => {
+    const gmail = port();
+    const session = new GmailSenderVerificationSession(defaultBackupConfig);
+    const client = session.wrap(gmail);
+    await expect(client.getMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    await expect(client.getMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    await expect(client.trashMessage('bad-1')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    await expect(client.getAttachment('bad-1', 'bad-1-attachment')).rejects.toMatchObject({ reason: 'domain_not_allowed' });
+    expect(gmail.getMessage).toHaveBeenCalledTimes(1);
+    expect(gmail.trashMessage).not.toHaveBeenCalled();
+    expect(gmail.getAttachment).not.toHaveBeenCalled();
+    await client.getMessage('good');
+    await client.markAsRead('good');
+    expect(gmail.getMessage).toHaveBeenCalledTimes(2);
+    expect(gmail.markAsRead).toHaveBeenCalledWith('good');
+  });
+});

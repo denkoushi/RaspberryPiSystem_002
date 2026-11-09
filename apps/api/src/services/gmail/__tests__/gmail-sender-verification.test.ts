@@ -16,6 +16,8 @@ describe('verifyGmailSender', () => {
     ['mx.google.com; dmarc=pass header.from=example.com', 'Authentication-Results', 'header_from_mismatch'],
     ['mx.google.com; spf=pass (dmarc=pass)', 'Authentication-Results', 'dmarc_not_pass'],
     ['mx.google.com.evil; dmarc=pass', 'Authentication-Results', 'no_auth_results'],
+    ['mx.google.com; dmarc=pass header.from=thkintechs.co.jp; dmarc=fail header.from=thkintechs.co.jp', 'Authentication-Results', 'dmarc_not_pass'],
+    ['mx.google.com (comment; dmarc=pass); dmarc=fail header.from=thkintechs.co.jp', 'Authentication-Results', 'dmarc_not_pass'],
   ])('rejects %s / %s', (value, name, reason) => expect(verify([from(), auth(value, name)])).toMatchObject({ ok: false, reason }));
   it('ignores untrusted results and uses the first Google results', () => {
     expect(verify([from(), auth('evil; dmarc=pass'), auth('mx.google.com; dmarc=fail'), auth()])).toMatchObject({ ok: false, reason: 'dmarc_not_pass' });
