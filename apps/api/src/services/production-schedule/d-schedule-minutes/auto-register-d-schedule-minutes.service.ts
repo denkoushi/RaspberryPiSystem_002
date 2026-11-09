@@ -89,7 +89,8 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
         const other = new Set(otherAuto);
         const internal = run.kind === 'INTERNAL' ? selectInternalEntries(current.entries, auto, other, eligible) : null;
         let entries = internal?.entries ?? current.entries.filter((seiban) => retainAbsent || !auto.has(seiban) || all.has(seiban));
-        const owned = internal?.owned ?? entries.filter((seiban) => auto.has(seiban));
+        // Take over a seiban the other kind registered while it is still listed here; manual entries stay unowned.
+        const owned = internal?.owned ?? entries.filter((seiban) => auto.has(seiban) || (eligibleSet.has(seiban) && other.has(seiban)));
         const evicted = new Set<string>();
         if (!internal) {
           const missing = eligible.filter((seiban) => !entries.includes(seiban)).length;

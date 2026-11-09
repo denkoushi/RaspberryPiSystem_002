@@ -131,3 +131,14 @@ Revision: 2026-11-09 — captured implementation decisions and initial validatio
 Revision: 2026-11-09 — recorded final local evidence and the PostgreSQL/integration boundary.
 
 Revision: 2026-11-09 — limited section detection to column A so unused remarks cannot reset headers; all 22 internal parser cases passed again. Added the complete changed-file inventory.
+
+## Review corrections (2026-11-09)
+
+The local review fix supersedes the earlier shared-row and MMDD decisions above:
+
+- Only D_COMPANY imports update assignees, assigneesKnown, outsourceMarks, surfaceSendOutDates and memo. Read the previous same-kind membership before upserting it to reject older D values; fall back to same-kind source-run provenance when membership is absent. Shared parts-date fields retain cross-kind meeting-date ordering and also reject older same-kind membership dates. D-only updates retain shared sourceRunId, raw text, row/alias provenance and excelChangedAt. Identical content at the same meeting date does not write; a newer shared meeting advances source-run provenance without changing excelChangedAt, preventing a later older file from winning.
+  Date metrics retain their date-based meaning (D-only updates count as unchanged); STALE_FILE marks a fully stale row, never a successful D-only update.
+- D_COMPANY takes ownership of eligible entries that INTERNAL registered automatically, in every destination. Manually registered entries stay unowned, so they are never removed when they leave the minutes. Both arrival orders are covered, followed by internal omission or loss of a readable date; D ownership protects those entries.
+- 「未完」「一部未完」 produce UNREADABLE_DATE. Meeting MMDD dates select the nearest valid previous/current/next year, matching the D parser; filename and sheet fallbacks cover both New Year directions and leap day.
+
+Validation: all 255 minutes tests, including the PostgreSQL apply and board-due tests, passed on an isolated PostgreSQL 18 container. The Gmail ingestion DB test now carries From and Authentication-Results headers required by sender verification. No schema or migration changes. Previously overwritten D values require a subsequent D import to restore them.

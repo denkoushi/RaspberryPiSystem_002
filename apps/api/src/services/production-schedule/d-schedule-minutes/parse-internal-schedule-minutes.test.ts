@@ -58,6 +58,25 @@ describe('internal schedule minutes parser', () => {
     expect(await parse(workbook, filename, receivedAt)).toMatchObject({ ok: true, meetingDate: expected });
   });
 
+  it.each(['未完', '一部未完'])('warns about incomplete parts text %j instead of treating it as finished', async (text) => {
+    const { workbook, sheet } = fixture(); sheet.getCell('F4').value = text;
+    expect(await parse(workbook)).toMatchObject({ ok: true,
+      blocks: [{ partsCompleteDate: null, rawPartsCompleteText: text }],
+      warnings: [{ code: 'UNREADABLE_DATE', seiban: 'BA1SB203', cell: 'F4', rawText: text }]
+    });
+  });
+
+  it.each([
+    { name: '0102結果', filename: '日程会議議事録_0103.xlsx', received: '2026-12-30Z', expected: '2027-01-03' },
+    { name: '0102結果', filename: 'anything.xlsx', received: '2026-12-30Z', expected: '2027-01-02' },
+    { name: '1230結果', filename: 'anything.xlsx', received: '2027-01-02Z', expected: '2026-12-30' },
+    { name: '0229結果', filename: 'anything.xlsx', received: '2027-12-30Z', expected: '2028-02-29' }
+  ])('chooses the nearest valid year for filename/sheet dates: %j', async ({ name, filename, received, expected }) => {
+    const { workbook, sheet } = fixture(name); sheet.getCell('B1').value = null;
+    sheet.getCell('F4').value = '完';
+    expect(await parse(workbook, filename, new Date(received))).toMatchObject({ ok: true, meetingDate: expected });
+  });
+
   it('selects January after December across the year boundary', async () => {
     const { workbook, sheet } = fixture('1225結果'); sheet.getCell('B1').value = null;
     const older = workbook.addWorksheet('0102結果'); older.addRow(['製番', '部品']); older.addRow(['BA1SB888', '1/8']);
