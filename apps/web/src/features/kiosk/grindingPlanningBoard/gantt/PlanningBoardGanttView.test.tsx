@@ -1056,6 +1056,7 @@ describe('forward PlanningBoardGanttView', () => {
       const bar = screen.getAllByTestId(`planning-gantt-bar-${entry.itemId}`)[0]!;
       tap(bar);
       expect(bar).toHaveAttribute('aria-pressed', 'true');
+      expect(bar).toHaveClass('outline-emerald-300');
       expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
     }
     fireEvent.click(within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /の数量/ })[0]!);
@@ -1130,13 +1131,13 @@ describe('forward PlanningBoardGanttView', () => {
     const steps = within(strip).getAllByRole('button');
     expect(steps[0]).toHaveTextContent('工順2 · 305');
     expect(steps[1]).toHaveTextContent('工順20 · 306 NC研削盤');
-    expect(a).toHaveClass('outline-white');
-    expect(a).not.toHaveClass('outline-emerald-300');
+    expect(a).toHaveClass('outline-emerald-300');
+    expect(a).not.toHaveClass('outline-white');
     expect(a).toHaveAttribute('aria-pressed', 'true');
     expect(b).toHaveClass('outline-white');
     expect(screen.getByTestId('planning-gantt-chain-badge-a')).toHaveTextContent(/^1$/);
     expect(screen.getByTestId('planning-gantt-chain-badge-b')).toHaveTextContent(/^2$/);
-    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('outline-white');
+    expect(screen.getByTestId('planning-gantt-bar-a-segment-1')).toHaveClass('outline-emerald-300');
     expect(within(screen.getByTestId('planning-gantt-bar-a-segment-1')).queryByText(/^1$/)).not.toBeInTheDocument();
     expect(screen.getByTestId('planning-gantt-bar-c')).toHaveClass('opacity-30', 'outline-emerald-300');
     expect(values.onToggleItem).not.toHaveBeenCalled();
