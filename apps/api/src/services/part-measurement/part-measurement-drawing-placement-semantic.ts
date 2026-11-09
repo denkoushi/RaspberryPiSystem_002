@@ -62,8 +62,11 @@ async function annotatedImage(
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
-// DGX caps a call at 120s; stay just under it.
-export const SEMANTIC_PLACEMENT_TIMEOUT_MS = 115_000;
+// Streamed so the DGX per-read 120s limit does not cut long generations; stay under its 300s request lifetime.
+export const SEMANTIC_PLACEMENT_TIMEOUT_MS = 280_000;
+// The gateway still answers 502 when the first token (or any later read) waits over 120s. Treat a call that
+// failed only after this long as a timeout, so one slow drawing is not deferred every night ahead of the rest.
+export const SEMANTIC_PLACEMENT_LONG_CALL_MS = 115_000;
 export const SEMANTIC_PLACEMENT_CHUNK_SIZE = 8;
 
 export class SemanticPlacementTimeoutError extends Error {
@@ -102,7 +105,7 @@ export async function transferItemsSemantically(input: {
           { label: 'source', mimeType: 'image/jpeg', imageBytes: sourceImage },
           { label: 'target', mimeType: 'image/jpeg', imageBytes: targetImage }
         ],
-        background: true, jsonOutput: true, timeoutMs: SEMANTIC_PLACEMENT_TIMEOUT_MS, temperature: 0, maxTokens: 6000,
+        background: true, stream: true, jsonOutput: true, timeoutMs: SEMANTIC_PLACEMENT_TIMEOUT_MS, temperature: 0, maxTokens: 6000,
         userText: `${INSTRUCTIONS}\n丸数字一覧:\n${JSON.stringify(chunk.map((item, i) => ({
           n: i + 1, measurementLabel: item.measurementLabel, nominalValue: item.nominalValue,
           lowerLimit: item.lowerLimit, upperLimit: item.upperLimit,
@@ -114,7 +117,7 @@ export async function transferItemsSemantically(input: {
         })))}`
       }));
     } catch (error) {
-      if (error instanceof InferenceUnavailableError && Date.now() - startedAt >= SEMANTIC_PLACEMENT_TIMEOUT_MS - 1_000) {
+      if (error instanceof InferenceUnavailableError && Date.now() - startedAt >= SEMANTIC_PLACEMENT_LONG_CALL_MS) {
         throw new SemanticPlacementTimeoutError(error);
       }
       throw error;

@@ -132,7 +132,7 @@ export class PartMeasurementDrawingPlacementService {
     };
     const where = { visualTemplateId_drawingImageFingerprint_analysisVersion_placementVersion: key };
     const existingRun = await prisma.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
-    const retryLegacyFailure = semantic && options.allowInference !== false && existingRun?.rankingMethod === 'semantic-failed'
+    const retryLegacyFailure = semantic && options.allowInference !== false && existingRun && ['semantic-failed', 'semantic-failed-chunked'].includes(existingRun.rankingMethod)
       && existingRun.proposals.every((proposal) => proposal.decidedAt === null);
     if (existingRun && !retryLegacyFailure) return runResult(existingRun);
     const target = await prisma.partMeasurementVisualTemplate.findUnique({ where: { id: visualTemplateId } });
@@ -180,9 +180,9 @@ export class PartMeasurementDrawingPlacementService {
       try {
         transfers = await transfer();
       } catch (error) {
-        // A call that ran out its whole timeout would time out again every night, so store it as failed instead of retrying.
+        // Streaming failures are terminal; only undecided pre-stream failures receive one guarded retry.
         if (!semantic || error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError) throw error;
-        rankingMethod = 'semantic-failed-chunked';
+        rankingMethod = 'semantic-failed-stream';
         transfers = unplacedSemanticItems(source.template.items);
         log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');
       }
@@ -197,7 +197,7 @@ export class PartMeasurementDrawingPlacementService {
             WHERE "runId" = ${existingRun!.id} FOR UPDATE`;
           // Recheck decisions atomically: a decision or a concurrent replacement must keep its run.
           const deleted = await tx.partMeasurementDrawingPlacementRun.deleteMany({ where: {
-            id: existingRun!.id, rankingMethod: 'semantic-failed', proposals: { none: { decidedAt: { not: null } } }
+            id: existingRun!.id, rankingMethod: { in: ['semantic-failed', 'semantic-failed-chunked'] }, proposals: { none: { decidedAt: { not: null } } }
           } });
           if (deleted.count === 0) {
             const current = await tx.partMeasurementDrawingPlacementRun.findUnique({ where, include: runInclude });
@@ -379,7 +379,7 @@ export class PartMeasurementDrawingPlacementService {
           AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
           AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
           AND r."placementVersion" = (${`${currentPlacementVersion()}:`}::text || p."processGroup"::text)
-          AND (r."rankingMethod" <> 'semantic-failed' OR EXISTS (
+          AND (r."rankingMethod" NOT IN ('semantic-failed', 'semantic-failed-chunked') OR EXISTS (
             SELECT 1 FROM "PartMeasurementDrawingPlacementProposal" proposal
             WHERE proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL
           ))
