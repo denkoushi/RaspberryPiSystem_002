@@ -289,9 +289,34 @@ describe('production-schedule-command.service', () => {
       await setProductionScheduleRowCompletionIntent({ rowId: 'row', locationKey: 'site', intent });
       expect(syncWholePiecesOperationCompletions).toHaveBeenCalledTimes(1);
       expect(syncWholePiecesOperationCompletions).toHaveBeenCalledWith(prisma, expect.any(String), [
-        { id: 'p1', effectiveResourceCd: '021', fhincd: rowData.FHINCD },
-        { id: 'p2', effectiveResourceCd: '1', fhincd: rowData.FHINCD }
+        { id: 'p1', isCompleted: intent === 'incomplete', effectiveResourceCd: '021', fhincd: rowData.FHINCD },
+        { id: 'p2', isCompleted: intent === 'incomplete', effectiveResourceCd: '1', fhincd: rowData.FHINCD }
       ], intent === 'complete');
+    } finally { vi.mocked(prisma.$queryRaw).mockResolvedValue([]); }
+  });
+  it.each([false, true])('parent incomplete intent changes the version only when a piece was completed: %s', async (hasCompleted) => {
+    const rowData = { FSEIBAN: 'A', FHINCD: 'PART', FSIGENCD: '1', FKOJUN: '1' };
+    const pieces = [{ id: 'partial', isCompleted: false }, { id: 'other', isCompleted: hasCompleted }];
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData } as never);
+    vi.mocked(prisma.productionScheduleSessakuPieceSet.findUnique).mockResolvedValueOnce({ id: 'set', pieces } as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ id: 'row', rowData }]);
+    vi.mocked(prisma.productionScheduleProgress.findUnique).mockResolvedValue({ isCompleted: false } as never);
+    vi.mocked(syncWholePiecesOperationCompletions).mockResolvedValue(hasCompleted);
+    completionMocks.progress.mockResolvedValue({ parentIsCompleted: false });
+    try {
+      const result = await setProductionScheduleRowCompletionIntent({ rowId: 'row', locationKey: 'site', intent: 'incomplete' });
+      expect(result.unchanged).toBe(!hasCompleted);
+      expect(syncWholePiecesOperationCompletions).toHaveBeenCalledWith(prisma, expect.any(String),
+        pieces.map((piece) => ({ ...piece, effectiveResourceCd: '1', fhincd: 'PART' })), false);
+      if (hasCompleted) {
+        expect(prisma.productionScheduleSessakuPieceSet.update).toHaveBeenCalledExactlyOnceWith({
+          where: { id: 'set' }, data: { version: { increment: 1 } }
+        });
+        expect(prisma.productionScheduleSessakuPiece.updateMany).toHaveBeenCalledTimes(1);
+      } else {
+        expect(prisma.productionScheduleSessakuPieceSet.update).not.toHaveBeenCalled();
+        expect(prisma.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
+      }
     } finally { vi.mocked(prisma.$queryRaw).mockResolvedValue([]); }
   });
   it.each([null, { id: 'empty', pieces: [] }])('ordinary/empty-set completion skips board locks and reads Progress after row lock: %j', async (set) => {

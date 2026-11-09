@@ -135,6 +135,17 @@ describe('piece operation completion transaction', () => {
     await direct('complete'); expect([...completed]).toEqual([1, 2]); expect(set.pieces[0].isCompleted).toBe(true);
     await direct('incomplete'); expect([...completed]).toEqual([]); expect(set.pieces[0].isCompleted).toBe(false);
   });
+  it('preserves partial operations and the version on a repeated whole-piece incomplete intent', async () => {
+    await apply(1);
+    const item = projection().items[0];
+    const version = set.version;
+    await setSessakuPieceCompletion({ siteKey: 'site', pieceId: item.pieceId!, expectedPieceSetVersion: version,
+      itemRevision: item.itemRevision, intent: 'incomplete' });
+    expect([...completed]).toEqual([1]);
+    expect(set.pieces[0].isCompleted).toBe(false);
+    expect(set.version).toBe(version);
+    expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.deleteMany).not.toHaveBeenCalled();
+  });
   it('returns STALE_SESSAKU_PIECES when a stored piece is missing from the projection', async () => {
     const item = projection().items[0];
     mocks.details.mockResolvedValue(new Map());

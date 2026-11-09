@@ -220,7 +220,7 @@ describe('operation definition replacement', () => {
 });
 
 describe('parent-row operation batching', () => {
-  const pieces = Array.from({ length: 100 }, (_, i) => ({ id: `p${i}`, effectiveResourceCd: i < 50 ? '021' : '022', fhincd: ' PART ' }));
+  const pieces = Array.from({ length: 100 }, (_, i) => ({ id: `p${i}`, isCompleted: i % 2 === 0, effectiveResourceCd: i < 50 ? '021' : '022', fhincd: ' PART ' }));
   it('loads definitions once for repeated resource/part pairs including unregistered operations', async () => {
     tx.$queryRaw.mockResolvedValue([{ id: 'part', resourceCd: '021', fhincd: 'PART' }, { id: 'empty', resourceCd: '022', fhincd: 'PART' }]);
     tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany.mockResolvedValue([{ partMinutesId: 'part', opNo: 1 }, { partMinutesId: 'part', opNo: 3 }]);
@@ -239,10 +239,14 @@ describe('parent-row operation batching', () => {
     expect(tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany).not.toHaveBeenCalled();
     expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).not.toHaveBeenCalled();
   });
-  it('deletes all pieces operation evidence together on cancellation without reading definitions', async () => {
+  it('preserves partial operation evidence when every piece is already incomplete', async () => {
+    expect(await syncWholePiecesOperationCompletions(client, 'site', pieces.map((piece) => ({ ...piece, isCompleted: false })), false)).toBe(false);
+    expect(tx.productionScheduleSessakuPieceOpCompletion.deleteMany).not.toHaveBeenCalled();
+  });
+  it('deletes only completed pieces operation evidence on cancellation without reading definitions', async () => {
     tx.productionScheduleSessakuPieceOpCompletion.deleteMany.mockResolvedValue({ count: 2 });
     expect(await syncWholePiecesOperationCompletions(client, 'site', pieces, false)).toBe(true);
-    expect(tx.productionScheduleSessakuPieceOpCompletion.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { pieceId: { in: pieces.map((piece) => piece.id) } } });
+    expect(tx.productionScheduleSessakuPieceOpCompletion.deleteMany).toHaveBeenCalledExactlyOnceWith({ where: { pieceId: { in: pieces.filter((piece) => piece.isCompleted).map((piece) => piece.id) } } });
     expect(tx.$queryRaw).not.toHaveBeenCalled();
   });
 });
