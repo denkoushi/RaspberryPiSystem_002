@@ -51,14 +51,15 @@ import type {
   GrindingPlanningBoardSeibanOrderRequest,
   GrindingPlanningBoardSeibanChecksRequest,
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardScheduleSource,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
 } from '@raspi-system/shared-types';
 
-export function useKioskGrindingPlanningBoardProcessChips(parts: GrindingPlanningBoardProcessChipsRequest['parts']) {
+export function useKioskGrindingPlanningBoardProcessChips(parts: GrindingPlanningBoardProcessChipsRequest['parts'], scheduleSource?: GrindingPlanningBoardScheduleSource) {
   return useQuery({
-    queryKey: productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts),
-    queryFn: () => getKioskGrindingPlanningBoardProcessChips({ parts }),
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts, scheduleSource),
+    queryFn: () => getKioskGrindingPlanningBoardProcessChips({ parts }, scheduleSource),
     enabled: parts.length > 0,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
@@ -86,10 +87,10 @@ export function useKioskGrindingPlanningBoard(
   });
 }
 
-export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, scheduleSource?: GrindingPlanningBoardScheduleSource) {
   return useQuery({
-    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category),
-    queryFn: () => getKioskGrindingPlanningBoardLoad(category),
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category, scheduleSource),
+    queryFn: () => getKioskGrindingPlanningBoardLoad(category, scheduleSource),
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });

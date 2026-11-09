@@ -1,3 +1,4 @@
+import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
@@ -309,6 +310,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(plannedState) }, pieces: { some: {} } }
   });
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
   try {
     const result = await prisma.$transaction(async (client) => {
       await acquireSessakuPieceLogicalLocks(client, pieceKeys);
@@ -402,17 +404,21 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
         'resource',
         'alternate'
       );
+      if (excluded.has(source.fseiban) || excluded.has(target.fseiban)) throw new ApiError(409, '表示対象が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       const originalOrder = ordered.map((item) => item.itemId);
-      const sourceIndex = ordered.findIndex((item) => item.itemId === source.itemId);
-      const targetIndex = ordered.findIndex((item) => item.itemId === target.itemId);
+      const visibleOrder = ordered.filter((item) => !excluded.has(item.fseiban));
+      const sourceIndex = visibleOrder.findIndex((item) => item.itemId === source.itemId);
+      const targetIndex = visibleOrder.findIndex((item) => item.itemId === target.itemId);
       if (sourceIndex < 0 || targetIndex < 0) throw new ApiError(409, '対象アイテムが表示中の資源CDにありません', undefined, 'STALE_PLANNING_BOARD_ITEM');
-      const [moved] = ordered.splice(sourceIndex, 1);
-      const insertionIndex = ordered.findIndex((item) => item.itemId === target.itemId) + (params.placement === 'after' ? 1 : 0);
-      ordered.splice(insertionIndex, 0, moved);
+      const [moved] = visibleOrder.splice(sourceIndex, 1);
+      const insertionIndex = visibleOrder.findIndex((item) => item.itemId === target.itemId) + (params.placement === 'after' ? 1 : 0);
+      visibleOrder.splice(insertionIndex, 0, moved);
+      const byId = new Map(ordered.map((item) => [item.itemId, item]));
+      ordered.splice(0, ordered.length, ...mergeScheduleSourceOrder(originalOrder, visibleOrder.map((item) => item.itemId)).map((id) => byId.get(id)!));
 
       const orderChanged = ordered.some((item, index) => item.itemId !== originalOrder[index]);
       if (!orderChanged) {
-        return { state: lockedState, items: ordered };
+        return { state: lockedState, items: ordered.filter((item) => !excluded.has(item.fseiban)) };
       }
 
       const overrides = new Map(current.overrides);
@@ -421,12 +427,9 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
         if (index + 1 > MAX_ALTERNATE_RANK) throw new ApiError(400, '資源CD内のアイテム数が上限を超えています', undefined, 'RESOURCE_ORDER_LIMIT_EXCEEDED');
         const currentOverride = current.overrides.get(item.itemId);
         const saved = await writeOverrideIfChanged(client, params.siteKey, item.itemId, currentOverride, {
-          overrideResourceCd: currentOverride?.overrideResourceCd ?? null,
-          overrideDueDate: currentOverride?.overrideDueDate ?? null,
-          dueDateCleared: currentOverride?.dueDateCleared ?? null,
-          alternateRank: index + 1,
-          specialDueKind: currentOverride?.specialDueKind ?? null,
-          specialDueExpiresAt: currentOverride?.specialDueExpiresAt ?? null
+          overrideResourceCd: currentOverride?.overrideResourceCd ?? null, overrideDueDate: currentOverride?.overrideDueDate ?? null,
+          dueDateCleared: currentOverride?.dueDateCleared ?? null, alternateRank: index + 1,
+          specialDueKind: currentOverride?.specialDueKind ?? null, specialDueExpiresAt: currentOverride?.specialDueExpiresAt ?? null
         });
         if (saved) overrides.set(item.itemId, saved);
       }
@@ -436,7 +439,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
         if (!projected) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
         return projected;
       });
-      return { state: lockedState, items };
+      return { state: lockedState, items: items.filter((item) => !excluded.has(item.fseiban)) };
     }, { isolationLevel: pieceKeys.length ? Prisma.TransactionIsolationLevel.ReadCommitted : Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000, maxWait: 15000 });
     return { sourceRevision: boardRevision(result.state), items: result.items };
   } catch (error) {
@@ -455,24 +458,39 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
   const sourceRows = await discoverSourceRows(itemIds);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
-  const pieceKeys = await readLivePieceKeys(prisma, [...sourceRows.values()]);
+  const pieceKeys = params.scheduleSource && params.scheduleSource !== 'both'
+    ? await prisma.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(await getOrCreateState(params.siteKey, [], prisma)) }, pieces: { some: {} } } })
+    : await readLivePieceKeys(prisma, [...sourceRows.values()]);
   const resource = params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
+  const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
   try {
     const result = await prisma.$transaction(async (client) => {
       await acquireSessakuPieceLogicalLocks(client, pieceKeys);
       const state = await lockState(client, params.siteKey);
       assertBoardRevision(params.sourceRevision, state);
-      const rowsToLock = [...new Set(sourceRows.values())].sort();
+      let fullPane: CurrentProjection | undefined; let rankedItemIds = itemIds;
+      if (params.scheduleSource && params.scheduleSource !== 'both') {
+        const rows = await readWinnerRowsByFseibans(client, stateOrder(state));
+        fullPane = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rows.map((row) => row.id), itemIds, policy, preloaded: { rows, state, overrides: await readOverrides(client, params.siteKey) } });
+        const first = fullPane.byItemId.get(itemIds[0]!);
+        if (!first) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+        const category = isCategoryResource(first.originalResourceCd, 'grinding', policy) ? 'grinding' : 'cutting';
+        const pane = sortGrindingPlanningBoardProjectionItems([...fullPane.byItemId.values()].filter((item) =>
+          isCategoryResource(item.originalResourceCd, category, policy) && (item.effectiveResourceCd ?? item.originalResourceCd) === resource), stateOrder(state), 'resource', 'alternate');
+        const requested = new Set(itemIds); rankedItemIds = mergeScheduleSourceOrder(pane.map((item) => item.itemId), itemIds);
+        if (pane.filter((item) => requested.has(item.itemId)).length !== itemIds.length) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
+      }
+      const rowsToLock = [...new Set(fullPane ? rankedItemIds.map((id) => fullPane!.byItemId.get(id)!.sourceRowId) : sourceRows.values())].sort();
       for (const sourceRowId of rowsToLock) {
         await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
         const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
         if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       }
-      const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
+      const current = fullPane ?? await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
       const registered = new Set(stateOrder(state));
       for (const request of params.items) {
         const item = current.byItemId.get(request.itemId)!;
-        if (!registered.has(item.fseiban) || item.sourceRowId !== sourceRows.get(item.itemId)) {
+        if (!registered.has(item.fseiban) || excluded.has(item.fseiban) || item.sourceRowId !== sourceRows.get(item.itemId)) {
           throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
         }
         assertItemRevision(request.itemRevision, item, request.overrideVersion);
@@ -482,15 +500,12 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
         }
       }
       const overrides = new Map(current.overrides);
-      for (const [index, itemId] of itemIds.entries()) {
+      for (const [index, itemId] of rankedItemIds.entries()) {
         const previous = current.overrides.get(itemId);
         const saved = await writeOverrideIfChanged(client, params.siteKey, itemId, previous, {
-          overrideResourceCd: previous?.overrideResourceCd ?? null,
-          overrideDueDate: previous?.overrideDueDate ?? null,
-          dueDateCleared: previous?.dueDateCleared ?? null,
-          alternateRank: index + 1,
-          specialDueKind: previous?.specialDueKind ?? null,
-          specialDueExpiresAt: previous?.specialDueExpiresAt ?? null
+          overrideResourceCd: previous?.overrideResourceCd ?? null, overrideDueDate: previous?.overrideDueDate ?? null,
+          dueDateCleared: previous?.dueDateCleared ?? null, alternateRank: index + 1,
+          specialDueKind: previous?.specialDueKind ?? null, specialDueExpiresAt: previous?.specialDueExpiresAt ?? null
         });
         if (saved) overrides.set(itemId, saved);
       }

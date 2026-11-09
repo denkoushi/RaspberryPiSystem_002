@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CATEGORY_STORAGE_KEY, usePlanningBoardCategory } from './usePlanningBoardCategory';
+import { SCHEDULE_SOURCE_STORAGE_KEY, usePlanningBoardScheduleSource } from './usePlanningBoardScheduleSource';
 
 describe('usePlanningBoardCategory', () => {
   beforeEach(() => localStorage.clear());
@@ -34,5 +35,14 @@ describe('usePlanningBoardCategory', () => {
     expect(result.current.category).toBe('cutting');
     act(() => result.current.changeCategory('all'));
     expect(result.current.category).toBe('all');
+  });
+
+  it('stores the category and schedule source independently', () => {
+    const category = renderHook(usePlanningBoardCategory);
+    const source = renderHook(usePlanningBoardScheduleSource);
+    act(() => category.result.current.changeCategory('all'));
+    act(() => source.result.current.changeScheduleSource('dCompany'));
+    expect(JSON.parse(localStorage.getItem(CATEGORY_STORAGE_KEY)!)).toEqual({ schemaVersion: 1, category: 'all' });
+    expect(JSON.parse(localStorage.getItem(SCHEDULE_SOURCE_STORAGE_KEY)!)).toEqual({ schemaVersion: 1, scheduleSource: 'dCompany' });
   });
 });

@@ -130,7 +130,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     const beforeMutation = mocks.getLoad.mock.calls.length;
     await act(async () => { await hook.result.current.mutation.mutateAsync({ sourceRevision: 'revision-1', fseibans: ['26-1041'] }); });
     await waitFor(() => expect(mocks.getLoad.mock.calls.length).toBeGreaterThan(beforeMutation));
-    expect(mocks.getLoad).toHaveBeenCalledWith('grinding');
+    expect(mocks.getLoad).toHaveBeenCalledWith('grinding', undefined);
   });
 
   it('初回ページを先にreadyにし、続きは640件ずつ順次要求する', async () => {
@@ -316,6 +316,31 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(hook.result.current.appendError).toBeNull();
     expect(mocks.getBoard).toHaveBeenCalledTimes(4);
     expect(mocks.getBoard.mock.calls.filter(([params]) => params.category === 'grinding' && params.cursor != null)).toHaveLength(1);
+  });
+
+  it('区分のA→B→Aではfreshな先頭ページに対応する全件をすぐ復元し、続きを要求しない', async () => {
+    mocks.getBoard.mockResolvedValueOnce(response([item('2')], '160'))
+      .mockResolvedValueOnce(response([item('1'), item('3')], null))
+      .mockResolvedValueOnce(response([item('4')], '160', {}))
+      .mockResolvedValueOnce(response([item('5')], null, {}));
+    const hook = renderHook(({ scheduleSource }: { scheduleSource: 'general' | 'dCompany' }) =>
+      useKioskGrindingPlanningBoardProgressive({ category: 'grinding', scheduleSource, view: 'seiban' }),
+    { initialProps: { scheduleSource: 'general' }, wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    const completeA = hook.result.current.data;
+    expect(completeA?.items).toEqual([item('2'), item('1'), item('3')]);
+    hook.rerender({ scheduleSource: 'dCompany' });
+    await waitFor(() => expect(hook.result.current.data?.items).toEqual([item('4'), item('5')]));
+    expect(hook.result.current.isComplete).toBe(true);
+
+    hook.rerender({ scheduleSource: 'general' });
+    expect(hook.result.current.data).toBe(completeA);
+    expect(hook.result.current.isComplete).toBe(true);
+    expect(hook.result.current.isAppending).toBe(false);
+    expect(hook.result.current.scopeReady).toBe(true);
+    expect(hook.result.current.appendError).toBeNull();
+    expect(mocks.getBoard).toHaveBeenCalledTimes(4);
+    expect(mocks.getBoard.mock.calls.filter(([params]) => params.scheduleSource === 'general' && params.cursor != null)).toHaveLength(1);
   });
 
   it.each(['updatedAt', 'snapshotId', 'sourceRevision'] as const)('Aの先頭ページ再取得で%sが変わると、Aへ戻った際に続きを要求する', async (changed) => {

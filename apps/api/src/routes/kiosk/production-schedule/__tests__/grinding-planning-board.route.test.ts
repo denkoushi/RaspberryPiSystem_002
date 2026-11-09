@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   getLoad: vi.fn(),
   processChips: vi.fn(),
+  listKinds: vi.fn(),
   rewarm: vi.fn(),
   getDueScope: vi.fn(),
   updateDueScope: vi.fn(),
@@ -24,6 +25,8 @@ const mocks = vi.hoisted(() => ({
   updateChecks: vi.fn(),
   updateOrder: vi.fn()
 }));
+
+vi.mock('../../../../services/production-schedule/d-schedule-minutes/kind-membership.js', () => ({ listDScheduleMinutesKinds: mocks.listKinds }));
 
 vi.mock('../../../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js', () => ({
   buildLeaderboardFooterChipsByPartKeyForScheduleRows: mocks.processChips
@@ -97,6 +100,19 @@ describe('grinding planning board process chips', () => {
   const url = '/kiosk/production-schedule/grinding-planning-board/process-chips';
   const part = { fseiban: 'ORDER-1', productNo: '001', fhincd: 'PART-1' };
   afterEach(() => mocks.processChips.mockReset());
+
+  it.each(['general', 'dCompany'] as const)('filters %s chip identities on the API', async (scheduleSource) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.listKinds.mockResolvedValue(new Map([['D', ['D_COMPANY']], ['GENERAL', ['INTERNAL']], ['DUAL', ['INTERNAL', 'D_COMPANY']]]));
+    mocks.processChips.mockResolvedValue({});
+    try {
+      const response = await app.inject({ method: 'POST', url: `${url}?scheduleSource=${scheduleSource}`,
+        payload: { parts: ['D', 'GENERAL', 'DUAL', 'MANUAL'].map((fseiban) => ({ ...part, fseiban })) } });
+      expect(response.statusCode).toBe(200);
+      expect(mocks.processChips.mock.lastCall?.[0].rows.map((row: { seibanJoinKey: string }) => row.seibanJoinKey))
+        .toEqual([scheduleSource === 'general' ? 'GENERAL' : 'D', 'DUAL', 'MANUAL']);
+    } finally { await app.close(); }
+  });
 
   it('deduplicates normalized triples and reuses footer chips with the authenticated scope', async () => {
     const auth = vi.fn(async () => ({ id: 'device-1' }));
@@ -201,6 +217,23 @@ describe('grinding planning board route scope', () => {
     } finally { await app.close(); }
   });
 
+  it.each(['', '/load'])('validates scheduleSource and defaults to both for %s', async (suffix) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    const service = suffix ? mocks.getLoad : mocks.get;
+    service.mockResolvedValue({});
+    try {
+      for (const scheduleSource of ['general', 'dCompany', 'both', undefined]) {
+        const response = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board${suffix}${scheduleSource ? `?scheduleSource=${scheduleSource}` : ''}` });
+        expect(response.statusCode).toBe(200);
+        expect(service).toHaveBeenLastCalledWith(expect.objectContaining({ scheduleSource: scheduleSource ?? 'both' }));
+      }
+      service.mockClear();
+      const invalid = await app.inject({ method: 'GET', url: `/kiosk/production-schedule/grinding-planning-board${suffix}?scheduleSource=invalid` });
+      expect(invalid.statusCode).toBe(400);
+      expect(service).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
   it.each(['', '/load'])('accepts category=all for %s', async (suffix) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     mocks.get.mockResolvedValue({ items: [] });
@@ -251,7 +284,7 @@ describe('grinding planning board route scope', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(summary);
       expect(requireClientDevice).toHaveBeenCalledWith('key-1');
-      expect(mocks.getLoad).toHaveBeenCalledWith({ siteKey: 'site-a', category: 'cutting' });
+      expect(mocks.getLoad).toHaveBeenCalledWith({ siteKey: 'site-a', category: 'cutting', scheduleSource: 'both' });
       const invalid = await app.inject({ method: 'GET', url: '/kiosk/production-schedule/grinding-planning-board/load?category=invalid' });
       expect(invalid.statusCode).toBe(400);
       expect(mocks.getLoad).toHaveBeenCalledTimes(1);
@@ -339,6 +372,7 @@ describe('grinding planning board route scope', () => {
       });
       expect(response.statusCode).toBe(200);
       expect(mocks.updateResourceOrder).toHaveBeenCalledWith({
+        scheduleSource: 'both',
         siteKey: 'site-a',
         sourceRevision: 'board-revision',
         itemId: 'source-item',
@@ -438,7 +472,7 @@ describe('bulk resource order route', () => {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload: { ...payload, siteKey: 'foreign' } });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(result);
-      expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a' });
+      expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a', scheduleSource: 'both' });
     } finally { await app.close(); }
   });
   it.each([0, 501, 2])('rejects invalid size or duplicate IDs: %i', async (count) => {

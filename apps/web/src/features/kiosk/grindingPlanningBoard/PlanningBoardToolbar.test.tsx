@@ -105,28 +105,53 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(toggle).toHaveClass('bg-sky-400');
   });
-  it('selects exactly one of cutting, grinding and all and respects scopeDisabled', () => {
-    const values = props();
-    const { rerender } = render(<PlanningBoardToolbar {...values} />);
-    const group = within(screen.getByRole('group', { name: '工程' }));
-    expect(group.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual(['切削', '研削', '両方']);
-    expect(group.getAllByRole('button', { pressed: true })).toEqual([group.getByRole('button', { name: '研削' })]);
-    for (const [category, label] of [['cutting', '切削'], ['all', '両方'], ['grinding', '研削']] as const) {
-      fireEvent.click(group.getByRole('button', { name: label }));
-      expect(values.onCategoryChange).toHaveBeenLastCalledWith(category);
-      rerender(<PlanningBoardToolbar {...values} category={category} />);
-      expect(group.getAllByRole('button', { pressed: true })).toEqual([group.getByRole('button', { name: label })]);
-      fireEvent.click(group.getByRole('button', { name: label }));
-      expect(values.onCategoryChange).toHaveBeenLastCalledWith(category);
-      expect(group.getAllByRole('button', { pressed: true })).toHaveLength(1);
+  it.each([
+    ['工程', '研削', '切削・研削', 'onCategoryChange', [['cutting', '切削'], ['grinding', '研削'], ['all', '両方']]],
+    ['区分', '一般・D社', '一般・D社', 'onScheduleSourceChange', [['general', '一般'], ['dCompany', 'D社'], ['both', '両方']]]
+  ] as const)('selects %s through a portal and respects scopeDisabled', (label, initial, combined, callback, options) => {
+    const values = { ...props(), onScheduleSourceChange: vi.fn() };
+    const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
+    const trigger = screen.getByRole('button', { name: label, exact: true });
+    expect(trigger).toHaveTextContent(initial);
+    expect(trigger).toHaveClass('min-h-11', 'bg-slate-100');
+    expect(trigger.parentElement?.previousElementSibling).toBe(label === '区分'
+      ? screen.getByRole('button', { name: '製番登録ペインを開く' })
+      : screen.getByRole('button', { name: '区分' }).parentElement);
+    for (const [value, optionLabel] of options) {
+      fireEvent.click(trigger);
+      const panel = screen.getByRole('group', { name: label });
+      expect(container).not.toContainElement(panel);
+      expect(panel).toHaveAttribute('data-planning-board-popover');
+      expect(within(panel).getAllByRole('button').map((button) => button.textContent)).toEqual(options.map((option) => option[1]));
+      expect(within(panel).getByRole('button', { pressed: true })).toHaveFocus();
+      expect(within(panel).getByRole('button', { pressed: true })).toHaveClass('bg-slate-100', 'text-slate-950');
+      fireEvent.click(within(panel).getByRole('button', { name: optionLabel, exact: true }));
+      expect(values[callback]).toHaveBeenLastCalledWith(value);
+      expect(screen.queryByRole('group', { name: label })).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      rerender(<PlanningBoardToolbar {...values} {...(label === '工程' ? { category: value as 'cutting' | 'all' | 'grinding' } : { scheduleSource: value as 'general' | 'dCompany' | 'both' })} />);
     }
-    vi.mocked(values.onCategoryChange).mockClear();
+    rerender(<PlanningBoardToolbar {...values} category="all" scheduleSource="both" />);
+    expect(trigger).toHaveTextContent(combined);
     rerender(<PlanningBoardToolbar {...values} scopeDisabled />);
-    for (const button of group.getAllByRole('button')) {
-      expect(button).toBeDisabled();
-      fireEvent.click(button);
+    expect(trigger).toBeDisabled();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('group', { name: label })).not.toBeInTheDocument();
+  });
+  it.each(['工程', '区分'])('closes %s on outside click, Escape, resize and outside scroll', (label) => {
+    render(<PlanningBoardToolbar {...props()} />);
+    const trigger = screen.getByRole('button', { name: label, exact: true });
+    for (const close of [() => fireEvent.pointerDown(document.body), () => fireEvent.keyDown(document, { key: 'Escape' }),
+      () => fireEvent.resize(window), () => fireEvent.scroll(window)]) {
+      fireEvent.click(trigger);
+      const panel = screen.getByRole('group', { name: label });
+      fireEvent.pointerDown(within(panel).getAllByRole('button')[0]!);
+      fireEvent.scroll(panel);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      close();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
     }
-    expect(values.onCategoryChange).not.toHaveBeenCalled();
   });
   it('toggles mode and navigates late work', () => {
     const values = props();

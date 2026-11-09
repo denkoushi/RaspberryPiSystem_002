@@ -30,6 +30,7 @@ type Options = {
   category: GrindingPlanningBoardCategory;
   data: GrindingPlanningBoardResponse | undefined;
   registeredFseibans: string[];
+  scheduleSource?: 'general' | 'dCompany' | 'both';
   bulkReady: boolean;
   rankMutationReady: boolean;
   writeBlocked: boolean;
@@ -69,7 +70,7 @@ type Options = {
 
 export function usePlanningBoardPageGantt({
   focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
-  data, registeredFseibans, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
+  data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
   resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
   setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
   scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
@@ -100,7 +101,7 @@ export function usePlanningBoardPageGantt({
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
     return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.map((item) => item.fseiban))], order: true,
       apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
-      save: (context) => updateResourceOrderBulkAsync({ sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
+      save: (context) => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
         items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) }),
       onSaved, onFailed
     });

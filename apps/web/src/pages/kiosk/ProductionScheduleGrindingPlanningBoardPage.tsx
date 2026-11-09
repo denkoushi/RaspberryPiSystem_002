@@ -45,6 +45,7 @@ import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBo
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
 import { usePlanningBoardQueryData } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
+import { usePlanningBoardScheduleSource } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardScheduleSource';
 import { usePlanningBoardWriteQueue } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import { isVisibleByArrival } from '../../features/kiosk/isVisibleByArrival';
 import { DScheduleMinutesProvider } from '../../features/kiosk/productionSchedule/DScheduleMinutesContext';
@@ -61,6 +62,7 @@ import type {
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
   const { category, changeCategory } = usePlanningBoardCategory();
+  const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource();
   const [pinMode, setPinMode] = useState(false);
   const [orderPreview, setOrderPreview] = useState<OrderPreview | null>(null);
   const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
@@ -127,10 +129,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const pieceMutations = useKioskSessakuPieceMutations();
   const [piecePhase, setPiecePhase] = useState<'idle' | 'saving' | 'refreshing'>('idle'); const piecePending = piecePhase !== 'idle'; const piecePendingRef = useRef(false); const piecePendingParentRef = useRef<string | null>(null);
   const boardQuery = useKioskGrindingPlanningBoardProgressive(
-    { category, view, completionFilter: status, dueSource, includePieces: true },
+    { scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
     { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined }
   );
-  const loadQuery = useKioskGrindingPlanningBoardLoad(category);
+  const loadQuery = useKioskGrindingPlanningBoardLoad(category, scheduleSource);
   const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates({
     category,
     completionFilter: showCompletedCandidates ? 'all' : 'incomplete'
@@ -197,11 +199,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
   const sourceRevision = data?.sourceRevision ?? '';
-  const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${status}`;
+  const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${scheduleSource}\0${status}`;
   const rankMutationReady = Boolean(
-    data &&
-    data.category === category &&
-    data.view === view &&
+    data && data.category === category && data.view === view &&
     boardQuery.hasStableData &&
     !boardQuery.isLoading &&
     !boardQuery.isError &&
@@ -248,7 +248,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
 
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
-  const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts);
+  const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts, scheduleSource);
   const chipData = usePlanningBoardQueryData(chipsQuery.data);
   const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(arrivalItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [arrivalItems, chipsQuery.isError, chipData]);
   const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
@@ -517,7 +517,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       due: { kind: 'date', date } }], '納期');
   }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked]);
 
-  const historyScope = `${data?.siteKey ?? ''}:${category}:${arrivalFilterEnabled}`;
+  const historyScope = `${data?.siteKey ?? ''}:${category}:${scheduleSource}:${arrivalFilterEnabled}`;
   const rememberResourceOrder = useCallback((id: number, snapshot: ResourceOrderSnapshot) => {
     setResourceOrderHistory((history) => {
       const previous = history.find((entry) => entry.id === id);
@@ -565,14 +565,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       },
       save: async (context) => {
         const source = context.item(item); const target = context.item(targetItem);
-        const response = await updateResourceOrderAsync({ sourceRevision: context.sourceRevision, itemId: source.itemId,
+        const response = await updateResourceOrderAsync({ scheduleSource, sourceRevision: context.sourceRevision, itemId: source.itemId,
           itemRevision: source.itemRevision, overrideVersion: source.version, targetItemId: target.itemId,
           targetItemRevision: target.itemRevision, targetOverrideVersion: target.version, placement });
         return { ...response, items: response.items.map((ranked) => ({ ...context.item(affected.find((candidate) => candidate.itemId === ranked.itemId) ?? ranked),
           alternateRank: ranked.alternateRank, itemRevision: ranked.itemRevision, version: ranked.version })) };
       }
     });
-  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, updateResourceOrderAsync, writeBlocked, hasPendingSeiban, ganttEnabled, rememberResourceOrder, snapshotResourceOrder]);
+  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, scheduleSource, updateResourceOrderAsync, writeBlocked, hasPendingSeiban, ganttEnabled, rememberResourceOrder, snapshotResourceOrder]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -627,7 +627,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder
   } = usePlanningBoardPageGantt({
     focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
-    data, registeredFseibans, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
+    data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
     resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
     setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
     scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
@@ -689,7 +689,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onApplyOrder={applyResourceOrder} onCancelOrder={() => setOrderPreview(null)}
         onProposeOrder={proposeResourceOrder} onSortDue={sortResourceOrdersByDue} onUndoOrder={undoResourceOrder}
         orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)} overlapCount={ganttLayout.overlapCount} onNextOverlap={gantt.scrollToNextOverlap}
-        category={category} view={view}
+        scheduleSource={scheduleSource} category={category} view={view} onScheduleSourceChange={(value) => { if (!writeQueue.pending) changeScheduleSource(value); }}
         status={status} allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
         scopeDisabled={writeQueue.pending || Boolean(orderPreview)}
