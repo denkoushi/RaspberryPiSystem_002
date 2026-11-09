@@ -194,6 +194,9 @@ class KioskGuiSessionTests(unittest.TestCase):
     def test_release_ime_configures_user_without_package_operations(self):
         config = load('tasks/kiosk-gui-session-config.yml')[0]
         self.assertIn('kiosk_unprivileged_session_enabled', config['when'])
+        keyboard = next(t for t in config['block'] if t['name'] == 'Apply the OS keyboard layout to the dedicated labwc session')
+        self.assertEqual(keyboard['ansible.builtin.copy']['dest'], '{{ kiosk_gui_home }}/.config/labwc/environment')
+        self.assertIn('XKB_DEFAULT_', keyboard['ansible.builtin.copy']['content'])
         ime = next(t for t in config['block'] if t['name'] == 'Prepare Japanese input for the dedicated GUI session')
         self.assertEqual(ime['ansible.builtin.include_role']['name'], 'kiosk')
         self.assertEqual(ime['ansible.builtin.include_role']['tasks_from'], '{{ item }}')

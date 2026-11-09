@@ -27,6 +27,24 @@
         group: '{{ kiosk_gui_user }}'
         mode: '0644'
 
+    - name: Read the OS keyboard layout for the dedicated GUI session
+      ansible.builtin.slurp:
+        src: /etc/default/keyboard
+      register: kiosk_gui_os_keyboard
+
+    - name: Apply the OS keyboard layout to the dedicated labwc session
+      ansible.builtin.copy:
+        dest: '{{ kiosk_gui_home }}/.config/labwc/environment'
+        owner: '{{ kiosk_gui_user }}'
+        group: '{{ kiosk_gui_user }}'
+        mode: '0644'
+        content: |
+          {% for key in ['MODEL', 'LAYOUT', 'VARIANT', 'OPTIONS'] %}
+          XKB_DEFAULT_{{ key }}={{ (kiosk_gui_os_keyboard_text | regex_search('(?m)^XKB' ~ key ~ '="?([^"\n]*)', '\1') or ['']) | first }}
+          {% endfor %}
+      vars:
+        kiosk_gui_os_keyboard_text: '{{ kiosk_gui_os_keyboard.content | b64decode }}'
+
     - name: Prepare Japanese input for the dedicated GUI session
       ansible.builtin.include_role:
         name: kiosk
