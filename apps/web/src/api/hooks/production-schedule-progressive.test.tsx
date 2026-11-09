@@ -273,6 +273,32 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     expect(firstPages).toBe(3);
   });
 
+  it.each([
+    { scheduleSource: 'dCompany' as const },
+    { category: 'cutting' as const },
+    { view: 'resource' as const },
+    { completionFilter: 'all' as const }
+  ])('条件切替中は前の条件の製番を表示しない: %j', async (changed) => {
+    const first = deferred<GrindingPlanningBoardResponse>();
+    mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
+      .mockResolvedValueOnce(response([item('2')], null))
+      .mockReturnValueOnce(first.promise);
+    const initial = { category: 'grinding' as const, view: 'seiban' as const,
+      scheduleSource: 'general' as const, completionFilter: 'incomplete' as const };
+    const hook = renderHook(({ params }) => useKioskGrindingPlanningBoardProgressive(params),
+      { initialProps: { params: initial as NonNullable<Parameters<typeof useKioskGrindingPlanningBoardProgressive>[0]> }, wrapper: wrapper() });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2']);
+
+    hook.rerender({ params: { ...initial, ...changed } });
+    expect(hook.result.current.data).toBeUndefined();
+    expect(hook.result.current.scopeReady).toBe(false);
+    expect(hook.result.current.isComplete).toBe(false);
+    await act(async () => { first.resolve(response([item('3')], null)); });
+    await waitFor(() => expect(hook.result.current.isComplete).toBe(true));
+    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['3']);
+  });
+
   it('paramsKey切替では新しい先頭ページを先に出して追補する', async () => {
     const tail = deferred<GrindingPlanningBoardResponse>();
     mocks.getBoard.mockResolvedValueOnce(response([item('1')], '160'))
@@ -594,7 +620,7 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     releaseNext?.();
   });
 
-  it('keeps every appended row visible while a new scope is loading and ignores the cancelled append', async () => {
+  it('hides previous rows while a new scope is loading and ignores the cancelled append', async () => {
     let resolveAppend!: (value: GrindingPlanningBoardResponse) => void;
     let resolveScope!: (value: GrindingPlanningBoardResponse) => void;
     mocks.getBoard
@@ -609,11 +635,11 @@ describe('useKioskGrindingPlanningBoardProgressive', () => {
     await waitFor(() => expect(hook.result.current.data?.items).toHaveLength(2));
     hook.rerender({ completionFilter: 'all' });
     await waitFor(() => expect(hook.result.current.isPlaceholderData).toBe(true));
-    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2']);
+    expect(hook.result.current.data).toBeUndefined();
     expect(hook.result.current.scopeReady).toBe(false);
     expect(hook.result.current.isComplete).toBe(false);
     await act(async () => { resolveAppend(response([item('3')], null)); });
-    expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['1', '2']);
+    expect(hook.result.current.data).toBeUndefined();
     await act(async () => { resolveScope(response([item('4')], null, { snapshotId: 'snapshot-2' })); });
     await waitFor(() => expect(hook.result.current.scopeReady).toBe(true));
     expect(hook.result.current.data?.items.map((entry) => entry.itemId)).toEqual(['4']);

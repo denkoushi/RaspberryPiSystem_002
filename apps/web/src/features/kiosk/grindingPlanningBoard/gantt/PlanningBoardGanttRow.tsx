@@ -10,7 +10,10 @@ import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
-import { PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars } from './planningBoardLateStars';
+import {
+  LATE_STAR_BUTTON_HEIGHT, LATE_STAR_TEXT_HEIGHT, LATE_STAR_GAP,
+  PlanningBoardLateStar, PlanningBoardLateStarDates, usePlanningBoardLateStars
+} from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -179,6 +182,8 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
   const chipsByPart = usePlanningBoardProcessChips();
   const lateStars = usePlanningBoardLateStars(row.bars, dateToDay(today));
+  const estimatedHeight = GANTT_ROW_HEIGHT + lateStars.groups.length *
+    ((onToggleSeiban ? LATE_STAR_BUTTON_HEIGHT : LATE_STAR_TEXT_HEIGHT) + LATE_STAR_GAP);
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
   for (const bar of row.bars) {
@@ -188,7 +193,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   }
   return (
     <div ref={rowRef} data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
-      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
+      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${estimatedHeight}px` }}>
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}

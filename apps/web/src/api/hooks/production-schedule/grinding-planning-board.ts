@@ -164,6 +164,9 @@ export function useKioskGrindingPlanningBoardProgressive(
   );
 
   useEffect(() => {
+    mergedParamsKeyRef.current = null;
+    setMergedData(undefined);
+    displayedRef.current = undefined;
     runIdRef.current += 1;
     syncedSignatureRef.current = null;
     staleRefetchCountRef.current = 0;
@@ -333,7 +336,8 @@ export function useKioskGrindingPlanningBoardProgressive(
     };
   }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, query.isError, refetch, stableParams, paramsKey, query.dataUpdatedAt]);
 
-  const displayData = mergedData ?? firstData;
+  const displayData = (mergedParamsKeyRef.current === paramsKey ? mergedData : undefined)
+    ?? (query.isPlaceholderData ? undefined : firstData);
   const hasStableData = Boolean(
     firstData && !query.isPlaceholderData && mergedParamsKeyRef.current === paramsKey &&
     (mergedData?.snapshotId === firstData.snapshotId || displayedRef.current?.complete)

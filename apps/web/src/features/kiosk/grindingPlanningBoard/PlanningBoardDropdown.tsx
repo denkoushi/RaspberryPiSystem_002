@@ -34,7 +34,9 @@ function DropdownPanel<T extends string>({ anchor, options, value, ariaLabel, on
     document.addEventListener('pointerdown', outside);
     document.addEventListener('keydown', escape);
     window.addEventListener('resize', onClose);
-    const scroll = (event: Event) => { if (!(event.target instanceof Node) || !panel.current?.contains(event.target)) onClose(); };
+    const scroll = (event: Event) => {
+      if (event.target === document || event.target instanceof Element && event.target.contains(anchor)) onClose();
+    };
     window.addEventListener('scroll', scroll, true);
     return () => {
       document.removeEventListener('pointerdown', outside);
