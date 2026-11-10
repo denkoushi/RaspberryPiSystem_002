@@ -319,12 +319,16 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
     const remainingMs = params.deadline === undefined ? 30000 : Math.max(1, Math.floor(params.deadline - performance.now()));
     const lockStarted = performance.now();
     let active = true;
+    const pending: Promise<unknown>[] = [];
     const executionDeadline = Math.min(params.deadline ?? Infinity, performance.now() + remainingMs);
     const assertActive = () => {
       if (!active || performance.now() >= executionDeadline) conflict('AUTO_UNIT_SPLIT_BUDGET');
     };
+    // Promise.all can reject with sibling queries/probes still running. Drain this lot before
+    // restoring its SAVEPOINT and shared memory; its proxy must stay invalid afterwards.
     const transaction: typeof prisma.$transaction = batch
-      ? ((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => callback(batch.tx)) as typeof prisma.$transaction
+      ? ((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => callback(batch.tx)
+        .finally(async () => { active = false; await Promise.allSettled(pending); })) as typeof prisma.$transaction
       : prisma.$transaction.bind(prisma);
     return transaction(async (rawTx) => {
       // Prisma can reject a timed-out interactive transaction while its callback is still running.
@@ -335,7 +339,9 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
           if (typeof value === 'function') return async (...args: unknown[]) => {
             if (params.autoUnitSplit) assertActive();
             if (params.audit?.timing) params.audit.timing.dbCallCount += 1;
-            const result = await Reflect.apply(value, object, args);
+            const query = Reflect.apply(value, object, args);
+            if (batch) pending.push(Promise.resolve(query));
+            const result = await query;
             if (params.autoUnitSplit) assertActive();
             return result;
           };

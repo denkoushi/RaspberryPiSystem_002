@@ -44,6 +44,8 @@ vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js',
 import { runAutoUnitSplitBatch, runAutoUnitSplitLot, setSessakuPieceCompletion, setSessakuPieceOpCompletion, splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.service.js';
 import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
 import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js';
+import { ApiError } from '../../../../lib/errors.js';
+import { cooperativeAutoUnitSplitTransaction } from '../auto-unit-split-transaction.js';
 
 const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10', ProductNo: '1', FSIGENSHOYORYO: '10' }, updatedAt: null };
@@ -112,6 +114,44 @@ describe('piece operation completion transaction', () => {
     expect(statements.filter((sql) => sql === 'SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
     expect(statements.filter((sql) => sql === 'ROLLBACK TO SAVEPOINT auto_unit_split_lot')).toHaveLength(1);
     expect(statements.filter((sql) => sql === 'RELEASE SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
+  });
+  it.each([0, 30])('drains a rejected lot before SAVEPOINT rollback across a %ims waiter check interval', async (probeMs) => {
+    vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    mocks.readSet.mockResolvedValue(null); mocks.sets.mockResolvedValue(new Map());
+    detail.orderSupplements[0].plannedQuantity = 2;
+    mocks.tx.$queryRaw.mockImplementation(async (sql) => String(sql).includes('pg_blocking_pids') ? [{ waiting: false }] : []);
+    let rejectOverrides!: (error: unknown) => void;
+    let releaseRanks!: (value: unknown[]) => void;
+    let ranksStarted!: () => void;
+    const started = new Promise<void>((resolve) => { ranksStarted = resolve; });
+    const overrides = new Promise<never>((_, reject) => { rejectOverrides = reject; });
+    const ranks = new Promise<unknown[]>((resolve) => { releaseRanks = resolve; });
+    mocks.tx.productionScheduleGrindingPlanningBoardOverride.findMany.mockImplementation(async (args) => args.select ? [] : overrides);
+    mocks.tx.productionScheduleOrderAssignment.findMany.mockImplementationOnce(() => { ranksStarted(); return ranks; });
+    const { tx } = cooperativeAutoUnitSplitTransaction(mocks.tx as unknown as Prisma.TransactionClient,
+      { writtenRowCount: 0, lockHeldMs: 0, yieldReason: null });
+    const rejection = new ApiError(409, 'one rejected lot', undefined, 'STALE_SESSAKU_PIECES');
+    await runAutoUnitSplitBatch(tx, async () => [sessakuPieceParentItemId(key)], async () => {
+      const failed = runAutoUnitSplitLot(() => splitSessakuPieces({ siteKey: 'site', parentItemId: sessakuPieceParentItemId(key),
+        expectedPieceSetVersion: 0, itemRevision: 'unused-for-auto', quantities: [1, 1], autoUnitSplit: true }))
+        .catch((error: unknown) => error);
+      try {
+        await started;
+        now.mockReturnValue(probeMs);
+        rejectOverrides(rejection);
+        // Flush the rejection microtasks without releasing the sibling query or relying on wall time.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(mocks.tx.$executeRaw.mock.calls.some(([sql]) => String(sql).includes('ROLLBACK'))).toBe(false);
+      } finally {
+        releaseRanks([]);
+        expect(await failed).toBe(rejection);
+      }
+      expect(mocks.tx.$executeRaw.mock.calls.some(([sql]) => String(sql).includes('ROLLBACK'))).toBe(true);
+      // The next lot and shared finalization use the runner, not the invalidated lot proxy.
+      await expect(runAutoUnitSplitLot(() => tx.$queryRaw`SELECT 1`)).resolves.toEqual([]);
+    });
+    expect(mocks.tx.productionScheduleSessakuPiece.createMany).not.toHaveBeenCalled();
   });
   it.each(['resource off', 'quantity outside range', 'predecessor'])(
     'distinguishes temporary eligibility from structural eligibility under the lot lock: %s', async (reason) => {

@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 
-export type AutoUnitSplitMetrics = { writtenRowCount: number; lockStarted?: number; lockHeldMs: number; yieldReason: string | null; candidateMs?: number; candidateSqlCount?: number };
+export type AutoUnitSplitMetrics = { writtenRowCount: number; lockStarted?: number; lockHeldMs: number; yieldReason: string | null; candidateMs?: number; candidateSqlCount?: number; yieldCheckCount?: number; yieldCheckMs?: number };
 export const autoUnitSplitMetrics = new AsyncLocalStorage<AutoUnitSplitMetrics>();
 
 export function isAutoUnitSplitYield(error: unknown): boolean {
@@ -14,12 +14,18 @@ export function cooperativeAutoUnitSplitTransaction(raw: Prisma.TransactionClien
   let lastCheck = -Infinity;
   const check = async (force = false) => {
     if (!force && performance.now() - lastCheck < 25) return;
-    const [row] = await raw.$queryRaw<Array<{ waiting: boolean }>>`
+    const started = performance.now();
+    metrics.yieldCheckCount = (metrics.yieldCheckCount ?? 0) + 1;
+    try {
+      const [row] = await raw.$queryRaw<Array<{ waiting: boolean }>>`
       SELECT EXISTS (SELECT 1 FROM pg_locks waiter
         WHERE NOT waiter.granted AND waiter.pid <> pg_backend_pid()
           AND pg_backend_pid() = ANY(pg_blocking_pids(waiter.pid))) AS waiting`;
-    lastCheck = performance.now();
-    if (row.waiting) throw new ApiError(409, '自動分割を保存操作に譲ります', undefined, 'AUTO_UNIT_SPLIT_YIELD');
+      lastCheck = performance.now();
+      if (row.waiting) throw new ApiError(409, '自動分割を保存操作に譲ります', undefined, 'AUTO_UNIT_SPLIT_YIELD');
+    } finally {
+      metrics.yieldCheckMs = (metrics.yieldCheckMs ?? 0) + performance.now() - started;
+    }
   };
   const guard = <T extends object>(target: T): T => new Proxy(target, {
     get(object, property) {

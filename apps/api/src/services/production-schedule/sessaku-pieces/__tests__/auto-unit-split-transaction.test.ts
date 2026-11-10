@@ -36,6 +36,24 @@ describe('automatic transaction cooperation', () => {
     raw.$queryRaw.mockResolvedValue([{ waiting: true }]);
     await expect(check(true)).rejects.toMatchObject({ code: 'AUTO_UNIT_SPLIT_YIELD' });
   });
+  it('measures actual probes, including a forced check inside the interval and a failed probe', async () => {
+    const { raw, check, metrics } = setup();
+    const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+    raw.$queryRaw.mockImplementationOnce(async () => {
+      now.mockReturnValue(4);
+      return [{ waiting: false }];
+    });
+    await check();
+    await check(); // Throttled: no SQL and no extra count/time.
+    expect(metrics).toMatchObject({ yieldCheckCount: 1, yieldCheckMs: 4 });
+    raw.$queryRaw.mockImplementationOnce(async () => {
+      now.mockReturnValue(11);
+      throw new Error('probe failed');
+    });
+    await expect(check(true)).rejects.toThrow('probe failed');
+    expect(metrics).toMatchObject({ yieldCheckCount: 2, yieldCheckMs: 11 });
+    expect(raw.$queryRaw).toHaveBeenCalledTimes(2);
+  });
   it('counts affected rows while excluding lock and SAVEPOINT SQL', async () => {
     const { tx, metrics } = setup();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(1)`;

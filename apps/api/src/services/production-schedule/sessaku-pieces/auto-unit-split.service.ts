@@ -17,7 +17,7 @@ import { sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets 
 import { runAutoUnitSplitBatch, runAutoUnitSplitLot, splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 
-export const AUTO_UNIT_SPLIT_MAX_LOTS = 5;
+export const AUTO_UNIT_SPLIT_MAX_LOTS = 3;
 export const AUTO_UNIT_SPLIT_BUDGET_MS = 3000;
 export const AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS = 1000;
@@ -96,7 +96,8 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       requestId: params.audit?.requestId, processedLotCount: committed ? result.splitCount : 0,
       writtenRowCount: committed ? metrics.writtenRowCount : 0, totalMs: performance.now() - started,
       lockHeldMs: metrics.lockHeldMs, yieldReason: metrics.yieldReason,
-      candidateMs: metrics.candidateMs ?? 0, candidateSqlCount: metrics.candidateSqlCount ?? 0 }, 'Automatic unit split call');
+      candidateMs: metrics.candidateMs ?? 0, candidateSqlCount: metrics.candidateSqlCount ?? 0,
+      yieldCheckCount: metrics.yieldCheckCount ?? 0, yieldCheckMs: metrics.yieldCheckMs ?? 0 }, 'Automatic unit split call');
   }
 }
 

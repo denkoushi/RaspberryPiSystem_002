@@ -506,7 +506,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     'measures one lot with production lane distribution at 4583 rows / four sites (%s)', async (placement) => {
       await productionLaneScale(placement, true);
     });
-  async function productionBatchScale(lots: number, options: { measure?: boolean; failureIndex?: number; failureCode?: string; differentSiteScopes?: boolean } = {}) {
+  async function productionBatchScale(lots: number, options: { measure?: boolean; measureHumanSave?: boolean; failureIndex?: number; failureCode?: string; differentSiteScopes?: boolean } = {}) {
     const { sites, seibans, targets, rows } = productionLaneFixture(lots);
     if (options.differentSiteScopes) for (const row of targets.slice(7)) row.rowData.FSEIBAN = `SCOPE-${seiban}`;
     const targetSeibans = [...new Set(targets.map((row) => row.rowData.FSEIBAN))];
@@ -578,6 +578,47 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       })) });
       expect(targets.length + rows.length).toBe(4583);
       await setup();
+      if (options.measureHumanSave) {
+        const view = await board();
+        const item = view.items.find((item) => item.sourceRowId === rowId)!;
+        const requestId = `upsert-priority-${randomUUID()}`;
+        const query = pg.Client.prototype.query;
+        let humanSave: ReturnType<typeof updateGrindingPlanningBoardRank> | undefined;
+        let humanSaveMs: number | undefined;
+        let placementUpsertCount = 0;
+        // Hook the driver submission, so the real bulk upsert is in flight when the real save starts.
+        // Do not pause the writer or add sleeps to the measured interval.
+        const spy = vi.spyOn(pg.Client.prototype, 'query').mockImplementation((function (this: pg.Client, ...args: unknown[]) {
+          const text = typeof args[0] === 'string' ? args[0] : (args[0] as { text?: string })?.text ?? '';
+          const pending = Reflect.apply(query, this, args);
+          if (/^\s*INSERT INTO "ProductionScheduleGrindingPlanningBoardOverride"/.test(text) && !humanSave) {
+            placementUpsertCount += 1;
+            const started = performance.now();
+            humanSave = updateGrindingPlanningBoardRank({ siteKey: site, sourceRevision: view.sourceRevision,
+              itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, alternateRank: 42 })
+              .then((saved) => { humanSaveMs = performance.now() - started; return saved; });
+            // Observe rejection immediately, then assert the original promise below.
+            void humanSave.catch(() => undefined);
+          }
+          return pending;
+        }) as never);
+        try {
+          expect(await autoSplitSessakuUnits({ siteKey: site, audit: { action: 'auto_unit_split', requestId } }))
+            .toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+          expect(placementUpsertCount).toBe(1);
+          expect(humanSave).toBeDefined();
+          await expect(humanSave).resolves.toMatchObject({ alternateRank: 42 });
+          console.info('production-scale human rank save during bulk placement upsert', { lots, fixtureRows: 4583, humanSaveMs });
+          expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { fseiban: { in: targetSeibans } } })).toBe(0);
+          expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { fseiban: { in: targetSeibans } } })).toBe(0);
+          expect(await prisma.productionScheduleSessakuPieceAuditLog.count({ where: { requestId } })).toBe(0);
+        } finally {
+          await Promise.allSettled(humanSave ? [humanSave] : []);
+          spy.mockRestore();
+        }
+        expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: lots });
+        return;
+      }
       let reference: Awaited<ReturnType<typeof snapshot>> | undefined;
       if (!options.measure) {
         for (const [index, row] of parents.entries()) {
@@ -657,8 +698,12 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     { failureIndex: 2, failureCode: 'COMPLETED_PIECE' },
     { failureIndex: 0, failureCode: 'STALE_SESSAKU_PIECES' }
   ])('rolls back one lot and its audit while splitting the rest ($failureIndex / $failureCode)', async (options) => {
-    await productionBatchScale(5, options);
+    await productionBatchScale(AUTO_UNIT_SPLIT_MAX_LOTS, options);
   }, 180000);
+  it.skipIf(process.env.SESSAKU_SPLIT_MEASURE !== '1')(
+    'measures human rank save latency during a production-scale bulk placement upsert', async () => {
+      await productionBatchScale(AUTO_UNIT_SPLIT_MAX_LOTS, { measureHumanSave: true });
+    }, 180000);
   it.skipIf(process.env.SESSAKU_SPLIT_MEASURE !== '1').each([1, 2, 3, 5, 8, 10, 15, 20])(
     'measures a single production-scale batch including discovery (N=%i)', async (lots) => {
       // Exercise the same complete call with each cap; allow larger samples to finish before selecting the production cap.
