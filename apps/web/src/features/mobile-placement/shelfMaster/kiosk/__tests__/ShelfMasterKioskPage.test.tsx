@@ -54,6 +54,18 @@ describe('kiosk shelf master', () => {
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
     expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).toBeNull();
   });
+  it('discards an unsaved new shelf when another landmark or shelf is opened', async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'M1 南 に棚を追加' }));
+    await waitFor(() => expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: /M2 加工機/ }));
+    expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /M1 加工機/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'M1 南 に棚を追加' }));
+    await waitFor(() => expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '棚 M1 北 を編集' }));
+    expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).toBeNull();
+  });
   it('opens a saved shelf and confirms deletion with Escape and a four second timeout', async () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: '棚 M1 北 を編集' }));

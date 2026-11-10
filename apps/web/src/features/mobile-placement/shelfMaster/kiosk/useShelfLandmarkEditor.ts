@@ -21,9 +21,10 @@ export function useShelfLandmarkEditor({ onSelect, onDelete }: { onSelect: (name
         setConfirmDelete(null);
       } else {
         const added = await postMobilePlacementShelfLandmark(name.trim());
+        await client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfMachines });
         onSelect(added.name);
       }
-      void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfMachines });
+      if (deleting) void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.shelfMachines });
       void client.invalidateQueries({ queryKey: mobilePlacementQueryKeys.registeredShelves });
     } catch (e) {
       setError(isAxiosError(e) && typeof e.response?.data?.message === 'string' ? e.response.data.message : e instanceof Error ? e.message : '目安を更新できませんでした');
