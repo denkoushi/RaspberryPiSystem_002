@@ -16,6 +16,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   machineSelectionLabel?: string;
   resourceHeadContainer?: HTMLElement | null;
   valueSheetContainer?: HTMLElement | null;
+  sharedValueSheetOpen?: boolean;
   hideResourceHead?: boolean;
   machineMode?: 1 | 2;
   twoMachineDisabled?: boolean;

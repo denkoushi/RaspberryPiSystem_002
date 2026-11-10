@@ -26,6 +26,7 @@ import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, ty
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
+import { planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
@@ -65,7 +66,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -310,11 +311,32 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [showChain]);
+  }, [showChain, valueSheetContainer]);
   const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
     values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
-  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min((valueSheetContainer?.clientHeight ?? ((viewportHeight ?? 0) + 40)) * 0.56, 520) : 0;
-  const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
+  const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
+  useLayoutEffect(() => {
+    const pane = viewport.current;
+    if (!valueSheetContainer || !pane) return;
+    const measure = () => {
+      const containerRect = valueSheetContainer.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      const zoom = pageZoom();
+      const next = { height: valueSheetContainer.clientHeight,
+        top: (paneRect.top - containerRect.top) / zoom, bottom: (paneRect.bottom - containerRect.top) / zoom };
+      setSharedBounds(current => current.height === next.height && current.top === next.top && current.bottom === next.bottom ? current : next);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(valueSheetContainer);
+    observer?.observe(pane);
+    return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
+  }, [valueSheetContainer]);
+  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const sharedGeometry = planningBoardSheetGeometry(sharedBounds.height, sharedBounds.top, sharedBounds.bottom,
+    sharedValueSheetOpen, showChain ? chainStripHeight : 0);
+  const bottomInset = valueSheetContainer ? sharedGeometry.bottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
     setCurrentItemId(null);
@@ -491,6 +513,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} /> : null;
+  const chainStripView = <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
+        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />;
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
@@ -575,9 +600,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {showChain && <PlanningBoardChainLinks barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
-      {showChain && <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
-        onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
-        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
+      {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
       {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex max-h-[52px] snap-y snap-mandatory scroll-pt-1 flex-wrap gap-2 overflow-y-auto overscroll-contain border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
         {[...seibanColors].map(([seiban, color]) => <button key={seiban} type="button" aria-pressed={focusedSeiban === seiban}
           onClick={() => focusedSeiban === seiban ? setFocusedSeiban(null) : focusSeiban(seiban)}

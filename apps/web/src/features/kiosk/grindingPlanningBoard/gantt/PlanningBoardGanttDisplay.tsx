@@ -13,6 +13,7 @@ import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planni
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 
 const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function TwoMachineGantt(props, ref) {
+  const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
   const [headContainer, setHeadContainer] = useState<HTMLDivElement | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; index: number } | null>(null);
@@ -68,6 +69,12 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     if (container?.parentElement) observer?.observe(container.parentElement);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [container]);
+  const nextSelection = (resource: string) => {
+    const next = [...resources];
+    if (resource === resources[1 - picker!.index]) next.reverse();
+    else next[picker!.index] = resource;
+    return next.join('+');
+  };
   return <div ref={setContainer} data-testid="planning-two-machine" className="relative mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
     <div ref={setHeadContainer} className="shrink-0" />
     <div className="grid min-h-0 flex-1 grid-rows-2">
@@ -75,7 +82,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
       <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className={`flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-600 font-mono text-[22px] font-black tracking-[.1em] [writing-mode:vertical-rl] ${index ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-sky-300'}`}>{resource}<span className="text-xs">▼</span></button>
       <div className="min-h-0 min-w-0 flex-1">
-        <PlanningBoardGanttView {...props} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+        <PlanningBoardGanttView {...props} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
           ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
           valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
           onNavigateBar={(bar) => {
@@ -86,15 +93,12 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       </div>
     </section>)}
     </div>
-    {picker && !props.machineSelectionLocked && <PlanningBoardSingleResourcePicker placement="right" anchor={picker.anchor} resources={props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean)}
+    {picker && !props.machineSelectionLocked && <PlanningBoardSingleResourcePicker placement="right" anchor={picker.anchor} resources={candidates}
       resourceCd={resources[picker.index]!} resourceNameMap={props.resourceNameMap}
-      isDisabled={(resource) => resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)} onClose={() => setPicker(null)}
+      isDisabled={(resource) => resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource) || candidates.includes(nextSelection(resource))} onClose={() => setPicker(null)}
       onSelect={(resource) => {
-        if (props.machineSelectionLocked || resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)) return;
-        const next = [...resources];
-        if (resource === resources[1 - picker.index]) next.reverse();
-        else next[picker.index] = resource;
-        props.onSingleResourceChange?.(next.join('+'));
+        if (props.machineSelectionLocked || resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource) || candidates.includes(nextSelection(resource))) return;
+        props.onSingleResourceChange?.(nextSelection(resource));
         setPicker(null);
       }} />}
   </div>;
@@ -105,7 +109,8 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
   const pair = planningBoardPair(props.singleResourceCd, resources);
   const top = pair?.[0] ?? props.singleResourceCd;
   const enabled = resources.filter(resource => !resource.includes('+') && isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)).sort();
-  const canPair = Boolean(top && enabled.includes(top) && enabled.length > 1);
+  const partners = enabled.filter(resource => resource !== top && !resources.includes(`${top}+${resource}`));
+  const canPair = Boolean(top && enabled.includes(top) && partners.length > 0);
   const partnerKey = `kiosk.planning-board.machine-partners:${props.preferenceScope ?? 'default'}`;
   const lastSelected = useRef<string | null>(null);
   const changeSelection = (selection: string | null) => {
@@ -131,8 +136,8 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
     } else if (!pair && canPair) {
       let previous: unknown;
       try { previous = JSON.parse(localStorage.getItem(partnerKey) ?? '{}')?.[top]; } catch { /* Storage is optional. */ }
-      const partner = typeof previous === 'string' && previous !== top && enabled.includes(previous) ? previous
-        : enabled[(enabled.indexOf(top) + 1) % enabled.length]!;
+      const partner = typeof previous === 'string' && partners.includes(previous) ? previous
+        : partners.find(resource => resource > top) ?? partners[0]!;
       changeSelection(`${top}+${partner}`);
     }
   };

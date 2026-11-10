@@ -508,3 +508,22 @@ it('waits for the shared head container before rendering the upper pane settings
   expect(within(target).getByTestId('planning-single-resource-head')).toBeInTheDocument();
   expect(within(screen.getByTestId('planning-board-gantt')).queryByTestId('planning-single-resource-head')).toBeNull();
 });
+
+it('rejects pair selections colliding with a real resource code', () => {
+  localStorage.clear();
+  const view = render(<InteractiveBoard lanes={['021', '022', '021+022']} />);
+  expect(screen.getByRole('button', { name: '2台', exact: true })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.queryByTestId('planning-two-machine')).toBeNull();
+  view.rerender(<InteractiveBoard start="021+022" lanes={['021', '022', '023', '021+023', '022+021']} />);
+  // Start a valid pair, then block both a replacement and a swap that collide.
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '021の機械を選ぶ' }));
+  const picker = within(screen.getByRole('group', { name: '1台の資源CD' }));
+  expect(picker.getByRole('button', { name: '022', exact: true })).toBeDisabled();
+  fireEvent.click(picker.getByRole('button', { name: '022', exact: true }));
+  expect(screen.getByRole('region', { name: '021' })).toBeInTheDocument();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: '022の機械を選ぶ' }));
+  expect(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '023', exact: true })).toBeDisabled();
+});

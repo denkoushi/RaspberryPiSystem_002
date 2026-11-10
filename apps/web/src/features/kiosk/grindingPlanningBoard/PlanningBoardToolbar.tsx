@@ -278,7 +278,7 @@ export function PlanningBoardToolbar({
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
           </button>}
           {!orderPreview && singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
-            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={singleResourceCd} resourceNameMap={singleResourceNameMap}
+            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={planningBoardPair(singleResourceCd, singleResourceLanes)?.[0] ?? singleResourceCd} resourceNameMap={singleResourceNameMap}
             onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
           <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}
             className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', colorBySeiban ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>

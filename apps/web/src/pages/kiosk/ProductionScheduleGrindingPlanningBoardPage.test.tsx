@@ -2225,6 +2225,27 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   });
 
+  it.each(['305', '305+584'])('keeps resource and machine count on Escape during order preview (%s)', selection => {
+    const data = fixture();
+    data.items.forEach((item, index) => { item.alternateRank = index + 1; });
+    data.items[0]!.originalDueDate = '2026-11-20';
+    data.items[1]!.originalDueDate = '2026-11-10';
+    localStorage.setItem('kiosk.planning-board.single-resource:site-1:grinding', JSON.stringify({ schemaVersion: 1, resourceCd: selection }));
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '並べ替え' }));
+    expect(screen.getByRole('button', { name: '適用', exact: true })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
+    expect(screen.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: '品番の値' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const count = selection.includes('+') ? 2 : 1;
+    expect(screen.getByRole('button', { name: `${selection} ${count}台表示をやめる` })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: `${count}台`, exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '適用', exact: true })).toBeInTheDocument();
+  });
+
   it('selects and restores two independent machine panes, totals their late bars and exits', () => {
     const data = fixture();
     data.resources = ['021', '022', '305'];
@@ -2281,6 +2302,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const restored = render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '1台の資源CDを選ぶ' }));
+    expect(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '021', exact: true })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '021', exact: true }));
     expect(screen.queryByTestId('planning-two-machine')).toBeNull();
     expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-pressed', 'true');
@@ -2288,6 +2310,22 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     restored.unmount();
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('closes the value sheet when swapping the machine pane labels', () => {
+    const data = fixture();
+    data.resources = ['021', '022'];
+    data.resourceCategories = { '021': 'grinding', '022': 'grinding' };
+    data.items.forEach((item, index) => { item.originalResourceCd = index % 2 ? '022' : '021'; });
+    localStorage.setItem('kiosk.planning-board.single-resource:site-1:grinding', JSON.stringify({ schemaVersion: 1, resourceCd: '021+022' }));
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
+    expect(screen.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '021の機械を選ぶ' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '022', exact: true }));
+    expect(screen.getByRole('button', { name: '022+021 2台表示をやめる' })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: '品番の値' })).toBeNull();
   });
 
   it('persists single-resource mode, selects for bulk edit, and handles Escape dialog → picker → sheet → single mode', () => {

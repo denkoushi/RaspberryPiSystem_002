@@ -21,10 +21,11 @@ const EMPTY_ITEMS: GanttLayoutOptions['items'] = [];
 
 export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' | 'dailyHoursByResource' | 'runsThroughBreaks'> & {
   enabled: boolean;
+  machineSelectionLocked?: boolean;
   preferenceScope: string;
 }) {
   const { gate, enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
+  const { enabled, machineSelectionLocked, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const useMinutes = offlineEnabled ? useOfflineResourceMinutes : useKioskGrindingPlanningBoardResourceMinutes;
@@ -72,12 +73,12 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
       // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
         if (valueSheetResource && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources)) setValueSheetResource(null);
-        else changeSingleResource(null);
+        else if (!machineSelectionLocked) changeSingleResource(null);
       }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource, paneResources]);
+  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource, paneResources, machineSelectionLocked]);
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({

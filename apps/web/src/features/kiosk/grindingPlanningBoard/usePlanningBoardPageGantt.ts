@@ -87,7 +87,7 @@ export function usePlanningBoardPageGantt({
   );
   const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
     today, now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
