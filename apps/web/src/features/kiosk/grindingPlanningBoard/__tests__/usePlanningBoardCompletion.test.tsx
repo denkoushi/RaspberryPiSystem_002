@@ -279,7 +279,7 @@ describe('piece operation completion', () => {
     const completePieceOp = vi.fn().mockResolvedValueOnce(response([done])).mockResolvedValueOnce(response([undone]));
     h.rerender({ ...h.options, completePieceOp });
     await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 20); });
-    expect(h.result.current.displayItems).toHaveLength(0); expect(h.options.onCompleted).toHaveBeenCalledWith(done);
+    expect(h.result.current.displayItems).toHaveLength(0); expect(h.options.onCompleted).toHaveBeenCalledWith(done, 20);
     await act(async () => { await h.result.current.toggleCompletion(done, 'incomplete', 10); });
     expect(completePieceOp).toHaveBeenLastCalledWith(expect.objectContaining({ opNo: 10, expectedPieceSetVersion: 2, intent: 'incomplete' }));
     expect(h.result.current.displayItems[0]).toMatchObject({ isCompleted: false, completedOpNos: [20] });

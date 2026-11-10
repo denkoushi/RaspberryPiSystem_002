@@ -447,6 +447,13 @@ describe('unit piece timing and setup', () => {
     expect(result.map(bar => Math.round(minutes(bar.setupSegments)))).toEqual([15, 0, 30, 15]);
     expect(result[1]!.start).toBeCloseTo(result[0]!.end!);
   });
+  it('decides backward setup by due order in the lane, not display order', () => {
+    const values = [unit('a', 'P1', { originalDueDate: '2026-10-16' }), unit('b', 'P2', { originalDueDate: '2026-10-15' }), unit('c', 'P1', { originalDueDate: '2026-10-17' })];
+    for (const ordered of [values, [...values].reverse()]) {
+      const result = bars(layout(ordered, { ...options, mode: 'backward' }));
+      expect(Object.fromEntries(result.map(bar => [bar.item.itemId, Math.round(minutes(bar.setupSegments) / 3)]))).toEqual({ a: 15, b: 30, c: 0 });
+    }
+  });
   it('uses actual reordered lane products rather than original item order', () => {
     const result = bars(layout([unit('a'), unit('b'), unit('c', 'P2')], { ...options, laneOrder: { '305': ['c', 'b', 'a'] } }));
     expect(result.map(bar => [bar.item.itemId, Math.round(minutes(bar.setupSegments))])).toEqual([['c', 30], ['b', 15], ['a', 0]]);

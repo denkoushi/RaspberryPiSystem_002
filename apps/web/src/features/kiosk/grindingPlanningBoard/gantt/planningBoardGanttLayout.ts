@@ -122,14 +122,20 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   let processCounts: Map<string, number> | undefined;
   const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
   const previousParts = new Map<string, string>();
+  const setupByItemId = new Map<string, number>();
+  // Bars end at their own due date, so compare with the previous bar in lane time order, not display order.
+  for (const { item, resource } of sorted.map((item) => ({ item, resource: resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定', due: resolveGrindingPlanningBoardDueDate(item, allocation) ?? '\uffff' }))
+    .sort((a, b) => a.resource.localeCompare(b.resource) || a.due.localeCompare(b.due))) {
+    if (isUnitPiece(item) && previousParts.get(resource) !== item.fhincd) setupByItemId.set(item.itemId, setupByResource.get(resource)?.get(item.fhincd) ?? 0);
+    previousParts.set(resource, item.fhincd);
+  }
   const bars = sorted.map((item): GanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const end = due ? dateToDay(due) + 1 : null;
     const unknown = requiredMinutesUnknown(item);
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
-    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? setupByResource.get(resource)?.get(item.fhincd) ?? 0 : 0;
-    previousParts.set(resource, item.fhincd);
+    const setup = setupByItemId.get(item.itemId) ?? 0;
     const bar: GanttBar = {
       item, resource, due, end, unknown, partKey: planningBoardPartKey(item),
       // Give the due marker a tiny interval for same-day chain checks; its visual width is fixed.

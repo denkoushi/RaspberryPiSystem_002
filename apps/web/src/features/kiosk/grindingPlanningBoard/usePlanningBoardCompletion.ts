@@ -29,7 +29,7 @@ type Options = {
   completePiece: (payload: SessakuPieceCompletionRequest & { pieceId: string }) => Promise<SessakuPiecesMutationResponse>;
   completePieceOp?: (payload: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) => Promise<SessakuPiecesMutationResponse>;
   notify: (message: string, kind: FeedbackKind) => void;
-  onCompleted: (item: GrindingPlanningBoardItem) => void;
+  onCompleted: (item: GrindingPlanningBoardItem, opNo?: number) => void;
   onIncomplete: () => void;
 };
 
@@ -149,7 +149,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       });
       if (item.kind === 'piece') await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
       else void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
-      if (opNo == null ? intent === 'complete' : savedItem.isCompleted) onCompleted(savedItem);
+      if (opNo == null ? intent === 'complete' : savedItem.isCompleted) onCompleted(savedItem, opNo);
       else if (intent === 'incomplete') onIncomplete();
     } catch (error) {
       if (currentItem.kind === 'piece') reportSessakuPieceError(intent === 'complete' ? 'complete' : 'uncomplete', currentItem, error);

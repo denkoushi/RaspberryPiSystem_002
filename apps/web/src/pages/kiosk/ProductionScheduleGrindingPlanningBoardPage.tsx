@@ -230,11 +230,11 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   });
   const { enqueue: enqueueWrite, items: queuedItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
   const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !writeQueue.uncheckedFseibans.includes(fseiban))), [registeredFseibans, writeQueue.uncheckedFseibans]);
-  const onCompleted = useCallback((item: GrindingPlanningBoardItem) => {
+  const onCompleted = useCallback((item: GrindingPlanningBoardItem, opNo?: number) => {
     setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
       const next = new Set(ids); next.delete(item.itemId); return [key, next];
     })));
-    setCompletionNotice({ item });
+    setCompletionNotice({ item, opNo });
   }, [setCompletionNotice]);
   const onIncomplete = useCallback(() => setCompletionNotice(null), [setCompletionNotice]);
   const { displayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
@@ -725,7 +725,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       {completionNotice && <div role="status" className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">
         <span>完了にしました</span>
         <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked || piecesWriting || completionPendingItemIds.has(completionNotice.item.itemId)}
-          onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete'); setCompletionNotice(null); }}>↶ 戻す</button>
+          onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete', completionNotice.opNo); setCompletionNotice(null); }}>↶ 戻す</button>
       </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className={`${data ? 'absolute z-50 ' : ''}p-5 text-sm text-rose-200`}>一覧を読み込めませんでした。</p> : null}
