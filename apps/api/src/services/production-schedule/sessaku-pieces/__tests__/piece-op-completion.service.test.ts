@@ -59,7 +59,7 @@ const apply = (opNo: number, intent: 'complete' | 'incomplete' = 'complete', aud
 };
 
 describe('piece operation completion transaction', () => {
-  afterEach(() => vi.unstubAllEnvs());
+  afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => {
     vi.resetAllMocks(); completed = new Set(); definitions = [{ opNo: 1 }, { opNo: 2 }];
     const now = new Date('2026-11-09');
@@ -121,15 +121,15 @@ describe('piece operation completion transaction', () => {
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
     mocks.readSet.mockResolvedValue(null); mocks.sets.mockResolvedValue(new Map());
     detail.orderSupplements[0].plannedQuantity = 2;
+    vi.spyOn(performance, 'now').mockReturnValue(1250);
     // Fail immediately after the former history write, inside the real split action.
     mocks.tx.productionScheduleSessakuPieceSet.create.mockRejectedValue(failure);
     await expect(splitSessakuPieces({ siteKey: 'site', parentItemId: sessakuPieceParentItemId(key),
       expectedPieceSetVersion: 0, itemRevision: 'unused-for-auto', quantities: [1, 1], autoUnitSplit: true,
-      deadline: performance.now() + 3000 })).rejects.toMatchObject({ code: 'AUTO_UNIT_SPLIT_BUSY' });
+      deadline: 4250 })).rejects.toMatchObject({ code: 'AUTO_UNIT_SPLIT_BUSY' });
     expect(mocks.tx.productionScheduleSessakuPieceHistory.upsert).not.toHaveBeenCalled();
     const options = mocks.transaction.mock.calls[0][1];
-    expect(options.timeout).toBeGreaterThan(2900);
-    expect(options.timeout).toBeLessThanOrEqual(3000);
+    expect(options.timeout).toBe(3000);
     expect(options.maxWait).toBe(250);
     expect(mocks.tx.$queryRaw).toHaveBeenCalledWith(expect.any(Array), '250ms', `${options.timeout}ms`);
   });

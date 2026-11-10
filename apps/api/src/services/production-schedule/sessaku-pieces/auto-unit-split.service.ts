@@ -10,7 +10,7 @@ import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } fro
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
-import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
+import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput } from './auto-unit-split-candidates.js';
 import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
 import { sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
 import { splitSessakuPieces } from './sessaku-pieces.service.js';
@@ -21,6 +21,9 @@ export const AUTO_UNIT_SPLIT_BUDGET_MS = 3000;
 export const AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS = AUTO_UNIT_SPLIT_BUDGET_MS + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
+
+const REJECTED_INPUT_TTL_MS = 3 * 60 * 1000;
+const rejectedInputs = new Map<string, AutoUnitSplitRejectedInput & { siteKey: string; expiresAt: number }>();
 
 export function autoUnitSplitCandidates(items: readonly GrindingPlanningBoardItem[], capacity: GrindingPlanningBoardResourceCapacityResponse,
   isCutting: (resourceCd: string) => boolean): GrindingPlanningBoardItem[] {
@@ -86,13 +89,19 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
   const capacity = await getGrindingPlanningBoardResourceCapacity(params, runner);
   assertRunnerDeadline(runnerDeadline);
   const excludedParentIds = new Set<string>();
+  const cachedRejections: AutoUnitSplitRejectedInput[] = [];
+  const now = performance.now();
+  for (const [key, rejected] of rejectedInputs) {
+    if (rejected.expiresAt <= now) rejectedInputs.delete(key);
+    else if (rejected.siteKey === params.siteKey) cachedRejections.push(rejected);
+  }
   let attempted = 0;
   let retryNeeded = false;
   while (true) {
     const pageDeadline = excludedParentIds.size ? Math.min(deadline, runnerDeadline) : runnerDeadline;
-    const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds]);
+    const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections);
     await setPreprocessingStatementTimeout(runner, pageDeadline);
-    const candidateRows = await runner.$queryRaw<Array<{ id: string; fseiban: string; parentId: string }>>(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
+    const candidateRows = await runner.$queryRaw<Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>>(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
     assertRunnerDeadline(pageDeadline);
     if (!candidateRows.length) return { ...result, hasMore: retryNeeded };
     const candidateIds = new Set(candidateRows.map((row) => row.id));
@@ -142,8 +151,20 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     const candidates = structuralCandidates.filter((item) => candidateIds.has(item.sourceRowId)
       && !blockedParents.has(item.parentItemId ?? item.itemId) && !protectedPieces.has(item.pieceId!));
     assertRunnerDeadline(pageDeadline);
-    // Exclusions are request-local. Neither manual history nor a previous rejection
-    // prevents a repaired lot from being reconsidered by the next request.
+    // Cache only input-structural refusals. Capacity, completion, missing projection
+    // and reloadable conflicts must remain eligible for immediate re-evaluation.
+    const rememberStructuralRejection = (parentId: string) => {
+      const row = candidateRows.find((row) => row.parentId === parentId);
+      if (!row?.inputVersion) return;
+      rejectedInputs.set(JSON.stringify([params.siteKey, parentId]), {
+        parentId, inputVersion: row.inputVersion, siteKey: params.siteKey, expiresAt: performance.now() + REJECTED_INPUT_TTL_MS
+      });
+    };
+    for (const row of candidateRows) {
+      const projected = items.find((item) => item.sourceRowId === row.id);
+      if (projected && !isFirstAutoUnitSplitProcess(projected, items)) rememberStructuralRejection(row.parentId);
+    }
+    // All other exclusions last only for this request. History never gates discovery.
     const previousExcludedCount = excludedParentIds.size;
     for (const row of candidateRows) excludedParentIds.add(row.parentId);
     if (!candidates.length) {
@@ -165,8 +186,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         if (result.splitCount >= AUTO_UNIT_SPLIT_MAX_LOTS) break;
         const now = performance.now();
         if (now >= runnerDeadline || attempted > 0 && now >= deadline) break;
-        const lotDeadline = Math.min(runnerDeadline,
-          attempted === 0 && now >= deadline ? now + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS : deadline);
+        const lotDeadline = Math.min(runnerDeadline, now + AUTO_UNIT_SPLIT_BUDGET_MS);
         attempted += 1;
         let expectedVersion = pieces[0].pieceSetVersion ?? 0;
         let counted = false;
@@ -186,6 +206,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           const code = (error as { code?: string })?.code;
           if (error instanceof ApiError ? error.statusCode >= 500 : code !== 'P2034') throw error;
           result.skippedCount += 1;
+          if (code === 'AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE') rememberStructuralRejection(parentItemId);
           retryNeeded ||= ['P2034', 'STALE_SESSAKU_PIECES', 'STALE_PLANNING_BOARD_ITEM', 'SOURCE_ITEM_MISSING', 'PIECE_REFERENCED'].includes(code ?? '');
           if (error instanceof ApiError) logger.warn({
             event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,

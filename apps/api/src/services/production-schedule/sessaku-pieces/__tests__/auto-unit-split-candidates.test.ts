@@ -39,9 +39,20 @@ describe('automatic candidate SQL contract', () => {
   it('keeps candidate discovery scoped to the board order without input-generation scans', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
     expect(sql.sql).toContain(`r."rowData"->>'FSEIBAN' = ANY(`);
-    for (const removed of ['input_keys', 'input_generations', 'inputKey', 'ctid', 'xmin', 'JSONB_TO_RECORDSET']) {
+    for (const removed of ['input_keys', 'input_generations', 'inputKey', 'ctid', 'xmin']) {
       expect(sql.sql).not.toContain(removed);
     }
+  });
+  it('compares cached structural rejections with current seiban rows and PieceSet versions before LIMIT', () => {
+    const rejected = [{ parentId: 'row:blocked', inputVersion: 'old-version' }];
+    const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: [], cuttingExcludedResourceCds: [] }, [], rejected);
+    expect(sql.sql).toContain('JSONB_TO_RECORDSET(');
+    expect(sql.values).toContain(JSON.stringify(rejected));
+    expect(sql.sql).toContain('rejected."inputVersion" = (MD5(');
+    expect(sql.sql).toContain('v."rowData"');
+    expect(sql.sql).toContain('v."version"');
+    expect(sql.sql).toContain(`v."fseiban" = r."rowData"->>'FSEIBAN'`);
+    expect(sql.sql).not.toContain('ProductionScheduleSessakuPieceHistory');
   });
   it('optionally excludes raw parent IDs without changing the default candidate query or ordering', () => {
     const policy = { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] };

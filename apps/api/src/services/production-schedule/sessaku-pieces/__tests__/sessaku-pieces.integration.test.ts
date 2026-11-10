@@ -653,11 +653,12 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(saved.pieces[5]).toMatchObject({ quantity: 2, isCompleted: false });
     expect((await board()).items.find((item) => item.pieceId === saved.pieces[5].id)?.effectiveResourceCd).toBe('021');
   });
-  it('pages past six nonnumeric later-process SQL candidates and splits the eligible tail in one call', async () => {
+  it.each([false, true])('passes seven nonnumeric SQL candidates and splits the tail (discovery budget exhausted=%s)', async (exhaustBudget) => {
     const lots = Array.from({ length: 8 }, (_, i) => ({ ...rowData, FHINCD: `LOT-${i}`, FSIGENCD: '021', FKOJUN: '10A' }))
       .sort((a, b) => Buffer.compare(Buffer.from(buildGrindingPlanningBoardRowItemId(a)), Buffer.from(buildGrindingPlanningBoardRowItemId(b))));
     const tail = lots.at(-1)!;
     const rejectedIds: string[] = [];
+    const predecessorIds: string[] = [];
     for (const [index, data] of lots.entries()) {
       const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data,
         occurredAt: new Date(), dataHash: `${site}-paged-${index}` } });
@@ -665,17 +666,45 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         sourceCsvDashboardId: site, productNo: `paged-${index}`, resourceCd: '021', processOrder: '10A', plannedQuantity: 3 } });
       if (data !== tail) {
         rejectedIds.push(row.id);
-        await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+        const predecessor = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
           rowData: { ...data, FSIGENCD: '305', FKOJUN: '1' }, occurredAt: new Date(), dataHash: `${site}-predecessor-${index}` } });
+        predecessorIds.push(predecessor.id);
       }
     }
     const policy = await getResourceCategoryPolicy({ siteKey: site });
-    const firstPage = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`${autoUnitSplitCandidateSql(site, [seiban], policy)} LIMIT 6`);
+    const firstPage = await prisma.$queryRaw<Array<{ id: string; parentId: string; inputVersion: string }>>(Prisma.sql`${autoUnitSplitCandidateSql(site, [seiban], policy)} LIMIT 6`);
     expect(firstPage).toHaveLength(6);
     for (const row of firstPage) expect(rejectedIds).toContain(row.id);
-    expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    if (exhaustBudget) {
+      const now = vi.spyOn(performance, 'now').mockReturnValue(0);
+      const originalRanks = projectionSource.readRanks;
+      const ranksSpy = vi.spyOn(projectionSource, 'readRanks').mockImplementationOnce(async (...args) => {
+        const ranks = await originalRanks(...args);
+        now.mockReturnValue(3000);
+        return ranks;
+      });
+      try {
+        expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+        const cachedPage = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], firstPage));
+        expect(cachedPage.map((row) => row.id)).not.toEqual(expect.arrayContaining(firstPage.map((row) => row.id)));
+        await prisma.csvDashboardRow.update({ where: { id: predecessorIds[0] },
+          data: { rowData: { ...lots[0], FSIGENCD: '305', FKOJUN: '1', ProductNo: '124' } } });
+        const changedPage = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], firstPage));
+        expect(changedPage.map((row) => row.id)).toEqual(expect.arrayContaining(firstPage.map((row) => row.id)));
+        now.mockReturnValue(5000);
+        expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+        const beforePieceEdit = await prisma.$queryRaw<Array<{ id: string; parentId: string; inputVersion: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
+        const tailSet = (await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(tail)))!;
+        await prisma.productionScheduleSessakuPieceSet.update({ where: { id: tailSet.id }, data: { version: { increment: 1 } } });
+        const afterPieceEdit = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], beforePieceEdit));
+        expect(afterPieceEdit.map((row) => row.id)).toEqual(expect.arrayContaining(beforePieceEdit.map((row) => row.id)));
+        // A repaired predecessor is also reconsidered without waiting for TTL.
+        await prisma.csvDashboardRow.delete({ where: { id: predecessorIds[0] } });
+        expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+      } finally { ranksSpy.mockRestore(); now.mockRestore(); }
+    } else expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
     expect((await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(tail)))?.pieces.map((piece) => piece.quantity)).toEqual([1, 1, 1]);
-    expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(1);
+    expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(exhaustBudget ? 2 : 1);
   });
   it('retains legacy manual history after adoption and removal as a later-process set', async () => {
     let result = await split();
@@ -1146,7 +1175,11 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         .rejects.toMatchObject({ statusCode: 409, code: 'PIECE_OPERATION_COMPLETED' });
       expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { pieceId: target.pieceId! } })).toBe(1);
     });
-  it.skipIf(process.env.SESSAKU_SPLIT_MEASURE !== '1')('compares full and lane-scoped split/merge across four sites, 90 seiban and 7500 rows', async () => {
+  it.each([
+    { label: 'CI equivalence and ranks', measure: false },
+    ...(process.env.SESSAKU_SPLIT_MEASURE === '1' ? [{ label: 'measurement', measure: true }] : [])
+  ])('compares full and lane-scoped split/resplit/non-adjacent merge/full merge across four sites ($label)', async ({ measure }) => {
+    const rowsPerSeiban = measure ? 84 : 5;
     const sites = [site, other, `${site}-third`, `${site}-fourth`];
     const seibans = Array.from({ length: 89 }, (_, i) => `P${i}-${seiban}`);
     const orders = sites.map((_, index) => {
@@ -1157,7 +1190,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       return order;
     });
     const rows = seibans.flatMap((fseiban, i) =>
-      Array.from({ length: 84 }, (_, j) => ({ id: randomUUID(), csvDashboardId: dashboardId,
+      Array.from({ length: rowsPerSeiban }, (_, j) => ({ id: randomUUID(), csvDashboardId: dashboardId,
         rowData: { ...rowData, FSEIBAN: fseiban, ProductNo: String(1000 + i), FKOJUN: String(j + 1),
           FSIGENCD: j === 0 && i < 40 ? (i === 0 ? '\t1\u3000' : '1') : j === 1 && i < 25 ? '3' : j === 2 && i < 20 ? '5' : j === 3 && i < 15 ? '6' : '2' },
         dataHash: `${site}-perf-${i}-${j}`, occurredAt: new Date() })));
@@ -1221,7 +1254,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(actual).toEqual(expected);
       expect(fullAudit.timing!.sourceRowCount).toBe(rows.length + 2);
       expect(scopedAudit.timing!.sourceRowCount).toBeLessThan(200);
-      measurements.push({ action, full: fullAudit.timing!, scoped: scopedAudit.timing! });
+      if (measure) measurements.push({ action, full: fullAudit.timing!, scoped: scopedAudit.timing! });
       return result;
     };
     try {
@@ -1232,7 +1265,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         plannedQuantity: 5, plannedEndDate: new Date('2026-12-15')
       })) });
       // Completed neighbours must remain unchanged; the selected lanes still have dozens of unfinished rows.
-      await prisma.productionScheduleProgress.createMany({ data: rows.filter((row, i) => i % 84 === 0 && i / 84 < 8)
+      await prisma.productionScheduleProgress.createMany({ data: rows.filter((row, i) => i % rowsPerSeiban === 0 && i / rowsPerSeiban < 8)
         .map((row) => ({ csvDashboardId: dashboardId, csvDashboardRowId: row.id, isCompleted: true })) });
       const inboundParent = rows.find((row) => row.rowData.FSEIBAN === seibans[60] && row.rowData.FKOJUN === '1')!;
       const inboundSet = await prisma.productionScheduleSessakuPieceSet.create({ data: { csvDashboardId: dashboardId,
@@ -1253,7 +1286,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         const inboundRow = rows.find((row) => row.rowData.FSEIBAN === seibans[70 + index] && row.rowData.FKOJUN === '1')!;
         const outbound = rows.find((row) => row.rowData.FSEIBAN === seibans[15] && row.rowData.FKOJUN === '1')!;
         await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: [
-          ...rows.filter((row) => row.rowData.FSIGENCD === '2' && row.rowData.FKOJUN !== '1').slice(0, 1600).map((row, i) => ({
+          ...rows.filter((row) => row.rowData.FSIGENCD === '2' && row.rowData.FKOJUN !== '1').slice(0, measure ? 1600 : 80).map((row, i) => ({
             csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(row.rowData),
             alternateRank: i + 1, orderPinned: i % 2 === 0, dueDateCleared: true
           })),
@@ -1335,7 +1368,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         expect((await prisma.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: targetSite } } })).version).toBe(9);
       }
       expect(winnerMaterializations.count).toBe(0);
-      console.info(`sessaku 4 sites / 90 seiban / ${rows.length + 2} rows`, measurements.map(({ action, full, scoped }) => ({
+      if (measure) console.info(`sessaku 4 sites / 90 seiban / ${rows.length + 2} rows`, measurements.map(({ action, full, scoped }) => ({
         // The reference still discovers lanes, but the old path did not. Exclude that new overhead.
         action, fullBeforeProjectionMs: full.beforeProjectionMs - full.laneDiscoveryMs, scopedBeforeProjectionMs: scoped.beforeProjectionMs,
         ratio: scoped.beforeProjectionMs / (full.beforeProjectionMs - full.laneDiscoveryMs), fullTiming: full, scopedTiming: scoped

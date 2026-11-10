@@ -16,8 +16,11 @@ export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, ite
       : other.fhincd.normalize('NFKC').trim() === item.fhincd.normalize('NFKC').trim()));
 }
 
+export type AutoUnitSplitRejectedInput = { parentId: string; inputVersion: string };
+
 /** The same predicate is executable in pre-deploy counts and SQL/TS contract integration tests. */
-export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy, excludedParentIds: readonly string[] = []): Prisma.Sql {
+export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy, excludedParentIds: readonly string[] = [],
+  rejectedInputs: readonly AutoUnitSplitRejectedInput[] = []): Prisma.Sql {
   const trim = (value: Prisma.Sql) => Prisma.sql`BTRIM(COALESCE(${value}, ''), ${STRING_TRIM_CHARACTERS})`;
   const resource = trim(Prisma.sql`r."rowData"->>'FSIGENCD'`);
   const part = trim(Prisma.sql`r."rowData"->>'FHINCD'`);
@@ -32,6 +35,18 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
   const parentId = Prisma.sql`'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
     '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
     to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
+  // Structural rejection depends on every raw row of this seiban, including
+  // predecessors and winner changes, rather than only the rejected parent row.
+  // PieceSet versions also invalidate a rejection after a piece edit.
+  const inputVersion = Prisma.sql`MD5(JSONB_BUILD_ARRAY(
+    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."rowData") ORDER BY v."id") FROM "CsvDashboardRow" v
+      WHERE v."csvDashboardId" = r."csvDashboardId" AND v."rowData"->>'FSEIBAN' = r."rowData"->>'FSEIBAN'),
+    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."version") ORDER BY v."id") FROM "ProductionScheduleSessakuPieceSet" v
+      WHERE v."csvDashboardId" = r."csvDashboardId" AND v."fseiban" = r."rowData"->>'FSEIBAN')
+  )::text)`;
+  const rejected = rejectedInputs.length ? Prisma.sql`AND NOT EXISTS (
+    SELECT 1 FROM JSONB_TO_RECORDSET(${JSON.stringify(rejectedInputs)}::jsonb) AS rejected("parentId" text, "inputVersion" text)
+    WHERE rejected."parentId" = (${parentId}) AND rejected."inputVersion" = (${inputVersion}))` : Prisma.empty;
   const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
   // MATERIALIZED keeps winner/predecessor joins behind quantity and editable-piece
   // probes. Unit pieces and quantity-one CSV rows do no expensive discovery work.
@@ -62,6 +77,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
       AND ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)} NOT IN ('', '********') AND ${part} <> '' AND ${process} <> ''
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       ${exclusion}
+      ${rejected}
       AND s."sourcePieceSetId" IS NULL AND s."quantityWarning" IS NULL AND q."plannedQuantity" BETWEEN 2 AND 50
       AND ((NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id")
           AND COALESCE(c."unitSplitEnabled", ${effective} IN ('021', '022')))
@@ -106,6 +122,6 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         AND ${trim(Prisma.sql`e."rowData"->>'FSIGENCD'`)} <> '' AND ${earlierProcess} <> ''
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})
-    ) SELECT "id", "fseiban", "parentId" FROM eligible
+    ) SELECT "id", "fseiban", "parentId", ${inputVersion} AS "inputVersion" FROM eligible r
       ORDER BY array_position(${order}::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
 }
