@@ -225,15 +225,27 @@ describe('PlanningBoardToolbar forward controls', () => {
   });
 });
 
-function SingleResourceToolbar({ resources = ['305', '306'] }: { resources?: string[] }) {
+function SingleResourceToolbar({ resources = ['305', '306'], preview = false }: { resources?: string[]; preview?: boolean }) {
   const [resource, setResource] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  return <PlanningBoardToolbar {...props()} singleResourceCd={resource} singleResourceLanes={resources}
+  return <PlanningBoardToolbar {...props()} orderPreview={preview ? { before: { lateCount: 2, waitMinutes: 120 }, after: { lateCount: 1, waitMinutes: 60 } } : null} singleResourceCd={resource} singleResourceLanes={resources}
     singleResourceNameMap={{ '305': ['NC旋盤'], '306': ['研削盤'] }} singleResourcePickerAnchor={anchor}
     onOpenSingleResourcePicker={setAnchor} onCloseSingleResourcePicker={() => setAnchor(null)}
     onSingleResourceChange={(next) => { setResource(next); setAnchor(null); }} />;
 }
 describe('single resource toolbar', () => {
+  it('closes the machine picker during an order preview and keeps it closed afterwards', () => {
+    const view = render(<SingleResourceToolbar />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
+    view.rerender(<SingleResourceToolbar preview />);
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    view.rerender(<SingleResourceToolbar />);
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  });
   it('opens a portaled picker inside the Gantt group, chooses a machine and exits with ✕', () => {
     render(<SingleResourceToolbar />);
     const button = screen.getByRole('button', { name: '1台', exact: true });

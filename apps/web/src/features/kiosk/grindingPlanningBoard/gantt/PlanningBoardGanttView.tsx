@@ -65,7 +65,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -311,7 +311,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain]);
-  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
+    values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
+  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min((valueSheetContainer?.clientHeight ?? ((viewportHeight ?? 0) + 40)) * 0.56, 520) : 0;
   const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
@@ -586,8 +588,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
-      {showResourceHead && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
-        values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} />}
+      {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
       {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"

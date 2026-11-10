@@ -19,7 +19,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   useEffect(() => {
     if (props.machineSelectionLocked) setPicker(null);
   }, [props.machineSelectionLocked]);
-  const container = useRef<HTMLDivElement>(null);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const handles = useRef(new Map<string, PlanningBoardGanttHandle>());
   const nextLate = useRef(0);
   const nextOverlap = useRef(0);
@@ -60,22 +60,22 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   }));
   useLayoutEffect(() => {
     const measure = () => {
-      if (container.current) setHeight(Math.max(0, Math.floor((window.innerHeight - container.current.getBoundingClientRect().top) / pageZoom() - 10)));
+      if (container) setHeight(Math.max(0, Math.floor((window.innerHeight - container.getBoundingClientRect().top) / pageZoom() - 10)));
     };
     measure();
     window.addEventListener('resize', measure);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    if (container.current?.parentElement) observer?.observe(container.current.parentElement);
+    if (container?.parentElement) observer?.observe(container.parentElement);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, []);
-  return <div ref={container} data-testid="planning-two-machine" className="mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
+  }, [container]);
+  return <div ref={setContainer} data-testid="planning-two-machine" className="relative mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
     <div ref={setHeadContainer} className="shrink-0" />
     <div className="grid min-h-0 flex-1 grid-rows-2">
     {resources.map((resource, index) => <section key={resource} aria-label={resource}
       className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
       <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className={`flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-600 font-mono text-[22px] font-black tracking-[.1em] [writing-mode:vertical-rl] ${index ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-sky-300'}`}>{resource}<span className="text-xs">▼</span></button>
       <div className="min-h-0 min-w-0 flex-1">
-        <PlanningBoardGanttView {...props} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+        <PlanningBoardGanttView {...props} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
           ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
           valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
           onNavigateBar={(bar) => {

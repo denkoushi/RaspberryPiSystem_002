@@ -65,7 +65,7 @@ it.each(['forward', 'backward'] as const)('renders each resource only in its own
   expect(lower.queryByTestId('planning-gantt-bar-item-0000')).not.toBeInTheDocument();
 });
 
-it('uses one shared settings row for the upper machine and opens its value sheet', () => {
+it('opens the upper machine value sheet at the bottom of the shared Gantt container', () => {
   const values = props('forward');
   const onSource = vi.fn(); const onBreaks = vi.fn();
   function Board() {
@@ -82,7 +82,13 @@ it('uses one shared settings row for the upper machine and opens its value sheet
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
   expect(onSource).toHaveBeenCalledWith({ resourceCd: '021', source: 'own' });
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
-  expect(within(screen.getByRole('region', { name: '021' })).getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+  const sheet = screen.getByRole('region', { name: '品番の値' });
+  expect(sheet.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+  expect(sheet.parentElement).toHaveClass('relative');
+  expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
+  expect(sheet).toHaveStyle({ height: 'min(56%, 520px)' });
+  expect(within(screen.getByRole('region', { name: '021' })).queryByRole('region', { name: '品番の値' })).toBeNull();
+  expect(within(sheet).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
 });
@@ -367,14 +373,15 @@ it('toggles the pane picker and focuses the selected enabled machine or the firs
   expect(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '022' })).toHaveFocus();
 });
 
-it.each(['021', '021+022'])('locks machine mode and pane labels during an order preview (%s)', selection => {
+it.each(['021', '021+022'])('locks the common machine button, mode and pane labels during an order preview (%s)', selection => {
   const values = props('forward');
   const change = vi.fn();
-  const view = render(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} onSingleResourceChange={change} />);
+  const openPicker = vi.fn();
+  const view = render(<PlanningBoardGanttDisplay {...values} onOpenSingleResourcePicker={openPicker} singleResourceCd={selection} onSingleResourceChange={change} />);
   if (selection.includes('+')) fireEvent.click(screen.getByRole('button', { name: '021の機械を選ぶ' }));
-  view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} machineSelectionLocked onSingleResourceChange={change} />);
+  view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} machineSelectionLocked onOpenSingleResourcePicker={openPicker} onSingleResourceChange={change} />);
   expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
-  for (const button of [screen.getByRole('button', { name: '1台', exact: true }), screen.getByRole('button', { name: '2台', exact: true }), ...screen.queryAllByRole('button', { name: /の機械を選ぶ/ })]) {
+  for (const button of [screen.getByRole('button', { name: '1台の資源CDを選ぶ' }), screen.getByRole('button', { name: '1台', exact: true }), screen.getByRole('button', { name: '2台', exact: true }), ...screen.queryAllByRole('button', { name: /の機械を選ぶ/ })]) {
     expect(button).toBeDisabled();
     fireEvent.click(button);
     // Invoke the React handler too, bypassing the native disabled button guard.
@@ -383,7 +390,8 @@ it.each(['021', '021+022'])('locks machine mode and pane labels during an order 
   }
   expect(change).not.toHaveBeenCalled();
   expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
-  expect(screen.getByRole('button', { name: '1台の資源CDを選ぶ' })).toBeEnabled();
+  expect(openPicker).not.toHaveBeenCalled();
+  expect(Boolean(screen.queryByTestId('planning-two-machine'))).toBe(selection.includes('+'));
 });
 
 it.each([['021', '022'], ['022', '021']])('uses the last clicked bar resource after selecting both panes: %s then %s', (first, last) => {

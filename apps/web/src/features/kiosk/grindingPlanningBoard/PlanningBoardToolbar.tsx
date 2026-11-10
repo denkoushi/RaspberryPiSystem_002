@@ -176,6 +176,9 @@ export function PlanningBoardToolbar({
   specialDueDisabled = false,
   specialDueCounts = { overnight: 0, today: 0 }
 }: PlanningBoardToolbarProps) {
+  useEffect(() => {
+    if (orderPreview && singleResourcePickerAnchor) onCloseSingleResourcePicker?.();
+  }, [orderPreview, singleResourcePickerAnchor, onCloseSingleResourcePicker]);
   const { frozen } = usePlanningBoardOffline();
   const [scaleOpen, setScaleOpen] = useState(false);
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
@@ -274,7 +277,7 @@ export function PlanningBoardToolbar({
             className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
           </button>}
-          {singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
+          {!orderPreview && singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
             anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={singleResourceCd} resourceNameMap={singleResourceNameMap}
             onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
           <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}

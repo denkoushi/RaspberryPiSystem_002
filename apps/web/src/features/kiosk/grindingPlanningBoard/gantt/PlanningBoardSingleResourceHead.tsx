@@ -32,7 +32,7 @@ export function PlanningBoardSingleResourceHead({ machineSelectionLabel, machine
   const buttonClass = (pressed: boolean) => clsx('h-8 w-[52px] shrink-0 rounded-md border text-[15px] font-bold disabled:opacity-40 aria-disabled:opacity-40',
     pressed ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200');
   return <div data-testid="planning-single-resource-head" className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-slate-950 px-2 [scrollbar-width:none]">
-    <button type="button" aria-label="1台の資源CDを選ぶ" aria-expanded={pickerOpen} onClick={(event) => onOpenPicker?.(event.currentTarget)}
+    <button type="button" aria-label="1台の資源CDを選ぶ" aria-expanded={pickerOpen && !machineSelectionLocked} disabled={machineSelectionLocked} onClick={(event) => { if (!machineSelectionLocked) onOpenPicker?.(event.currentTarget); }}
       className="flex h-8 shrink-0 items-baseline gap-2 whitespace-nowrap rounded-md border border-slate-600 px-2">
       <b className="font-mono text-[17px]">{machineSelectionLabel ?? resourceCd}</b><span className="text-sm font-bold text-slate-300">{machineMode === 2 ? '2台' : names?.join(' / ')}</span><span className="text-[11px] text-slate-400">▼</span>
     </button>
