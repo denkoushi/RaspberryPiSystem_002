@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createPalletOfflineQueueStore } from './palletOfflineQueueStore';
 
@@ -12,6 +12,8 @@ const input = (eventKey: string, readAt = '2026-11-03T09:00:00Z'): PalletQueueIn
 let records: Map<string, PalletQueueRecord>;
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-03T12:00:00Z'));
   records = new Map();
   let lane = Promise.resolve();
   db.transaction.mockImplementation(() => {
@@ -32,6 +34,8 @@ beforeEach(() => {
   db.put.mockImplementation(async (_store, record: PalletQueueRecord) => records.set(record.eventKey, record));
   db.delete.mockImplementation(async (_store, id: string) => records.delete(id));
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('pallet IndexedDB queue', () => {
   it('retains the full request across instances, in insertion order despite clock changes', async () => {

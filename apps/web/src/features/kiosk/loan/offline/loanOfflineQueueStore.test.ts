@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createLoanOfflineQueueStore } from './loanOfflineQueueStore';
 
@@ -12,6 +12,8 @@ const input = (eventKey: string, readAt = '2026-11-03T09:00:00Z'): LoanQueueInpu
 let records: Map<string, LoanQueueRecord>;
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-03T12:00:00Z'));
   records = new Map();
   let lane = Promise.resolve();
   db.transaction.mockImplementation(() => {
@@ -32,6 +34,8 @@ beforeEach(() => {
   db.put.mockImplementation(async (_store, record: LoanQueueRecord) => records.set(record.eventKey, record));
   db.delete.mockImplementation(async (_store, id: string) => records.delete(id));
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('loan IndexedDB queue', () => {
   it('retains the full request across instances, sorted by readAt', async () => {
