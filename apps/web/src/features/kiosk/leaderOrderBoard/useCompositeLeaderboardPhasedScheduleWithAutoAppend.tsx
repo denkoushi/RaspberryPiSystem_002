@@ -60,6 +60,7 @@ import {
   type LeaderboardLaborMetadata
 } from './mergeLeaderboardBoardLaborMetadata';
 import { mergeLeaderboardBoardWithDecorations } from './mergeLeaderboardBoardWithDecorations';
+import { useLeaderboardAppendRetry } from './useLeaderboardAppendRetry';
 import {
   useLeaderboardBoardTerminalCache,
   type LeaderboardBoardCacheMutation
@@ -265,7 +266,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   const appendCompleteShellFingerprintRef = useRef<string | null>(null);
   const lastStartedShellFingerprintRef = useRef<string | null>(null);
   const lastRetryNonceStartedRef = useRef(0);
-  const [appendRetryGeneration, setAppendRetryGeneration] = useState(0);
+  const { generation: appendRetryGeneration, scheduleRetry, resetRetry, isRetryScheduled } = useLeaderboardAppendRetry(paramsKey);
   const appendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
   const appendOverrideParamsKeyRef = useRef<string | null>(null);
   const displayAppendOverrideRef = useRef<ProductionScheduleLeaderboardBoardResponse | null>(null);
@@ -301,7 +302,6 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
     appendCompleteShellFingerprintRef.current = null;
     lastStartedShellFingerprintRef.current = null;
     lastRetryNonceStartedRef.current = 0;
-    setAppendRetryGeneration(0);
     setAppendOverride(null);
     appendOverrideParamsKeyRef.current = null;
     setAppendError(null);
@@ -585,7 +585,7 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
       lastRetryNonceStarted: lastRetryNonceStartedRef.current
     });
 
-    if (!shouldBegin) return;
+    if (!shouldBegin || isRetryScheduled()) return;
 
     lastStartedShellFingerprintRef.current = shellFingerprint;
     lastRetryNonceStartedRef.current = appendRetryGeneration;
@@ -617,6 +617,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           setAppendError(null);
           const payload = buildLeaderboardBoardContinuePayload(boardQueryParams, cur);
           const nextRaw = await postKioskProductionScheduleLeaderboardBoardContinue(payload);
+          if (cancelled || runId !== appendRunIdRef.current) return;
+          resetRetry();
           if (nextRaw.snapshotExpired) {
             appendCompleteForParamsKeyRef.current = null;
             appendCompleteShellFingerprintRef.current = null;
@@ -675,11 +677,15 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
           if (classifyLeaderboardContinueFailure(normalized) === 'terminal') {
             setAppendError(normalized);
           } else {
-            setAppendRetryGeneration((n) => n + 1);
+            scheduleRetry();
           }
         }
       } finally {
-        if (runId === appendRunIdRef.current) setIsAppending(false);
+        if (runId === appendRunIdRef.current) {
+          setIsAppending(false);
+          // 行の中身だけが変わった再取得で打ち切られ、次の追補が始まらなかったときは、残りを取りに戻る。
+          if (cancelled) scheduleRetry();
+        }
       }
     })();
 
@@ -691,6 +697,9 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch-stable append session
   }, [
     appendRetryGeneration,
+    resetRetry,
+    scheduleRetry,
+    isRetryScheduled,
     boardQuery.isSuccess,
     boardQueryParams,
     paramsKey,

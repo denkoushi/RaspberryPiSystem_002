@@ -235,6 +235,13 @@ After deploy + kiosk **force reload** (verification-checklist §6.6.4):
 - 長時間レビュー（2026-06-11〜12）後のデプロイで顕在化、2026-06-12 午後の修正で解消
 - `pageSize` は取得単位。resource paging scope には含めない
 
+## Append retry backoff and resume (2026-11-10)
+
+- **Symptom**: when a `continue` request kept failing (network down, API restarting), the board retried immediately and without limit. After a failure in the middle of a long list, the remaining rows were not fetched again until the page was reopened.
+- **Fix**: retries wait 1, 2, 4, 8, 16, then 30 seconds (no retry limit; the wait resets after a successful `continue`). A retry resumes from the rows already appended instead of requiring a new shell. When a refetch that only changed row contents interrupts an append, the remaining rows are fetched afterwards.
+- **Also**: failures of complete and of manual order changes now show the existing "保存に失敗しました。再度お試しください。" alert. The IndexedDB board cache keeps the newest 30 entries.
+- **Not covered**: cache trimming runs only after a successful write, and it orders entries by the terminal clock.
+
 ## References
 
 - [KB-374](./KB-374-leaderboard-board-continue-cursor-contract.md) — continue contract, pageSize 80/160 history
