@@ -57,6 +57,7 @@ TRIAL_HOSTS = {
     'raspi4-robodrill01',
     'raspi4-assembly-01',
     'raspi4-assembly-02',
+    'raspberrypi4',
 }
 
 
