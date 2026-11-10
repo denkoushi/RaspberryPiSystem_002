@@ -69,3 +69,5 @@
 .sk-screen .sk-go:disabled { background:var(--sk-s3); color:var(--sk-muted); opacity:1; }
 .sk-toast { position:fixed; bottom:28px; left:50%; transform:translateX(-50%); border-radius:14px; padding:14px 22px; background:#e8eef7; color:var(--sk-bg); z-index:70; }
 .sk-screen [role=alert] { color:#ff6e6e; }
+.sk-screen .sk-held { outline:3px dashed #ff6e6e; outline-offset:-3px; }
+.sk-screen .sk-discard { background:#ff6e6e22; border-color:#ff6e6e; }

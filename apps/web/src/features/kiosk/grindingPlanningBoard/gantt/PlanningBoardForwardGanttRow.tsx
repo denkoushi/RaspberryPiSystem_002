@@ -17,6 +17,7 @@ import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars
 import { PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
+import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
 import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -337,10 +338,11 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 if (suppressClick.current) { suppressClick.current = false; return; }
                 if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
+              {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {bar.unknown ? '所要不明' : segmentWidth >= 48
-                ? <span className="block break-all px-1"><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
+                ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
                   <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>
                 </span> : null}
             </button>;
