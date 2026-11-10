@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useEffect } from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { HermesPageContextProvider, useHermesPageContext } from '../../components/hermes/HermesPageContext';
 
@@ -11,13 +11,13 @@ import type { HermesPageContext } from '../../api/domains/assembly';
 import type { PartMeasurementSheetDto } from '../../features/part-measurement/types';
 import type { NfcEvent } from '../../hooks/useNfcStream';
 
-const mocks = vi.hoisted(() => ({ getSheet: vi.fn(), cancelSheet: vi.fn(), patchSheet: vi.fn(), transferLock: vi.fn(), nfcEvent: null as NfcEvent | null }));
+const mocks = vi.hoisted(() => ({ getSheet: vi.fn(), cancelSheet: vi.fn(), patchSheet: vi.fn(), finalizeSheet: vi.fn(), transferLock: vi.fn(), nfcEvent: null as NfcEvent | null }));
 vi.mock('../../api/client', () => ({
   getResolvedClientKey: () => 'test-client',
   getPartMeasurementSheet: mocks.getSheet,
   cancelPartMeasurementSheet: mocks.cancelSheet,
   downloadPartMeasurementSheetCsv: vi.fn(),
-  finalizePartMeasurementSheet: vi.fn(),
+  finalizePartMeasurementSheet: mocks.finalizeSheet,
   patchPartMeasurementSheet: mocks.patchSheet,
   transferPartMeasurementEditLock: mocks.transferLock,
 }));
@@ -36,6 +36,24 @@ function buildSheet(fhincd = ' FH001 ', id = 'sheet-1'): PartMeasurementSheetDto
     editLockExpiresAt: null, editLockClientDeviceName: null, cancelledAt: null, cancelReason: null,
     invalidatedAt: null, invalidatedReason: null, createdAt: '2026-10-08', updatedAt: '2026-10-08',
     finalizedAt: '2026-10-08', template: null, results: [], employee: null,
+  };
+}
+
+function buildDraftSheet(): PartMeasurementSheetDto {
+  return {
+    ...buildSheet(), status: 'DRAFT', quantity: 2,
+    template: {
+      id: 'template-1', fhincd: 'FH001', resourceCd: 'R001', processGroup: 'cutting',
+      templateScope: 'three_key', candidateFhinmei: null, name: '測定', version: 1, isActive: true,
+      selfInspectionMode: 'full', selfInspectionFixedCount: null, selfInspectionSampleSize: null,
+      visualTemplateId: null, visualTemplate: null, siblingGroupId: null, siblingGroup: null,
+      items: [{
+        id: 'item-1', sortOrder: 0, datumSurface: 'A', measurementPoint: 'B', measurementLabel: '寸法',
+        displayMarker: null, unit: 'mm', allowNegative: false, decimalPlaces: 2,
+        markerXRatio: null, markerYRatio: null, nominalValue: null, lowerLimit: null, upperLimit: null,
+      }],
+    },
+    results: [0, 1].map(pieceIndex => ({ id: `result-${pieceIndex}`, pieceIndex, templateItemId: 'item-1', value: '10' })),
   };
 }
 
@@ -64,12 +82,121 @@ function pageTree(onChange = vi.fn(), initialEntry = '/kiosk/part-measurement/ed
 }
 
 describe('KioskPartMeasurementEditPage Hermes context', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     mocks.getSheet.mockReset().mockResolvedValue({ sheet: buildSheet(), session: null });
     mocks.cancelSheet.mockReset().mockResolvedValue(undefined);
     mocks.patchSheet.mockReset();
+    mocks.finalizeSheet.mockReset();
     mocks.transferLock.mockReset();
     mocks.nfcEvent = null;
+  });
+
+
+  it.each(['', '   '])('sends a cleared cell as null before finalizing: %j', async value => {
+    const draft = buildDraftSheet();
+    mocks.getSheet.mockResolvedValue({ sheet: draft, session: null });
+    mocks.patchSheet.mockResolvedValue({ sheet: draft, session: null });
+    mocks.finalizeSheet.mockResolvedValue({ sheet: { ...draft, status: 'FINALIZED' }, session: null });
+    render(pageTree());
+    const cells = await screen.findAllByDisplayValue('10');
+    fireEvent.change(cells[0], { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    await waitFor(() => expect(mocks.finalizeSheet).toHaveBeenCalledOnce());
+    expect(mocks.patchSheet).toHaveBeenCalledWith('sheet-1', { quantity: 2, results: [
+      { pieceIndex: 0, templateItemId: 'item-1', value: null },
+      { pieceIndex: 1, templateItemId: 'item-1', value: '10' },
+    ] }, 'test-client');
+    const nullPatchIndex = mocks.patchSheet.mock.calls.findIndex(([, body]) =>
+      body.results?.some((result: { value: string | null }) => result.value === null));
+    expect(nullPatchIndex).toBeGreaterThanOrEqual(0);
+    expect(mocks.patchSheet.mock.invocationCallOrder[nullPatchIndex]).toBeLessThan(mocks.finalizeSheet.mock.invocationCallOrder[0]);
+  });
+
+  it('sends only cells within the reduced quantity, including when quantity is zero', async () => {
+    const draft = buildDraftSheet();
+    mocks.getSheet.mockResolvedValue({ sheet: draft, session: null });
+    mocks.patchSheet.mockResolvedValue({ sheet: draft, session: null });
+    render(pageTree());
+    await screen.findAllByDisplayValue('10');
+    fireEvent.change(screen.getByLabelText('個数'), { target: { value: '1' } });
+    fireEvent.change(screen.getByDisplayValue('10'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: '手動保存' }));
+    await screen.findByText('保存しました。');
+    expect(mocks.patchSheet).toHaveBeenLastCalledWith('sheet-1', { quantity: 1, results: [
+      { pieceIndex: 0, templateItemId: 'item-1', value: null },
+    ] }, 'test-client');
+    fireEvent.change(screen.getByLabelText('個数'), { target: { value: '0' } });
+    fireEvent.click(screen.getByRole('button', { name: '手動保存' }));
+    await waitFor(() => expect(mocks.patchSheet).toHaveBeenLastCalledWith('sheet-1', { quantity: 0, results: undefined }, 'test-client'));
+  });
+
+  it('does not finalize when the preceding save fails', async () => {
+    mocks.getSheet.mockResolvedValue({ sheet: buildDraftSheet(), session: null });
+    mocks.patchSheet.mockRejectedValue({ response: { data: { message: '小数桁数は最大2桁です' } } });
+    render(pageTree());
+    await screen.findAllByDisplayValue('10');
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    expect(await screen.findByText('小数桁数は最大2桁です')).toBeInTheDocument();
+    expect(mocks.finalizeSheet).not.toHaveBeenCalled();
+  });
+
+  it('shows autosave failures', async () => {
+    mocks.getSheet.mockResolvedValue({ sheet: buildDraftSheet(), session: null });
+    mocks.patchSheet.mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValue({ sheet: buildDraftSheet(), session: null });
+    render(pageTree());
+    const cells = await screen.findAllByDisplayValue('10');
+    fireEvent.change(cells[0], { target: { value: '11' } });
+    expect(await screen.findByText('保存に失敗しました。')).toBeInTheDocument();
+    expect(mocks.patchSheet).toHaveBeenCalledWith('sheet-1', expect.objectContaining({
+      results: expect.arrayContaining([expect.objectContaining({ pieceIndex: 0, value: '11' })]),
+    }), 'test-client');
+    fireEvent.change(cells[0], { target: { value: '10.12' } });
+    await waitFor(() => expect(screen.queryByText('保存に失敗しました。')).not.toBeInTheDocument());
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(2);
+  });
+
+  it('autosaves only on edits and preserves messages from other operations', async () => {
+    vi.useFakeTimers();
+    const draft = buildDraftSheet();
+    mocks.getSheet.mockResolvedValue({ sheet: draft, session: null });
+    mocks.patchSheet.mockImplementation(async () => ({ sheet: { ...draft }, session: null }));
+    await act(async () => { render(pageTree()); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '手動保存' }));
+    await act(async () => {});
+    expect(screen.getByText('保存しました。')).toBeInTheDocument();
+    fireEvent.change(screen.getAllByDisplayValue('10')[0], { target: { value: '11' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('保存しました。')).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(2);
+    fireEvent.change(screen.getByLabelText('個数'), { target: { value: '1' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(3);
+    expect(mocks.patchSheet).toHaveBeenLastCalledWith('sheet-1', expect.objectContaining({ quantity: 1 }), 'test-client');
+  });
+
+  it('cancels scheduled autosaves and does not PATCH during or after finalization', async () => {
+    vi.useFakeTimers();
+    const draft = buildDraftSheet();
+    mocks.getSheet.mockResolvedValue({ sheet: draft, session: null });
+    mocks.patchSheet.mockImplementation(async () => ({ sheet: { ...draft }, session: null }));
+    let finishFinalize!: (value: { sheet: PartMeasurementSheetDto }) => void;
+    mocks.finalizeSheet.mockImplementation(() => new Promise(resolve => { finishFinalize = resolve; }));
+    await act(async () => { render(pageTree()); });
+    fireEvent.change(screen.getAllByDisplayValue('10')[0], { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).toHaveBeenCalledOnce();
+    await act(async () => { finishFinalize({ sheet: { ...draft, status: 'FINALIZED' } }); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).toHaveBeenCalledOnce();
+    expect(screen.getByText('確定しました。')).toBeInTheDocument();
   });
 
   it('separates draft cancellation from save and places back before the confirmed cancellation', async () => {
@@ -150,4 +277,29 @@ describe('KioskPartMeasurementEditPage Hermes context', () => {
       path: '/kiosk/part-measurement/edit/sheet-2', entity: { kind: 'partNumber', value: 'FH002' },
     });
   });
+
+  it('waits for an in-flight autosave before saving and finalizing', async () => {
+    vi.useFakeTimers();
+    const draft = buildDraftSheet();
+    mocks.getSheet.mockResolvedValue({ sheet: draft, session: null });
+    let finishAutosave!: (value: { sheet: PartMeasurementSheetDto }) => void;
+    mocks.patchSheet.mockImplementationOnce(() => new Promise(resolve => { finishAutosave = resolve; }))
+      .mockResolvedValue({ sheet: draft, session: null });
+    mocks.finalizeSheet.mockResolvedValue({ sheet: { ...draft, status: 'FINALIZED' }, session: null });
+    await act(async () => { render(pageTree()); });
+    fireEvent.change(screen.getAllByDisplayValue('10')[0], { target: { value: '10.12' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(600); });
+    expect(mocks.patchSheet).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: '確定' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).toHaveBeenCalledOnce();
+    expect(mocks.finalizeSheet).not.toHaveBeenCalled();
+    await act(async () => { finishAutosave({ sheet: draft }); });
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(2);
+    expect(mocks.finalizeSheet).toHaveBeenCalledOnce();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1800); });
+    expect(mocks.patchSheet).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('確定しました。')).toBeInTheDocument();
+  });
+
 });
