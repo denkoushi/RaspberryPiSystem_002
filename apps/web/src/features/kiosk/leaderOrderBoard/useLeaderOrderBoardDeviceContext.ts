@@ -7,6 +7,7 @@ import {
 import { stripSitePrefixFromDeviceLabel } from '../manualOrder/manualOrderDeviceDisplayLabel';
 import { KIOSK_DEFAULT_SITE_KEY, useKioskSiteKeys } from '../sites/useKioskSiteKeys';
 
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 import { LEADER_BOARD_DEVICE_SNAPSHOT_REFETCH_MS } from './performance/leaderBoardRefetchPolicy';
 
 const MANUAL_ORDER_PAGE_SITE_KEY = 'manual-order-page-site';
@@ -24,7 +25,7 @@ export function useLeaderOrderBoardDeviceContext() {
   const siteKeys = useKioskSiteKeys();
   const [siteKey, setSiteKey] = useState<string>(() => {
     if (typeof window === 'undefined') return KIOSK_DEFAULT_SITE_KEY;
-    const stored = window.localStorage.getItem(MANUAL_ORDER_PAGE_SITE_KEY)?.trim();
+    const stored = readLeaderBoardLocalStorage(MANUAL_ORDER_PAGE_SITE_KEY)?.trim();
     return stored && stored.length > 0 ? stored : KIOSK_DEFAULT_SITE_KEY;
   });
 
@@ -64,7 +65,7 @@ export function useLeaderOrderBoardDeviceContext() {
   const handleSiteChange = (next: string) => {
     setSiteKey(next);
     if (typeof window !== 'undefined') {
-      window.localStorage.setItem(MANUAL_ORDER_PAGE_SITE_KEY, next);
+      writeLeaderBoardLocalStorage(MANUAL_ORDER_PAGE_SITE_KEY, next);
     }
   };
 

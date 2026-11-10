@@ -572,6 +572,61 @@ describe('PlanningBoardGanttView', () => {
     expect(values.onDueDrop).not.toHaveBeenCalled();
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
+  it.each(['blur', 'pointerUp', 'pointerCancel', 'lostPointerCapture', 'unmount'] as const)('removes the pan cover and blur listener on %s', (end) => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    try {
+      const { unmount } = render(<PlanningBoardGanttView {...props()} />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      const initialLeft = viewport.scrollLeft;
+      add.mockClear();
+      fireEvent.pointerDown(viewport, { pointerId: 9, button: 1, clientX: 100, clientY: 100 });
+      const cover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+      expect(cover).toBeInTheDocument();
+      const listener = add.mock.calls.find(([type]) => type === 'blur')?.[1];
+      if (end === 'blur') fireEvent(window, new Event('blur'));
+      else if (end === 'unmount') unmount();
+      else fireEvent[end](cover, { pointerId: 9 });
+      expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+      expect(listener).toBeTypeOf('function');
+      expect(remove).toHaveBeenCalledWith('blur', listener);
+      fireEvent.pointerMove(cover, { pointerId: 9, clientX: 150, clientY: 150 });
+      expect(viewport.scrollLeft).toBe(initialLeft);
+      if (end !== 'unmount') {
+        fireEvent.pointerDown(viewport, { pointerId: 10, button: 1 });
+        expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeInTheDocument();
+        fireEvent(window, new Event('blur'));
+        expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+      }
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+  it.each([9, 10])('ignores delayed events from the blurred pan while pointer %s pans again', (pointerId) => {
+    render(<PlanningBoardGanttView {...props()} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    viewport.scrollLeft = 200;
+    viewport.scrollTop = 100;
+    fireEvent.pointerDown(viewport, { pointerId: 9, button: 1, clientX: 100, clientY: 100 });
+    const oldCover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+    fireEvent(window, new Event('blur'));
+    fireEvent.pointerDown(viewport, { pointerId, button: 1, clientX: 100, clientY: 100 });
+    const cover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+    expect(cover).not.toBe(oldCover);
+    fireEvent.pointerMove(oldCover, { pointerId: 9, clientX: 150, clientY: 150 });
+    for (const end of ['pointerUp', 'pointerCancel', 'lostPointerCapture'] as const) {
+      fireEvent[end](oldCover, { pointerId: 9 });
+    }
+    expect(cover).toBeInTheDocument();
+    expect(viewport.scrollLeft).toBe(200);
+    expect(viewport.scrollTop).toBe(100);
+    fireEvent.pointerMove(cover, { pointerId, clientX: 130, clientY: 120 });
+    expect(viewport.scrollLeft).toBe(170);
+    expect(viewport.scrollTop).toBe(80);
+    fireEvent.pointerUp(cover, { pointerId });
+    expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+  });
   it.each(['backward', 'forward'] as const)('shows one small header per category in %s resource view', (mode) => {
     const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['100', '305', '584'], category: 'all', resourceCategories: { '100': 'cutting', '305': 'grinding', '584': 'grinding' },
