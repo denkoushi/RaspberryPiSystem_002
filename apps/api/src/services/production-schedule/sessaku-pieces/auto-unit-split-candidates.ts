@@ -37,7 +37,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
   const parentId = parentIdFor('r');
   // Include every eligibility source, not just CSV row data or set versions.
-  // BTRIM matches CsvDashboardRow's existing part lookup expression index.
+  // Match the board's String.trim semantics, including tabs and full-width spaces.
   const inputVersion = Prisma.sql`MD5(JSONB_BUILD_ARRAY(
     ${JSON.stringify(policy)}::jsonb,
     (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."rowData",
@@ -47,7 +47,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
       (SELECT JSONB_BUILD_ARRAY(o."itemKey", o."overrideResourceCd") FROM "ProductionScheduleGrindingPlanningBoardOverride" o
         WHERE o."csvDashboardId" = v."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = (${parentIdFor('v')}))
     ) ORDER BY v."id") FROM "CsvDashboardRow" v
-      WHERE v."csvDashboardId" = r."csvDashboardId" AND BTRIM(v."rowData"->>'FSEIBAN') = BTRIM(r."rowData"->>'FSEIBAN')),
+      WHERE v."csvDashboardId" = r."csvDashboardId" AND ${trim(Prisma.sql`v."rowData"->>'FSEIBAN'`)} = ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)}),
     (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(TO_JSONB(v),
       (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(TO_JSONB(p),
         (SELECT JSONB_AGG(TO_JSONB(op) ORDER BY op."id") FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id"),

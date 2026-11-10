@@ -51,7 +51,7 @@ describe('automatic candidate SQL contract', () => {
     expect(sql.sql).toContain('rejected."inputVersion" = (MD5(');
     expect(sql.sql).toContain('v."rowData"');
     expect(sql.sql).toContain('TO_JSONB(v)');
-    expect(sql.sql).toContain(`BTRIM(v."rowData"->>'FSEIBAN') = BTRIM(r."rowData"->>'FSEIBAN')`);
+    expect(sql.sql).toContain(`BTRIM(COALESCE(v."rowData"->>'FSEIBAN', ''), ?) = BTRIM(COALESCE(r."rowData"->>'FSEIBAN', ''), ?)`);
     expect(sql.sql).toContain(`v."fseiban" = r."rowData"->>'FSEIBAN'`);
     expect(sql.sql).not.toContain('ProductionScheduleSessakuPieceHistory');
   });

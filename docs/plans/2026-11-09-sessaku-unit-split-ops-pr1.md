@@ -37,7 +37,16 @@ A global pg_try_advisory_xact_lock admits one automatic runner; a busy runner re
 
 Run the order-scoped candidate SQL with LIMIT 6 on every request. The splittable_rows materialized gate first checks parent quantity 2–50 and empty sets or editable non-unit pieces. Only then run winner/predecessor and resource checks. Exclude linked downstream quantity warnings/completions with the same winner semantics as locked validation; per-piece operation protections retain editable siblings. Locale-sensitive process order and propagation structures SQL cannot decide remain subject to TS/locked validation.
 
-Complete at most five lots per request. Exclude every considered parent only within that request and fetch subsequent pages, including after permanent per-lot rejections. There is no 60-parent exclusion cap, History gate or empty-result TTL. Input-structural refusals alone are remembered in API-process memory for three minutes, keyed by site and parent ID plus a SQL fingerprint of that seiban's raw rows and PieceSet versions. SQL compares the current fingerprint before LIMIT, so content/version changes invalidate the rejection immediately. Capacity/completion refusals, missing projections and reloadable conflicts are never cached. Return hasMore:false when the remaining candidate search is exhausted; BUSY, budget exhaustion and reloadable conflicts (including STALE_SESSAKU_PIECES and P2034) retain hasMore:true. Connection and unexpected errors propagate. skippedCount counts only attempted rejected lots, not projected siblings or the SQL gate's exclusions. Committed counts survive a later runner timeout.
+Complete at most five lots per request.
+Exclude every considered parent only within that request and fetch subsequent pages, including after permanent per-lot rejections.
+There is no 60-parent exclusion cap, History gate or empty-result TTL.
+Non-reloadable ApiError refusals (including capacity/completion) and unexpected per-lot errors are remembered in API-process memory for three minutes, keyed by site and parent ID plus a SQL fingerprint of that seiban's raw rows and PieceSet versions.
+SQL compares the current fingerprint before LIMIT, so content/version changes invalidate the rejection immediately.
+Missing projections and reloadable conflicts are not cached, except a second consecutive STALE for the same inputVersion.
+Return hasMore:false when the remaining candidate search is exhausted; BUSY, budget exhaustion and reloadable conflicts (including STALE_SESSAKU_PIECES and P2034) retain hasMore:true.
+Runner failures and server ApiErrors propagate; unexpected per-lot errors warn and skip.
+skippedCount counts only attempted rejected lots without a committed split, not projected siblings or the SQL gate's exclusions.
+Committed counts survive a later runner timeout.
 
 The discovery/start budget is 3 seconds. Each started lot gets a 3000ms budget from its own start, capped at the runner safe deadline; the first lot may start after discovery exhausts the start budget. Later lots may start only before the original deadline. The outer runner timeout remains 10 seconds. Reserve the final runner second for transaction acquisition/commit; start no new split at or after this safe deadline. Check this deadline before each preprocessing read and after each stage and return hasMore:true immediately on expiry. Execute the candidate and projection-source queries on the runner connection, refreshing its transaction-local statement_timeout to the remaining safe budget before each database stage.
 
@@ -814,6 +823,6 @@ Restoring per-row optimistic invalidation increases tail writes and latency; thi
 - 自動分割数量をロック内の現在数量から生成し、候補取得後のCSV数量変更（5→2/7）を結合テストに追加。手動分割の数量指定と既存のversion/revision確認を維持。
 - 入力が同じ4xx拒否も既存の3分TTLで記憶。inputVersionにはCSV全行、数量補足、完了・外部完了、資源ポリシー・設定、該当親/片の資源上書き、PieceSet/Piece、工程完了を含める。一時競合は記憶せず再試行。複数回呼び出しでの後続処理と入力変更による無効化を追加検証。
 - 最初のロットは開始から3000ms、以後は全体期限の残り時間を使用し、いずれもrunnerDeadlineで上限を設定。残りが無ければ開始しない。
-- 候補SQLの57014は専用警告とhasMore:false、55P03は従来のbusy扱い。製番検索を既存BTRIM索引に合わせ、後工程の関連ORを索引別UNIONへ変更。セット連結/片だけの連結の同値性テストを追加。
+- 候補SQLの57014は専用警告とhasMore:true、55P03は従来のbusy扱い。製番検索を既存BTRIM索引に合わせ、後工程の関連ORを索引別UNIONへ変更。セット連結/片だけの連結の同値性テストを追加。
 - DB選択は明示TEST_DATABASE_URL、または確認済みCIワーカーDBに限定。ci.ymlのPrepare API worker databasesがborrow_return_w1〜w4を作成し、setup-env.tsがVITEST_POOL_IDで選択。Run API tests (coverage shard)とvitest.config.tsのsrc/**/*.{test,spec}.tsにより本ファイルも実行対象。
 - 検証(Claude が試験DB localhost:55441 で実行): API build型チェック成功。関連4ファイル 411件成功・2件skip。`SESSAKU_SPLIT_MEASURE=1` で3315行/4サイト: 候補SQL 約50ms(先頭)/約52ms(末尾)、1ロット(候補取得込み) 582ms(先頭)/596ms(末尾)、upsert 8,568/8,600。TEST_DATABASE_URLなし・非CIでは結合ファイルは全件skip。

@@ -23,6 +23,7 @@ export const AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS = AUTO_UNIT_SPLIT_BUDGET_MS + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
 
 const REJECTED_INPUT_TTL_MS = 3 * 60 * 1000;
+const staleInputs = new Map<string, { inputVersion: string; expiresAt: number }>();
 const rejectedInputs = new Map<string, AutoUnitSplitRejectedInput & { siteKey: string; expiresAt: number }>();
 
 export function autoUnitSplitCandidates(items: readonly GrindingPlanningBoardItem[], capacity: GrindingPlanningBoardResourceCapacityResponse,
@@ -58,7 +59,7 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
   } catch (error) {
     if (error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT') {
       logger.warn({ event: 'sessaku_piece.auto_unit_split_candidate_timeout', siteKey: params.siteKey }, 'Automatic unit split candidate query timed out');
-      return { ...result, hasMore: false };
+      return { ...result, hasMore: true };
     }
     if (isAutoUnitSplitBusyError(error) || error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_BUDGET') return { ...result, hasMore: true };
     throw error;
@@ -99,6 +100,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     if (rejected.expiresAt <= now) rejectedInputs.delete(key);
     else if (rejected.siteKey === params.siteKey) cachedRejections.push(rejected);
   }
+  for (const [key, stale] of staleInputs) if (stale.expiresAt <= now) staleInputs.delete(key);
   let attempted = 0;
   let retryNeeded = false;
   while (true) {
@@ -199,6 +201,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         attempted += 1;
         let expectedVersion = pieces[0].pieceSetVersion ?? 0;
         let counted = false;
+        const rejectionKey = JSON.stringify([params.siteKey, parentItemId]);
         try {
           for (const item of pieces) {
             const saved = await runSessakuPieceOperation({ action: 'auto_unit_split_lot', siteKey: params.siteKey, parentItemId,
@@ -208,20 +211,31 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
               quantities: Array.from({ length: item.plannedQuantity! }, () => 1), autoUnitSplit: true, deadline: lotDeadline, audit
             }));
             expectedVersion = saved.pieceSetVersion;
+            staleInputs.delete(rejectionKey);
             if (!counted) { result.splitCount += 1; counted = true; }
           }
         } catch (error) {
-          if (isAutoUnitSplitBusyError(error)) { result.skippedCount += 1; stopped = true; return; }
           const code = (error as { code?: string })?.code;
-          if (error instanceof ApiError ? error.statusCode >= 500 : code !== 'P2034') throw error;
-          result.skippedCount += 1;
-          const reloadable = code === 'P2034' || code?.startsWith('STALE_')
+          if (code === 'P2028' || code === 'P2024') throw error;
+          if (isAutoUnitSplitBusyError(error)) { if (!counted) result.skippedCount += 1; stopped = true; return; }
+          if (error instanceof ApiError && error.statusCode >= 500) throw error;
+          if (!counted) result.skippedCount += 1;
+          let reloadable = code === 'P2034' || code?.startsWith('STALE_')
             || ['SOURCE_ITEM_MISSING', 'PIECE_REFERENCED', 'AUTO_UNIT_SPLIT_BUSY', 'AUTO_UNIT_SPLIT_BUDGET'].includes(code ?? '');
-          if (error instanceof ApiError && !reloadable) rememberRejection(parentItemId);
+          if (code?.startsWith('STALE_')) {
+            const row = candidateRows.find((row) => row.parentId === parentItemId);
+            if (row?.inputVersion) {
+              if (staleInputs.get(rejectionKey)?.inputVersion === row.inputVersion) {
+                reloadable = false;
+                staleInputs.delete(rejectionKey);
+              } else staleInputs.set(rejectionKey, { inputVersion: row.inputVersion, expiresAt: performance.now() + REJECTED_INPUT_TTL_MS });
+            }
+          } else staleInputs.delete(rejectionKey);
+          if (!reloadable) rememberRejection(parentItemId);
           retryNeeded ||= Boolean(reloadable);
-          if (error instanceof ApiError) logger.warn({
+          logger.warn({
             event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,
-            statusCode: error.statusCode, code: error.code
+            statusCode: error instanceof ApiError ? error.statusCode : undefined, code
           }, 'Automatic unit split skipped');
           // Only lock contention and deadline exhaustion stop work on unrelated lots.
           if (code === 'AUTO_UNIT_SPLIT_BUSY' || code === 'AUTO_UNIT_SPLIT_BUDGET') {

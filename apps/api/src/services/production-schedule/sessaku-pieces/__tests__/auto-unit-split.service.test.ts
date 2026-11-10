@@ -22,7 +22,8 @@ vi.mock('../piece-audit.js', () => ({ runSessakuPieceOperation: mocks.audit }));
 import { autoSplitSessakuUnits, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS,
   AUTO_UNIT_SPLIT_BUDGET_MS, AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS, AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS,
   AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS } from '../auto-unit-split.service.js';
-import { sessakuPieceParentItemId } from '../piece-key.js';
+import { Prisma } from '@prisma/client';
+import { sessakuPieceConflict, sessakuPieceParentItemId } from '../piece-key.js';
 import { ApiError } from '../../../../lib/errors.js';
 
 const item = (patch: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
@@ -122,12 +123,58 @@ describe('automatic unit split', () => {
     expect(mocks.rows).not.toHaveBeenCalled(); expect(mocks.projection).not.toHaveBeenCalled();
     expect(mocks.sets).not.toHaveBeenCalled(); expect(mocks.audit).not.toHaveBeenCalled();
   });
-  it.each([new Error('connection lost'), new ApiError(500, 'timeout')])(
-    'stops and rethrows unexpected errors', async (error) => {
+  it.each([new ApiError(500, 'timeout')])(
+    'stops and rethrows server ApiErrors', async (error) => {
       mocks.items = [item(), item({ itemId: 'row:two' })]; mocks.split.mockRejectedValueOnce(error);
       await expect(autoSplitSessakuUnits({ siteKey: 'site' })).rejects.toBe(error);
       expect(mocks.split).toHaveBeenCalledTimes(1);
     });
+  it('does not cache a P2028 lot failure or continue using the expired runner', async () => {
+    mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' })];
+    mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'runner-v1' }]);
+    mocks.split.mockRejectedValueOnce(Object.assign(new Error('expired transaction'), { code: 'P2028' }));
+    expect(await autoSplitSessakuUnits({ siteKey: 'expired-lot-runner' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(mocks.split).toHaveBeenCalledTimes(1);
+    expect(mocks.warn).not.toHaveBeenCalled();
+    await autoSplitSessakuUnits({ siteKey: 'expired-lot-runner' });
+    expect(mocks.query.mock.calls[1][0].sql).not.toContain('JSONB_TO_RECORDSET');
+  });
+  it('skips and remembers an unexpected P2025 while continuing to the next lot', async () => {
+    mocks.items = [item(), item({ itemId: 'row:tail', sourceRowId: 'tail', fhincd: 'TAIL' })];
+    mocks.query.mockResolvedValueOnce(mocks.items.map((row) => ({ id: row.sourceRowId, fseiban: 'S', parentId: row.itemId, inputVersion: 'p2025-v1' })))
+      .mockResolvedValueOnce([]);
+    mocks.split.mockRejectedValueOnce(Object.assign(new Error('missing record'), { code: 'P2025' }));
+    expect(await autoSplitSessakuUnits({ siteKey: 'unexpected-lot' })).toEqual({ splitCount: 1, skippedCount: 1, hasMore: false });
+    expect(mocks.split.mock.calls[1][0].parentItemId).toBe('row:tail');
+    expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'sessaku_piece.auto_unit_split_skipped', code: 'P2025' }), expect.any(String));
+    await autoSplitSessakuUnits({ siteKey: 'unexpected-lot' });
+    expect(mocks.query.mock.calls[1][0].values).toContainEqual(expect.stringContaining('p2025-v1'));
+  });
+  it('remembers only the second consecutive STALE for the same inputVersion, including P2002', async () => {
+    mocks.items = [item()];
+    const row = { id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'v1' };
+    mocks.query.mockImplementation(async (sql) => {
+      const cached = sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('[{'))
+        .flatMap((value: string) => JSON.parse(value)) as { parentId: string; inputVersion: string }[];
+      return cached.some((entry) => entry.parentId === row.parentId && entry.inputVersion === row.inputVersion) ? [] : [row];
+    });
+    mocks.split.mockImplementation(async () => sessakuPieceConflict(new Prisma.PrismaClientKnownRequestError('unique', { code: 'P2002', clientVersion: 'test' })));
+    const siteKey = 'repeated-stale';
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+    row.inputVersion = 'v2';
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
+    expect(mocks.query.mock.calls[2][0].sql).not.toContain('JSONB_TO_RECORDSET');
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect(mocks.split).toHaveBeenCalledTimes(3);
+  });
+  it('counts a partially split lot only as split when its remaining piece fails', async () => {
+    mocks.items = ['a', 'b'].map((pieceId) => item({ itemId: `piece:${pieceId}`, kind: 'piece', parentItemId: 'row:one', pieceId, pieceSetVersion: 1 }));
+    mocks.split.mockResolvedValueOnce({ pieceSetVersion: 2 })
+      .mockRejectedValueOnce(new ApiError(409, 'stale', undefined, 'STALE_SESSAKU_PIECES'));
+    expect(await autoSplitSessakuUnits({ siteKey: 'partial-lot' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
+    expect(mocks.split).toHaveBeenCalledTimes(2);
+  });
   it('splits history-only lots without reading or writing history', async () => {
     const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
     const id = `row:${Buffer.from(JSON.stringify(Object.values(key))).toString('base64url')}`;
@@ -287,12 +334,15 @@ describe('automatic unit split', () => {
       expect(read.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.timeout.mock.invocationCallOrder[index + 3]);
     }
   });
-  it('warns and stops without retry after a candidate statement timeout', async () => {
+  it('warns and retains a retry after a candidate statement timeout, then splits the tail', async () => {
     mocks.query.mockRejectedValueOnce(Object.assign(new Error('statement timeout'), { code: 'P2010', meta: { code: '57014' } }));
-    expect(await autoSplitSessakuUnits({ siteKey: 'statement-cancelled' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect(await autoSplitSessakuUnits({ siteKey: 'statement-cancelled' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
     expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'sessaku_piece.auto_unit_split_candidate_timeout' }), expect.any(String));
     expect(mocks.query).toHaveBeenCalledTimes(1);
     expect(mocks.rows).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
+    mocks.items = [item({ itemId: 'row:tail', fhincd: 'TAIL' })];
+    expect(await autoSplitSessakuUnits({ siteKey: 'statement-cancelled' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    expect(mocks.split).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ parentItemId: 'row:tail' }));
   });
   it.each([' PART', 'PART ', 'ＰＡＲＴ'])('excludes different raw part keys that cannot propagate: %j', (fhincd) => {
     expect(candidates([item(), item({ itemId: 'later', processOrder: '20', fhincd })])).toEqual([]);
@@ -429,7 +479,7 @@ describe('automatic unit split', () => {
       }
       return sqlRows.filter((row) => !excluded.has(row.parentId)).slice(0, 6);
     });
-    expect(await autoSplitSessakuUnits({ siteKey: 'paging-overrun' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: kind === 'budget' });
+    expect(await autoSplitSessakuUnits({ siteKey: 'paging-overrun' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
     expect(mocks.query).toHaveBeenCalledTimes(2); expect(mocks.audit).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
   });
   it('re-evaluates TS process-order rejections on every opening without permanent history', async () => {
