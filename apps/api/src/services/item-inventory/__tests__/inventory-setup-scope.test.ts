@@ -103,6 +103,7 @@ describe('replacement tag usage', () => {
     const tx = {
       inventoryCompartment: { findUnique: vi.fn().mockResolvedValue({ id: 'target', itemTag: null }) },
       employee: { findFirst: vi.fn() }, item: { findFirst: vi.fn() }, measuringInstrumentTag: { findFirst: vi.fn() }, riggingGearTag: { findFirst: vi.fn() },
+      machineNfcTag: { findUnique: vi.fn() },
       inventoryNfcTag: { findUnique: vi.fn().mockResolvedValue({ compartmentId: 'other', compartment: { inventoryItem: { name: 'ドリル' }, drawer: { drawerNumber: 3, shelf: { area: '生産技術課 北', shelfNumber: 2 } } } }), update: vi.fn() },
     };
     const service = new ItemInventoryService({ $transaction: (work: any) => work(tx) } as never);
@@ -114,6 +115,7 @@ describe('replacement tag usage', () => {
     const tx = {
       inventoryCompartment: { findUnique: vi.fn().mockResolvedValue({ id: 'target', inventoryItemId: 'item', stockQuantity: 3, itemTag: { id: 'old', uid: 'old-uid' } }) },
       employee: { findFirst: vi.fn() }, item: { findFirst: vi.fn() }, measuringInstrumentTag: { findFirst: vi.fn() }, riggingGearTag: { findFirst: vi.fn() },
+      machineNfcTag: { findUnique: vi.fn() },
       inventoryNfcTag: { findUnique: vi.fn().mockResolvedValue(null), update: vi.fn(), create: vi.fn().mockResolvedValue({ uid: 'new-uid' }) },
       inventoryTransaction: { create: vi.fn() },
     };

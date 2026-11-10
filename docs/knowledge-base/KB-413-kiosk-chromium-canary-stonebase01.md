@@ -2,7 +2,7 @@
 id: KB-413
 title: Kiosk browser canary on StoneBase01 — Firefox to Chromium for faster screens
 status: active
-scope: Pi4 kiosk browser engine (raspi4-kensaku-stonebase01 only), IBus / Mozc Japanese input
+scope: Pi4 kiosk browser engine (canary on raspi4-kensaku-stonebase01; all Pi4 kiosks since the 2026-10-02 fleet rollout), IBus / Mozc Japanese input
 date: 2026-10-02
 source_of_truth: true
 related_code:
@@ -18,7 +18,7 @@ validation:
 
 ## Context
 
-- Goal: make kiosk screens respond faster. All seven Pi4 kiosks run Firefox since 2026-03 (moved off Chromium 142 because Japanese input broke, see [KB-investigation-kiosk-ime-and-power-regression](./KB-investigation-kiosk-ime-and-power-regression.md)).
+- Goal: make kiosk screens respond faster. All seven Pi4 kiosks run Firefox since 2026-03 (moved off Chromium 142 because Japanese input broke, see [KB-investigation-kiosk-ime-and-power-regression](../archive/knowledge-base/KB-investigation-kiosk-ime-and-power-regression.md)).
 - 2026-10-02 isolated measurement on `raspi4-kensaku-stonebase01` (headless labwc + Xwayland, one first load and two reloads per condition, production Firefox running on the same Pi4), `/kiosk/production-schedule` until 「検索してください。」 appears:
 
 | Condition | First | Reload 1 | Reload 2 |
@@ -31,13 +31,15 @@ validation:
 
 ## What Changed
 
+(Canary state on 2026-10-02. Current: every Pi4 kiosk runs Chromium and the pin is in the `kiosk` group vars, see Fleet rollout.)
+
 - `raspi4-kensaku-stonebase01` only: `kiosk_browser_engine: "chromium"`.
 - Chromium flags gain `--gtk-version=3`.
 - `resolve-browser.yml` falls back to `/usr/bin/chromium` when `/usr/bin/chromium-browser` is missing. StoneBase01 (Debian trixie) has no compatibility symlink, and the standard release never creates it, so the launcher would otherwise point at a missing binary.
 
 ## Known Limits (decide before any wider rollout)
 
-- The server certificate is self-signed (CN is the Tailscale host name, no SAN, valid to 2035) and the kiosks connect by IP, so importing it as trusted would still fail on the name. Chromium therefore pins the server key: with `kiosk_server_cert_spki_sha256` set, the launcher passes `--ignore-certificate-errors-spki-list=<pin> --user-data-dir=~/.config/chromium` instead of `--ignore-certificate-errors`. Set for StoneBase01 only; a host without the variable keeps the blanket switch. The release compares the pin with the key the server presents and stops before the switch when they differ. Recreating the server certificate with a new key means updating the pin first.
+- The server certificate is self-signed (CN is the Tailscale host name, no SAN, valid to 2035) and the kiosks connect by IP, so importing it as trusted would still fail on the name. Chromium therefore pins the server key: with `kiosk_server_cert_spki_sha256` set, the launcher passes `--ignore-certificate-errors-spki-list=<pin> --user-data-dir=~/.config/chromium` instead of `--ignore-certificate-errors`. Set for StoneBase01 only at first (current: `kiosk` group vars, so every kiosk); a host without the variable keeps the blanket switch. The release compares the pin with the key the server presents and stops before the switch when they differ. Recreating the server certificate with a new key means updating the pin first.
 - Pin value: `openssl s_client -connect <pi5>:443 </dev/null 2>/dev/null | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64`.
 - Verified off the device (Debian 13 Chromium in a container against the Pi5): the right pin loads the kiosk page, a wrong pin and no flag both fail with `ERR_CERT_AUTHORITY_INVALID`. Google Chrome on macOS ignores the pin list, so do not use it to test this.
 - Do not start a test browser on a kiosk that is in use: a headless probe on StoneBase01 made gnome-keyring show its password window on the real screen (2026-10-02).
@@ -92,7 +94,7 @@ validation:
 
 ## Rollback
 
-Revert this change's commit (PR #1621) and run the standard release for the host (`scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit raspi4-kensaku-stonebase01`, after `--print-plan` shows `pi4ReleaseFiles: staged`). The Firefox profile `kiosk-system` is left untouched by this change.
+To take one kiosk back to Firefox, set that host's `kiosk_browser_engine` to `"firefox"`, merge, and run the standard release with `--limit <host>` once `--print-plan` shows `pi4ReleaseFiles: staged` (same as Fleet rollout). Do not revert PR #1621 for one kiosk: since the fleet rollout it also removes the Chromium flags and the `/usr/bin/chromium` fallback used by every Pi4 kiosk. The Firefox profile `kiosk-system` is left untouched by this change.
 
 Since 2026-10-02 an `inventory.yml` change is classified as a Pi4 kiosk release file, so setting a kiosk's `kiosk_browser_engine` back to `"firefox"` is delivered by the standard release as well. Always confirm `pi4ReleaseFiles: staged` in the plan and read the launcher on the device afterwards.
 

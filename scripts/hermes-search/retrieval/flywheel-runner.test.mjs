@@ -29,7 +29,7 @@ const dense = [
 const night = () => new Date('2026-10-03T14:30:00Z');
 
 function settings(dir, extra = {}) {
-  return { enabled: true, maxQuestions: 10, filterBudget: 0, learnBudget: 0, plannerBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
+  return { enabled: true, maxQuestions: 10, filterBudget: 0, followUpBudget: 0, learnBudget: 0, plannerBudget: 0, window: '22-6', dir, denseStore: 'unused', origin: 'http://dgx', token: 't', egress: '', model: 'm', ...extra };
 }
 
 function fakeChat({ slowAfter = Infinity } = {}) {
@@ -1182,9 +1182,9 @@ test('phase six prefers follow-ups, caps comparisons, preserves active and resum
   assert.equal(state.checks[0].decision, 'report');
   assert.equal(state.checks[0].compared, 2);
   assert.equal(state.checks[0].affected, 2);
-  // The follow-up now scores the candidate's unrelated displayed content as a deterministic loss.
+  // No verbatim match makes the candidate follow-up unsupported and excludes it from comparisons.
   assert.deepEqual(status.plannerVersion, { active: f.baseline, candidate: f.candidate, compared: 2, affected: 2,
-    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 1, gained: 0, lost: 1 }, real: { n: 2, gained: 0, lost: 1 } });
+    dev: { n: 1, gained: 0, lost: 0 }, heldout: { n: 0, gained: 0, lost: 0 }, real: { n: 1, gained: 0, lost: 0 } });
   assert.deepEqual(JSON.parse(readFileSync(path.join(f.dir, 'flywheel-status.json'), 'utf8')).plannerVersion, status.plannerVersion);
   assert.match(readFileSync(path.join(f.dir, 'runner-2026-10-03.log'), 'utf8'), /id=planner:real-context/u);
   const resumed = await runFlywheelNight(f.input);
@@ -1298,7 +1298,7 @@ test('regressions replay despite existingRealIds and zero real budget, then reti
   const first = await runFlywheelNight(f.input);
   assert.deepEqual(first.regression, { replayed: 0, ok: 0, failed: 0, pending: 1 });
   const [queued] = f.queue();
-  assert.deepEqual(Object.keys(queued), ['id', 'question', 'previousPlan', 'previousShown', 'context', 'receiptAt', 'firstFailedNight', 'lastNight', 'lastOk']);
+  assert.deepEqual(Object.keys(queued), ['id', 'question', 'previousPlan', 'previousShown', 'context', 'receiptAt', 'firstFailedNight', 'lastNight', 'lastOk', 'lastUnsupported']);
   assert.equal(queued.firstFailedNight, '2026-10-03');
   assert.equal(queued.lastOk, 0);
   assert.deepEqual(queued.context, ['異物の付着を探す架空の質問']);
@@ -1406,4 +1406,56 @@ test('early exits preserve the previous night status while still logging', async
     assert.equal(lines.length, 1);
     assert.match(readFileSync(path.join(dir, 'runner-2026-10-03.log'), 'utf8'), new RegExp(`reason=${reason}`));
   }
+});
+
+test('follow-up budget validates integers, defaults and caps', () => {
+  assert.equal(flywheelSettings({}).followUpBudget, 10);
+  for (const value of ['', ' ', '-1', '2.5', 'NaN']) assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FOLLOW_UP_BUDGET: value }).followUpBudget, 10);
+  for (const [value, expected] of [['0', 0], ['7', 7], ['31', 30]]) assert.equal(flywheelSettings({ HERMES_FLYWHEEL_FOLLOW_UP_BUDGET: value }).followUpBudget, expected);
+});
+
+test('follow-up stage uses current and resumed filters, records failures and deduplicates', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-follow-up-'));
+  const file = questionsPath(dir, '2026-10-03');
+  const corpus = [...records, { id: 'south', originDepartmentName: 'South Shop', discoveredOn: '2026-09-01' }];
+  const first = { id: 'f-resumed', question: 'North Shop 最近', kind: 'filter', source: 'synthetic', seed: { template: 'recent' },
+    live: filterLive({ seed: { field: 'originDepartmentName', value: 'North Shop', template: 'recent' } }, corpus), filterCheck: { ok: true } };
+  const failed = { ...first, id: 'f-failed', question: '失敗した質問', filterCheck: { ok: false } };
+  writeFileSync(file, [first, failed].map(JSON.stringify).join('\n') + '\n');
+  let calls = 0;
+  const input = { records: corpus, settings: settings(dir, { maxQuestions: 0, filterBudget: 3, followUpBudget: 10 }), now: night,
+    readDense: async () => dense, chat: () => assert.fail('no content grading'), jevEvaluate, seed: 7, log: () => {},
+    live: async row => {
+      if (row.kind === 'filter') return filterLive(row, corpus);
+      calls += 1;
+      assert.equal(row.kind, 'follow_up');
+      assert.ok(row.previousPlan);
+      assert.ok(Array.isArray(row.previousShown));
+      if (row.action === 'count') return { outcome: 'count', resultCount: row.expected.matchedCount, shown: [], loss: 'count_answer' };
+      const shown = expectedFilterResults({ plan: row.expected.plan, records: corpus, catalog: loadNonconformityCatalog() }).expectedIds;
+      return { outcome: shown.length ? 'answer' : 'no_result', plan: row.expected.plan, shown, loss: 'other_shown' };
+    } };
+  await runFlywheelNight(input);
+  const rows = readFileSync(file, 'utf8').trim().split('\n').map(JSON.parse);
+  const followUps = rows.filter(row => row.kind === 'follow_up');
+  assert.ok(calls > 0);
+  assert.ok(followUps.some(row => row.firstTurnId === first.id));
+  assert.ok(rows.some(row => row.kind === 'filter' && row.id !== first.id && row.id !== failed.id));
+  assert.ok(followUps.some(row => row.followUpCheck.reason === 'first_turn_mismatch' && row.followUpCheck.supported === false));
+  assert.ok(followUps.filter(row => row.live).every(row => row.followUpCheck.ok && row.live.loss === null));
+  assert.equal(new Set(followUps.map(row => row.id)).size, followUps.length);
+  assert.equal(new Set(followUps.map(row => row.question)).size, followUps.length);
+  const original = readFileSync(file, 'utf8');
+  const callCount = calls;
+  await runFlywheelNight(input);
+  assert.equal(calls, callCount);
+  assert.equal(readFileSync(file, 'utf8'), original);
+});
+
+test('follow-up stage respects a tripped busy guard', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'flywheel-follow-up-busy-'));
+  await runFlywheelNight({ records, settings: settings(dir, { filterBudget: 2, followUpBudget: 10 }),
+    now: night, readDense: async () => dense, chat: fakeChat({ slowAfter: 0 }), jevEvaluate,
+    live: async row => { assert.equal(row.kind, 'filter'); return filterLive(row); }, seed: 7, log: () => {} });
+  assert.ok(!readFileSync(questionsPath(dir, '2026-10-03'), 'utf8').includes('"kind":"follow_up"'));
 });

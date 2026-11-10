@@ -284,7 +284,7 @@ export function parseScheduleToEditorStatePatch(schedule: SignageSchedule): Sign
     contentType: schedule.contentType,
     pdfId: schedule.pdfId,
     layoutConfig: schedule.layoutConfig,
-    targetClientKeys: [...(schedule.targetClientKeys ?? [])],
+    targetClientDeviceIds: [...(schedule.targetClientDeviceIds ?? [])],
     dayOfWeek: schedule.dayOfWeek,
     startTime: schedule.startTime,
     endTime: schedule.endTime,

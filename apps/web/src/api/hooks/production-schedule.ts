@@ -4,3 +4,4 @@ export * from './production-schedule/grinding-planning-board';
 export * from './production-schedule/due-management';
 export * from './production-schedule/load-balancing';
 export * from './production-schedule/settings';
+export * from './production-schedule/grinding-planning-board-resource-minutes';

@@ -1,3 +1,5 @@
+import { runWithGmailSenderVerification } from '../gmail/gmail-sender-verification-session.js';
+import { DScheduleMinutesContentError, getDScheduleMinutesGmailIngestionService, type DScheduleMinutesCycleSummary, type DScheduleMinutesGmailIngestionService } from '../production-schedule/d-schedule-minutes/d-schedule-minutes-gmail-ingestion.service.js';
 import { createHash } from 'crypto';
 import { getProcedureMaterialGmailIngestionService, type ProcedureMaterialCycleSummary, type ProcedureMaterialGmailIngestionService } from '../assembly/procedure-material-gmail-ingestion.service.js';
 import { BackupConfigLoader } from '../backup/backup-config.loader.js';
@@ -17,7 +19,7 @@ import type {
   ItemInventoryCycleSummary,
   ItemInventoryGmailIngestionService,
 } from '../item-inventory/item-inventory-gmail-ingestion.service.js';
-import { ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS, MACHINE_SIGNAL_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { D_SCHEDULE_MINUTES_GMAIL_SUBJECT, ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS, MACHINE_SIGNAL_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import {
   getMachineSignalGmailIngestionService,
   type MachineSignalGmailCycleSummary,
@@ -49,6 +51,7 @@ export type CsvImportExecutionSummary = {
   };
   procedureMaterialGmail?: ProcedureMaterialCycleSummary;
   itemInventoryGmail?: ItemInventoryCycleSummary;
+  dScheduleMinutesGmail?: DScheduleMinutesCycleSummary;
   machineSignalGmail?: MachineSignalGmailCycleSummary;
 };
 
@@ -94,6 +97,7 @@ type CsvImportExecutionDeps = {
   createCsvImportConfigService: () => CsvImportConfigService;
   createProcedureMaterialGmailIngestionService: () => Pick<ProcedureMaterialGmailIngestionService, 'runOnce'>;
   createItemInventoryGmailIngestionService: () => ItemInventoryGmailIngestionService;
+  createDScheduleMinutesGmailIngestionService: () => Pick<DScheduleMinutesGmailIngestionService, 'runOnce'>;
   createMachineSignalGmailIngestionService: () => Pick<MachineSignalGmailIngestionService, 'runOnce'>;
   processCsvImportFromTargets: ProcessCsvImportFromTargetsFn;
   logger: LoggerLike;
@@ -122,6 +126,7 @@ export class CsvImportExecutionService {
       createCsvImportConfigService: () => new CsvImportConfigService(),
       createProcedureMaterialGmailIngestionService: getProcedureMaterialGmailIngestionService,
       createItemInventoryGmailIngestionService: () => getItemInventoryServices().ingestion,
+      createDScheduleMinutesGmailIngestionService: getDScheduleMinutesGmailIngestionService,
       createMachineSignalGmailIngestionService: getMachineSignalGmailIngestionService,
       processCsvImportFromTargets,
       logger,
@@ -138,6 +143,14 @@ export class CsvImportExecutionService {
     importSchedule: NonNullable<BackupConfig['csvImports']>[0];
     skipRetry?: boolean;
   }): Promise<CsvImportExecutionSummary> {
+    if ((params.importSchedule.provider ?? params.config.storage.provider) !== 'gmail') return this.executeInSession(params);
+    return runWithGmailSenderVerification(params.config, async () => {
+      if (params.config.gmailIngestSenderPolicy?.allowedSenderDomains.length === 0) return {};
+      return this.executeInSession(params);
+    });
+  }
+
+  private async executeInSession(params: Parameters<CsvImportExecutionService['execute']>[0]): Promise<CsvImportExecutionSummary> {
     const { config, importSchedule, skipRetry = false } = params;
 
     // プロバイダーを決定（スケジュール固有のプロバイダーまたは全体設定）
@@ -161,13 +174,21 @@ export class CsvImportExecutionService {
 
     // リトライロジックでインポートを実行
     let lastError: Error | undefined;
+    const minutesContentFailures: string[] = [];
     for (let attempt = 0; attempt <= retryConfig.maxRetries; attempt++) {
       try {
-        return await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false, manual: false });
+        const result = await this.executeAttempt(config, importSchedule, provider, { gmailAllowWait: false, manual: false });
+        // A retry can resolve transient failures after permanent bad mail has been marked read.
+        if (minutesContentFailures.length > 0) throw new DScheduleMinutesContentError(minutesContentFailures);
+        return result;
       } catch (error) {
         // 429クールダウンは「待つ/延期」すべき状態なので、ここで汎用Errorに包まず上位へ伝播させる
         if (error instanceof GmailRateLimitedDeferredError) {
           throw error;
+        }
+        if (error instanceof DScheduleMinutesContentError) {
+          if (error.retryableFailures.length === 0) throw error;
+          minutesContentFailures.push(...error.permanentFailures);
         }
         lastError = error instanceof Error ? error : new Error(String(error));
 
@@ -192,6 +213,9 @@ export class CsvImportExecutionService {
     }
 
     // すべてのリトライが失敗した場合
+    if (minutesContentFailures.length > 0) {
+      throw new DScheduleMinutesContentError(minutesContentFailures, [lastError?.message ?? 'Import failed']);
+    }
     throw new Error(`CSV import failed after ${retryConfig.maxRetries + 1} attempts: ${lastError?.message}`);
   }
 
@@ -258,7 +282,7 @@ export class CsvImportExecutionService {
         target.type === 'csvDashboards' ||
         target.type === 'itemInventoryGmail' ||
         target.type === 'machineSignalGmail' ||
-        target.type === 'procedureMaterialGmail'
+        target.type === 'procedureMaterialGmail' || target.type === 'dScheduleMinutesGmail'
       ) {
         filteredTargets.push(target);
         continue;
@@ -293,7 +317,7 @@ export class CsvImportExecutionService {
         t.type !== 'productionActualHours' &&
         t.type !== 'itemInventoryGmail' &&
         t.type !== 'machineSignalGmail' &&
-        t.type !== 'procedureMaterialGmail'
+        t.type !== 'procedureMaterialGmail' && t.type !== 'dScheduleMinutesGmail'
     );
 
     if (itemInventoryTargets.length > 0 && provider !== 'gmail') {
@@ -311,7 +335,7 @@ export class CsvImportExecutionService {
     // CSV storage provider, or pass the special target to the CSV parser, when
     // this schedule contains only the inventory intake target.
     const storageProvider = targets.some(
-      (target) => target.type !== 'itemInventoryGmail' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail'
+      (target) => target.type !== 'itemInventoryGmail' && target.type !== 'machineSignalGmail' && target.type !== 'procedureMaterialGmail' && target.type !== 'dScheduleMinutesGmail'
     )
       ? await this.deps.storageProviderFactory.createFromConfig(
         {
@@ -383,6 +407,14 @@ export class CsvImportExecutionService {
         config,
         allowWait: opts.gmailAllowWait,
       });
+    }
+
+    let minutesResult: DScheduleMinutesCycleSummary | undefined;
+    const minutesTargets = targets.filter((target) => target.type === 'dScheduleMinutesGmail');
+    if (minutesTargets.length > 0) {
+      if (provider !== 'gmail') throw new Error('dScheduleMinutesGmail requires Gmail storage provider');
+      if (minutesTargets.some((target) => target.source !== D_SCHEDULE_MINUTES_GMAIL_SUBJECT)) throw new Error('D社日程会議議事録の件名条件が不正です');
+      minutesResult = await this.deps.createDScheduleMinutesGmailIngestionService().runOnce({ config, allowWait: opts.gmailAllowWait });
     }
 
     // CSVファイルをダウンロード
@@ -508,6 +540,7 @@ export class CsvImportExecutionService {
         productionActualHours: productionActualHoursResult,
         ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
         ...(procedureMaterialResult ? { procedureMaterialGmail: procedureMaterialResult } : {}),
+        ...(minutesResult ? { dScheduleMinutesGmail: minutesResult } : {}),
         ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
       };
     }
@@ -518,6 +551,7 @@ export class CsvImportExecutionService {
       productionActualHours: productionActualHoursResult,
       ...(itemInventoryResult ? { itemInventoryGmail: itemInventoryResult } : {}),
       ...(procedureMaterialResult ? { procedureMaterialGmail: procedureMaterialResult } : {}),
+      ...(minutesResult ? { dScheduleMinutesGmail: minutesResult } : {}),
       ...(machineSignalResult ? { machineSignalGmail: machineSignalResult } : {}),
     };
   }

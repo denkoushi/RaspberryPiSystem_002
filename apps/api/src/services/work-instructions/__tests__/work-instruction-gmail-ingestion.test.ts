@@ -30,7 +30,7 @@ function message(messageId: string): GmailMessage {
     internalDateMs: 1,
     payload: {
       mimeType: 'text/plain',
-      headers: [{ name: 'Subject', value: 'an unrelated subject' }],
+      headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'an unrelated subject' }],
     },
   };
 }

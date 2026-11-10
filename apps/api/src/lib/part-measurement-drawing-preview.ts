@@ -1,3 +1,4 @@
+import { validateImageBuffer } from './validated-image.js';
 import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import os from 'os';
@@ -90,6 +91,8 @@ export async function convertDrawingUploadToPreviewBuffer(
     const jpegBuffer = await convertPdfToPreviewBuffer(buffer);
     return { buffer: jpegBuffer, contentType: 'image/jpeg' };
   }
+
+  await validateImageBuffer(buffer, resolvedMime);
 
   if (kind === 'tiff') {
     const jpegBuffer = await convertTiffToPreviewBuffer(buffer);

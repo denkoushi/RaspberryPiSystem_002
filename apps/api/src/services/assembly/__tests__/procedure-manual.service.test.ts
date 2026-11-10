@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { AssemblyProcedureDocumentService } from '../assembly-procedure-document.service.js';
+import { AssemblyTemplateAccessService } from '../assembly-template-access.service.js';
 import { ProcedureManualService } from '../procedure-manual.service.js';
 
 const now = new Date('2026-10-05T00:00:00Z');
@@ -467,8 +468,9 @@ describe('procedure-manual document reference guards', () => {
     expect(service.buildInUseMessage(usage)).toContain('要領書の機種×工程割り当て');
     vi.spyOn(prisma, '$transaction').mockImplementation((async (work: (tx: Prisma.TransactionClient) => Promise<unknown>) => work(prisma)) as never);
     vi.spyOn(prisma, '$queryRaw').mockResolvedValue([{ id: rootId }]);
+    vi.spyOn(AssemblyTemplateAccessService.prototype, 'requireAccessPassword').mockResolvedValue();
     vi.spyOn(prisma.assemblyProcedureDocument, 'findUnique').mockResolvedValue(document() as never);
-    await expect(service.unpublish(rootId)).rejects.toThrow('要領書の機種×工程割り当て');
+    await expect(service.unpublish(rootId, '2520')).rejects.toThrow('要領書の機種×工程割り当て');
     expect(prisma.$queryRaw).toHaveBeenCalled();
     const deletion = vi.spyOn(prisma.assemblyProcedureDocument, 'delete');
     expect(await service.deleteIfUnused(rootId)).toBe('in_use');

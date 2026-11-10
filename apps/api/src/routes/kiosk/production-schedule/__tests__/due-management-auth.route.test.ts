@@ -1,3 +1,4 @@
+import { registerProductionScheduleDueDateRoute } from '../due-date.js';
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,10 +7,12 @@ const mocks = vi.hoisted(() => ({
   verify: vi.fn(), command: vi.fn(), selection: vi.fn(), dailyPlan: vi.fn(),
   rank: vi.fn(), auto: vi.fn(), importHours: vi.fn(), proposal: vi.fn(), learning: vi.fn()
 }));
+vi.mock('../../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ id: where.id, userId: 'user', expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } })) }, productionScheduleAccessPasswordConfig: { findUnique: vi.fn().mockResolvedValue(null) }, user: { findUnique: vi.fn().mockResolvedValue({ id: 'user', username: 'test', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false }) } } }));
 vi.mock('../../../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'test-due-management-secret' } }));
 vi.mock('../../../../services/production-schedule/production-schedule-settings.service.js', () => ({
-  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify
+  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION: 'shared', verifyDueManagementAccessPassword: mocks.verify, verifyDueManagementAccessPasswordForToken: mocks.verify
 }));
+vi.mock('../../../../services/production-schedule/production-schedule-command.service.js', () => ({ upsertProductionScheduleDueDate: mocks.command }));
 vi.mock('../../../../services/production-schedule/due-management-command.service.js', () => ({
   upsertProductionScheduleDueManagementPartProcessingType: mocks.command,
   upsertProductionScheduleDueManagementPartNote: mocks.command,
@@ -101,7 +104,7 @@ beforeEach(async () => {
     registerProductionScheduleDueManagementNoteRoute, registerProductionScheduleDueManagementPartPrioritiesRoute,
     registerProductionScheduleDueManagementTriageRoute, registerProductionScheduleDueManagementGlobalRankRoute,
     registerProductionScheduleDueManagementActualHoursRoute, registerProductionScheduleDueManagementDueDateRoute,
-    registerProductionScheduleDueManagementProcessingDueDateRoute]) await register(app, deps);
+    registerProductionScheduleDueManagementProcessingDueDateRoute, registerProductionScheduleDueDateRoute]) await register(app, deps);
   app.get('/user', { preHandler: authenticate }, async (request) => request.user);
 });
 afterEach(async () => { await app.close(); });
@@ -131,10 +134,19 @@ describe('due-management authorization', () => {
     expect(service).toHaveBeenCalledOnce();
   });
 
-  it.each(['/seiban/A/due-date', '/seiban/A/processing/LSLH/due-date'])('keeps %s available without a token', async (path) => {
-    const response = await app.inject({ method: 'PUT', url: base + path, headers: { 'x-client-key': 'device' }, payload: { dueDate: '2026-10-07' } });
+  it.each(['/seiban/A/due-date', '/seiban/A/processing/LSLH/due-date', '/row'])('keeps %s available without a token', async (path) => {
+    const response = await app.inject({ method: 'PUT', url: path === '/row' ? '/kiosk/production-schedule/00000000-0000-4000-8000-000000000001/due-date' : base + path, headers: { 'x-client-key': 'device' }, payload: { dueDate: '2026-10-07' } });
     expect(response.statusCode).toBe(200);
     expect(mocks.command).toHaveBeenCalledOnce();
+    expect(mocks.command).toHaveBeenCalledWith(expect.objectContaining({ actorClientDeviceId: 'device', actorDeviceName: 'terminal' }));
+  });
+
+  it('records the verified PIN generation in the token and returns only the result and token', async () => {
+    mocks.verify.mockResolvedValueOnce({ success: true, passwordChangedAt: new Date(5_000) });
+    const response = await app.inject({ method: 'POST', url: base + '/verify-access-password', headers: { 'x-client-key': 'device' }, payload: { password: 'test-password' } });
+    expect(response.statusCode).toBe(200);
+    expect(Object.keys(response.json()).sort()).toEqual(['success', 'token']);
+    expect(jwt.verify(response.json().token as string, secret)).toMatchObject({ pwv: 5_000 });
   });
 
   it('issues a device token for twelve hours only after password confirmation', async () => {
@@ -144,7 +156,7 @@ describe('due-management authorization', () => {
     const token = response.json().token as string;
     const claims = jwt.verify(token, secret) as jwt.JwtPayload;
     expect(claims).toMatchObject({ purpose: 'due-management', clientDeviceId: 'device' });
-    expect(claims.exp! - claims.iat!).toBe(12 * 60 * 60);
+    expect(claims.exp! - Math.floor(claims.iat!)).toBe(12 * 60 * 60);
     expect(claims).not.toHaveProperty('sub');
     expect(claims).not.toHaveProperty('role');
     const update = await app.inject({ method: 'PUT', url: base + '/seiban/A/parts/X/note', payload: { note: 'memo' }, headers: { 'x-client-key': 'device', 'x-due-management-token': token } });
@@ -158,10 +170,10 @@ describe('due-management authorization', () => {
     const dueResponse = await app.inject({ url: '/user', headers: { authorization: `Bearer ${signDueManagementToken('device')}` } });
     expect(dueResponse.statusCode).toBe(401);
     expect(dueResponse.json().code).toBe('AUTH_TOKEN_INVALID');
-    const userToken = jwt.sign({ sub: 'user', username: 'test', role: 'ADMIN' }, secret, { expiresIn: '1h' });
+    const userToken = jwt.sign({ tokenType: 'access', sessionId: 'session-user', sub: 'user', username: 'test', role: 'ADMIN' }, secret, { expiresIn: '1h' });
     const userResponse = await app.inject({ url: '/user', headers: { authorization: `Bearer ${userToken}` } });
     expect(userResponse.statusCode).toBe(200);
-    expect(userResponse.json()).toEqual({ id: 'user', username: 'test', role: 'ADMIN' });
+    expect(userResponse.json()).toEqual({ id: 'user', username: 'test', role: 'ADMIN', sessionId: 'session-user' });
   });
 
   it('binds proxy operations to the actor device independently of the target location', async () => {

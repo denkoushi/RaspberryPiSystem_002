@@ -93,13 +93,13 @@ describe('assembly not-found response contracts', () => {
   });
 
   it('returns the complete shared 404 body when retiring a missing template', async () => {
-    const response = await app.inject({ method: 'DELETE', url: `/assembly/templates/${id}` });
+    const response = await app.inject({ method: 'DELETE', url: `/assembly/templates/${id}`, payload: { accessPassword: '2520' } });
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({
       message: 'テンプレートが見つかりません',
       requestId: expect.any(String),
       timestamp: expect.any(String)
     });
-    expect(templateService.retire).toHaveBeenCalledWith(id);
+    expect(templateService.retire).toHaveBeenCalledWith(id, '2520', { clientDeviceId: null, clientDeviceNameSnapshot: null, username: null, ip: '127.0.0.1' });
   });
 });

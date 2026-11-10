@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<rdf:RDF
+  xmlns="http://purl.org/rss/1.0/"
+  xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+  xmlns:dc="http://purl.org/dc/elements/1.1/"
+  xmlns:dcterms="http://purl.org/dc/terms/"
+  xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+  xmlns:content="http://purl.org/rss/1.0/modules/content/"
+  xml:lang="ja">
+
+  <channel rdf:about="https://www.jpcert.or.jp/rss/jpcert.rdf">
+    <title>JPCERT/CC RSS Feed</title>
+    <link>https://www.jpcert.or.jp/</link>
+    <description>注意喚起と緊急報告、Weekly Report の新着情報</description>
+    <dc:publisher>JPCERT/CC</dc:publisher>
+    <dc:creator>webmaster@jpcert.or.jp</dc:creator>
+    <items>
+      <rdf:Seq>
+        
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260033.html" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260034.html" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260030.html" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260032.html" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260031.html" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/at/2026/at260029.html" />
+        
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#1" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#2" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#3" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#4" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#5" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#6" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#7" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#8" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#9" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#10" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#11" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#12" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#13" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#14" />
+        <rdf:li rdf:resource="https://www.jpcert.or.jp/wr/2026/wr261028.html#15" />
+        
+      </rdf:Seq>
+
+    </items>
+  </channel>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260033.html">
+    <title>注意喚起: PHPにおける複数の脆弱性（CVE-2026-109618、CVE-2026-109619）に関する注意喚起  (更新)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260033.html</link>
+    <dc:identifier>at260033</dc:identifier>
+    <dc:date>2026-10-29T15:43+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260034.html">
+    <title>注意喚起: BrotliのC言語実装における境界外書き込みの脆弱性（CVE-2026-111497）に関する注意喚起  (公開)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260034.html</link>
+    <dc:identifier>at260034</dc:identifier>
+    <dc:date>2026-10-26T16:25+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260030.html">
+    <title>注意喚起: 直近で相次いでいる国内組織における不正アクセスに関する注意喚起  (更新)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260030.html</link>
+    <dc:identifier>at260030</dc:identifier>
+    <dc:date>2026-10-23T11:37+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260032.html">
+    <title>注意喚起: SiteGuard Server EditionにおけるOSコマンドインジェクションの脆弱性（CVE-2026-106931）に関する注意喚起  (公開)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260032.html</link>
+    <dc:identifier>at260032</dc:identifier>
+    <dc:date>2026-10-14T14:18+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260031.html">
+    <title>注意喚起: 2026年10月マイクロソフトセキュリティ更新プログラムに関する注意喚起  (公開)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260031.html</link>
+    <dc:identifier>at260031</dc:identifier>
+    <dc:date>2026-10-14T11:25+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/at/2026/at260029.html">
+    <title>注意喚起: NetScaler ADCおよびNetScaler Gatewayにおける複数の脆弱性（CVE-2026-88771、CVE-2026-88772等）に関する注意喚起  (更新)</title>
+    
+    <link>https://www.jpcert.or.jp/at/2026/at260029.html</link>
+    <dc:identifier>at260029</dc:identifier>
+    <dc:date>2026-10-02T14:15+09:00</dc:date>
+  </item>
+  
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#1">
+    <title>Weekly Report: VeloCloud OrchestratorにSQLインジェクションの脆弱性</title>
+    <description>VeloCloud OrchestratorにSQLインジェクションの脆弱性</description>    
+	<content:encoded>
+	<![CDATA[VeloCloud OrchestratorにSQLインジェクションの脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#1">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#1</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#2">
+    <title>Weekly Report: ISC BINDに複数の脆弱性</title>
+    <description>ISC BINDに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[ISC BINDに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#2">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#2</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#3">
+    <title>Weekly Report: 複数のCisco製品に脆弱性</title>
+    <description>複数のCisco製品に脆弱性</description>    
+	<content:encoded>
+	<![CDATA[複数のCisco製品に脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#3">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#3</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#4">
+    <title>Weekly Report: GitLabに複数の脆弱性</title>
+    <description>GitLabに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[GitLabに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#4">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#4</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#5">
+    <title>Weekly Report: Apache Tomcatに複数の脆弱性</title>
+    <description>Apache Tomcatに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[Apache Tomcatに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#5">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#5</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#6">
+    <title>Weekly Report: Google Chromeに複数の脆弱性</title>
+    <description>Google Chromeに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[Google Chromeに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#6">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#6</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#7">
+    <title>Weekly Report: 複数のAtlassian製品に脆弱性</title>
+    <description>複数のAtlassian製品に脆弱性</description>    
+	<content:encoded>
+	<![CDATA[複数のAtlassian製品に脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#7">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#7</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#8">
+    <title>Weekly Report: 複数のMozilla製品に脆弱性</title>
+    <description>複数のMozilla製品に脆弱性</description>    
+	<content:encoded>
+	<![CDATA[複数のMozilla製品に脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#8">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#8</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#9">
+    <title>Weekly Report: LaravelのTokenGuardに認証回避につながる脆弱性</title>
+    <description>LaravelのTokenGuardに認証回避につながる脆弱性</description>    
+	<content:encoded>
+	<![CDATA[LaravelのTokenGuardに認証回避につながる脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#9">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#9</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#10">
+    <title>Weekly Report: Roundcube Webmailに複数の脆弱性</title>
+    <description>Roundcube Webmailに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[Roundcube Webmailに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#10">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#10</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#11">
+    <title>Weekly Report: MOVEit Transferに複数の脆弱性</title>
+    <description>MOVEit Transferに複数の脆弱性</description>    
+	<content:encoded>
+	<![CDATA[MOVEit Transferに複数の脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#11">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#11</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#12">
+    <title>Weekly Report: 複数のOracle製品に脆弱性</title>
+    <description>複数のOracle製品に脆弱性</description>    
+	<content:encoded>
+	<![CDATA[複数のOracle製品に脆弱性<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#12">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#12</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#13">
+    <title>Weekly Report: PHPにおける複数の脆弱性（CVE-2026-109618、CVE-2026-109619）に関する注意喚起</title>
+    <description>PHPにおける複数の脆弱性（CVE-2026-109618、CVE-2026-109619）に関する注意喚起</description>    
+	<content:encoded>
+	<![CDATA[PHPにおける複数の脆弱性（CVE-2026-109618、CVE-2026-109619）に関する注意喚起<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#13">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#13</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#14">
+    <title>Weekly Report: JPCERT/CCが2026年7月から2026年9月分の「ソフトウェア等の脆弱性関連情報に関する届出状況」を公開</title>
+    <description>JPCERT/CCが2026年7月から2026年9月分の「ソフトウェア等の脆弱性関連情報に関する届出状況」を公開</description>    
+	<content:encoded>
+	<![CDATA[JPCERT/CCが2026年7月から2026年9月分の「ソフトウェア等の脆弱性関連情報に関する届出状況」を公開<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#14">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#14</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  <item rdf:about="https://www.jpcert.or.jp/wr/2026/wr261028.html#15">
+    <title>Weekly Report: JPCERT/CCが2026年7月から9月分の「JPCERT/CC 四半期レポート」を公開</title>
+    <description>JPCERT/CCが2026年7月から9月分の「JPCERT/CC 四半期レポート」を公開</description>    
+	<content:encoded>
+	<![CDATA[JPCERT/CCが2026年7月から9月分の「JPCERT/CC 四半期レポート」を公開<a href="https://www.jpcert.or.jp/wr/2026/wr261028.html#15">続きを読む</a>]]>
+	</content:encoded>
+    <link>https://www.jpcert.or.jp/wr/2026/wr261028.html#15</link>
+    <dc:identifier>wr261028</dc:identifier>
+    <dc:date>2026-10-28T09:07+09:00</dc:date>
+  </item>
+  
+  
+</rdf:RDF>

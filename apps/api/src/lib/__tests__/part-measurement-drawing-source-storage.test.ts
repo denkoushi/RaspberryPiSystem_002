@@ -63,7 +63,8 @@ describe('PartMeasurementDrawingStorage drawing sources', () => {
   });
 
   it('uses the tif extension for tiff sources', async () => {
-    const { storageKey } = await PartMeasurementDrawingStorage.saveDrawingSource(Buffer.from('II*\0'), 'tiff');
+    const tiff = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'white' } }).tiff().toBuffer();
+    const { storageKey } = await PartMeasurementDrawingStorage.saveDrawingSource(tiff, 'tiff');
     expect(storageKey).toMatch(/\.tif$/);
   });
 

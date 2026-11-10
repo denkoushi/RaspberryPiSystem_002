@@ -1,5 +1,8 @@
 import path from 'path';
-import { promises as fs } from 'fs';
+import { createHash } from 'crypto';
+import { createReadStream, promises as fs } from 'fs';
+import { validateBackupForRestore } from './backup-restore-validation.js';
+import { requireBackupEncryptionKey } from './storage/backup-encryption.js';
 import type { BackupProvider } from './backup-provider.interface.js';
 import type { BackupTarget } from './backup-target.interface.js';
 import type {
@@ -33,13 +36,16 @@ export class BackupService implements BackupProvider {
     const key = this.buildPath(target.info, options);
 
     try {
+      // 鍵が無ければ、中身を作る前に失敗させる
+      requireBackupEncryptionKey();
       const uploadSource = await this.resolveUploadSource(target);
-      const sizeBytes = await this.uploadBySource(uploadSource, key);
+      const { sizeBytes, hash } = await this.uploadBySource(uploadSource, key);
       return {
         target: target.info,
         success: true,
         path: key,
         sizeBytes,
+        hash,
         timestamp: new Date()
       };
     } catch (error) {
@@ -61,25 +67,29 @@ export class BackupService implements BackupProvider {
     return { kind: 'buffer', data };
   }
 
-  private async uploadBySource(source: UploadSource, key: string): Promise<number> {
+  private async uploadBySource(source: UploadSource, key: string): Promise<{ sizeBytes: number; hash: string }> {
     try {
+      const digest = createHash('sha256');
       if (source.kind === 'buffer') {
+        digest.update(source.data);
         await this.storage.upload(source.data, key);
-        return source.data.length;
+        return { sizeBytes: source.data.length, hash: digest.digest('hex') };
       }
 
+      for await (const chunk of createReadStream(source.filePath)) digest.update(chunk);
+      const hash = digest.digest('hex');
       if (isLargeFileUploadProvider(this.storage)) {
         await this.storage.uploadFromFile(source.filePath, key);
         if (typeof source.sizeBytes === 'number') {
-          return source.sizeBytes;
+          return { sizeBytes: source.sizeBytes, hash };
         }
         const stat = await fs.stat(source.filePath);
-        return stat.size;
+        return { sizeBytes: stat.size, hash };
       }
 
       const data = await fs.readFile(source.filePath);
       await this.storage.upload(data, key);
-      return data.length;
+      return { sizeBytes: data.length, hash };
     } finally {
       if (source.kind === 'file' && source.cleanup) {
         await source.cleanup().catch(() => {});
@@ -89,11 +99,11 @@ export class BackupService implements BackupProvider {
 
   async restore(backupId: string, options?: RestoreOptions): Promise<RestoreResult> {
     try {
-      const data = await this.storage.download(backupId);
+      const data = await validateBackupForRestore(await this.storage.download(backupId));
 
       if (options?.destination) {
         await fs.mkdir(path.dirname(options.destination), { recursive: true });
-        await fs.writeFile(options.destination, data);
+        await fs.writeFile(options.destination, data, { mode: 0o600 });
       }
 
       return {

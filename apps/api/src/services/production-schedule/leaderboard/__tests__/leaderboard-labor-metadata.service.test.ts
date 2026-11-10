@@ -4,7 +4,7 @@ import { fetchLeaderboardBoardLaborMetadata } from '../leaderboard-labor-metadat
 import { attachLeaderboardLaborMinutes } from '../leaderboard-labor-minutes.service.js';
 import { materializeProcessChangeResidualStrongEvidence } from '../leaderboard-process-change-residual.materialization.js';
 import { readLeaderboardShellSnapshotGenerationTokenDetails } from '../leaderboard-shell-snapshot-generation.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from '../leaderboard-split-expansion.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from '../leaderboard-shell-hydrate.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../../row-resolver/index.js';
 
 import type { ProductionScheduleRow } from '../../production-schedule-query.service.js';
@@ -25,8 +25,8 @@ vi.mock('../leaderboard-process-change-residual.materialization.js', () => ({
   materializeProcessChangeResidualStrongEvidence: vi.fn()
 }));
 
-vi.mock('../leaderboard-split-expansion.service.js', () => ({
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds: vi.fn()
+vi.mock('../leaderboard-shell-hydrate.service.js', () => ({
+  fetchLeaderboardScheduleHydratedRowsOrderedByIds: vi.fn()
 }));
 
 vi.mock('../leaderboard-labor-minutes.service.js', () => ({
@@ -77,7 +77,7 @@ describe('fetchLeaderboardBoardLaborMetadata', () => {
   it('表示 row id だけ hydrate し attachLabor の結果から metadata を返す', async () => {
     const hydrated = [scheduleRow('known')];
     const attached = [scheduleRow('known', 400, 175)];
-    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue(hydrated);
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByIds).mockResolvedValue(hydrated);
     vi.mocked(attachLeaderboardLaborMinutes).mockResolvedValue(attached);
     const perf = vi.fn();
 
@@ -90,10 +90,10 @@ describe('fetchLeaderboardBoardLaborMetadata', () => {
       { performanceSink: perf }
     );
 
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).toHaveBeenCalledTimes(1);
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).toHaveBeenCalledWith(
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).toHaveBeenCalledTimes(1);
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).toHaveBeenCalledWith(
       expect.objectContaining({
-        orderedDisplayItemIds: ['known', 'missing'],
+        orderedRowIds: ['known', 'missing'],
         locationKey: 'device-a',
         siteScopedGlobalRankLocation: 'site-a',
         leaderboardMaterializedBaseWhere: { marker: 'where' }
@@ -155,7 +155,7 @@ describe('fetchLeaderboardBoardLaborMetadata', () => {
         rawMailRowsRevision: 'rev-2'
       };
     });
-    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue([]);
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByIds).mockResolvedValue([]);
     vi.mocked(attachLeaderboardLaborMinutes).mockResolvedValue([]);
     const perf = vi.fn();
 
@@ -204,7 +204,7 @@ describe('fetchLeaderboardBoardLaborMetadata', () => {
   });
 
   it('metadata 数値が揃わない hydrate 結果は応答から omit する', async () => {
-    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue([
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByIds).mockResolvedValue([
       scheduleRow('known'),
       scheduleRow('complete', 10, 5)
     ]);

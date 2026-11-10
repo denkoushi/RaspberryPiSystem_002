@@ -209,10 +209,11 @@ describe('WorkInstructionAccessService', () => {
   it('delegates password verification to the shared management-password boundary', async () => {
     verifyDueManagementAccessPassword.mockResolvedValue({ success: false });
 
-    await expect(service.verifyAccessPassword(' 2520 ')).resolves.toEqual({ success: false });
+    await expect(service.verifyAccessPassword(' 2520 ', { clientDeviceId: 'device-a', ip: '192.0.2.1' })).resolves.toEqual({ success: false });
     expect(verifyDueManagementAccessPassword).toHaveBeenCalledWith({
       location: 'shared',
       password: ' 2520 ',
+      clientDeviceId: 'device-a', ip: '192.0.2.1',
     });
   });
 

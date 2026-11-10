@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -10,6 +11,7 @@ import {
 import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
+  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion,
   getKioskGrindingPlanningBoardDueDetail,
   getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardResourceCapacity,
@@ -18,18 +20,24 @@ import {
   getKioskGrindingPlanningBoardLoad,
   getKioskGrindingPlanningBoardSnapshot,
   getKioskGrindingPlanningBoardSeibanCandidates,
+  updateKioskGrindingPlanningBoardArrival,
+  updateKioskGrindingPlanningBoardFirstProcessArrival,
   updateKioskGrindingPlanningBoardOverrides,
   updateKioskGrindingPlanningBoardPins,
   updateKioskGrindingPlanningBoardRank,
   updateKioskGrindingPlanningBoardResourceOrder,
   updateKioskGrindingPlanningBoardResourceOrderBulk,
   updateKioskGrindingPlanningBoardSeibanOrder,
+  updateKioskGrindingPlanningBoardSeibanChecks,
   type KioskGrindingPlanningBoardQuery,
   updateKioskGrindingPlanningBoardDueScope
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import type {
+  SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
+  GrindingPlanningBoardFirstProcessArrivalRequest,
+  GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardProcessChipsRequest,
   GrindingPlanningBoardResourceCapacityRequest,
   GrindingPlanningBoardResourceCapacityResponse,
@@ -41,15 +49,17 @@ import type {
   GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
   GrindingPlanningBoardSeibanOrderRequest,
+  GrindingPlanningBoardSeibanChecksRequest,
   GrindingPlanningBoardCategory,
+  GrindingPlanningBoardScheduleSource,
   GrindingPlanningBoardResponse,
   GrindingPlanningBoardDueScopeRequest
 } from '@raspi-system/shared-types';
 
-export function useKioskGrindingPlanningBoardProcessChips(parts: GrindingPlanningBoardProcessChipsRequest['parts']) {
+export function useKioskGrindingPlanningBoardProcessChips(parts: GrindingPlanningBoardProcessChipsRequest['parts'], scheduleSource?: GrindingPlanningBoardScheduleSource) {
   return useQuery({
-    queryKey: productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts),
-    queryFn: () => getKioskGrindingPlanningBoardProcessChips({ parts }),
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardProcessChips(parts, scheduleSource),
+    queryFn: () => getKioskGrindingPlanningBoardProcessChips({ parts }, scheduleSource),
     enabled: parts.length > 0,
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
@@ -77,14 +87,18 @@ export function useKioskGrindingPlanningBoard(
   });
 }
 
-export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory) {
+export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoardCategory, scheduleSource?: GrindingPlanningBoardScheduleSource) {
   return useQuery({
-    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category),
-    queryFn: () => getKioskGrindingPlanningBoardLoad(category),
+    queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoad(category, scheduleSource),
+    queryFn: () => getKioskGrindingPlanningBoardLoad(category, scheduleSource),
     refetchOnWindowFocus: false,
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
 }
+
+type PlanningBoardRefetchOptions = NonNullable<Parameters<ReturnType<typeof useKioskGrindingPlanningBoard>['refetch']>[0]> & {
+  loadAlreadyInvalidated?: boolean;
+};
 
 export type KioskGrindingPlanningBoardProgressiveResult = {
   data: GrindingPlanningBoardResponse | undefined;
@@ -93,7 +107,9 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
   isError: boolean;
   error: unknown;
   isPlaceholderData: boolean;
-  refetch: ReturnType<typeof useKioskGrindingPlanningBoard>['refetch'];
+  refetch: (options?: PlanningBoardRefetchOptions) => Promise<{
+    data: GrindingPlanningBoardResponse | undefined; isError: boolean; error: unknown;
+  }>;
   hasStableData: boolean;
   scopeReady: boolean;
   isAppending: boolean;
@@ -103,6 +119,7 @@ export type KioskGrindingPlanningBoardProgressiveResult = {
 
 /**
  * 初回ページを先に表示し、同じスナップショットの残りだけを順次追補する。
+ * 同じ条件の全件表示後は、次の全件がそろうまで表示中のスナップショットを保持する。
  * 順位ボードのphased取得と同じ300秒のstale/refetch方針を使うが、契約が異なるため
  * continue部分はこのAPI専用の薄いアダプターとして保持する。
  */
@@ -117,9 +134,24 @@ export function useKioskGrindingPlanningBoardProgressive(
     staleTime: LEADER_BOARD_LEADER_PHASED_STALE_MS
   });
   const queryClient = useQueryClient();
-  const previousRevisionRef = useRef<{ paramsKey: string; revision: string }>();
+  const previousRevisionRef = useRef<{ paramsKey: string; revision: string } | undefined>(undefined);
+  const loadAlreadyInvalidatedRef = useRef<string | null>(null);
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
+  const mergedParamsKeyRef = useRef<string | null>(null);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
+  const displayedRef = useRef<{ paramsKey: string; data: GrindingPlanningBoardResponse; complete: boolean } | undefined>(undefined);
+  const completeDataRef = useRef(new Map<string, { signature: string; data: GrindingPlanningBoardResponse }>());
+  type Settlement = { paramsKey: string; updatedAt: number; data: GrindingPlanningBoardResponse | undefined; isError: boolean; error: unknown };
+  const settledRef = useRef<Settlement | undefined>(undefined);
+  const [settlement, setSettlement] = useState<Settlement>();
+  const currentScopeRef = useRef<string | null>(paramsKey);
+  currentScopeRef.current = paramsKey;
+  const waitersRef = useRef(new Set<(settlement: Settlement) => void>());
+  useEffect(() => {
+    if (!settlement) return;
+    settledRef.current = settlement;
+    for (const waiter of waitersRef.current) waiter(settlement);
+  }, [settlement]);
   const [isAppending, setIsAppending] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [appendError, setAppendError] = useState<unknown>(null);
@@ -135,7 +167,6 @@ export function useKioskGrindingPlanningBoardProgressive(
     runIdRef.current += 1;
     syncedSignatureRef.current = null;
     staleRefetchCountRef.current = 0;
-    setMergedData(undefined);
     setIsAppending(false);
     setIsComplete(false);
     setAppendError(null);
@@ -143,25 +174,62 @@ export function useKioskGrindingPlanningBoardProgressive(
 
   const firstData = query.data;
   const refetch = query.refetch;
+  // Refresh consumers must not clear confirmed writes before the replacement is complete.
+  const refetchComplete = useCallback(async (options?: PlanningBoardRefetchOptions) => {
+    const { loadAlreadyInvalidated, ...queryOptions } = options ?? {};
+    // Piece mutations refresh load independently, including when this board request fails.
+    if (loadAlreadyInvalidated) loadAlreadyInvalidatedRef.current = paramsKey;
+    try {
+      const previousSettlement = settledRef.current;
+      const result = await refetch(queryOptions);
+      if (result.isError) return result;
+      if (currentScopeRef.current !== paramsKey) return { data: undefined, isError: true, error: new Error('一覧の取得が中断されました。') };
+      return await new Promise<Settlement>((resolve) => {
+        const waiter = (settlement: Settlement) => {
+          if (settlement !== previousSettlement && (settlement.paramsKey !== paramsKey || settlement.updatedAt >= result.dataUpdatedAt)) {
+            waitersRef.current.delete(waiter);
+            resolve(settlement);
+          }
+        };
+        waitersRef.current.add(waiter);
+        if (settledRef.current) waiter(settledRef.current);
+      });
+    } finally {
+      if (loadAlreadyInvalidated && loadAlreadyInvalidatedRef.current === paramsKey) loadAlreadyInvalidatedRef.current = null;
+    }
+  }, [paramsKey, refetch]);
+  useEffect(() => {
+    currentScopeRef.current = paramsKey;
+    const waiters = waitersRef.current;
+    return () => {
+      currentScopeRef.current = null;
+      for (const waiter of waiters) waiter({ paramsKey: '', updatedAt: Infinity, data: undefined, isError: true, error: new Error('一覧の取得が中断されました。') });
+    };
+  }, [paramsKey]);
+  useEffect(() => {
+    if (query.isError && !query.isFetching) {
+      setSettlement({ paramsKey, updatedAt: Infinity, data: displayedRef.current?.data, isError: true, error: query.error });
+    }
+  }, [paramsKey, query.isError, query.isFetching, query.error]);
   const firstDataIsFresh = Boolean(firstData && !query.isPlaceholderData);
   const firstSignature = firstData
     ? `${query.dataUpdatedAt}:${firstData.snapshotId}:${firstData.sourceRevision}`
     : null;
 
   useEffect(() => {
-    if (!firstDataIsFresh || !firstData || query.isFetching) return;
+    if (!firstDataIsFresh || !firstData || query.isFetching || query.isError) return;
     const previous = previousRevisionRef.current;
     previousRevisionRef.current = { paramsKey, revision: firstData.sourceRevision };
-    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision) {
+    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision && loadAlreadyInvalidatedRef.current !== paramsKey) {
       void queryClient.invalidateQueries(
         { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
         { cancelRefetch: false }
       );
     }
-  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, queryClient]);
+  }, [firstData, firstDataIsFresh, paramsKey, query.isFetching, query.isError, queryClient]);
 
   useEffect(() => {
-    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching) return;
+    if (!firstDataIsFresh || !firstData || firstSignature == null || query.isFetching || query.isError) return;
     if (syncedSignatureRef.current === firstSignature) return;
     syncedSignatureRef.current = firstSignature;
     const runId = ++runIdRef.current;
@@ -171,16 +239,38 @@ export function useKioskGrindingPlanningBoardProgressive(
     let cursor = initial.nextCursor;
     let previousCursor = -1;
 
-    setMergedData({ ...initial, items, nextCursor: cursor });
+    const keepComplete = displayedRef.current?.paramsKey === paramsKey && displayedRef.current.complete;
+    const publish = (data = { ...initial, items, nextCursor: cursor }) => {
+      const complete = data.nextCursor == null;
+      mergedParamsKeyRef.current = paramsKey;
+      displayedRef.current = { paramsKey, data, complete };
+      setMergedData(data);
+      setIsComplete(complete);
+      if (complete) {
+        const cache = completeDataRef.current;
+        cache.delete(paramsKey);
+        cache.set(paramsKey, { signature: firstSignature, data });
+        if (cache.size > 6) cache.delete(cache.keys().next().value!);
+        setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data, isError: false, error: null });
+      }
+    };
+    const cached = completeDataRef.current.get(paramsKey);
+    if (cached?.signature === firstSignature) {
+      publish(cached.data);
+      setAppendError(null);
+      staleRefetchCountRef.current = 0;
+      setIsAppending(false);
+      return;
+    }
+    if (!keepComplete || cursor == null) publish();
     setAppendError(null);
-    setIsComplete(cursor == null);
     if (cursor == null) {
       staleRefetchCountRef.current = 0;
       setIsAppending(false);
       return;
     }
 
-    setIsAppending(true);
+    setIsAppending(!keepComplete);
     void (async () => {
       try {
         while (!cancelled && runId === runIdRef.current && cursor != null) {
@@ -213,10 +303,7 @@ export function useKioskGrindingPlanningBoardProgressive(
           items = [...items, ...pageItems];
           previousCursor = nextCursor;
           cursor = page.nextCursor;
-          setMergedData((current) => current?.snapshotId === initial.snapshotId
-            ? { ...initial, items, nextCursor: cursor }
-            : current);
-          setIsComplete(cursor == null);
+          if (!keepComplete || cursor == null) publish();
           if (cursor == null) staleRefetchCountRef.current = 0;
         }
       } catch (error) {
@@ -230,8 +317,10 @@ export function useKioskGrindingPlanningBoardProgressive(
             void refetch();
             return;
           }
-          setAppendError(normalizeLeaderboardContinueFailure(error));
-          setIsComplete(false);
+          const failure = normalizeLeaderboardContinueFailure(error);
+          setAppendError(failure);
+          if (!keepComplete) setIsComplete(false);
+          setSettlement({ paramsKey, updatedAt: query.dataUpdatedAt, data: displayedRef.current?.data, isError: true, error: failure });
         }
       } finally {
         if (!cancelled && runId === runIdRef.current) setIsAppending(false);
@@ -242,11 +331,12 @@ export function useKioskGrindingPlanningBoardProgressive(
       syncedSignatureRef.current = null;
       if (runId === runIdRef.current) setIsAppending(false);
     };
-  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, refetch, stableParams]);
+  }, [firstData, firstDataIsFresh, firstSignature, query.isFetching, query.isError, refetch, stableParams, paramsKey, query.dataUpdatedAt]);
 
   const displayData = mergedData ?? firstData;
   const hasStableData = Boolean(
-    firstData && !query.isPlaceholderData && mergedData?.snapshotId === firstData.snapshotId
+    firstData && !query.isPlaceholderData && mergedParamsKeyRef.current === paramsKey &&
+    (mergedData?.snapshotId === firstData.snapshotId || displayedRef.current?.complete)
   );
   // A same-scope revalidation keeps the current snapshot usable. Placeholder
   // data and the first fetch remain unready through hasStableData above.
@@ -258,7 +348,7 @@ export function useKioskGrindingPlanningBoardProgressive(
     isError: query.isError,
     error: query.error,
     isPlaceholderData: query.isPlaceholderData,
-    refetch: query.refetch,
+    refetch: refetchComplete,
     hasStableData,
     scopeReady,
     isAppending,
@@ -363,6 +453,17 @@ export function useUpdateKioskGrindingPlanningBoardSeibanOrder(options?: { inval
   });
 }
 
+export function useUpdateKioskGrindingPlanningBoardSeibanChecks(options?: { invalidateOnSuccess?: boolean }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardSeibanChecksRequest) => updateKioskGrindingPlanningBoardSeibanChecks(payload),
+    onSuccess: () => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
+}
+
 export function useKioskGrindingPlanningBoardDueDetail(fseiban: string | null) {
   return useQuery({
     queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(fseiban),
@@ -420,5 +521,46 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
       queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
     },
     onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardArrival() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardArrivalRequest & { recorded: boolean }) => updateKioskGrindingPlanningBoardArrival(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
+}
+
+export function useKioskSessakuPieceMutations() {
+  const queryClient = useQueryClient();
+  const onSuccess = () => {
+    void Promise.all([
+      // The caller refreshes the full progressive board once; refresh its secondary consumers here.
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll, refetchType: 'none' }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll,
+        predicate: (query) => typeof query.queryKey[1] === 'string' }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderUsageAll }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.historyProgressAll }),
+      queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(null).slice(0, 1) })
+    ]);
+  };
+  const split = useMutation({ mutationFn: (payload: SessakuPiecesSplitRequest) => splitKioskSessakuPieces(payload), retry: false, onSuccess });
+  const merge = useMutation({ mutationFn: (payload: SessakuPiecesMergeRequest) => mergeKioskSessakuPieces(payload), retry: false, onSuccess });
+  const completion = useMutation({ mutationFn: ({ pieceId, ...payload }: SessakuPieceCompletionRequest & { pieceId: string }) =>
+    setKioskSessakuPieceCompletion(pieceId, payload), retry: false, onSuccess });
+  return { split, merge, completion };
+}
+
+export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardFirstProcessArrivalRequest) => updateKioskGrindingPlanningBoardFirstProcessArrival(payload),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
   });
 }

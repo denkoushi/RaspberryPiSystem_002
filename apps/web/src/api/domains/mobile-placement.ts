@@ -197,14 +197,6 @@ export type ActualSlipOcrResponse = {
   fseibanCandidates: string[];
 };
 
-/** 現品票画像を OCR し、製造order（10桁）と製番候補を返す */
-export async function parseActualSlipImage(imageFile: File) {
-  const form = new FormData();
-  form.append('image', imageFile);
-  const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/parse-actual-slip-image', form);
-  return data;
-}
-
 export async function snapFseibanTokens(payload: { tokens: string[]; text?: string }) {
   const { data } = await api.post<ActualSlipOcrResponse>('/mobile-placement/snap-fseiban-tokens', payload);
   return data;
@@ -378,6 +370,9 @@ export async function deleteHaizenCurrentPlacement(id: string) {
 
 /** Current Android and Zero2W placements; identify rows by source and id together. */
 export type HaizenOverviewRow = {
+  verified: boolean;
+  dueDate: string | null;
+  sendOutDate: string | null;
   id: string;
   source: 'branch' | 'zero2w';
   shelfCodeRaw: string;
@@ -392,5 +387,20 @@ export type HaizenOverviewRow = {
 
 export async function getHaizenOverview() {
   const { data } = await api.get<{ rows: HaizenOverviewRow[]; truncated: boolean }>('/mobile-placement/haizen-overview');
+  return data;
+}
+
+export type HaizenUnplacedPart = {
+  fseiban: string;
+  productNo: string;
+  fhincd: string;
+  fhinmei: string;
+  verified: boolean;
+  machineName: string | null;
+  dueDate: string | null;
+};
+
+export async function getHaizenUnplacedParts() {
+  const { data } = await api.get<HaizenUnplacedPart[]>('/mobile-placement/haizen-overview/unplaced-parts');
   return data;
 }

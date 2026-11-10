@@ -81,7 +81,7 @@ describe('insert a blank procedure page', () => {
     expect(data.tx.assemblyProcedureOverlayElement.updateMany).not.toHaveBeenCalled();
     expect(data.tx.assemblyProcedureOverlayElement.update).not.toHaveBeenCalled();
     expect(data.revision.editVersion).toBe(5);
-    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).toHaveBeenCalledWith('1234');
+    expect(AssemblyTemplateAccessService.prototype.requireAccessPassword).toHaveBeenCalledWith('1234', expect.objectContaining({ documentId: 'doc', holderKey: 'writer' }));
     expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalledWith('doc', 'writer', data.tx, 'lease');
     expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(blankPage.saveBlankProcedurePage).toHaveBeenCalledWith('/0.png');

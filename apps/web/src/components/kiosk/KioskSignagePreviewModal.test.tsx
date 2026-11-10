@@ -35,7 +35,7 @@ describe('KioskSignagePreviewModal', () => {
     fixtureOptions.selectedClientDeviceId = null;
     fixtureOptions.effectivePreviewClientDeviceId = '11111111-1111-4111-8111-111111111111';
     mockUseMutation.mockReturnValue({
-      mutateAsync: mockPutSelection.mockResolvedValue({ ok: true, signagePreviewTargetClientDeviceId: '22222222-2222-4222-8222-222222222222' }),
+      mutateAsync: mockPutSelection.mockResolvedValue({ ok: true, signagePreviewTargetDeviceId: '22222222-2222-4222-8222-222222222222' }),
       isPending: false,
     });
     mockUseQuery.mockImplementation((options: { enabled?: boolean }) => {
@@ -72,7 +72,7 @@ describe('KioskSignagePreviewModal', () => {
     });
 
     await waitFor(() =>
-      expect(mockPutSelection).toHaveBeenCalledWith({ signagePreviewTargetClientDeviceId: '22222222-2222-4222-8222-222222222222' })
+      expect(mockPutSelection).toHaveBeenCalledWith({ signagePreviewTargetDeviceId: '22222222-2222-4222-8222-222222222222' })
     );
   });
 
@@ -104,6 +104,6 @@ describe('KioskSignagePreviewModal', () => {
     fixtureOptions.selectedClientDeviceId = fixtureOptions.candidates[0].id;
     render(<KioskSignagePreviewModal isOpen onClose={vi.fn()} kioskClientKey="client-key-fixture-only-kiosk" />);
     fireEvent.change(screen.getByLabelText('プレビューするサイネージ端末'), { target: { value: '' } });
-    await waitFor(() => expect(mockPutSelection).toHaveBeenCalledWith({ signagePreviewTargetClientDeviceId: null }));
+    await waitFor(() => expect(mockPutSelection).toHaveBeenCalledWith({ signagePreviewTargetDeviceId: null }));
   });
 });

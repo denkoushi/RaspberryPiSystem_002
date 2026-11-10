@@ -37,6 +37,16 @@ update-frequency: medium
 
 **解決状況**: ✅ **実装完了**（2025-11-25）
 
+**API の安全上の修正（2026-11-08）**:
+- local / Dropbox の保存は暗号化必須。鍵がない環境でも API とプロバイダーは起動し、書き込みだけ失敗する。定時実行の通知は既存経路を使う。
+- ローカル保存はファイル 0600、作成ディレクトリ 0700。成功履歴には保存前の SHA-256 と `summary.encrypted: true` を記録する。
+- 復元は共通の信頼判定を現在の DB に対して完了してから実行する。旧形式の可否は完了したバックアップ履歴で判断し、リクエストの `expectedHash` は使用しない。
+- 正本実装: `apps/api/src/services/backup/backup-restore-validation.ts`。Gmail は読み取り専用。DB migration は不要。
+- 判定は復元前バックアップより前に行う。暗号化したバックアップが一度でも成功した後は、暗号化されていない旧形式は画面から復元できない(旧ファイルは削除せず残す)。
+- この変更より前の定時・手動の DB バックアップは履歴に照合値が無いため、反映直後から画面では復元できない(決定済みの扱い。旧ファイルは残す)。
+- `scripts/server/backup.sh` は API 経由で保存できないとき、平文のローカル保存に切り替えず失敗する。
+- 手動の DB 復元(`scripts/server/restore.sh`)は、暗号化されたファイルを稼働中の API コンテナ内の `dist/scripts/decrypt-backup.js` で復号してから流す。単体での復号: `scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/decrypt-backup.js < 入力 > 出力`。
+
 **関連ファイル**: 
 - `scripts/server/backup.sh`
 - `scripts/server/restore.sh`
@@ -226,7 +236,7 @@ update-frequency: medium
 - （データベースバックアップのパス問題解決のコミットハッシュを追加）
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
 
 ---
 
@@ -395,9 +405,9 @@ update-frequency: medium
 - `infrastructure/ansible/group_vars/all.yml`
 
 **関連ドキュメント**:
-- [Ansible SSH接続アーキテクチャの説明](../guides/ansible-ssh-architecture.md)
-- [バックアップ設定ガイド](../guides/backup-configuration.md)
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
+- [Ansible SSH接続アーキテクチャの説明](../../guides/ansible-ssh-architecture.md)
+- [バックアップ設定ガイド](../../guides/backup-configuration.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
 
 ---
 
@@ -470,8 +480,8 @@ update-frequency: medium
 - `e2e/admin.spec.ts`
 
 **関連ドキュメント**: 
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -546,8 +556,8 @@ update-frequency: medium
 - `apps/web/src/pages/admin/BackupTargetsPage.tsx`
 
 **関連ドキュメント**: 
-- [バックアップ対象管理UI実装計画](../requirements/backup-target-management-ui.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップ対象管理UI実装計画](../../requirements/backup-target-management-ui.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -598,8 +608,8 @@ update-frequency: medium
 - ✅ 社員コードを4桁形式に変更後、バックアップとリストアが正常に動作することを確認
 
 **関連ドキュメント**:
-- [バックアップリストア機能の実機検証結果](../guides/backup-restore-verification-results.md)
-- [バックアップリストア機能の実機検証実行手順](../guides/backup-restore-verification-execution.md)
+- [バックアップリストア機能の実機検証結果](../../archive/guides/backup-restore-verification-results.md)
+- [バックアップリストア機能の実機検証実行手順](../../archive/guides/backup-restore-verification-execution.md)
 
 ---
 
@@ -647,8 +657,8 @@ update-frequency: medium
 - `apps/api/src/routes/backup.ts`（`/api/backup/internal`エンドポイント）
 
 **関連ドキュメント**:
-- [バックアップスクリプトとの整合性確認結果](../guides/backup-script-integration-verification.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップスクリプトとの整合性確認結果](../../archive/guides/backup-script-integration-verification.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -686,8 +696,8 @@ update-frequency: medium
 - `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（エラーハンドリング改善）
 
 **関連ドキュメント**:
-- [バックアップエラーハンドリング改善](../guides/backup-error-handling-improvements.md)
-- [バックアップ・リストア手順](../guides/backup-and-restore.md)
+- [バックアップエラーハンドリング改善](../../archive/guides/backup-error-handling-improvements.md)
+- [バックアップ・リストア手順](../../guides/backup-and-restore.md)
 
 ---
 
@@ -733,8 +743,8 @@ update-frequency: medium
 - `apps/api/src/services/backup/targets/database-backup.target.ts`（一時ファイル経路）
 
 **関連ドキュメント**:
-- [バックアップAPI](../api/backup.md)（容量不足時の自動回復セクション）
-- [バックアップ実機検証ガイド](../guides/backup-verification.md)
+- [バックアップAPI](../../api/backup.md)（容量不足時の自動回復セクション）
+- [バックアップ実機検証ガイド](../../archive/guides/backup-verification.md)
 
 **実機検証時のトラブルシューティング**（2026-03-05）:
 - **APIヘルスチェック**: Pi5ホストからは`http://localhost:8080`では接続できない。Caddyが443で待ち受けており、`curl -sk https://localhost/api/system/health` を使用する。
@@ -785,8 +795,8 @@ update-frequency: medium
 - `docs/guides/gmail-setup-guide.md`（Gmail連携セットアップガイド）
 
 **関連ドキュメント**:
-- [Gmail連携セットアップガイド](../guides/gmail-setup-guide.md)
-- [Gmailデータ取得機能実装計画](../plans/gmail-data-acquisition-execplan.md)
+- [Gmail連携セットアップガイド](../../guides/gmail-setup-guide.md)
+- [Gmailデータ取得機能実装計画](../../plans/gmail-data-acquisition-execplan.md)
 
 ---
 
@@ -1263,8 +1273,7 @@ git clean -fd \
 **実装日**: 2026-01-14
 
 **事象**: 
-- トークプラザ工場への導入時に、Dropboxバックアップの保存先を拠点別に分離する必要があった
-- 既存の第2工場とトークプラザ工場のバックアップが混在しないようにする必要があった
+- 旧別拠点構想でDropboxバックアップの保存先を分離する必要があった（構想の廃止決定は[KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則)参照）
 
 **要因**: 
 - **basePathの未対応**: `StorageProviderFactory`で`basePath`が`DropboxStorageProvider`に渡されていなかった
@@ -1277,7 +1286,6 @@ git clean -fd \
 
 2. **Ansibleテンプレートの更新**:
    - `infrastructure/ansible/templates/docker.env.j2`に`DROPBOX_BASE_PATH`変数を追加
-   - トークプラザ工場では`DROPBOX_BASE_PATH=/backups/talkplaza`を設定
 
 3. **DropboxStorageProviderの対応**:
    - `basePath`が指定されている場合、そのパスを使用
@@ -1293,14 +1301,9 @@ git clean -fd \
 **関連ファイル**:
 - `apps/api/src/services/backup/storage-provider-factory.ts`（`basePath`の渡し方修正）
 - `infrastructure/ansible/templates/docker.env.j2`（`DROPBOX_BASE_PATH`変数追加）
-- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用設定）
 
 **確認コマンド**:
 ```bash
-# トークプラザ工場のDropbox basePath確認
-grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
-# → DROPBOX_BASE_PATH=/backups/talkplaza
-
 # 第2工場のDropbox basePath確認（デフォルト）
 grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 # → （未設定の場合はデフォルトパスを使用）
@@ -1324,7 +1327,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定とDropboxバックアップ対象リストが失われた
 - Dropboxには過去のバックアップが保存されていたため、そこから復元する必要があった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。管理コンソールのバックアップ画面にファイルのダウンロード機能はなく、取得は Dropbox API または Dropbox Web UI で行う。リポジトリのルートに compose ファイルはないため、下記の `docker compose restart api` はそのままでは動かない。2026-09-30以降、`backup.json` はDropboxに保存されないため、この手順で取り出せるのは2026-09-30より前の世代だけ。現行の世代はGoogle Drive DRで保護される）:
 1. **Dropbox APIを使用してバックアップファイルを検索**:
    - 管理コンソールのバックアップタブから、最新の`backup.json`バックアップを特定
    - または、Dropbox APIを使用してバックアップファイルを検索
@@ -1377,7 +1380,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 - KB-163により`backup.json`が削除され、Gmail設定（`clientId`, `clientSecret`, `redirectUri`）が失われた
 - Dropboxバックアップから`backup.json`を復元したが、Gmail設定は含まれていなかった
 
-**復元手順**:
+**復元手順**（2026-01 当時の記録。現行の手順は [backup-and-restore.md](../../guides/backup-and-restore.md) を参照。下記の `docker compose restart api` は compose ファイルの指定がなく、そのままでは動かない）:
 1. **client_secret.jsonファイルを取得**:
    - Google Cloud ConsoleからGmail APIの認証情報をダウンロード
    - `client_secret.json`ファイルを取得
@@ -1388,7 +1391,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
      "storage": {
        "options": {
          "gmail": {
-           "clientId": "993241073118-xxx.apps.googleusercontent.com",
+           "clientId": "<CLIENT_ID>.apps.googleusercontent.com",
            "clientSecret": "GOCSPX-xxx",
            "redirectUri": "https://raspberrypi.tail7312a3.ts.net/api/gmail/oauth/callback"
          }
@@ -1403,7 +1406,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
    ```
 
 4. **OAuth認証を実行**:
-   - 管理コンソールの「バックアップ」タブ → 「Gmail設定」セクション
+   - 管理コンソールの「システム」→「Gmail設定」（`/admin/gmail/config`）
    - 「OAuth認証」ボタンをクリック
    - Googleアカウントでログインして認証を完了
    - 認証後、`accessToken`と`refreshToken`が`backup.json`に自動保存される
@@ -1538,7 +1541,7 @@ grep DROPBOX_BASE_PATH /opt/RaspberryPiSystem_002/infrastructure/docker/.env
 
 **関連ファイル**:
 - `/opt/RaspberryPiSystem_002/config/backup.json`（設定ファイル）
-- `apps/api/src/routes/backup/health.ts`（ヘルスチェック機能）
+- `apps/api/src/routes/backup/config-read.ts`（ヘルスチェックエンドポイント `/backup/config/health`。判定ロジックは `apps/api/src/services/backup/backup-config.loader.ts` の `checkHealth()`）
 
 **関連ナレッジ**:
 - KB-148: backup.jsonの衝突・ドリフト検出の自動化（新構造の導入）
@@ -1749,8 +1752,8 @@ private buildPath(info: BackupTargetInfo, options?: BackupOptions): string {
 - KB-146: Gmail OAuthがDropboxトークンを上書きし、Dropboxバックアップが失敗する（トークン分離で恒久対策）
 
 **関連ドキュメント**:
-- [Dropboxバックアップ機能の状況調査レポート](../guides/backup-dropbox-status-investigation.md)
-- [Dropboxバックアップ機能の状況調査結果](../guides/backup-dropbox-status-investigation-results.md)
+- [Dropboxバックアップ機能の状況調査レポート](../../archive/guides/backup-dropbox-status-investigation.md)
+- [Dropboxバックアップ機能の状況調査結果](../../archive/guides/backup-dropbox-status-investigation-results.md)
 
 **再発防止策**:
 - ユーザー入力（label）をパスに埋め込む場合は、必ずサニタイズ処理を実施する
@@ -1973,6 +1976,14 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 
 ## KB-199: Dropbox証明書ピニング検証失敗によるバックアップ500エラー
 
+**現行の方針（2026-11-09 以降）**
+
+葉証明書の固定を廃止し、Node標準のCA検証（`rejectUnauthorized: true`）と既定のホスト名検証を使用する。`minVersion: 'TLSv1.2'` によりTLS 1.2以上（TLS 1.3を含む）を許可する。
+証明書更新のたびにバックアップが停止してきたため、指紋の固定リストによる検証を終了した。2026-11には中間CAが `DigiCert TLS RSA SHA256 2020 CA1` から `DigiCert G5 TLS ECC SHA384 2021 CA1` へ、上位も `DigiCert TLS ECC P384 Root G5`（`DigiCert Global Root G3` による相互署名）へ変わったため、中間CA・ルートの固定でも同様に停止する。バックアップは送信前に暗号化済みである。
+信頼するCA一覧はNodeの更新に含まれるため、APIイメージのNodeを古いまま放置しない。
+
+以下は過去の障害と対処の履歴であり、指紋追加の手順は現在使用しない。
+
 **発生日**: 2026-01-28
 
 **事象**:
@@ -2024,15 +2035,24 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
   - デプロイ成功（Run ID: `20260216-105415-23252`）
   - 実機検証: 正常動作を確認
 
+**再発事例（2026-11-05）**:
+- **事象**: 2026-11-05（UTC）以降、Dropbox へのバックアップ送信がすべて失敗した。最後の成功は 2026-11-04 19:05 UTC。Pi5 内のバックアップは取れていた。
+- **症状**: `Upload from file failed` の原因が `Certificate pinning failed for content.dropboxapi.com`。Pi5 の API ログの `actual` 指紋は、手元で取得した新しい証明書と一致した。
+- **根本原因**: Dropbox が `api` / `content` の証明書を 2026-11-05 00:00 UTC 発行のものに更新した（`notify` は 2026-10-01 発行）。今回は発行元の中間 CA も `DigiCert G5 TLS ECC SHA384 2021 CA1` に変わったため、中間 CA で固定していても防げなかった。
+- **切り分け**: 同時期に進めていた Dropbox アプリの移行とは無関係。失敗は TLS 接続の段階で起き、トークンの更新や認証には届いていない。
+- **解決方法**: `DROPBOX_CERTIFICATE_FINGERPRINTS` に 2026-11-09 確認の指紋を3件追加し、`dropbox-cert-pinning.test.ts` で受け入れと拒否を確かめる。
+- **見直しの論点**: 葉証明書の固定は、Dropbox の証明書更新（おおむね数か月ごと）のたびに外部バックアップを止める。2025-01・2026-01・2026-02・2026-06・2026-11 と繰り返している。固定のやり方を変えるかは別途判断する。
+
 **関連ファイル**:
-- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts`（証明書フィンガープリントリスト）
-- `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（証明書フィンガープリント取得スクリプト）
+- `apps/api/src/services/backup/storage/dropbox-storage.provider.ts`（標準TLS検証とHTTPSエージェント設定）
+- `apps/api/src/services/backup/storage/encrypted-storage.provider.ts`（送信前の暗号化）
+- `apps/api/src/services/backup/storage/dropbox-cert-pinning.ts` と `__tests__/dropbox-cert-pinning.test.ts`（2026-11-09 に削除）
+- `apps/api/scripts/get-dropbox-cert-fingerprint.ts`（2026-11-09 に削除）
 
 **再発防止策**:
-- Dropboxが証明書を更新した場合は、`get-dropbox-cert-fingerprint.ts`スクリプトで新しいフィンガープリントを取得し、`dropbox-cert-pinning.ts`に追加する
-- 証明書更新の監視（Dropbox公式からの通知や定期的な検証）を検討
-- 証明書ピニング失敗時のエラーメッセージを明確化（「証明書が更新された可能性」を明記）
-- **学んだこと**: 証明書ピニング失敗はTLSハンドシェイク段階で発生するため、HTTPステータスコード（401/400）まで到達せず、トークンリフレッシュロジックは発動しない。証明書更新は定期的に発生する可能性があるため、監視と迅速な対応が必要。
+- 葉証明書・中間CA・ルートの固定リストを使用せず、標準のCA検証とホスト名検証を維持する
+- APIイメージのNodeを更新し、信頼するCA一覧を保守する
+- TLSエラー時はNodeの版とCA一覧、端末の時刻ずれを確認する。TLSハンドシェイク段階の失敗ではトークンリフレッシュは発動しない
 
 **関連ナレッジ**:
 - KB-020: バックアップ・リストア機能の実装
@@ -2041,6 +2061,8 @@ private static pruneLegacyKeysOnSave(validatedConfig: BackupConfig): BackupConfi
 ---
 
 ## KB-200: 証明書ディレクトリのバックアップターゲット追加スクリプト作成とDockerコンテナ内実行時の注意点
+
+（現行: 2026-09-30以降、証明書はDropboxのバックアップ対象にしないため、下記のスクリプトとPlaybookは使わない（[バックアップ設定ガイド](../../guides/backup-configuration.md#pi5本番の現在方針2026-09-30)）。本番APIはblue/green構成で`docker-compose.server.yml`の`api`は稼働していないため、稼働中スロットでのコマンド実行は`scripts/server/run-in-active-api.sh <command>`を使う。）
 
 **問題**: 証明書ディレクトリ（`/app/host/certs`）のバックアップターゲットを追加する際、Dockerコンテナ内でスクリプトを実行する必要があるが、ファイルパスの扱いや実行方法に注意が必要だった。
 

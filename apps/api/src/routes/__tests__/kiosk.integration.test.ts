@@ -599,7 +599,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
 
   it('returns candidates and effectivePreviewClientDeviceId defaults to kiosk ID when no selection', async () => {
     const kiosk = await createTestClientDevice('client-key-raspberrypi4-kiosk-sp');
-    const signage = await createTestClientDevice('client-key-pi3-signage-sp-001');
+    const signage = await createTestClientDevice('client-key-pi3-signage-sp-001', { isSignage: true });
 
     const res = await app.inject({
       method: 'GET',
@@ -624,7 +624,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
 
   it('PUT stores signage target and GET reflects effectivePreviewClientDeviceId', async () => {
     const kiosk = await createTestClientDevice('client-key-kiosk-sp-save');
-    const signage = await createTestClientDevice('client-key-signage-sp-save');
+    const signage = await createTestClientDevice('client-key-signage-sp-save', { isSignage: true });
 
     const put = await app.inject({
       method: 'PUT',
@@ -634,7 +634,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     });
     expect(put.statusCode).toBe(200);
     expect(put.body).not.toContain(signage.apiKey);
-    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: kiosk.id } })).signagePreviewTargetApiKey).toBe(signage.id);
+    expect((await prisma.clientDevice.findUniqueOrThrow({ where: { id: kiosk.id } })).signagePreviewTargetDeviceId).toBe(signage.id);
 
     const get = await app.inject({
       method: 'GET',
@@ -647,7 +647,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     expect(body.effectivePreviewClientDeviceId).toBe(signage.id);
   });
 
-  it('PUT rejects apiKey that is not a signage display key', async () => {
+  it('PUT rejects a legacy key for a device without isSignage', async () => {
     const kiosk = await createTestClientDevice('client-key-kiosk-sp-reject');
     await createTestClientDevice('client-key-kiosk-plain');
 
@@ -659,13 +659,13 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
     });
     expect(put.statusCode).toBe(400);
     const body = put.json();
-    expect(body.errorCode).toBe('INVALID_SIGNAGE_PREVIEW_TARGET');
+    expect(body.errorCode).toBe('VALIDATION_ERROR');
   });
 
-  it('preserves legacy saved references and serves authorized JPEG without returning credentials', async () => {
+  it('preserves migrated saved references and serves authorized JPEG without returning credentials', async () => {
     const kiosk = await createTestClientDevice('client-key-fixture-only-kiosk-legacy-preview');
-    const signage = await createTestClientDevice('client-key-fixture-only-signage-legacy-preview');
-    await prisma.clientDevice.update({ where: { id: kiosk.id }, data: { signagePreviewTargetApiKey: signage.apiKey } });
+    const signage = await createTestClientDevice('client-key-fixture-only-signage-legacy-preview', { isSignage: true });
+    await prisma.clientDevice.update({ where: { id: kiosk.id }, data: { signagePreviewTargetDeviceId: signage.id, signagePreviewTargetApiKey: signage.apiKey } });
     const headers = { 'x-client-key': kiosk.apiKey };
     const options = await app.inject({ method: 'GET', url: '/api/kiosk/signage-preview/options', headers });
     expect(options.statusCode).toBe(200);
@@ -684,7 +684,7 @@ describe('GET /api/kiosk/signage-preview/options + PUT /api/kiosk/signage-previe
 
   it('PUT null clears selection', async () => {
     const kiosk = await createTestClientDevice('client-key-kiosk-sp-null');
-    const signage = await createTestClientDevice('client-key-signage-sp-null');
+    const signage = await createTestClientDevice('client-key-signage-sp-null', { isSignage: true });
 
     await app.inject({
       method: 'PUT',

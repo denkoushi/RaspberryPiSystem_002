@@ -1,5 +1,7 @@
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { BOARD_DUE_JOINS_SQL, buildBoardDueDateSql } from '../d-schedule-minutes/board-due.sql.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import {
   getResourceCategoryPolicy,
   isProductionScheduleExcludedCuttingResourceCd,
@@ -52,6 +54,7 @@ function mapRawRows(rows: RawRow[], policy: ResourceCategoryPolicy): StartDateLe
 export async function listStartDateLevelingQueryRows(params: {
   siteKey: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   rangeStart: Date;
   rangeEndExclusive: Date;
   resourceCdFilter?: string | null;
@@ -75,7 +78,7 @@ export async function listStartDateLevelingQueryRows(params: {
       UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')) AS "resourceCd",
       ${buildCsvDashboardRowRequiredMinutesSql()} AS "requiredMinutes",
       "supplement"."plannedStartDate" AS "plannedStartDate",
-      COALESCE("n"."dueDate", "supplement"."plannedEndDate") AS "effectiveDueDate"
+      ${buildBoardDueDateSql(params.dueSource)} AS "effectiveDueDate"
     FROM "CsvDashboardRow"
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -92,6 +95,7 @@ export async function listStartDateLevelingQueryRows(params: {
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ${BOARD_DUE_JOINS_SQL}
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', params.winnerRowIds)}
       AND (
@@ -100,6 +104,7 @@ export async function listStartDateLevelingQueryRows(params: {
       )
       AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD'), '') IS NOT NULL
       ${buildStartDateLevelingQueryWindowWhereSql({
+        dueSource: params.dueSource,
         rangeStart: params.rangeStart,
         rangeEndExclusive: params.rangeEndExclusive,
         includeOverdueBefore: params.includeOverdueBefore
@@ -107,7 +112,7 @@ export async function listStartDateLevelingQueryRows(params: {
       ${buildLoadBalancingRowEligibilityWhereSql()}
     ORDER BY
       "supplement"."plannedStartDate" ASC NULLS LAST,
-      COALESCE("n"."dueDate", "supplement"."plannedEndDate") ASC NULLS LAST,
+      ${buildBoardDueDateSql(params.dueSource)} ASC NULLS LAST,
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
       ("CsvDashboardRow"."rowData"->>'FHINCD') ASC
   `;

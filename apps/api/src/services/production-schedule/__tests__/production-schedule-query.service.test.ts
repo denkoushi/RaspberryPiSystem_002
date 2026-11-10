@@ -11,10 +11,14 @@ import { resolveActualHoursLocationCandidates } from '../actual-hours-location-s
 import { prisma } from '../../../lib/prisma.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
-import * as leaderboardSplitExpansion from '../leaderboard/leaderboard-split-expansion.service.js';
 import * as listCountService from '../production-schedule-list-count.service.js';
 import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
+
+vi.mock('../process-arrival.service.js', () => ({
+  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({
+    ...row, arrived: true, specialDue: null
+  })))
+}));
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -445,6 +449,10 @@ describe('production-schedule-query.service', () => {
       R01: [1, 3],
       R02: [2],
     });
+    const sql = vi.mocked(prisma.$queryRaw).mock.calls[0].join(' ');
+    expect(sql).toContain('FROM "ProductionScheduleOrderAssignment"');
+    expect(sql).not.toContain('ProductionScheduleOrderSplitAssignment');
+    expect(sql).not.toContain('UNION');
   });
 
   it('一覧取得でglobalRankを含む行を返す', async () => {
@@ -1234,39 +1242,13 @@ describe('production-schedule-query.service', () => {
     ]);
   });
 
-  it('responseProfile=leaderboard は display item 件数と split 展開を使う', async () => {
+  it('responseProfile=leaderboard は旧片を読まず親の数量と件数を返す', async () => {
     const countSpy = vi
       .spyOn(listCountService, 'countProductionScheduleDashboardVisibleLeaderboardUnits')
-      .mockResolvedValue(3n);
-    const expandSpy = vi
-      .spyOn(leaderboardSplitExpansion, 'expandLeaderboardParentRowsForResponse')
-      .mockImplementation(async ({ rows, locationKey }) => {
-        expect(locationKey).toBe('kiosk-1');
-        return rows.flatMap((row) => [
-          {
-            ...row,
-            id: `split:a-${row.id}`,
-            sourceRowId: row.id,
-            isSplit: true,
-            splitId: 'split-a',
-            splitNo: 1,
-            splitQuantity: 2,
-            plannedQuantity: 2,
-            processingOrder: 1
-          },
-          {
-            ...row,
-            id: `split:b-${row.id}`,
-            sourceRowId: row.id,
-            isSplit: true,
-            splitId: 'split-b',
-            splitNo: 2,
-            splitQuantity: 3,
-            plannedQuantity: 3,
-            processingOrder: 2
-          }
-        ]);
-      });
+      .mockResolvedValue(1n);
+    vi.mocked(prisma.productionScheduleOrderSplit.findMany).mockResolvedValue([
+      { id: 'legacy-piece', parentCsvDashboardRowId: 'parent-1', splitQuantity: 2 }
+    ] as never);
 
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
@@ -1304,19 +1286,16 @@ describe('production-schedule-query.service', () => {
     });
 
     expect(countSpy).toHaveBeenCalledTimes(1);
-    expect(expandSpy).toHaveBeenCalledTimes(1);
-    expect(result.total).toBe(3);
-    expect(result.rows).toHaveLength(2);
-    expect(result.rows[0]?.id).toBe('split:a-parent-1');
-    expect(result.rows[1]?.processingOrder).toBe(2);
+    expect(prisma.productionScheduleOrderSplit.findMany).not.toHaveBeenCalled();
+    expect(result.total).toBe(1);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.id).toBe('parent-1');
+    expect(result.rows[0]?.plannedQuantity).toBe(5);
 
     countSpy.mockRestore();
-    expandSpy.mockRestore();
   });
 
-  it('responseProfile=leaderboard は split flag ON でも query unit test が通る', async () => {
-    process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED = 'true';
-    expect(isProductionScheduleOrderSplitEnabled()).toBe(true);
+  it('responseProfile=leaderboard は親の順位と可視件数を維持する', async () => {
 
     vi.mocked(prisma.$queryRaw)
       .mockResolvedValueOnce([{ id: 'winner-stub' }] as never)
@@ -1354,7 +1333,7 @@ describe('production-schedule-query.service', () => {
       responseProfile: 'leaderboard'
     });
 
-    expect(prisma.productionScheduleOrderSplit.findMany).toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.findMany).not.toHaveBeenCalled();
     expect(result.rows).toHaveLength(1);
     expect(result.total).toBe(1);
   });

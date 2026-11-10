@@ -1,4 +1,7 @@
-import type { Prisma } from '@prisma/client';
+import { resolveMachineFactory } from './machine-factory.js';
+import { getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
+import { Prisma } from '@prisma/client';
+import { TagDeskService, normalizeTagUid } from '../tag-desk/tag-desk.service.js';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
 import { resolveJstSignageBusinessDate } from '../../lib/signage-business-day.js';
@@ -269,10 +272,13 @@ export class MachineService {
         : {}),
     };
 
-    return prisma.machine.findMany({
+    const machines = await prisma.machine.findMany({
       where,
+      include: { nfcTags: { select: { id: true, uid: true }, orderBy: { createdAt: 'asc' } } },
       orderBy: [{ classification: 'asc' }, { equipmentManagementNumber: 'asc' }],
     });
+    const sendaiResourceCds = await getSendaiResourceCds();
+    return machines.map(machine => ({ ...machine, factory: resolveMachineFactory(machine.resourceCd, sendaiResourceCds) }));
   }
 
   async findResourceChoices() {
@@ -285,6 +291,37 @@ export class MachineService {
       if (!choices.has(row.resourceCd)) choices.set(row.resourceCd, row);
     }
     return [...choices.values()];
+  }
+
+  async addNfcTag(machineId: string, rawUid: string) {
+    const uid = normalizeTagUid(rawUid);
+    if (uid.length < 4) throw new ApiError(400, 'タグのIDが短すぎます', undefined, 'TAG_UID_INVALID');
+    const desk = new TagDeskService();
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const machine = await tx.machine.findUnique({ where: { id: machineId } });
+        if (!machine) throw new ApiError(404, '加工機が見つかりません');
+        const usedBy = await desk.findUsage(tx, uid);
+        if (usedBy) throw new ApiError(409, `このタグは「${usedBy}」で使われています。先に外してください`, { usedBy }, 'TAG_IN_USE');
+        const tag = await tx.machineNfcTag.create({ data: { machineId, uid } });
+        await desk.record(tx, { uid, action: 'LINK', targetKind: 'machine', targetId: machineId, targetLabel: machine.name, clientDeviceId: null });
+        return tag;
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new ApiError(409, 'このタグは別の場所で使われています。先に外してください', undefined, 'TAG_IN_USE');
+      }
+      throw error;
+    }
+  }
+
+  async removeNfcTag(machineId: string, tagId: string) {
+    return prisma.$transaction(async (tx) => {
+      const tag = await tx.machineNfcTag.findUnique({ where: { id: tagId }, include: { machine: true } });
+      if (!tag || tag.machineId !== machineId) throw new ApiError(404, 'この紐づけは見つかりません。すでに外れています');
+      await tx.machineNfcTag.delete({ where: { id: tagId } });
+      await new TagDeskService().record(tx, { uid: tag.uid, action: 'UNLINK', targetKind: 'machine', targetId: machineId, targetLabel: tag.machine.name, clientDeviceId: null });
+    });
   }
 
   async create(payload: CreateMachinePayload) {

@@ -75,6 +75,9 @@ test('assembly SOP opens at the correct sheets, navigates safely, and stays offl
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await installAssemblySopApiMocks(page);
+  const manualLoaded = page.waitForResponse((response) =>
+    /\/manual(-[^/]+)?\.html$/.test(new URL(response.url()).pathname) && response.ok()
+  );
   await page.goto('/kiosk/assembly/library', { waitUntil: 'domcontentloaded' });
   const managementLauncher = page.getByRole('button', { name: 'この画面の操作手順を開く' });
   await expect(managementLauncher).toBeVisible();
@@ -84,6 +87,7 @@ test('assembly SOP opens at the correct sheets, navigates safely, and stays offl
     if (request.frame().parentFrame()) iframeRequests.push(request.url());
   });
 
+  await (await manualLoaded).finished();
   await context.setOffline(true);
   try {
     await managementLauncher.click();

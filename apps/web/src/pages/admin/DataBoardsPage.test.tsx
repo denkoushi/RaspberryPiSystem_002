@@ -68,12 +68,14 @@ vi.mock('../../api/hooks', () => ({
         startTime: '13:00',
         endTime: '17:00',
         priority: 0,
-        targetClientKeys: [],
+        targetClientDeviceIds: [],
         layoutConfig: { layout: 'FULL', slots: [{ position: 'FULL', kind: 'csv_dashboard', config: { csvDashboardId: 'table-1' } }] },
       },
     ],
   }),
 }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ user: { role: 'ADMIN' } }) }));
+
 vi.mock('../../features/admin/data-boards/useBoardPreviewImage', () => ({
   useBoardPreviewImage: () => ({ imageUrl: null, error: null, isLoading: false }),
 }));

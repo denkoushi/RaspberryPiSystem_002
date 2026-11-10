@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
+import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../domains/mobile-placement';
 
 import type { HaizenOverviewRow } from '../domains/mobile-placement';
 
@@ -28,4 +28,8 @@ export function useDeleteHaizenPlacement() {
       : deleteOrderPlacementBranch(row.id),
     onSuccess: () => client.invalidateQueries({ queryKey: ['mobile-placement', 'haizen-overview'] })
   });
+}
+
+export function useHaizenUnplacedParts(enabled: boolean) {
+  return useQuery({ queryKey: ['mobile-placement', 'haizen-overview', 'unplaced-parts'], queryFn: getHaizenUnplacedParts, enabled, refetchInterval: 60_000 });
 }

@@ -3,7 +3,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const borrowMeasuringInstrumentMock = vi.fn();
-const createInspectionRecordMock = vi.fn();
 const getMeasuringInstrumentInspectionProfileMock = vi.fn();
 
 /** useNfcStream のモックが参照する可変状態（factory より前に hoisted） */
@@ -41,7 +40,6 @@ vi.mock('../../api/client', async (importOriginal) => {
     }),
     getMeasuringInstrumentTags: vi.fn().mockResolvedValue({ tags: [{ rfidTagUid: 'inst-rfid-1' }] }),
     getMeasuringInstrumentInspectionProfile: (...args: unknown[]) => getMeasuringInstrumentInspectionProfileMock(...args),
-    createInspectionRecord: (...args: unknown[]) => createInspectionRecordMock(...args),
     postClientLogs: vi.fn().mockResolvedValue(undefined)
   };
 });
@@ -63,7 +61,6 @@ function Harness({ nfc }: { nfc: { uid: string; timestamp: string } | null }) {
 describe('KioskInstrumentBorrowPage NFC', () => {
   beforeEach(() => {
     borrowMeasuringInstrumentMock.mockReset();
-    createInspectionRecordMock.mockReset();
     getMeasuringInstrumentInspectionProfileMock.mockReset();
     borrowMeasuringInstrumentMock.mockResolvedValue({
       id: 'loan-1',
@@ -78,7 +75,6 @@ describe('KioskInstrumentBorrowPage NFC', () => {
       },
       inspectionItems: []
     });
-    createInspectionRecordMock.mockResolvedValue({});
     nfcStreamState.event = null;
   });
 
@@ -109,13 +105,17 @@ describe('KioskInstrumentBorrowPage NFC', () => {
       expect(borrowMeasuringInstrumentMock).toHaveBeenCalledWith(
         expect.objectContaining({
           employeeTagUid: 'employee-nfc-uid-99',
-          instrumentTagUid: 'inst-rfid-1'
-        })
+          instrumentTagUid: 'inst-rfid-1',
+          inspectionItemIds: [],
+          eventKey: expect.any(String),
+          readAt: expect.any(String)
+        }),
+        undefined
       );
     });
   });
 
-  it('点検記録作成が401で失敗すると持出完了遷移しない（認証トークン要求の再現）', async () => {
+  it('点検項目を含む貸出が401で失敗すると持出完了遷移しない', async () => {
     getMeasuringInstrumentInspectionProfileMock.mockResolvedValueOnce({
       genre: {
         id: 'g1',
@@ -127,7 +127,7 @@ describe('KioskInstrumentBorrowPage NFC', () => {
         { id: 'insp-1', name: '外観確認', order: 1, createdAt: '', updatedAt: '', genreId: 'g1' }
       ]
     });
-    createInspectionRecordMock.mockRejectedValueOnce({
+    borrowMeasuringInstrumentMock.mockRejectedValueOnce({
       response: { status: 401, data: { message: '認証トークンが必要です' } },
       message: 'Request failed with status code 401'
     });
@@ -144,7 +144,9 @@ describe('KioskInstrumentBorrowPage NFC', () => {
     rerender(<Harness nfc={{ uid: 'employee-nfc-uid-401', timestamp: new Date().toISOString() }} />);
 
     await waitFor(() => {
-      expect(createInspectionRecordMock).toHaveBeenCalled();
+      expect(borrowMeasuringInstrumentMock).toHaveBeenCalledWith(
+        expect.objectContaining({ inspectionItemIds: ['insp-1'] }), undefined
+      );
     });
     await waitFor(() => {
       expect(screen.queryByText('kiosk-tag')).not.toBeInTheDocument();

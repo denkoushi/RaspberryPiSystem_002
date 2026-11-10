@@ -4,6 +4,8 @@
 }
 
 :80 {
+  encode zstd gzip
+
   @internal_deploy_readiness path /api/system/deploy-readiness/internal
   respond @internal_deploy_readiness 404
 
@@ -13,6 +15,7 @@
     path /api/* /ws/*
   }
   reverse_proxy @api ${SLOT_API_UPSTREAM} {
+    header_up X-Forwarded-For {remote_host}
     transport http {
       versions 1.1
     }
@@ -20,7 +23,9 @@
 
   handle /storage/thumbnails/* {
     uri replace /storage/thumbnails/ /api/storage/thumbnails/
-    reverse_proxy ${SLOT_API_UPSTREAM}
+    reverse_proxy ${SLOT_API_UPSTREAM} {
+      header_up X-Forwarded-For {remote_host}
+    }
   }
 
   @static_site {
@@ -40,6 +45,12 @@
     @service_worker path /sw.js
     header @service_worker Cache-Control "no-cache"
 
+    @hashed_asset {
+      path_regexp ^/assets/.+-[A-Za-z0-9_-]{8}\.(js|css|woff2?)$
+      file
+    }
+    header @hashed_asset Cache-Control "public, max-age=31536000, immutable"
+
     file_server
   }
 
@@ -54,6 +65,22 @@
       roll_size 5MiB
       roll_keep 300
       roll_keep_for 168h
+    }
+    format filter {
+      request>headers>X-Client-Key delete
+      request>headers>X-Deploy-Control-Token delete
+      request>headers>X-Due-Management-Token delete
+      request>headers>X-Kiosk-Access-Password delete
+      request>headers>X-Procedure-Edit-Token delete
+      request>headers>X-Visual-Cleanup-Token delete
+      request>headers>Referer query {
+        delete clientKey
+        delete key
+      }
+      request>uri query {
+        delete clientKey
+        delete key
+      }
     }
   }
 }

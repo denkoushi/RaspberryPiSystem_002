@@ -333,6 +333,27 @@ describe('part-measurement templates API', () => {
     }
   });
 
+  it('requires the active edit lock holder to cancel a draft sheet', async () => {
+    const owner = await createTestClientDevice();
+    const other = await createTestClientDevice();
+    const session = await prisma.partMeasurementSession.create({ data: {
+      productNo: 'CANCEL-LOCK', processGroup: 'CUTTING', resourceCd: 'LOCK'
+    } });
+    const sheet = await prisma.partMeasurementSheet.create({ data: {
+      productNo: 'CANCEL-LOCK', fseiban: 'LOCK-SEIBAN', fhincd: 'LOCK-PART', fhinmei: 'Lock test part',
+      processGroupSnapshot: 'CUTTING', sessionId: session.id,
+      editLockClientDeviceId: owner.id, editLockExpiresAt: new Date(Date.now() + 60_000)
+    } });
+    const url = `/api/part-measurement/sheets/${sheet.id}/cancel`;
+    const refused = await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload: { reason: 'Draft cancelled' } });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().errorCode).toBe('PART_MEASUREMENT_EDIT_LOCKED');
+    expect((await prisma.partMeasurementSheet.findUniqueOrThrow({ where: { id: sheet.id } })).status).toBe('DRAFT');
+    const allowed = await app.inject({ method: 'POST', url, headers: { 'x-client-key': owner.apiKey }, payload: { reason: 'Draft cancelled' } });
+    expect(allowed.statusCode).toBe(200);
+    expect((await prisma.partMeasurementSheet.findUniqueOrThrow({ where: { id: sheet.id } })).status).toBe('CANCELLED');
+  });
+
   it('returns 401 without auth for GET /api/part-measurement/templates', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/part-measurement/templates' });
     expect(response.statusCode).toBe(401);
@@ -3685,6 +3706,29 @@ describe('part-measurement templates API', () => {
       { employeeId: auditEmployee.id, displayName: 'Self Inspection Operator' }
     ]);
     const completedAtAfterFirst = approveRes.json().session.completedAt as string;
+
+    for (const readHeaders of [createAuthHeader(viewerToken), { 'x-client-key': kioskClient.apiKey }]) {
+      for (const url of [
+        `/api/part-measurement/self-inspection/sessions/${sessionId}`,
+        `/api/part-measurement/self-inspection/sessions/${sessionId}/inspector-measurements`,
+        `/api/part-measurement/self-inspection/record-approvals/sessions/${sessionId}`,
+        '/api/part-measurement/self-inspection/record-approvals?state=approved'
+      ]) {
+        const response = await app.inject({ method: 'GET', url, headers: readHeaders });
+        expect(response.statusCode).toBe(200);
+        expect(response.body).not.toContain('approverEmployeeNfcTagUidSnapshot');
+        expect(response.body).not.toContain('inspectorEmployeeNfcTagUidSnapshot');
+        expect(response.body).not.toContain(activeApprover.nfcTagUid!);
+        const body = response.json();
+        if (url.includes('/record-approvals')) {
+          const session = body.session ?? body.sessions.find((row: { id: string }) => row.id === sessionId);
+          expect(session.recordApproval.approverEmployeeNameSnapshot).toBe('Record Approver');
+          if (body.session) expect(session.requiredEntries[0].inspectorEntry).not.toBeNull();
+        } else if (url.endsWith('/inspector-measurements')) {
+          expect(body.session.entries.length).toBeGreaterThan(0);
+        }
+      }
+    }
 
     const approvalRow = await prisma.selfInspectionRecordApproval.findUnique({
       where: { sessionId }

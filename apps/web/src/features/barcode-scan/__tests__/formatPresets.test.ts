@@ -1,4 +1,5 @@
-import { BarcodeFormat } from '@zxing/library';
+import { BarcodeFormat } from '@zxing/library/esm';
+import DeepBarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -13,6 +14,10 @@ import {
 } from '../readerOptionPresets';
 
 describe('formatPresets', () => {
+  it('deep import shares the enum exported by the library', () => {
+    expect(DeepBarcodeFormat).toBe(BarcodeFormat);
+  });
+
   it('一次元プリセットに QR を含まない', () => {
     expect(BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL).not.toContain(BarcodeFormat.QR_CODE);
     expect(BARCODE_FORMAT_PRESET_ONE_DIMENSIONAL).not.toContain(BarcodeFormat.DATA_MATRIX);

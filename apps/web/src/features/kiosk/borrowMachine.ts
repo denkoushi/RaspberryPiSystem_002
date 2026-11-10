@@ -12,6 +12,7 @@ interface BorrowContext {
 type BorrowEvent =
   | { type: 'ITEM_SCANNED'; uid: string }
   | { type: 'EMPLOYEE_SCANNED'; uid: string }
+  | { type: 'QUEUED' }
   | { type: 'RESET' }
   | { type: 'SUCCESS'; loan: Loan }
   | { type: 'FAIL'; message: string };
@@ -95,6 +96,10 @@ export function createBorrowMachine() {
       },
       submitting: {
         on: {
+          QUEUED: {
+            target: 'collecting',
+            actions: assign({ itemTagUid: () => undefined, employeeTagUid: () => undefined, loan: () => undefined, error: () => undefined })
+          },
           SUCCESS: {
             target: 'success',
             actions: assign({

@@ -35,7 +35,7 @@ Now the header tab 在庫 opens the daily 在庫操作 screen (`/kiosk/inventory
 - Workers take items out by holding the item tag, then a quantity tag.
 - Workers put items back by holding the restock tag, then the item tag, then a quantity tag.
 - After an item tag, the screen shows photos, stock, place and the drawer's last three movements.
-- 数が合わないときは直す corrects the count on a keypad **without a password**, and 直前の取引を取消 undoes it.
+- Touch quantity buttons issue stock; count correction is no longer exposed in daily work. 直前の取引を取消 still undoes the latest movement.
 - タグが無いとき：置き場所から選ぶ picks area, shelf and drawer by touch.
 
 在庫の準備 (`/kiosk/inventory/settings`) opens with an on-screen 4-digit keypad. It has four tabs: 登録待ち (a step-by-step registration of mailed candidates), 棚・引き出し, NFCタグ, and アイテム編集. Tags are read as soon as a "hold the tag" panel is shown, with no read button. The admin PC page is unchanged. The history table and cross-terminal cancel stay there only.
@@ -112,10 +112,10 @@ Third part of the review: the daily screen can be used by touch alone, and a tag
   - An operation waits for the background check of the selection before it is sent, and is dropped if the check changes the drawer.
   - When an operation fails, scans read up to that moment are dropped, also across leaving and reopening the screen (the failure time is kept outside the component).
   - The tag route accepts `expectedCompartmentId`; if the tag now belongs to another drawer the API answers 409 `INVENTORY_CONFLICT` (タグの登録が変わりました) and nothing moves. A replay with the same idempotency key returns the first result before this check.
-  - No answer (network error or 5xx) is treated as unknown: the item list is re-read and the screen says 通信できませんでした。在庫数を確かめてください. It does not retry by itself.
+  - Manual number-button failures remain uncertain and are not automatically retried. Quantity-tag requests now use the [inventory NFC offline request queue](../plans/kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02).
   - 補充 chosen on the header, or a quantity tag on a drawer without a tag, re-reads the quantity and goes through the touch route.
 - The screen reads API errors from `errorCode` (what the error handler sends), falling back to `code`.
-- Accepted limit: a quantity or restock tag deleted on another terminal is still treated as an inventory tag for up to 5 minutes here. No stock moves, because the server rejects it.
+- Accepted limit: a quantity or restock tag deleted on another terminal is still treated as an inventory tag for up to 5 minutes here. Online verification rejects it; queued touch requests can use the scan-time cached quantity (see the offline request decision above).
 - Not checked: the real look at 1920×1080 on a kiosk. Tests cover behaviour only.
 
 ## Updates (2026-10-08, API)
@@ -209,3 +209,18 @@ A review of every inventory screen for fewer steps and faster response; this is 
 - List rows show a 56px first-photo thumbnail, location number, name, model/maker, area/shelf/drawer, stock with unit and last issue. Sorting, area/shelf filters and leading unregistered candidates keep the same behaviour; tapping a row opens the same item or candidate.
 - List view hides 写真の大きさ and photo paging. The stored thumbnail size and card photo selection remain available on return to cards; scrolling stays inside the list.
 - Not checked: real device.
+
+
+## Updates (2026-11-04, reorder point and setup restock)
+
+Each `InventoryCompartment` now stores nullable `reorderPoint` and `reorderedAt`. Migration `20261104120000_add_inventory_compartment_reorder` adds both columns without changing existing quantities or setting thresholds for existing rows. List, location, tag and label lookup responses include both fields.
+
+The preparation screen adds 発注点 (blank clears it), quantity-based 補充 and a blue 発注済み toggle below each location. The new `PUT /item-inventory/compartments/:id/reorder-point`, `PUT /item-inventory/compartments/:id/ordered` and `POST /item-inventory/compartments/:id/restock` routes use the existing setup authorization, including the kiosk PIN. Restock reuses the existing RESTOCK transaction and idempotency mechanism.
+
+`reorderStateAfterChange` in `item-inventory-transactions.ts` is the single service policy for clearing `reorderedAt` when stock exceeds the threshold or the threshold is cleared. Stock movements (NFC, touch and offline replay), count correction, cancellation and threshold edits evaluate it in the same serializable transaction under the compartment row lock. Ordered ON requires a configured threshold with stock at or below it; repeated ON retains the timestamp, and OFF clears it.
+
+Daily cards and rows place low-stock compartments first, retaining the existing stock/date/name order within each group. Low-stock borders are red when unordered and blue when ordered; these borders take priority over cyan hover styling. Pending candidates retain their amber treatment. Preparation lists stably partition their existing shelf/item ordering by whether any compartment needs reorder, including ordered compartments.
+
+The daily issue/restock segment and count-correction entry are removed. Touch quantities always issue; RESTOCK NFC tags continue to replenish stock through the existing queue. No count-correction UI is added to preparation.
+
+Validation used `pnpm --filter @raspi-system/api exec vitest run src/services/item-inventory src/routes/item-inventory` and the corresponding Web inventory/page/router tests. After updating the response expectation, all 399 runnable API tests passed across the related run and focused follow-up; 3 existing integration tests were skipped because no dedicated `TEST_DATABASE_URL` was configured. Web validation covered 431 tests, including focused cache/setup follow-ups. API and Web typechecks passed, and Web lint passed. API lint reports 3 pre-existing `no-irregular-whitespace` errors in `item-inventory-helpers.test.ts`; linting the HEAD version through stdin reproduces the same errors, so those unrelated test strings were preserved. No production migration, commit or deployment is part of this local implementation.

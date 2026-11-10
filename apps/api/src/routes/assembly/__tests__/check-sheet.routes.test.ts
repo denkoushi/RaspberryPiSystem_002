@@ -2,6 +2,7 @@ import multipart from '@fastify/multipart';
 import Fastify, { type FastifyInstance } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { prisma } from '../../../lib/prisma.js';
 import { authorizeRoles } from '../../../lib/auth.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
@@ -18,13 +19,16 @@ vi.mock('../../kiosk/shared.js', () => ({ requireClientDevice: vi.fn(async (key:
   if (key !== 'kiosk') throw new ApiError(401, '端末認証が必要です');
   return { clientDevice: { id: 'synthetic-device', name: '組立1-01' } };
 }) }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: {} }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() } } }));
 vi.mock('../../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: vi.fn() }));
 
 const id = '00000000-0000-4000-8000-000000000001';
-const headers = (role: string) => ({
-  authorization: `Bearer ${jwt.sign({ sub: id, username: 'test', role }, 'check-sheet-test-only-secret')}`
-});
+const headers = (role: string) => {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id, username: 'test', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+  return {
+    authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: id, sub: id, username: 'test', role }, 'check-sheet-test-only-secret')}`
+  };
+};
 function upload(file: Buffer, filename = 'synthetic.xlsx') {
   const boundary = 'check-sheet-test';
   return {

@@ -115,12 +115,16 @@ export async function createRiggingInspectionRecord(payload: {
   return data.inspectionRecord;
 }
 
-export async function borrowRiggingGear(payload: RiggingBorrowPayload) {
-  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/borrow', payload);
+export async function borrowRiggingGear(payload: RiggingBorrowPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/borrow', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
   return data.loan;
 }
 
-export async function returnRiggingGear(payload: RiggingReturnPayload) {
-  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/return', payload);
+export async function returnRiggingGear(payload: RiggingReturnPayload, clientKey?: string) {
+  const { data } = await api.post<{ loan: Loan }>('/rigging-gears/return', payload, {
+    headers: clientKey ? { 'x-client-key': clientKey } : undefined
+  });
   return data.loan;
 }

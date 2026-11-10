@@ -31,7 +31,7 @@ NFCリーダーとハードウェアに関するトラブルシューティン�
 - client-initial-setup.md に NFC エージェント手順が欠落
 - docker-compose.client.yml が .env.example を参照し、Ansible でデプロイする .env がコンテナに渡らない
 
-**即時対応**: `scripts/client/setup-nfc-agent.sh` を手動実行。
+**即時対応（2026-03 当時）**: `scripts/client/setup-nfc-agent.sh` を手動実行。
 
 **詳細**: [KB-291-robodrill01-nfc-scan-not-responding-investigation.md](./KB-291-robodrill01-nfc-scan-not-responding-investigation.md)
 
@@ -133,7 +133,7 @@ NFCリーダーとハードウェアに関するトラブルシューティン�
 
 ### [KB-067] 工具スキャンが重複登録される問題（NFCエージェントのeventId永続化対策）
 
-**EXEC_PLAN.md参照**: Phase 6 実機検証（2025-12-01）、[tool-management-debug-execplan.md](../plans/tool-management-debug-execplan.md)
+**EXEC_PLAN.md参照**: Phase 6 実機検証（2025-12-01）、[tool-management-debug-execplan.md](../../plans/tool-management-debug-execplan.md)
 
 **事象**: 
 - NFCタグを1回しかスキャンしていないのに、1〜2件の貸出が勝手に追加される

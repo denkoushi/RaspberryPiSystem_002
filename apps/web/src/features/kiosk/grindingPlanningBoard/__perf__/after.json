@@ -1,0 +1,1506 @@
+{
+  "environment": {
+    "node": "v24.3.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M3",
+    "dom": "jsdom (no browser layout/paint)",
+    "samples": 3,
+    "discardedWarmups": 1
+  },
+  "fixture": {
+    "seibans": 80,
+    "items": 1500,
+    "resources": 20,
+    "splits": 89,
+    "specialDue": 52
+  },
+  "layoutMedianMs": 11.811124999999947,
+  "medians": {
+    "handlerMs": 3.8386249999998654,
+    "firstDisplayMs": 16.050624999999854,
+    "acknowledgementsMs": 216.97833300000002,
+    "viewMountMs": 445.1741670000001,
+    "viewUpdateMs": 393.9840000000004,
+    "viewAcknowledgementMs": 7.008291000000099
+  },
+  "acknowledgementViewMedianMs": 7.076249999999163,
+  "samples": [
+    {
+      "handlerMs": 3.8386249999998654,
+      "firstDisplayMs": 16.050624999999854,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 1.2494160000001102,
+        "layoutMs": 10.46075000000019
+      },
+      "acknowledgementsMs": 235.161333,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 9.965262000001985,
+        "layoutMs": 205.1532100000004,
+        "layouts": 21
+      },
+      "viewMountMs": 445.1741670000001,
+      "viewUpdateMs": 401.7134170000004,
+      "viewAcknowledgementMs": 7.008291000000099,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 22648,
+      "segments": 3207,
+      "nodeBreakdown": {
+        "dailyGrid": 0,
+        "weekendBands": 0,
+        "dailyBandWrappers": 0,
+        "offHourBands": 40,
+        "breakBands": 60,
+        "dateHeadings": 377,
+        "hourHeadings": 9048,
+        "laneLabels": 140,
+        "barWrappers": 1500,
+        "barSegments": 3207,
+        "barContents": 8136,
+        "sendOutStars": 0,
+        "nowLines": 20,
+        "connectors": 53,
+        "other": 67
+      },
+      "acknowledgementViews": [
+        {
+          "ms": 7.164874999999483,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.848457999999482,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.245040999999219,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.833792000000358,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.419207999999344,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.130666000000019,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.672875000000204,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.979000000000269,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.412833000000319,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.059500000000298,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.2352499999997235,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.329415999999583,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.755540999999539,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.234875000000102,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.66308300000037,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.826000000000022,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.603457999999591,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.008291000000099,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.000084000000243,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.687667000000147,
+          "rowRenders": 0
+        }
+      ]
+    },
+    {
+      "handlerMs": 2.951375000000553,
+      "firstDisplayMs": 14.097042000000329,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 0.9376259999980903,
+        "layoutMs": 9.71941599999991
+      },
+      "acknowledgementsMs": 216.97833300000002,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 10.260742000000391,
+        "layoutMs": 190.07370899999842,
+        "layouts": 21
+      },
+      "viewMountMs": 500.73383399999966,
+      "viewUpdateMs": 280.7668330000006,
+      "viewAcknowledgementMs": 7.619999999999891,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 22648,
+      "segments": 3207,
+      "nodeBreakdown": {
+        "dailyGrid": 0,
+        "weekendBands": 0,
+        "dailyBandWrappers": 0,
+        "offHourBands": 40,
+        "breakBands": 60,
+        "dateHeadings": 377,
+        "hourHeadings": 9048,
+        "laneLabels": 140,
+        "barWrappers": 1500,
+        "barSegments": 3207,
+        "barContents": 8136,
+        "sendOutStars": 0,
+        "nowLines": 20,
+        "connectors": 53,
+        "other": 67
+      },
+      "acknowledgementViews": [
+        {
+          "ms": 6.574207999999999,
+          "rowRenders": 0
+        },
+        {
+          "ms": 9.241624999999658,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.081959000000097,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.236499999999978,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.073790999999801,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.076249999999163,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.611291999999594,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.525125000000116,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.152291999999761,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.692417000000205,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.619999999999891,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.381124999999884,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.933333999999377,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.336375000000771,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.945458000000144,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.840416000000005,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.5465839999997115,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.612375000000611,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.885167000000365,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.390542000000096,
+          "rowRenders": 0
+        }
+      ]
+    },
+    {
+      "handlerMs": 5.104332999999315,
+      "firstDisplayMs": 17.491625000000568,
+      "initial": {
+        "stateUpdates": 20,
+        "queueUpdates": 20,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          }
+        ],
+        "applyMs": 1.3387490000004618,
+        "layoutMs": 10.521249999999782
+      },
+      "acknowledgementsMs": 216.2593339999994,
+      "all": {
+        "stateUpdates": 61,
+        "queueUpdates": 41,
+        "commits": [
+          {
+            "stateUpdates": 20,
+            "queueUpdates": 20,
+            "layouts": 1
+          },
+          {
+            "stateUpdates": 22,
+            "queueUpdates": 21,
+            "layouts": 2
+          },
+          {
+            "stateUpdates": 24,
+            "queueUpdates": 22,
+            "layouts": 3
+          },
+          {
+            "stateUpdates": 26,
+            "queueUpdates": 23,
+            "layouts": 4
+          },
+          {
+            "stateUpdates": 28,
+            "queueUpdates": 24,
+            "layouts": 5
+          },
+          {
+            "stateUpdates": 30,
+            "queueUpdates": 25,
+            "layouts": 6
+          },
+          {
+            "stateUpdates": 32,
+            "queueUpdates": 26,
+            "layouts": 7
+          },
+          {
+            "stateUpdates": 34,
+            "queueUpdates": 27,
+            "layouts": 8
+          },
+          {
+            "stateUpdates": 36,
+            "queueUpdates": 28,
+            "layouts": 9
+          },
+          {
+            "stateUpdates": 38,
+            "queueUpdates": 29,
+            "layouts": 10
+          },
+          {
+            "stateUpdates": 40,
+            "queueUpdates": 30,
+            "layouts": 11
+          },
+          {
+            "stateUpdates": 42,
+            "queueUpdates": 31,
+            "layouts": 12
+          },
+          {
+            "stateUpdates": 44,
+            "queueUpdates": 32,
+            "layouts": 13
+          },
+          {
+            "stateUpdates": 46,
+            "queueUpdates": 33,
+            "layouts": 14
+          },
+          {
+            "stateUpdates": 48,
+            "queueUpdates": 34,
+            "layouts": 15
+          },
+          {
+            "stateUpdates": 50,
+            "queueUpdates": 35,
+            "layouts": 16
+          },
+          {
+            "stateUpdates": 52,
+            "queueUpdates": 36,
+            "layouts": 17
+          },
+          {
+            "stateUpdates": 54,
+            "queueUpdates": 37,
+            "layouts": 18
+          },
+          {
+            "stateUpdates": 56,
+            "queueUpdates": 38,
+            "layouts": 19
+          },
+          {
+            "stateUpdates": 58,
+            "queueUpdates": 39,
+            "layouts": 20
+          },
+          {
+            "stateUpdates": 61,
+            "queueUpdates": 41,
+            "layouts": 21
+          }
+        ],
+        "applyCalls": 210,
+        "applyMs": 9.711043999994217,
+        "layoutMs": 191.52770800000053,
+        "layouts": 21
+      },
+      "viewMountMs": 421.9665420000001,
+      "viewUpdateMs": 393.9840000000004,
+      "viewAcknowledgementMs": 6.894083999999566,
+      "daysBefore": 242,
+      "daysAfter": 377,
+      "nodes": 22648,
+      "segments": 3207,
+      "nodeBreakdown": {
+        "dailyGrid": 0,
+        "weekendBands": 0,
+        "dailyBandWrappers": 0,
+        "offHourBands": 40,
+        "breakBands": 60,
+        "dateHeadings": 377,
+        "hourHeadings": 9048,
+        "laneLabels": 140,
+        "barWrappers": 1500,
+        "barSegments": 3207,
+        "barContents": 8136,
+        "sendOutStars": 0,
+        "nowLines": 20,
+        "connectors": 53,
+        "other": 67
+      },
+      "acknowledgementViews": [
+        {
+          "ms": 6.67016700000022,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.560208999999304,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.073374999999942,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.449833000000581,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.415083000000777,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.894083999999566,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.486957999999504,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.95520900000065,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.520166999999674,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.913792000000285,
+          "rowRenders": 0
+        },
+        {
+          "ms": 8.380083000000013,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.06316599999991,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.208499999999731,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.861832999999933,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.335667000000285,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.538957999999184,
+          "rowRenders": 0
+        },
+        {
+          "ms": 7.560292000000118,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.607292000000598,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.721125000000029,
+          "rowRenders": 0
+        },
+        {
+          "ms": 6.840791999999965,
+          "rowRenders": 0
+        }
+      ]
+    }
+  ],
+  "comparisonBefore": {
+    "environment": {
+      "node": "v24.3.0",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpu": "Apple M3",
+      "dom": "jsdom (no browser layout/paint)",
+      "samples": 3,
+      "discardedWarmups": 1
+    },
+    "fixture": {
+      "seibans": 80,
+      "items": 1500,
+      "resources": 20,
+      "splits": 89,
+      "specialDue": 52
+    },
+    "layoutMedianMs": 11.066790999999967,
+    "medians": {
+      "handlerMs": 5.425790999997844,
+      "firstDisplayMs": 17.21875,
+      "acknowledgementsMs": 270.6949170000007,
+      "viewMountMs": 1427.8298330000034,
+      "viewUpdateMs": 937.4002089999994,
+      "viewAcknowledgementMs": 242.32541599999968,
+      "repeatedFinalLayoutMs": 160.39362499999697
+    },
+    "acknowledgementViewMedianMs": 242.32541599999968,
+    "samples": [
+      {
+        "handlerMs": 3.3182090000000244,
+        "firstDisplayMs": 13.580458000000363,
+        "initial": {
+          "stateUpdates": 20,
+          "queueUpdates": 20,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            }
+          ],
+          "applyMs": 1.0317070000010062,
+          "layoutMs": 8.823582999999417
+        },
+        "acknowledgementsMs": 203.58500000000004,
+        "all": {
+          "stateUpdates": 61,
+          "queueUpdates": 41,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            },
+            {
+              "stateUpdates": 22,
+              "queueUpdates": 21,
+              "layouts": 2
+            },
+            {
+              "stateUpdates": 24,
+              "queueUpdates": 22,
+              "layouts": 3
+            },
+            {
+              "stateUpdates": 26,
+              "queueUpdates": 23,
+              "layouts": 4
+            },
+            {
+              "stateUpdates": 28,
+              "queueUpdates": 24,
+              "layouts": 5
+            },
+            {
+              "stateUpdates": 30,
+              "queueUpdates": 25,
+              "layouts": 6
+            },
+            {
+              "stateUpdates": 32,
+              "queueUpdates": 26,
+              "layouts": 7
+            },
+            {
+              "stateUpdates": 34,
+              "queueUpdates": 27,
+              "layouts": 8
+            },
+            {
+              "stateUpdates": 36,
+              "queueUpdates": 28,
+              "layouts": 9
+            },
+            {
+              "stateUpdates": 38,
+              "queueUpdates": 29,
+              "layouts": 10
+            },
+            {
+              "stateUpdates": 40,
+              "queueUpdates": 30,
+              "layouts": 11
+            },
+            {
+              "stateUpdates": 42,
+              "queueUpdates": 31,
+              "layouts": 12
+            },
+            {
+              "stateUpdates": 44,
+              "queueUpdates": 32,
+              "layouts": 13
+            },
+            {
+              "stateUpdates": 46,
+              "queueUpdates": 33,
+              "layouts": 14
+            },
+            {
+              "stateUpdates": 48,
+              "queueUpdates": 34,
+              "layouts": 15
+            },
+            {
+              "stateUpdates": 50,
+              "queueUpdates": 35,
+              "layouts": 16
+            },
+            {
+              "stateUpdates": 52,
+              "queueUpdates": 36,
+              "layouts": 17
+            },
+            {
+              "stateUpdates": 54,
+              "queueUpdates": 37,
+              "layouts": 18
+            },
+            {
+              "stateUpdates": 56,
+              "queueUpdates": 38,
+              "layouts": 19
+            },
+            {
+              "stateUpdates": 58,
+              "queueUpdates": 39,
+              "layouts": 20
+            },
+            {
+              "stateUpdates": 61,
+              "queueUpdates": 41,
+              "layouts": 21
+            }
+          ],
+          "applyCalls": 210,
+          "applyMs": 8.657544000008784,
+          "layoutMs": 186.4252069999984,
+          "layouts": 21
+        },
+        "viewMountMs": 1230.4022909999994,
+        "viewUpdateMs": 881.3485839999994,
+        "viewAcknowledgementMs": 324.103916,
+        "daysBefore": 242,
+        "daysAfter": 377,
+        "nodes": 67788,
+        "segments": 3207,
+        "nodeBreakdown": {
+          "dailyGrid": 0,
+          "weekendBands": 0,
+          "dailyBandWrappers": 7540,
+          "offHourBands": 15080,
+          "breakBands": 22620,
+          "dateHeadings": 377,
+          "hourHeadings": 9048,
+          "laneLabels": 140,
+          "barWrappers": 1500,
+          "barSegments": 3207,
+          "barContents": 8136,
+          "sendOutStars": 0,
+          "nowLines": 20,
+          "connectors": 53,
+          "other": 67
+        },
+        "acknowledgementViews": [
+          {
+            "ms": 249.20883299999878,
+            "rowRenders": 20
+          },
+          {
+            "ms": 129.4384170000012,
+            "rowRenders": 20
+          },
+          {
+            "ms": 126.04320899999948,
+            "rowRenders": 20
+          },
+          {
+            "ms": 140.0716250000005,
+            "rowRenders": 20
+          },
+          {
+            "ms": 147.71787500000028,
+            "rowRenders": 20
+          },
+          {
+            "ms": 365.9987089999995,
+            "rowRenders": 20
+          },
+          {
+            "ms": 907.1844590000001,
+            "rowRenders": 20
+          },
+          {
+            "ms": 384.29925000000003,
+            "rowRenders": 20
+          },
+          {
+            "ms": 417.61383399999977,
+            "rowRenders": 20
+          },
+          {
+            "ms": 173.5254589999986,
+            "rowRenders": 20
+          },
+          {
+            "ms": 212.59820899999977,
+            "rowRenders": 20
+          },
+          {
+            "ms": 383.4340000000011,
+            "rowRenders": 20
+          },
+          {
+            "ms": 613.207375,
+            "rowRenders": 20
+          },
+          {
+            "ms": 254.33387500000026,
+            "rowRenders": 20
+          },
+          {
+            "ms": 356.84320800000023,
+            "rowRenders": 20
+          },
+          {
+            "ms": 750.555957999999,
+            "rowRenders": 20
+          },
+          {
+            "ms": 303.8230829999993,
+            "rowRenders": 20
+          },
+          {
+            "ms": 669.9456659999996,
+            "rowRenders": 20
+          },
+          {
+            "ms": 324.103916,
+            "rowRenders": 20
+          },
+          {
+            "ms": 274.5855420000007,
+            "rowRenders": 20
+          }
+        ],
+        "repeatedFinalLayoutMs": 600.4241249999995
+      },
+      {
+        "handlerMs": 7.527874999999767,
+        "firstDisplayMs": 35.35741699999926,
+        "initial": {
+          "stateUpdates": 20,
+          "queueUpdates": 20,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            }
+          ],
+          "applyMs": 1.4045400000031805,
+          "layoutMs": 25.849417000001267
+        },
+        "acknowledgementsMs": 612.0224170000001,
+        "all": {
+          "stateUpdates": 61,
+          "queueUpdates": 41,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            },
+            {
+              "stateUpdates": 22,
+              "queueUpdates": 21,
+              "layouts": 2
+            },
+            {
+              "stateUpdates": 24,
+              "queueUpdates": 22,
+              "layouts": 3
+            },
+            {
+              "stateUpdates": 26,
+              "queueUpdates": 23,
+              "layouts": 4
+            },
+            {
+              "stateUpdates": 28,
+              "queueUpdates": 24,
+              "layouts": 5
+            },
+            {
+              "stateUpdates": 30,
+              "queueUpdates": 25,
+              "layouts": 6
+            },
+            {
+              "stateUpdates": 32,
+              "queueUpdates": 26,
+              "layouts": 7
+            },
+            {
+              "stateUpdates": 34,
+              "queueUpdates": 27,
+              "layouts": 8
+            },
+            {
+              "stateUpdates": 36,
+              "queueUpdates": 28,
+              "layouts": 9
+            },
+            {
+              "stateUpdates": 38,
+              "queueUpdates": 29,
+              "layouts": 10
+            },
+            {
+              "stateUpdates": 40,
+              "queueUpdates": 30,
+              "layouts": 11
+            },
+            {
+              "stateUpdates": 42,
+              "queueUpdates": 31,
+              "layouts": 12
+            },
+            {
+              "stateUpdates": 44,
+              "queueUpdates": 32,
+              "layouts": 13
+            },
+            {
+              "stateUpdates": 46,
+              "queueUpdates": 33,
+              "layouts": 14
+            },
+            {
+              "stateUpdates": 48,
+              "queueUpdates": 34,
+              "layouts": 15
+            },
+            {
+              "stateUpdates": 50,
+              "queueUpdates": 35,
+              "layouts": 16
+            },
+            {
+              "stateUpdates": 52,
+              "queueUpdates": 36,
+              "layouts": 17
+            },
+            {
+              "stateUpdates": 54,
+              "queueUpdates": 37,
+              "layouts": 18
+            },
+            {
+              "stateUpdates": 56,
+              "queueUpdates": 38,
+              "layouts": 19
+            },
+            {
+              "stateUpdates": 58,
+              "queueUpdates": 39,
+              "layouts": 20
+            },
+            {
+              "stateUpdates": 61,
+              "queueUpdates": 41,
+              "layouts": 21
+            }
+          ],
+          "applyCalls": 210,
+          "applyMs": 12.630788000027678,
+          "layoutMs": 466.4339189999955,
+          "layouts": 21
+        },
+        "viewMountMs": 2125.8837079999976,
+        "viewUpdateMs": 985.0499170000003,
+        "viewAcknowledgementMs": 141.76270900000236,
+        "daysBefore": 242,
+        "daysAfter": 377,
+        "nodes": 67788,
+        "segments": 3207,
+        "nodeBreakdown": {
+          "dailyGrid": 0,
+          "weekendBands": 0,
+          "dailyBandWrappers": 7540,
+          "offHourBands": 15080,
+          "breakBands": 22620,
+          "dateHeadings": 377,
+          "hourHeadings": 9048,
+          "laneLabels": 140,
+          "barWrappers": 1500,
+          "barSegments": 3207,
+          "barContents": 8136,
+          "sendOutStars": 0,
+          "nowLines": 20,
+          "connectors": 53,
+          "other": 67
+        },
+        "acknowledgementViews": [
+          {
+            "ms": 261.9706669999978,
+            "rowRenders": 20
+          },
+          {
+            "ms": 130.58366699999897,
+            "rowRenders": 20
+          },
+          {
+            "ms": 145.91320800000176,
+            "rowRenders": 20
+          },
+          {
+            "ms": 134.62341699999888,
+            "rowRenders": 20
+          },
+          {
+            "ms": 127.74408300000141,
+            "rowRenders": 20
+          },
+          {
+            "ms": 140.05162500000006,
+            "rowRenders": 20
+          },
+          {
+            "ms": 137.29104200000074,
+            "rowRenders": 20
+          },
+          {
+            "ms": 272.6496670000015,
+            "rowRenders": 20
+          },
+          {
+            "ms": 132.7819159999999,
+            "rowRenders": 20
+          },
+          {
+            "ms": 130.03329200000007,
+            "rowRenders": 20
+          },
+          {
+            "ms": 122.1384169999983,
+            "rowRenders": 20
+          },
+          {
+            "ms": 140.65108299999702,
+            "rowRenders": 20
+          },
+          {
+            "ms": 142.2450830000016,
+            "rowRenders": 20
+          },
+          {
+            "ms": 141.76270900000236,
+            "rowRenders": 20
+          },
+          {
+            "ms": 733.827874999999,
+            "rowRenders": 20
+          },
+          {
+            "ms": 141.44458300000042,
+            "rowRenders": 20
+          },
+          {
+            "ms": 223.49033399999826,
+            "rowRenders": 20
+          },
+          {
+            "ms": 345.73925000000236,
+            "rowRenders": 20
+          },
+          {
+            "ms": 254.69574999999895,
+            "rowRenders": 20
+          },
+          {
+            "ms": 350.83266699999876,
+            "rowRenders": 20
+          }
+        ],
+        "repeatedFinalLayoutMs": 160.39362499999697
+      },
+      {
+        "handlerMs": 5.425790999997844,
+        "firstDisplayMs": 17.21875,
+        "initial": {
+          "stateUpdates": 20,
+          "queueUpdates": 20,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            }
+          ],
+          "applyMs": 1.2494599999990896,
+          "layoutMs": 9.98554200000217
+        },
+        "acknowledgementsMs": 270.6949170000007,
+        "all": {
+          "stateUpdates": 61,
+          "queueUpdates": 41,
+          "commits": [
+            {
+              "stateUpdates": 20,
+              "queueUpdates": 20,
+              "layouts": 1
+            },
+            {
+              "stateUpdates": 22,
+              "queueUpdates": 21,
+              "layouts": 2
+            },
+            {
+              "stateUpdates": 24,
+              "queueUpdates": 22,
+              "layouts": 3
+            },
+            {
+              "stateUpdates": 26,
+              "queueUpdates": 23,
+              "layouts": 4
+            },
+            {
+              "stateUpdates": 28,
+              "queueUpdates": 24,
+              "layouts": 5
+            },
+            {
+              "stateUpdates": 30,
+              "queueUpdates": 25,
+              "layouts": 6
+            },
+            {
+              "stateUpdates": 32,
+              "queueUpdates": 26,
+              "layouts": 7
+            },
+            {
+              "stateUpdates": 34,
+              "queueUpdates": 27,
+              "layouts": 8
+            },
+            {
+              "stateUpdates": 36,
+              "queueUpdates": 28,
+              "layouts": 9
+            },
+            {
+              "stateUpdates": 38,
+              "queueUpdates": 29,
+              "layouts": 10
+            },
+            {
+              "stateUpdates": 40,
+              "queueUpdates": 30,
+              "layouts": 11
+            },
+            {
+              "stateUpdates": 42,
+              "queueUpdates": 31,
+              "layouts": 12
+            },
+            {
+              "stateUpdates": 44,
+              "queueUpdates": 32,
+              "layouts": 13
+            },
+            {
+              "stateUpdates": 46,
+              "queueUpdates": 33,
+              "layouts": 14
+            },
+            {
+              "stateUpdates": 48,
+              "queueUpdates": 34,
+              "layouts": 15
+            },
+            {
+              "stateUpdates": 50,
+              "queueUpdates": 35,
+              "layouts": 16
+            },
+            {
+              "stateUpdates": 52,
+              "queueUpdates": 36,
+              "layouts": 17
+            },
+            {
+              "stateUpdates": 54,
+              "queueUpdates": 37,
+              "layouts": 18
+            },
+            {
+              "stateUpdates": 56,
+              "queueUpdates": 38,
+              "layouts": 19
+            },
+            {
+              "stateUpdates": 58,
+              "queueUpdates": 39,
+              "layouts": 20
+            },
+            {
+              "stateUpdates": 61,
+              "queueUpdates": 41,
+              "layouts": 21
+            }
+          ],
+          "applyCalls": 210,
+          "applyMs": 10.2982889999912,
+          "layoutMs": 231.40416600000754,
+          "layouts": 21
+        },
+        "viewMountMs": 1427.8298330000034,
+        "viewUpdateMs": 937.4002089999994,
+        "viewAcknowledgementMs": 242.32541599999968,
+        "daysBefore": 242,
+        "daysAfter": 377,
+        "nodes": 67788,
+        "segments": 3207,
+        "nodeBreakdown": {
+          "dailyGrid": 0,
+          "weekendBands": 0,
+          "dailyBandWrappers": 7540,
+          "offHourBands": 15080,
+          "breakBands": 22620,
+          "dateHeadings": 377,
+          "hourHeadings": 9048,
+          "laneLabels": 140,
+          "barWrappers": 1500,
+          "barSegments": 3207,
+          "barContents": 8136,
+          "sendOutStars": 0,
+          "nowLines": 20,
+          "connectors": 53,
+          "other": 67
+        },
+        "acknowledgementViews": [
+          {
+            "ms": 265.73712499999965,
+            "rowRenders": 20
+          },
+          {
+            "ms": 155.46112500000163,
+            "rowRenders": 20
+          },
+          {
+            "ms": 232.3908330000013,
+            "rowRenders": 20
+          },
+          {
+            "ms": 316.68633299999783,
+            "rowRenders": 20
+          },
+          {
+            "ms": 242.32541599999968,
+            "rowRenders": 20
+          },
+          {
+            "ms": 450.88937499999884,
+            "rowRenders": 20
+          },
+          {
+            "ms": 148.64337499999965,
+            "rowRenders": 20
+          },
+          {
+            "ms": 207.05558400000155,
+            "rowRenders": 20
+          },
+          {
+            "ms": 252.35350000000471,
+            "rowRenders": 20
+          },
+          {
+            "ms": 502.9417089999988,
+            "rowRenders": 20
+          },
+          {
+            "ms": 318.84566699999414,
+            "rowRenders": 20
+          },
+          {
+            "ms": 277.88395799999853,
+            "rowRenders": 20
+          },
+          {
+            "ms": 536.0240829999966,
+            "rowRenders": 20
+          },
+          {
+            "ms": 198.04937500000233,
+            "rowRenders": 20
+          },
+          {
+            "ms": 226.43841699999757,
+            "rowRenders": 20
+          },
+          {
+            "ms": 221.4070830000055,
+            "rowRenders": 20
+          },
+          {
+            "ms": 393.3391249999986,
+            "rowRenders": 20
+          },
+          {
+            "ms": 224.27979200000118,
+            "rowRenders": 20
+          },
+          {
+            "ms": 208.76079199999367,
+            "rowRenders": 20
+          },
+          {
+            "ms": 157.67412499999773,
+            "rowRenders": 20
+          }
+        ],
+        "repeatedFinalLayoutMs": 160.1800000000003
+      }
+    ]
+  },
+  "measurementNotes": {
+    "comparisonBefore": "Current worktree before DOM/memo changes; prior Map and layout optimizations retained.",
+    "viewAcknowledgementMs": "Median of the 20 actual successive resource acknowledgement view updates in each sample.",
+    "acknowledgementViewMedianMs": "Median of all 60 measured acknowledgement view updates (3 samples, one warmup discarded).",
+    "repeatedFinalLayoutMs": "Historical extra rerender of the already displayed final snapshot; retained only in comparisonBefore, excluded from the per-response comparison.",
+    "reactInstrumentation": "Tracked useState setters preserve React setter identity with useCallback in both implementations.",
+    "browserVerification": "Bundled Chromium headless shell could not start: macOS MachPortRendezvous bootstrap_check_in Permission denied (1100). No browser layout/paint or pixel comparison."
+  }
+}

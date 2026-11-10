@@ -14,7 +14,7 @@ update-frequency: medium
 
 ## 概要
 
-本ドキュメントでは、Raspberry Pi 3またはRaspberry Pi Zero 2Wをデジタルサイネージ表示端末としてセットアップする手順を説明します。型落ち **Android タブレット**向けの **軽量URL（`/signage-lite`）** は [Android タブレット（軽量表示）](#android-signage-lite) を参照してください。
+本ドキュメントでは、Raspberry Pi 3をデジタルサイネージ表示端末としてセットアップする手順を説明します（Zero は表示端末にしない）。型落ち **Android タブレット**向けの **軽量URL（`/signage-lite`）** は [Android タブレット（軽量表示）](#android-signage-lite) を参照してください。
 
 <a id="android-signage-lite"></a>
 
@@ -38,7 +38,7 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 
 ### 本番反映・検証（2026-04-07）
 
-- **Web 正本は Pi5**。[deployment.md](./deployment.md) の `update-all-clients.sh` で **`--limit raspberrypi5`**・`RASPI_SERVER_HOST`・**`--detach --follow`**（実測 Detach Run ID: `20260407-174723-18058`・`failed=0`）。
+- **Web 正本は Pi5**。[deployment.md](./deployment.md) の `update-all-clients.sh` で **`--limit raspberrypi5`**・**`--detach`**（確認は `--status RUN_ID`。実測 Detach Run ID: `20260407-174723-18058`・`failed=0`）。
 - **自動回帰**（リポジトリ直下）: `./scripts/deploy/verify-phase12-real.sh` → 2026-04-07 実測 **PASS 43 / WARN 0 / FAIL 0**。
 - **手動（Android）**: 上記 URL を実機で開き、JPEG が **約30秒周期**で更新することを目視。端末が未登録なら先に **管理者で `POST /api/clients`**（または `register-clients.sh`）で `apiKey` を登録する。
 
@@ -58,13 +58,15 @@ https://<サーバのホスト>/signage-lite?clientKey=client-key-factory-androi
 
 ### スケジュールの割当
 
-管理画面 **`/admin/signage/schedules`** で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
+管理画面 **`/admin/signage`**（サイネージハブ）で、対象スケジュールの **`targetClientKeys`** に当該 `apiKey` を含める（空は全端末向け）。詳細は [ADR-20260407](../decisions/ADR-20260407-signage-target-client-keys.md)。
 
 ### TLS
 
 HTTPS／自己署名証明書の扱いは Pi 向け Chromium と同様。端末に信頼させるか、運用ポリシーに応じて証明書警告の扱いを決める。
 
 ## 前提条件
+
+**旧記録（Pi 向け）**: 以下の Pi セットアップ・Chromium の手順は過去の記録であり、現在の Pi3 へ適用しない。Pi3 は `feh` を使い、Docker・Chromium は使わない。Zero も表示端末にしない。現行の機種選定は[機種ごとの役割と資源](../runbooks/device-model-roles.md)に従う。
 
 - Raspberry Pi 3 または Raspberry Pi Zero 2W
 - Raspberry Pi OS (64bit) がインストール済み
@@ -98,7 +100,7 @@ sudo ./scripts/client/setup-signage.sh https://192.168.10.230/signage
 
 ### 4. 動作確認
 
-セットアップスクリプト実行後、自動的にChromiumが起動し、サイネージが表示されます。
+旧構成ではセットアップスクリプト実行後に Chromium が起動した。現在の Pi3 は `signage-lite.service` と `feh` を使う（[現行の役割表](../runbooks/device-model-roles.md)）。
 
 手動で確認する場合：
 
@@ -132,7 +134,7 @@ sudo reboot
 2. 恒久: **`Disable key expiry`**（常時稼働サイネージ推奨・2026-06-04 本番は全端末適用済み）
 3. 詳細: [Runbook: pi3-signage-tailscale-recovery.md](../runbooks/pi3-signage-tailscale-recovery.md) · [KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)
 
-### Chromiumが起動しない
+### Chromiumが起動しない（旧構成の記録）
 
 ```bash
 # ログを確認
@@ -208,6 +210,8 @@ Chromiumの起動オプションに以下を追加することで警告を無視
 
 ## 設定の変更
 
+**旧記録**: 以下は旧 Chromium 構成（`signage-display` unit・`signage-launch.sh`）の記録。現行の Pi3 は `signage-lite.service` を標準デプロイ（[deployment.md](./deployment.md)）で配布しており、端末上での手編集は行わない。
+
 ### サイネージURLの変更
 
 ```bash
@@ -234,6 +238,8 @@ sudo systemctl enable signage-display
 ```
 
 ## パフォーマンス最適化
+
+**旧記録**: Zero は表示端末にしない（[機種ごとの役割と資源](../runbooks/device-model-roles.md)）。
 
 ### Raspberry Pi Zero 2W向けの最適化
 

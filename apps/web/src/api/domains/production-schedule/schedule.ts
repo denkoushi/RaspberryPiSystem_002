@@ -1,10 +1,12 @@
 import { api } from '../../http';
 
 import type { SelfInspectionStatus } from '../../../features/part-measurement/types';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 export interface ProductionScheduleRow {
   id: string;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   /** `ProductionScheduleProgressOverviewSeibanItem.seibanJoinKey` と突合する専用キー。 */
   seibanJoinKey?: string | null;
   occurredAt: string;
@@ -19,6 +21,7 @@ export interface ProductionScheduleRow {
   processingType?: string | null;
   note?: string | null;
   dueDate?: string | null;
+  boardDueDate?: string | null;
   plannedQuantity?: number | null;
   plannedStartDate?: string | null;
   plannedEndDate?: string | null;
@@ -41,12 +44,6 @@ export interface ProductionScheduleRow {
   /** キオスク順位ボード: 工程変更残骸疑い（通常グリッドには含めない） */
   processChangeResidualSuspected?: boolean;
   processChangeResidualEvidence?: ProcessChangeResidualEvidence;
-  /** display item 契約: 親 CsvDashboardRow.id */
-  sourceRowId?: string;
-  splitId?: string | null;
-  splitNo?: number | null;
-  splitQuantity?: number | null;
-  isSplit?: boolean;
 }
 
 export type ProcessChangeResidualEvidenceSide = {

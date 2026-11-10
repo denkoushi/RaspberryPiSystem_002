@@ -1,3 +1,6 @@
+import type { BackupConfig } from '../backup-config.js';
+import { GmailSenderVerificationSession } from '../../gmail/gmail-sender-verification-session.js';
+import { GmailSenderRejectedError } from '../../gmail/gmail-sender-verification.js';
 import type { FileInfo, StorageProvider } from './storage-provider.interface';
 import { logger } from '../../../lib/logger.js';
 import { toErrorInfo } from '../../../lib/type-guards.js';
@@ -27,6 +30,7 @@ export class NoMatchingMessageError extends Error {
  * Gmailは読み取り専用のため、uploadとdeleteは未実装。
  */
 export class GmailStorageProvider implements StorageProvider {
+  private readonly gmailIngestSenderPolicy?: BackupConfig['gmailIngestSenderPolicy'];
   private readonly gmailClient: GmailApiClient;
   private readonly oauth2Client: OAuth2Client;
   private readonly subjectPattern?: string;
@@ -55,7 +59,9 @@ export class GmailStorageProvider implements StorageProvider {
     oauthService?: GmailOAuthService;
     onTokenUpdate?: (token: string) => Promise<void>;
     allowWait?: boolean;
+    gmailIngestSenderPolicy?: BackupConfig['gmailIngestSenderPolicy'];
   }) {
+    this.gmailIngestSenderPolicy = options.gmailIngestSenderPolicy;
     this.oauth2Client = options.oauth2Client;
     this.accessToken = options.accessToken;
     this.refreshToken = options.refreshToken;
@@ -127,9 +133,11 @@ export class GmailStorageProvider implements StorageProvider {
   /**
    * エラーが401（認証エラー）の場合、リフレッシュトークンで自動更新を試みる
    */
-  private async handleAuthError<T>(operation: () => Promise<T>): Promise<T> {
+  private async handleAuthError<T>(operation: (gmailClient: GmailApiClient) => Promise<T>, verifySender = true): Promise<T> {
+    const senderSession = verifySender ? GmailSenderVerificationSession.forRun({ gmailIngestSenderPolicy: this.gmailIngestSenderPolicy }) : undefined;
+    const gmailClient = senderSession?.wrap(this.gmailClient) ?? this.gmailClient;
     try {
-      return await operation();
+      return await operation(gmailClient);
     } catch (error: unknown) {
       if (error instanceof GmailReauthRequiredError) {
         throw new GmailReauthRequiredError('Gmailの再認可が必要です（invalid_grant）');
@@ -156,7 +164,7 @@ export class GmailStorageProvider implements StorageProvider {
         
         // リトライ
         try {
-          return await operation();
+          return await operation(gmailClient);
         } catch (retryError) {
           logger?.error(
             { err: retryError },
@@ -167,6 +175,8 @@ export class GmailStorageProvider implements StorageProvider {
       }
       
       throw error;
+    } finally {
+      await senderSession?.notify();
     }
   }
 
@@ -225,6 +235,7 @@ export class GmailStorageProvider implements StorageProvider {
    * only an owned message in that result triggers a paginated fallback.
    */
   private async findEligibleCsvMessages(
+    gmailClient: GmailApiClient,
     query: string,
     initialIds: ReadonlyArray<string>,
     targetCount: number
@@ -247,7 +258,9 @@ export class GmailStorageProvider implements StorageProvider {
       for (const messageId of messageIds) {
         if (seen.has(messageId) || results.length >= targetCount) continue;
         seen.add(messageId);
-        const message = await this.gmailClient.getMessage(messageId);
+        let message;
+        try { message = await gmailClient.getMessage(messageId); }
+        catch (error) { if (error instanceof GmailSenderRejectedError) continue; throw error; }
         const subject = message?.payload?.headers?.find((h) => h.name.toLowerCase() === 'subject')?.value ?? '';
         if (isWorkInstructionGmailSubject(subject) || isItemInventoryGmailSubject(subject) || isProcedureMaterialGmailSubject(subject)) {
           ownedSeen = true;
@@ -263,27 +276,9 @@ export class GmailStorageProvider implements StorageProvider {
 
     await scan(initialIds);
     if (results.length < targetCount && ownedSeen) {
-      await scan(await this.gmailClient.searchMessagesAll(query));
+      await scan(await gmailClient.searchMessagesAll(query));
     }
     return results;
-  }
-
-  /**
-   * ファイル名にタイムスタンププレフィックスを追加
-   * @param filename 元のファイル名
-   * @returns タイムスタンプ付きファイル名
-   */
-  private addTimestampPrefix(filename: string): string {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hour = String(now.getHours()).padStart(2, '0');
-    const minute = String(now.getMinutes()).padStart(2, '0');
-    const second = String(now.getSeconds()).padStart(2, '0');
-    
-    const timestamp = `${year}${month}${day}_${hour}${minute}${second}`;
-    return `${timestamp}_${filename}`;
   }
 
   /**
@@ -292,7 +287,7 @@ export class GmailStorageProvider implements StorageProvider {
    * @returns ファイルのBuffer
    */
   async download(path: string): Promise<Buffer> {
-    return await this.handleAuthError(async () => {
+    return await this.handleAuthError(async (gmailClient) => {
       // 検索クエリを構築
       const query = this.buildSearchQuery(path);
 
@@ -302,20 +297,20 @@ export class GmailStorageProvider implements StorageProvider {
       );
 
       // メールを検索
-      const messageIds = await this.gmailClient.searchMessages(query);
+      const messageIds = await gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
         throw new NoMatchingMessageError(query);
       }
 
-      const [firstMessage] = await this.findEligibleCsvMessages(query, messageIds, 1);
+      const [firstMessage] = await this.findEligibleCsvMessages(gmailClient, query, messageIds, 1);
       if (!firstMessage) throw new NoMatchingMessageError(query);
       logger?.info(
         { messageId: firstMessage.messageId, query },
         '[GmailStorageProvider] Found message, getting attachment'
       );
 
-      const attachment = await this.gmailClient.getFirstAttachment(firstMessage.messageId);
+      const attachment = await gmailClient.getFirstAttachment(firstMessage.messageId);
 
       if (!attachment) {
         throw new Error(`No attachment found in message: ${firstMessage.messageId}`);
@@ -328,7 +323,7 @@ export class GmailStorageProvider implements StorageProvider {
 
       // メールをアーカイブ（処理済みとしてマーク）
       try {
-        await this.gmailClient.archiveMessage(firstMessage.messageId);
+        await gmailClient.archiveMessage(firstMessage.messageId);
         logger?.info(
           { messageId: firstMessage.messageId },
           '[GmailStorageProvider] Message archived'
@@ -351,7 +346,7 @@ export class GmailStorageProvider implements StorageProvider {
    * @returns ファイル情報の配列
    */
   async list(path: string): Promise<FileInfo[]> {
-    return this.handleAuthError(async () => {
+    return this.handleAuthError(async (gmailClient) => {
       // 検索クエリを構築
       const query = this.buildSearchQuery(path);
 
@@ -361,13 +356,13 @@ export class GmailStorageProvider implements StorageProvider {
       );
 
       // メールを検索
-      const messageIds = await this.gmailClient.searchMessages(query);
+      const messageIds = await gmailClient.searchMessages(query);
 
       // メール情報を取得
       const fileInfos: FileInfo[] = [];
       for (const messageId of messageIds.slice(0, 10)) { // 最大10件まで
         try {
-          const message = await this.gmailClient.getMessage(messageId);
+          const message = await gmailClient.getMessage(messageId);
           
           // 件名を取得
           const subjectHeader = message.payload?.headers?.find(h => h.name.toLowerCase() === 'subject');
@@ -421,7 +416,7 @@ export class GmailStorageProvider implements StorageProvider {
     messageId: string;
     messageSubject: string;
   }> {
-    return await this.handleAuthError(async () => {
+    return await this.handleAuthError(async (gmailClient) => {
       // 検索クエリを構築
       const query = this.buildSearchQuery(path);
 
@@ -431,13 +426,13 @@ export class GmailStorageProvider implements StorageProvider {
       );
 
       // メールを検索
-      const messageIds = await this.gmailClient.searchMessages(query);
+      const messageIds = await gmailClient.searchMessages(query);
 
       if (messageIds.length === 0) {
         throw new NoMatchingMessageError(query);
       }
 
-      const [firstMessage] = await this.findEligibleCsvMessages(query, messageIds, 1);
+      const [firstMessage] = await this.findEligibleCsvMessages(gmailClient, query, messageIds, 1);
       if (!firstMessage) throw new NoMatchingMessageError(query);
       logger?.info(
         { messageId: firstMessage.messageId, query },
@@ -446,7 +441,7 @@ export class GmailStorageProvider implements StorageProvider {
 
       const messageSubject = firstMessage.subject;
 
-      const attachment = await this.gmailClient.getFirstAttachment(firstMessage.messageId);
+      const attachment = await gmailClient.getFirstAttachment(firstMessage.messageId);
 
       if (!attachment) {
         throw new Error(`No attachment found in message: ${firstMessage.messageId}`);
@@ -464,7 +459,7 @@ export class GmailStorageProvider implements StorageProvider {
 
       // メールをアーカイブ（処理済みとしてマーク）
       try {
-        await this.gmailClient.archiveMessage(firstMessage.messageId);
+        await gmailClient.archiveMessage(firstMessage.messageId);
         logger?.info(
           { messageId: firstMessage.messageId },
           '[GmailStorageProvider] Message archived'
@@ -495,7 +490,7 @@ export class GmailStorageProvider implements StorageProvider {
     messageId: string;
     messageSubject: string;
   }>> {
-    return await this.handleAuthError(async () => {
+    return await this.handleAuthError(async (gmailClient) => {
       const query = this.buildSearchQuery(path);
       const effectiveBatchSize = Math.max(
         1,
@@ -508,7 +503,7 @@ export class GmailStorageProvider implements StorageProvider {
         '[GmailStorageProvider] Searching for messages (all with metadata)'
       );
 
-      const messageIds = await this.gmailClient.searchMessagesLimited(
+      const messageIds = await gmailClient.searchMessagesLimited(
         query,
         effectiveBatchSize
       );
@@ -519,6 +514,7 @@ export class GmailStorageProvider implements StorageProvider {
 
       const results: Array<{ buffer: Buffer; messageId: string; messageSubject: string }> = [];
       const eligibleMessages = await this.findEligibleCsvMessages(
+        gmailClient,
         query,
         messageIds,
         effectiveBatchSize
@@ -533,7 +529,7 @@ export class GmailStorageProvider implements StorageProvider {
           await this.sleep(effectiveDelayMs);
         }
 
-        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        const attachment = await gmailClient.getFirstAttachment(messageId);
         if (!attachment) {
           logger?.warn(
             { messageId, messageSubject },
@@ -569,7 +565,7 @@ export class GmailStorageProvider implements StorageProvider {
   async downloadAllBySubjectPatterns(
     subjectPatterns: string[]
   ): Promise<Record<string, Array<{ buffer: Buffer; messageId: string; messageSubject: string; receivedAt: Date | null }>>> {
-    return await this.handleAuthError(async () => {
+    return await this.handleAuthError(async (gmailClient) => {
       const uniquePatterns = Array.from(
         new Set(subjectPatterns.map((v) => v.trim()).filter((v) => v.length > 0))
       );
@@ -590,12 +586,13 @@ export class GmailStorageProvider implements StorageProvider {
         Math.min(this.maxMessagesPerBatch, this.rateController.getBatchSize())
       );
       const effectiveDelayMs = Math.max(this.batchRequestDelayMs, this.rateController.getRequestDelayMs());
-      const messageIds = await this.gmailClient.searchMessagesLimited(query, effectiveBatchSize);
+      const messageIds = await gmailClient.searchMessagesLimited(query, effectiveBatchSize);
       if (messageIds.length === 0) {
         throw new NoMatchingMessageError(query);
       }
 
       const eligibleMessages = await this.findEligibleCsvMessages(
+        gmailClient,
         query,
         messageIds,
         effectiveBatchSize
@@ -616,7 +613,7 @@ export class GmailStorageProvider implements StorageProvider {
         if (!matchedPattern) {
           continue;
         }
-        const attachment = await this.gmailClient.getFirstAttachment(messageId);
+        const attachment = await gmailClient.getFirstAttachment(messageId);
         if (!attachment) {
           continue;
         }
@@ -650,14 +647,14 @@ export class GmailStorageProvider implements StorageProvider {
    * メールを既読にする（UNREADラベル削除）
    */
   async markAsRead(messageId: string): Promise<void> {
-    await this.gmailClient.markAsRead(messageId);
+    await this.handleAuthError(async (gmailClient) => gmailClient.markAsRead(messageId));
   }
 
   /**
    * メールをゴミ箱へ移動
    */
   async trashMessage(messageId: string): Promise<void> {
-    await this.gmailClient.trashMessage(messageId);
+    await this.handleAuthError(async (gmailClient) => gmailClient.trashMessage(messageId));
   }
 
   /**
@@ -666,7 +663,7 @@ export class GmailStorageProvider implements StorageProvider {
   async cleanupProcessedTrash(params?: {
     processedLabelName?: string;
   }): Promise<GmailTrashCleanupResult> {
-    return this.handleAuthError(async () => this.gmailClient.cleanupProcessedTrash(params));
+    return this.handleAuthError(async (gmailClient) => gmailClient.cleanupProcessedTrash(params), false);
   }
 
   private sleep(ms: number): Promise<void> {

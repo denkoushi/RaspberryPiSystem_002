@@ -388,6 +388,27 @@ describe('LoanService', () => {
       });
     });
 
+    it('本文の performedByUserId は実施者として記録しない', async () => {
+      const input = { loanId: 'loan-123', performedByUserId: '44444444-4444-4444-8444-444444444444' };
+      const transactionCreate = vi.fn().mockResolvedValue({ id: 'transaction-123' });
+      vi.mocked(prisma.loan.findUnique).mockResolvedValue(mockLoan as any);
+      vi.mocked(prisma.$transaction).mockImplementation(async (callback: any) => callback({
+        loan: {
+          updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          findUniqueOrThrow: vi.fn().mockResolvedValue(mockReturnedLoan),
+        },
+        item: { update: vi.fn().mockResolvedValue({ id: 'item-123', status: ItemStatus.AVAILABLE }) },
+        transaction: { create: transactionCreate },
+      }));
+
+      await loanService.return(input, 'client-123');
+      expect(transactionCreate.mock.calls[0]?.[0]?.data?.performedByUserId).toBeUndefined();
+
+      transactionCreate.mockClear();
+      await loanService.return(input, 'client-123', 'user-from-jwt');
+      expect(transactionCreate.mock.calls[0]?.[0]?.data?.performedByUserId).toBe('user-from-jwt');
+    });
+
     it('吊具の返却で吊具ステータスをAVAILABLEに戻す', async () => {
       const input = { loanId: 'loan-123' };
       const riggingLoan = {

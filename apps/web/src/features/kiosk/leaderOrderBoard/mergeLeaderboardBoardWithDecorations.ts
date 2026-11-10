@@ -9,6 +9,8 @@ import type {
 import type { SelfInspectionStatus } from '../../part-measurement/types';
 
 export type LeaderboardRowDecoration = {
+  arrived?: boolean;
+  specialDue?: ProductionScheduleRow['specialDue'];
   resolvedMachineName: string | null;
   customerName: string | null;
   hasSelfInspectionDrawing: boolean;
@@ -55,6 +57,8 @@ export function mergeLeaderboardDecorationsIntoAccumulator(
   const rowDecorationsById = new Map(prev.rowDecorationsById);
   for (const d of response.rowDecorations) {
     rowDecorationsById.set(d.id, {
+      ...(d.arrived !== undefined ? { arrived: d.arrived } : {}),
+      ...(d.specialDue !== undefined ? { specialDue: d.specialDue } : {}),
       resolvedMachineName: d.resolvedMachineName ?? null,
       customerName: d.customerName ?? null,
       hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,

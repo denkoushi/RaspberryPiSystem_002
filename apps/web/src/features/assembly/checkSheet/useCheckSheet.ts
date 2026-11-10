@@ -24,7 +24,7 @@ export function useCheckSheet(sheetId: string, suspended = false) {
   const [toast, setToast] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const inFlight = useRef(false);
-  const advanceTimer = useRef<ReturnType<typeof setTimeout>>();
+  const advanceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const lastEvent = useRef('');
   const nfc = useNfcStream(!!sheet && (sheet.status === 'IN_PROGRESS' || pendingAction === 'resume') && !busy);
   useEffect(() => {

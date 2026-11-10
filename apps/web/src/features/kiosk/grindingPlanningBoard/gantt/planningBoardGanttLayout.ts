@@ -1,5 +1,7 @@
 import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 
+import { isVisibleByArrival } from '../../isVisibleByArrival';
+import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
 import {
   compareProcessOrder,
   sortPlanningBoardResources,
@@ -12,6 +14,7 @@ import type { PlanningBoardAllocation } from '../types';
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 const DAY_MS = 86_400_000;
+export const NO_PREDECESSORS: readonly string[] = [];
 export const dateToDay = (date: string): number => {
   const [year, month, day] = date.split('-').map(Number);
   return Date.UTC(year, month - 1, day) / DAY_MS;
@@ -29,6 +32,23 @@ export function planningBoardPartKey(item: GrindingPlanningBoardItem): string {
   return parts.join('\0');
 }
 
+function requiredMinutesUnknown(item: GrindingPlanningBoardItem): boolean {
+  return !item.requiredMinutesKnown || (item.kind === 'piece' ? item.requiredMinutes == null : !item.requiredMinutes);
+}
+
+// Sibling pieces are one process; ordinary rows retain their individual chain positions.
+function planningBoardProcessGroups<T>(items: readonly T[], itemOf: (value: T) => GrindingPlanningBoardItem): T[][] {
+  const groups = new Map<string, T[]>();
+  for (const value of items) {
+    const item = itemOf(value);
+    const key = item.kind === 'piece' && item.parentItemId ? `piece:${item.parentItemId}` : `row:${item.itemId}`;
+    const group = groups.get(key);
+    if (group) group.push(value);
+    else groups.set(key, [value]);
+  }
+  return Array.from(groups.values());
+}
+
 export type GanttBar = {
   item: GrindingPlanningBoardItem;
   partKey: string;
@@ -44,10 +64,11 @@ export type GanttBar = {
   waitFrom?: number;
   predecessorEnd?: number;
   lateDays?: number;
+  arrivalPending?: boolean;
 };
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
-export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean };
+export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean; forwardQueue?: GanttBar[] };
 // Shared by the legend and movement-slip lookup: placeholders without a drawn bar are excluded.
 export function planningBoardVisibleBars(layout: GanttLayout): GanttBar[] {
   return layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars
@@ -69,19 +90,34 @@ export type GanttLayoutOptions = {
   mode?: 'forward' | 'backward';
   now?: Date;
   laneOrder?: Record<string, string[]>;
+  arrivalFilterEnabled?: boolean;
 };
+
+function connectPlanningBoardBars(prev: GanttBar, next: GanttBar, links: { start: number; end: number }[]): boolean {
+  if (prev.end == null || next.start == null) return false;
+  if (next.start < prev.end - 1e-6) {
+    prev.flagged = next.flagged = true;
+    const span = { start: Math.max(prev.start!, next.start), end: Math.min(prev.end, next.end!) };
+    // Reversed, disjoint processes still violate the chain; flag both bars.
+    if (span.end > span.start) { prev.overlaps.push(span); next.overlaps.push(span); }
+    return true;
+  }
+  if (next.start > prev.end) links.push({ start: prev.end, end: next.start });
+  return false;
+}
 
 export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
   if (options.mode === 'forward') return buildForwardPlanningBoardGanttLayout(options);
   const { items, allocation, view, seibanOrder, resources, dailyHoursByResource, scale } = options;
   const today = dateToDay(options.today);
-  const sorted = sortGrindingPlanningBoardItems(items, seibanOrder, view, allocation);
+  const sorted = sortGrindingPlanningBoardItems(items.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled))), seibanOrder, view, allocation);
   const parts = new Map<string, GanttBar[]>();
+  let processCounts: Map<string, number> | undefined;
   const bars = sorted.map((item): GanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const end = due ? dateToDay(due) + 1 : null;
-    const unknown = !item.requiredMinutesKnown || !item.requiredMinutes;
+    const unknown = requiredMinutesUnknown(item);
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
     const bar: GanttBar = {
       item, resource, due, end, unknown, partKey: planningBoardPartKey(item),
@@ -90,6 +126,7 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
       tone: item.isCompleted ? 'completed' : due && due < options.today ? 'late' : 'planned',
       overlaps: [], flagged: false
     };
+    if (item.kind === 'piece') (processCounts ??= new Map()).set(bar.partKey, 0);
     const chain = parts.get(bar.partKey) ?? [];
     chain.push(bar);
     parts.set(bar.partKey, chain);
@@ -98,18 +135,20 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   let overlapCount = 0;
   const connectors = new Map<string, { start: number; end: number }[]>();
   for (const [key, chain] of parts) {
-    chain.sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || a.item.itemId.localeCompare(b.item.itemId));
+    chain.sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId));
     const links: { start: number; end: number }[] = [];
-    for (let i = 1; i < chain.length; i++) {
-      const prev = chain[i - 1]!; const next = chain[i]!;
-      if (prev.end == null || next.start == null) continue;
-      if (next.start < prev.end - 1e-6) {
-        overlapCount++;
-        prev.flagged = next.flagged = true;
-        const span = { start: Math.max(prev.start!, next.start), end: Math.min(prev.end, next.end!) };
-        // Reversed, disjoint processes still violate the chain; flag both bars.
-        if (span.end > span.start) { prev.overlaps.push(span); next.overlaps.push(span); }
-      } else if (next.start > prev.end) links.push({ start: prev.end, end: next.start });
+    const processes = processCounts?.has(key) ? planningBoardProcessGroups(chain, (bar) => bar.item) : undefined;
+    if (processes) {
+      (processCounts ??= new Map()).set(key, processes.length);
+      for (let i = 1; i < processes.length; i++) {
+        let overlapping = false;
+        for (const prev of processes[i - 1]!) for (const next of processes[i]!) {
+          if (connectPlanningBoardBars(prev, next, links)) overlapping = true;
+        }
+        if (overlapping) overlapCount++;
+      }
+    } else {
+      for (let i = 1; i < chain.length; i++) if (connectPlanningBoardBars(chain[i - 1]!, chain[i]!, links)) overlapCount++;
     }
     connectors.set(key, links);
   }
@@ -120,7 +159,7 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
       if (!chains.length) continue;
       groups.push({ key: seiban, label: `${seiban} ${chains[0]![1][0]!.item.machineName ?? ''}`, resource: null,
         rows: chains.map(([key, chain]) => ({ key, label: chain[0]!.item.fhinmei || chain[0]!.item.fhincd,
-          detail: `${chain[0]!.item.fhincd} · ${chain.length}工程`, bars: chain,
+          detail: `${chain[0]!.item.fhincd} · ${processCounts?.get(key) ?? chain.length}工程`, bars: chain,
           flagged: chain.some((bar) => bar.flagged), connectors: connectors.get(key) ?? [] })) });
     }
   } else {
@@ -209,16 +248,30 @@ export function placeForward(time: number, minutes: number, hours: number, pause
 
 export function forwardPlanningBoardPredecessors(items: readonly GrindingPlanningBoardItem[]) {
   const parts = new Map<string, GrindingPlanningBoardItem[]>();
+  let processCounts: Map<string, number> | undefined;
   for (const item of items) {
     const key = planningBoardPartKey(item);
-    parts.set(key, [...(parts.get(key) ?? []), item]);
+    if (item.kind === 'piece') (processCounts ??= new Map()).set(key, 0);
+    const chain = parts.get(key);
+    if (chain) chain.push(item);
+    else parts.set(key, [item]);
   }
-  const predecessors = new Map<string, string>();
-  for (const chain of parts.values()) {
-    chain.sort((a, b) => compareProcessOrder(a.processOrder, b.processOrder) || a.itemId.localeCompare(b.itemId));
-    for (let i = 1; i < chain.length; i++) predecessors.set(chain[i]!.itemId, chain[i - 1]!.itemId);
+  const predecessors = new Map<string, string[]>();
+  for (const [key, chain] of parts) {
+    chain.sort((a, b) => compareProcessOrder(a.processOrder, b.processOrder) || (a.piecePosition ?? Infinity) - (b.piecePosition ?? Infinity) || a.itemId.localeCompare(b.itemId));
+    const processes = processCounts?.has(key) ? planningBoardProcessGroups(chain, (item) => item) : undefined;
+    if (processes) {
+      (processCounts ??= new Map()).set(key, processes.length);
+      for (let i = 1; i < processes.length; i++) {
+        const previous: string[] = [];
+        for (const item of processes[i - 1]!) previous.push(item.itemId);
+        for (const item of processes[i]!) predecessors.set(item.itemId, previous);
+      }
+    } else {
+      for (let i = 1; i < chain.length; i++) predecessors.set(chain[i]!.itemId, [chain[i - 1]!.itemId]);
+    }
   }
-  return { parts, predecessors };
+  return { parts, predecessors, processCounts };
 }
 
 export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions): GanttLayout {
@@ -226,27 +279,41 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const now = jstDay(options.now ?? new Date());
   const today = Math.floor(now);
   const sorted = sortGrindingPlanningBoardItems(options.items.filter((item) => !item.isCompleted), seibanOrder, 'resource', allocation);
-  const { parts, predecessors } = forwardPlanningBoardPredecessors(sorted);
-  const lanes = new Map<string, GrindingPlanningBoardItem[]>();
+  const schedulingItems = sorted.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)));
+  const { parts, predecessors, processCounts } = forwardPlanningBoardPredecessors(schedulingItems);
+  const allLanes = new Map<string, GrindingPlanningBoardItem[]>();
   for (const item of sorted) {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
-    lanes.set(resource, [...(lanes.get(resource) ?? []), item]);
+    const queue = allLanes.get(resource);
+    if (queue) queue.push(item);
+    else allLanes.set(resource, [item]);
   }
-  for (const [resource, queue] of lanes) {
+  for (const [resource, queue] of allLanes) {
     const order = options.laneOrder?.[resource];
     if (!order) continue;
     const ranks = new Map(order.map((id, index) => [id, index]));
     queue.sort((a, b) => (ranks.get(a.itemId) ?? Infinity) - (ranks.get(b.itemId) ?? Infinity));
   }
+  const lanes = new Map([...allLanes].map(([resource, queue]) => [resource,
+    queue.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)))]));
+  const heads = new Map<string, number>();
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
+  const isReady = (item: GrindingPlanningBoardItem) => {
+    for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) if (!scheduled.has(id)) return false;
+    return true;
+  };
+  const readyAt = (item: GrindingPlanningBoardItem) => {
+    let ready = now;
+    for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) ready = Math.max(ready, scheduled.get(id)?.end ?? now);
+    return ready;
+  };
   const place = (item: GrindingPlanningBoardItem, resource: string) => {
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
     const pausesForBreaks = !options.runsThroughBreaks?.has(resource);
     const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
-    const predecessor = scheduled.get(predecessors.get(item.itemId) ?? '');
-    const ready = predecessor?.end ?? now;
-    const unknown = !item.requiredMinutesKnown || !item.requiredMinutes;
+    const ready = readyAt(item);
+    const unknown = requiredMinutesUnknown(item);
     const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : item.requiredMinutes!, hours, pausesForBreaks);
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
@@ -256,31 +323,75 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       ...(ready > cursor + 1e-10 ? { waitFrom: cursor, predecessorEnd: ready } : {}) });
     cursors.set(resource, timing.end);
   };
-  // Resolve resource heads only after their predecessors. Each pass removes work, so it is bounded.
-  while (scheduled.size < sorted.length) {
+  // Resolve resource heads only after their predecessors. Each pass schedules work, so it is bounded.
+  while (scheduled.size < schedulingItems.length) {
     let progressed = false;
     for (const [resource, queue] of lanes) {
-      while (queue.length) {
-        const item = queue[0]!;
-        const predecessor = predecessors.get(item.itemId);
-        if (predecessor && !scheduled.has(predecessor)) break;
-        place(item, resource); queue.shift(); progressed = true;
+      let head = heads.get(resource) ?? 0;
+      while (head < queue.length) {
+        const item = queue[head]!;
+        if (!scheduled.has(item.itemId)) {
+          if (!isReady(item)) break;
+          const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
+          const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, !options.runsThroughBreaks?.has(resource));
+          if (readyAt(item) > cursor + 1e-10) {
+            let filler: GrindingPlanningBoardItem | undefined;
+            for (let index = head + 1; index < queue.length; index++) {
+              const candidate = queue[index]!;
+              if (scheduled.has(candidate.itemId)) continue;
+              if (isReady(candidate) && readyAt(candidate) <= cursor + 1e-10) {
+                filler = candidate;
+                break;
+              }
+            }
+            if (filler) {
+              place(filler, resource); progressed = true;
+              continue;
+            }
+          }
+          place(item, resource); progressed = true;
+        }
+        head++;
       }
+      heads.set(resource, head);
     }
     if (!progressed) {
       // Conflicting ranks can put a successor ahead of its own predecessor (also across resources).
       // Explicit preview orders retain their slots in a cycle; legacy layouts prefer process precedence.
-      const remaining = [...lanes.entries()].flatMap(([resource, queue]) => queue.map((item) => ({ resource, item })));
-      const candidate = remaining.find(({ resource, item }) => !options.laneOrder?.[resource] &&
-        (!predecessors.has(item.itemId) || scheduled.has(predecessors.get(item.itemId)!)))
-        ?? remaining.find(({ resource, item }) => options.laneOrder?.[resource] && lanes.get(resource)![0] === item);
+      let candidate: { resource: string; item: GrindingPlanningBoardItem } | undefined;
+      let explicitHead: typeof candidate;
+      for (const [resource, queue] of lanes) {
+        for (let index = heads.get(resource) ?? 0; index < queue.length; index++) {
+          const item = queue[index]!;
+          if (scheduled.has(item.itemId)) continue;
+          if (options.laneOrder?.[resource]) {
+            explicitHead ??= { resource, item };
+            break;
+          }
+          if (isReady(item)) {
+            candidate = { resource, item };
+            break;
+          }
+        }
+        if (candidate) break;
+      }
+      candidate ??= explicitHead;
       if (!candidate) break;
       place(candidate.item, candidate.resource);
-      const queue = lanes.get(candidate.resource)!;
-      queue.splice(queue.indexOf(candidate.item), 1);
     }
   }
-  const bars = options.laneOrder ? [...scheduled.values()] : sorted.map((item) => scheduled.get(item.itemId)!);
+  const bars = options.laneOrder ? [...scheduled.values()] : schedulingItems.map((item) => scheduled.get(item.itemId)!);
+  // Keep pending items in their ranked slots while arrived items follow actual scheduling (including fillers).
+  const forwardQueue = options.arrivalFilterEnabled ? [...allLanes].flatMap(([resource, queue]) => {
+    const byId = new Map(queue.map((item): [string, GanttBar] => [item.itemId, scheduled.get(item.itemId) ?? {
+      item, resource, due: resolveGrindingPlanningBoardDueDate(item, allocation), partKey: planningBoardPartKey(item),
+      start: null, end: null, unknown: requiredMinutesUnknown(item),
+      tone: 'planned', overlaps: [], flagged: false, arrivalPending: true
+    }]));
+    const visibleOrder = bars.filter((bar) => bar.resource === resource).sort((a, b) => a.start! - b.start!)
+      .map((bar) => bar.item.itemId);
+    return mergeVisibleResourceOrder(queue.map((item) => item.itemId), visibleOrder).map((id) => byId.get(id)!);
+  }) : undefined;
   const row = (key: string, label: string, detail: string, members: GanttBar[]): GanttRow => ({
     key, label, detail, bars: members, flagged: false,
     connectors: members.filter((bar) => bar.waitFrom != null).map((bar) => ({ start: bar.waitFrom!, end: bar.start! }))
@@ -292,12 +403,13 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
       rows: [row(resource, resource, '', bars.filter((bar) => bar.resource === resource))]
     }))
     : [...new Set([...seibanOrder, ...sorted.map((item) => item.fseiban)])].flatMap((seiban) => {
-      const chains = [...parts.entries()].filter(([, chain]) => chain[0]?.fseiban === seiban);
+      const chains = [...parts.entries()].map(([key, chain]) => [key, chain.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)))] as const)
+        .filter(([, chain]) => chain[0]?.fseiban === seiban);
       return chains.length ? [{ key: seiban, label: `${seiban} ${chains[0]![1][0]!.machineName ?? ''}`, resource: null,
         rows: chains.map(([key, chain]) => row(key, chain[0]!.fhinmei || chain[0]!.fhincd,
-          `${chain[0]!.fhincd} · ${chain.length}工程`, chain.map((item) => scheduled.get(item.itemId)!))) }] : [];
+          `${chain[0]!.fhincd} · ${processCounts?.get(key) ?? chain.length}工程`, chain.map((item) => scheduled.get(item.itemId)!))) }] : [];
     });
-  return { groups, start: today, today, now, mode: 'forward', overlapCount: 0,
+  return { groups, start: today, today, now, mode: 'forward', overlapCount: 0, forwardQueue,
     end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
     lateCount: bars.filter((bar) => bar.tone === 'late').length,
     completedOnly: options.items.length > 0 && sorted.length === 0 };

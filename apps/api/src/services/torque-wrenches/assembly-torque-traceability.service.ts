@@ -1,3 +1,4 @@
+import { assertClientDeviceOperationScope, type ClientDeviceOperationActor } from '../clients/client-device-resolution.service.js';
 import type { TorqueWrenchRejectionReason } from '@raspi-system/shared-types';
 import { Prisma, type AssemblyTemplateBolt } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
@@ -57,6 +58,7 @@ export type TraceabilityOutcome = {
 };
 
 export type AgentTorqueRecordInput = {
+  actorDevice?: ClientDeviceOperationActor | null;
   sessionId: string;
   clientDeviceId: string;
   sourceEventKey: string;
@@ -85,12 +87,6 @@ function findCurrentBolt(session: AssemblyWorkSessionDetail): AssemblyTemplateBo
   const bolt = session.template.areas.flatMap((area) => area.bolts).find((candidate) => candidate.id === session.currentBoltId);
   if (!bolt) throw new ApiError(409, '現在の締付箇所がテンプレートに存在しません');
   return bolt;
-}
-
-function assertSessionClient(session: AssemblyWorkSessionDetail, clientDeviceId: string): void {
-  if (session.clientDeviceId && session.clientDeviceId !== clientDeviceId) {
-    throw new ApiError(403, 'この作業は別のクライアント端末に割り当てられています', undefined, 'SESSION_CLIENT_MISMATCH');
-  }
 }
 
 function nextAttempt(session: AssemblyWorkSessionDetail, boltId: string): number {
@@ -174,6 +170,7 @@ export class AssemblyTorqueTraceabilityService {
   }
 
   async confirm(input: {
+    actorDevice?: ClientDeviceOperationActor | null;
     sessionId: string;
     clientDeviceId: string;
     clientDeviceName: string;
@@ -187,6 +184,10 @@ export class AssemblyTorqueTraceabilityService {
     return runAssemblyTransaction(async (tx) => {
       await lockTorqueWrenchProfile(tx, input.torqueWrenchProfileId);
       const session = await lockAssemblyWorkSession(tx, input.sessionId);
+      assertClientDeviceOperationScope(
+        input.actorDevice === undefined ? { id: input.clientDeviceId, canProxyOtherDevices: false } : input.actorDevice,
+        session.clientDeviceId
+      );
       if (session.workUnit?.invalidatedAt) {
         throw new ApiError(409, '削除済みの作業用IDは変更できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
       }
@@ -455,6 +456,10 @@ export class AssemblyTorqueTraceabilityService {
       const outcome = await runAssemblyTransaction(async (tx) => {
         if (profileIdentity) await lockTorqueWrenchProfile(tx, profileIdentity.id);
         const session = await lockAssemblyWorkSession(tx, input.sessionId);
+        assertClientDeviceOperationScope(
+          input.actorDevice === undefined ? { id: input.clientDeviceId, canProxyOtherDevices: false } : input.actorDevice,
+          session.clientDeviceId
+        );
         if (session.status !== 'IN_PROGRESS') throw new ApiError(409, 'この作業は入力できない状態です');
         if (session.workUnit?.invalidatedAt) {
           throw new ApiError(409, '削除済みの作業用IDは入力できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
@@ -464,9 +469,6 @@ export class AssemblyTorqueTraceabilityService {
           input.connectionLeaseId.length > 0 &&
           Number.isInteger(input.connectionLeaseGeneration) &&
           Number(input.connectionLeaseGeneration) > 0;
-        if (!hasConnectionLeaseToken) {
-          assertSessionClient(session, input.clientDeviceId);
-        }
         const bolt = findCurrentBolt(session);
         if (bolt.id !== input.expectedTemplateBoltId) {
           return this.ignored(tx, session, bolt, input, 'STALE_TEMPLATE_BOLT');

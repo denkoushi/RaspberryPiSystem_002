@@ -3,15 +3,15 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
+import { deleteHaizenCurrentPlacement, deleteOrderPlacementBranch, getHaizenOverview, getHaizenUnplacedParts, getMobilePlacementRegisteredShelves } from '../../api/domains/mobile-placement';
 import { startVoiceTranscription } from '../../features/voice/voiceTranscription';
 
 import { KioskHaizenPage } from './KioskHaizenPage';
 
-vi.mock('../../api/domains/mobile-placement', () => ({ deleteHaizenCurrentPlacement: vi.fn(), deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
+vi.mock('../../api/domains/mobile-placement', () => ({ deleteHaizenCurrentPlacement: vi.fn(), deleteOrderPlacementBranch: vi.fn(), getHaizenOverview: vi.fn(), getHaizenUnplacedParts: vi.fn(), getMobilePlacementRegisteredShelves: vi.fn() }));
 vi.mock('../../features/mobile-placement/shelfPhoto/useShelfPhoto', () => ({ useShelfPhoto: () => ({ url: undefined, isError: false }) }));
 vi.mock('../../features/voice/voiceTranscription', () => ({ startVoiceTranscription: vi.fn(), disposeVoiceSession: vi.fn() }));
-const base = { source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
+const base = { verified: false, dueDate: null, sendOutDate: null, source: 'branch' as const, manufacturingOrderBarcodeRaw: '123', fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: 'ブラケット', machineName: 'ＲＶ－１２Ａ' };
 const rows = [
   { ...base, id: '1', shelfCodeRaw: '西-北-01', branchNo: 1, updatedAt: '2026-10-21T01:00:00Z' },
   { ...base, id: '2', shelfCodeRaw: '西-北-02', branchNo: 2, updatedAt: '2026-10-22T01:00:00Z' },
@@ -27,12 +27,85 @@ const search = async (input: string) => {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(getHaizenUnplacedParts).mockResolvedValue([]);
   vi.mocked(getHaizenOverview).mockResolvedValue({ rows, truncated: false });
   vi.mocked(getMobilePlacementRegisteredShelves).mockResolvedValue({ shelves: [3, 2, 1].map(index => ({ shelfCodeRaw: `西-北-0${index}`, displayLabel: `棚名${index}`, isStructured: true })) });
 });
-afterEach(() => { cleanup(); client.clear(); });
+afterEach(() => { cleanup(); client.clear(); vi.useRealTimers(); });
 
 describe('KioskHaizenPage', () => {
+  it('sorts the list by due date with undated rows last and shows the due date', async () => {
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [
+      { ...rows[0], dueDate: null, fseiban: 'UNDATED', fhinmei: '日付なし' },
+      { ...rows[1], dueDate: '2026-11-10', fhinmei: '後の部品' },
+      { ...rows[2], dueDate: '2026-11-07', fhinmei: '先の部品' }
+    ], truncated: false });
+    mount(); await screen.findByText('棚名1');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    fireEvent.click(screen.getByRole('button', { name: '納期順' }));
+    expect(screen.getByRole('button', { name: '納期順' })).toHaveAttribute('aria-pressed', 'true');
+    const bodyRows = within(screen.getByRole('table', { name: '配膳の一覧' })).getAllByRole('row').slice(1);
+    expect(bodyRows.map(row => row.textContent)).toEqual([
+      expect.stringContaining('先の部品'), expect.stringContaining('後の部品'), expect.stringContaining('日付なし')
+    ]);
+    expect(bodyRows[0]).toHaveTextContent('2026-11-07');
+  });
+  it('fetches unplaced parts only for the due list and groups pending, verified and placed parts by seiban', async () => {
+    vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [
+      { ...rows[0], fseiban: 'BA1', dueDate: '2026-11-07', fhinmei: '棚の古い部品' },
+      { ...rows[1], fseiban: 'BA1', dueDate: '2026-11-07', fhinmei: '棚の新しい部品', verified: true },
+      { ...rows[2], fseiban: 'OUTSIDE', fhinmei: '日程外' }
+    ], truncated: false });
+    const part = { fseiban: 'BA1', productNo: '100', fhincd: 'UP1', fhinmei: '未照合部品', verified: false, machineName: 'UP-MACHINE', dueDate: '2026-11-07' };
+    vi.mocked(getHaizenUnplacedParts).mockResolvedValue([
+      { ...part, productNo: '200', fhinmei: '照合済み部品', verified: true },
+      { ...part, fseiban: 'BA2', productNo: '300', fhinmei: '別製番' },
+      { ...part, fseiban: 'EARLY', productNo: '400', dueDate: '2026-11-06', fhinmei: '早い製番' },
+      part,
+      { ...part, fseiban: 'UNDATED', productNo: '500', dueDate: null, fhinmei: '日付なし部品' }
+    ]);
+    mount(); await screen.findByText('棚名1');
+    expect(getHaizenUnplacedParts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    expect(getHaizenUnplacedParts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '新しい順' }));
+    expect(getHaizenUnplacedParts).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '納期順' }));
+    await screen.findByText('未照合部品');
+    const bodyRows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    expect(bodyRows.map(row => within(row).getAllByRole('cell')[2].textContent)).toEqual(['早い製番', '未照合部品', '照合済み部品', '棚の新しい部品', '棚の古い部品', '別製番', '日程外', '日付なし部品']);
+    expect(within(bodyRows[1]).getByLabelText('未照合')).toHaveClass('border-dashed', 'h-7', 'w-7');
+    expect(within(bodyRows[2]).getByLabelText('照合済み')).toHaveTextContent('✓');
+    expect(within(bodyRows[3]).getByLabelText('照合済み')).toHaveClass('bg-inv-green');
+    expect(within(bodyRows[4]).getByLabelText('未照合')).toBeEmptyDOMElement();
+    expect(bodyRows[1]).toHaveClass('border-t-2');
+    expect(bodyRows[2]).not.toHaveClass('border-t-2');
+    for (const index of [3, 5, 8]) expect(within(bodyRows[2]).getAllByRole('cell')[index]).toHaveClass('text-transparent');
+    expect(bodyRows[1]).not.toHaveClass('cursor-pointer');
+    expect(within(bodyRows[1]).queryByRole('link')).not.toBeInTheDocument();
+    expect(within(bodyRows[1]).getAllByRole('cell')[1].firstChild).toHaveClass('border-inv-amber', 'border-dashed');
+    expect(within(bodyRows[1]).getAllByRole('cell')[7]).toHaveTextContent('—');
+    expect(within(bodyRows[1]).getAllByRole('cell')[9]).toHaveTextContent('—');
+    fireEvent.click(bodyRows[1]);
+    expect(screen.getByRole('table')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '棚順' }));
+    expect(screen.queryByText('未照合部品')).not.toBeInTheDocument();
+    expect(getHaizenUnplacedParts).toHaveBeenCalledTimes(1);
+  });
+  it.each([['製番', 'UNPLACED'], ['品番', 'UP-PART'], ['機種名', 'UP-MACHINE']])('finds and highlights an unplaced row by %s without a matching shelf', async (kind, value) => {
+    vi.mocked(getHaizenUnplacedParts).mockResolvedValue([{ fseiban: 'UNPLACED', productNo: 'ORDER-999', fhincd: 'UP-PART', fhinmei: '棚なし検索部品', verified: false, machineName: 'UP-MACHINE', dueDate: null }]);
+    mount(); await screen.findByText('棚名1');
+    fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
+    fireEvent.click(screen.getByRole('button', { name: '納期順' }));
+    await screen.findByText('棚なし検索部品');
+    fireEvent.click(screen.getByRole('button', { name: kind, exact: true }));
+    await search(value);
+    const bodyRows = within(screen.getByRole('table')).getAllByRole('row').slice(1);
+    expect(bodyRows).toHaveLength(1);
+    expect(bodyRows[0]).toHaveClass('bg-inv-cyan/10');
+    expect(bodyRows[0].querySelector('mark')).toHaveTextContent(value);
+    expect(screen.getByRole('status')).toHaveTextContent('1 件 ・ 0 棚');
+  });
   it('switches between card size controls and the list with sorting controls', async () => {
     mount(); await screen.findByText('棚名1');
     const cardButton = screen.getByRole('button', { name: 'カード表示' });
@@ -43,7 +116,7 @@ describe('KioskHaizenPage', () => {
     expect(screen.getByRole('group', { name: '写真の大きさ' })).toBeInTheDocument();
     fireEvent.click(listButton);
     const table = screen.getByRole('table', { name: '配膳の一覧' });
-    expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '置いた日時', '足取り']);
+    expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['照合', '棚', '品名', '製番', '品番', '機種名', '製造オーダー', '分配', '納期', '置いた日時', '足取り']);
     expect(within(table).getAllByRole('row')).toHaveLength(4);
     expect(within(table).queryByRole('button', { name: '消す' })).not.toBeInTheDocument();
     expect(listButton).toHaveAttribute('aria-pressed', 'true');
@@ -63,17 +136,17 @@ describe('KioskHaizenPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
     const table = screen.getByRole('table', { name: '配膳の一覧' });
     const listRows = () => within(table).getAllByRole('row').slice(1);
-    expect(listRows().map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual(['棚名1', '棚名2', '棚名2', '棚マスタ未登録']);
-    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['123', '456', '123', '789']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[1].textContent)).toEqual(['棚名1', '棚名2', '棚名2', '棚マスタ未登録']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[6].textContent)).toEqual(['123', '456', '123', '789']);
     expect(listRows()[1]).toHaveClass('border-t-2');
     expect(within(listRows()[2]).getByRole('button')).toHaveClass('text-transparent');
     expect(listRows()[2]).not.toHaveClass('border-t-2');
     fireEvent.click(screen.getByRole('button', { name: '新しい順' }));
-    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['456', '789', '123', '123']);
-    expect(listRows().map(row => within(row).getAllByRole('cell')[0].textContent)).toEqual(['棚名2', '棚マスタ未登録', '棚名2', '棚名1']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[6].textContent)).toEqual(['456', '789', '123', '123']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[1].textContent)).toEqual(['棚名2', '棚マスタ未登録', '棚名2', '棚名1']);
     for (const row of listRows()) expect(within(row).getByRole('button')).not.toHaveClass('text-transparent');
     fireEvent.click(screen.getByRole('button', { name: '棚順' }));
-    expect(listRows().map(row => within(row).getAllByRole('cell')[5].textContent)).toEqual(['123', '456', '123', '789']);
+    expect(listRows().map(row => within(row).getAllByRole('cell')[6].textContent)).toEqual(['123', '456', '123', '789']);
   });
   it.each([
     ['製番', 'unique', 'UNIQUE', 1],
@@ -89,7 +162,7 @@ describe('KioskHaizenPage', () => {
     expect(matchedRows).toHaveLength(count);
     for (const row of matchedRows) {
       expect(row).toHaveClass('bg-inv-cyan/10');
-      expect(within(row).getAllByRole('cell')[1]).toHaveClass('text-inv-cyan');
+      expect(within(row).getAllByRole('cell')[2]).toHaveClass('text-inv-cyan');
       expect(row.querySelectorAll('mark')).toHaveLength(1);
       expect(row.querySelector('mark')).toHaveTextContent(expected);
       expect(row.querySelector('mark')).toHaveClass('rounded', 'bg-inv-cyan', 'px-1', 'text-inv-cyan-ink');
@@ -129,10 +202,10 @@ describe('KioskHaizenPage', () => {
     mount(); await screen.findByRole('button', { name: '棚 西-北-01' });
     fireEvent.click(screen.getByRole('button', { name: 'リスト表示' }));
     const listRows = within(screen.getByRole('table', { name: '配膳の一覧' })).getAllByRole('row').slice(1);
-    expect(within(listRows[0]).getAllByRole('cell').slice(0, 7).map(cell => cell.textContent)).toEqual(['西-北-01', 'ブラケット', 'BA1S2320', 'K0381', 'RV-12A', '123', 'なし']);
-    expect(within(listRows[1]).getAllByRole('cell').slice(0, 7).map(cell => cell.textContent)).toEqual(['棚マスタ未登録', '品名未登録', '—', '—', '—', '—', '—']);
+    expect(within(listRows[0]).getAllByRole('cell').slice(1, 8).map(cell => cell.textContent)).toEqual(['西-北-01', 'ブラケット', 'BA1S2320', 'K0381', 'RV-12A', '123', 'なし']);
+    expect(within(listRows[1]).getAllByRole('cell').slice(1, 8).map(cell => cell.textContent)).toEqual(['棚マスタ未登録', '品名未登録', '—', '—', '—', '—', '—']);
     expect(listRows[0].querySelector('time')).toHaveAttribute('dateTime', rows[0].updatedAt);
-    expect(within(listRows[0]).getAllByRole('cell')[7]).toHaveClass('text-right');
+    expect(within(listRows[0]).getAllByRole('cell')[9]).toHaveClass('text-right');
   });
   it('renders branch zero as なし', async () => {
     vi.mocked(getHaizenOverview).mockResolvedValue({ rows: [{ ...rows[0], branchNo: 0 }], truncated: false });

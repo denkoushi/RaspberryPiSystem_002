@@ -50,6 +50,8 @@ export interface RiggingInspectionRecord {
 }
 
 export interface RiggingBorrowPayload {
+  eventKey?: string;
+  readAt?: string;
   riggingTagUid?: string;
   riggingGearId?: string;
   employeeTagUid: string;
@@ -59,6 +61,8 @@ export interface RiggingBorrowPayload {
 }
 
 export interface RiggingReturnPayload {
+  eventKey?: string;
+  readAt?: string;
   loanId: string;
   clientId?: string;
   performedByUserId?: string;

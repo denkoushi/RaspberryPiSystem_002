@@ -1,3 +1,4 @@
+import { assertClientDeviceOperationScope, type ClientDeviceOperationActor } from '../clients/client-device-resolution.service.js';
 import type {
   TorqueWrenchConnectionLeaseStatusDto,
   TorqueWrenchRejectionReason
@@ -49,6 +50,7 @@ export const TORQUE_CONNECTION_HANDOFF_GRACE_MS = TORQUE_USAGE_LEASE_HANDOFF_GRA
 export type ConnectionLeaseRow = TorqueWrenchUsageLeaseRow;
 
 type AcquireInput = UsageLeaseAcquireInput & {
+  actorDevice?: ClientDeviceOperationActor | null;
   torqueWrenchProfileId: string;
   clientDeviceId: string;
   sessionId: string;
@@ -93,7 +95,7 @@ export function serializeConnectionLease(
 async function lockAssemblySession(
   tx: Prisma.TransactionClient,
   sessionId: string
-): Promise<{ currentBoltId: string | null }> {
+): Promise<{ currentBoltId: string | null; clientDeviceId: string | null }> {
   const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT "id" FROM "AssemblyWorkSession"
     WHERE "id" = ${sessionId}
@@ -105,6 +107,7 @@ async function lockAssemblySession(
     select: {
       status: true,
       currentBoltId: true,
+      clientDeviceId: true,
       workUnit: { select: { invalidatedAt: true } }
     }
   });
@@ -115,7 +118,7 @@ async function lockAssemblySession(
   if (session.workUnit?.invalidatedAt) {
     throw new ApiError(409, '削除済みの作業用IDにはトルクレンチを接続できません', undefined, 'ASSEMBLY_WORK_UNIT_INVALIDATED');
   }
-  return { currentBoltId: session.currentBoltId };
+  return { currentBoltId: session.currentBoltId, clientDeviceId: session.clientDeviceId };
 }
 
 async function validateConfirmation(
@@ -209,7 +212,7 @@ class AssemblyTorqueWrenchLeaseAdapter implements UsageLeaseOwnerAdapter {
   readonly defaultReleaseReason = 'CLIENT_RELEASE';
 
   constructor(
-    input: Pick<AcquireInput, 'clientDeviceId' | 'sessionId'>,
+    private readonly input: Pick<AcquireInput, 'clientDeviceId' | 'sessionId' | 'actorDevice'>,
     private readonly confirmationPolicy: TorqueWrenchConfirmationUsePolicy,
     private readonly confirmationRepository: TorqueWrenchConfirmationStateRepository,
     private readonly eligibilityPolicy: TorqueWrenchEligibilityPolicy
@@ -227,6 +230,10 @@ class AssemblyTorqueWrenchLeaseAdapter implements UsageLeaseOwnerAdapter {
     now: Date
   ): Promise<void> {
     const session = await lockAssemblySession(tx, this.owner.sessionId);
+    assertClientDeviceOperationScope(
+      this.input.actorDevice === undefined ? { id: this.owner.clientDeviceId, canProxyOtherDevices: false } : this.input.actorDevice,
+      session.clientDeviceId
+    );
     await validateConfirmation(
       tx,
       {

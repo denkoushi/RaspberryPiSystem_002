@@ -46,6 +46,7 @@
 - 秘密情報（`.env` 等）をcommitしない。
 - 重要な変更・調査・障害対応は KB / ADR / Runbook / Plan のいずれか1つを正本として更新する（詳細は `.cursor/rules/01-core-docs-and-knowledge.mdc`）。
 - コード、テスト、CIの変更では、`10-quality-ci-and-tests.mdc` の検証予算、再実行上限、停止条件を守る。無関係な失敗は修正せず、別件として報告する。
+- PRレビューは変更の危なさで深さを分ける。重い変更の範囲と止め方は `10-quality-ci-and-tests.mdc` の「PRレビューの深さ」に従う。
 - 複雑な機能追加や大きなリファクタだけ、`.agent/PLANS.md` に従って `docs/plans/` に ExecPlan を作る。小変更へ形式的な計画文書を追加しない。
 - ルートの `EXEC_PLAN.md` は legacy historical log であり、詳細正本にせず、新しい進捗ログを追記しない。
 

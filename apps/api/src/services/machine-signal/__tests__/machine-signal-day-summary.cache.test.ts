@@ -8,7 +8,7 @@ import type { MachineSignalSensorDto } from '../machine-signal-settings.service.
 import { DEFAULT_SIGNAL_THRESHOLDS } from '../signal-metrics.js';
 
 const sensor: MachineSignalSensorDto = {
-  signalNo: 1, sourceMachineName: '機械', displayName: null, site: null, kind: 'MACHINE', hidden: false,
+  signalNo: 1, resourceCd: null, sourceMachineName: '機械', displayName: null, site: null, kind: 'MACHINE', hidden: false,
   categoryOverrides: {}, plannedStartMinute: null, plannedEndMinute: null, runningKw: null, idleKw: null,
 };
 const date = (key: string) => new Date(`${key}T00:00:00.000Z`);

@@ -32,6 +32,17 @@ describe('system notice delivery', () => {
       include: { messages: { where: { side: 'SYSTEM' }, orderBy: { createdAt: 'desc' }, take: 1 } }
     }));
   });
+  it.each([0, 300_000])('dedupes the same recovery event but appends the next outage (%i ms)', async (age) => {
+    db.kioskInquiryThread.findFirst.mockResolvedValue({
+      id: 'thread', noticeTitle: notice.title, messages: [{ createdAt: new Date(now.getTime() - age) }]
+    });
+    await deliverSystemNotice({ ...notice, repeatMs: 1 }, now);
+    expect(db.kioskInquiryThread.update).toHaveBeenCalledTimes(age === 0 ? 0 : 1);
+    if (age > 0) expect(db.kioskInquiryThread.update).toHaveBeenCalledWith({ where: { id: 'thread' }, data: {
+      receiverUnread: true, lastMessageAt: now,
+      messages: { create: { side: 'SYSTEM', body: notice.body, createdAt: now } }
+    } });
+  });
   it('refreshes a changed title inside the repeat window without marking unread', async () => {
     db.kioskInquiryThread.findFirst.mockResolvedValue({ id: 'thread', noticeTitle: 'Mac 空き容量', messages: [{ createdAt: now }] });
     await deliverSystemNotice(notice, now);

@@ -2,7 +2,7 @@ import { useLayoutEffect, useState } from 'react';
 
 import { api } from '../api/client';
 
-export const PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES = 12;
+export const PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES = 60;
 
 type CacheEntry = {
   blobUrl: string;
@@ -14,7 +14,7 @@ const inFlightFetches = new Map<string, Promise<string>>();
 const pendingConsumers = new Map<string, number>();
 
 function normalizePath(path: string): string {
-  return path.replace(/^\/api\//, '');
+  return path.replace(/^\/(?:api\/)?/, '');
 }
 
 function touch(path: string): string | null {
@@ -94,11 +94,14 @@ async function fetchBlobUrl(path: string): Promise<string> {
 }
 
 /**
- * Protected procedure images share a 12-entry LRU. Concurrent consumers of
+ * Protected images share a bounded LRU. Concurrent consumers of
  * the same source page share one request and one Blob URL; visible entries are
  * retained until their final consumer releases them.
  */
-export function useProtectedImageBlobUrl(imagePath: string | null | undefined): {
+export function useProtectedImageBlobUrl(
+  imagePath: string | null | undefined,
+  refreshIntervalMs?: number
+): {
   blobUrl: string | null;
   error: string | null;
 } {
@@ -121,6 +124,40 @@ export function useProtectedImageBlobUrl(imagePath: string | null | undefined): 
       return releaseHeld;
     }
     const path = normalizePath(trimmed);
+    if (refreshIntervalMs && refreshIntervalMs > 0) {
+      let ownedUrl: string | null = null;
+      let fetching = false;
+      const refresh = async () => {
+        if (fetching) return;
+        fetching = true;
+        try {
+          const { data } = await api.get<Blob>(path, {
+            responseType: 'blob', params: { _refresh: Date.now() }
+          });
+          if (cancelled) return;
+          const nextUrl = URL.createObjectURL(data);
+          const previousUrl = ownedUrl;
+          ownedUrl = nextUrl;
+          setBlobUrl(nextUrl);
+          setError(null);
+          if (previousUrl) revoke(previousUrl);
+        } catch {
+          // Keep showing the last image when a later refresh fails.
+          if (!cancelled && !ownedUrl) {
+            setError('画像の読み込みに失敗しました');
+          }
+        } finally {
+          fetching = false;
+        }
+      };
+      void refresh();
+      const timer = setInterval(() => { void refresh(); }, refreshIntervalMs);
+      return () => {
+        cancelled = true;
+        clearInterval(timer);
+        if (ownedUrl) revoke(ownedUrl);
+      };
+    }
     const cached = touch(path);
     if (cached) {
       acquire(path);
@@ -148,7 +185,7 @@ export function useProtectedImageBlobUrl(imagePath: string | null | undefined): 
       cancelled = true;
       releaseHeld();
     };
-  }, [imagePath]);
+  }, [imagePath, refreshIntervalMs]);
 
   return { blobUrl, error };
 }

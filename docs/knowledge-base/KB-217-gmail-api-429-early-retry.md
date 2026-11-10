@@ -34,6 +34,7 @@
      - `retry-after` ヘッダ（秒）
      - `status`
      をログ出しする（最小変更）
+   - **（追記）実装済み**: `apps/api/src/services/backup/gmail-request-gate.service.ts` の `[GmailRequestGate] Rate limit detected; entering cooldown` ログに `apiErrorReason` / `apiErrorMessage` / `retryAfterHeaderSeconds` / `status` などが出力される。根本原因の切り分けにはこのログを使う。
 
 4. **段階的クールダウン延長（事実）**:
    - 429が短時間で再発すると、待機が 15分 → 60分 → 180分 → 720分 と引き上がる

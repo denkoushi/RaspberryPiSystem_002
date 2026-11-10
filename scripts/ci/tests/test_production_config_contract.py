@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[3]
 class ProductionConfigContractTests(unittest.TestCase):
     def test_repository_has_exact_complete_production_contract(self) -> None:
         audit_repository(ROOT)
-        self.assertEqual(len(ALL_VITE_KEYS), 20)
+        self.assertEqual(len(ALL_VITE_KEYS), 19)
 
     def test_each_missing_surface_key_fails_closed(self) -> None:
         expected = ("VITE_A", "VITE_B")

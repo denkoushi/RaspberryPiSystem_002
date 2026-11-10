@@ -1,10 +1,21 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { inventoryKeys } from '../api/queryKeys/itemInventory';
 import { kioskWebNavigation } from '../features/kiosk/kioskWebActivation';
 
 import { KioskLayout } from './KioskLayout';
+
+const palletReplay = vi.hoisted(() => ({ hook: vi.fn() }));
+vi.mock('../features/kiosk/pallet-visualization/offline/usePalletOutboxReplay', () => ({ usePalletOutboxReplay: palletReplay.hook }));
+
+const replay = vi.hoisted(() => ({ flush: vi.fn(), onSent: vi.fn(), offSent: vi.fn(), invalidateQueries: vi.fn() }));
+vi.mock('../features/kiosk/inventory/offline/inventoryOutboxRunner', () => ({ inventoryOutboxRunner: () => replay }));
+vi.mock('@tanstack/react-query', async importOriginal => ({
+  ...await importOriginal<typeof import('@tanstack/react-query')>(),
+  useQueryClient: () => replay,
+}));
 
 const revealMode = vi.hoisted(() => ({ real: false }));
 const acknowledgeDeployStatus = vi.fn();
@@ -69,6 +80,11 @@ describe('KioskLayout deploy status handling', () => {
   });
 
   beforeEach(() => {
+    palletReplay.hook.mockClear();
+    replay.flush.mockReset().mockResolvedValue(undefined);
+    replay.onSent.mockReset().mockReturnValue(replay.offSent);
+    replay.offSent.mockReset();
+    replay.invalidateQueries.mockReset();
     revealMode.real = false;
     deployStatus = undefined;
     deployStatusError = false;
@@ -79,6 +95,32 @@ describe('KioskLayout deploy status handling', () => {
     vi.spyOn(kioskWebNavigation, 'replace').mockImplementation(() => undefined);
     window.sessionStorage.clear();
     vi.stubEnv('VITE_RELEASE_SHA', BUNDLE_RELEASE_SHA);
+  });
+
+  it('keeps replay running after leaving inventory, invalidates after sending, and cleans up', async () => {
+    vi.useFakeTimers();
+    deployStatus = { isMaintenance: false };
+    let navigate!: ReturnType<typeof useNavigate>;
+    function Driver() {
+      navigate = useNavigate();
+      return <KioskLayout />;
+    }
+    const { unmount } = render(<MemoryRouter initialEntries={['/kiosk/inventory']}><Driver /></MemoryRouter>);
+    expect(replay.flush).toHaveBeenCalledTimes(1);
+    act(() => { navigate('/kiosk/tag'); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(replay.flush).toHaveBeenCalledTimes(2);
+    act(() => { window.dispatchEvent(new Event('online')); });
+    expect(replay.flush).toHaveBeenCalledTimes(3);
+    replay.onSent.mock.calls[0][0]();
+    expect(replay.invalidateQueries.mock.calls.map(([options]) => options.queryKey)).toEqual([
+      inventoryKeys.itemsAll, inventoryKeys.tagsAll, inventoryKeys.historyAll,
+    ]);
+    unmount();
+    await vi.advanceTimersByTimeAsync(30_000);
+    window.dispatchEvent(new Event('online'));
+    expect(replay.flush).toHaveBeenCalledTimes(3);
+    expect(replay.offSent).toHaveBeenCalledOnce();
   });
 
   it('does not mount kiosk content before the initial deploy status is known', () => {
@@ -417,4 +459,13 @@ it('keeps the portal header visible at the top without a dock handle', () => {
   expect(screen.queryByRole('button', { name: 'メニューを開く' })).not.toBeInTheDocument();
   expect(screen.getByRole('main')).toHaveClass('overflow-hidden');
   revealMode.real = false;
+});
+
+describe('pallet replay integration', () => {
+  it('starts replay even before server status opens kiosk content', () => {
+    deployStatus = undefined;
+    render(<MemoryRouter><KioskLayout /></MemoryRouter>);
+    expect(palletReplay.hook).toHaveBeenCalled();
+    expect(screen.queryByText('normal-kiosk-content')).not.toBeInTheDocument();
+  });
 });

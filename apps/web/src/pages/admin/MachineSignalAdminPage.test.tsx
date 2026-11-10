@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 const HOUR = 3_600;
 const sensor = (overrides: Partial<MachineSignalSensor>): MachineSignalSensor => ({
   signalNo: 39,
+  resourceCd: null,
   sourceMachineName: 'N7',
   displayName: null,
   site: null,
@@ -122,6 +123,7 @@ describe('MachineSignalAdminPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /N7/ }));
     const editor = within(screen.getByRole('dialog', { name: 'センサーの設定' }));
+    fireEvent.change(editor.getByLabelText('資源CD'), { target: { value: ' ０２１ ' } });
     fireEvent.change(editor.getByLabelText('表示名'), { target: { value: 'N7（三島）' } });
     fireEvent.click(editor.getByRole('button', { name: '三島工場' }));
     fireEvent.click(editor.getByRole('button', { name: '時間を決める' }));
@@ -134,6 +136,7 @@ describe('MachineSignalAdminPage', () => {
         signalNo: 39,
         input: {
           displayName: 'N7（三島）',
+          resourceCd: '０２１',
           site: '三島工場',
           kind: 'MACHINE',
           hidden: false,

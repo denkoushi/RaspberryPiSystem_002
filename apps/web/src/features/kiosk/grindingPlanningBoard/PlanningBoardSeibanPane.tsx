@@ -1,6 +1,7 @@
 import clsx from 'clsx';
 import { memo, useEffect, useMemo, useRef } from 'react';
 
+import { DScheduleMinutesChips, useDScheduleMinutesExtras } from '../productionSchedule/DScheduleMinutesContext';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
@@ -25,7 +26,7 @@ export type PlanningBoardSeibanPaneProps = {
   onToggleAll: (selected: boolean) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   onResourceClick: (item: GrindingPlanningBoardItem) => void;
   onRankChange?: (item: GrindingPlanningBoardItem, rank: number | null) => void;
   disabled?: boolean;
@@ -59,7 +60,7 @@ function arePanePropsEqual(
     previous.onToggleAll === next.onToggleAll &&
     previous.onToggleItem === next.onToggleItem &&
     previous.onCompleteToggle === next.onCompleteToggle &&
-    previous.completionPendingRowIds === next.completionPendingRowIds &&
+    previous.completionPendingItemIds === next.completionPendingItemIds &&
     previous.onResourceClick === next.onResourceClick &&
     previous.onRankChange === next.onRankChange &&
     previous.disabled === next.disabled &&
@@ -83,13 +84,14 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   onToggleAll,
   onToggleItem,
   onCompleteToggle,
-  completionPendingRowIds,
+  completionPendingItemIds,
   onResourceClick,
   onRankChange,
   disabled = false,
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardSeibanPaneProps) {
+  const { extras, dueSource } = useDScheduleMinutesExtras(fseiban);
   const paneRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
@@ -130,7 +132,8 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
             <strong className="shrink-0 font-mono text-sm text-white">{fseiban}</strong>
             <span className="min-w-0 truncate text-xs text-slate-300">{displayMachineName || '機種名未登録'}</span>
           </span>
-          <span className="mt-1 block text-[11px] text-slate-400">{formatDate(nearestDue)}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-slate-400"><span>{formatDate(nearestDue)}</span>{extras && <DScheduleMinutesChips extras={extras} dueSource={dueSource} />}</span>
+          {dueSource === 'excel' && extras?.memo && <span className="mt-0.5 block truncate text-[10px] text-slate-400">{extras.memo}</span>}
         </button>
         <div className="flex shrink-0 items-center gap-0.5">
           <button
@@ -164,11 +167,12 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
           selectedItemIds={selectedItemIds}
           onToggleItem={onToggleItem}
           onCompleteToggle={onCompleteToggle}
-          completionPendingRowIds={completionPendingRowIds}
+          completionPendingItemIds={completionPendingItemIds}
           onResourceClick={onResourceClick}
           onRankChange={onRankChange}
           disabled={disabled}
           rankDisabled={rankDisabled}
+          bulkDisabled={bulkDisabled}
           showColumnHeaders={false}
           tableLabel={`${fseiban}の工程アイテム`}
         />

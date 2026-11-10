@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
@@ -62,6 +63,36 @@ describe('POST /api/tools/loans/borrow', () => {
     expect(body).toHaveProperty('loan');
     expect(body.loan.itemId).toBe(itemId);
     expect(body.loan.employeeId).toBe(employeeId);
+  });
+
+  it('deduplicates concurrent offline events and keeps readAt separate from reception time', async () => {
+    const readAt = new Date(Date.now() - 60_000).toISOString();
+    const eventKey = randomUUID();
+    const request = {
+      method: 'POST' as const, url: '/api/tools/loans/borrow',
+      headers: { 'x-client-key': clientApiKey },
+      payload: { itemTagUid, employeeTagUid, eventKey, readAt },
+    };
+    const responses = await Promise.all([app.inject(request), app.inject(request)]);
+    expect(responses.map(response => response.statusCode)).toEqual([200, 200]);
+    const loanId = responses[0].json().loan.id;
+    expect(responses[1].json().loan.id).toBe(loanId);
+    const loan = await prisma.loan.findUniqueOrThrow({ where: { id: loanId } });
+    expect(loan.borrowedAt.toISOString()).toBe(readAt);
+    expect(loan.borrowReceivedAt!.getTime()).toBeGreaterThan(Date.parse(readAt));
+    expect(await prisma.transaction.count({ where: { loanId, action: 'BORROW' } })).toBe(1);
+
+    const returnRequest = {
+      method: 'POST' as const, url: '/api/tools/loans/return',
+      headers: { 'x-client-key': clientApiKey },
+      payload: { loanId, eventKey: randomUUID(), readAt },
+    };
+    const returns = await Promise.all([app.inject(returnRequest), app.inject(returnRequest)]);
+    expect(returns.map(response => response.statusCode)).toEqual([200, 200]);
+    const returned = await prisma.loan.findUniqueOrThrow({ where: { id: loanId } });
+    expect(returned.returnedAt!.toISOString()).toBe(readAt);
+    expect(returned.returnReceivedAt!.getTime()).toBeGreaterThan(Date.parse(readAt));
+    expect(await prisma.transaction.count({ where: { loanId, action: 'RETURN' } })).toBe(1);
   });
 
   it('should return 404 for non-existent item', async () => {

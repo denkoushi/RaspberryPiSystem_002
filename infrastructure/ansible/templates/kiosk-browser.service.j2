@@ -5,8 +5,12 @@ Wants=graphical.target
 
 [Service]
 Type=simple
-User={{ ansible_user }}
-Environment=DISPLAY=:0
+User={{ kiosk_gui_user | default(ansible_user) }}
+{% if kiosk_unprivileged_session_enabled | default(false) | bool %}Environment=HOME={{ kiosk_gui_home }}
+Environment=XAUTHORITY={{ kiosk_gui_home }}/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/{{ kiosk_gui_uid }}
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ kiosk_gui_uid }}/bus
+{% endif %}Environment=DISPLAY=:0
 Environment=GTK_USE_PORTAL=0
 # キーリングを無効化（パスワードダイアログを表示しない）
 Environment=GNOME_KEYRING_CONTROL=""

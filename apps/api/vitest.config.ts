@@ -13,10 +13,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./src/test/setup-env.ts'],
-    // NOTE:
-    // 共有DBを使うテストが integration 以外にも多く、ファイル並列だと Prisma の deleteMany 等が
-    // 他ファイルと競合して P2003 などのフレークを起こすことがあるため、既定では直列実行に固定する。
-    // 将来的に「DB 非依存テストだけ並列」へ分離する場合は Vitest projects 等で境界を明示すること。
+    // Local runs share one DB and remain serial to avoid deleteMany/P2003 races.
+    // CI opts into worker DB/storage isolation with API_TEST_DB_PER_WORKER=1 and
+    // overrides fileParallelism/maxWorkers on the CLI after provisioning worker DBs.
     fileParallelism: false,
     sequence: {
       concurrent: false

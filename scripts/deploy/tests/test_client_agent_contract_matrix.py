@@ -116,7 +116,19 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                     for name in selected:
                         with self.subTest(service=name, selected=selected, mode=value):
                             service = rendered["services"][name]
+                            expected_logging = {
+                                "driver": "json-file",
+                                "options": {"max-size": "10m", "max-file": "3"},
+                            }
+                            self.assertEqual(service["logging"], expected_logging)
+                            self.assertEqual(static["services"][name]["logging"], expected_logging)
                             reference = dict(static["services"][name])
+                            if name == "torque-agent":
+                                # Static provisioning exposes the optional pin directory;
+                                # flag-off release templates retain their previous mounts.
+                                self.assertIn("/etc/raspi-client:/etc/raspi-client:ro", reference["volumes"])
+                                reference["volumes"] = [mount for mount in reference["volumes"]
+                                                        if mount != "/etc/raspi-client:/etc/raspi-client:ro"]
                             reference.pop("build")
                             reference.pop("profiles", None)
                             reference["image"] = f"fixture/{name}:test"
@@ -147,8 +159,7 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                                     self.assertNotIn(key, service)
 
     def test_default_mode_matches_the_pre_hardening_stanzas_plus_root_user(self) -> None:
-        """The static compose default must equal the previous device contract
-        except for the explicit ``user: "0:0"`` that the USER 10001 images need."""
+        """Keep the previous device contract with explicit root and bounded logs."""
         static = yaml.safe_load(self.compose)
         previous = {
             "nfc-agent": {
@@ -177,7 +188,14 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                 service.pop("build")
                 service.pop("profiles", None)
                 service.pop("healthcheck", None)
+                self.assertEqual(service.pop("logging"), {
+                    "driver": "json-file", "options": {"max-size": "10m", "max-file": "3"},
+                })
                 self.assertEqual(service.pop("user"), "0:0")
+                if name == "torque-agent":
+                    self.assertIn("/etc/raspi-client:/etc/raspi-client:ro", service["volumes"])
+                    service["volumes"] = [mount for mount in service["volumes"]
+                                          if mount != "/etc/raspi-client:/etc/raspi-client:ro"]
                 self.assertEqual(service, expected)
 
     def test_client_agent_images_run_as_dedicated_users_with_writable_data(self) -> None:
@@ -344,10 +362,7 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
             if not affected_profiles:
                 issues.append(f"{agent_id}: component does not select a terminal profile")
 
-        services_section = self.compose.split("\nvolumes:", maxsplit=1)[0]
-        service_blocks = set(
-            re.findall(r"^  ([a-z][a-z0-9-]*):\n", services_section, flags=re.MULTILINE)
-        )
+        service_blocks = set(yaml.safe_load(self.compose)["services"])
         compare_set("Compose services", service_blocks)
         if len(compose_services) != len(agent_ids):
             issues.append("registry: clientAgents reuses a Compose service name")

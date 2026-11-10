@@ -22,6 +22,7 @@ export type DashboardItemRow = {
   compartments: Array<{ labelNumber: number; stockQuantity: number; drawer: { shelf: { area: string } } }>;
 };
 export type DashboardIssueRow = {
+  machineId: string | null; machine: { name: string; shortName: string | null } | null;
   inventoryItemId: string; delta: number; createdAt: Date;
   compartment: { drawer: { shelf: { area: string } } } | null;
   reversedBy: { id: string } | null;
@@ -45,7 +46,7 @@ export function aggregateInventoryDashboard(
   });
   const result: InventoryDashboard = {
     weeks: Array.from({ length: weeks }, (_, i) => ({ weekStart: localDate(new Date(period.start.getTime() + i * WEEK)), issued: 0 })),
-    totalIssued: 0, previousTotalIssued: 0, items, machines,
+    totalIssued: 0, previousTotalIssued: 0, items, machines, machineUsage: [],
     lowStockCount: items.filter(item => item.stock <= LOW_STOCK_THRESHOLD).length,
     pricedItemCount: items.filter(item => item.unitPrice !== null).length, itemCount: items.length,
     cost: { total: 0, previousTotal: 0, byMonth: [] },
@@ -58,6 +59,7 @@ export function aggregateInventoryDashboard(
     const [year, number] = month.split('-').map(Number);
     month = new Date(Date.UTC(year, number, 1)).toISOString().slice(0, 7);
   }
+  const machineUsage = new Map<string | null, InventoryDashboard['machineUsage'][number]>();
   const byId = new Map(items.map(item => [item.id, item]));
   for (const issue of scopedIssues) {
     const item = byId.get(issue.inventoryItemId);
@@ -75,10 +77,20 @@ export function aggregateInventoryDashboard(
     item.issued += quantity;
     result.weeks[index].issued += quantity;
     result.totalIssued += quantity;
+    const usage = machineUsage.get(issue.machineId) ?? {
+      machineId: issue.machineId, name: issue.machineId === null ? '加工機なし' : (issue.machine?.shortName || issue.machine?.name || ''),
+      issued: 0, weekly: Array<number>(weeks).fill(0), itemIssued: {},
+    };
+    usage.issued += quantity;
+    usage.weekly[index] += quantity;
+    usage.itemIssued[item.id] = (usage.itemIssued[item.id] ?? 0) + quantity;
+    machineUsage.set(issue.machineId, usage);
     result.cost.total += amount;
     const month = localDate(issue.createdAt).slice(0, 7);
     months.set(month, (months.get(month) ?? 0) + amount);
   }
+  result.machineUsage = [...machineUsage.values()].filter(row => row.machineId !== null || row.issued > 0)
+    .sort((a, b) => a.machineId === null ? 1 : b.machineId === null ? -1 : b.issued - a.issued);
   result.cost.byMonth = [...months].map(([month, amount]) => ({ month, amount }));
   return result;
 }

@@ -26,6 +26,7 @@ import {
   useAssemblyLibraryFilterOptions,
   useAssemblyTemplateLibrary
 } from '../../features/assembly';
+import { AssemblyAccessPasswordConfirmDialog } from '../../features/assembly/AssemblyAccessPasswordConfirmDialog';
 import { resolveAssemblyDocumentStatus } from '../../features/assembly/assemblyTemplateDraft';
 import { useAssemblyProcedureLibrary } from '../../features/assembly/useAssemblyProcedureLibrary';
 import { KioskSopLauncher } from '../../features/kiosk-sop';
@@ -64,6 +65,8 @@ export function KioskAssemblyPage() {
   const [historyTemplates, setHistoryTemplates] = useState<AssemblyTemplateSummaryDto[]>([]);
   const [historyTitle, setHistoryTitle] = useState('');
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [retireTarget, setRetireTarget] = useState<AssemblyTemplateSummaryDto | null>(null);
+  const [retireError, setRetireError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [procedurePreview, setProcedurePreview] = useState<AssemblyProcedureDocumentDto | null>(null);
   const [highlightedTemplateId, setHighlightedTemplateId] = useState<string | null>(null);
@@ -218,19 +221,20 @@ export function KioskAssemblyPage() {
     }
   };
 
-  const handleRetireTemplate = async (template: AssemblyTemplateSummaryDto) => {
-    if (!window.confirm(`テンプレート「${template.modelCode} / ${template.procedurePattern} v${template.version}」を無効化します。よろしいですか。`)) {
-      return;
-    }
+  const handleRetireTemplate = async (accessPassword: string) => {
+    if (!retireTarget) return;
+    const template = retireTarget;
     setActionBusy(true);
+    setRetireError(null);
     setMessage(null);
     try {
-      await retireAssemblyTemplate(template.id);
+      await retireAssemblyTemplate(template.id, accessPassword);
+      setRetireTarget(null);
       setMessage(`テンプレートを無効化しました: ${template.modelCode} / ${template.procedurePattern}`);
       setTemplateRefreshToken((token) => token + 1);
       setLibraryRefreshToken((token) => token + 1);
     } catch (e: unknown) {
-      setMessage(readAssemblyApiErrorMessage(e, 'テンプレートの無効化に失敗しました。'));
+      setRetireError(readAssemblyApiErrorMessage(e, 'テンプレートの無効化に失敗しました。'));
     } finally {
       setActionBusy(false);
     }
@@ -254,6 +258,22 @@ export function KioskAssemblyPage() {
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-slate-800 text-white">
+      {retireTarget ? <AssemblyAccessPasswordConfirmDialog
+        key={retireTarget.id}
+        title="テンプレートを無効化"
+        note="このテンプレートは新しい作業で選べなくなります。"
+        summaryRows={[
+          { label: '機種', value: retireTarget.modelCode },
+          { label: 'パターン', value: retireTarget.procedurePattern },
+          { label: '版', value: `v${retireTarget.version}` }
+        ]}
+        confirmLabel="無効化する"
+        busyLabel="無効化中…"
+        busy={actionBusy}
+        error={retireError}
+        onConfirm={(password) => void handleRetireTemplate(password)}
+        onCancel={() => setRetireTarget(null)}
+      /> : null}
       <AssemblyProcedureUploadModal isOpen={uploadOpen} onClose={() => setUploadOpen(false)} onSuccess={handleUploadSuccess} />
       <AssemblyProcedurePreviewDialog
         document={procedurePreview}
@@ -341,7 +361,7 @@ export function KioskAssemblyPage() {
                 busy={templateLibrary.loading || actionBusy}
                 onHistoryClick={(key) => void handleHistoryClick(key)}
                 lineageGroupKey={lineageGroupKey}
-                onRetireClick={(template) => void handleRetireTemplate(template)}
+                onRetireClick={(template) => { setRetireError(null); setRetireTarget(template); }}
                 highlightedTemplateId={highlightedTemplateId}
               />
             </div>

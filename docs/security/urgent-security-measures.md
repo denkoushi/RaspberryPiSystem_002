@@ -55,7 +55,7 @@ USBメモリ運用予定がないことを前提として、**緊急に実装す
 **リスク**: 中優先度（本番環境では高優先度）
 
 **問題点**:
-- 管理ユーザー: `admin/admin1234`（シードデータ）
+- 管理ユーザー: `admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）（シードデータ）
 - PostgreSQL: `postgres/postgres`（デフォルト値）
 - JWTシークレット: `dev-access-secret-change-me`（デフォルト値）
 
@@ -305,7 +305,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api | gre
 # 古いパスワードでログインできないことを確認
 curl -k -X POST https://localhost/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin1234"}' | jq .
+  -d '{"username":"admin","password":"<password>"}' | jq .
 
 # 新しいパスワードでログインできることを確認
 curl -k -X POST https://localhost/api/auth/login \

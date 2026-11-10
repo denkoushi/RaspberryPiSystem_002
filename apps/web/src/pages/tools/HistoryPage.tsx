@@ -2,8 +2,10 @@ import { useMemo, useState } from 'react';
 
 import { api } from '../../api/client';
 import { useTransactions } from '../../api/hooks';
+import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { escapeCsvCell } from '../../utils/csv';
 
 import type { Transaction } from '../../api/types';
 
@@ -39,7 +41,7 @@ export function HistoryPage() {
     ];
     });
     const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(','))
+      .map((row) => row.map((cell) => escapeCsvCell(cell, true)).join(','))
       .join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -112,8 +114,8 @@ export function HistoryPage() {
                     <td className="px-2 py-1 text-sm text-slate-700">{tx.action}</td>
                     <td className="px-2 py-1">
                       {thumbnailUrl ? (
-                        <img
-                          src={thumbnailUrl}
+                        <ProtectedImage
+                          path={thumbnailUrl}
                           alt="撮影した写真"
                           className="h-12 w-12 rounded object-cover border-2 border-slate-500 cursor-pointer hover:opacity-80"
                           onClick={async () => {

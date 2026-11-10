@@ -14,7 +14,7 @@ Hermes本体と業務APIは内部Docker networkだけで接続し、Hermesにhos
 
 DGXの起動・ready待ち・leaseは既存APIの`photo_label` provider runtimeを`business_hermes`用途で共有します。業務用途のreleaseでは既存stop抑止ポリシーを使うため、通常の案内ごとにDGXを停止しません。初回cold startや他用途の解放直後の待ち時間をゼロにはせず、専用prewarm loopやPrivate Pi5のkeep-warm timerは業務サービスへ持ち込みません。
 
-初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `/Users/tsudatakashi/DGXSparkControlPlane` の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
+初回cold startや他用途の解放後の予熱は、DGX Control PlaneのLease対応中央keep-warm (`dgx-control-keep-warm.timer`) の責務です。中央runnerはDGX側Arbiterのmaintenance LeaseでPrivate Leaseや業務要求を確認し、競合時は延期、状態不明時はfail-closedにします。中央設定・有効状態は `denkoushi/DGXSparkControlPlane` リポジトリ の管理範囲であり、このリポジトリのAPI起動時処理から直接開始しません。中央の既定profile IDと業務APIのmodel alias (`system-prod-primary`) の対応、および実機timerの有効状態は実機受入時に確認します。
 
 ## 有効化
 
@@ -49,15 +49,15 @@ vault_business_hermes_chat_mcp_api_key: <業務MCP専用API key>
 # vault_business_hermes_chat_mcp_url: http://api:3000/api/internal/business-hermes/mcp
 ```
 
-設定反映後の起動対象は、既存ガイドと別profileです。
-
-```bash
-docker compose --env-file infrastructure/docker/.env -f infrastructure/docker/docker-compose.phase3.yml --profile business-hermes-chat up -d business-hermes-chat-egress business-hermes-chat
-```
+相談チャットは既存ガイドと別 profile（`business-hermes-chat`）で、標準 release（下記「相談用Hermesの標準リリース手順」）が起動する。手動で Compose を起動しない。
 
 このprofileを指定しない通常のCompose起動では相談チャットは起動しません。MCP接続は業務Hermes内部ネットワーク上のAPIだけに向け、DGX推論は専用egress sidecarの許可済み `/v1/chat/completions` 経路を通します。既存ガイド用サービスのprofile、設定、volumeはそのままです。
 
-イメージは `nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a`、egress proxyは `node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
+イメージは `nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d`、egress proxyは `node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53` を使用します。更新時は公式multi-arch indexとPi5上のARM64 manifestを確認し、digestを差し替えてCIを通します。
+
+CVE-2026-111497への対応として、両Hermesサービスのpinをv0.22.5（Node 26.12.1）へ更新しました。brotlicffi（1.2.0.2）とOSのlibbrotli1はupstreamで未修正のため、次回upstreamリリースでの更新待ちです。
+
+Hermes本体の更新では、旧pinを `roles/release_pi5/defaults/main.yml` の `release_pi5_business_hermes_replaceable_images` に登録してから、guide/chatの現行pinを変更します。標準リリースはこのリストの旧イメージだけを置換し、その他の異なるイメージは拒否します。候補が失敗した場合は旧pinと元の稼働・停止状態へ戻します。revertする場合も、その時点の現行pinを同リストに登録する必要があります。
 
 今回のNode 24 pinは上記multi-arch OCI indexを使用し、linux/arm64/v8 manifestは `sha256:398bcf38afb035ae76feb9ad3c7493a93feff4751351c65310811761e37bbfc7` です。次回のegress更新では、旧pinを `roles/release_pi5/defaults/main.yml` の `release_pi5_business_hermes_egress_replaceable_images` に登録してから、guide/chatの現行pinを変更し、indexとARM64 manifestのdigestを記録します。標準リリースはこのリストの旧イメージだけを置換し、その他の異なるイメージは拒否します。revertする場合も、その時点の現行pinを同リストに登録する必要があります。
 
@@ -83,7 +83,7 @@ scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --st
 
 release_pi5は業務Hermesのdigestイメージを先にpullし、proxyとHermesのhealthを待ってから候補APIを切り替えます。Hermesの起動またはhealthが失敗した場合は候補トラフィックを切り替えず、従来のAPI/Webを残します。切替後にAPI/Webまたはスケジューラが失敗した場合は、標準release_pi5の旧slot復旧を使います。Hermesは独立サービスなので、業務案内が停止しても締付業務は継続します。
 
-fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得します。既存コンテナのdigestが今回のreleaseと違う場合は置換せず、API/Webのreleaseを失敗させて旧Hermesを保持します。既存コンテナが停止中だった場合、候補API/Webの検証失敗で新たに起動したHermesを停止して元の停止状態へ戻します。既存コンテナがない状態で新規起動した場合は、同じ失敗経路で新コンテナを削除します。API/Webのrollbackは業務Hermesのrollback済みを意味せず、Hermesの状態復旧はこの専用処理で確認します。
+fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得します。既存コンテナのdigestが今回のreleaseと違い、承認済み旧pinリストにもない場合は置換せず、API/Webのreleaseを失敗させて旧Hermesを保持します。既存コンテナが停止中だった場合、候補API/Webの検証失敗で新たに起動したHermesを停止して元の停止状態へ戻します。既存コンテナがない状態で新規起動した場合は、同じ失敗経路で新コンテナを削除します。API/Webのrollbackは業務Hermesのrollback済みを意味せず、Hermesの状態復旧はこの専用処理で確認します。
 
 有効化フラグを無効にする場合、既存の業務Hermesは自動削除・停止せず現在状態を保ちます。停止・再開は業務Pi5だけを対象に、同じ標準Compose/release手順で明示的に実施し、Private Pi5へは操作しません。
 
@@ -103,7 +103,7 @@ fresh releaseの開始時には既存の業務Hermesコンテナ状態を取得�
 
 対話姿勢はSOUL、項目の意味・正式な根拠はContext、調査方法はSkillで管理する。
 API側は構造化応答・案件保存・認証・根拠カードを担う。model.max_tokensは
-回答と案件状態の途中切れを避けるため1600。画像能力の合成probeは成功したが、
+回答と案件状態の途中切れを避けるため当初1600とした（現行テンプレートは4000）。画像能力の合成probeは成功したが、
 業務チャットは付随本文と写真カードを利用し、画像の視覚的読取りは行わない。
 応答速度の最適化は利用者の実機体感後に判断する。
 
@@ -116,7 +116,7 @@ API側は構造化応答・案件保存・認証・根拠カードを担う。mo
 型の版、セッション隔離、検証と未達条件の詳細は[質問の型と先読みの実行計画](../plans/hermes-question-prefetch.md)を正本とする。
 
 相談用SOULは `business-consultation` Skillをテンプレート展開時に含む。
-APIのtoolsetはbusiness_apiのみ、`agent.max_turns=2`。上限時の要約が別途呼ばれるためLLM総呼出し２回の保証ではない。
+APIのtoolsetはbusiness_apiのみ、`agent.max_turns` は試用時2、現行テンプレートは12。試用時も、上限時の要約が別途呼ばれるためLLM総呼出し２回の保証ではなかった。
 `questionRecipe.speculative=true` では未選択でも候補の用件を実行し、結果の採否はアプリが決める。
 通常は根拠のある短い本文で回答し、不足時は条件を確認する。Skillの改善は試用結果の評価後にレビューして反映する。
 候補表示・利用者の選択待ち・選択後の回答完了・全体の時間を分けて記録し、先読みだけで10秒達成とはしない。

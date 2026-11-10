@@ -15,7 +15,8 @@ import {
   normalizeProductionScheduleResourceCd,
   type ResourceCategoryPolicy
 } from '../policies/resource-category-policy.service.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
+import { buildBoardDueDateExistsSql } from '../d-schedule-minutes/board-due.sql.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import type { ProductionScheduleListParams } from './types.js';
 
 export type PreparedProductionScheduleDashboardFilters =
@@ -102,7 +103,8 @@ export async function prepareProductionScheduleDashboardFilters(
     resourceCategoryCondition,
     machineNameCondition,
     hasNoteOnly,
-    hasDueDateOnly
+    hasDueDateOnly,
+    dueSource: params.dueSource
   })} ${productNoCondition} ${planningScope}`;
   const leaderboardExpansionWhere = Prisma.sql`${buildQueryWhere({
     textConditions: [],
@@ -191,26 +193,10 @@ export const buildResourceConditions = (params: {
         )
         AND "resourceCd" IN (${resourceCdFilter})
     `;
-    const assignedOnlyParentRowSubquery = isProductionScheduleOrderSplitEnabled()
-      ? Prisma.sql`
-        ${parentAssignmentSubquery}
-        UNION
-        SELECT "s"."parentCsvDashboardRowId"
-        FROM "ProductionScheduleOrderSplitAssignment" AS "sa"
-        INNER JOIN "ProductionScheduleOrderSplit" AS "s"
-          ON "s"."id" = "sa"."splitId"
-          AND "s"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        WHERE "sa"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          AND (
-            "sa"."location" = ${locationKey}
-            OR "sa"."siteKey" = ${locationKey}
-          )
-          AND "sa"."resourceCd" IN (${resourceCdFilter})
-      `
-      : parentAssignmentSubquery;
+
 
     resourceConditions.push(
-      Prisma.sql`"CsvDashboardRow"."id" IN (${assignedOnlyParentRowSubquery})`
+      Prisma.sql`"CsvDashboardRow"."id" IN (${parentAssignmentSubquery})`
     );
   }
 
@@ -246,6 +232,7 @@ export const buildQueryWhere = (params: {
   machineNameCondition: Prisma.Sql;
   hasNoteOnly: boolean;
   hasDueDateOnly: boolean;
+  dueSource?: BoardDueSource;
 }): Prisma.Sql => {
   const {
     textConditions,
@@ -282,19 +269,12 @@ export const buildQueryWhere = (params: {
     )`;
   }
   if (hasDueDateOnly) {
-    const parentDueDateExists = Prisma.sql`"CsvDashboardRow"."id" IN (
+    const parentDueDateExists = params.dueSource !== 'scaw' ? buildBoardDueDateExistsSql() : Prisma.sql`"CsvDashboardRow"."id" IN (
       SELECT "csvDashboardRowId" FROM "ProductionScheduleRowNote"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
         AND "dueDate" IS NOT NULL
     )`;
-    const splitDueDateExists = isProductionScheduleOrderSplitEnabled()
-      ? Prisma.sql` OR "CsvDashboardRow"."id" IN (
-          SELECT "parentCsvDashboardRowId" FROM "ProductionScheduleOrderSplit"
-          WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND "dueDate" IS NOT NULL
-        )`
-      : Prisma.empty;
-    queryWhere = Prisma.sql`${queryWhere} AND (${parentDueDateExists}${splitDueDateExists})`;
+    queryWhere = Prisma.sql`${queryWhere} AND (${parentDueDateExists})`;
   }
   return queryWhere;
 };

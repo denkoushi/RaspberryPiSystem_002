@@ -11,6 +11,7 @@ import type { AssemblyTransactionClient } from './assembly-work-session-lock.rep
 import { lockAssemblyWorkUnits } from './assembly-work-unit-lock.repository.js';
 
 export type AssemblyWorkUnitLifecycleActor = {
+  ip?: string;
   username: string | null;
   clientDeviceId: string | null;
   clientDeviceNameSnapshot: string | null;
@@ -92,7 +93,7 @@ export class AssemblyWorkUnitLifecycleService {
     reason: string;
     actor: AssemblyWorkUnitLifecycleActor;
   }): Promise<AssemblyWorkUnitInvalidation> {
-    await this.accessService.requireAccessPassword(input.accessPassword);
+    await this.accessService.requireAccessPassword(input.accessPassword, input.actor);
     const reason = requireReason(input.reason);
 
     try {

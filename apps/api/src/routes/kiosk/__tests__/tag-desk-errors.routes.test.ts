@@ -3,11 +3,12 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
+import { TagDeskService } from '../../../services/tag-desk/tag-desk.service.js';
 import { EmployeeService } from '../../../services/tools/employee.service.js';
 import { registerKioskTagDeskRoutes } from '../tag-desk.js';
 
 vi.mock('../../../lib/kiosk-settings-pin.js', () => ({
-  createKioskSettingsPinGuard: () => ({ authorize: async () => undefined })
+  createKioskSettingsPinGuard: () => ({ authorize: async () => ({ clientDeviceId: null }) })
 }));
 
 const id = '00000000-0000-4000-8000-000000000001';
@@ -24,6 +25,16 @@ describe('tag desk error responses', () => {
   afterEach(async () => {
     await app.close();
     vi.restoreAllMocks();
+  });
+
+  it('accepts machine kind when unlinking a tag', async () => {
+    const unlink = vi.spyOn(TagDeskService.prototype, 'unlink').mockResolvedValue(undefined);
+    const response = await app.inject({
+      method: 'DELETE', url: '/kiosk/tag-desk/bindings', payload: { kind: 'machine', bindingId: id }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ ok: true });
+    expect(unlink).toHaveBeenCalledWith({ kind: 'machine', bindingId: id, clientDeviceId: null });
   });
 
   it('returns the complete 404 body when employee update raises P2025', async () => {

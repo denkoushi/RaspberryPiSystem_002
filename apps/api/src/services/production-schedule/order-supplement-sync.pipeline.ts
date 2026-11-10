@@ -1,3 +1,6 @@
+import { readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, writeLaterPiecePropagationAudits, type LaterPiecePropagationAudit } from './sessaku-pieces/piece-audit.js';
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow } from './sessaku-pieces/piece-key.js';
+import { assertSessakuPieceWinnerTargets, lockSessakuPieceSourceRows, synchronizeSessakuPieceSources } from './sessaku-pieces/piece-sync.js';
 /**
  * Production schedule order supplement sync: read/normalize → plan → short DB write.
  * DB write uses incremental create/update + retention prune.
@@ -14,7 +17,6 @@ import {
   buildMaxProductNoLogicalKeyPartitionExprs,
   buildMaxProductNoWinnerSelectionOrderBySql,
 } from './row-resolver/index.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
 
 const CREATE_MANY_CHUNK_SIZE = 200;
 const UPDATE_CHUNK_SIZE = 100;
@@ -25,6 +27,7 @@ const RETENTION_YEARS = 1;
 const SOURCE_RETENTION_DELETE_CHUNK_SIZE = 2_000;
 
 export type SupplementNormalizedRow = {
+  piecePlannedQuantity?: number | null;
   sourceRowId: string;
   productNo: string;
   resourceCd: string;
@@ -88,10 +91,6 @@ type ExistingSupplementMap = Map<string, ExistingSupplementRow>;
 
 type ReplacementUpdateInput = {
   id: string;
-  csvDashboardRowId: string;
-  previousCsvDashboardRowId: string;
-  previousPlannedQuantity: number | null;
-  nextPlannedQuantity: number | null;
   data: Prisma.ProductionScheduleOrderSupplementUncheckedUpdateInput;
 };
 
@@ -162,6 +161,11 @@ export function toSupplementNormalizedRow(
     resourceCd,
     processOrder,
     plannedQuantity: parseQuantity(firstNonBlankToken(rowData.plannedQuantity, rowData.FKOJUNSIJISU)),
+    piecePlannedQuantity: (() => {
+      const raw = firstNonBlankToken(rowData.plannedQuantity, rowData.FKOJUNSIJISU);
+      const quantity = Number(raw);
+      return /^\d+$/.test(raw) && Number.isSafeInteger(quantity) && quantity <= 2_147_483_647 ? quantity : null;
+    })(),
     plannedStartDate: parsePlannedDate(firstNonBlankToken(rowData.plannedStartDate, rowData.FKOJUNSTTYOTEIYMD)),
     plannedEndDate: parsePlannedDate(firstNonBlankToken(rowData.plannedEndDate, rowData.FKOJUNENDYOTEIYMD)),
   };
@@ -324,9 +328,11 @@ export function buildReplacementCreateInputs(
   unmatched: number;
   createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
   updateInputs: ReplacementUpdateInput[];
+  pieceQuantityByRowId: Map<string, number | null>;
 } {
   let matched = 0;
   let unmatched = 0;
+  const pieceQuantityByRowId = new Map<string, number | null>();
   const createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[] = [];
   const updateInputs: ReplacementUpdateInput[] = [];
   const existingByWinnerRowId = new Map(
@@ -345,6 +351,7 @@ export function buildReplacementCreateInputs(
       continue;
     }
     matched += 1;
+    pieceQuantityByRowId.set(winnerRowId, row.piecePlannedQuantity === undefined ? row.plannedQuantity : row.piecePlannedQuantity);
     const existing = existingByKey.get(key);
     const existingByWinner = existingByWinnerRowId.get(winnerRowId);
     const existingTarget = existing ?? existingByWinner;
@@ -356,10 +363,6 @@ export function buildReplacementCreateInputs(
       const nextPlannedEndDate = mergePlannedEndDateForUpdate(row.plannedEndDate, existingTarget.plannedEndDate);
       updateInputs.push({
         id: existingTarget.id,
-        csvDashboardRowId: winnerRowId,
-        previousCsvDashboardRowId: existingTarget.csvDashboardRowId,
-        previousPlannedQuantity: existingTarget.plannedQuantity,
-        nextPlannedQuantity,
         data: {
           csvDashboardRowId: winnerRowId,
           productNo: row.productNo,
@@ -392,147 +395,7 @@ export function buildReplacementCreateInputs(
     }
   }
 
-  return { matched, unmatched, createInputs, updateInputs };
-}
-
-function allocateSplitQuantities(params: {
-  currentQuantities: number[];
-  nextTotal: number;
-}): number[] {
-  const keptCount = Math.min(params.currentQuantities.length, params.nextTotal);
-  if (keptCount <= 0) return [];
-
-  const keptQuantities = params.currentQuantities
-    .slice(0, keptCount)
-    .map((quantity) => (Number.isInteger(quantity) && quantity > 0 ? quantity : 1));
-  const weightsTotal = keptQuantities.reduce((sum, quantity) => sum + quantity, 0);
-  const allocated = new Array<number>(keptCount).fill(1);
-  let remaining = params.nextTotal - keptCount;
-  if (remaining <= 0) return allocated;
-
-  const remainders: Array<{ index: number; remainder: number }> = [];
-  let floorTotal = 0;
-  keptQuantities.forEach((quantity, index) => {
-    const exact = (remaining * quantity) / weightsTotal;
-    const floor = Math.floor(exact);
-    allocated[index] += floor;
-    floorTotal += floor;
-    remainders.push({ index, remainder: exact - floor });
-  });
-
-  remaining -= floorTotal;
-  remainders.sort((left, right) => {
-    if (right.remainder !== left.remainder) return right.remainder - left.remainder;
-    return left.index - right.index;
-  });
-  for (let i = 0; i < remaining; i += 1) {
-    allocated[remainders[i % remainders.length]!.index] += 1;
-  }
-  return allocated;
-}
-
-async function reconcileOrderSplitQuantitiesForSupplementUpdate(
-  tx: Prisma.TransactionClient,
-  entry: ReplacementUpdateInput
-): Promise<void> {
-  if (entry.previousPlannedQuantity === entry.nextPlannedQuantity) return;
-
-  const splits = await tx.productionScheduleOrderSplit.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      parentCsvDashboardRowId: entry.csvDashboardRowId,
-    },
-    orderBy: { splitNo: 'asc' },
-    select: { id: true, splitQuantity: true },
-  });
-  if (splits.length === 0) return;
-
-  const nextQuantity = entry.nextPlannedQuantity;
-  if (nextQuantity == null || !Number.isInteger(nextQuantity) || nextQuantity <= 0) {
-    return;
-  }
-
-  const nextQuantities = allocateSplitQuantities({
-    currentQuantities: splits.map((split) => split.splitQuantity),
-    nextTotal: nextQuantity,
-  });
-  const keptSplitIds = new Set(splits.slice(0, nextQuantities.length).map((split) => split.id));
-
-  if (keptSplitIds.size < splits.length) {
-    await tx.productionScheduleOrderSplit.deleteMany({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        parentCsvDashboardRowId: entry.csvDashboardRowId,
-        id: { notIn: [...keptSplitIds] },
-      },
-    });
-  }
-
-  for (let index = 0; index < nextQuantities.length; index += 1) {
-    const split = splits[index]!;
-    await tx.productionScheduleOrderSplit.update({
-      where: { id: split.id },
-      data: { splitQuantity: nextQuantities[index]! },
-    });
-  }
-}
-
-async function collectSplitParentIdsForSupplementUpdates(
-  tx: Prisma.TransactionClient,
-  updateInputs: readonly ReplacementUpdateInput[]
-): Promise<Set<string>> {
-  const parentRowIds = [
-    ...new Set(
-      updateInputs.flatMap((entry) => {
-        if (
-          entry.previousPlannedQuantity === entry.nextPlannedQuantity &&
-          entry.previousCsvDashboardRowId === entry.csvDashboardRowId
-        ) {
-          return [];
-        }
-        return [entry.previousCsvDashboardRowId, entry.csvDashboardRowId];
-      })
-    ),
-  ];
-  if (parentRowIds.length === 0) return new Set();
-
-  const splitParents = await tx.productionScheduleOrderSplit.findMany({
-    where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-      parentCsvDashboardRowId: { in: parentRowIds },
-    },
-    distinct: ['parentCsvDashboardRowId'],
-    select: { parentCsvDashboardRowId: true },
-  });
-  return new Set(splitParents.map((split) => split.parentCsvDashboardRowId));
-}
-
-async function prepareSplitQuantityReconcileForSupplementUpdate(
-  tx: Prisma.TransactionClient,
-  entry: ReplacementUpdateInput,
-  splitParentIds: ReadonlySet<string>
-): Promise<{ parentCsvDashboardRowId: string; keepPreviousParent: boolean } | null> {
-  const winnerChanged = entry.previousCsvDashboardRowId !== entry.csvDashboardRowId;
-  if (winnerChanged && splitParentIds.has(entry.previousCsvDashboardRowId)) {
-    await acquireProductionScheduleParentRowLockInTransaction(tx, entry.previousCsvDashboardRowId);
-    return {
-      parentCsvDashboardRowId: entry.previousCsvDashboardRowId,
-      keepPreviousParent: true,
-    };
-  }
-
-  if (
-    entry.previousPlannedQuantity === entry.nextPlannedQuantity ||
-    !splitParentIds.has(entry.csvDashboardRowId)
-  ) {
-    return null;
-  }
-
-  await acquireProductionScheduleParentRowLockInTransaction(tx, entry.csvDashboardRowId);
-  return {
-    parentCsvDashboardRowId: entry.csvDashboardRowId,
-    keepPreviousParent: false,
-  };
+  return { matched, unmatched, createInputs, updateInputs, pieceQuantityByRowId };
 }
 
 export async function runOrderSupplementReplacementTransaction(
@@ -544,86 +407,122 @@ export async function runOrderSupplementReplacementTransaction(
     unmatched: number;
     createInputs: Prisma.ProductionScheduleOrderSupplementCreateManyInput[];
     updateInputs: ReplacementUpdateInput[];
+    pieceQuantityByRowId?: ReadonlyMap<string, number | null>;
   }
 ): Promise<OrderSupplementSyncResult> {
   const retentionCutoff = new Date();
   retentionCutoff.setUTCFullYear(retentionCutoff.getUTCFullYear() - RETENTION_YEARS);
 
-  let inserted = 0;
-  for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
-    const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
-    if (chunk.length === 0) continue;
-    const batchCount = await client.$transaction(
-      async (tx) => {
-        const batch = await tx.productionScheduleOrderSupplement.createMany({ data: chunk });
-        return batch.count;
-      },
-      {
-        maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-        timeout: REPLACEMENT_TX_TIMEOUT_MS,
-      }
-    );
-    inserted += batchCount;
-  }
+  const propagationAudits: LaterPiecePropagationAudit[] = [];
+  try {
+    let inserted = 0;
+    for (let i = 0; i < params.createInputs.length; i += CREATE_MANY_CHUNK_SIZE) {
+      const chunk = params.createInputs.slice(i, i + CREATE_MANY_CHUNK_SIZE);
+      if (chunk.length === 0) continue;
+      const committed = await client.$transaction(
+        async (tx) => {
+          const keys = await lockSessakuPieceSourceRows(tx, chunk.map((entry) => entry.csvDashboardRowId));
+          if (keys.length) await assertSessakuPieceWinnerTargets(tx, chunk.map((entry) => entry.csvDashboardRowId));
+          const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: chunk.map((entry) => entry.csvDashboardRowId) } }, select: { id: true, rowData: true } }) : [];
+          const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+          const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+          const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+          const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+          const rowsWithSets = new Set(rows.filter((row) => {
+            const key = sessakuPieceKeyFromRow(row.rowData);
+            const ownSet = sets.get(encodeSessakuPieceKey(key));
+            if (ownSet && !ownSet.pieces.length && !ownSet.sourcePieceSetId) return false;
+            return partsWithSets.has(JSON.stringify([key.fseiban, key.fhincd]));
+          }).map((row) => row.id));
+          const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
+          const before = await readLaterPieceAuditSnapshots(tx, keys);
+          const data = [];
+          for (const entry of chunk) {
+            if (!keys.length) { data.push(entry); continue; }
+            data.push((liveRowIds.has(entry.csvDashboardRowId) || rowsWithSets.has(entry.csvDashboardRowId) && params.pieceQuantityByRowId?.get(entry.csvDashboardRowId) === 0) && params.pieceQuantityByRowId?.has(entry.csvDashboardRowId) ? { ...entry, plannedQuantity: params.pieceQuantityByRowId.get(entry.csvDashboardRowId) } : entry);
+          }
+          const batch = await tx.productionScheduleOrderSupplement.createMany({ data });
+          await synchronizeSessakuPieceSources(tx, keys);
+          return { count: batch.count, audits: collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys, before), '__shared__') };
+        },
+        {
+          maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+          timeout: REPLACEMENT_TX_TIMEOUT_MS,
+        }
+      );
+      inserted += committed.count;
+      propagationAudits.push(...committed.audits);
+    }
 
-  for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
-    const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
-    await client.$transaction(
-      async (tx) => {
-        const splitParentIds = await collectSplitParentIdsForSupplementUpdates(tx, chunk);
-        for (const entry of chunk) {
-          const splitReconcile = await prepareSplitQuantityReconcileForSupplementUpdate(tx, entry, splitParentIds);
-          const updateData = splitReconcile?.keepPreviousParent
-            ? {
-                ...entry.data,
-                csvDashboardRowId: entry.previousCsvDashboardRowId,
-              }
-            : entry.data;
-          await tx.productionScheduleOrderSupplement.update({
-            where: { id: entry.id },
-            data: updateData,
-          });
-          if (splitReconcile) {
-            await reconcileOrderSplitQuantitiesForSupplementUpdate(tx, {
-              ...entry,
-              csvDashboardRowId: splitReconcile.parentCsvDashboardRowId,
+    for (let i = 0; i < params.updateInputs.length; i += UPDATE_CHUNK_SIZE) {
+      const chunk = params.updateInputs.slice(i, i + UPDATE_CHUNK_SIZE);
+      const audits = await client.$transaction(
+        async (tx) => {
+          const previous = await tx.productionScheduleOrderSupplement.findMany({ where: { id: { in: chunk.map((entry) => entry.id) } }, select: { id: true, csvDashboardRowId: true } });
+          const nextRowIds = chunk.flatMap((entry) => typeof entry.data.csvDashboardRowId === 'string' ? [entry.data.csvDashboardRowId] : []);
+          const keys = await lockSessakuPieceSourceRows(tx, [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds]);
+          if (keys.length) await assertSessakuPieceWinnerTargets(tx, nextRowIds);
+          const targetIds = [...previous.map((entry) => entry.csvDashboardRowId), ...nextRowIds];
+          const rows = keys.length ? await tx.csvDashboardRow.findMany({ where: { id: { in: targetIds } }, select: { id: true, rowData: true } }) : [];
+          const partKeys = [...new Map(rows.map((row) => { const { fseiban, fhincd } = sessakuPieceKeyFromRow(row.rowData); return [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }]; })).values()];
+          const relatedSets = partKeys.length ? await tx.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: partKeys }, include: { pieces: true } }) : [];
+          const sets = new Map(relatedSets.map((set) => [encodeSessakuPieceKey(set), set]));
+          const partsWithSets = new Set(relatedSets.filter((set) => set.pieces.length || set.sourcePieceSetId).map(({ fseiban, fhincd }) => JSON.stringify([fseiban, fhincd])));
+          const rowsWithSets = new Set(rows.filter((row) => {
+            const key = sessakuPieceKeyFromRow(row.rowData);
+            const ownSet = sets.get(encodeSessakuPieceKey(key));
+            if (ownSet && !ownSet.pieces.length && !ownSet.sourcePieceSetId) return false;
+            return partsWithSets.has(JSON.stringify([key.fseiban, key.fhincd]));
+          }).map((row) => row.id));
+          const liveRowIds = new Set(rows.filter((row) => (sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces.length || sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.sourcePieceSetId)).map((row) => row.id));
+          const before = await readLaterPieceAuditSnapshots(tx, keys);
+          for (const entry of chunk) {
+            const targetRowId = !keys.length ? undefined : typeof entry.data.csvDashboardRowId === 'string' ? entry.data.csvDashboardRowId : previous.find((p) => p.id === entry.id)?.csvDashboardRowId;
+            await tx.productionScheduleOrderSupplement.update({
+              where: { id: entry.id },
+              data: targetRowId && (liveRowIds.has(targetRowId) || rowsWithSets.has(targetRowId) && params.pieceQuantityByRowId?.get(targetRowId) === 0) && params.pieceQuantityByRowId?.has(targetRowId) ? { ...entry.data, plannedQuantity: params.pieceQuantityByRowId.get(targetRowId) } : entry.data,
             });
           }
+          await synchronizeSessakuPieceSources(tx, keys);
+          return collectLaterPiecePropagationAudits(before, await readLaterPieceAuditSnapshots(tx, keys, before), '__shared__');
+        },
+        {
+          maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
+          timeout: REPLACEMENT_TX_TIMEOUT_MS,
         }
+      );
+      propagationAudits.push(...audits);
+    }
+
+    const pruned = await client.$transaction(
+      async (tx) => {
+        const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
+          where: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+            plannedStartDate: { lt: retentionCutoff },
+            plannedStartDateManuallySet: false,
+          },
+        });
+        return pruneResult.count;
       },
       {
         maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
         timeout: REPLACEMENT_TX_TIMEOUT_MS,
       }
     );
+
+    return {
+      scanned: params.scanned,
+      normalized: params.normalized,
+      matched: params.matched,
+      unmatched: params.unmatched,
+      upserted: inserted + params.updateInputs.length,
+      pruned,
+    };
+  } finally {
+    await writeLaterPiecePropagationAudits(propagationAudits);
   }
-
-  const pruned = await client.$transaction(
-    async (tx) => {
-      const pruneResult = await tx.productionScheduleOrderSupplement.deleteMany({
-        where: {
-          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-          sourceCsvDashboardId: PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
-          plannedStartDate: { lt: retentionCutoff },
-          plannedStartDateManuallySet: false,
-        },
-      });
-      return pruneResult.count;
-    },
-    {
-      maxWait: REPLACEMENT_TX_MAX_WAIT_MS,
-      timeout: REPLACEMENT_TX_TIMEOUT_MS,
-    }
-  );
-
-  return {
-    scanned: params.scanned,
-    normalized: params.normalized,
-    matched: params.matched,
-    unmatched: params.unmatched,
-    upserted: inserted + params.updateInputs.length,
-    pruned,
-  };
 }
 
 export async function loadExistingSupplementsByKey(client: PrismaClient): Promise<ExistingSupplementMap> {

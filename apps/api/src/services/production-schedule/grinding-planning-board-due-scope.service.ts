@@ -1,3 +1,4 @@
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Prisma, type ProductionScheduleGrindingPlanningBoardDueScope, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
@@ -17,13 +18,12 @@ import { presentDueManagementSeibanDetail, type PartEffectiveDueDate, type Prese
 import { isValidDueDateText, listSeibanRowIdsForWriteback } from './due-date-writeback.service.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
 type RowData = Record<string, unknown>;
 type TargetRow = { id: string; rowData: Prisma.JsonValue; updatedAt: Date | null };
 type ScopeRow = ProductionScheduleGrindingPlanningBoardDueScope;
-type TargetSplit = { id: string; parentCsvDashboardRowId: string; dueDate: Date | null; updatedAt: Date };
 type OriginalProcessingRow = { processingType: string; dueDate: Date; updatedAt: Date };
 type TargetMetadata = { rowId: string; dueDate: Date | null; processingType: string | null; noteUpdatedAt: Date | null; plannedEndDate: Date | null; supplementUpdatedAt: Date | null; completed: boolean; progressUpdatedAt: Date | null; externalCompleted: boolean; externalUpdatedAt: Date | null };
 type TargetBaseDue = { dueDate: Date | null; plannedEndDate: Date | null };
@@ -74,18 +74,8 @@ async function readScopeRows(client: DbClient, siteKey: string, fseiban: string)
   });
 }
 
-async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: readonly TargetRow[]): Promise<ProductionScheduleGrindingPlanningBoardOverride[]> {
-  const rowIds = rows.map((row) => row.id);
-  const splits = rowIds.length === 0
-    ? []
-    : await client.productionScheduleOrderSplit.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rowIds } },
-      select: { id: true }
-    });
-  const itemKeys = [
-    ...rows.map((row) => buildGrindingPlanningBoardRowItemId(asRowData(row.rowData))),
-    ...splits.map((split) => `split:${split.id}`)
-  ];
+async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: readonly TargetRow[], sets: ReadonlyMap<string, SessakuPieceSet>): Promise<ProductionScheduleGrindingPlanningBoardOverride[]> {
+  const itemKeys = rows.flatMap((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), ...(sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).map((piece) => `piece:${piece.id}`)]);
   if (itemKeys.length === 0) return [];
   return client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: itemKeys } },
@@ -95,24 +85,24 @@ async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: r
 
 function buildScopeRevision(params: {
   sourceGenerationToken: string;
+  pieceSets: ReadonlyMap<string, SessakuPieceSet>;
   state: { version: number; updatedAt: Date | null } | null;
   scopes: readonly ScopeRow[];
   overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[];
   rows: readonly TargetRow[];
-  splits: readonly TargetSplit[];
   originalProcessing: readonly OriginalProcessingRow[];
   originalSeiban: { dueDate: Date | null; updatedAt: Date } | null;
   processingMappings: readonly ProcessingMapping[];
   metadata: readonly TargetMetadata[];
 }): string {
   const payload = {
+    pieceSets: [...params.pieceSets.values()].map((set) => ({ id: set.id, version: set.version })),
     sourceGenerationToken: params.sourceGenerationToken,
     boardVersion: params.state?.version ?? 0,
     boardUpdatedAt: params.state?.updatedAt?.toISOString() ?? '',
     scopes: params.scopes.map((row) => ({ scopeKey: row.scopeKey, version: row.version, dueDate: dateText(row.dueDate) })),
     overrides: params.overrides.map((row) => ({ itemKey: row.itemKey, version: row.version })),
     rows: params.rows.map((row) => ({ id: row.id, updatedAt: row.updatedAt?.toISOString() ?? '', data: row.rowData })),
-    splits: [...params.splits].sort((left, right) => left.id.localeCompare(right.id)).map((split) => ({ id: split.id, parentId: split.parentCsvDashboardRowId, updatedAt: split.updatedAt.toISOString(), dueDate: dateText(split.dueDate) })),
     metadata: params.metadata.map((row) => ({ ...row, noteUpdatedAt: row.noteUpdatedAt?.toISOString() ?? '', supplementUpdatedAt: row.supplementUpdatedAt?.toISOString() ?? '', progressUpdatedAt: row.progressUpdatedAt?.toISOString() ?? '', externalUpdatedAt: row.externalUpdatedAt?.toISOString() ?? '', dueDate: dateText(row.dueDate), plannedEndDate: dateText(row.plannedEndDate) })),
     originalProcessing: [...params.originalProcessing].sort((a, b) => a.processingType.localeCompare(b.processingType)).map((row) => ({ processingType: row.processingType, dueDate: dateText(row.dueDate), updatedAt: row.updatedAt.toISOString() })),
     originalSeiban: params.originalSeiban == null ? null : { dueDate: dateText(params.originalSeiban.dueDate), updatedAt: params.originalSeiban.updatedAt.toISOString() },
@@ -121,7 +111,7 @@ function buildScopeRevision(params: {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; rows: TargetRow[]; splits: TargetSplit[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
+async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; pieceSets: Map<string, SessakuPieceSet>; rows: TargetRow[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
   const sourceGenerationToken = params.sourceGenerationToken ?? await readLeaderboardShellSnapshotGenerationToken();
   const [state, scopes, rows, originalProcessing, originalSeiban] = await Promise.all([
     params.client.productionScheduleGrindingPlanningBoardState.findUnique({
@@ -133,11 +123,6 @@ async function readSnapshotParts(params: { client: DbClient; siteKey: string; fs
     params.client.productionScheduleSeibanProcessingDueDate.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: params.fseiban }, select: { processingType: true, dueDate: true, updatedAt: true } }),
     params.client.productionScheduleSeibanDueDate.findUnique({ where: { csvDashboardId_fseiban: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: params.fseiban } }, select: { dueDate: true, updatedAt: true } })
   ]);
-  const splits = await params.client.productionScheduleOrderSplit.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rows.map((row) => row.id) } },
-    select: { id: true, parentCsvDashboardRowId: true, dueDate: true, updatedAt: true },
-    orderBy: { id: 'asc' }
-  });
   const [notes, supplements, progress, external, processingMappings] = await Promise.all([
     params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rows.map((row) => row.id) } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true, updatedAt: true } }),
     params.client.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: rows.map((row) => row.id) } }, select: { csvDashboardRowId: true, plannedEndDate: true, updatedAt: true } }),
@@ -161,14 +146,15 @@ async function readSnapshotParts(params: { client: DbClient; siteKey: string; fs
     externalCompleted: externalMap.get(row.id)?.isExternallyCompleted ?? false,
     externalUpdatedAt: externalMap.get(row.id)?.updatedAt ?? null
   }));
-  const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows);
+  const pieceSets = await readSessakuPieceSets(params.client, rows);
+  const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows, pieceSets);
   return {
     sourceGenerationToken,
-    scopeRevision: buildScopeRevision({ sourceGenerationToken, state, scopes, overrides, rows, splits, originalProcessing, originalSeiban, processingMappings, metadata }),
+    scopeRevision: buildScopeRevision({ pieceSets, sourceGenerationToken, state, scopes, overrides, rows, originalProcessing, originalSeiban, processingMappings, metadata }),
     scopes,
     overrides,
     rows,
-    splits,
+    pieceSets,
     baseDueByRowId: new Map(metadata.map((row) => [row.rowId, { dueDate: row.dueDate, plannedEndDate: row.plannedEndDate }])),
     originalProcessing: new Map(originalProcessing.map((row) => [row.processingType, row.dueDate] as const)),
     originalSeiban
@@ -202,7 +188,7 @@ function toDateTextDetail(detail: PresentedDueManagementSeibanDetail) {
   };
 }
 
-function buildAlternateDetail(params: { original: DueManagementSeibanDetail; scopes: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; rows: readonly TargetRow[]; baseDueByRowId: ReadonlyMap<string, TargetBaseDue>; overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[] }): PresentedDueManagementSeibanDetail {
+function buildAlternateDetail(params: { pieceSets: ReadonlyMap<string, SessakuPieceSet>; original: DueManagementSeibanDetail; scopes: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; rows: readonly TargetRow[]; baseDueByRowId: ReadonlyMap<string, TargetBaseDue>; overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[] }): PresentedDueManagementSeibanDetail {
   const original = cloneDetail(params.original);
   const rowById = new Map(params.rows.map((row) => [row.id, row]));
   const overrideByItemKey = new Map(params.overrides.map((row) => [row.itemKey, row]));
@@ -226,22 +212,24 @@ function buildAlternateDetail(params: { original: DueManagementSeibanDetail; sco
 
   const partEffectiveDueDateMap = new Map<string, PartEffectiveDueDate>();
   for (const part of original.parts) {
-    const processOverrides = part.processes.map((process) => {
+    const processOverrides = part.processes.flatMap((process) => {
       const sourceRow = rowById.get(process.rowId);
-      if (!sourceRow) return undefined;
-      return overrideByItemKey.get(buildGrindingPlanningBoardRowItemId(asRowData(sourceRow.rowData)));
+      if (!sourceRow) return [undefined];
+      const parent = overrideByItemKey.get(buildGrindingPlanningBoardRowItemId(asRowData(sourceRow.rowData)));
+      const pieces = params.pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(sourceRow.rowData)))?.pieces ?? [];
+      return pieces.length ? pieces.map((piece) => overrideByItemKey.get(`piece:${piece.id}`) ?? parent) : [parent];
     });
     const itemDates = processOverrides.map((override) => override?.overrideDueDate).filter((value): value is Date => value != null);
     // A part is an aggregate of several process rows. Apply an item override
     // only when it is unambiguous across the aggregate; otherwise let the
     // shared processing/source rule represent the part instead of picking the
     // first process arbitrarily.
-    if (itemDates.length === part.processes.length && itemDates.length > 0 && itemDates.every((value) => value.getTime() === itemDates[0]!.getTime())) {
+    if (itemDates.length === processOverrides.length && itemDates.length > 0 && itemDates.every((value) => value.getTime() === itemDates[0]!.getTime())) {
       partEffectiveDueDateMap.set(part.fhincd, { dueDate: itemDates[0]!, source: 'manual' });
       continue;
     }
     const planning = part.processingType == null ? undefined : processing.get(part.processingType);
-    if (planning?.dueDate == null && planning !== undefined && processOverrides.length === part.processes.length) {
+    if (planning?.dueDate == null && planning !== undefined && processOverrides.length >= part.processes.length) {
       if (processOverrides.every((override) => override?.dueDateCleared === true)) {
         partEffectiveDueDateMap.set(part.fhincd, {
           dueDate: part.plannedEndDate,
@@ -287,7 +275,7 @@ export async function getGrindingPlanningBoardDueScope(params: { siteKey: string
       throw new ApiError(409, '表示中に対象データが更新されました。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
     }
     const originalPresented = presentDueManagementSeibanDetail({ detail: original, processingDueDateMap: after.originalProcessing });
-    const alternate = buildAlternateDetail({ original, scopes: after.scopes, originalProcessing: after.originalProcessing, rows: after.rows, baseDueByRowId: after.baseDueByRowId, overrides: after.overrides });
+    const alternate = buildAlternateDetail({ pieceSets: after.pieceSets, original, scopes: after.scopes, originalProcessing: after.originalProcessing, rows: after.rows, baseDueByRowId: after.baseDueByRowId, overrides: after.overrides });
     return {
       original: toDateTextDetail(originalPresented),
       alternate: toDateTextDetail(alternate),
@@ -304,13 +292,13 @@ type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?
 async function readWriteTargets(params: { client: Prisma.TransactionClient; siteKey: string; fseiban: string; scope: GrindingPlanningBoardDueScope; dueDate: Date | null; scopesAfter: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; originalSeibanDue: Date | null }): Promise<TargetWrite[]> {
   const rows = await readTargetRows(params.client, params.fseiban);
   const rowIds = rows.map((row) => row.id);
-  const [notes, processingTypes, splits, supplements] = await Promise.all([
+  const [notes, processingTypes, supplements] = await Promise.all([
     params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true } }),
     params.client.productionSchedulePartProcessingType.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fhincd: { in: rows.map((row) => rowValue(asRowData(row.rowData), 'FHINCD')) } }, select: { fhincd: true, processingType: true } }),
-    params.client.productionScheduleOrderSplit.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: { in: rowIds } }, select: { id: true, parentCsvDashboardRowId: true, dueDate: true } }),
     params.client.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, plannedEndDate: true } })
   ]);
-  const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows);
+  const pieceSets = await readSessakuPieceSets(params.client, rows);
+  const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows, pieceSets);
   const overrideMap = new Map(overrides.map((row) => [row.itemKey, row]));
   const noteMap = new Map(notes.map((note) => [note.csvDashboardRowId, note]));
   const supplementMap = new Map(supplements.map((supplement) => [supplement.csvDashboardRowId, supplement]));
@@ -332,7 +320,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
       // exists, the original processing due remains protected.
       if (params.dueDate == null) {
         // Clearing removes the planning parent override. The effective date
-        // then comes from the original row/split projection.
+        // then comes from the original row projection.
         return null;
       }
       if (processingType && planning?.dueDate != null) {
@@ -349,7 +337,9 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
   for (const row of rows) {
     const nextParentDate = targetDueForRow(row);
     if (nextParentDate === undefined) continue;
-    const key = buildGrindingPlanningBoardRowItemId(asRowData(row.rowData));
+    const parentKey = buildGrindingPlanningBoardRowItemId(asRowData(row.rowData));
+    const keys = [parentKey, ...(pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).map((piece) => `piece:${piece.id}`)];
+    for (const key of keys) {
     const current = overrideMap.get(key);
     const base = noteMap.get(row.id)?.dueDate ?? supplementMap.get(row.id)?.plannedEndDate ?? null;
     const before = current?.dueDateCleared === true
@@ -360,20 +350,6 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
       : nextParentDate ?? base;
     const changed = before?.getTime() !== after?.getTime();
     writes.push({ itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
-    for (const split of splits.filter((candidate) => candidate.parentCsvDashboardRowId === row.id)) {
-      const splitKey = `split:${split.id}`;
-      const splitOverride = overrideMap.get(splitKey);
-      if (split.dueDate != null || splitOverride?.overrideDueDate != null) continue;
-      const inheritedBefore = current?.dueDateCleared === true
-        ? supplementMap.get(row.id)?.plannedEndDate ?? null
-        : current?.overrideDueDate ?? base;
-      // Keep the split override absent: projection inherits the parent item
-      // value. Only its rank is invalidated when the inherited effective due
-      // changes.
-      const inheritedAfter = processingClearFallsBackToCsv
-        ? supplementMap.get(row.id)?.plannedEndDate ?? null
-        : nextParentDate ?? base;
-      writes.push({ itemKey: splitKey, resetRank: inheritedBefore?.getTime() !== inheritedAfter?.getTime() });
     }
   }
   if (params.scope.kind === 'processing' && !matchedProcessing) {
@@ -405,6 +381,10 @@ export async function updateGrindingPlanningBoardDueScope(params: { siteKey: str
   try {
     await prisma.$transaction(async (client) => {
       const rowsToLock = await readTargetRows(client, fseiban);
+      const setsToLock = [...(await readSessakuPieceSets(client, rowsToLock)).values()].filter((set) => set.pieces.length);
+      await acquireSessakuPieceLogicalLocks(client, setsToLock);
+      if (setsToLock.length) await client.$queryRaw`SELECT "id" FROM "ProductionScheduleGrindingPlanningBoardState"
+        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${params.siteKey} FOR UPDATE`;
       for (const row of rowsToLock) await acquireProductionScheduleParentRowLockInTransaction(client, row.id);
       const before = await readSnapshotParts({ client, siteKey: params.siteKey, fseiban, sourceGenerationToken: await readLeaderboardShellSnapshotGenerationToken() });
       if (before.sourceGenerationToken !== params.request.sourceGenerationToken || before.scopeRevision !== params.request.scopeRevision) throw new ApiError(409, '表示時点の納期設定が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
@@ -422,7 +402,7 @@ export async function updateGrindingPlanningBoardDueScope(params: { siteKey: str
       if (existing) existing.dueDate = dueDate;
       else scopesAfter.push({ id: '', csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, fseiban, scopeKey: key, scopeKind: scope.kind, processingType: scope.kind === 'processing' ? scope.processingType : null, dueDate, version: 1, createdAt: new Date(0), updatedAt: new Date(0) });
       const targets = await readWriteTargets({ client, siteKey: params.siteKey, fseiban, scope, dueDate, scopesAfter, originalProcessing, originalSeibanDue: originalSeiban?.dueDate ?? null });
-      const currentOverrides = await readTargetOverrideRows(client, params.siteKey, rowsToLock);
+      const currentOverrides = await readTargetOverrideRows(client, params.siteKey, rowsToLock, before.pieceSets);
       const currentMap = new Map(currentOverrides.map((row) => [row.itemKey, row]));
       await client.productionScheduleGrindingPlanningBoardDueScope.upsert({
         where: { csvDashboardId_siteKey_fseiban_scopeKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, fseiban, scopeKey: key } },
@@ -433,7 +413,7 @@ export async function updateGrindingPlanningBoardDueScope(params: { siteKey: str
         await client.productionScheduleGrindingPlanningBoardDueScope.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, fseiban, scopeKind: 'processing' } });
       }
       for (const target of targets) await writeTargetOverride(client, params.siteKey, target, currentMap.get(target.itemKey));
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000, maxWait: 15000 });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
     throw error;

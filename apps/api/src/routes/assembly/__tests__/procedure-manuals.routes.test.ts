@@ -259,13 +259,14 @@ describe('procedure-manual routes', () => {
     const procedureService = {
       getReferenceUsage: vi.fn().mockResolvedValue({ inProcedureManualAssignment: true }),
       buildInUseMessage: vi.fn().mockReturnValue('要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません'),
+      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn()
     };
     registerAssemblyProcedureDocumentRoutes(app, {
       allowView: async () => undefined, allowWriteKiosk: async () => undefined,
       procedureService, procedureDraftImportService: {}, procedureGmailImportService: {}
     } as unknown as AssemblyProcedureDocumentRouteOptions);
-    const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}` });
+    const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload: { accessPassword: '2520' } });
     expect(response.statusCode).toBe(409);
     expect(response.json().message).toContain('要領書の機種×工程割り当て');
     expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();

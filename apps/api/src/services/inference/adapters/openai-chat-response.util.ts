@@ -8,6 +8,7 @@ export type OpenAiStyleChatResponse = {
   model?: unknown;
   choices?: Array<{
     message?: UpstreamChoiceMessage;
+    finish_reason?: unknown;
   }>;
 };
 

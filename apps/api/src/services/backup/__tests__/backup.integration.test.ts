@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import path from 'path';
 import os from 'os';
 import { BackupService } from '../backup.service';
+import { EncryptedStorageProvider } from '../storage/encrypted-storage.provider';
 import { MockStorageProvider } from '../storage/mock-storage.provider';
 import type { BackupTarget, BackupTargetInfo } from '../backup-types';
 
@@ -20,11 +21,12 @@ describe('BackupService integration (mock storage)', () => {
   const tmp = () => path.join(os.tmpdir(), `backup-int-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
   beforeEach(() => {
-    backupService = new BackupService(new MockStorageProvider());
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
+    backupService = new BackupService(new EncryptedStorageProvider(new MockStorageProvider(), Buffer.alloc(32, 7)));
   });
 
   afterEach(() => {
-    // nothing to cleanup (mock)
+    vi.unstubAllEnvs();
   });
 
   it('uploads to mock storage and restores to disk', async () => {

@@ -4,16 +4,24 @@ import { authorizeRoles } from '../../lib/auth.js';
 import { normalizeClientKey } from '../../lib/client-key.js';
 import { ApiError } from '../../lib/errors.js';
 
+// deploy-status の識別子検証と同じ制約。空白を自動補正せず、不正な値を拒否する。
+const statusClientIdSchema = z.string().min(1).max(255).refine((value) =>
+  value === value.trim() && !Array.from(value).some((char) => {
+    const code = char.charCodeAt(0);
+    return code <= 0x1f || code === 0x7f;
+  }), 'Invalid statusClientId');
+
 /** 管理者 POST /clients 用（inventory / register-clients.sh） */
 export const registerClientBodySchema = z.object({
   apiKey: z.string().min(8),
+  statusClientId: statusClientIdSchema.optional(),
   name: z.string().min(1),
-  location: z.string().optional().nullable(),
+  location: z.string().max(100).optional().nullable(),
 });
 
 /** 端末 POST /clients/heartbeat 用（x-client-key 必須・本文は任意） */
 export const clientHeartbeatBodySchema = z.object({
-  location: z.string().optional().nullable(),
+  location: z.string().max(100).optional().nullable(),
 });
 
 export const metricSchema = z.object({
@@ -67,13 +75,19 @@ const clientDisplayNameSchema = z
   .refine((value) => value.length > 0, 'name is required');
 
 export const updateClientSchema = z.object({
+  statusClientId: statusClientIdSchema.optional(),
   name: clientDisplayNameSchema.optional(),
+  location: z.string().max(100).optional().nullable(),
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
   shelfLayoutEditEnabled: z.boolean().optional(),
+  procedureBoardEnabled: z.boolean().optional(),
   /** 明示拠点（Site.key）。null で未設定（location 文字列からの推測）に戻す */
   siteKey: z.string().trim().min(1).max(50).optional().nullable(),
+  isSignage: z.boolean().optional(),
+  signagePreviewTargetDeviceId: z.string().guid().nullable().optional(),
+  signagePreviewTargetApiKey: z.never().optional(),
   canProxyOtherDevices: z.boolean().optional()
 });
 

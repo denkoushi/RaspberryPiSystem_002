@@ -3,9 +3,11 @@ import { performance } from 'node:perf_hooks';
 import { logger } from '../../../lib/logger.js';
 
 import type { InferenceProviderDefinition } from '../config/inference-provider.types.js';
-import { resolveBusinessRuntimeStartProfile } from '../config/business-profile-intent.js';
+import { isBusinessRuntimeUseCase, resolveBusinessRuntimeStartProfile } from '../config/business-profile-intent.js';
 import {
   buildRuntimeStartRequestBody,
+  fetchDgxActiveModelState,
+  assertRuntimeCapabilitiesForUseCase,
   verifyBusinessRuntimeAfterProfileStart,
 } from '../config/business-runtime-readiness.js';
 import {
@@ -130,6 +132,17 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
   }
 
   private async ensureUseCaseProfileReadiness(useCase: LocalLlmRuntimeUseCase): Promise<void> {
+    if (this.usesBusinessSelection(useCase)) {
+      const current = await fetchDgxActiveModelState({ fetchImpl: this.deps.fetchImpl,
+        modelProfilesBaseUrl: this.deps.healthCheckBaseUrl, llmToken: this.deps.llmToken,
+        timeoutMs: Math.min(10_000, this.deps.readyTimeoutMs) });
+      if (!current.state || current.state.businessTransition !== 'ready' ||
+          !current.state.selectedBusinessProfileId || current.activeProfileId !== current.state.selectedBusinessProfileId) {
+        throw new Error('LocalLlmRuntimeControl: selected business runtime is unavailable');
+      }
+      assertRuntimeCapabilitiesForUseCase(current.state, useCase);
+      return;
+    }
     const profileId = this.deps.provider
       ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
       : undefined;
@@ -150,12 +163,17 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
     );
   }
 
+  private usesBusinessSelection(useCase: LocalLlmRuntimeUseCase): boolean {
+    return Boolean(this.deps.provider && this.deps.runtimeIntentEnv.businessDeepseekSwitchEnabled && isBusinessRuntimeUseCase(useCase));
+  }
+
   private async postStart(useCase: LocalLlmRuntimeUseCase, batchStarted: number): Promise<string | undefined> {
     const profileId = this.deps.provider
       ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
       : undefined;
     const sendProfile = shouldSendRuntimeStartProfileId(this.deps.runtimeIntentEnv, profileId);
-    const body = buildRuntimeStartRequestBody({ useCase, sendProfile, profileId });
+    const body = this.usesBusinessSelection(useCase) ? { reason: 'business-restore' }
+      : buildRuntimeStartRequestBody({ useCase, sendProfile, profileId });
     const profileSource = this.deps.provider
       ? resolveBusinessRuntimeStartProfile(this.deps.runtimeIntentEnv, this.deps.provider)?.source
       : undefined;
@@ -292,7 +310,8 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       throw new Error('LocalLlmRuntimeControl: auxiliary runtime did not become healthy in time');
     }
 
-    const readyProbeModel = this.deps.readyProbeModels?.[useCase]?.trim() || '';
+    const readyProbeModel = this.usesBusinessSelection(useCase) ? 'system-prod-primary'
+      : this.deps.readyProbeModels?.[useCase]?.trim() || '';
     const readyProbeUrl =
       this.deps.llmToken && readyProbeModel
         ? new URL('/v1/chat/completions', this.deps.healthCheckBaseUrl)
@@ -312,9 +331,7 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
               messages: [{ role: 'user', content: 'ready' }],
               max_tokens: 1,
               temperature: 0,
-              chat_template_kwargs: {
-                enable_thinking: false,
-              },
+              ...(this.usesBusinessSelection(useCase) ? {} : { chat_template_kwargs: { enable_thinking: false } }),
             }),
           }
         : {

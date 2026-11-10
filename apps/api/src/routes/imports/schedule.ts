@@ -12,12 +12,16 @@ import {
   ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS,
   PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS,
   MACHINE_SIGNAL_GMAIL_SUBJECT,
+  D_SCHEDULE_MINUTES_GMAIL_SUBJECT,
 } from '../../services/gmail/gmail-subject-reservation.policy.js';
 
 const csvImportTargetSchema = z.object({
-  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail', 'procedureMaterialGmail']),
+  type: z.enum(['employees', 'items', 'measuringInstruments', 'riggingGears', 'machines', 'csvDashboards', 'productionActualHours', 'itemInventoryGmail', 'machineSignalGmail', 'procedureMaterialGmail', 'dScheduleMinutesGmail']),
   source: z.string().min(1, 'sourceは必須です'),
 }).superRefine((target, ctx) => {
+  if (target.type === 'dScheduleMinutesGmail' && target.source !== D_SCHEDULE_MINUTES_GMAIL_SUBJECT) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['source'], message: `件名は${D_SCHEDULE_MINUTES_GMAIL_SUBJECT}で固定です` });
+  }
   if (target.type === 'itemInventoryGmail' && target.source !== ITEM_INVENTORY_GMAIL_SUBJECT_TOKENS[0]) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -188,16 +192,17 @@ const csvImportScheduleUpdateSchema = z.object({
 
 export async function registerImportScheduleRoutes(app: FastifyInstance): Promise<void> {
   const mustBeAdmin = authorizeRoles('ADMIN');
+  const scheduleRouteRateLimit = { max: 60, timeWindow: '1 minute' };
   const scheduleAdminService = new ImportScheduleAdminService();
 
   // === CSVインポートスケジュール管理API ===
   // スケジュール一覧取得
-  app.get('/imports/schedule', { preHandler: mustBeAdmin }, async () => {
+  app.get('/imports/schedule', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async () => {
     return await scheduleAdminService.listSchedules();
   });
 
   // スケジュール追加
-  app.post('/imports/schedule', { preHandler: mustBeAdmin }, async (request) => {
+  app.post('/imports/schedule', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const body = csvImportScheduleSchema.parse(request.body ?? {});
     const { schedule, warnings } = await scheduleAdminService.createSchedule(body);
 
@@ -206,7 +211,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // スケジュール更新
-  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+  app.put('/imports/schedule/:id', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const { id } = request.params as { id: string };
     const body = csvImportScheduleUpdateSchema.parse(request.body ?? {});
     const { schedule, warnings } = await scheduleAdminService.updateSchedule(id, body);
@@ -216,7 +221,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // スケジュール削除
-  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin }, async (request) => {
+  app.delete('/imports/schedule/:id', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request) => {
     const { id } = request.params as { id: string };
     await scheduleAdminService.deleteSchedule(id);
 
@@ -225,7 +230,7 @@ export async function registerImportScheduleRoutes(app: FastifyInstance): Promis
   });
 
   // 手動実行
-  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin }, async (request, reply) => {
+  app.post('/imports/schedule/:id/run', { preHandler: mustBeAdmin, config: { rateLimit: scheduleRouteRateLimit } }, async (request, reply) => {
     const { id } = request.params as { id: string };
     try {
       const { response, completion } = await scheduleAdminService.runScheduleInBackground(id, {

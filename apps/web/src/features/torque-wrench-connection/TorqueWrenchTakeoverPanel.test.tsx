@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
@@ -27,7 +27,9 @@ describe('TorqueWrenchTakeoverPanel', () => {
     expect(checkbox).toBeDisabled();
     expect(takeover).toBeDisabled();
 
-    await vi.advanceTimersByTimeAsync(TORQUE_TAKEOVER_CONFIRMATION_ARM_DELAY_MS);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TORQUE_TAKEOVER_CONFIRMATION_ARM_DELAY_MS);
+    });
     expect(checkbox).toBeEnabled();
     fireEvent.click(checkbox);
     expect(takeover).toBeEnabled();

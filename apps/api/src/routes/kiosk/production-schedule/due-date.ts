@@ -20,6 +20,8 @@ export async function registerProductionScheduleDueDateRoute(
     const body = productionScheduleDueDateBodySchema.parse(request.body);
 
     return upsertProductionScheduleDueDate({
+      actorClientDeviceId: clientDevice.id,
+      actorDeviceName: clientDevice.name,
       rowId: params.rowId,
       dueDateText: body.dueDate,
       locationKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey)

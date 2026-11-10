@@ -1,3 +1,4 @@
+import { runLoanEvent, loanEventFingerprint, resolveLoanReadAt, type LoanEventInput } from '../loan/loan-event.js';
 import type { Loan } from '@prisma/client';
 import { MeasuringInstrumentStatus, TransactionAction } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -13,7 +14,8 @@ import {
 } from '../loan/loan-transaction.helpers.js';
 import { activeLoanConflict } from '../loan/loan-concurrency.js';
 
-export interface InstrumentBorrowInput {
+export interface InstrumentBorrowInput extends LoanEventInput {
+  inspectionItemIds?: string[];
   instrumentTagUid?: string;
   instrumentId?: string;
   employeeTagUid: string;
@@ -22,7 +24,7 @@ export interface InstrumentBorrowInput {
   note?: string | null;
 }
 
-export interface InstrumentReturnInput {
+export interface InstrumentReturnInput extends LoanEventInput {
   loanId: string;
   clientId?: string;
   performedByUserId?: string;
@@ -55,6 +57,10 @@ export class MeasuringInstrumentLoanService {
   }
 
   async borrow(input: InstrumentBorrowInput): Promise<LoanWithRelations> {
+    return runLoanEvent(input, input.clientId, 'instrument.borrow', () => this.borrowOnce(input));
+  }
+
+  private async borrowOnce(input: InstrumentBorrowInput): Promise<LoanWithRelations> {
     logger.info(
       {
         instrumentTagUid: input.instrumentTagUid,
@@ -103,10 +109,13 @@ export class MeasuringInstrumentLoanService {
       name: employee.displayName
     };
 
+    const timing = resolveLoanReadAt(input.readAt);
     const loan = await executeAssetBorrowTransaction<LoanWithRelations>({
       loanCreate: {
         data: {
           measuringInstrumentId: instrument.id,
+          borrowedAt: timing.eventAt,
+          borrowReceivedAt: timing.receivedAt,
           employeeId: employee.id,
           clientId: input.clientId,
           dueAt: input.dueAt,
@@ -114,6 +123,21 @@ export class MeasuringInstrumentLoanService {
         },
         include: { measuringInstrument: true, employee: true, client: true }
       },
+      afterCreate: input.inspectionItemIds?.length ? async (tx, createdLoan) => {
+        const ids = [...new Set(input.inspectionItemIds)];
+        const validCount = await tx.inspectionItem.count({
+          where: { id: { in: ids }, genreId: instrument.genreId ?? '' },
+        });
+        if (validCount !== ids.length) throw new ApiError(400, '計測機器の点検項目が一致しません');
+        await tx.inspectionRecord.createMany({ data: ids.map(inspectionItemId => ({
+          measuringInstrumentId: instrument.id,
+          loanId: createdLoan.id,
+          employeeId: employee.id,
+          inspectionItemId,
+          result: 'PASS',
+          inspectedAt: timing.eventAt,
+        })) });
+      } : undefined,
       setAssetInUse: (tx) =>
         tx.measuringInstrument.update({
           where: { id: instrument.id },
@@ -122,6 +146,8 @@ export class MeasuringInstrumentLoanService {
       buildTransactionCreateData: (createdLoan) => ({
         loanId: createdLoan.id,
         action: TransactionAction.BORROW,
+          eventKey: input.eventKey,
+          eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'instrument.borrow') : undefined,
         actorEmployeeId: employee.id,
         clientId: input.clientId,
         details: {
@@ -152,6 +178,10 @@ export class MeasuringInstrumentLoanService {
   }
 
   async return(input: InstrumentReturnInput): Promise<LoanWithRelations> {
+    return runLoanEvent(input, input.clientId, 'instrument.return', () => this.returnOnce(input));
+  }
+
+  private async returnOnce(input: InstrumentReturnInput): Promise<LoanWithRelations> {
     logger.info({ loanId: input.loanId, clientId: input.clientId }, 'Instrument return request started');
 
     const loan = await prisma.loan.findUnique({ where: { id: input.loanId }, include: { measuringInstrument: true } });
@@ -165,10 +195,15 @@ export class MeasuringInstrumentLoanService {
       throw new ApiError(409, '取消済みの貸出記録は返却できません', undefined, 'LOAN_ALREADY_CANCELLED');
     }
 
+    const timing = resolveLoanReadAt(input.readAt);
+    const returnedAt = new Date(Math.max(timing.eventAt.getTime(), loan.borrowedAt.getTime()));
+    if (returnedAt.getTime() !== timing.eventAt.getTime()) {
+      logger.warn({ loanId: loan.id, eventAt: timing.eventAt, borrowedAt: loan.borrowedAt }, 'Return time clamped to borrow time');
+    }
     const updatedLoan = await executeAssetReturnTransaction<LoanWithRelations>({
       loanId: input.loanId,
       loanUpdate: {
-        data: { returnedAt: new Date(), notes: input.note ?? undefined },
+        data: { returnedAt, returnReceivedAt: timing.receivedAt, notes: input.note ?? undefined },
         include: { measuringInstrument: true, employee: true, client: true }
       },
       assetId: loan.measuringInstrumentId,
@@ -180,6 +215,8 @@ export class MeasuringInstrumentLoanService {
       transactionCreate: {
         loanId: loan.id,
         action: TransactionAction.RETURN,
+        eventKey: input.eventKey,
+        eventFingerprint: input.eventKey ? loanEventFingerprint(input, 'instrument.return') : undefined,
         actorEmployeeId: loan.employeeId ?? undefined,
         clientId: input.clientId ?? loan.clientId ?? undefined,
         details: {

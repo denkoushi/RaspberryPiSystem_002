@@ -1,3 +1,4 @@
+import { AssemblyOperatorAccessService } from '../../services/assembly/assembly-operator-access.service.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
@@ -593,6 +594,20 @@ describe('torque wrench traceability API', () => {
     });
     expect(compatible.statusCode).toBe(200);
     expect(compatible.json().torqueWrenches).toHaveLength(1);
+    const resume = async (sessionId: string) => new AssemblyOperatorAccessService().recordResume({
+      sessionId, requestId: randomUUID(), operatorNfcTagUid,
+      actor: { clientDeviceId: assembly.id, clientDeviceNameSnapshot: 'Assembly-01' }
+    });
+    await resume(sessions[0]!.id);
+    expect((await prisma.assemblyWorkSession.findUniqueOrThrow({ where: { id: sessions[0]!.id } })).clientDeviceId).toBe(assembly.id);
+    const previousTerminalConfirmation = await app.inject({
+      method: 'POST',
+      url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,
+      headers: { 'x-client-key': stonebase.apiKey },
+      payload: { expectedTemplateBoltId: boltId, torqueWrenchProfileId: profile.id, physicalDisplayConfirmed: true }
+    });
+    expect(previousTerminalConfirmation.statusCode).toBe(403);
+    expect(previousTerminalConfirmation.json().errorCode).toBe('CLIENT_DEVICE_SCOPE_MISMATCH');
     const confirmed = await app.inject({
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessions[0]!.id}/torque-wrench-confirmations`,
@@ -732,8 +747,9 @@ describe('torque wrench traceability API', () => {
 
     const tokenlessCrossTerminal = await record(sessions[1]!.id, 'cross-work-tokenless');
     expect(tokenlessCrossTerminal.statusCode).toBe(403);
-    expect(tokenlessCrossTerminal.json().errorCode).toBe('SESSION_CLIENT_MISMATCH');
+    expect(tokenlessCrossTerminal.json().errorCode).toBe('CLIENT_DEVICE_SCOPE_MISMATCH');
 
+    await resume(sessions[1]!.id);
     const secondLease = await acquire(sessions[1]!.id, 'cross-work-second');
     const secondRecord = await record(sessions[1]!.id, 'cross-work-second-record', secondLease);
     expect(secondRecord.statusCode).toBe(200);

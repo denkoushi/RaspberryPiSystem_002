@@ -7,10 +7,7 @@ date: 2026-08-05
 source_of_truth: true
 related_code:
   - scripts/deploy/terminal-source-bundle.py
-  - scripts/deploy/rolling_release/backends/ansible.py
-  - scripts/deploy/rolling_release/coordinator.py
-  - infrastructure/ansible/playbooks/deploy-signage-staged.yml
-  - infrastructure/ansible/roles/signage/tasks/release-preparation.yml
+  - infrastructure/ansible/roles/release_signage/tasks/prepare.yml
 related_docs:
   - ../plans/pi3-staged-source-transfer-execplan.md
   - ../plans/standard-release-production-path-audit-execplan.md
@@ -23,6 +20,8 @@ open_items:
 ---
 
 # KB-407: Pi3 direct Git fetch exposed an external transport dependency during maintenance
+
+> 注記: 旧 coordinator（`scripts/deploy/rolling_release/coordinator.py`、`backends/ansible.py`）は standard Ansible route への移行で削除済み。本文の coordinator の記述は当時の記録。旧 `deploy-signage-staged.yml` と `roles/signage/tasks/release-preparation.yml` も削除済み（現行: Pi3 は `release_signage` が検証済み artifact を stage し、端末側で Git 取得しない。[deployment.md](../guides/deployment.md#標準経路の責務)）。
 
 ## Context and evidence
 

@@ -13,7 +13,8 @@ import {
   updateProductionScheduleLoadBalancingWorkCalendars,
   getKioskProductionScheduleLoadBalancingWorkspace,
   getKioskProductionScheduleLoadBalancingWorkspaceDay,
-  putKioskProductionScheduleLoadBalancingCapacityBase
+  putKioskProductionScheduleLoadBalancingCapacityBase,
+  putKioskProductionScheduleLoadBalancingOutsourceSettings
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
@@ -118,7 +119,7 @@ export function useUpdateProductionScheduleLoadBalancingWorkCalendars() {
 }
 
 export function useKioskProductionScheduleLoadBalancingWorkspace(
-  params: { fromMonth: string; toMonth: string; targetDeviceScopeKey?: string },
+  params: { dueSource: 'excel' | 'scaw'; fromMonth: string; toMonth: string; targetDeviceScopeKey?: string },
   options?: { enabled?: boolean }
 ) {
   return useQuery({
@@ -126,12 +127,13 @@ export function useKioskProductionScheduleLoadBalancingWorkspace(
     queryFn: () => getKioskProductionScheduleLoadBalancingWorkspace(params),
     enabled: options?.enabled ?? true,
     staleTime: 120_000,
+    structuralSharing: false,
     placeholderData: (previousData) => previousData
   });
 }
 
 export function useKioskProductionScheduleLoadBalancingWorkspaceDay(
-  params: { month: string; resourceCd: string; fromMonth?: string; toMonth?: string; targetDeviceScopeKey?: string },
+  params: { dueSource: 'excel' | 'scaw'; month: string; resourceCd: string; fromMonth?: string; toMonth?: string; targetDeviceScopeKey?: string },
   options?: { enabled?: boolean }
 ) {
   return useQuery({
@@ -149,6 +151,16 @@ export function usePutKioskProductionScheduleLoadBalancingCapacityBase() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceAll });
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceDayAll });
+    }
+  });
+}
+
+export function usePutKioskProductionScheduleLoadBalancingOutsourceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: putKioskProductionScheduleLoadBalancingOutsourceSettings,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.loadBalancingWorkspaceAll });
     }
   });
 }

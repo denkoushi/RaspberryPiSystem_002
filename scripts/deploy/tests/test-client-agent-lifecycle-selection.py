@@ -9,7 +9,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 CLIENT_TASKS = ROOT / "infrastructure/ansible/roles/client/tasks"
-TALKPLAZA_INVENTORY = ROOT / "infrastructure/ansible/inventory-talkplaza.yml"
 
 
 def task_block(text: str, name: str) -> str:
@@ -489,18 +488,6 @@ def assert_agent_scope_and_health_contracts() -> None:
         raise AssertionError("status-agent.service must bypass is-active before the generic health gate")
 
 
-def assert_talkplaza_kiosk_credential_binding() -> None:
-    inventory = TALKPLAZA_INVENTORY.read_text(encoding="utf-8")
-    kiosk_start = inventory.index("                talkplaza-pi4:\n")
-    signage_start = inventory.index("                talkplaza-signage01:\n")
-    kiosk = inventory[kiosk_start:signage_start]
-    require(
-        'kiosk_url: "{{ kiosk_full_url }}?clientKey={{ status_agent_client_key }}"',
-        kiosk,
-        "Talkplaza kiosk URL",
-    )
-
-
 def command_template(name: str) -> str:
     path = ROOT / "infrastructure/ansible/roles/client/tasks" / name
     text = path.read_text(encoding="utf-8")
@@ -548,7 +535,6 @@ def main() -> None:
     assert_repo_revision_is_readable_before_classification()
     assert_pre_sync_diff_fixture()
     assert_agent_scope_and_health_contracts()
-    assert_talkplaza_kiosk_credential_binding()
     for filename, agent in (
         ("nfc-agent-lifecycle.yml", "nfc_agent"),
         ("barcode-agent-lifecycle.yml", "barcode_agent"),

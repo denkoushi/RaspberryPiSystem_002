@@ -1,3 +1,4 @@
+vi.mock('../grinding-planning-board-resource-minutes.service.js', () => ({ getGrindingPlanningBoardResourceMinutes: vi.fn().mockResolvedValue({ ownSourceResourceCds: [], values: [] }) }));
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
@@ -62,22 +63,20 @@ describe('grinding-planning-board-load-summary', () => {
     });
   });
 
-  it('counts split items once and suppresses the unsplit parent', () => {
+  it('counts a logical parent once even if the source repeats it', () => {
     const result = buildGrindingPlanningBoardLoadSummary([
       row('row:source-1', { requiredMinutes: 100 }),
-      row('split:1', { itemId: 'split:1', kind: 'split', requiredMinutes: 33 }),
-      row('split:2', { itemId: 'split:2', kind: 'split', requiredMinutes: 67 }),
-      row('split:2-duplicate', { itemId: 'split:2', kind: 'split', requiredMinutes: 67 })
+      row('row:source-1', { requiredMinutes: 100 })
     ]);
 
     expect(result.load).toEqual([
       {
         resourceCd: 'G-01',
-        originalItemCount: 2,
-        alternateItemCount: 2,
+        originalItemCount: 1,
+        alternateItemCount: 1,
         originalRequiredMinutes: 100,
         alternateRequiredMinutes: 100,
-        unfinishedItemCount: 2,
+        unfinishedItemCount: 1,
         requiredMinutes: 100,
         unknownItemCount: 0,
         originalUnknownItemCount: 0,
@@ -126,7 +125,6 @@ describe('grinding-planning-board-load-summary', () => {
       client: { $queryRaw: queryRaw } as never,
       siteKey: 'site-a',
       category: 'grinding',
-      splitEnabled: true,
       leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
@@ -162,6 +160,72 @@ describe('grinding-planning-board-load-summary', () => {
       unknownRequiredMinutesCount: 1
     });
   });
+
+  it('preserves fractional piece minutes and unsplit row minutes in the source-row path', async () => {
+    const source = {
+      id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: null,
+      resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: '1', requiredMinutes: 1,
+      isCompleted: false, plannedQuantity: 3, quantityWarning: null
+    };
+    const queryRaw = vi.fn().mockResolvedValueOnce([
+      { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
+      { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
+      { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02', requiredMinutes: 1.2345 }
+    ]).mockResolvedValueOnce([]);
+
+    const result = await readGrindingPlanningBoardLoadSummary({
+      client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1', 'source-2'],
+      isResourceInCategory: () => true
+    });
+
+    expect(result.load).toEqual([
+      expect.objectContaining({ resourceCd: 'G-01', originalItemCount: 2, requiredMinutes: 1 }),
+      expect.objectContaining({ resourceCd: 'G-02', originalItemCount: 1, requiredMinutes: 1.2345 })
+    ]);
+    const pieceOnlyQuery = vi.fn().mockResolvedValueOnce([
+      { ...source, pieceId: 'piece-1', pieceQuantity: 1 }
+    ]).mockResolvedValueOnce([]);
+    const pieceOnly = await readGrindingPlanningBoardLoadSummary({
+      client: { $queryRaw: pieceOnlyQuery } as never,
+      siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1'],
+      isResourceInCategory: () => true
+    });
+    expect(pieceOnly.load[0]?.requiredMinutes).toBe(1 / 3);
+  });
+
+  it.each([0, null])('treats pieces of a %s-minute parent as unknown without changing unsplit rows', async (minutes) => {
+    const source = { id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: null,
+      resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: minutes == null ? null : '0', requiredMinutes: minutes,
+      isCompleted: false, plannedQuantity: 3, quantityWarning: null };
+    const queryRaw = vi.fn().mockResolvedValueOnce([
+      { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
+      { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
+      { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02' }
+    ]).mockResolvedValueOnce([]);
+    const result = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1', 'source-2'], isResourceInCategory: () => true });
+    expect(result.load).toEqual([
+      expect.objectContaining({ resourceCd: 'G-01', originalItemCount: 2, requiredMinutes: null, unknownItemCount: 2 }),
+      expect.objectContaining({ resourceCd: 'G-02', originalItemCount: 1, requiredMinutes: minutes, unknownItemCount: minutes == null ? 1 : 0 })
+    ]);
+    expect(result.unknownRequiredMinutesCount).toBe(minutes == null ? 3 : 2);
+  });
+
+  it('selects unrounded piece minutes while leaving unsplit minutes unchanged in aggregate SQL', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    await readGrindingPlanningBoardLoadSummary({
+      client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
+      isResourceInCategory: () => true
+    });
+
+    const aggregateSql = (queryRaw.mock.calls[1]?.[0] as Prisma.Sql).sql;
+    expect(aggregateSql).toContain('WHEN b."pieceId" IS NULL THEN b."requiredMinutes"');
+    expect(aggregateSql).toContain('THEN b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" ELSE NULL');
+    expect(aggregateSql).not.toMatch(/FLOOR\(|ROUND\(/i);
+    expect(aggregateSql).toContain('SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")');
+  });
 });
 
 describe('materialized load aggregate cache', () => {
@@ -175,7 +239,7 @@ describe('materialized load aggregate cache', () => {
     const measure = vi.fn<(phase: string) => void>();
     const params = {
       client: { $queryRaw: queryRaw } as never,
-      siteKey: 'site-a', category: 'grinding' as const, splitEnabled: true,
+      siteKey: 'site-a', category: 'grinding' as const,
       leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-2', 'row-1']}::text[])`,
       isResourceInCategory: (cd: string, category: GrindingPlanningBoardCategory) => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
       cache: { generationToken: 'generation-1', readGenerationToken, performance: {
@@ -221,13 +285,12 @@ describe('materialized load aggregate cache', () => {
     expect(aggregateCalls()).toBe(3);
   });
 
-  it('isolates sites, split flags and base predicates', async () => {
+  it('isolates sites and base predicates', async () => {
     const { params, aggregateCalls } = setup();
     await readGrindingPlanningBoardLoadSummary(params);
     await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-b' });
-    await readGrindingPlanningBoardLoadSummary({ ...params, splitEnabled: false });
     await readGrindingPlanningBoardLoadSummary({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`FALSE` });
-    expect(aggregateCalls()).toBe(4);
+    expect(aggregateCalls()).toBe(3);
   });
 
   it('removes a failed shared promise and allows a subsequent retry', async () => {
@@ -303,5 +366,30 @@ describe('materialized load aggregate cache', () => {
     }
     await readGrindingPlanningBoardLoadSummary({ ...params, siteKey: 'site-0' });
     expect(aggregateCalls()).toBe(130);
+  });
+});
+
+
+describe('own minutes in load summary paths', () => {
+  const settings = { ownSourceResourceCds: ['G-02'], values: [
+    { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 10, setupMinutes: 30 }
+  ] };
+  it.each([false, true])('resolves per-bar setup and unknown CSV (materialized=%s)', async (materialized) => {
+    const sources = [1, 3].map((quantity, index) => ({ id: 'row', fseiban: 'S1', fhinCd: ' part ', productNo: '1',
+      resourceCd: 'G-02', processOrder: '1', requiredMinutesRaw: '', requiredMinutes: null, plannedQuantity: 4,
+      isCompleted: false, pieceId: `piece-${index}`, pieceQuantity: quantity, quantityWarning: null }));
+    const queryRaw = vi.fn(async (query: Prisma.Sql) => {
+      if (query.sql.includes('effectiveItems')) return [1, 3].map((quantity) => ({
+        originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: ' part ', quantity,
+        itemCount: 1n, unknownItemCount: 1n, requiredMinutesSum: null
+      }));
+      if (query.sql.includes('FROM "CsvDashboardRow"')) return sources;
+      return [];
+    });
+    const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes: settings,
+      ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
+    expect(summary.unknownRequiredMinutesCount).toBe(0);
+    expect(summary.load[0]).toMatchObject({ requiredMinutes: 100, unfinishedItemCount: 2 });
   });
 });

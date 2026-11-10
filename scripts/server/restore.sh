@@ -29,8 +29,22 @@ fi
 
 # データベースをリストア
 echo "データベースをリストア中..."
+# 暗号化されたバックアップ(先頭が RPBKENC1)は、稼働中の API コンテナ内で鍵を使って復号してから流す
+if [ "$(head -c 8 "${BACKUP_FILE}")" = "RPBKENC1" ]; then
+  echo "暗号化されたバックアップです。復号してからリストアします。"
+  read_backup() {
+    "${PROJECT_DIR}/scripts/server/run-in-active-api.sh" \
+      node /app/apps/api/dist/scripts/decrypt-backup.js < "${BACKUP_FILE}"
+  }
+else
+  read_backup() {
+    cat "${BACKUP_FILE}"
+  }
+fi
+
+set -o pipefail
 # --cleanオプションで既存のオブジェクトを削除してからリストア
-gunzip -c "${BACKUP_FILE}" | \
+read_backup | gunzip -c | \
   docker compose -f "${PROJECT_DIR}/infrastructure/docker/docker-compose.server.yml" exec -T db \
   psql -U postgres -d borrow_return --set ON_ERROR_STOP=off
 

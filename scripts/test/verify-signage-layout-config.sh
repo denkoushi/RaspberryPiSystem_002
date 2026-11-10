@@ -16,7 +16,7 @@ echo ""
 # 1. 現在のスケジュール状態を確認
 echo "【1】現在のスケジュール状態を確認"
 echo "----------------------------------------"
-ssh "$PI5_HOST" "curl -k -s $BASE_URL/api/signage/schedules | jq '.schedules[] | {id, name, contentType, pdfId, layoutConfig: (.layoutConfig != null), enabled}'"
+ssh "$PI5_HOST" "curl -k -s -H \"x-client-key: $CLIENT_KEY\" $BASE_URL/api/signage/schedules | jq '.schedules[] | {id, name, contentType, pdfId, layoutConfig: (.layoutConfig != null), enabled}'"
 echo ""
 
 # 2. 現在のコンテンツを確認

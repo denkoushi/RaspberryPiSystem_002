@@ -1,12 +1,21 @@
+import { getLoadBalancingOutsourceSettings } from './load-balancing-outsource-settings.service.js';
+import { prisma } from '../../../lib/prisma.js';
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
-import { SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL } from '../constants.js';
+import {
+  PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID,
+  SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL
+} from '../constants.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { createGrindingPlanningBoardPerformance } from '../grinding-planning-board-performance.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import { resolveSeibanMachineDisplayNamesForWinnerRows } from '../seiban-machine-display-names.service.js';
+import { readLoadBalancingWorkspaceResultWithCache } from './load-balancing-workspace-result-cache.js';
 import {
   buildLoadBalancingWorkspaceSourceKey,
+  buildLoadBalancingWorkspaceSourceBaseKey,
+  registerLoadBalancingWorkspaceSourceWarmer,
   readLoadBalancingWorkspaceSourceWithCache,
-  type LoadBalancingWorkspaceSource
+  type WorkspaceSourceCacheResult
 } from './load-balancing-workspace-source-cache.js';
 import {
   assembleLoadBalancingWorkspace,
@@ -45,51 +54,67 @@ export function resolveLoadBalancingToday(now: Date = new Date()): Date {
   return parseUtcDateKey(dateKey);
 }
 
-/**
- * 表示範囲の未完了工程行と機種名。順位ボード・製番ボードと同じ世代トークンが
- * 変わらない間は保存済みを返す（CSV 取込・進捗・完了・納期の更新で世代が変わる）。
- */
+async function readWorkspaceGenerationToken(): Promise<string> {
+  const [boardToken, supplementRevision] = await Promise.all([
+    readGrindingPlanningBoardSnapshotGenerationToken(),
+    prisma.productionScheduleSeibanMachineNameSupplement.aggregate({
+      where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
+      _count: true,
+      _max: { updatedAt: true }
+    })
+  ]);
+  return JSON.stringify([boardToken, supplementRevision]);
+}
+
 async function readWorkspaceSource(params: {
   siteKey: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   range: ReturnType<typeof parseYearMonthRangeInclusive>;
   today: Date;
   perf: Performance;
-}): Promise<{ source: LoadBalancingWorkspaceSource; cacheHit: boolean }> {
-  const generationToken = await params.perf.measure('generation', () => readGrindingPlanningBoardSnapshotGenerationToken());
-  return readLoadBalancingWorkspaceSourceWithCache({
-    key: buildLoadBalancingWorkspaceSourceKey({
-      siteKey: params.siteKey,
-      deviceScopeKey: params.deviceScopeKey,
-      fromMonth: params.range.fromMonth,
-      toMonth: params.range.toMonth,
-      today: formatUtcDateKey(params.today)
-    }),
-    generationToken,
-    load: async () => {
-      const winnerRowIds = await params.perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
-      const queryRows = await params.perf.measure('queryRows', () =>
-        listStartDateLevelingQueryRows({
-          siteKey: params.siteKey,
-          deviceScopeKey: params.deviceScopeKey,
-          rangeStart: params.range.rangeStart,
-          rangeEndExclusive: params.range.rangeEndExclusive,
-          includeOverdueBefore: params.today,
-          winnerRowIds
-        })
-      );
-      const fseibans = [...new Set(queryRows.map((row) => row.fseiban).filter((value) => value.length > 0))];
-      const { machineNames } = await params.perf.measure('machineNames', () =>
-        resolveSeibanMachineDisplayNamesForWinnerRows({ fseibans, winnerRowIds })
-      );
-      return { queryRows, machineNames };
-    }
-  });
+}): Promise<WorkspaceSourceCacheResult> {
+  const keyParams = {
+    siteKey: params.siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource,
+    fromMonth: params.range.fromMonth, toMonth: params.range.toMonth
+  };
+  const baseKey = buildLoadBalancingWorkspaceSourceBaseKey(keyParams);
+  const prepare = async (today: Date, perf: Performance) => {
+    const generationToken = await perf.measure('generation', readWorkspaceGenerationToken);
+    return {
+      baseKey,
+      key: buildLoadBalancingWorkspaceSourceKey({ ...keyParams, today: formatUtcDateKey(today) }),
+      generationToken,
+      load: async () => {
+        const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds(generationToken));
+        const [queryRows, { machineNames }] = await Promise.all([
+          perf.measure('queryRows', () =>
+            listStartDateLevelingQueryRows({
+              siteKey: params.siteKey,
+              deviceScopeKey: params.deviceScopeKey,
+              dueSource: params.dueSource,
+              rangeStart: params.range.rangeStart,
+              rangeEndExclusive: params.range.rangeEndExclusive,
+              includeOverdueBefore: today,
+              winnerRowIds
+            })
+          ),
+          perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesForWinnerRows({ winnerRowIds }))
+        ]);
+        return { queryRows, machineNames };
+      }
+    };
+  };
+  registerLoadBalancingWorkspaceSourceWarmer(baseKey, () =>
+    prepare(resolveLoadBalancingToday(), createGrindingPlanningBoardPerformance('load-balancing-workspace-warmer'))
+  );
+  return readLoadBalancingWorkspaceSourceWithCache(await prepare(params.today, params.perf));
 }
 
 export async function getProductionScheduleLoadBalancingWorkspace(params: {
   siteKeyInput: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   fromMonth: string;
   toMonth: string;
   now?: Date;
@@ -103,8 +128,8 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
   const siteKey = resolveSiteKeyForScopeKey(params.siteKeyInput.trim());
   const today = resolveLoadBalancingToday(params.now);
 
-  const [{ source, cacheHit }, baseCap, monthlyCap, classes, calendars, rules] = await Promise.all([
-    readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, range, today, perf }),
+  const [{ source, cacheHit, cacheState }, baseCap, monthlyCap, classes, calendars, rules, outsourceSettings] = await Promise.all([
+    readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range, today, perf }),
     listLoadBalancingCapacityBaseResolved(siteKey),
     listLoadBalancingMonthlyCapacityRangeResolved({
       siteKeyInput: siteKey,
@@ -113,44 +138,53 @@ export async function getProductionScheduleLoadBalancingWorkspace(params: {
     }),
     listLoadBalancingClassesResolved(siteKey),
     listLoadBalancingWorkCalendarsResolved(siteKey),
-    listLoadBalancingTransferRulesResolved(siteKey)
+    listLoadBalancingTransferRulesResolved(siteKey),
+    getLoadBalancingOutsourceSettings(siteKey)
   ]);
 
   const result = await perf.measure('assemble', async () =>
-    assembleLoadBalancingWorkspace({
-      siteKey: baseCap.siteKey,
-      today,
-      fromMonth: range.fromMonth,
-      toMonth: range.toMonth,
-      months: range.months,
-      queryRows: source.queryRows,
-      machineNameByFseiban: (fseiban) => source.machineNames[fseiban] || SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
-      baseCapacity: new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes])),
-      monthlyCapacityByMonth: new Map(
-        range.months.map((yearMonth) => [
-          yearMonth,
-          new Map((monthlyCap.itemsByMonth[yearMonth] ?? []).map((item) => [item.resourceCd, item.availableMinutes]))
-        ])
-      ),
-      classByResource: new Map(classes.items.map((item) => [item.resourceCd, item.classCode])),
-      calendarByResource: buildWorkCalendarModeMap(calendars.items),
-      transferRules: rules.items
-        .filter((rule) => rule.enabled && rule.efficiencyRatio > 0)
-        .map(({ fromClassCode, toClassCode, priority, efficiencyRatio }) => ({
-          fromClassCode,
-          toClassCode,
-          priority,
-          efficiencyRatio
-        }))
+    readLoadBalancingWorkspaceResultWithCache({
+      source,
+      settingsKey: JSON.stringify([formatUtcDateKey(today), baseCap, monthlyCap, classes, calendars, rules, outsourceSettings]),
+      assemble: () => ({
+        outsourceSettings,
+        ...assembleLoadBalancingWorkspace({
+          siteKey: baseCap.siteKey,
+          today,
+          fromMonth: range.fromMonth,
+          toMonth: range.toMonth,
+          months: range.months,
+          queryRows: source.queryRows,
+          machineNameByFseiban: (fseiban) => source.machineNames[fseiban] || SEIBAN_MACHINE_NAME_UNREGISTERED_LABEL,
+          baseCapacity: new Map(baseCap.items.map((item) => [item.resourceCd, item.baseAvailableMinutes])),
+          monthlyCapacityByMonth: new Map(
+            range.months.map((yearMonth) => [
+              yearMonth,
+              new Map((monthlyCap.itemsByMonth[yearMonth] ?? []).map((item) => [item.resourceCd, item.availableMinutes]))
+            ])
+          ),
+          classByResource: new Map(classes.items.map((item) => [item.resourceCd, item.classCode])),
+          calendarByResource: buildWorkCalendarModeMap(calendars.items),
+          transferRules: rules.items
+            .filter((rule) => rule.enabled && rule.efficiencyRatio > 0)
+            .map(({ fromClassCode, toClassCode, priority, efficiencyRatio }) => ({
+              fromClassCode,
+              toClassCode,
+              priority,
+              efficiencyRatio
+            }))
+        })
+      })
     })
   );
-  perf.flush({ cacheHit, queryRowCount: source.queryRows.length, rowCount: result.rows.length });
+  perf.flush({ cacheHit, cacheState, queryRowCount: source.queryRows.length, rowCount: result.rows.length });
   return result;
 }
 
 export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
   siteKeyInput: string;
   deviceScopeKey: string;
+  dueSource: BoardDueSource;
   month: string;
   resourceCd: string;
   /** 画面の表示範囲。渡されて month を含むとき、ワークスペースと同じ保存済み元データを使う */
@@ -171,14 +205,16 @@ export async function getProductionScheduleLoadBalancingWorkspaceDay(params: {
 
   const readRows = async () => {
     if (viewRange) {
-      const { source } = await readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, range: viewRange, today, perf });
+      const { source } = await readWorkspaceSource({ siteKey, deviceScopeKey: params.deviceScopeKey, dueSource: params.dueSource, range: viewRange, today, perf });
       return source.queryRows;
     }
-    const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds());
+    const generationToken = await perf.measure('generation', readWorkspaceGenerationToken);
+    const winnerRowIds = await perf.measure('winnerRowIds', () => fetchLoadBalancingWinnerRowIds(generationToken));
     return perf.measure('queryRows', () =>
       listStartDateLevelingQueryRows({
         siteKey,
         deviceScopeKey: params.deviceScopeKey,
+        dueSource: params.dueSource,
         rangeStart: monthRange.rangeStart,
         rangeEndExclusive: monthRange.rangeEndExclusive,
         resourceCdFilter: resourceCd,

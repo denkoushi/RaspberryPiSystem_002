@@ -2,6 +2,7 @@ import type { MachineSignalTrendDays } from '../client';
 
 export const machineSignalQueryKeys = {
   rootAll: ['machine-signal'] as const,
+  resourceUptime: (days: number) => ['machine-signal', 'resource-uptime', days] as const,
   dayAll: ['machine-signal', 'day'] as const,
   settingsAll: ['machine-signal', 'settings'] as const,
   sensorsAll: ['machine-signal', 'sensors'] as const,

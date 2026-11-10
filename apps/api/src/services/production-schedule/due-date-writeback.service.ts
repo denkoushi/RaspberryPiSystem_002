@@ -75,8 +75,8 @@ export const listSeibanRowIdsForWriteback = async (params: {
   return rows.map((row) => row.id);
 };
 
-const applyDueDateToRowNotes = async (rowIds: string[], dueDate: Date | null): Promise<void> => {
-  await prisma.$transaction(async (tx) => {
+const applyDueDateToRowNotes = async (rowIds: string[], dueDate: Date | null, client?: Prisma.TransactionClient): Promise<void> => {
+  const apply = async (tx: Prisma.TransactionClient) => {
     for (const rowId of rowIds) {
       const existing = await tx.productionScheduleRowNote.findUnique({
         where: { csvDashboardRowId: rowId }
@@ -109,12 +109,16 @@ const applyDueDateToRowNotes = async (rowIds: string[], dueDate: Date | null): P
         update: { dueDate }
       });
     }
-  });
-
-  resetSelfInspectionMachineBoardScheduleRowCaches();
+  };
+  if (client) await apply(client);
+  else {
+    await prisma.$transaction(apply);
+    resetSelfInspectionMachineBoardScheduleRowCaches();
+  }
 };
 
 export async function writebackSeibanDueDateToRowNotes(params: {
+  client?: Prisma.TransactionClient;
   locationKey: string;
   fseiban: string;
   dueDateText: string;
@@ -123,18 +127,20 @@ export async function writebackSeibanDueDateToRowNotes(params: {
   const { fseiban } = params;
   const dueDate = parseDueDateText(params.dueDateText);
   const rowIds = await listSeibanRowIdsForWriteback({
+    client: params.client,
     fseiban,
     excludeProcessingTypes: params.excludeProcessingTypes
   });
   if (rowIds.length === 0) {
     return { affectedRows: 0, dueDate };
   }
-  await applyDueDateToRowNotes(rowIds, dueDate);
+  await applyDueDateToRowNotes(rowIds, dueDate, params.client);
 
   return { affectedRows: rowIds.length, dueDate };
 }
 
 export async function writebackSeibanProcessingDueDateToRowNotes(params: {
+  client?: Prisma.TransactionClient;
   locationKey: string;
   fseiban: string;
   processingType: string;
@@ -142,13 +148,14 @@ export async function writebackSeibanProcessingDueDateToRowNotes(params: {
 }): Promise<{ affectedRows: number; dueDate: Date | null }> {
   const dueDate = parseDueDateText(params.dueDateText);
   const rowIds = await listSeibanRowIdsForWriteback({
+    client: params.client,
     fseiban: params.fseiban,
     includeProcessingType: params.processingType
   });
   if (rowIds.length === 0) {
     return { affectedRows: 0, dueDate };
   }
-  await applyDueDateToRowNotes(rowIds, dueDate);
+  await applyDueDateToRowNotes(rowIds, dueDate, params.client);
   return { affectedRows: rowIds.length, dueDate };
 }
 

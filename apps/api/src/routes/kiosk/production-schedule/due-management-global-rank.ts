@@ -91,7 +91,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
 
   app.put('/kiosk/production-schedule/due-management/global-rank', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
-    requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
+    await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
     const actorLocation = actorDueManagementScope.deviceScopeKey;
@@ -191,7 +191,7 @@ export async function registerProductionScheduleDueManagementGlobalRankRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice, clientKey } = await deps.requireClientDevice(request.headers['x-client-key']);
-      requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
+      await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
       const actorDueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const actorLocation = actorDueManagementScope.deviceScopeKey;

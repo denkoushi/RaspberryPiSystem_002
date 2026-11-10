@@ -13,6 +13,7 @@ export const securityReviewFindingSchema = z.object({
 export const securityReviewChunkAnswerSchema = z.object({
   findings: z.array(securityReviewFindingSchema).max(20),
   refusedOrVague: z.boolean(),
+  vagueReason: bounded(200).optional(),
 }).strict();
 const deviceFields = { clientId: bounded(200), device: bounded(500) };
 const storageAlertSchema = z.object({
@@ -41,8 +42,12 @@ export const securityReviewReportSchema = z.object({
   reviewedCommits: z.object({ from: z.string().max(64), to: z.string().max(64), note: bounded(500).optional() }).strict(),
   chunks: z.array(z.object({
     id: bounded(100), kind: reviewKindSchema, refusedOrVague: z.boolean(), error: bounded(200).optional(),
-  }).strict()).max(24),
-  findings: z.array(securityReviewFindingSchema).max(480),
+  }).strict()),
+  findings: z.array(securityReviewFindingSchema).max(10000),
+  changeQueue: z.object({ reviewedCommits: z.number().int().nonnegative(), pending: z.number().int().nonnegative(),
+    claimed: z.number().int().nonnegative(), invalid: z.number().int().nonnegative(), failed: z.number().int().nonnegative(),
+    oldestPendingCommittedAt: z.string().datetime({ offset: true }).nullable(),
+  }).strict().optional(),
 }).strict();
 export type SecurityReviewFinding = z.infer<typeof securityReviewFindingSchema>;
 export type SecurityReviewChunkAnswer = z.infer<typeof securityReviewChunkAnswerSchema>;

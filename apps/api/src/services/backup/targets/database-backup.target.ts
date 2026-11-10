@@ -127,7 +127,7 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       await Promise.all([
         exitPromise,
-        pipeline(pgDump.stdout, createGzip(), createWriteStream(tempFilePath))
+        pipeline(pgDump.stdout, createGzip(), createWriteStream(tempFilePath, { mode: 0o600 }))
       ]);
     } catch (error) {
       await fs.rm(tempFilePath, { force: true }).catch(() => {});

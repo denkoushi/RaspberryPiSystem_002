@@ -50,7 +50,6 @@ const parseProcessOrder = (value: string): number | null => {
 export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params: {
   rows: ReadonlyArray<{
     id: string;
-    sourceRowId?: string;
     seibanJoinKey: string | null | undefined;
     rowData: unknown;
   }>;
@@ -98,9 +97,11 @@ export async function buildLeaderboardFooterChipsByPartKeyForScheduleRows(params
       SELECT "CsvDashboardRow".*
       FROM "CsvDashboardRow"
       INNER JOIN "targetKeys"
-        ON NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') = "targetKeys"."seibanJoinKey"
+        ON BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN') = "targetKeys"."seibanJoinKey"
+        AND "targetKeys"."seibanJoinKey" <> ''
         AND COALESCE(NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'ProductNo'), ''), '') = "targetKeys"."productNo"
-        AND NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FHINCD'), '') = "targetKeys"."fhincd"
+        AND BTRIM("CsvDashboardRow"."rowData"->>'FHINCD') = "targetKeys"."fhincd"
+        AND "targetKeys"."fhincd" <> ''
       WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     ),
     "winnerRows" AS (

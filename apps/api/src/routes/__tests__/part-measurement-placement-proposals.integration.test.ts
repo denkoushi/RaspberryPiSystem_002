@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import Fastify from 'fastify';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { env } from '../../config/env.js';
 import { prisma } from '../../lib/prisma.js';
 import { PartMeasurementDrawingStorage } from '../../lib/part-measurement-drawing-storage.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
@@ -26,6 +27,7 @@ describe('placement proposals API / Postgres', () => {
   let sourceId: string;
   let family: string;
   let image: Buffer;
+  const semanticDefault = env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED;
   const url = () => `/api/part-measurement/visual-templates/${targetId}/placement-proposals`;
   const fingerprint = () => createHash('sha256').update(image).digest('hex');
 
@@ -73,6 +75,8 @@ describe('placement proposals API / Postgres', () => {
   });
 
   beforeEach(async () => {
+    // These cases cover the position transfer; semantic transfer needs the business LLM and is unit-tested.
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = false;
     ids = [randomUUID(), randomUUID()];
     [targetId, sourceId] = ids;
     family = `placement-${randomUUID()}`;
@@ -90,6 +94,7 @@ describe('placement proposals API / Postgres', () => {
   });
 
   afterEach(async () => {
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = semanticDefault;
     vi.restoreAllMocks();
     await prisma.partMeasurementTemplate.deleteMany({ where: { visualTemplateId: { in: ids } } });
     await prisma.partMeasurementVisualTemplate.deleteMany({ where: { id: { in: ids } } });
@@ -110,6 +115,14 @@ describe('placement proposals API / Postgres', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ status: 'map-pending', sourceDrawingName: null, proposals: [], unplaced: [] });
     }
+    expect(await prisma.partMeasurementDrawingPlacementRun.count({ where: { visualTemplateId: targetId } })).toBe(0);
+  });
+
+  it('leaves semantic runs to the nightly backfill instead of creating them on request', async () => {
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = true;
+    await completedMap(targetId);
+    const response = await app.inject({ method: 'GET', url: url(), headers: { 'x-client-key': client.apiKey } });
+    expect(response.json()).toEqual({ status: 'map-pending', sourceDrawingName: null, proposals: [], unplaced: [] });
     expect(await prisma.partMeasurementDrawingPlacementRun.count({ where: { visualTemplateId: targetId } })).toBe(0);
   });
 

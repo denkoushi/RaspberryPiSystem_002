@@ -107,7 +107,8 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
           actor: {
             username: request.user?.username ?? null,
             clientDeviceId: clientDeviceId ?? null,
-            clientDeviceNameSnapshot: clientDevice?.name ?? null
+            clientDeviceNameSnapshot: clientDevice?.name ?? null,
+            ip: request.ip
           }
         });
         return { invalidation };
@@ -134,7 +135,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       }
     );
 
-    app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowView }, async (request) => {
+    app.post('/part-measurement/self-inspection/nfc-tags/resolve', { preHandler: allowWriteKiosk }, async (request) => {
       const body = z.object({ uid: z.string().min(1).max(200) }).parse(request.body);
       const result = await resolveSelfInspectionNfcTagUid(body.uid);
       return { result };
@@ -172,7 +173,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       const body = selfInspectionRegistrationPolicyBodySchema.parse(request.body);
       const clientDeviceId = request.user ? undefined : await tryGetClientDeviceId(request.headers);
       if (!request.user) {
-        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword);
+        await registrationPolicyAccessService.requireAccessPassword(body.accessPassword, { clientDeviceId, ip: request.ip });
       }
       const policy = await updateSelfInspectionRegistrationPolicy({
         requireMeasuringInstrumentTag: body.requireMeasuringInstrumentTag,
@@ -226,7 +227,7 @@ export function registerSelfInspectionRoutes(app: FastifyInstance, deps: PartMea
       return { session: await selfInspectionService.getRecordApprovalSessionDetail(params.id) };
     });
 
-    app.post('/part-measurement/self-inspection/record-approvals/approver/resolve', { preHandler: allowView }, async (request) => {
+    app.post('/part-measurement/self-inspection/record-approvals/approver/resolve', { preHandler: allowWriteKiosk }, async (request) => {
       const body = resolveSelfInspectionRecordApprovalApproverBodySchema.parse(request.body);
       return { result: await selfInspectionService.resolveRecordApprovalApprover(body.uid) };
     });

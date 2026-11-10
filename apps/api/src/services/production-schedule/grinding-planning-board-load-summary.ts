@@ -1,5 +1,9 @@
+import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
+import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
+import { SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
+  GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardLoad,
   GrindingPlanningBoardLoadResponse
@@ -11,18 +15,17 @@ import type { GrindingPlanningBoardPerformance } from './grinding-planning-board
 import {
   buildGrindingPlanningBoardRowItemId
 } from './grinding-planning-board-projection.js';
-import { applySplitQuantityToProductionScheduleRowDisplayFields } from './order-split/split-display-required-minutes.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 
 export type GrindingPlanningBoardLoadSummaryRow = {
   /** Stable logical item id. Duplicate rows with this id are counted once. */
   itemId: string;
-  /** Parent row id used to suppress an unsplit parent when split rows are present. */
+  /** Source row id. */
   sourceRowId: string;
-  kind: 'row' | 'split';
+  kind: 'row' | 'piece';
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
-  /** Already split-adjusted required minutes. */
+  /** Source required minutes. */
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
   isCompleted: boolean;
@@ -33,6 +36,7 @@ export type GrindingPlanningBoardLoadSummary = GrindingPlanningBoardLoadResponse
 export type GrindingPlanningBoardLoadSummaryDbClient = Pick<PrismaClient, '$queryRaw'>;
 
 export type ReadGrindingPlanningBoardLoadSummaryParams = {
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   client: GrindingPlanningBoardLoadSummaryDbClient;
   dashboardId?: string;
   /** Canonical winner ids, used by the isolated fallback path and tests. */
@@ -41,9 +45,9 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   leaderboardMaterializedBaseWhere?: Prisma.Sql;
   siteKey: string;
   category: GrindingPlanningBoardCategory;
-  splitEnabled: boolean;
   isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => boolean;
   cache?: {
+    scheduleSource?: 'general' | 'dCompany' | 'both';
     generationToken: string;
     readGenerationToken: () => Promise<string>;
     performance: GrindingPlanningBoardPerformance;
@@ -51,6 +55,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
 };
 
 type LoadSummarySourceRow = {
+  pieceId?: string | null; pieceQuantity?: number | null; quantityWarning?: string | null;
   id: string;
   fseiban: string | null;
   fhinCd: string | null;
@@ -61,8 +66,6 @@ type LoadSummarySourceRow = {
   requiredMinutes: number | null;
   isCompleted: boolean;
   plannedQuantity: number | null;
-  splitId: string | null;
-  splitQuantity: number | null;
 };
 
 type LoadSummaryOverrideRow = {
@@ -71,26 +74,25 @@ type LoadSummaryOverrideRow = {
 };
 
 type LoadSummaryOverrideBinding = {
-  itemKind: 'row' | 'split';
+  itemKind: 'row';
   fseiban: string | null;
   productNo: string | null;
   fhincd: string | null;
   resourceCd: string | null;
   processOrder: string | null;
-  splitId: string | null;
   overrideResourceCd: string | null;
 };
 
 type LoadSummaryAggregateRow = {
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
+  fhincd?: string | null; quantity?: number | null;
   itemCount: bigint;
   unknownItemCount: bigint;
   requiredMinutesSum: number | null;
 };
 
 const SOURCE_ROW_CHUNK_SIZE = 900;
-const SPLIT_PREFIX = 'split:';
 const MAX_LOAD_SUMMARY_CACHE_ENTRIES = 128;
 // The generation token sees insert/update/delete on every table the aggregate
 // reads, provided runtime writers advance updatedAt (Prisma does; raw SQL must).
@@ -110,21 +112,6 @@ const aggregateCaches = new WeakMap<GrindingPlanningBoardLoadSummaryDbClient, {
 }>();
 
 function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverrideBinding | null {
-  if (row.itemKey.startsWith(SPLIT_PREFIX)) {
-    const splitId = row.itemKey.slice(SPLIT_PREFIX.length);
-    return splitId.length > 0
-      ? {
-          itemKind: 'split',
-          fseiban: null,
-          productNo: null,
-          fhincd: null,
-          resourceCd: null,
-          processOrder: null,
-          splitId,
-          overrideResourceCd: row.overrideResourceCd
-        }
-      : null;
-  }
   if (!row.itemKey.startsWith('row:')) return null;
   try {
     const values: unknown = JSON.parse(Buffer.from(row.itemKey.slice(4), 'base64url').toString('utf8'));
@@ -145,7 +132,6 @@ function decodeAggregateOverride(row: LoadSummaryOverrideRow): LoadSummaryOverri
       fhincd: values[1],
       resourceCd: values[2],
       processOrder: values[3],
-      splitId: null,
       overrideResourceCd: row.overrideResourceCd
     };
   } catch {
@@ -185,69 +171,31 @@ function resolveOverrideResource(
 function toSummaryRow(
   row: LoadSummarySourceRow,
   overrideByItemKey: ReadonlyMap<string, string | null>,
-  params: ReadGrindingPlanningBoardLoadSummaryParams
+  settings: GrindingPlanningBoardResourceMinutesResponse,
+  originalResourceCd: string
 ): GrindingPlanningBoardLoadSummaryRow {
   const rowData = buildSourceRowData(row);
-  const originalResourceCd = row.resourceCd == null ? null : normalizeProductionScheduleResourceCd(row.resourceCd);
-  if (originalResourceCd == null) {
-    return {
-      itemId: buildGrindingPlanningBoardRowItemId(rowData),
-      sourceRowId: row.id,
-      kind: 'row',
-      originalResourceCd: null,
-      effectiveResourceCd: null,
-      requiredMinutes: null,
-      requiredMinutesKnown: false,
-      isCompleted: row.isCompleted
-    };
-  }
-
   const parentItemId = buildGrindingPlanningBoardRowItemId(rowData);
-  const itemId = row.splitId == null ? parentItemId : `${SPLIT_PREFIX}${row.splitId}`;
-  const overrideKey = itemId;
-  const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, overrideKey, originalResourceCd);
-  if (row.splitId == null || !params.splitEnabled) {
-    return {
-      itemId: parentItemId,
-      sourceRowId: row.id,
-      kind: 'row',
-      originalResourceCd,
+  if (row.pieceId) {
+    const itemId = `piece:${row.pieceId}`;
+    const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd);
+    const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null && row.requiredMinutes > 0
+      ? row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
       effectiveResourceCd,
-      requiredMinutes: row.requiredMinutes,
-      requiredMinutesKnown: row.requiredMinutes != null,
-      isCompleted: row.isCompleted
-    };
+      ...resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
+        quantity: row.pieceQuantity ?? null, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings), isCompleted: row.isCompleted };
   }
-
-  const splitFields = applySplitQuantityToProductionScheduleRowDisplayFields(
-    {
-      plannedQuantity: row.plannedQuantity,
-      machineRequiredMinutes: row.requiredMinutes ?? undefined,
-      laborRequiredMinutes: undefined,
-      rowData: rowData as Prisma.JsonValue
-    },
-    row.splitQuantity ?? 0
-  );
-  const splitMinutes = splitFields.machineRequiredMinutes ?? null;
+  const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, parentItemId, originalResourceCd);
   return {
-    itemId,
+    itemId: parentItemId,
     sourceRowId: row.id,
-    kind: 'split',
+    kind: 'row',
     originalResourceCd,
     effectiveResourceCd,
-    requiredMinutes: splitMinutes,
-    requiredMinutesKnown: splitMinutes != null,
+    ...resolveRequiredMinutes({ originalMinutes: row.requiredMinutes, originalKnown: row.requiredMinutes != null,
+      quantity: row.plannedQuantity, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings),
     isCompleted: row.isCompleted
   };
-}
-
-function addAggregateMinutes(
-  entry: GrindingPlanningBoardLoad,
-  field: 'originalRequiredMinutes' | 'alternateRequiredMinutes',
-  minutes: number | null
-): void {
-  if (minutes == null) return;
-  entry[field] = (entry[field] ?? 0) + minutes;
 }
 
 function buildGrindingPlanningBoardLoadSummaryFromAggregates(
@@ -296,7 +244,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
     if (originalLoadResource != null) {
       const originalEntry = ensure(originalLoadResource);
       originalEntry.originalItemCount += itemCount;
-      addAggregateMinutes(originalEntry, 'originalRequiredMinutes', aggregate.requiredMinutesSum);
+      addMinutes(originalEntry, 'originalRequiredMinutes', aggregate.requiredMinutesSum);
       originalEntry.originalUnknownItemCount += unknownItemCount;
     }
 
@@ -304,7 +252,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
       const alternateEntry = ensure(effectiveLoadResource);
       alternateEntry.alternateItemCount += itemCount;
       alternateEntry.unfinishedItemCount += itemCount;
-      addAggregateMinutes(alternateEntry, 'alternateRequiredMinutes', aggregate.requiredMinutesSum);
+      addMinutes(alternateEntry, 'alternateRequiredMinutes', aggregate.requiredMinutesSum);
       alternateEntry.alternateUnknownItemCount += unknownItemCount;
       alternateEntry.unknownItemCount += unknownItemCount;
     }
@@ -330,51 +278,17 @@ async function readAggregatedLoadSummary(params: {
   client: GrindingPlanningBoardLoadSummaryDbClient;
   dashboardId: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
-  splitEnabled: boolean;
   overrideRows: readonly LoadSummaryOverrideRow[];
+  siteKey: string;
+  resourceMinutes: GrindingPlanningBoardResourceMinutesResponse;
 }): Promise<LoadSummaryAggregateRow[]> {
   const overrideBindings = params.overrideRows.flatMap((row) => {
     const binding = decodeAggregateOverride(row);
     return binding == null ? [] : [binding];
   });
-  const overrideJson = JSON.stringify(overrideBindings);
-  const splitItems = params.splitEnabled
-    ? Prisma.sql`
-      UNION ALL
-      SELECT
-        b."id" AS "sourceRowId",
-        b."fseiban",
-        b."productNo",
-        b."fhincd",
-        b."processOrder",
-        b."resourceCd" AS "originalResourceCd",
-        s."id"::text AS "splitId",
-        s."splitNo",
-        'split'::text AS "itemKind",
-        CASE
-          WHEN b."requiredMinutes" IS NULL
-            OR b."plannedQuantity" IS NULL
-            OR b."plannedQuantity" <= 0
-            OR s."splitQuantity" <= 0
-          THEN NULL::double precision
-          ELSE GREATEST(
-            0::double precision,
-            FLOOR(
-              b."requiredMinutes" * (
-                s."splitQuantity"::double precision
-                / b."plannedQuantity"::double precision
-              ) + 0.5
-            )
-          )
-        END AS "requiredMinutes",
-        s."splitNo" AS "splitOrder"
-      FROM "baseRows" AS b
-      INNER JOIN "ProductionScheduleOrderSplit" AS s
-        ON s."csvDashboardId" = ${params.dashboardId}
-        AND s."parentCsvDashboardRowId" = b."id"
-    `
-    : Prisma.empty;
 
+  // DISTINCT ON keeps the same first source row per logical item without the
+  // ROW_NUMBER() = 1 selectivity underestimate that caused items × overrides scans.
   const aggregateRows = await params.client.$queryRaw<LoadSummaryAggregateRow[]>(Prisma.sql`
     WITH "baseRows" AS (
       SELECT
@@ -390,7 +304,7 @@ async function readAggregatedLoadSummary(params: {
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::double precision
           ELSE NULL
         END AS "requiredMinutes",
-        "supplement"."plannedQuantity"
+        "supplement"."plannedQuantity", pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
         ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -403,109 +317,103 @@ async function readAggregatedLoadSummary(params: {
         AND "supplement"."csvDashboardId" = ${params.dashboardId}
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
+      ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       WHERE ${params.leaderboardMaterializedBaseWhere}
-        AND NOT (
-          COALESCE("p"."isCompleted", FALSE)
-          OR COALESCE("ext"."isExternallyCompleted", FALSE)
-        )
+        AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
+          OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
     ),
     "items" AS (
       SELECT
-        b."id" AS "sourceRowId",
+        b."id" AS "sourceRowId", b."pieceId",
         b."fseiban",
         b."productNo",
         b."fhincd",
         b."processOrder",
         b."resourceCd" AS "originalResourceCd",
-        NULL::text AS "splitId",
-        NULL::int AS "splitNo",
+        CASE WHEN b."pieceId" IS NULL THEN b."plannedQuantity" ELSE b."pieceQuantity" END AS "quantity",
         'row'::text AS "itemKind",
-        b."requiredMinutes",
-        NULL::int AS "splitOrder"
+        CASE WHEN b."pieceId" IS NULL THEN b."requiredMinutes"
+          WHEN b."requiredMinutes" > 0 AND b."plannedQuantity" > 0 AND COALESCE(b."quantityWarning", '') <> 'INVALID_PLANNED_QUANTITY'
+          THEN b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" ELSE NULL END AS "requiredMinutes"
       FROM "baseRows" AS b
-      ${params.splitEnabled
-        ? Prisma.sql`WHERE NOT EXISTS (
-            SELECT 1
-            FROM "ProductionScheduleOrderSplit" AS "parentSplit"
-            WHERE "parentSplit"."csvDashboardId" = ${params.dashboardId}
-              AND "parentSplit"."parentCsvDashboardRowId" = b."id"
-          )`
-        : Prisma.empty}
-      ${splitItems}
     ),
     "deduplicatedItems" AS (
-      SELECT *
-      FROM (
-        SELECT
-          "items".*,
-          ROW_NUMBER() OVER (
-            PARTITION BY
-              "items"."itemKind",
-              COALESCE("items"."fseiban", ''),
-              CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
-              COALESCE("items"."fhincd", ''),
-              COALESCE("items"."processOrder", ''),
-              COALESCE("items"."originalResourceCd", ''),
-              "items"."splitId",
-              "items"."splitNo"
-            ORDER BY "items"."sourceRowId", "items"."splitOrder" NULLS FIRST
-          ) AS "itemRowNumber"
-        FROM "items"
-      ) AS "rankedItems"
-      WHERE "rankedItems"."itemRowNumber" = 1
+      SELECT DISTINCT ON (
+        "items"."pieceId",
+        COALESCE("items"."fseiban", ''),
+        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
+        COALESCE("items"."fhincd", ''),
+        COALESCE("items"."processOrder", ''),
+        COALESCE("items"."originalResourceCd", '')
+      ) "items".*
+      FROM "items"
+      ORDER BY "items"."pieceId",
+        COALESCE("items"."fseiban", ''),
+        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
+        COALESCE("items"."fhincd", ''),
+        COALESCE("items"."processOrder", ''),
+        COALESCE("items"."originalResourceCd", ''),
+        "items"."sourceRowId"
     ),
-    "overrides" AS (
+    "overrides" AS MATERIALIZED (
       SELECT *
-      FROM jsonb_to_recordset(${overrideJson}::jsonb) AS "overrideRows"(
+      FROM jsonb_to_recordset(${JSON.stringify(overrideBindings)}::jsonb) AS "overrideRows"(
         "itemKind" text,
         "fseiban" text,
         "productNo" text,
         "fhincd" text,
         "resourceCd" text,
         "processOrder" text,
-        "splitId" text,
         "overrideResourceCd" text
       )
     ),
     "effectiveItems" AS (
       SELECT
         "deduplicatedItems"."sourceRowId",
-        "deduplicatedItems"."splitOrder",
+        "deduplicatedItems"."pieceId",
         "deduplicatedItems"."originalResourceCd",
         CASE
-          WHEN "overrides"."overrideResourceCd" IS NULL
+          WHEN "pieceOverrides"."itemKey" IS NOT NULL THEN COALESCE("pieceOverrides"."overrideResourceCd", "deduplicatedItems"."originalResourceCd")
+          WHEN "rowOverrides"."overrideResourceCd" IS NULL
           THEN "deduplicatedItems"."originalResourceCd"
-          ELSE "overrides"."overrideResourceCd"
+          ELSE "rowOverrides"."overrideResourceCd"
         END AS "effectiveResourceCd",
-        "deduplicatedItems"."requiredMinutes"
+        "deduplicatedItems"."requiredMinutes",
+        "deduplicatedItems"."fhincd", "deduplicatedItems"."quantity"
       FROM "deduplicatedItems"
-      LEFT JOIN "overrides"
-        ON (
-          "deduplicatedItems"."itemKind" = 'row'
-          AND "overrides"."itemKind" = 'row'
-          AND "overrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
-          AND ("deduplicatedItems"."fseiban" <> '********' OR "overrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
-          AND "overrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
-          AND "overrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
-          AND "overrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
-        )
-        OR (
-          "deduplicatedItems"."itemKind" = 'split'
-          AND "overrides"."itemKind" = 'split'
-          AND "overrides"."splitId" = "deduplicatedItems"."splitId"
-        )
+      LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" "pieceOverrides"
+        ON "pieceOverrides"."csvDashboardId" = ${params.dashboardId} AND "pieceOverrides"."siteKey" = ${params.siteKey}
+          AND "pieceOverrides"."itemKey" = ('piece:' || "deduplicatedItems"."pieceId")
+      LEFT JOIN "overrides" AS "rowOverrides"
+        ON "deduplicatedItems"."itemKind" = 'row'
+          AND "rowOverrides"."itemKind" = 'row'
+          AND "rowOverrides"."fseiban" = COALESCE("deduplicatedItems"."fseiban", '')
+          AND ("deduplicatedItems"."fseiban" <> '********' OR "rowOverrides"."productNo" = COALESCE("deduplicatedItems"."productNo", ''))
+          AND "rowOverrides"."fhincd" = COALESCE("deduplicatedItems"."fhincd", '')
+          AND "rowOverrides"."resourceCd" = COALESCE("deduplicatedItems"."originalResourceCd", '')
+          AND "rowOverrides"."processOrder" = COALESCE("deduplicatedItems"."processOrder", '')
     )
     SELECT
       "originalResourceCd",
       "effectiveResourceCd",
+      "fhincd", "quantity",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
-      SUM("requiredMinutes" ORDER BY "sourceRowId", "splitOrder" NULLS FIRST)::double precision AS "requiredMinutesSum"
+      SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
-    GROUP BY "originalResourceCd", "effectiveResourceCd"
+    GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes"
   `);
 
-  return aggregateRows;
+  return aggregateRows.map((row) => {
+    const count = Number(row.itemCount);
+    const resolved = resolveRequiredMinutes({
+      originalMinutes: row.requiredMinutesSum == null ? null : row.requiredMinutesSum / count,
+      originalKnown: Number(row.unknownItemCount) === 0,
+      quantity: row.quantity ?? null, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
+    }, params.resourceMinutes);
+    return resolved.requiredMinutesSource === 'own'
+      ? { ...row, requiredMinutesSum: resolved.requiredMinutes! * count, unknownItemCount: 0n } : row;
+  });
 }
 
 async function readMaterializedLoadAggregates(
@@ -520,9 +428,9 @@ async function readMaterializedLoadAggregates(
         AND "siteKey" = ${params.siteKey}
     `);
     return readAggregatedLoadSummary({
-      client: params.client, dashboardId,
+      client: params.client, dashboardId, siteKey: params.siteKey,
       leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-      splitEnabled: params.splitEnabled, overrideRows
+      overrideRows, resourceMinutes: params.resourceMinutes!
     });
   };
   const context = params.cache;
@@ -546,7 +454,7 @@ async function readMaterializedLoadAggregates(
   // order is immaterial; normalize it so the resolver's row order cannot miss.
   const key = JSON.stringify({
     siteKey: params.siteKey, dashboardId, generationToken: context.generationToken,
-    splitEnabled: params.splitEnabled,
+    scheduleSource: context.scheduleSource ?? 'both',
     baseWhere: {
       strings: params.leaderboardMaterializedBaseWhere.strings,
       values: params.leaderboardMaterializedBaseWhere.values.map((value) => Array.isArray(value) ? [...value].sort() : value)
@@ -587,30 +495,18 @@ async function readMaterializedLoadAggregates(
 export async function readGrindingPlanningBoardLoadSummary(
   params: ReadGrindingPlanningBoardLoadSummaryParams
 ): Promise<GrindingPlanningBoardLoadSummary> {
-  const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))];
+  const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))].sort();
   if (params.leaderboardMaterializedBaseWhere === undefined && winnerRowIds.length === 0) {
     return { load: [], unknownRequiredMinutesCount: 0 };
   }
   const dashboardId = params.dashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
+  const resourceMinutes = params.resourceMinutes ?? await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey });
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
-    const rows = await readMaterializedLoadAggregates({ ...params, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
+    const rows = await readMaterializedLoadAggregates({ ...params, resourceMinutes, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
     return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
   }
-  const splitSelect = params.splitEnabled
-    ? Prisma.sql`"split"."id" AS "splitId", "split"."splitQuantity" AS "splitQuantity"`
-    : Prisma.sql`NULL::text AS "splitId", NULL::int AS "splitQuantity"`;
-  const splitJoin = params.splitEnabled
-    ? Prisma.sql`
-      LEFT JOIN "ProductionScheduleOrderSplit" AS "split"
-        ON "split"."csvDashboardId" = ${dashboardId}
-        AND "split"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-    `
-    : Prisma.empty;
-  const splitOrder = params.splitEnabled
-    ? Prisma.sql`, "split"."splitNo" NULLS FIRST`
-    : Prisma.empty;
   const rows: LoadSummarySourceRow[] = [];
-  const readSourceRows = async (where: Prisma.Sql, orderBy: Prisma.Sql) => {
+  const readSourceRows = async (where: Prisma.Sql) => {
     rows.push(...await params.client.$queryRaw<LoadSummarySourceRow[]>(Prisma.sql`
       SELECT
         "CsvDashboardRow"."id",
@@ -626,9 +522,9 @@ export async function readGrindingPlanningBoardLoadSummary(
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::double precision
           ELSE NULL
         END AS "requiredMinutes",
-        (COALESCE("p"."isCompleted", FALSE) OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
-        "supplement"."plannedQuantity" AS "plannedQuantity",
-        ${splitSelect}
+        (CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
+        pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning",
+        "supplement"."plannedQuantity" AS "plannedQuantity"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
         ON "p"."csvDashboardRowId" = "CsvDashboardRow"."id"
@@ -641,32 +537,20 @@ export async function readGrindingPlanningBoardLoadSummary(
         AND "supplement"."csvDashboardId" = ${dashboardId}
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
-      ${splitJoin}
+      ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       WHERE ${where}
-        AND NOT (
-          COALESCE("p"."isCompleted", FALSE)
-          OR COALESCE("ext"."isExternallyCompleted", FALSE)
-        )
-      ORDER BY ${orderBy} ${splitOrder}
+        AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
+          OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
+      ORDER BY "CsvDashboardRow"."id", pc."id"
     `));
   };
 
-  if (params.leaderboardMaterializedBaseWhere !== undefined) {
-    await readSourceRows(
-      params.leaderboardMaterializedBaseWhere,
-      Prisma.sql`"CsvDashboardRow"."id"`
-    );
-  } else {
-    for (const ids of chunk(winnerRowIds, SOURCE_ROW_CHUNK_SIZE)) {
-      const idParts = ids.map((id) => Prisma.sql`${id}`);
-      await readSourceRows(
-        Prisma.sql`
-          "CsvDashboardRow"."csvDashboardId" = ${dashboardId}
-          AND "CsvDashboardRow"."id"::text = ANY(ARRAY[${Prisma.join(idParts)}]::text[])
-        `,
-        Prisma.sql`array_position(ARRAY[${Prisma.join(idParts)}]::text[], "CsvDashboardRow"."id"::text)`
-      );
-    }
+  for (const ids of chunk(winnerRowIds, SOURCE_ROW_CHUNK_SIZE)) {
+    const idParts = ids.map((id) => Prisma.sql`${id}`);
+    await readSourceRows(Prisma.sql`
+      "CsvDashboardRow"."csvDashboardId" = ${dashboardId}
+      AND "CsvDashboardRow"."id"::text = ANY(ARRAY[${Prisma.join(idParts)}]::text[])
+    `);
   }
 
   const overrideRows = await params.client.$queryRaw<LoadSummaryOverrideRow[]>(Prisma.sql`
@@ -679,7 +563,7 @@ export async function readGrindingPlanningBoardLoadSummary(
   const summaryRows = rows.flatMap((row) => {
     const originalResourceCd = row.resourceCd == null ? null : normalizeProductionScheduleResourceCd(row.resourceCd);
     if (originalResourceCd == null || !params.isResourceInCategory(originalResourceCd, params.category)) return [];
-    return [toSummaryRow(row, overrideByItemKey, params)];
+    return [toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd)];
   });
   return buildGrindingPlanningBoardLoadSummary(summaryRows);
 }
@@ -698,23 +582,14 @@ function addMinutes(
  *
  * The caller supplies all rows for the board, including unselected seiban. The
  * summary intentionally does not perform winner selection, category filtering,
- * completion resolution, or split-minute calculation; those stay in the
- * existing source pipeline. A split parent is ignored when at least one split
- * item exists for the same source row, which prevents parent/split double count
- * when a SQL summary combines both shapes.
+ * completion resolution; those stay in the existing source pipeline.
  */
 export function buildGrindingPlanningBoardLoadSummary(
   inputRows: readonly GrindingPlanningBoardLoadSummaryRow[]
 ): GrindingPlanningBoardLoadSummary {
-  const splitParents = new Set(
-    inputRows
-      .filter((row) => row.kind === 'split')
-      .map((row) => row.sourceRowId)
-  );
   const rows: GrindingPlanningBoardLoadSummaryRow[] = [];
   const seen = new Set<string>();
   for (const row of inputRows) {
-    if (row.kind === 'row' && splitParents.has(row.sourceRowId)) continue;
     const itemId = row.itemId.trim();
     if (!itemId || seen.has(itemId)) continue;
     seen.add(itemId);
@@ -743,6 +618,8 @@ export function buildGrindingPlanningBoardLoadSummary(
     return created;
   };
 
+  rows.sort((left, right) => left.sourceRowId < right.sourceRowId ? -1 : left.sourceRowId > right.sourceRowId ? 1
+    : left.itemId < right.itemId ? -1 : left.itemId > right.itemId ? 1 : 0);
   for (const row of rows) {
     if (row.isCompleted) continue;
     const originalResource = row.originalResourceCd?.trim() || null;

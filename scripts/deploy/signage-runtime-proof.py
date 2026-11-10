@@ -169,13 +169,14 @@ def _configuration(path: Path) -> tuple[str, str, bool]:
     )
 
 
-def _runtime_configuration(path: Path) -> tuple[str, str, bool]:
+def _runtime_configuration(path: Path) -> tuple[str, str, bool | ssl.SSLContext]:
     text = _decode_script(path)
     values: dict[str, object] = {}
     interesting = {
         "SIGNAGE_SERVER_URL",
         "SIGNAGE_IMAGE_CLIENT_KEY",
         "SIGNAGE_ALLOW_INSECURE_TLS",
+        "SIGNAGE_SERVER_CERT_PIN_ENABLED",
     }
     for line in text.splitlines():
         if not any(line.startswith(name + "=") for name in interesting):
@@ -186,7 +187,7 @@ def _runtime_configuration(path: Path) -> tuple[str, str, bool]:
         name, encoded = match.groups()
         if name in values:
             raise ProofError("installed signage runtime has duplicate assignments")
-        if name == "SIGNAGE_ALLOW_INSECURE_TLS":
+        if name in {"SIGNAGE_ALLOW_INSECURE_TLS", "SIGNAGE_SERVER_CERT_PIN_ENABLED"}:
             if encoded not in {"0", "1"}:
                 raise ProofError("installed signage TLS policy is unsupported")
             values[name] = encoded == "1"
@@ -198,15 +199,26 @@ def _runtime_configuration(path: Path) -> tuple[str, str, bool]:
         if not isinstance(value, str):
             raise ProofError("installed signage runtime value is malformed")
         values[name] = value
-    return _validated_configuration(
+    server_url, client_key, insecure_tls = _validated_configuration(
         values.get("SIGNAGE_SERVER_URL"),
         values.get("SIGNAGE_IMAGE_CLIENT_KEY"),
         values.get("SIGNAGE_ALLOW_INSECURE_TLS"),
     )
+    if values.get("SIGNAGE_SERVER_CERT_PIN_ENABLED") is True:
+        context = ssl.create_default_context(cafile="/etc/raspi-client/server-cert.pem")
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_REQUIRED
+        # This pinned self-signed leaf has no X.509 extensions; trust is the pin.
+        context.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+        return server_url, client_key, context
+    return server_url, client_key, insecure_tls
 
 
-def _opener(insecure_tls: bool) -> urllib.request.OpenerDirector:
-    context = ssl._create_unverified_context() if insecure_tls else ssl.create_default_context()
+def _opener(insecure_tls: bool | ssl.SSLContext) -> urllib.request.OpenerDirector:
+    if isinstance(insecure_tls, ssl.SSLContext):
+        context = insecure_tls
+    else:
+        context = ssl._create_unverified_context() if insecure_tls else ssl.create_default_context()
     return urllib.request.build_opener(
         urllib.request.ProxyHandler({}),
         _NoRedirect(),

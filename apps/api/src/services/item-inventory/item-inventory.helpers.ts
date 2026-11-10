@@ -12,6 +12,7 @@ export const COMPARTMENT_LOOKUP_INCLUDE = {
 } satisfies Prisma.InventoryCompartmentInclude;
 
 export const TRANSACTION_INCLUDE = {
+  machine: { select: { id: true, name: true, shortName: true } },
   inventoryItem: true,
   compartment: { include: { drawer: { include: { shelf: true } } } },
 } satisfies Prisma.InventoryTransactionInclude;
@@ -34,6 +35,8 @@ export function locationDto(compartment: {
   id: string;
   labelNumber: number;
   stockQuantity: number;
+  reorderPoint?: number | null;
+  reorderedAt?: Date | null;
   drawer: { drawerNumber: number; shelf: { area: string; shelfNumber: number } };
   itemTag: { uid: string } | null;
   inventoryItem: { id: string; itemCode: string; name: string; model: string | null; usage: string | null; category: string | null; area: string | null; note: string | null; unit?: string | null; unitPrice?: number | null; maker?: string | null; toolName?: string | null; workMaterial?: string | null; toolSize?: string | null; photos?: Array<{ id: string; photoIndex: number; photoUrl: string; originalFilename: string }> };
@@ -42,6 +45,8 @@ export function locationDto(compartment: {
     id: compartment.id,
     labelNumber: compartment.labelNumber,
     stockQuantity: compartment.stockQuantity,
+    reorderPoint: compartment.reorderPoint ?? null,
+    reorderedAt: compartment.reorderedAt?.toISOString() ?? null,
     area: compartment.drawer.shelf.area,
     shelfNumber: compartment.drawer.shelf.shelfNumber,
     drawerNumber: compartment.drawer.drawerNumber,
@@ -67,12 +72,14 @@ export function locationDto(compartment: {
 }
 
 export async function assertNfcUidAvailable(uid: string, db: PrismaClient | Prisma.TransactionClient): Promise<void> {
-  const [employee, item, measuringInstrumentTag, riggingGearTag] = await Promise.all([
+  const [employee, item, measuringInstrumentTag, riggingGearTag, machineTag] = await Promise.all([
     db.employee.findFirst({ where: { nfcTagUid: uid }, select: { id: true } }),
     db.item.findFirst({ where: { nfcTagUid: uid }, select: { id: true } }),
     db.measuringInstrumentTag.findFirst({ where: { rfidTagUid: uid }, select: { id: true } }),
     db.riggingGearTag.findFirst({ where: { rfidTagUid: uid }, select: { id: true } }),
+    db.machineNfcTag.findUnique({ where: { uid }, select: { id: true } }),
   ]);
+  if (machineTag) throw new ApiError(409, 'このUIDは既存の加工機で使用中です');
   if (employee || item || measuringInstrumentTag || riggingGearTag) {
     throw new ApiError(409, 'このUIDは既存の社員・工具・計測機器・玉掛け具で使用中です');
   }

@@ -11,6 +11,7 @@ const schedule = (partial: Record<string, unknown>) => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
+  targetClientDeviceIds: [],
   targetClientKeys: [],
   dayOfWeek: [1, 2, 3, 4, 5],
   startTime: '00:00',
@@ -21,7 +22,7 @@ const schedule = (partial: Record<string, unknown>) => ({
 });
 
 function serviceWith(schedules: Array<Record<string, unknown>>) {
-  const db = { signageSchedule: { findMany: vi.fn().mockResolvedValue(schedules) }, clientDevice: { findMany: vi.fn() } };
+  const db = { signageSchedule: { findMany: vi.fn().mockResolvedValue(schedules).mockResolvedValueOnce([]) }, clientDevice: { findMany: vi.fn() } };
   return new SignageService(db as never);
 }
 
@@ -31,7 +32,7 @@ describe('SignageService.getRotationForClient', () => {
       schedule({ id: 'low', priority: 0 }),
       schedule({ id: 'high', priority: 5 }),
       schedule({ id: 'morning-only', startTime: '07:30', endTime: '09:00' }),
-      schedule({ id: 'other-device', targetClientKeys: ['key-b'] }),
+      schedule({ id: 'other-device', targetClientDeviceIds: ['key-b'] }),
     ]);
 
     const rotation = await service.getRotationForClient('key-a', NOW);

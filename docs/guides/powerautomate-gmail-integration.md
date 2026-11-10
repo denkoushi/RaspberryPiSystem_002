@@ -31,7 +31,6 @@ update-frequency: medium
 **推奨パターン**:
 - 従業員CSV: `[Pi5 CSV Import] employees`
 - アイテムCSV: `[Pi5 CSV Import] items`
-- 写真JPEG: `[Pi5 CSV Import] photos`
 
 **注意事項**:
 - 件名パターンは大文字・小文字を区別しませんが、スペースや記号は正確に一致させる必要があります
@@ -79,7 +78,7 @@ employeeCode,displayName,nfcTagUid,department,contact,status
 - `nfcTagUid`: NFCタグUID
 - `department`: 部署名
 - `contact`: 連絡先
-- `status`: ステータス（`ACTIVE`, `INACTIVE`, `RETIRED`）
+- `status`: ステータス（`ACTIVE`, `INACTIVE`, `SUSPENDED`）
 
 **アイテムCSV形式**:
 ```csv
@@ -96,23 +95,12 @@ TO0002,レンチセット,TAG-TO002,工具,工具庫,AVAILABLE,メトリック�
 - `nfcTagUid`: NFCタグUID
 - `category`: カテゴリ
 - `storageLocation`: 保管場所
-- `status`: ステータス（`AVAILABLE`, `BORROWED`, `MAINTENANCE`, `RETIRED`）
+- `status`: ステータス（`AVAILABLE`, `IN_USE`, `MAINTENANCE`, `RETIRED`）
 - `notes`: 備考
 
 #### JPEGファイル
 
-**ファイル名**:
-- 任意のファイル名（例: `photo-001.jpg`）
-- ファイル名にタイムスタンプを含めることを推奨（例: `photo-20251229-120000.jpg`）
-
-**ファイル形式**:
-- **形式**: JPEG（`.jpg`または`.jpeg`）
-- **最大サイズ**: 10MB（推奨）
-- **解像度**: 任意（Pi5側で自動的にサムネイルを生成）
-
-**メール件名パターン**:
-- `[Pi5 CSV Import] photos`（推奨）
-- Pi5側で設定した件名パターンと一致させる必要があります
+件名 `[Pi5 CSV Import] photos` による写真JPEGの取り込みは未対応です（CSVインポート種別 `CsvImportTypeSchema` と件名パターンの既定値に `photos` は無い）。
 
 ### メール送信タイミング
 

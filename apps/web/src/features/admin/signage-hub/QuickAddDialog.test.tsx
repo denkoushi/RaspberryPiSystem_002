@@ -21,8 +21,8 @@ vi.mock('../../../api/client', async (importOriginal) => ({
 }));
 
 const clients = [
-  { id: 'c1', name: '現場 Pi3', apiKey: 'key-a' },
-  { id: 'c2', name: '事務所 Android', apiKey: 'key-b' },
+  { id: 'c1', name: '現場 Pi3', isSignage: true },
+  { id: 'c2', name: '事務所 Android', isSignage: true },
 ] as ClientDevice[];
 
 function renderDialog(onDone = vi.fn()) {
@@ -33,7 +33,7 @@ function renderDialog(onDone = vi.fn()) {
       onDone={onDone}
       onAdvanced={vi.fn()}
       clients={clients}
-      defaultClientKey="key-a"
+      defaultClientDeviceId="c1"
       visualizationDashboards={[]}
       csvDashboards={[]}
     />,
@@ -66,7 +66,7 @@ describe('QuickAddDialog', () => {
     expect(createSchedule).toHaveBeenCalledWith(
       expect.objectContaining({
         name: '持出一覧',
-        targetClientKeys: [],
+        targetClientDeviceIds: [],
         dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
         startTime: '00:00',
         endTime: '23:59',
@@ -94,7 +94,7 @@ describe('QuickAddDialog', () => {
     expect(captureNow).toHaveBeenCalledWith('cap-1');
     expect(createSchedule).toHaveBeenCalledWith(
       expect.objectContaining({
-        targetClientKeys: ['key-a'],
+        targetClientDeviceIds: ['c1'],
         layoutConfig: { layout: 'FULL', slots: [{ position: 'FULL', kind: 'web_page', config: { webCaptureId: 'cap-1' } }] },
       }),
     );

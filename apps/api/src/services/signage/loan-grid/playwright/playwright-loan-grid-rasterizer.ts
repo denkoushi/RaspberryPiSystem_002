@@ -25,6 +25,11 @@ export class PlaywrightLoanGridRasterizer implements LoanGridRasterizerPort {
 
     const page = await context.newPage();
     try {
+      await page.route('**/*', async (route) => {
+        const protocol = new URL(route.request().url()).protocol;
+        if (protocol === 'data:' || protocol === 'about:') await route.continue();
+        else await route.abort();
+      });
       await page.setContent(html, { waitUntil: 'domcontentloaded' });
       const pngBuffer = await page.screenshot({
         type: 'png',

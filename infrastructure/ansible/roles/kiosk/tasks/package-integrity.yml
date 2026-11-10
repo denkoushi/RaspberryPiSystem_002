@@ -41,6 +41,12 @@
     path: /usr/local/bin/rkhunter-kiosk-scan.sh
     state: absent
 
+# An early manual setup left a system-wide copy of the schedule on one kiosk
+- name: Remove legacy kiosk rkhunter cron.d entry
+  ansible.builtin.file:
+    path: /etc/cron.d/rkhunter-kiosk-scan
+    state: absent
+
 - name: Remove rkhunter package from kiosk
   ansible.builtin.apt:
     name: rkhunter
@@ -98,3 +104,14 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Schedule kiosk alerts inbox cleanup
+  ansible.builtin.cron:
+    name: "Alerts inbox cleanup (kiosk)"
+    user: root
+    minute: "25"
+    hour: "4"
+    job: >-
+      find {{ security_review_kiosk_alerts_dir | quote }} -maxdepth 1 -type f -name 'alert-*.json*'
+      \( \( -empty -mmin +1440 \) -o -mmin +43200 \) -delete
+  when: terminal_release_mode | default('full') == 'full'

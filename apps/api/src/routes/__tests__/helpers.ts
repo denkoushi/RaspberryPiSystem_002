@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import { signAccessToken } from '../../lib/auth.js';
+import { createAuthSession } from '../../services/auth/auth-session.service.js';
 import type { ClientDevice, Employee, Item, Loan, MeasuringInstrument, User } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import bcrypt from 'bcryptjs';
@@ -87,7 +87,7 @@ export async function createTestUser(
       status: 'ACTIVE',
     },
   });
-  const token = signAccessToken(user);
+  const { accessToken: token } = await createAuthSession(user);
   return { user, token, password };
 }
 
@@ -175,12 +175,13 @@ export async function measureConcurrentInjectResponses<T>(params: {
 /**
  * テスト用のクライアントデバイスを作成
  */
-export async function createTestClientDevice(apiKey?: string): Promise<ClientDevice> {
+export async function createTestClientDevice(apiKey?: string, options: { isSignage?: boolean } = {}): Promise<ClientDevice> {
   const generatedKey = apiKey ?? `test-client-key-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const client = await prisma.clientDevice.create({
     data: {
       name: `Test Client ${new Date().toISOString()}`,
       apiKey: generatedKey,
+      isSignage: options.isSignage ?? false,
       // 拠点は明示設定だけで決まる（location からは推測しない）。第2工場はマイグレーションで登録済み。
       siteKey: '第2工場',
     },

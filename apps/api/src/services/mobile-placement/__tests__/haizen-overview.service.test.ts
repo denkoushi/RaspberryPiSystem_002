@@ -1,14 +1,15 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn(), zero2w: vi.fn(), resolve: vi.fn() }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { orderPlacementBranchState: { findMany: mocks.findMany }, haizenCurrentPlacement: { findMany: mocks.zero2w } } }));
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), zero2w: vi.fn(), resolve: vi.fn(), queryRaw: vi.fn() }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw, orderPlacementBranchState: { findMany: mocks.findMany }, haizenCurrentPlacement: { findMany: mocks.zero2w } } }));
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: mocks.resolve }));
 
 import { HAIZEN_OVERVIEW_LIMIT, listHaizenOverview } from '../haizen-overview.service.js';
 
 const row = { id: 'branch-1', branchNo: 1, manufacturingOrderBarcodeRaw: '123', shelfCodeRaw: '西-北-01', updatedAt: new Date('2026-10-22T00:00:00Z'), scheduleSnapshot: { FSEIBAN: ' BA1S2320 ', FHINCD: 'K0381', FHINMEI: '部品' } };
 
-beforeEach(() => { vi.clearAllMocks(); mocks.zero2w.mockResolvedValue([]); mocks.resolve.mockResolvedValue({ machineNames: { BA1S2320: 'ＲＶ－１２Ａ' } }); });
+beforeEach(() => { vi.clearAllMocks(); mocks.queryRaw.mockResolvedValue([]); mocks.zero2w.mockResolvedValue([]); mocks.resolve.mockResolvedValue({ machineNames: { BA1S2320: 'ＲＶ－１２Ａ' } }); });
 describe('haizen overview', () => {
   it('returns each current branch with snapshot fields and batched machine names', async () => {
     mocks.findMany.mockResolvedValue([row, { ...row, id: 'branch-2', branchNo: 2, shelfCodeRaw: '東-南-02' }]);
@@ -19,7 +20,7 @@ describe('haizen overview', () => {
     expect(result.rows[1]).toMatchObject({ branchNo: 2, shelfCodeRaw: '東-南-02' });
     expect(mocks.resolve).toHaveBeenCalledTimes(1);
     expect(mocks.resolve).toHaveBeenCalledWith(['BA1S2320', 'BA1S2320']);
-    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ take: 3001, orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }] }));
+    expect(mocks.findMany).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }] }));
   });
   it('merges both sources newest first, retaining source identity for colliding ids', async () => {
     mocks.findMany.mockResolvedValue([row]);
@@ -30,7 +31,7 @@ describe('haizen overview', () => {
       expect.objectContaining({ id: row.id, source: 'zero2w', branchNo: null, fseiban: 'BA1S2320', fhincd: 'K0381', fhinmei: '部品', machineName: 'ＲＶ－１２Ａ', updatedAt: '2026-10-23T00:00:00.000Z' }),
       expect.objectContaining({ id: row.id, source: 'branch', branchNo: 1 })
     ]);
-    expect(mocks.zero2w).toHaveBeenCalledWith(expect.objectContaining({ take: HAIZEN_OVERVIEW_LIMIT + 1, orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }] }));
+    expect(mocks.zero2w).toHaveBeenCalledWith(expect.objectContaining({ orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }] }));
   });
   it.each([HAIZEN_OVERVIEW_LIMIT, HAIZEN_OVERVIEW_LIMIT + 1])('applies the limit to %i combined rows', async count => {
     mocks.findMany.mockResolvedValue(Array.from({ length: count - 1 }, (_, id) => ({ ...row, id: String(id) })));
@@ -56,6 +57,51 @@ describe('haizen overview', () => {
     const result = await listHaizenOverview();
     expect(result.rows).toHaveLength(HAIZEN_OVERVIEW_LIMIT);
     expect(result.truncated).toBe(count > HAIZEN_OVERVIEW_LIMIT);
+  });
+  it('fills the active limit and computes truncation after excluding completed rows', async () => {
+    mocks.findMany.mockResolvedValue([
+      ...Array.from({ length: HAIZEN_OVERVIEW_LIMIT }, (_, id) => ({ ...row, id: `done-${id}`, manufacturingOrderBarcodeRaw: 'done' })),
+      ...Array.from({ length: HAIZEN_OVERVIEW_LIMIT }, (_, id) => ({ ...row, id: `active-${id}` })),
+    ]);
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('mobile_slip_verify_records') ? [] : [{ productNo: 'done' }]);
+    const result = await listHaizenOverview();
+    expect(result.rows).toHaveLength(HAIZEN_OVERVIEW_LIMIT);
+    expect(result.rows.every(row => row.id.startsWith('active-'))).toBe(true);
+    expect(result.truncated).toBe(false);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(3);
+  });
+  it('batches Excel dates once by snapshot seiban, including aliases and missing rows', async () => {
+    const seibans = ['BA1S2320', '(BA1S2320)', 'MISSING'];
+    mocks.findMany.mockResolvedValue(seibans.map((fseiban, id) => ({ ...row, id: String(id), scheduleSnapshot: { FSEIBAN: fseiban } })));
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('ProductionScheduleDScheduleMinutes') ? [
+      { fseiban: seibans[0], partsCompleteDate: new Date('2026-11-07T00:00:00Z'), surfaceSendOutDates: [{ date: '2026-11-10', label: '★', note: '' }, { date: '2026-11-08', label: '', note: '' }, { date: 'invalid' }] },
+      { fseiban: seibans[1], isAlias: true, aliasOf: seibans[0], partsCompleteDate: new Date('2026-11-07T00:00:00Z'), surfaceSendOutDates: [{ date: '2026-11-08', label: '', note: '' }] }
+    ] : []);
+    const result = await listHaizenOverview();
+    expect(result.rows.map(({ dueDate, sendOutDate }) => ({ dueDate, sendOutDate }))).toEqual([
+      { dueDate: '2026-11-07', sendOutDate: '2026-11-08' },
+      { dueDate: '2026-11-07', sendOutDate: '2026-11-08' },
+      { dueDate: null, sendOutDate: null }
+    ]);
+    const calls = mocks.queryRaw.mock.calls.filter(([sql]) => sql.join('').includes('ProductionScheduleDScheduleMinutes'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].join('')).toContain('ANY(');
+    expect(calls[0].at(-1)).toEqual(seibans);
+  });
+  it('batches normalized manufacturing and purchase verification using the correct record sides', async () => {
+    mocks.findMany.mockResolvedValue([
+      { ...row, manufacturingOrderBarcodeRaw: '　123 \t' },
+      { ...row, id: 'purchase', slipKind: 'purchase_order', manufacturingOrderBarcodeRaw: '　4501238876 ' },
+      { ...row, id: 'unverified', manufacturingOrderBarcodeRaw: '4501238876' }
+    ]);
+    mocks.queryRaw.mockImplementation(async (sql: TemplateStringsArray) => sql.join('').includes('mobile_slip_verify_records')
+      ? [{ transferOrderBarcodeRaw: ' 123　', actualOrderBarcodeRaw: ' 4501238876　' }] : []);
+    const result = await listHaizenOverview();
+    expect(result.rows.map(row => [row.id, row.verified])).toEqual([['branch-1', true], ['purchase', true], ['unverified', false]]);
+    const calls = mocks.queryRaw.mock.calls.filter(([sql]) => sql.join('').includes('mobile_slip_verify_records'));
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].join('')).toContain("outcome = 'match'");
+    expect(calls[0].slice(1)).toEqual([['123', '4501238876'], ['4501238876']]);
   });
   it('handles no current branches', async () => {
     mocks.findMany.mockResolvedValue([]);

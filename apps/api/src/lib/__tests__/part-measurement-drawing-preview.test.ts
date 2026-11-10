@@ -1,3 +1,4 @@
+import sharp from 'sharp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../errors.js';
@@ -63,7 +64,7 @@ describe('convertDrawingUploadToPreviewBuffer', () => {
   });
 
   it('converts tiff to jpeg without storage write', async () => {
-    const tiff = Buffer.from([0x49, 0x49, 0x2a, 0x00, 0x08, 0x00]);
+    const tiff = await sharp({ create: { width: 2, height: 2, channels: 3, background: 'white' } }).tiff().toBuffer();
     const jpeg = Buffer.from('jpeg-from-tiff');
     vi.mocked(convertTiffBufferToJpeg).mockResolvedValue(jpeg);
     const saveSpy = vi.spyOn(PartMeasurementDrawingStorage, 'saveDrawing');

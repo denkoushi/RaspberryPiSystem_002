@@ -1,6 +1,6 @@
 ---
 repo_path: "{{ project_root | default('/opt/RaspberryPiSystem_002') }}"
-repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/denkoushi/RaspberryPiSystem_002.git', true) }}"
+repo_remote: "{{ lookup('env', 'RASPI_SYSTEM_REPO') | default('https://github.com/' ~ raspisys_github_owner ~ '/RaspberryPiSystem_002.git', true) }}"
 repo_version: "{{ lookup('env', 'ANSIBLE_REPO_VERSION') | default('main', true) }}"
 git_deploy_key: "{{ lookup('env', 'RASPI_SYSTEM_DEPLOY_KEY') | default('', true) }}"
 git_environment: "{{ {} if (git_deploy_key | trim) == '' else {'GIT_SSH_COMMAND': 'ssh -i ' ~ git_deploy_key ~ ' -o StrictHostKeyChecking=no'} }}"
@@ -11,3 +11,7 @@ backup_service_files:
   - status-agent.timer
   - kiosk-browser.service
   - signage-lite.service
+
+# SHA-256 of pkgs.tailscale.com/stable/debian/<codename>.noarmor.gpg (same file for debian and raspbian, bullseye to trixie, checked 2026-11-09).
+# To refresh: download that key, verify its fingerprint, and run sha256sum on it.
+tailscale_keyring_sha256: "3e03dacf222698c60b8e2f990b809ca1b3e104de127767864284e6c228f1fb39"

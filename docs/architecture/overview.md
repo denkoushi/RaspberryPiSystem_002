@@ -70,13 +70,13 @@ PDF/Excelファイルの閲覧・管理機能（将来実装予定）。
 
 - **フレームワーク**: Fastify
 - **ORM**: Prisma
-- **データベース**: PostgreSQL 15
+- **データベース**: PostgreSQL 18（`pgvector/pgvector:pg18`）
 - **認証**: JWT
 - **言語**: TypeScript
 
 ### フロントエンド
 
-- **フレームワーク**: React 18
+- **フレームワーク**: React 19
 - **ビルドツール**: Vite
 - **状態管理**: XState, React Query
 - **スタイリング**: TailwindCSS
@@ -84,7 +84,7 @@ PDF/Excelファイルの閲覧・管理機能（将来実装予定）。
 
 ### インフラ
 
-- **コンテナ**: Docker, Docker Compose
+- **コンテナ**: Docker, Docker Compose（Pi5 の API/Web は `docker-compose.phase3.yml` の blue/green 構成、DB は `docker-compose.server.yml` の `db`）
 - **リバースプロキシ**: Caddy
 - **OS**: Raspberry Pi OS 64bit
 
@@ -206,7 +206,8 @@ RaspberryPiSystem_002/
 
 ## 関連ドキュメント
 
-- [クライアントデバイス統合アーキテクチャ](./client-device-integration.md) - デバイス統合パターンと拡張性
-- [モジュール構成](./modules.md)
-- [データベース設計](./database.md)
+- [インフラ基盤](./infrastructure-base.md)
+- [デプロイ基盤アーキテクチャ](./deployment-modules.md)
+- [工具管理モジュール](../modules/tools/README.md)（他モジュールも `docs/modules/` 配下）
+- [データベース関連ナレッジ](../knowledge-base/database.md)
 - [EXEC_PLAN.md](../../EXEC_PLAN.md) - 全体の進捗とマイルストーン

@@ -21,7 +21,7 @@
 0. **追加検証（2026-01-18）: 不要ポート露出の削減 + デプロイ完了確認**
    - ✅ `rpcbind/avahi/exim4/cups` を stop+disable+mask し、LISTEN/UNCONN を削減
    - ✅ `security-monitor` の `ports-unexpected` を「外部露出 + プロセス込み」に改善し、Tailscale/loopback/link-local を除外
-   - ✅ ベースライン証跡を保存: [ports baseline (2026-01-18)](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+   - ✅ ベースライン証跡を保存: [ports baseline (2026-01-18)](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
    - ✅ デプロイ完了確認: `feat/ports-hardening-20260118`ブランチをPi5にデプロイし、`harden-server-ports.yml`を実行
    - ✅ 設定維持確認: Gmail/Dropboxの設定（`backup.json`）が維持されていることを確認
    - ✅ アラート解消確認: `ports-unexpected`アラートの新規発生なし（ノイズが解消）

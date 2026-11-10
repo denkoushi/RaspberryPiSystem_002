@@ -50,12 +50,12 @@ date: 2026-04-02
 ## Verification（境界整理・実機・2026-04-11）
 
 - **ブランチ**: `feat/ocr-vlm-boundary-refactor`（コミット `b0f4a180`）。**変更**: `VisionCompletionPort` を `inference/ports` へ集約、`RoutedVisionCompletionAdapter` に **`useCase` 注入**、OCR を `services/ocr` へ移動（挙動互換・`KIOSK_DOCUMENT_*` 維持）。
-- **デプロイ・検証**: [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) のとおり Pi5→Pi4×4→Pi3 順次、`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**。
+- **デプロイ・検証**: [KB-340](../archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md) のとおり Pi5→Pi4×4→Pi3 順次、`verify-phase12-real.sh` **PASS 43 / WARN 0 / FAIL 0**。
 
 ## References
 
 - 実装: `apps/api/src/services/inference/`（OCR 契約は `apps/api/src/services/ocr/`・Vision 契約は `inference/ports/vision-completion.port.ts`）
-- 境界整理の本番記録: [KB-340](../knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)
+- 境界整理の本番記録: [KB-340](../archive/knowledge-base/KB-340-api-ocr-vlm-boundary-refactor-deploy.md)
 - 要領書: [kiosk-documents.md](../runbooks/kiosk-documents.md)
 - LocalLLM 運用: [local-llm-tailscale-sidecar.md](../runbooks/local-llm-tailscale-sidecar.md)
 - 既存: [ADR-20260329](./ADR-20260329-local-llm-pi5-api-operations.md)

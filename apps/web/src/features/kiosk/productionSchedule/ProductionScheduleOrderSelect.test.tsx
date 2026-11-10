@@ -7,16 +7,14 @@ import { ProductionScheduleOrderSelect } from './ProductionScheduleOrderSelect';
 import { useProductionScheduleMutations } from './useProductionScheduleMutations';
 
 const mocks = vi.hoisted(() => ({
-  updateOrder: vi.fn(),
-  updateSplitOrder: vi.fn()
+  updateOrder: vi.fn()
 }));
 
 vi.mock('../../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../../api/client')>();
   return {
     ...original,
-    updateKioskProductionScheduleOrder: mocks.updateOrder,
-    updateKioskProductionScheduleSplitOrder: mocks.updateSplitOrder
+    updateKioskProductionScheduleOrder: mocks.updateOrder
   };
 });
 
@@ -118,7 +116,6 @@ function deferred<T>() {
 
 beforeEach(() => {
   mocks.updateOrder.mockReset();
-  mocks.updateSplitOrder.mockReset();
 });
 
 test('keeps immediate display through the real manual-order mutation and follows correction or rollback', async () => {

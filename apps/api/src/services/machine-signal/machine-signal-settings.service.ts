@@ -2,6 +2,7 @@ import type { MachineSignalSensor, Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
+import { normalizeMachineNameForCompare } from '../production-schedule/machine-name-compare.js';
 import {
   DEFAULT_SIGNAL_THRESHOLDS,
   type SignalCategoryOverrides,
@@ -25,6 +26,7 @@ export type MachineSignalSettingsDto = {
 export type MachineSignalSensorDto = {
   signalNo: number;
   sourceMachineName: string;
+  resourceCd: string | null;
   displayName: string | null;
   site: string | null;
   kind: MachineSignalSensorKind;
@@ -36,7 +38,7 @@ export type MachineSignalSensorDto = {
   categoryOverrides: SignalCategoryOverrides;
 };
 
-export type MachineSignalSensorUpdate = Omit<MachineSignalSensorDto, 'signalNo' | 'sourceMachineName'>;
+export type MachineSignalSensorUpdate = Omit<MachineSignalSensorDto, 'signalNo' | 'sourceMachineName' | 'resourceCd'> & { resourceCd?: string | null };
 
 /** 保存済みのしきい値に欠けや不正な値があっても、既定値で埋めて返す。 */
 export function normalizeSignalThresholds(value: unknown): SignalThresholds {
@@ -64,6 +66,7 @@ export function toMachineSignalSensorDto(row: MachineSignalSensor): MachineSigna
   return {
     signalNo: row.signalNo,
     sourceMachineName: row.sourceMachineName,
+    resourceCd: row.resourceCd,
     displayName: row.displayName,
     site: row.site,
     kind: MACHINE_SIGNAL_SENSOR_KINDS.includes(row.kind as MachineSignalSensorKind)
@@ -161,6 +164,7 @@ export async function updateMachineSignalSensor(
   const row = await prisma.machineSignalSensor.update({
     where: { signalNo },
     data: {
+      resourceCd: input.resourceCd === undefined ? undefined : normalizeMachineNameForCompare(input.resourceCd) || null,
       displayName: input.displayName?.trim() || null,
       site: input.site?.trim() || null,
       kind: input.kind,

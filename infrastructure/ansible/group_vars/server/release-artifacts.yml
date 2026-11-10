@@ -2,7 +2,7 @@
 # CI-built image promotion is opt-in. The accepted local Pi5 builder remains
 # the default unless one production host explicitly enables promotion.
 pi5_artifact_promotion_enabled: false
-pi5_artifact_ghcr_username: "denkoushi"
+pi5_artifact_ghcr_username: "{{ raspisys_github_owner }}"
 # Debian stable currently ships a gh build without the attestation command.
 # Pin an immutable upstream ARM64 package and its published SHA-256 so the
 # production verifier contract does not depend on the distro package version.

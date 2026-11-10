@@ -18,6 +18,8 @@ update-frequency: low
 
 ## 現在のAPIキー構成
 
+> 2025-12 時点の履歴。現行は各キオスクの status agent・NFC agent・torque agent・ブラウザ起動URLが `host_vars/<host>/vault.yml` の端末ごとの credential を共有する（[security-client-key-rotation-phase-b](../plans/security-client-key-rotation-phase-b.md)）。
+
 | APIキー | クライアントID | 用途 | 初期表示モード |
 |---------|---------------|------|--------------|
 | `client-demo-key` | `5c88681a-1f1c-4c7f-a5c7-fbfc0a7387a2` | デモ・開発用 | `TAG` (2タグスキャン) |
@@ -45,7 +47,7 @@ update-frequency: low
 **コード例**:
 
 ```typescript
-// apps/web/src/api/client.ts
+// apps/web/src/api/domains/tools.ts
 export async function getActiveLoans(clientId?: string, clientKey: string = 'client-demo-key') {
   // キオスク画面では全件表示するため、clientIdを送信しない
   const { data } = await api.get<{ loans: Loan[] }>('/tools/loans/active', {
@@ -60,10 +62,13 @@ export async function getActiveLoans(clientId?: string, clientKey: string = 'cli
 // apps/api/src/routes/tools/loans/active.ts
 // キオスク画面では、クライアントキー認証があっても全件表示する
 // clientIdがクエリパラメータで明示的に指定されている場合のみフィルタリング
-const loans = await loanService.findActive({ clientId: query.clientId || undefined });
+const filterClientId = query.clientId && query.clientId.trim() !== '' ? query.clientId : undefined;
+const loans = await loanService.findActive({ clientId: filterClientId });
 ```
 
 ### 2. APIキーの用途
+
+> 2025-12 時点の履歴（現行は上記「現在のAPIキー構成」の注記を参照）。
 
 | APIキー | 用途 | 説明 |
 |---------|------|------|
@@ -87,28 +92,24 @@ const loans = await loanService.findActive({ clientId: query.clientId || undefin
 
 ```typescript
 // apps/api/src/routes/tools/loans/active.ts
-app.get('/active', async (request, reply) => {
+app.get('/active', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request, reply) => {
   const query = activeLoanQuerySchema.parse(request.query);
-  let resolvedClientId = query.clientId;
-  let allowWithoutAuth = false;
-
-  // クライアントキーがあれば優先的にデバイス認証とみなす
   const headerKey = request.headers['x-client-key'];
   if (headerKey) {
-    // clientIdがクエリパラメータで指定されていない場合のみ、クライアントキーから解決
-    if (!resolvedClientId) {
-      resolvedClientId = await loanService.resolveClientId(undefined, headerKey);
-    } else {
-      // clientIdが指定されている場合は検証のみ
-      await loanService.resolveClientId(resolvedClientId, headerKey);
+    try {
+      await loanService.resolveClientId(query.clientId, headerKey);
+    } catch (error) {
+      // 管理画面は既定キーとJWTを同時に送るため、キーが通らなければJWTで判定する
+      if (!request.headers.authorization) throw error;
+      await canView(request, reply);
     }
-    allowWithoutAuth = true;
+  } else {
+    await canView(request, reply);
   }
-
-  // キオスク画面では全件表示するため、クエリパラメータのclientIdのみを使用
-  const loans = await loanService.findActive({ clientId: query.clientId || undefined });
-
-  return { loans };
+  // 全件表示。clientIdが明示指定された場合のみ絞り込む（空文字はundefined）
+  const filterClientId = query.clientId && query.clientId.trim() !== '' ? query.clientId : undefined;
+  const loans = await loanService.findActive({ clientId: filterClientId });
+  return { loans: loans.map(toLoanResponse) };
 });
 ```
 
@@ -118,11 +119,12 @@ app.get('/active', async (request, reply) => {
 
 ```typescript
 // apps/web/src/pages/kiosk/KioskReturnPage.tsx
-const [localClientKey] = useLocalStorage('kiosk-client-key', 'client-demo-key');
-const [localClientId] = useLocalStorage('kiosk-client-id', '');
+const resolvedClientKey = providedClientKey || getResolvedClientKey();
 
-// clientIdは送信しない（全件表示のため）
-const loansQuery = useActiveLoans(undefined, localClientKey);
+// clientIdは送信しない（全件表示のため）。propsでloansQueryが渡された場合は取得しない
+const ownLoansQuery = useActiveLoans(undefined, resolvedClientKey, {
+  enabled: !providedLoansQuery
+});
 ```
 
 ```typescript
@@ -133,12 +135,11 @@ const loansQuery = useActiveLoans(undefined, resolvedClientKey);
 
 ## 今後の改善案
 
-1. **APIキーの統一**: すべてのキオスクで`client-demo-key`を使用し、設定（`defaultMode`など）は別の方法で管理する
-2. **カメラAPIの権限管理**: ブラウザのカメラAPIの権限をより明確に管理する
-3. **フィルタリングオプション**: 管理画面などで、特定のclientIdでフィルタリングするオプションを追加する
+1. **カメラAPIの権限管理**: ブラウザのカメラAPIの権限をより明確に管理する
+2. **フィルタリングオプション**: 管理画面などで、特定のclientIdでフィルタリングするオプションを追加する
 
 ## 関連ドキュメント
 
 - [API仕様書](../modules/tools/api.md)
 - [認証API](../api/auth.md)
-- [キオスク設定ガイド](./kiosk-setup.md)
+- [新規クライアント端末の初期設定手順](./client-initial-setup.md)

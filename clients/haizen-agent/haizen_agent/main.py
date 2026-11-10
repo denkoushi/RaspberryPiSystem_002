@@ -47,6 +47,7 @@ def main() -> None:
                 api_base_url=cfg.api_base_url,
                 x_client_key=cfg.x_client_key,
                 tls_skip_verify=cfg.tls_skip_verify,
+                tls_ca_file=cfg.tls_ca_file,
                 manufacturing_order_barcode_raw=token.raw,
                 distribution_number=dist,
                 raw_barcode=token.raw,

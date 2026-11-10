@@ -15,7 +15,7 @@ vi.mock('../procedure-video.scheduler.js', () => ({ getProcedureVideoScheduler: 
 const bytes = Buffer.from('video bytes');
 function message(mimeType = 'video/mp4', size = bytes.length, inline = false, filename = '手順.mp4'): GmailMessage {
   return { id: 'gmail-1', threadId: 't', labelIds: [], snippet: '', internalDateMs: 0,
-    payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Subject', value: '[Procedure-material] 手順' }, { name: 'From', value: 'sender@thkintechs.co.jp' }], parts: [{ partId: '2', filename, mimeType, headers: [{ name: 'Content-Disposition', value: inline ? 'inline' : 'attachment' }], body: { attachmentId: 'a', size } }] } };
+    payload: { mimeType: 'multipart/mixed', headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[Procedure-material] 手順' }, { name: 'From', value: 'sender@thkintechs.co.jp' }], parts: [{ partId: '2', filename, mimeType, headers: [{ name: 'Content-Disposition', value: inline ? 'inline' : 'attachment' }], body: { attachmentId: 'a', size } }] } };
 }
 
 describe('procedure-video Gmail', () => {
@@ -52,7 +52,7 @@ describe('procedure-video Gmail', () => {
     expect(rows).toHaveLength(1); expect(rows[0]).toMatchObject({ status: 'PENDING', title: '手順', sourceContentType: 'video/mp4', sourceByteSize: bytes.length });
     expect(store.write).toHaveBeenCalledWith({ key: `procedure-videos/incoming/${createHash('sha256').update(bytes).digest('hex')}/original`, data: bytes, mode: 'create', integrity: true });
     expect(gmail.getAttachment).toHaveBeenCalledOnce(); expect(kick).toHaveBeenCalled();
-    gmail.getMessage.mockResolvedValue({ ...message(), payload: { ...message().payload, headers: [{ name: 'Subject', value: '[Procedure-material]' }, { name: 'From', value: 'sender@example.com' }] } });
+    gmail.getMessage.mockResolvedValue({ ...message(), payload: { ...message().payload, headers: [{ name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: '[Procedure-material]' }, { name: 'From', value: 'sender@example.com' }] } });
     expect(await service.runOnce(options)).toMatchObject({ skipped: 1, saved: 0 });
   });
   it('reuses identical shared original bytes and rejects identity conflicts', async () => {

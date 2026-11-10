@@ -111,6 +111,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",
@@ -169,6 +170,38 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("--merge-reports=vitest-blob --coverage", coverage)
         self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
 
+    def test_web_shards_and_enforces_thresholds_on_merged_coverage(self) -> None:
+        web = job_block(CI, "web")
+        for shard in ("1/3", "2/3", "3/3"):
+            self.assertIn(f'shard: "{shard}"', web)
+        self.assertIn("fail-fast: false", web)
+        self.assertEqual(web.count("build: true"), 1)
+        self.assertIn('shard: "1/3", shard_id: "1-of-3", build: true', web)
+        self.assertIn("pnpm --filter @raspi-system/web test:coverage --shard=${{ matrix.shard }}", web)
+        self.assertIn("--reporter=default --reporter=blob", web)
+        self.assertIn("--outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json", web)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'false'", web)
+        self.assertIn("if-no-files-found: error", web)
+        self.assertIn("retention-days: 1", web)
+        self.assertEqual(web.count("name: Build Web"), 1)
+        self.assertIn("name: Build Web\n        if: matrix.build", web)
+
+        coverage = job_block(CI, "web-coverage")
+        self.assertIn("needs: [change-classification, web]", coverage)
+        web_if = next(line for line in web.splitlines() if line.startswith("    if:"))
+        self.assertIn(web_if, coverage)
+        self.assertIn("pattern: web-blob-*", coverage)
+        self.assertIn("merge-multiple: true", coverage)
+        self.assertIn("working-directory: apps/web", coverage)
+        self.assertIn("test \"$(find vitest-blob -name 'blob-*.json' | wc -l)\" -eq 3", coverage)
+        self.assertIn("pnpm exec vitest run --merge-reports=vitest-blob --coverage --coverage.provider=v8", coverage)
+        self.assertIn("COVERAGE_ENFORCE_THRESHOLDS: 'true'", coverage)
+        self.assertIn("path: apps/web/coverage/", coverage)
+        aggregate = job_block(CI, "ci-required")
+        self.assertIn("WEB_COVERAGE_RESULT: ${{ needs['web-coverage'].result }}", aggregate)
+        self.assertIn('"web=$WEB_SELECTED:$WEB_RESULT"', aggregate)
+        self.assertIn('"web-coverage=$WEB_SELECTED:$WEB_COVERAGE_RESULT"', aggregate)
+
     def test_e2e_is_sharded_and_reports_retried_passes(self) -> None:
         e2e = job_block(CI, "e2e-tests")
         for shard in ("1/3", "2/3", "3/3"):
@@ -198,6 +231,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
             "api",
             "api-coverage",
             "web",
+            "web-coverage",
             "db-infra",
             "deploy-contract",
             "container-runtime-rehearsal",
@@ -265,7 +299,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("id: publish", publish)
         self.assertEqual(
             publish.count(
-                "image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}"
+                "image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/${{ matrix.repository }}@${{ steps.publish.outputs.digest }}"
             ),
             2,
         )
@@ -303,7 +337,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertIn("attestations: write", publish)
         self.assertIn("id-token: write", publish)
         self.assertIn("actions/download-artifact@v8", publish)
-        self.assertIn("ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}", publish)
+        self.assertIn("ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage:${{ github.sha }}", publish)
         self.assertIn("predicate-path: signage-release-attestation.json", publish)
         self.assertIn("push-to-registry: true", publish)
         self.assertIn("gh version 2.96.0", publish)
@@ -395,7 +429,7 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("docker image tag", adoption)
 
         self.assertIn("git diff --exit-code", compatibility)
-        self.assertIn("a926af9a92ba82de56f4ae152391a061d8c4449a", compatibility)
+        self.assertIn("ba05e50be26f0d159b8233c36da7d281f91e3b02", compatibility)
         source_proof = compatibility.split(
             "Prove the adopted torque-agent source closure is unchanged", 1
         )[1].split("Setup pnpm workspace", 1)[0]
@@ -531,10 +565,12 @@ class StagedCiWorkflowTests(unittest.TestCase):
         self.assertNotIn("SOURCE_CLOSURE_UNCHANGED", required)
 
     def test_torque_workflow_identity_matches_adoption_contract_constants(self) -> None:
+        resolved = TORQUE_RELEASE.replace(
+            "ghcr.io/${{ steps.ghcr.outputs.owner }}/", release_contract.GHCR_NAMESPACE + "/"
+        ).replace("${{ github.repository }}", release_contract.SOURCE_REPOSITORY)
         expected_lines = (
             f"            {release_contract.TORQUE_ADOPTED_SOURCE_SHA} \\",
             f"          BASELINE_SHA: {release_contract.TORQUE_ADOPTED_SOURCE_SHA}",
-            f"          TORQUE_REFERENCE: {release_contract.TORQUE_AGENT_REPOSITORY}@{adoption_contract.INDEX_DIGEST}",
             f"            echo 'repository={release_contract.TORQUE_AGENT_REPOSITORY}'",
             f"            echo 'index_digest={adoption_contract.INDEX_DIGEST}'",
             f"            echo 'source_sha={release_contract.TORQUE_ADOPTED_SOURCE_SHA}'",
@@ -547,12 +583,13 @@ class StagedCiWorkflowTests(unittest.TestCase):
         )
         for line in expected_lines:
             with self.subTest(line=line):
-                self.assertIn(line, TORQUE_RELEASE)
-        image_reference = (
-            f"          image-ref: {release_contract.TORQUE_AGENT_REPOSITORY}@"
-            f"{adoption_contract.INDEX_DIGEST}"
+                self.assertIn(line, resolved)
+        fixed_references = re.findall(
+            r"(?:TORQUE_REFERENCE|image-ref): (ghcr\.io/[^\s]+@" + adoption_contract.INDEX_DIGEST + ")",
+            TORQUE_RELEASE,
         )
-        self.assertEqual(TORQUE_RELEASE.count(image_reference), 2)
+        self.assertEqual(len(fixed_references), 3)
+        self.assertEqual(len(set(fixed_references)), 1)
 
     def test_torque_v2_cannot_block_normal_release_or_required_pr_checks(self) -> None:
         required = job_block(CI, "ci-required")

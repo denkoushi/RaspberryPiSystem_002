@@ -10,7 +10,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constan
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule/production-schedule-effective-completion.sql.js';
 import { buildMaxProductNoWinnerCondition } from '../production-schedule/row-resolver/index.js';
 
-type PurchasePart = {
+export type PurchasePart = {
   seiban: string;
   purchasePartCodeMatchKey: string;
   purchasePartCodeNormalized: string;
@@ -46,11 +46,20 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
 
   const rows = await listPurchasePlannedStartCandidates(seibans);
 
-  type SelectedDate = { productNo: bigint; completed: boolean; date: Date };
-  const byMatchKey = new Map<string, SelectedDate>();
-  const byNormalizedCode = new Map<string, SelectedDate>();
-  const byPartName = new Map<string, SelectedDate>();
-  const keepPreferred = (map: Map<string, SelectedDate>, seiban: string, part: string, candidate: SelectedDate) => {
+  return resolvePurchasePlannedStartCandidates(purchaseRows, rows).map((candidate) => candidate?.date ?? null);
+}
+
+export type SelectedPurchaseCandidate = { productNo: bigint; completed: boolean; date: Date };
+
+/** Shared selection for purchase lookup dates and current-placement completion. */
+export function resolvePurchasePlannedStartCandidates(
+  purchaseRows: PurchasePart[],
+  rows: ScheduleCandidate[]
+): Array<SelectedPurchaseCandidate | null> {
+  const byMatchKey = new Map<string, SelectedPurchaseCandidate>();
+  const byNormalizedCode = new Map<string, SelectedPurchaseCandidate>();
+  const byPartName = new Map<string, SelectedPurchaseCandidate>();
+  const keepPreferred = (map: Map<string, SelectedPurchaseCandidate>, seiban: string, part: string, candidate: SelectedPurchaseCandidate) => {
     if (!seiban.trim() || !part.trim()) return;
     const key = lookupKey(seiban, part);
     const previous = map.get(key);
@@ -70,16 +79,16 @@ export async function findEarliestPlannedStartDatesForPurchaseRows(
   }
 
   return purchaseRows.map((row) =>
-    byMatchKey.get(lookupKey(row.seiban, row.purchasePartCodeMatchKey))?.date ??
-    byNormalizedCode.get(lookupKey(row.seiban, row.purchasePartCodeNormalized))?.date ??
-    byPartName.get(lookupKey(row.seiban, normalizePartName(row.purchasePartName)))?.date ??
+    byMatchKey.get(lookupKey(row.seiban, row.purchasePartCodeMatchKey)) ??
+    byNormalizedCode.get(lookupKey(row.seiban, row.purchasePartCodeNormalized)) ??
+    byPartName.get(lookupKey(row.seiban, normalizePartName(row.purchasePartName))) ??
     null
   );
 }
 
 /** Full schedule-derived candidates for independent mobile display data. */
-export async function listPurchasePlannedStartCandidates(seibans?: string[]): Promise<ScheduleCandidate[]> {
-  return await prisma.$queryRaw<ScheduleCandidate[]>`
+export async function listPurchasePlannedStartCandidates(seibans?: string[], db: Pick<Prisma.TransactionClient, '$queryRaw'> = prisma): Promise<ScheduleCandidate[]> {
+  return await db.$queryRaw<ScheduleCandidate[]>`
     SELECT
       COALESCE(r."rowData"->>'FSEIBAN', '') AS seiban,
       COALESCE(r."rowData"->>'FHINCD', '') AS fhincd,

@@ -96,6 +96,9 @@ export const inspectionRecordQuerySchema = z.object({
 });
 
 export const instrumentBorrowSchema = z.object({
+  inspectionItemIds: z.array(z.string().guid()).max(100).optional(),
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   instrumentTagUid: z.string().min(1).optional(),
   instrumentId: z.string().guid().optional(),
   employeeTagUid: z.string().min(1),
@@ -105,6 +108,8 @@ export const instrumentBorrowSchema = z.object({
 });
 
 export const instrumentReturnSchema = z.object({
+  eventKey: z.string().uuid().optional(),
+  readAt: z.coerce.date().optional(),
   loanId: z.string().guid(),
   clientId: z.string().guid().optional(),
   performedByUserId: z.string().guid().optional(),

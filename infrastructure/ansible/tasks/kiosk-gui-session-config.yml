@@ -1,0 +1,75 @@
+---
+- name: Prepare files for the dedicated GUI session
+  when: kiosk_unprivileged_session_enabled | default(false) | bool
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  block:
+    - name: Create the dedicated GUI configuration directories
+      ansible.builtin.file:
+        path: '{{ kiosk_gui_home }}/.config/{{ item }}'
+        state: directory
+        owner: '{{ kiosk_gui_user }}'
+        group: '{{ kiosk_gui_user }}'
+        mode: '0755'
+      loop:
+        - autostart
+        - labwc
+
+    - name: Seed the dedicated labwc configuration from the OS defaults
+      ansible.builtin.copy:
+        src: /etc/xdg/labwc/rc.xml
+        dest: '{{ kiosk_gui_home }}/.config/labwc/rc.xml'
+        remote_src: true
+        force: false
+        owner: '{{ kiosk_gui_user }}'
+        group: '{{ kiosk_gui_user }}'
+        mode: '0644'
+
+    - name: Read the OS keyboard layout for the dedicated GUI session
+      ansible.builtin.slurp:
+        src: /etc/default/keyboard
+      register: kiosk_gui_os_keyboard
+
+    - name: Apply the OS keyboard layout to the dedicated labwc session
+      ansible.builtin.copy:
+        dest: '{{ kiosk_gui_home }}/.config/labwc/environment'
+        owner: '{{ kiosk_gui_user }}'
+        group: '{{ kiosk_gui_user }}'
+        mode: '0644'
+        content: |
+          {% for key in ['MODEL', 'LAYOUT', 'VARIANT', 'OPTIONS'] %}
+          XKB_DEFAULT_{{ key }}={{ (kiosk_gui_os_keyboard_text | regex_search('(?m)^XKB' ~ key ~ '="?([^"\n]*)', '\1') or ['']) | first }}
+          {% endfor %}
+      vars:
+        kiosk_gui_os_keyboard_text: '{{ kiosk_gui_os_keyboard.content | b64decode }}'
+
+    - name: Prepare Japanese input for the dedicated GUI session
+      ansible.builtin.include_role:
+        name: kiosk
+        tasks_from: '{{ item }}'
+        apply:
+          environment:
+            LC_ALL: C.UTF-8
+            LANG: C.UTF-8
+            LANGUAGE: ''
+      vars:
+        terminal_release_mode: full
+        ibus_reconcile_on_deploy: false
+      loop:
+        - ibus-process-owner
+        - ibus-settings
+
+    - name: Prepare the dedicated Firefox profile when selected
+      ansible.builtin.include_role:
+        name: kiosk
+        tasks_from: firefox-chrome
+        apply:
+          environment:
+            LC_ALL: C.UTF-8
+            LANG: C.UTF-8
+            LANGUAGE: ''
+      vars:
+        terminal_release_mode: full
+      when: kiosk_browser_engine_resolved | default('chromium') == 'firefox'

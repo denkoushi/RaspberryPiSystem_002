@@ -125,10 +125,10 @@ export async function getKioskSignagePreviewOptions(): Promise<KioskSignagePrevi
 }
 
 export async function putKioskSignagePreviewSelection(payload: {
-  signagePreviewTargetClientDeviceId: string | null;
-}): Promise<{ ok: true; signagePreviewTargetClientDeviceId: string | null }> {
+  signagePreviewTargetDeviceId: string | null;
+}): Promise<{ ok: true; signagePreviewTargetDeviceId: string | null }> {
   const key = resolveClientKey({ allowDefaultFallback: true }).key;
-  const { data } = await api.put<{ ok: true; signagePreviewTargetClientDeviceId: string | null }>(
+  const { data } = await api.put<{ ok: true; signagePreviewTargetDeviceId: string | null }>(
     '/kiosk/signage-preview/selection',
     payload,
     { headers: { 'x-client-key': key } }
@@ -219,7 +219,7 @@ export async function getKioskPalletVisualizationHistory(
 }
 
 export async function postKioskPalletVisualizationItem(
-  payload: { machineCd: string; palletNo: number; manufacturingOrderBarcodeRaw: string },
+  payload: { machineCd: string; palletNo: number; manufacturingOrderBarcodeRaw: string; eventKey?: string; readAt?: string },
   clientKey?: string
 ) {
   const { data } = await api.post<{ id: string }>('/kiosk/pallet-visualization/items', payload, {
@@ -230,7 +230,7 @@ export async function postKioskPalletVisualizationItem(
 
 export async function postKioskPalletVisualizationItemReplace(
   itemId: string,
-  payload: { manufacturingOrderBarcodeRaw: string },
+  payload: { manufacturingOrderBarcodeRaw: string; eventKey?: string; readAt?: string },
   clientKey?: string
 ) {
   const { data } = await api.post<{ id: string }>(

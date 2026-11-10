@@ -9,7 +9,7 @@
  *
  * Rules (decided with the user on 2026-09-26):
  * - Registered seibans: keep the target order and append source seibans the
- *   target does not have, in source order (limit 50).
+ *   target does not have, in source order (limit 100).
  * - Per-item overrides: move source overrides whose item is not overridden in
  *   the target; the target wins on conflicts (conflicting source rows stay
  *   where they are). Moved overrides lose `alternateRank` so they cannot
@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { prisma } from '../dist/lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../dist/services/production-schedule/constants.js';
 
-const REGISTERED_SEIBAN_MAX = 50;
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX as REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 
 function parseArgs(argv) {
   const args = { source: '', target: '', apply: false, assignDevices: false, backup: '', restore: '' };

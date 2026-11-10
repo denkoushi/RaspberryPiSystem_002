@@ -1,3 +1,5 @@
+import { readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
+import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { prisma } from '../../../lib/prisma.js';
@@ -12,52 +14,78 @@ import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
 import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
-import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
-import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
-import { asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type SplitRankRow, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
+import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
+import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
+import { STRING_TRIM_CHARACTERS, asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 
 
 export async function readWinnerRowsByIds(client: DbClient, rowIds: readonly string[]): Promise<WinnerRow[]> {
-  return readWinnerRowsScoped(client, rowIds);
-}
-
-export async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
-  const values = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))];
-  if (values.length === 0) return [];
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
+  const ids = [...new Set(rowIds)];
+  if (ids.length === 0) return [];
+  // Small id sets: per-row winner lookup (same rule as the materialized winner set).
   return client.$queryRaw<WinnerRow[]>(Prisma.sql`
     SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
     FROM "CsvDashboardRow"
-    WHERE ${baseWhere}
-      AND "CsvDashboardRow"."rowData"->>'FSEIBAN' = ANY(${values}::text[])
+    WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "CsvDashboardRow"."id"::text = ANY(${ids}::text[])
+      AND ${buildMaxProductNoWinnerCondition('CsvDashboardRow')}
   `);
+}
+
+/**
+ * Winners among rows matching `fseibanFilter`, ranked only inside that subset.
+ * Equivalent to the dashboard-wide winner set because FSEIBAN is the first
+ * column of the winner PARTITION BY: a filter that depends only on the row's
+ * FSEIBAN keeps each partition either fully in or fully out, so ROW_NUMBER
+ * inside every kept partition is unchanged. Avoids materializing all winners
+ * of the dashboard (~100k rows) on every call.
+ */
+async function readWinnerRowsByFseibanFilter(client: DbClient, fseibanFilter: Prisma.Sql): Promise<WinnerRow[]> {
+  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
+    WITH "ranked" AS (
+      SELECT "r"."id", "r"."rowData", "r"."updatedAt",
+        ROW_NUMBER() OVER (
+          PARTITION BY ${Prisma.raw(buildMaxProductNoLogicalKeyPartitionExprs('r'))}
+          ORDER BY ${Prisma.raw(buildMaxProductNoWinnerSelectionOrderBySql('r'))}
+        ) AS "rn"
+      FROM "CsvDashboardRow" AS "r"
+      WHERE "r"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND ${fseibanFilter}
+    )
+    SELECT "id", "rowData", "updatedAt" FROM "ranked" WHERE "rn" = 1
+  `);
+}
+
+export type SessakuLaneSourceScope = {
+  targetFseiban: string;
+  resourceCds: readonly string[];
+  inboundKeys: readonly SessakuPieceLogicalKey[];
+};
+
+export async function readWinnerRowsByFseibans(client: DbClient, fseibans: readonly string[], laneScope?: SessakuLaneSourceScope): Promise<WinnerRow[]> {
+  const values = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))];
+  if (values.length === 0) return [];
+  let scope = Prisma.sql`TRUE`;
+  if (laneScope) {
+    // Match String.trim() in the projection, including tabs and Unicode whitespace.
+    const inbound = laneScope.inboundKeys.length ? Prisma.sql`(
+      COALESCE("r"."rowData"->>'FSEIBAN', ''), COALESCE("r"."rowData"->>'FHINCD', ''),
+      COALESCE("r"."rowData"->>'FSIGENCD', ''), COALESCE("r"."rowData"->>'FKOJUN', '')
+    ) IN (${Prisma.join(laneScope.inboundKeys.map((key) => Prisma.sql`(${key.fseiban}, ${key.fhincd}, ${key.fsigencd}, ${key.fkojun})`))})` : Prisma.sql`FALSE`;
+    // Each predicate depends only on logical-key columns, so it keeps entire winner partitions.
+    // Include the target seiban and overridden inbound parents even when their original lane differs.
+    scope = Prisma.sql`("r"."rowData"->>'FSEIBAN' = ${laneScope.targetFseiban}
+      OR BTRIM("r"."rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ANY(${[...laneScope.resourceCds]}::text[])
+      OR ${inbound})`;
+  }
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[]) AND ${scope}`);
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
 export async function readWinnerRowsByLogicalKeyFseibans(client: DbClient, fseibans: readonly string[]): Promise<WinnerRow[]> {
   const values = [...new Set(fseibans)];
   if (values.length === 0) return [];
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
-  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
-    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
-    FROM "CsvDashboardRow"
-    WHERE ${baseWhere}
-      AND COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '') = ANY(${values}::text[])
-  `);
-}
-
-async function readWinnerRowsScoped(client: DbClient, rowIds?: readonly string[]): Promise<WinnerRow[]> {
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhere(client);
-  const scope = rowIds === undefined
-    ? Prisma.empty
-    : rowIds.length === 0
-      ? Prisma.sql`AND FALSE`
-      : Prisma.sql`AND "CsvDashboardRow"."id"::text = ANY(${[...new Set(rowIds)]}::text[])`;
-  return client.$queryRaw<WinnerRow[]>(Prisma.sql`
-    SELECT "CsvDashboardRow"."id", "CsvDashboardRow"."rowData", "CsvDashboardRow"."updatedAt"
-    FROM "CsvDashboardRow"
-    WHERE ${baseWhere} ${scope}
-  `);
+  return readWinnerRowsByFseibanFilter(client, Prisma.sql`COALESCE("r"."rowData"->>'FSEIBAN', '') = ANY(${values}::text[])`);
 }
 
 function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
@@ -66,24 +94,20 @@ function planningDetailToRowDetail(row: LeaderboardScheduleRowSql): RowDetail {
   if (!detail) {
     return {
       updatedAt,
+      manualUpdatedAt: row.manualUpdatedAt, excelDueDate: row.excelDueDate, excelChangedAt: row.excelChangedAt,
       rowNotes: [{ dueDate: row.dueDate }],
       orderSupplements: [{ plannedQuantity: row.plannedQuantity, plannedEndDate: row.plannedEndDate }],
       productionScheduleProgress: { isCompleted: false, updatedAt: updatedAt ?? new Date(0) },
-      productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: updatedAt ?? new Date(0) },
-      orderSplits: []
+      productionScheduleExternalCompletion: { isExternallyCompleted: false, updatedAt: updatedAt ?? new Date(0) }
     };
   }
   return {
     updatedAt,
+    manualUpdatedAt: row.manualUpdatedAt, excelDueDate: row.excelDueDate, excelChangedAt: row.excelChangedAt,
     rowNotes: [{ dueDate: dateValue(detail.dueDate) }],
     orderSupplements: [{ plannedQuantity: detail.plannedQuantity, plannedEndDate: dateValue(detail.plannedEndDate) }],
     productionScheduleProgress: { isCompleted: Boolean(detail.isCompleted), updatedAt: dateValue(detail.progressUpdatedAt) ?? new Date(0) },
     productionScheduleExternalCompletion: { isExternallyCompleted: Boolean(detail.isExternallyCompleted), updatedAt: dateValue(detail.externalUpdatedAt) ?? new Date(0) },
-    orderSplits: detail.splits.flatMap((split) => {
-      const splitUpdatedAt = dateValue(split.updatedAt);
-      if (!splitUpdatedAt) return [];
-      return [{ id: split.id, splitQuantity: split.splitQuantity, dueDate: dateValue(split.dueDate), updatedAt: splitUpdatedAt }];
-    })
   };
 }
 
@@ -94,15 +118,15 @@ export async function readPlanningSource(params: {
   leaderboardGenerationToken?: string;
 }): Promise<PlanningSource> {
   const generationToken = params.leaderboardGenerationToken ?? await readGrindingPlanningBoardSnapshotGenerationToken();
-  const baseWhere = await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken });
+  const { baseWhere, winnerRowIds } = await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken });
+  const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
   }
 
-  // Reuse the existing winner/category selection path, but apply the registered
-  // seiban scope before reading any parent rows. This deliberately selects IDs
-  // only; full row hydration is delegated to the shared canonical cache path.
+  // SQL keeps the seiban/category filters and ID ordering; membership is
+  // intersected in memory with the exact same generation's winners afterwards.
   const filters = await prepareProductionScheduleDashboardFilters({
     queryText: '',
     productNos: [],
@@ -120,7 +144,8 @@ export async function readPlanningSource(params: {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };
   }
   const orderedRowIds = await fetchLeaderboardPlanningScopedParentRowIds({
-    leaderboardMaterializedBaseWhere: baseWhere,
+    leaderboardMaterializedBaseWhere: dashboardWhere,
+    winnerRowIds,
     queryWhere: filters.queryWhere,
     completionFilter: 'all'
   });
@@ -143,11 +168,15 @@ export async function readPlanningSource(params: {
   const progressRowIds = progressFilters.kind === 'blocked_empty_search'
     ? []
     : await fetchLeaderboardPlanningScopedParentRowIds({
-        leaderboardMaterializedBaseWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        winnerRowIds,
         queryWhere: progressFilters.queryWhere,
         completionFilter: 'all'
       });
   const cacheKey = { siteKey: params.siteKey, generationToken };
+
+  // Every hydrate ID comes from the winner-filtered selectors above. Under the
+  // explicit ID predicate, dashboard-only WHERE is equivalent to baseWhere.
 
   const identityRows = await loadLeaderboardCanonicalRows({
     key: { ...cacheKey, rankContext: 'none' },
@@ -159,8 +188,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includeRank: false,
         canonicalSourceGenerationToken: generationToken,
         canonicalSourceSiteKey: params.siteKey,
@@ -178,8 +207,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includePlanningDetails: true,
         includeRank: false,
         planningSource: true,
@@ -201,8 +230,8 @@ export async function readPlanningSource(params: {
         orderedRowIds: missingIds,
         locationKey: params.siteKey,
         siteScopedGlobalRankLocation: params.siteKey,
-        leaderboardMaterializedBaseWhere: baseWhere,
-        leaderboardShellListWhere: baseWhere,
+        leaderboardMaterializedBaseWhere: dashboardWhere,
+        leaderboardShellListWhere: dashboardWhere,
         includePlanningDetails: true,
         includeRank: false,
         canonicalSourceGenerationToken: generationToken,
@@ -218,6 +247,7 @@ export async function readPlanningSource(params: {
     generationToken,
     rows: identityRows.map((row) => ({ id: row.id, rowData: row.rowData, updatedAt: row.updatedAt })),
     details,
+    pieceSets: await readSessakuPieceSets(prisma, identityRows),
     progressRows: buildPlanningProgressRows(progressRowsWithDetails, progressDetails, progressPolicy.cuttingExcludedResourceCds)
   };
 }
@@ -258,28 +288,31 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
         rowNotes: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { updatedAt: 'desc' }, take: 1, select: { dueDate: true } },
         orderSupplements: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { plannedQuantity: true, plannedEndDate: true } },
         productionScheduleProgress: { select: { isCompleted: true, updatedAt: true } },
-        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } },
-        orderSplits: { where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, select: { id: true, splitQuantity: true, dueDate: true, updatedAt: true }, orderBy: { splitNo: 'asc' } }
+        productionScheduleExternalCompletion: { select: { isExternallyCompleted: true, updatedAt: true } }
       }
     });
-    for (const detail of rows) details.set(detail.id, detail as RowDetail);
+    const dueInputs = await client.$queryRaw<Array<{ id: string; manualUpdatedAt: Date | null; excelDueDate: Date | null; excelChangedAt: Date | null }>>`
+      SELECT "CsvDashboardRow"."id", ${BOARD_MANUAL_UPDATED_AT_SQL} AS "manualUpdatedAt",
+        "excel_due"."partsCompleteDate" AS "excelDueDate", "excel_due"."excelChangedAt" AS "excelChangedAt"
+      FROM "CsvDashboardRow"
+      LEFT JOIN "ProductionScheduleRowNote" AS "n" ON "n"."csvDashboardRowId" = "CsvDashboardRow"."id"
+        AND "n"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      ${BOARD_DUE_JOINS_SQL}
+      WHERE "CsvDashboardRow"."id" = ANY(${chunk}::text[])
+        AND "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    `;
+    const byId = new Map(dueInputs.map((row) => [row.id, row]));
+    for (const detail of rows) details.set(detail.id, { ...detail, ...byId.get(detail.id) } as RowDetail);
   }
   return details;
 }
 
-export async function readRanks(client: DbClient, rowIds: readonly string[], splitIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
+export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
   const rows: RankRow[] = [];
   for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
     rows.push(...await client.productionScheduleOrderAssignment.findMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
       select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
-    }));
-  }
-  const splits: SplitRankRow[] = [];
-  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(splitIds)])) {
-    splits.push(...await client.productionScheduleOrderSplitAssignment.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
-      select: { splitId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }
     }));
   }
   const preferred = (candidate: { location: string; updatedAt: Date }, current: { location: string; updatedAt: Date }) => {
@@ -289,9 +322,7 @@ export async function readRanks(client: DbClient, rowIds: readonly string[], spl
   };
   const rowMap = new Map<string, RankRow>();
   for (const row of rows) { const current = rowMap.get(row.csvDashboardRowId); if (!current || preferred(row, current)) rowMap.set(row.csvDashboardRowId, row); }
-  const splitMap = new Map<string, SplitRankRow>();
-  for (const row of splits) { const current = splitMap.get(row.splitId); if (!current || preferred(row, current)) splitMap.set(row.splitId, row); }
-  return { rows: rowMap, splits: splitMap };
+  return { rows: rowMap };
 }
 
 export async function readOverrides(client: DbClient, siteKey: string, itemKeys?: readonly string[]): Promise<Map<string, ProductionScheduleGrindingPlanningBoardOverride>> {
@@ -299,7 +330,8 @@ export async function readOverrides(client: DbClient, siteKey: string, itemKeys?
     where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       siteKey,
-      ...(itemKeys == null ? {} : { itemKey: { in: [...new Set(itemKeys)] } })
+      itemKey: itemKeys == null ? undefined : { in: [...new Set(itemKeys)] },
+      ...(itemKeys == null ? { OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] } : {})
     }
   });
   return new Map(rows.map((row) => [row.itemKey, row]));

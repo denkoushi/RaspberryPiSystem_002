@@ -1,0 +1,16 @@
+---
+device:
+  layer: rpi4
+  hostname: pi4-uncommissioned
+  user1: kiosk
+  user1pass: "!"
+image:
+  layer: image-rpios
+  boot_part_size: 200%
+  root_part_size: 300%
+  name: pi4-kiosk-base
+layer:
+  base: trixie-minbase
+  app: pi4-kiosk-base
+ssh:
+  pubkey_only: y

@@ -3,23 +3,20 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  useUpdateKioskProductionScheduleOrder,
-  useUpdateKioskProductionScheduleSplitOrder
+  useUpdateKioskProductionScheduleOrder
 } from './production-schedule';
 
 import type { ReactNode } from 'react';
 
 const mocks = vi.hoisted(() => ({
-  updateOrder: vi.fn(),
-  updateSplitOrder: vi.fn()
+  updateOrder: vi.fn()
 }));
 
 vi.mock('../../api/client', async (importOriginal) => {
   const original = await importOriginal<typeof import('../../api/client')>();
   return {
     ...original,
-    updateKioskProductionScheduleOrder: mocks.updateOrder,
-    updateKioskProductionScheduleSplitOrder: mocks.updateSplitOrder
+    updateKioskProductionScheduleOrder: mocks.updateOrder
   };
 });
 
@@ -62,7 +59,6 @@ function seedCache(client: QueryClient) {
 describe('useUpdateKioskProductionScheduleOrder manual-order optimistic policy', () => {
   beforeEach(() => {
     mocks.updateOrder.mockReset();
-    mocks.updateSplitOrder.mockReset();
   });
 
   it('patches while saving, keeps the server correction, and revalidates related queries', async () => {
@@ -180,7 +176,7 @@ describe('useUpdateKioskProductionScheduleOrder manual-order optimistic policy',
   });
 });
 
-describe('useUpdateKioskProductionScheduleSplitOrder manual-order optimistic policy', () => {
+describe('useUpdateKioskProductionScheduleOrder manual-order optimistic policy', () => {
   const targetScheduleKey = [
     'kiosk-production-schedule',
     { resourceCds: 'R1', targetDeviceScopeKey: 'device-a' }
@@ -192,14 +188,14 @@ describe('useUpdateKioskProductionScheduleSplitOrder manual-order optimistic pol
   const targetUsageKey = ['kiosk-production-schedule-order-usage', 'R1', 'device-a'] as const;
   const otherUsageKey = ['kiosk-production-schedule-order-usage', 'R1', 'device-b'] as const;
 
-  function seedSplitCache(client: QueryClient) {
+  function seedScopedCache(client: QueryClient) {
     const cache = {
       page: 1,
       pageSize: 100,
       total: 1,
       rows: [
         {
-          id: 'split:split-1',
+          id: 'row-1',
           occurredAt: '',
           rowData: { FSIGENCD: 'R1' },
           processingOrder: 2
@@ -215,23 +211,23 @@ describe('useUpdateKioskProductionScheduleSplitOrder manual-order optimistic pol
     client.setQueryData(otherUsageKey, { R1: [9] });
   }
 
-  it('split行を対象scopeだけ即時更新し、サーバー補正を反映する', async () => {
+  it('親行を対象scopeだけ即時更新し、サーバー補正を反映する', async () => {
     let resolveRequest: ((value: { success: true; orderNumber: number | null }) => void) | undefined;
-    mocks.updateSplitOrder.mockReturnValue(
+    mocks.updateOrder.mockReturnValue(
       new Promise((resolve) => {
         resolveRequest = resolve;
       })
     );
 
     const client = createClient();
-    seedSplitCache(client);
-    const result = renderHook(() => useUpdateKioskProductionScheduleSplitOrder(), {
+    seedScopedCache(client);
+    const result = renderHook(() => useUpdateKioskProductionScheduleOrder(), {
       wrapper: wrapper(client)
     });
 
     act(() => {
       result.result.current.mutate({
-        splitId: 'split-1',
+        rowId: 'row-1',
         payload: { resourceCd: 'R1', orderNumber: 1, targetDeviceScopeKey: 'device-a' },
         cachePolicy: 'manualOrderOptimistic'
       });
@@ -256,16 +252,16 @@ describe('useUpdateKioskProductionScheduleSplitOrder manual-order optimistic pol
     });
   });
 
-  it('split行の保存失敗時は一覧とusageをロールバックする', async () => {
-    mocks.updateSplitOrder.mockRejectedValue(new Error('save failed'));
+  it('親行の保存失敗時は一覧とusageをロールバックする', async () => {
+    mocks.updateOrder.mockRejectedValue(new Error('save failed'));
     const client = createClient();
-    seedSplitCache(client);
-    const result = renderHook(() => useUpdateKioskProductionScheduleSplitOrder(), {
+    seedScopedCache(client);
+    const result = renderHook(() => useUpdateKioskProductionScheduleOrder(), {
       wrapper: wrapper(client)
     });
 
     const mutationPromise = result.result.current.mutateAsync({
-      splitId: 'split-1',
+      rowId: 'row-1',
       payload: { resourceCd: 'R1', orderNumber: 1, targetDeviceScopeKey: 'device-a' },
       cachePolicy: 'manualOrderOptimistic'
     });

@@ -24,7 +24,7 @@ This document must be maintained in accordance with `.agent/PLANS.md`.
 - `docs/security/sharepoint-dropbox-multi-purpose-assessment.md`: 多目的用途の評価
 - `docs/plans/imports-ts-refactoring-plan.md`: CSVインポート機能のリファクタリング計画（完了）
 - `docs/guides/backup-configuration.md`: バックアップ設定ガイド（設定ファイルの作成・編集方法）
-- `docs/guides/dropbox-setup-guide.md`: Dropbox連携セットアップガイド
+- `docs/archive/guides/dropbox-setup-guide.md`: Dropbox連携セットアップガイド
 
 ### 既存実装
 
@@ -499,8 +499,8 @@ interface BackupTarget {
 - **実装のポイント**: `LocalStorageProvider.getBaseDir()`と`BackupService.buildPath()`の責任分離を明確化
 
 **検証ドキュメント**:
-- `docs/guides/backup-verification.md`: 実機検証ガイド
-- `docs/guides/backup-verification-results.md`: 検証結果記録（更新済み）
+- `docs/archive/guides/backup-verification.md`: 実機検証ガイド
+- `docs/archive/guides/backup-verification-results.md`: 検証結果記録（更新済み）
 
 **完了した追加検証**:
 - ✅ **バックアップリストア機能**: ファイルの復元と整合性確認が完了
@@ -523,7 +523,7 @@ interface BackupTarget {
 - ✅ OAuth 2.0フローのテスト実装（6件パス）
 - ✅ リフレッシュトークン自動更新のテスト実装（4件パス）
 - ✅ セットアップガイドの作成（`docs/guides/dropbox-oauth-setup-guide.md`）
-- ✅ ポリシー適合性ガイドの作成（`docs/guides/dropbox-oauth-policy-compliance.md`）
+- ✅ ポリシー適合性ガイドの作成（`docs/archive/guides/dropbox-oauth-policy-compliance.md`）
 
 ### 2025-12-14: CI実行とデバッグ完了
 

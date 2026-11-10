@@ -1,4 +1,4 @@
-import { BarcodeFormat } from '@zxing/library';
+import BarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
 
 /**
  * 一次元バーコードのみ（要領書検索など。QR・DataMatrix 等は除外）。

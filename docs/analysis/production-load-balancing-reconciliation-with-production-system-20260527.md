@@ -4,7 +4,7 @@
 
 キオスク負荷調整の月次工数が生産システムの「負荷残」「負荷消費」と一致しない事象について、**データ源・用語・集計定義**をコードと本番データで突合し、今後の実装判断の根拠を残す。
 
-**索引**: [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)（運用向け要約） / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)（集計軸の決定）
+**索引**: [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md)（運用向け要約） / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)（集計軸の決定）
 
 ---
 
@@ -19,7 +19,7 @@
 5. **発見（決定的）**: 生産の積み上げグラフの日付は **`FSIGENSHOYOYMD`（資源所要量 CSV）**。キオスクの `CsvDashboardRow` には **当列なし**（033 winner 514 件で 0 件）。所要量は **1工程×複数日** の粒度。
 6. **N7・2026-07**: 生産 **残706H / 消費113H**。添付 `data_scawSTSIGENSHOYORYO.csv` で 7月033合計 **735H**、`>7/1`≈706H、`≦7/9`累積≈113H（**706+113≠735** は日付重なり）。一覧スクショ **≈82行・標準工数合計≈1202H** は月次 KPI と別物。
 7. **設計決定**: **`FSIGENSHOYOYMD` にキオスクを合わせない**（[ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)）。実装修正候補は **×指示数削除・FKOJUNST 母集団の残/消費分離**（別タスク）。
-8. **成果物**: 本分析・KB-363・ガイド追記・`reconcile-033-may-patterns.mjs`（env で 5月/7月を切替）。
+8. **成果物**: 本分析・KB-437・ガイド追記・`reconcile-033-may-patterns.mjs`（env で 5月/7月を切替）。
 
 ---
 
@@ -219,5 +219,5 @@ function resolveTotalMinutes(row: StartDateLevelingQueryRow): number | null {
 
 ## References
 
-- [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+- [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md)
 - [load-balancing-outsourcing-improvement-proposal.md](../plans/load-balancing-outsourcing-improvement-proposal.md) §タブ間定義差

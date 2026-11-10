@@ -1,4 +1,4 @@
-import { PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
+import { D_SCHEDULE_MINUTES_GMAIL_SUBJECT, PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS } from '../gmail/gmail-subject-reservation.policy.js';
 import { PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID, PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_CRON } from './procedure-material-import-schedule.policy.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import {
@@ -163,8 +163,21 @@ export function buildDefaultProcedureMaterialCsvImportSchedule(): CsvImportSched
   };
 }
 
+export const D_SCHEDULE_MINUTES_SCHEDULE_ID = 'd-schedule-minutes-gmail';
+export const D_SCHEDULE_MINUTES_SCHEDULE_CRON = '23 * * * *';
+
+export function buildDefaultDScheduleMinutesImportSchedule(): CsvImportScheduleRow {
+  return {
+    id: D_SCHEDULE_MINUTES_SCHEDULE_ID, name: 'D社日程会議議事録 (Gmail)', provider: 'gmail',
+    targets: [{ type: 'dScheduleMinutesGmail', source: D_SCHEDULE_MINUTES_GMAIL_SUBJECT }],
+    schedule: D_SCHEDULE_MINUTES_SCHEDULE_CRON, enabled: true, replaceExisting: false,
+    autoBackupAfterImport: { enabled: false, targets: ['csv'] },
+  };
+}
+
 /** システム予約スケジュールID → デフォルト行ビルダー（拡張時はここに追加） */
 export const SYSTEM_CSV_IMPORT_SCHEDULE_DEFAULT_BUILDERS: Record<string, () => CsvImportScheduleRow> = {
+  [D_SCHEDULE_MINUTES_SCHEDULE_ID]: buildDefaultDScheduleMinutesImportSchedule,
   [PROCEDURE_MATERIAL_GMAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultProcedureMaterialCsvImportSchedule,
   [FKOJUNST_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstCsvImportSchedule,
   [FKOJUNST_STATUS_MAIL_CSV_IMPORT_SCHEDULE_ID]: buildDefaultFkojunstStatusMailCsvImportSchedule,

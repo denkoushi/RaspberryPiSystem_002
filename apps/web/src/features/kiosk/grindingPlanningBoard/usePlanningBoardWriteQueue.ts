@@ -3,10 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type PlanningBoardDisplayItem = GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null };
-export type PlanningBoardWriteDisplay = { items: PlanningBoardDisplayItem[]; order: string[] };
+export type PlanningBoardWriteDisplay = { items: PlanningBoardDisplayItem[]; order: string[]; uncheckedFseibans: string[] };
 export type PlanningBoardWriteResult = {
   items?: GrindingPlanningBoardItem[];
   order?: string[];
+  uncheckedFseibans?: string[];
   sourceRevision?: string;
 };
 export type PlanningBoardWriteContext = {
@@ -29,6 +30,7 @@ type Options = {
   scope: string;
   items: GrindingPlanningBoardItem[];
   order: string[];
+  uncheckedFseibans?: string[];
   sourceRevision: string;
   refresh: () => Promise<unknown>;
   onStart: (label: string) => void;
@@ -51,7 +53,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
   const latest = useRef(options);
   latest.current = options;
   const createState = () => ({ scope: options.scope, writes: [] as PlanningBoardWrite[], confirmed: new Map<string, Confirmed>(),
-    confirmedOrder: null as null | { order: string[]; sourceRevision: string; stale: Set<string> },
+    confirmedOrder: null as null | { order: string[]; uncheckedFseibans: string[]; sourceRevision: string; stale: Set<string> },
     sourceRevision: options.sourceRevision, running: false, recovering: false, blocked: false });
   const state = useRef(createState());
   const mounted = useRef(true);
@@ -85,19 +87,20 @@ export function usePlanningBoardWriteQueue(options: Options) {
 
   const display = useMemo(() => {
     const current = state.current;
-    if (current.scope !== options.scope) return { items: options.items, order: options.order };
+    if (current.scope !== options.scope) return { items: options.items, order: options.order, uncheckedFseibans: options.uncheckedFseibans ?? [] };
     let result: PlanningBoardWriteDisplay = {
       items: options.items.map((item) => {
         const saved = current.confirmed.get(item.itemId)?.item;
         return saved ? savedFields(item, saved) : item;
       }),
-      order: current.confirmedOrder?.order ?? options.order
+      order: current.confirmedOrder?.order ?? options.order,
+      uncheckedFseibans: current.confirmedOrder?.uncheckedFseibans ?? options.uncheckedFseibans ?? []
     };
     for (const write of current.writes) result = write.apply(result);
     return result;
   // Ref-owned queue mutations invalidate the projection through revision.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options.scope, options.items, options.order, revision]);
+  }, [options.scope, options.items, options.order, options.uncheckedFseibans, revision]);
 
   const enqueue = useCallback((write: PlanningBoardWrite): boolean => {
     const current = state.current;
@@ -121,20 +124,24 @@ export function usePlanningBoardWriteQueue(options: Options) {
               item: (original) => current.confirmed.get(original.itemId)?.item ?? original });
             if (!mounted.current || current !== state.current) return;
             if (result.sourceRevision) current.sourceRevision = result.sourceRevision;
+            const latestById = new Map(latest.current.items.map((item) => [item.itemId, item]));
+            const requestById = requestItems === latest.current.items ? latestById : new Map(requestItems.map((item) => [item.itemId, item]));
             for (const item of result.items ?? []) {
               const previous = current.confirmed.get(item.itemId);
-              const base = latest.current.items.find((candidate) => candidate.itemId === item.itemId);
+              const base = latestById.get(item.itemId);
               const stale = new Set(previous?.stale);
               if (previous) stale.add(previous.item.itemRevision);
-              const requestItem = requestItems.find((candidate) => candidate.itemId === item.itemId);
+              const requestItem = requestById.get(item.itemId);
               if (requestItem) stale.add(requestItem.itemRevision);
               current.confirmed.set(item.itemId, { item: base ? savedFields(base, item) : item, stale });
             }
-            if (result.order) {
+            if (result.order || result.uncheckedFseibans) {
               const stale = new Set(current.confirmedOrder?.stale);
               stale.add(requestRevision);
               if (current.confirmedOrder) stale.add(current.confirmedOrder.sourceRevision);
-              current.confirmedOrder = { order: result.order, sourceRevision: current.sourceRevision, stale };
+              current.confirmedOrder = { order: result.order ?? current.confirmedOrder?.order ?? latest.current.order,
+                uncheckedFseibans: result.uncheckedFseibans ?? current.confirmedOrder?.uncheckedFseibans ?? latest.current.uncheckedFseibans ?? [],
+                sourceRevision: current.sourceRevision, stale };
             }
             current.writes.shift();
             next.onSaved?.(result);
@@ -147,7 +154,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
               if (!cancelled.some((prior) => overlap(prior, candidate))) return true;
               cancelled.push(candidate); return false;
             });
-            // Undo the newest accepted UI changes first (for example remove → add the same seiban).
+            // Undo the newest accepted UI changes first.
             for (const cancelledWrite of [...cancelled].reverse()) cancelledWrite.onFailed?.(error);
             current.recovering = true;
             latest.current.onError(error);

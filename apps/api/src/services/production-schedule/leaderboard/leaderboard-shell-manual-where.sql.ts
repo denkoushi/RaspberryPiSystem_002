@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 /**
- * 手動順番（＋分割時は分割割当の親行）を持つ行だけを返す shell 用 WHERE。
+ * 手動順番を持つ行だけを返す shell 用 WHERE。
  *
  * EXISTS だけだと、資源の全候補行に表示用 JOIN を済ませてから最後に半結合で絞る計画になり、
  * 手動行が 0 件でも資源 1 つあたり約 0.5 秒かかっていた（Pi5 実測）。
@@ -13,41 +13,8 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 export function buildLeaderboardShellManualPriorityWhereSql(params: {
   commonWhere: Prisma.Sql;
   locationKey: string;
-  splitEnabled: boolean;
 }): Prisma.Sql {
-  const { commonWhere, locationKey, splitEnabled } = params;
-
-  const splitCandidateIdsSql = splitEnabled
-    ? Prisma.sql`
-          UNION ALL
-          SELECT "s_c"."parentCsvDashboardRowId"
-          FROM "ProductionScheduleOrderSplitAssignment" AS "sa_c"
-          INNER JOIN "ProductionScheduleOrderSplit" AS "s_c"
-            ON "s_c"."id" = "sa_c"."splitId"
-            AND "s_c"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          WHERE "sa_c"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND (
-              "sa_c"."location" = ${locationKey}
-              OR "sa_c"."siteKey" = ${locationKey}
-            )`
-    : Prisma.empty;
-
-  const splitExistsSql = splitEnabled
-    ? Prisma.sql`
-        OR EXISTS (
-          SELECT 1
-          FROM "ProductionScheduleOrderSplitAssignment" AS "sa_m"
-          INNER JOIN "ProductionScheduleOrderSplit" AS "s_m"
-            ON "s_m"."id" = "sa_m"."splitId"
-            AND "s_m"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-            AND "s_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-          WHERE "sa_m"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND (
-              "sa_m"."location" = ${locationKey}
-              OR "sa_m"."siteKey" = ${locationKey}
-            )
-        )`
-    : Prisma.empty;
+  const { commonWhere, locationKey } = params;
 
   return Prisma.sql`${commonWhere}
       AND "CsvDashboardRow"."id" = ANY(ARRAY(
@@ -57,7 +24,7 @@ export function buildLeaderboardShellManualPriorityWhereSql(params: {
             AND (
               "ord_c"."location" = ${locationKey}
               OR "ord_c"."siteKey" = ${locationKey}
-            )${splitCandidateIdsSql}
+            )
         ))
       AND (
         EXISTS (
@@ -69,6 +36,6 @@ export function buildLeaderboardShellManualPriorityWhereSql(params: {
               "ord_m"."location" = ${locationKey}
               OR "ord_m"."siteKey" = ${locationKey}
             )
-        )${splitExistsSql}
+        )
       )`;
 }

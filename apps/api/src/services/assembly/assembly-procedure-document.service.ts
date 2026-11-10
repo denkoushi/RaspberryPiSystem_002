@@ -393,7 +393,7 @@ export class AssemblyProcedureDocumentService {
     id: string,
     options: AssemblyProcedureEditActor & { accessPassword?: string; expectedEditVersion?: number } = {}
   ): Promise<AssemblyProcedureDocumentRecord> {
-    await this.accessService.requireAccessPassword(options.accessPassword);
+    await this.accessService.requireAccessPassword(options.accessPassword, options);
     return runAssemblyTransaction(async (tx) => (await this.publishInTransaction(tx, id, options.expectedEditVersion, options)).document);
   }
 
@@ -445,7 +445,12 @@ export class AssemblyProcedureDocumentService {
     return { document, changed: true };
   }
 
-  async unpublish(id: string): Promise<AssemblyProcedureDocumentRecord> {
+  async requireAccessPassword(accessPassword: string, caller: AssemblyProcedureEditActor = {}): Promise<void> {
+    await this.accessService.requireAccessPassword(accessPassword, caller);
+  }
+
+  async unpublish(id: string, accessPassword?: string, caller: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRecord> {
+    await this.accessService.requireAccessPassword(accessPassword, caller);
     return runAssemblyTransaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${id} FOR UPDATE`;
       const doc = await tx.assemblyProcedureDocument.findUnique({ where: { id }, include: this.includePages });

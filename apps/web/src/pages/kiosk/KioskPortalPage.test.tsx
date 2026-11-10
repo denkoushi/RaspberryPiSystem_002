@@ -9,6 +9,8 @@ import { useKioskPortalLargeScreen } from '../../features/kiosk/portal/useKioskP
 
 import { KioskPortalPage } from './KioskPortalPage';
 
+vi.mock('../../features/procedure-board/procedureBoardApi', () => ({ useProcedureBoardAccess: () => ({ data: false }) }));
+
 const mocks = vi.hoisted(() => ({ config: { defaultMode: 'PHOTO', portalHiddenTabIds: [] as string[], navTabOrder: ['rigging_borrow', 'borrow'] }, save: vi.fn(), verify: vi.fn() }));
 vi.mock('../../api/hooks', () => ({
   useKioskConfig: () => ({ data: mocks.config }),

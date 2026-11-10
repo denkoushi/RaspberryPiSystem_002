@@ -20,6 +20,8 @@ export async function getEmployees() {
 }
 
 export interface Machine {
+  factory: 'MISHIMA' | 'SENDAI';
+  nfcTags?: { id: string; uid: string }[];
   id: string;
   equipmentManagementNumber: string;
   name: string;
@@ -41,7 +43,7 @@ export interface UninspectedMachinesResponse {
   totalRunningMachines: number;
   inspectedRunningCount: number;
   uninspectedCount: number;
-  uninspectedMachines: Machine[];
+  uninspectedMachines: Omit<Machine, 'factory'>[];
 }
 
 export async function getMachines(params?: { search?: string; operatingStatus?: string }) {
@@ -90,12 +92,12 @@ export interface UpdateMachineInput {
 }
 
 export async function createMachine(input: CreateMachineInput) {
-  const { data } = await api.post<{ machine: Machine }>('/tools/machines', input);
+  const { data } = await api.post<{ machine: Omit<Machine, 'factory'> }>('/tools/machines', input);
   return data.machine;
 }
 
 export async function updateMachine(id: string, input: UpdateMachineInput) {
-  const { data } = await api.put<{ machine: Machine }>(`/tools/machines/${id}`, input);
+  const { data } = await api.put<{ machine: Omit<Machine, 'factory'> }>(`/tools/machines/${id}`, input);
   return data.machine;
 }
 
@@ -289,4 +291,12 @@ export async function getTransactions(
     }
   );
   return data;
+}
+
+export async function addMachineNfcTag(machineId: string, uid: string) {
+  const { data } = await api.post<{ tag: { id: string; uid: string } }>(`/tools/machines/${machineId}/nfc-tags`, { uid });
+  return data.tag;
+}
+export async function removeMachineNfcTag(machineId: string, tagId: string) {
+  await api.delete(`/tools/machines/${machineId}/nfc-tags/${tagId}`);
 }

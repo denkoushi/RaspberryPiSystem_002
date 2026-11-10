@@ -47,6 +47,8 @@ Access checks had been added route by route over time. Some routes checked that 
 
 Done later on 2026-10-06: device credential rotation for every production device row (`docs/plans/security-client-key-rotation-phase-b.md`), and finding 7 for the Pi5 and the Pi3, whose status-agent file is now rendered root-only by the standard release (#1740, #1738). Not fixed yet: finding 6 (needs an administrator way to change a device's telemetry binding first).
 
+Follow-up on 2026-11-08: finding 5 is extended from role changes to every signed-in request. The shared authentication step now re-reads the user by id on each request (one primary-key lookup, no cache) and uses the current role, account status and MFA state from the database instead of the token claims. Tests that sign their own tokens must provide a matching active user (a real one from `createTestUser`, or a `prisma.user.findUnique` mock). MFA activation also accepts at most 10 backup codes.
+
 ## Prevention
 
 - Run the same whole-repository scan after large access-control changes and at least once a quarter; run a security review of the diff on pull requests that add or change routes.

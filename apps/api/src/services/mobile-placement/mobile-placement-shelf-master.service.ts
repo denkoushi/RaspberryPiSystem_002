@@ -1,3 +1,4 @@
+import { countActivePlacementsOnShelf } from './placement-completion.service.js';
 import { Prisma } from '@prisma/client';
 import { composeArea } from '@raspi-system/shelf-layout-core';
 
@@ -17,9 +18,7 @@ export async function deleteMobilePlacementShelf(shelfCodeRaw: string): Promise<
     if (!shelf) {
       throw new ApiError(404, '棚が見つかりません', undefined, 'SHELF_DELETE_NOT_FOUND');
     }
-    const branchCount = await tx.orderPlacementBranchState.count({ where: { shelfCodeRaw } });
-    const haizenCount = await tx.haizenCurrentPlacement.count({ where: { shelfCodeRaw } });
-    const n = branchCount + haizenCount;
+    const n = await countActivePlacementsOnShelf(tx, shelfCodeRaw);
     if (n > 0) {
       throw new ApiError(409, `品物が ${n}件 置いてあるので消せません。先に「棚を動かす」で移してください`, undefined, 'SHELF_DELETE_HAS_ITEMS');
     }

@@ -28,7 +28,7 @@ related_docs:
   - ../decisions/ADR-20260712-rolling-terminal-release-orchestration.md
   - ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md
   - ../guides/deployment.md
-  - ../runbooks/pi5-blue-green-deploy.md
+  - ../runbooks/deploy-status-recovery.md
 validation:
   - isolated unit, shell, inventory, Ansible, API, and fault-injection tests
   - hosted GitHub Actions with one stable ci-required aggregate check

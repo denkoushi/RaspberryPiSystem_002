@@ -1,3 +1,4 @@
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import type { User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import Fastify from 'fastify';
@@ -13,18 +14,30 @@ const mocks = vi.hoisted(() => ({
     TOKEN_EXPIRES_IN: '15m',
     REFRESH_TOKEN_EXPIRES_IN: '7d'
   },
-  findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn()
+  findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(),
+  updateMany: vi.fn(), queryRaw: vi.fn(), executeRaw: vi.fn(), deleteMany: vi.fn()
 }));
 vi.mock('../../config/env.js', () => ({ env: mocks.env }));
+vi.mock('../../lib/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
-  user: { findUnique: mocks.findUnique, update: mocks.update },
+  authSession: {
+    findUnique: vi.fn(async ({ where }) => ({ id: where.id, user: await mocks.findUnique(), userId: 'test-user', expiresAt: new Date(Date.now() + 86400000), revokedAt: null })),
+    create: vi.fn(async ({ data }) => ({ id: 'test-user', ...data })),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    findUniqueOrThrow: vi.fn(async () => ({ id: 'test-user', userId: 'test-user', refreshTokenId: 'initial', expiresAt: new Date(Date.now() + 86400000) }))
+  },
+  user: { findUnique: mocks.findUnique, update: mocks.update, updateMany: mocks.updateMany },
+  $transaction: vi.fn(),
+  $queryRaw: mocks.queryRaw, $executeRaw: mocks.executeRaw,
+  authLoginAttempt: { deleteMany: mocks.deleteMany },
   roleAuditLog: { findMany: mocks.findMany }
 } }));
 vi.mock('../../services/auth/auth-role-admin.service.js', () => ({ AuthRoleAdminService: class {} }));
 
-import { authenticate, authorizeRoles, signAccessToken, signRefreshToken } from '../../lib/auth.js';
+import { authenticate, authorizeRoles, signRefreshToken } from '../../lib/auth.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
 import { registerAuthRoutes } from '../auth.js';
+import { prisma } from '../../lib/prisma.js';
 
 let app: ReturnType<typeof Fastify>;
 let user: User;
@@ -33,12 +46,13 @@ const headers = (token: string) => ({ authorization: `Bearer ${token}` });
 const login = () => app.inject({ method: 'POST', url: '/api/auth/login', payload: { username: user.username, password } });
 
 beforeEach(async () => {
+  vi.mocked(prisma.$transaction).mockImplementation(async (callback) => (callback as (tx: typeof prisma) => Promise<unknown>)(prisma));
   vi.clearAllMocks();
   mocks.env.ADMIN_MFA_REQUIRED = false;
   user = {
     id: 'test-user', username: 'admin', role: 'ADMIN', status: 'ACTIVE',
     passwordHash: await bcrypt.hash(password, 4), mfaEnabled: false,
-    totpSecret: null, mfaBackupCodes: [], createdAt: new Date(), updatedAt: new Date()
+    totpSecret: null, totpLastUsedStep: null, mfaBackupCodes: [], createdAt: new Date(), updatedAt: new Date()
   };
   mocks.findUnique.mockImplementation(async () => user);
   mocks.update.mockImplementation(async ({ data }: { data: Partial<User> }) => {
@@ -46,6 +60,10 @@ beforeEach(async () => {
     return user;
   });
   mocks.findMany.mockResolvedValue([]);
+  mocks.queryRaw.mockResolvedValue([{ username: user.username }]);
+  mocks.executeRaw.mockResolvedValue(0);
+  mocks.deleteMany.mockResolvedValue({ count: 1 });
+  mocks.updateMany.mockResolvedValue({ count: 1 });
   app = Fastify();
   registerErrorHandler(app);
   await app.register(registerAuthRoutes, { prefix: '/api' });
@@ -84,6 +102,13 @@ describe('MFA activation re-authentication', () => {
 
   it.each([undefined, ''])('rejects missing or empty password (%s) before updating', async (password) => {
     const response = await submit({ ...setupPayload(), password });
+    expect(response.statusCode).toBe(400);
+    expect(response.json().errorCode).toBe('VALIDATION_ERROR');
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects 11 backup codes before updating', async () => {
+    const response = await submit({ ...setupPayload(), backupCodes: Array.from({ length: 11 }, (_, i) => `backup-${i}`) });
     expect(response.statusCode).toBe(400);
     expect(response.json().errorCode).toBe('VALIDATION_ERROR');
     expect(mocks.update).not.toHaveBeenCalled();
@@ -157,8 +182,8 @@ describe('MFA activation re-authentication', () => {
 
 describe('refresh MFA session state', () => {
   it.each([undefined, false, 'true', 1])('rejects pre-MFA or non-boolean refresh claims (%s) after activation', async (mfaEnabled) => {
-    const refreshToken = mfaEnabled === false ? signRefreshToken(user) : jwt.sign({
-      sub: user.id, username: user.username, role: user.role, mfaEnabled
+    const refreshToken = mfaEnabled === false ? signRefreshToken(user, user.id, 'initial') : jwt.sign({
+      tokenType: 'refresh', sessionId: user.id, tokenId: 'initial', sub: user.id, username: user.username, role: user.role, mfaEnabled
     }, mocks.env.JWT_REFRESH_SECRET);
     user.mfaEnabled = true;
     const response = await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken } });
@@ -213,15 +238,20 @@ describe('admin MFA enforcement', () => {
 
   it.each(['ADMIN', 'MANAGER'] as const)('rejects legacy %s tokens without an MFA claim', async (role) => {
     mocks.env.ADMIN_MFA_REQUIRED = true;
+    user.role = role;
     user.mfaEnabled = true;
-    const token = jwt.sign({ sub: user.id, username: user.username, role }, mocks.env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: user.id, sub: user.id, username: user.username, role }, mocks.env.JWT_ACCESS_SECRET);
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(token) }));
-    expect(mocks.findUnique).not.toHaveBeenCalled();
+    expect(prisma.authSession.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: user.id },
+      include: { user: { select: { id: true, username: true, role: true, status: true, mfaEnabled: true } } }
+    });
   });
 
   it.each([undefined, false, 'true', 1])('requires the boolean true claim, rejecting %s', async (mfaEnabled) => {
     mocks.env.ADMIN_MFA_REQUIRED = true;
-    const token = jwt.sign({ sub: user.id, username: user.username, role: user.role, mfaEnabled }, mocks.env.JWT_ACCESS_SECRET);
+    user.mfaEnabled = true;
+    const token = jwt.sign({ tokenType: 'access', sessionId: user.id, sub: user.id, username: user.username, role: user.role, mfaEnabled }, mocks.env.JWT_ACCESS_SECRET);
     expectMfaError(await app.inject({ url: '/api/user-probe', headers: headers(token) }));
     expectMfaError(await app.inject({ url: '/api/user-probe?next=/api/auth/mfa/initiate', headers: headers(token) }));
   });
@@ -231,7 +261,7 @@ describe('admin MFA enforcement', () => {
     user.role = 'VIEWER';
     const session = (await login()).json();
     expect(session.user).toMatchObject({ mfaSetupRequired: false, mfaRequired: false });
-    const legacy = jwt.sign({ sub: user.id, username: user.username, role: user.role }, mocks.env.JWT_ACCESS_SECRET);
+    const legacy = jwt.sign({ tokenType: 'access', sessionId: user.id, sub: user.id, username: user.username, role: user.role }, mocks.env.JWT_ACCESS_SECRET);
     expect((await app.inject({ url: '/api/user-probe', headers: headers(legacy) })).statusCode).toBe(200);
     expect((await app.inject({ method: 'POST', url: '/api/auth/refresh', payload: { refreshToken: session.refreshToken } })).json().user.mfaSetupRequired).toBe(false);
     expect((await app.inject({ method: 'POST', url: '/api/auth/mfa/initiate', headers: headers(legacy) })).json().errorCode).toBe('AUTH_INSUFFICIENT_PERMISSIONS');

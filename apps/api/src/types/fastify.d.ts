@@ -8,6 +8,7 @@ import type { DeployReadinessObservability } from '../services/system/deploy-rea
 declare module 'fastify' {
   interface FastifyRequest {
     user?: {
+      sessionId?: string;
       id: string;
       username: string;
       role: UserRole;

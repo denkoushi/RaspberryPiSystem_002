@@ -1,3 +1,4 @@
+import { filterActivePlacements } from './placement-completion.service.js';
 import { Prisma } from '@prisma/client';
 
 import { ApiError } from '../../lib/errors.js';
@@ -346,12 +347,11 @@ export async function listHaizenCurrentPlacements(input: {
 
   const rows = await prisma.haizenCurrentPlacement.findMany({
     where: shelf && shelf.length > 0 ? { shelfCodeRaw: shelf } : undefined,
-    orderBy: { updatedAt: 'desc' },
-    take: limit
+    orderBy: { updatedAt: 'desc' }
   });
 
   return {
-    rows: rows.map((r) => toHaizenCurrentDto(r))
+    rows: (await filterActivePlacements(rows)).slice(0, limit).map((r) => toHaizenCurrentDto(r))
   };
 }
 

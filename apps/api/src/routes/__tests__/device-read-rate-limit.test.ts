@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique: vi.fn(async ({ where }: { where: { apiKey: string } }) => where.apiKey.startsWith('device-') ? { id: where.apiKey === 'device-alias' ? 'device-a' : where.apiKey } : null) } } }));
 vi.mock('../../config/env.js', () => ({ env: { SIGNAGE_RENDER_INTERVAL_SECONDS: 30 } }));
 vi.mock('../../lib/auth.js', () => ({
   authorizeRoles: () => async (request: { headers: Record<string, unknown> }) => {
@@ -163,6 +164,21 @@ describe('device read rate limits with the global plugin', () => {
     expect((await app.inject(request)).statusCode).toBe(429);
     expect((await app.inject({ ...request, remoteAddress: '127.0.0.2' })).statusCode).toBe(200);
     expect((await app.inject({ ...request, url: urls[5] })).statusCode).toBe(200);
+  });
+
+  it('shares invalid rotating keys by IP and aliases by confirmed device ID', async () => {
+    const app = await makeApp();
+    for (const key of ['device-a', 'device-alias']) {
+      expect((await app.inject({ url: urls[6], headers: { 'x-client-key': key } })).statusCode).toBe(200);
+    }
+    for (let n = 0; n < 32; n++) {
+      expect((await app.inject({ url: urls[6], headers: { 'x-client-key': `unknown-${n}` } })).statusCode).toBe(200);
+    }
+    expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'another-unknown' } })).statusCode).toBe(429);
+    for (let n = 0; n < 2; n++) {
+      expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'device-a' } })).statusCode).toBe(200);
+    }
+    expect((await app.inject({ url: urls[6], headers: { 'x-client-key': 'device-alias' } })).statusCode).toBe(429);
   });
 
   it('demonstrates inherited allowList and leaves other skipped routes unchanged', async () => {

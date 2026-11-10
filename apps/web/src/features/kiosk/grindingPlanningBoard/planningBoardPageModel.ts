@@ -98,7 +98,7 @@ export function applyOptimisticOverride(
     const base = item.effectiveDueDate ?? item.originalDueDate ?? todayJst();
     nextDue = addUtcDays(base, request.due.days);
     dueChanged = nextDue !== item.effectiveDueDate;
-  } else if (request.due?.kind === 'restore' && item.kind === 'row') {
+  } else if (request.due?.kind === 'restore') {
     nextDue = item.originalDueDate;
     dueChanged = nextDue !== item.effectiveDueDate;
   }

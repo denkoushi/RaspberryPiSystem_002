@@ -5,19 +5,20 @@ export interface ClientDevice {
   id: string;
   name: string;
   location?: string | null;
-  apiKey: string;
+  isSignage?: boolean;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
   /** Zero2W / haizen-agent 配膳エッジとしてキオスク設定対象に含める */
   haizenEdgeEnabled?: boolean;
   /** キオスク棚レイアウト編集を許可 */
   shelfLayoutEditEnabled?: boolean;
+  procedureBoardEnabled?: boolean | null;
   /** 明示拠点（Site.key）。未設定なら location 文字列から推測される */
   siteKey?: string | null;
   /** 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可 */
   canProxyOtherDevices?: boolean;
   /** キオスクのサイネージプレビュー参照先（API が返す場合のみ） */
-  signagePreviewTargetApiKey?: string | null;
+  signagePreviewTargetDeviceId?: string | null;
   /** 稼働状況（ClientStatusEntry.clientId）との紐づけ。status-agent 未報告なら null */
   statusClientId?: string | null;
   lastSeenAt?: string | null;
@@ -30,14 +31,22 @@ export async function getClients() {
   return data.clients;
 }
 
+export async function getClientApiKey(id: string) {
+  const { data } = await api.get<{ apiKey: string }>(`/clients/${id}/api-key`);
+  return data.apiKey;
+}
+
 export async function updateClient(
   id: string,
   payload: {
     name?: string;
+    isSignage?: boolean;
+    signagePreviewTargetDeviceId?: string | null;
     defaultMode?: 'PHOTO' | 'TAG' | null;
     kioskInitialRoute?: string | null;
     haizenEdgeEnabled?: boolean;
     shelfLayoutEditEnabled?: boolean;
+    procedureBoardEnabled?: boolean;
     siteKey?: string | null;
     canProxyOtherDevices?: boolean;
   }

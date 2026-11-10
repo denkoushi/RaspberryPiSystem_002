@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
+import { loanOutboxRunner } from '../../features/kiosk/loan/offline/loanOutboxRunner';
 import {
   borrowItem,
   cancelLoan,
@@ -17,6 +18,8 @@ import {
   getEmployees,
   getItems,
   getMachines,
+  addMachineNfcTag,
+  removeMachineNfcTag,
   getMachineResourceChoices,
   getUninspectedMachines,
   createMachine,
@@ -98,7 +101,15 @@ export function useMachineMutations() {
     mutationFn: (id: string) => deleteMachine(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
   });
-  return { create, update, remove };
+  const addTag = useMutation({
+    mutationFn: ({ machineId, uid }: { machineId: string; uid: string }) => addMachineNfcTag(machineId, uid),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
+  });
+  const removeTag = useMutation({
+    mutationFn: ({ machineId, tagId }: { machineId: string; tagId: string }) => removeMachineNfcTag(machineId, tagId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: toolsQueryKeys.machinesAll })
+  });
+  return { create, update, remove, addTag, removeTag };
 }
 
 export function useEmployeeMutations() {
@@ -272,3 +283,17 @@ export function useUnifiedItems(params?: UnifiedListParams) {
 }
 
 // 吊具
+
+export function useKioskBorrowMutation() {
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: (payload: BorrowPayload) => loanOutboxRunner.submit({ route: 'toolBorrow', body: payload }, payload.readAt),
+  });
+}
+
+export function useKioskReturnMutation() {
+  return useMutation({
+    networkMode: 'always',
+    mutationFn: (payload: ReturnPayload) => loanOutboxRunner.submit({ route: 'toolReturn', body: payload }, payload.readAt),
+  });
+}

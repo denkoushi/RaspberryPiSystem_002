@@ -1,17 +1,16 @@
 import { Prisma } from '@prisma/client';
 
-import type { PrismaClientLike } from '../row-resolver/max-product-no-winner-materialization.js';
-import { buildProductionScheduleLeaderboardMaterializedBaseWhere } from '../row-resolver/max-product-no-winner-materialization.js';
+import type { LeaderboardMaterializedWinners, PrismaClientLike } from '../row-resolver/max-product-no-winner-materialization.js';
+import { buildProductionScheduleLeaderboardMaterializedWinners } from '../row-resolver/max-product-no-winner-materialization.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard-shell-snapshot-generation.js';
 
-type MaterializedWinnerCacheEntry = {
+type MaterializedWinnerCacheEntry = LeaderboardMaterializedWinners & {
   generationToken: string;
-  baseWhere: Prisma.Sql;
 };
 
 type InflightMaterializedWinnerBuild = {
   generationToken: string;
-  promise: Promise<Prisma.Sql>;
+  promise: Promise<LeaderboardMaterializedWinners>;
 };
 
 /** 単一ダッシュボード向け。世代トークン一致時に winner materialization を再利用する。 */
@@ -28,23 +27,31 @@ export async function resolveLeaderboardMaterializedBaseWhereWithGenerationCache
   prisma: PrismaClientLike,
   options?: { generationToken?: string }
 ): Promise<Prisma.Sql> {
+  return (await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, options)).baseWhere;
+}
+
+/** Planning can intersect bounded SQL candidates without transmitting the full winner array. */
+export async function resolveLeaderboardMaterializedWinnersWithGenerationCache(
+  prisma: PrismaClientLike,
+  options?: { generationToken?: string }
+): Promise<LeaderboardMaterializedWinners> {
   const generationToken = options?.generationToken || await readLeaderboardShellSnapshotGenerationToken();
 
   if (cachedEntry?.generationToken === generationToken) {
-    return cachedEntry.baseWhere;
+    return cachedEntry;
   }
 
   if (inflightBuild?.generationToken === generationToken) {
     return inflightBuild.promise;
   }
 
-  const promise = buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma)
-    .then((baseWhere) => {
-      cachedEntry = { generationToken, baseWhere };
+  const promise = buildProductionScheduleLeaderboardMaterializedWinners(prisma)
+    .then((winners) => {
+      cachedEntry = { generationToken, ...winners };
       if (inflightBuild?.generationToken === generationToken) {
         inflightBuild = undefined;
       }
-      return baseWhere;
+      return cachedEntry;
     })
     .catch((error) => {
       if (inflightBuild?.generationToken === generationToken) {

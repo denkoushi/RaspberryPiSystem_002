@@ -1,0 +1,15 @@
+[Unit]
+Description=Set Pi4 hostname and join Tailscale once
+ConditionPathExists=!/var/lib/pi4-first-boot/done
+After=tailscaled.service network-online.target
+Wants=tailscaled.service network-online.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/bin/python3 /usr/local/sbin/pi4-first-boot.py
+TimeoutStartSec=360
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

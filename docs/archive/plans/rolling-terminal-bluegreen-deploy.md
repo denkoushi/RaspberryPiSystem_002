@@ -1,11 +1,12 @@
 ---
 title: Rolling terminal deployment with Pi5 Blue/Green
-status: accepted
+status: superseded
 scope: Pi5 API/Web and Pi4 kiosk / Pi3 signage release orchestration
 date: 2026-07-12
-source_of_truth: docs/plans/rolling-terminal-bluegreen-deploy.md
+source_of_truth: docs/plans/deployment-foundation-refactor-execplan.md
+superseded_by: docs/plans/deployment-foundation-refactor-execplan.md
 related_code: [scripts/deploy/rolling-release.py, scripts/deploy/deploy-status-state.py, scripts/deploy/pi5-candidate-build.sh, scripts/deploy/classify-deploy-impact.py]
-related_docs: [../runbooks/pi5-blue-green-deploy.md, ../guides/deployment.md, ../decisions/ADR-20260712-rolling-terminal-release-orchestration.md, ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md]
+related_docs: [../runbooks/pi5-blue-green-deploy-legacy-2026-07.md, ../../guides/deployment.md, ../../decisions/ADR-20260712-rolling-terminal-release-orchestration.md, ../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md]
 validation: isolated PostgreSQL, unit tests, shell tests, CI, 2026-07-12 production rolling-terminal and Pi5 Blue/Green acceptance, and 2026-07-13 full rolling release with Pi5 cleanup recovery and operator-approved canary hold; --auto-minimize production shadow evaluation remains open
 open_items:
   - production shadow evaluation of --auto-minimize
@@ -59,7 +60,7 @@ failure is an optional future drill, not an outstanding acceptance requirement.
 
 Decision authority:
 [ADR-20260712-deploy-target-minimization-canary-hold](../../decisions/ADR-20260712-deploy-target-minimization-canary-hold.md).
-Operator steps: [deployment.md](../../guides/deployment.md#標準更新入口ローリング端末別メンテナンス).
+Operator steps: [deployment.md](../../guides/deployment.md#標準更新入口).
 
 Rolling V2 additions on the same entry point
 (`scripts/update-all-clients.sh` → `scripts/deploy/rolling-release.py`):
@@ -102,7 +103,7 @@ completed Pi5 Blue/Green monitoring and cleanup. StoneBase01 paused as the
 canary, proceeded only after explicit operator approval, and all remaining four
 Pi4 kiosks plus `raspberrypi3` signage completed successfully with no terminal
 left in maintenance. The incident and recovery evidence are recorded in
-[KB-400](../../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
+[KB-400](../knowledge-base/KB-400-pi5-bluegreen-cleanup-monitor-lock.md).
 
 `--auto-minimize` was not enabled for this release. Its production shadow
 evaluation and any default-on decision therefore remain open.

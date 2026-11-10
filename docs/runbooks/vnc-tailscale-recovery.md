@@ -39,12 +39,12 @@
 {
   "src": ["tag:admin"],
   "dst": ["tag:server"],
-  "ip": ["tcp:22", "tcp:443", "tcp:5900"]
+  "ip": ["tcp:22", "tcp:443", "tcp:5900", "tcp:8443"]
 },
 {
   "src": ["tag:kiosk", "tag:signage"],
   "dst": ["tag:server"],
-  "ip": ["tcp:443"]
+  "ip": ["tcp:443", "tcp:8443"]
 },
 {
   "src": ["tag:server"],

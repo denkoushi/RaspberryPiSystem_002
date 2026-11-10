@@ -1,3 +1,4 @@
+import type { LoadBalancingOutsourceSettings } from './load-balancing-outsource-settings.service.js';
 import type { StartDateLevelingUnallocatedRow } from './start-date-leveling.types.js';
 import type { WorkCalendarMode } from './work-calendar-policy.js';
 
@@ -55,6 +56,7 @@ export type LoadBalancingWorkspaceResult = {
   rows: LoadBalancingWorkspaceRow[];
   unallocatedRows: StartDateLevelingUnallocatedRow[];
   transferRules: LoadBalancingWorkspaceTransferRule[];
+  outsourceSettings?: LoadBalancingOutsourceSettings;
 };
 
 export type LoadBalancingWorkspaceDayResult = {

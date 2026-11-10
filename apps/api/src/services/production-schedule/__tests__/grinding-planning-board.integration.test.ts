@@ -321,6 +321,54 @@ describeIntegration('grinding planning board service real Postgres integration',
   });
 
 
+  it('matches legacy winner SQL IDs, order and every hydrate field after bounded in-memory intersection', async () => {
+    const f = await createFixture();
+    const [loser, winner, other, progress] = await addRows(f, [
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-A', processOrder: '1', productNo: '1' },
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-A', processOrder: '1', productNo: '2', completed: true, splitQuantity: 2 },
+      { fseiban: `${f.prefix}-B`, fhincd: 'PART-B', processOrder: '1', productNo: '3' },
+      { fseiban: `${f.prefix}-A`, fhincd: 'PART-C', processOrder: '2', productNo: '1', resourceCd: '100' }
+    ]);
+    const { Prisma } = await import('@prisma/client');
+    const { buildProductionScheduleLeaderboardMaterializedWinners } = await import('../row-resolver/max-product-no-winner-materialization.js');
+    const { prepareProductionScheduleDashboardFilters } = await import('../production-schedule-query/filters.js');
+    const { fetchLeaderboardPlanningScopedParentRowIds } = await import('../leaderboard/leaderboard-row-selection.service.js');
+    const { fetchLeaderboardScheduleHydratedRowsOrderedByIds } = await import('../leaderboard/leaderboard-shell-hydrate.service.js');
+    const { baseWhere, winnerRowIds } = await buildProductionScheduleLeaderboardMaterializedWinners(db());
+    const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+    expect(winnerRowIds.has(loser!)).toBe(false);
+    expect(winnerRowIds.has(winner!)).toBe(true);
+
+    for (const resourceCategory of ['grinding', undefined] as const) {
+      const filters = await prepareProductionScheduleDashboardFilters({
+        queryText: '', productNos: [], resourceCds: [], assignedOnlyCds: [], resourceCategory,
+        hasNoteOnly: false, hasDueDateOnly: false, allowResourceOnly: true,
+        locationKey: f.siteKey, siteKey: f.siteKey, planningFseibans: f.seibans
+      });
+      if (filters.kind === 'blocked_empty_search') throw new Error('fixture scope must be searchable');
+      const legacyIds = await fetchLeaderboardPlanningScopedParentRowIds({
+        leaderboardMaterializedBaseWhere: baseWhere, queryWhere: filters.queryWhere, completionFilter: 'all'
+      });
+      const boundedIds = await fetchLeaderboardPlanningScopedParentRowIds({
+        leaderboardMaterializedBaseWhere: dashboardWhere, winnerRowIds, queryWhere: filters.queryWhere, completionFilter: 'all'
+      });
+      expect(boundedIds).toEqual(legacyIds);
+      expect(boundedIds).toEqual((resourceCategory ? [winner!, other!] : [winner!, other!, progress!]).sort());
+      expect(boundedIds).not.toContain(loser);
+      // Exercise identity, detail-only supplement, and progress hydration with caches disabled.
+      for (const shape of [{}, { includePlanningDetails: true, planningSource: true, planningDetailsOnly: true }, { includePlanningDetails: true }]) {
+        const hydrate = (where: Prisma.Sql, orderedRowIds: string[]) => fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+          ...shape, orderedRowIds, locationKey: f.siteKey, siteScopedGlobalRankLocation: f.siteKey,
+          leaderboardMaterializedBaseWhere: where, leaderboardShellListWhere: where,
+          includeRank: false, maxRows: orderedRowIds.length
+        });
+        const legacy = await hydrate(baseWhere, legacyIds);
+        const bounded = await hydrate(dashboardWhere, boundedIds);
+        expect(JSON.stringify(bounded)).toBe(JSON.stringify(legacy));
+      }
+    }
+  });
+
   it('reuses first pages and observes CSV, progress, and other-terminal overrides on the next read', async () => {
     const f = await createFixture();
     await addRows(f, [{ fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-A' }, { fseiban: `${f.prefix}-ORDER`, fhincd: 'PART-B' }]);
@@ -533,7 +581,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     });
   });
 
-  it('counts every registered process in progress and caps the copied seiban order at 50', async () => {
+  it('counts every registered process in progress and caps the copied seiban order at 100', async () => {
     const progressFixture = await createFixture();
     await addRows(progressFixture, [
       { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '305', processOrder: '1', productNo: '1', completed: true },
@@ -544,7 +592,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(progressResponse.seibanProgress[`${progressFixture.prefix}-PROGRESS`]).toEqual({ completed: 1, total: 2 });
 
     const cappedFixture = await createFixture();
-    await addRows(cappedFixture, Array.from({ length: 52 }, (_, index) => ({
+    await addRows(cappedFixture, Array.from({ length: 102 }, (_, index) => ({
       fseiban: `${cappedFixture.prefix}-${String(index + 1).padStart(2, '0')}`,
       fhincd: `PART-${index + 1}`,
       processOrder: '1',
@@ -552,13 +600,13 @@ describeIntegration('grinding planning board service real Postgres integration',
       requiredMinutes: '1'
     })));
     const cappedResponse = await boardFor(cappedFixture);
-    expect(cappedResponse.registeredFseibans).toHaveLength(50);
-    expect(cappedResponse.items).toHaveLength(50);
+    expect(cappedResponse.registeredFseibans).toHaveLength(100);
+    expect(cappedResponse.items).toHaveLength(100);
     expect(cappedResponse.load.find((entry) => entry.resourceCd === '305')).toMatchObject({
-      originalItemCount: 52,
-      alternateItemCount: 52,
-      originalRequiredMinutes: 52,
-      alternateRequiredMinutes: 52
+      originalItemCount: 102,
+      alternateItemCount: 102,
+      originalRequiredMinutes: 102,
+      alternateRequiredMinutes: 102
     });
   });
 
@@ -804,10 +852,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     })).toEqual(versionsBeforeNoop);
   });
 
-  it('reorders moved split children consecutively without changing another resource', async () => {
-    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-    try {
+  it('reorders a parent with legacy records without changing another resource', async () => {
       const fixture = await createFixture();
       await addRows(fixture, [
         { fseiban: `${fixture.prefix}-A`, resourceCd: '305' },
@@ -815,10 +860,10 @@ describeIntegration('grinding planning board service real Postgres integration',
         { fseiban: `${fixture.prefix}-OTHER`, resourceCd: '581' }
       ]);
       const initial = await boardFor(fixture, { view: 'resource' });
-      const split = boardItem(initial, (item) => item.kind === 'split');
+      const split = boardItem(initial, (item) => item.fseiban.endsWith('-SPLIT'));
       await updateItem(fixture, split, { resourceCd: '305' }, initial.sourceRevision);
       const ready = await boardFor(fixture, { view: 'resource' });
-      const source = boardItem(ready, (item) => item.kind === 'split');
+      const source = boardItem(ready, (item) => item.fseiban.endsWith('-SPLIT'));
       const target = boardItem(ready, (item) => item.fseiban.endsWith('-A'));
       const reorder = (item: GrindingPlanningBoardItem, anchor: GrindingPlanningBoardItem) => service().updateGrindingPlanningBoardResourceOrder({
         siteKey: fixture.siteKey, sourceRevision: ready.sourceRevision,
@@ -833,10 +878,6 @@ describeIntegration('grinding planning board service real Postgres integration',
       await expect(reorder(source, target)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
       const other = boardItem(ready, (item) => item.fseiban.endsWith('-OTHER'));
       expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey, itemKey: other.itemId } })).toBe(0);
-    } finally {
-      if (previousSplitFlag === undefined) delete process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
-    }
   });
 
   it('persists dense resource ranks beyond ten and rejects stale or completed order targets atomically', async () => {
@@ -1031,7 +1072,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: separateFixture.siteKey } })).toBe(2);
   });
 
-  it('keeps an override on a same-logical-key winner, rejects deleted splits, and does not inherit parent overrides', async () => {
+  it('keeps an override on a same-logical-key winner and ignores legacy record changes', async () => {
     const fixture = await createFixture();
     const [oldRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-WINNER`, fhincd: 'PART-W', processOrder: '1', productNo: '1' }]);
     const first = await boardFor(fixture);
@@ -1051,30 +1092,28 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(boardItem(afterOldWinnerDelete, (item) => item.fseiban === `${fixture.prefix}-WINNER`)).toMatchObject({ sourceRowId: newRow, itemId: oldItem.itemId, effectiveResourceCd: '581' });
 
     const splitFixture = await createFixture();
-    const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2 }]);
-    const previousSplitFlag = process.env.KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED;
-    vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-    try {
-      const withSplit = await boardFor(splitFixture);
-      const parent = boardItem(withSplit, (item) => item.sourceRowId === parentRow);
-      expect(parent.kind).toBe('split');
-      expect(parent.effectiveResourceCd).toBe(parent.originalResourceCd);
-      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).resolves.toBeDefined();
-
-      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'false');
-      const splitOff = await boardFor(splitFixture);
-      const parentWhenOff = boardItem(splitOff, (item) => item.sourceRowId === parentRow);
-      expect(parentWhenOff.kind).toBe('row');
-      expect(parentWhenOff.effectiveResourceCd).toBe(parentWhenOff.originalResourceCd);
-
-      vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', 'true');
-      const splitId = splitFixture.splitIds[0]!;
-      await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
-      await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withSplit.sourceRevision)).rejects.toMatchObject({ code: 'STALE_PLANNING_BOARD_ITEM' });
-    } finally {
-      if (previousSplitFlag === undefined) vi.unstubAllEnvs();
-      else vi.stubEnv('KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED', previousSplitFlag);
-    }
+    const [parentRow] = await addRows(splitFixture, [{ fseiban: `${splitFixture.prefix}-SPLIT`, splitQuantity: 2, requiredMinutes: '100', rank: 4 }]);
+    const splitId = splitFixture.splitIds[0]!;
+    await db().productionScheduleOrderSplitAssignment.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, splitId,
+      siteKey: splitFixture.siteKey, location: splitFixture.siteKey, resourceCd: '305', orderNumber: 1
+    } });
+    const withLegacy = await boardFor(splitFixture);
+    const parent = boardItem(withLegacy, (item) => item.sourceRowId === parentRow);
+    expect(withLegacy.items).toHaveLength(1);
+    expect(parent).toMatchObject({ kind: 'row', plannedQuantity: 5, requiredMinutes: 100, originalRank: 4 });
+    await db().productionScheduleGrindingPlanningBoardOverride.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: splitFixture.siteKey,
+      itemKey: `split:${splitId}`, overrideResourceCd: '581', alternateRank: 1
+    } });
+    const beforeLegacyUpdate = await boardFor(splitFixture);
+    expect(beforeLegacyUpdate.items).toEqual(withLegacy.items);
+    await db().productionScheduleOrderSplit.update({ where: { id: splitId }, data: { splitQuantity: 99 } });
+    const afterLegacyUpdate = await boardFor(splitFixture);
+    expect(afterLegacyUpdate.items).toEqual(withLegacy.items);
+    expect(afterLegacyUpdate.snapshotId).toBe(beforeLegacyUpdate.snapshotId);
+    await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
+    await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withLegacy.sourceRevision)).resolves.toBeDefined();
   });
 
   it('lists due-window seiban candidates with canonical due precedence and effective completion', async () => {
@@ -1169,7 +1208,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     await expect(service().updateGrindingPlanningBoardSeibanOrder({
       siteKey: fixture.siteKey,
       sourceRevision: 'unused-for-limit-check',
-      fseibans: Array.from({ length: 51 }, (_, index) => `OVER-${index + 1}`)
+      fseibans: Array.from({ length: 101 }, (_, index) => `OVER-${index + 1}`)
     })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
   });
 });

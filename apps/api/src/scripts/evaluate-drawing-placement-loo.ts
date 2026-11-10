@@ -171,13 +171,13 @@ async function main() {
       let attempts = 0;
       try {
         if (target.map && !reference) {
-          const candidates = prefilterDrawingSiblings({ ...target, map: target.map }, pool.filter((candidate) =>
-            candidate.id !== target.id && candidate.fingerprint !== target.fingerprint));
           const deps = config.vision === 'none'
             ? { ...drawingSiblingSelectionDeps, enabled: () => false } : drawingSiblingSelectionDeps;
+          const candidates = deps.enabled() ? await prefilterDrawingSiblings(target, pool.filter((candidate) =>
+            candidate.id !== target.id && candidate.fingerprint !== target.fingerprint), deps) : [];
           do {
             attempts++;
-            // Same production retry/fallback thresholds, without persisting PENDING or attempts.
+            // Same production retry thresholds, without persisting PENDING or attempts.
             // eslint-disable-next-line no-await-in-loop
             selection = await selectDrawingSiblings(target, candidates, attempts, deps);
           } while (selection.status === 'PENDING' && attempts < 3);
@@ -196,7 +196,7 @@ async function main() {
           humanTemplateIds: templates.map((template) => template.id),
           siblingId: null, siblingName: null, sourceTemplateId: null, sameFamily: null,
           method: 'none', selectionMethod: selection?.method ?? 'none', attempts,
-          warning: selection?.status !== 'PENDING' && selection?.lastError ? 'Vision failed after 3 attempts; used name fallback' : null,
+          warning: selection?.lastError ?? null,
           humanCount: humans.length, proposalCount: null, matched: null, nominalMatched: null, positionOk: null,
           precision: null, recall: null, positionOkRate: null, error: selectionError
         };
@@ -267,7 +267,7 @@ async function main() {
       }
     }
     const successful = rows.filter((row) => row.error === null);
-    const countsByMethod: Record<Method, number> = { 'dgx-vision': 0, 'jev-vision': 0, name: 0, none: 0, reference: 0 };
+    const countsByMethod: Record<Method, number> = { 'dgx-vision': 0, none: 0, reference: 0 };
     for (const row of successful) countsByMethod[row.method]++;
     const summary = {
       drawings: targets.length, rows: rows.length, evaluatedRows: successful.length, errorRows: rows.length - successful.length,

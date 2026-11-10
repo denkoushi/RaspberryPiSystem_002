@@ -21,7 +21,7 @@
 - `tag:kiosk`: Pi4（キオスク、今後増台）
 - `tag:signage`: Pi3/Zero2W（サイネージ、今後増台の可能性）
   - **補足（2026-05-04）**: **ヘッドレス棚番エッジ**（Zero 2 W・キオスク UI なし・`status-agent` のみ）も、更新経路を **Pi 5 → SSH** に揃えるなら **同一タグ族として扱える**（実運用では端末台帳で **用途（サイネージ／棚番エッジ）** を区別する）。**Mac（admin）→ Zero 直 SSH**は本ポリシーでは原則想定外のため、不通時は **Pi 5 踏み台**を正とする（詳細は [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)・[KB-367](../knowledge-base/KB-367-zero2w-tanaban-edge-tailscale-ansible.md)）。
-- `tag:llm`: Ubuntu LocalLLM 専用ノード（Tailscale sidecar で分離）
+- `tag:llm`: LocalLLM 専用ノード（Tailscale sidecar で分離）。2026-04-26 以降は DGX Spark の `dgx-local-llm-system`（`scripts/dgx-local-llm-system/compose.yaml.example`）。旧 Ubuntu ノードは退役
 - `tag:private-server`: 自宅私用 Pi5（Hermes / StackChan bridge・Hermes grants 草案（DGXSparkControlPlane `docs/private-history/security/tailscale-policy-hermes-private-pi5-grants.json`））
 
 補足:
@@ -44,9 +44,9 @@ NFC（Pi4）について:
   - 運用Mac等が誤って購読すると、他端末のスキャンで画面遷移が発火し得る。
 - Tailnet上で `kiosk:7071` を恒常的に開けることは避ける（横移動面になるため）。
 
-LocalLLM（Ubuntu 別ホスト）について:
-- Ubuntu ホスト本体を tailnet に直接参加させず、**Tailscale sidecar + `nginx` + `llama-server`** を 1 ノードとして扱う。
-- tailnet に見せる入口は **`38081` のみ**。`llama-server` 自体は **`127.0.0.1:38082`** の内部待受に閉じ込める。
+LocalLLM（別ホスト。2026-04-26 以降は DGX Spark、当初は Ubuntu）について:
+- ホスト本体を tailnet に直接参加させず、**Tailscale sidecar + `nginx` + `llama-server`** を 1 ノードとして扱う。
+- tailnet に見せる入口は **`38081` のみ**。`llama-server` 自体は **`127.0.0.1:38082`** の内部待受に閉じ込める。（Ubuntu 時代の構成。現行: DGX では sidecar の `nginx:38081` がホスト側 gateway（Docker bridge gateway の `38081`）へ中継する。`scripts/dgx-local-llm-system/nginx.default.conf.template.example`）
 - **Pi5 だけ**が LocalLLM に到達できるようにし、運用 Mac や Pi4/Pi3 からの直接到達は許可しない。
 
 ## 原則禁止（横移動面の削減）
@@ -300,7 +300,7 @@ Stage 3（Tailscale SSH）:
   - Tailnet上の`kiosk:7071`へのアクセスを遮断
   - Pi4キオスクは`localhost:7071`経由でNFC Agentにアクセス（動作確認済み）
 - ✅ **Phase 2-3: LocalLLM ノード分離（完了）**
-  - `ubuntu-local-llm-system` を `tag:llm` で登録
+  - `ubuntu-local-llm-system` を `tag:llm` で登録（現行: DGX Spark の `dgx-local-llm-system` が `tag:llm` を引き継ぐ）
   - `tag:server → tag:llm: tcp:38081` のみ許可
   - LocalLLM 入口は `nginx:38081`、推論本体は `127.0.0.1:38082`
 
@@ -323,7 +323,7 @@ Tailscale の **Key expiry** はセキュリティ機能であり、端末ごと
 **本番影響（2026-06-04 実例）**:
 
 - **`tag:signage`（Pi3）**: 失効中は Pi5 の `current-image` に届かず、**デスクトップのみ**表示（[KB-386](../knowledge-base/infrastructure/signage.md#kb-386-pi3サイネージ非表示tailscale-key-expiryとネットワーク経路)）
-- **`tag:kiosk`（Pi4）**: キオスク URL（`https://100.106.158.2/kiosk`）が開けない（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）
+- **`tag:kiosk`（Pi4）**: キオスク URL（`https://100.106.158.2/kiosk`）が開けない（[KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）
 - **`tag:server`（Pi5）**: `NeedsLogin` / node key expired（[KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)）
 
 **運用方針（2026-06-04 決定）**:

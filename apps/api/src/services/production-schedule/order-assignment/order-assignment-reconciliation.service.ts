@@ -2,11 +2,8 @@ import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import {
   findStaleOrderAssignmentCandidates,
-  findStaleSplitOrderAssignmentCandidates,
   groupStaleCandidatesForRelease,
-  groupStaleSplitCandidatesForRelease,
   releaseOrderAssignmentAtLocation,
-  releaseSplitOrderAssignmentAtLocation,
   type OrderAssignmentReconciliationResult,
   type OrderAssignmentReleaseTarget,
   type PrismaOrderAssignmentExecutor
@@ -57,9 +54,6 @@ export async function reconcileStaleProductionScheduleOrderAssignments(
 
   const parentCandidates = await findStaleOrderAssignmentCandidates(executor);
   const orderedParent = groupStaleCandidatesForRelease(parentCandidates);
-  const splitCandidates = await findStaleSplitOrderAssignmentCandidates(executor);
-  const orderedSplit = groupStaleSplitCandidatesForRelease(splitCandidates);
-
   let released = 0;
   for (const candidate of orderedParent) {
     const result = await releaseOrderAssignmentAtLocation(executor, {
@@ -71,20 +65,10 @@ export async function reconcileStaleProductionScheduleOrderAssignments(
     }
   }
 
-  for (const candidate of orderedSplit) {
-    const result = await releaseSplitOrderAssignmentAtLocation(executor, {
-      splitId: candidate.splitId,
-      location: candidate.location
-    });
-    if (result.released) {
-      released += 1;
-    }
-  }
-
-  const scanned = orderedParent.length + orderedSplit.length;
+  const scanned = orderedParent.length;
   if (released > 0) {
     logger.info(
-      { scanned, released, parentCandidates: orderedParent.length, splitCandidates: orderedSplit.length },
+      { scanned, released, parentCandidates: orderedParent.length },
       '[ProductionScheduleOrderAssignmentReconciliation] stale order assignments released'
     );
   }

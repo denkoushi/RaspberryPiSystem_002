@@ -17,7 +17,7 @@ export const CsvImportTypeSchema = z.enum([
  * CSVインポートターゲット（スケジュール内の1つの対象）
  */
 export const CsvImportTargetSchema = z.object({
-  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail'), z.literal('machineSignalGmail'), z.literal('procedureMaterialGmail')]),
+  type: z.union([CsvImportTypeSchema, z.literal('itemInventoryGmail'), z.literal('machineSignalGmail'), z.literal('procedureMaterialGmail'), z.literal('dScheduleMinutesGmail')]),
   source: z.string() // Dropbox用: パス、Gmail用: 件名パターン
 });
 
@@ -35,6 +35,12 @@ export const PathMappingSchema = z.object({
  * バックアップ設定のスキーマ
  */
 export const BackupConfigSchema = z.object({
+  gmailIngestSenderPolicy: z.object({
+    allowedSenderDomains: z.array(z.string().trim().toLowerCase().regex(
+      /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/,
+      'ドメインの形式が不正です',
+    )).default(['thkintechs.co.jp']),
+  }).prefault({ allowedSenderDomains: ['thkintechs.co.jp'] }),
   storage: z.object({
     provider: z.enum(['local', 'dropbox', 'gmail']),
     options: z.object({
@@ -233,6 +239,7 @@ export type BackupConfig = z.infer<typeof BackupConfigSchema>;
  * デフォルトのバックアップ設定
  */
 export const defaultBackupConfig: BackupConfig = {
+  gmailIngestSenderPolicy: { allowedSenderDomains: ['thkintechs.co.jp'] },
   storage: {
     provider: 'local',
     options: {

@@ -1,3 +1,4 @@
+import { listMachines, saveMachineOrder } from './item-inventory-machines.js';
 import type { InventoryToolScope, InventoryVariantField } from '@raspi-system/shared-types';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../lib/prisma.js';
@@ -8,7 +9,7 @@ import { resolveTag, resolveCompartmentByLabelNumber, listTags, listLocations, l
 import { rotateImportPhoto, rotateInventoryItemPhoto, deleteImportPhoto, reorderImportPhotos, deleteInventoryItemPhoto, reorderInventoryItemPhotos } from './item-inventory-photos.js';
 import { listToolFieldOptions, listToolFieldValues, addToolFieldValue, renameToolFieldValue, deleteToolFieldValue, toolValueVariants, mergeToolValueVariants, dismissToolValueVariants } from './item-inventory-tool-fields.js';
 import { registerImport } from './item-inventory-import-registration.js';
-import { bindCompartment, processTransaction, processTouchTransaction, processStockTransaction, cancelTransaction, correctStock, moveLocation, replaceItemTag } from './item-inventory-transactions.js';
+import { setReorderPoint, setOrdered, bindCompartment, processTransaction, processTouchTransaction, processStockTransaction, cancelTransaction, correctStock, moveLocation, replaceItemTag } from './item-inventory-transactions.js';
 
 export { INVENTORY_TOOL_FIELDS, INVENTORY_OPTION_FIELDS } from './item-inventory.fields.js';
 export type { InventoryToolField, InventoryOptionField } from './item-inventory.fields.js';
@@ -22,13 +23,36 @@ export class ItemInventoryService {
 
   private async serializable<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> { return runSerializable(this.db, work); }
 
+  async setReorderPoint(id: string, reorderPoint: number | null) { return setReorderPoint(this.db, id, reorderPoint); }
+
+  async setOrdered(id: string, ordered: boolean) { return setOrdered(this.db, id, ordered); }
+
   async resolveTag(uid: string) { return resolveTag(this.db, uid); }
+
+  async listMachines(clientId: string) { return listMachines(this.db, clientId); }
+
+  async saveMachineOrder(clientId: string, machineIds: string[]) { return saveMachineOrder(this.db, clientId, machineIds); }
 
   async resolveCompartmentByLabelNumber(labelNumber: number) { return resolveCompartmentByLabelNumber(this.db, labelNumber); }
 
   async listTags() { return listTags(this.db); }
 
   async listLocations() { return listLocations(this.db); }
+
+  async listMachineOptionalDepartments(): Promise<string[]> {
+    const rows = await this.db.inventoryMachineOptionalDepartment.findMany({ orderBy: { department: 'asc' } });
+    return rows.map(row => row.department);
+  }
+
+  async setDepartmentMachineRequired(department: string, machineRequired: boolean) {
+    if (machineRequired) {
+      await this.db.inventoryMachineOptionalDepartment.deleteMany({ where: { department } });
+    } else {
+      await this.db.inventoryMachineOptionalDepartment.upsert({ where: { department }, create: { department }, update: {} });
+    }
+    return { department, machineRequired };
+  }
+
 
   async listItems() { return listItems(this.db); }
 
@@ -149,6 +173,7 @@ export class ItemInventoryService {
     quantityTagUid: string;
     restockTagUid?: string;
     restock: boolean;
+    machineId?: string;
     idempotencyKey?: string;
     actor?: InventoryActor;
   }) { return processTransaction(this.db, input); }
@@ -158,12 +183,13 @@ export class ItemInventoryService {
     quantity: number;
     restock?: boolean;
     expectedBeforeQuantity?: number;
+    machineId?: string;
     idempotencyKey?: string;
     actor?: InventoryActor;
   }) { return processTouchTransaction(this.db, input); }
 
   private async processStockTransaction(
-    input: { restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
+    input: { machineId?: string; restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
     resolveMovement: (tx: Prisma.TransactionClient) => Promise<{
       compartmentId: string;
       quantity: number;

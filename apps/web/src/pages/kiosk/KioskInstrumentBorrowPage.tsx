@@ -3,8 +3,6 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
-  borrowMeasuringInstrument,
-  createInspectionRecord,
   getResolvedClientKey,
   getMeasuringInstrumentInspectionProfile,
   getMeasuringInstrumentByTagUid,
@@ -23,6 +21,8 @@ import { InstrumentBorrowPageLayout } from '../../components/kiosk/instrumentBor
 import { InstrumentBorrowTagUidFields } from '../../components/kiosk/instrumentBorrow/InstrumentBorrowTagUidFields';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { isRetryableLoanError } from '../../features/kiosk/loan/offline/loanOutboxRunner';
+import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
 import {
   kioskSelfInspectionInspectorSessionPath,
   kioskSelfInspectionSessionPath
@@ -35,6 +35,9 @@ import type { AxiosError } from 'axios';
 type InstrumentSource = 'select' | 'tag' | null;
 
 export function KioskInstrumentBorrowPage() {
+  const { message: outboxMessage, submit } = useLoanOfflineQueue();
+  const scanReadAtRef = useRef<string | undefined>(undefined);
+  const [profileUnavailable, setProfileUnavailable] = useState(false);
   const { data: instruments, isLoading: isLoadingInstruments } = useMeasuringInstruments();
   const { data: kioskConfig } = useKioskConfig();
   const [searchParams] = useSearchParams();
@@ -142,6 +145,7 @@ export function KioskInstrumentBorrowPage() {
       } catch (error) {
         // タグUIDが見つからない場合はエラーを表示しない（手動選択も可能なため）
         console.debug('Tag UID not found:', instrumentTagUid);
+        setProfileUnavailable(isRetryableLoanError(error));
         if (instrumentSource !== 'select') {
           setSelectedInstrumentId('');
         }
@@ -189,6 +193,7 @@ export function KioskInstrumentBorrowPage() {
         setIsNg(false);
         return;
       }
+      setProfileUnavailable(false);
       setInspectionLoading(true);
       setInspectionItems([]);
       setGenreImageUrls([]);
@@ -213,6 +218,7 @@ export function KioskInstrumentBorrowPage() {
       } catch (error) {
         console.error(error);
         setGenreReady(false);
+        setProfileUnavailable(isRetryableLoanError(error));
         setMessage('点検項目/ジャンル設定の取得に失敗しました。計測機器を確認してください。');
       } finally {
         setInspectionLoading(false);
@@ -243,7 +249,7 @@ export function KioskInstrumentBorrowPage() {
       setMessage('氏名タグUIDを入力してください。');
       return;
     }
-    if (!genreReady) {
+    if (!genreReady && !profileUnavailable) {
       setMessage('計測機器ジャンルまたは点検画像が未設定のため、持出できません。管理コンソールで設定してください。');
       return;
     }
@@ -256,12 +262,12 @@ export function KioskInstrumentBorrowPage() {
     setIsSubmitting(true);
     setMessage(null);
     try {
-      const loan = await borrowMeasuringInstrument({
+      const loan = await submit({ route: 'instrumentBorrow', body: {
         instrumentTagUid: resolvedInstrumentTagUid.trim(),
         employeeTagUid
-      });
+      } }, scanReadAtRef.current);
       // NGの場合は点検記録を作成しない（個別項目の記録は不要）
-      setMessage(`持出登録完了（NG）: Loan ID = ${loan.id}`);
+      setMessage(loan ? `持出登録完了（NG）: Loan ID = ${loan.id}` : null);
       resetForm();
       // defaultModeに応じた画面へ戻す
       navigate(returnPath, { replace: true });
@@ -305,6 +311,7 @@ export function KioskInstrumentBorrowPage() {
 
   const handleSubmit = useCallback(async (e?: FormEvent, employeeTagUidOverride?: string) => {
     if (e) {
+      scanReadAtRef.current = undefined;
       e.preventDefault();
     }
     const effectiveEmployeeUid = (employeeTagUidOverride ?? employeeTagUid).trim();
@@ -316,7 +323,7 @@ export function KioskInstrumentBorrowPage() {
       setMessage('氏名タグUIDを入力してください。');
       return;
     }
-    if (!genreReady) {
+    if (!genreReady && !profileUnavailable) {
       setMessage('計測機器ジャンルまたは点検画像が未設定のため、持出できません。管理コンソールで設定してください。');
       return;
     }
@@ -373,23 +380,11 @@ export function KioskInstrumentBorrowPage() {
         return;
       }
 
-      const loan = await borrowMeasuringInstrument(payload as MeasuringInstrumentBorrowPayload);
-      // OKの場合：全項目PASSとして点検記録を作成
-      const selectedInstrument = instruments?.find((inst) => inst.id === selectedInstrumentId);
-      if (inspectionItems.length > 0 && selectedInstrument && loan.employee?.id) {
-        const tasks = inspectionItems.map((item) =>
-          createInspectionRecord({
-            measuringInstrumentId: selectedInstrument.id,
-            loanId: loan.id,
-            employeeId: loan.employee.id,
-            inspectionItemId: item.id,
-            result: 'PASS',
-            inspectedAt: new Date().toISOString()
-          })
-        );
-        await Promise.all(tasks);
-      }
-      setMessage(`持出登録完了: Loan ID = ${loan.id}`);
+      const loan = await submit({ route: 'instrumentBorrow', body: {
+        ...payload as MeasuringInstrumentBorrowPayload,
+        inspectionItemIds: inspectionItems.map(item => item.id),
+      } }, scanReadAtRef.current);
+      setMessage(loan ? `持出登録完了: Loan ID = ${loan.id}` : null);
       resetForm();
       // defaultModeに応じた画面へ戻す
       navigate(returnPath, { replace: true });
@@ -444,7 +439,8 @@ export function KioskInstrumentBorrowPage() {
     isNg,
     inspectionItems,
     genreReady,
-    instruments,
+    profileUnavailable,
+    submit,
     hasInstrument,
     resolvedInstrumentTagUid,
     navigate,
@@ -503,6 +499,7 @@ export function KioskInstrumentBorrowPage() {
         setMessage('計測機器を選択中です。少し待ってから再スキャンしてください。');
         return;
       }
+      scanReadAtRef.current = nfcEvent.timestamp;
       void handleSubmit(undefined, nfcEvent.uid);
     }
   }, [nfcEvent, instrumentTagUid, employeeTagUid, isNg, isSubmitting, hasInstrument, handleSubmit, instrumentSource, resolvedClientId, resolvedClientKey]);
@@ -541,7 +538,7 @@ export function KioskInstrumentBorrowPage() {
           header={
             <InstrumentBorrowHeaderRow
               title={isSelfInspectionPreUseMode ? '計測機器 使用前点検' : '計測機器 持出'}
-              statusMessage={message}
+              statusMessage={message || outboxMessage}
               trailing={
                 inspectionItems.length > 0 && !isSelfInspectionPreUseMode ? (
                   <Button
@@ -549,7 +546,7 @@ export function KioskInstrumentBorrowPage() {
                     variant="secondary"
                     className={clsx('rounded-lg px-[18px] py-2 text-sm', isNg && 'bg-red-500 text-white hover:bg-red-600')}
                     onClick={handleNg}
-                    disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || !genreReady}
+                    disabled={isSubmitting || !hasInstrument || !employeeTagUid.trim() || (!genreReady && !profileUnavailable)}
                   >
                     NGにする
                   </Button>
@@ -624,7 +621,7 @@ export function KioskInstrumentBorrowPage() {
 
               {inspectionItems.length === 0 && (
                 <div>
-                  <Button type="submit" disabled={isSubmitting || !genreReady} onClick={handleSubmit}>
+                  <Button type="submit" disabled={isSubmitting || (!genreReady && !profileUnavailable)} onClick={handleSubmit}>
                     {isSubmitting ? '送信中…' : '持出登録'}
                   </Button>
                 </div>

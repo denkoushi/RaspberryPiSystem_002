@@ -10,13 +10,11 @@ import type {
 type Worker = Awaited<ReturnType<typeof createWorker>>;
 type WorkerParams = Parameters<Worker['setParameters']>[0];
 
-const ENG_ALNUM_WHITELIST = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz:-_.';
-const DIGIT_WHITELIST = '0123456789';
 const DRAWING_DIMENSION_WHITELIST = '0123456789.,+-';
 
 /**
  * tesseract.js による画像 OCR。
- * 現品票向けに用途別プロファイル（言語・PSM・whitelist）を切り替える。
+ * 用途別プロファイル（言語・PSM・whitelist）を切り替える。
  */
 export class TesseractJsImageOcrAdapter implements ImageOcrPort, ImageOcrLayoutPort {
   private workerJpnEngPromise: Promise<Worker> | null = null;
@@ -40,12 +38,6 @@ export class TesseractJsImageOcrAdapter implements ImageOcrPort, ImageOcrLayoutP
       return this.runLegacyJpnEng(input);
     }
     switch (input.profile) {
-      case 'actualSlipLabels':
-        return this.runActualSlipLabels(input);
-      case 'actualSlipManufacturingDigits':
-        return this.runActualSlipManufacturingDigits(input);
-      case 'actualSlipAuxiliaryAlnum':
-        return this.runActualSlipAuxiliaryAlnum(input);
       case 'partMeasurementDrawingDimensions':
         return this.runPartMeasurementDrawingDimensions(input);
     }
@@ -69,53 +61,6 @@ export class TesseractJsImageOcrAdapter implements ImageOcrPort, ImageOcrLayoutP
   private async runLegacyJpnEng(input: ImageOcrInput): Promise<ImageOcrResult> {
     const worker = await this.getWorkerJpnEng();
     await worker.setParameters(this.defaultJpnEngParams());
-    const {
-      data: { text }
-    } = await worker.recognize(input.imageBytes);
-    return {
-      text: text.trim(),
-      engine: 'tesseract.js'
-    };
-  }
-
-  private async runActualSlipLabels(input: ImageOcrInput): Promise<ImageOcrResult> {
-    const worker = await this.getWorkerJpnEng();
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-      user_defined_dpi: '300'
-    });
-    const {
-      data: { text }
-    } = await worker.recognize(input.imageBytes);
-    return {
-      text: text.trim(),
-      engine: 'tesseract.js'
-    };
-  }
-
-  private async runActualSlipManufacturingDigits(input: ImageOcrInput): Promise<ImageOcrResult> {
-    const worker = await this.getWorkerEng();
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-      tessedit_char_whitelist: DIGIT_WHITELIST,
-      user_defined_dpi: '300'
-    });
-    const {
-      data: { text }
-    } = await worker.recognize(input.imageBytes);
-    return {
-      text: text.trim(),
-      engine: 'tesseract.js'
-    };
-  }
-
-  private async runActualSlipAuxiliaryAlnum(input: ImageOcrInput): Promise<ImageOcrResult> {
-    const worker = await this.getWorkerEng();
-    await worker.setParameters({
-      tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-      tessedit_char_whitelist: ENG_ALNUM_WHITELIST,
-      user_defined_dpi: '300'
-    });
     const {
       data: { text }
     } = await worker.recognize(input.imageBytes);
@@ -154,23 +99,6 @@ export class TesseractJsImageOcrAdapter implements ImageOcrPort, ImageOcrLayoutP
 
   private paramsForProfile(profile: ImageOcrInput['profile']): WorkerParams {
     switch (profile) {
-      case 'actualSlipLabels':
-        return {
-          tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
-          user_defined_dpi: '300'
-        };
-      case 'actualSlipManufacturingDigits':
-        return {
-          tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-          tessedit_char_whitelist: DIGIT_WHITELIST,
-          user_defined_dpi: '300'
-        };
-      case 'actualSlipAuxiliaryAlnum':
-        return {
-          tessedit_pageseg_mode: PSM.SPARSE_TEXT,
-          tessedit_char_whitelist: ENG_ALNUM_WHITELIST,
-          user_defined_dpi: '300'
-        };
       case 'partMeasurementDrawingDimensions':
         return this.partMeasurementDrawingParams();
       default:

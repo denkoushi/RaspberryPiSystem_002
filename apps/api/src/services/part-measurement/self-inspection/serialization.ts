@@ -126,7 +126,6 @@ export const recordApprovalSessionInclude = {
       inspectorEmployeeId: true,
       inspectorEmployeeCodeSnapshot: true,
       inspectorEmployeeNameSnapshot: true,
-      inspectorEmployeeNfcTagUidSnapshot: true,
       measuringInstrumentId: true,
       measuringInstrumentManagementNumberSnapshot: true,
       measuringInstrumentNameSnapshot: true,
@@ -417,7 +416,6 @@ export function serializeRecordApproval(approval: RecordApprovalSessionSource['r
     approverEmployeeId: approval.approverEmployeeId,
     approverEmployeeCodeSnapshot: approval.approverEmployeeCodeSnapshot,
     approverEmployeeNameSnapshot: approval.approverEmployeeNameSnapshot,
-    approverEmployeeNfcTagUidSnapshot: approval.approverEmployeeNfcTagUidSnapshot,
     comment: approval.comment,
     clientDeviceId: approval.clientDeviceId,
     clientDeviceNameSnapshot: approval.clientDeviceNameSnapshot
@@ -730,7 +728,6 @@ export function serializeRecordApprovalEntryDetail(
           inspectorEmployeeId: inspectorEntry.inspectorEmployeeId,
           inspectorEmployeeCodeSnapshot: inspectorEntry.inspectorEmployeeCodeSnapshot,
           inspectorEmployeeNameSnapshot: inspectorEntry.inspectorEmployeeNameSnapshot,
-          inspectorEmployeeNfcTagUidSnapshot: inspectorEntry.inspectorEmployeeNfcTagUidSnapshot,
           measuringInstrumentId: inspectorEntry.measuringInstrumentId,
           measuringInstrumentManagementNumberSnapshot:
             inspectorEntry.measuringInstrumentManagementNumberSnapshot,
@@ -857,7 +854,6 @@ export function serializeInspectorEntryMeta(entry: {
   inspectorEmployeeId: string | null;
   inspectorEmployeeCodeSnapshot: string | null;
   inspectorEmployeeNameSnapshot: string | null;
-  inspectorEmployeeNfcTagUidSnapshot: string | null;
   measuringInstrumentId: string | null;
   measuringInstrumentManagementNumberSnapshot: string | null;
   measuringInstrumentNameSnapshot: string | null;
@@ -879,7 +875,6 @@ export function serializeInspectorEntryMeta(entry: {
     inspectorEmployeeId: entry.inspectorEmployeeId,
     inspectorEmployeeCodeSnapshot: entry.inspectorEmployeeCodeSnapshot,
     inspectorEmployeeNameSnapshot: entry.inspectorEmployeeNameSnapshot,
-    inspectorEmployeeNfcTagUidSnapshot: entry.inspectorEmployeeNfcTagUidSnapshot,
     measuringInstrumentId: entry.measuringInstrumentId,
     measuringInstrumentManagementNumberSnapshot: entry.measuringInstrumentManagementNumberSnapshot,
     measuringInstrumentNameSnapshot: entry.measuringInstrumentNameSnapshot,

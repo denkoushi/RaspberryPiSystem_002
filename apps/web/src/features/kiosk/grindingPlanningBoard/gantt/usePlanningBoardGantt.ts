@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
+import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
 import { usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
+import { usePersistedPlanningBoardSingleResource } from './usePersistedPlanningBoardSingleResource';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';
@@ -18,9 +19,12 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   enabled: boolean;
   preferenceScope: string;
 }) {
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder } = options;
+  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
+  const minutes = useKioskGrindingPlanningBoardResourceMinutes(enabled);
+  const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
+  const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
   const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
@@ -40,9 +44,34 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     } catch { /* Storage is optional. */ }
     return paneResources;
   }, [enabled, preferenceScope, paneResources]);
+  const { resourceCd: singleResourceCd, changeResource } = usePersistedPlanningBoardSingleResource(preferenceScope, paneResources);
+  const [singleResourcePickerAnchor, setSingleResourcePickerAnchor] = useState<HTMLElement | null>(null);
+  const closeSingleResourcePicker = useCallback(() => setSingleResourcePickerAnchor(null), []);
+  const openSingleResourcePicker = useCallback((anchor: HTMLElement) => setSingleResourcePickerAnchor((current) => current === anchor ? null : anchor), []);
+  const changeSingleResource = useCallback((resource: string | null) => {
+    setValueSheetResource(null);
+    changeResource(resource);
+    setSingleResourcePickerAnchor(null);
+    if (resource) changeMode('forward');
+  }, [changeResource, changeMode]);
+  useEffect(() => {
+    if (!enabled) setSingleResourcePickerAnchor(null);
+    if (!enabled || !singleResourceCd) return;
+    const escape = (event: KeyboardEvent) => {
+      // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
+      if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
+        if (valueSheetResource === singleResourceCd) setValueSheetResource(null);
+        else changeSingleResource(null);
+      }
+    };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource]);
+  const effectiveMode = singleResourceCd ? 'forward' : mode;
+  const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder
-  }), [enabled, items, allocation, view, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode, now, category, resourceCategories, laneOrder]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
+  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
@@ -52,6 +81,10 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const changeBreaks = useCallback((resourceCd: string, runsThroughBreaks: boolean) => {
     if (!isPending) mutate({ resourceCd, runsThroughBreaks });
   }, [isPending, mutate]);
-  return { mode, changeMode, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+  return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
+    resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError,
+    changeMinutesSource: sourceMutation.mutate, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
+    toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
+    singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: isPending, capacityError: isError, changeCapacity };
 }

@@ -137,7 +137,7 @@ describe('procedure-video routes', () => {
   });
   it('replaces page video ordering under a document lock with the overlay access password', async () => {
     const h = setup(); const response = await h.app.inject({ method: 'PUT', url: pagePath, payload: { videoIds: [secondId, id], accessPassword: 'secret' } });
-    expect(response.statusCode).toBe(200); expect(h.access.requireAccessPassword).toHaveBeenCalledExactlyOnceWith('secret');
+    expect(response.statusCode).toBe(200); expect(h.access.requireAccessPassword).toHaveBeenCalledExactlyOnceWith('secret', expect.objectContaining({ clientDeviceId: null, ip: '127.0.0.1' }));
     expect(h.db.procedureVideoLink.deleteMany).toHaveBeenCalledWith({ where: { assemblyProcedureDocumentId: id, pageIndex: 0 } });
     expect(h.db.procedureVideoLink.createMany).toHaveBeenCalledWith({ data: [{ videoId: secondId, sceneId: null, assemblyProcedureDocumentId: id, pageIndex: 0, sortOrder: 0 }, { videoId: id, sceneId: null, assemblyProcedureDocumentId: id, pageIndex: 0, sortOrder: 1 }] });
     expect((await h.app.inject(pagePath)).json().videos).toHaveLength(1);

@@ -1,3 +1,5 @@
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
+
 import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
@@ -5,7 +7,6 @@ import {
   buildGrindingPlanningBoardLogicalKey,
   buildGrindingPlanningBoardRowItemId,
   projectGrindingPlanningBoard,
-  resolveGrindingPlanningBoardItemDueDate,
   resolveGrindingPlanningBoardParentDueDate,
   sortGrindingPlanningBoardProjectionItems,
   type GrindingPlanningBoardProjectionOverride,
@@ -31,20 +32,19 @@ const sourceRow = (
   }
 });
 
-const detail = (overrides: Partial<GrindingPlanningBoardProjectionRowDetail> = {}): GrindingPlanningBoardProjectionRowDetail => ({
+const detail = (overrides: Partial<GrindingPlanningBoardProjectionRowDetail> & { orderSplits?: unknown[] } = {}): GrindingPlanningBoardProjectionRowDetail => ({
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
   rowNotes: [{ dueDate: new Date('2026-09-10T00:00:00.000Z') }],
   orderSupplements: [{ plannedQuantity: 3, plannedEndDate: null }],
   productionScheduleProgress: { isCompleted: false, updatedAt: new Date('2026-09-01T00:00:00.000Z') },
   productionScheduleExternalCompletion: null,
-  orderSplits: [],
   ...overrides
 });
 
 const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanningBoard>[0]> = {}) => ({
   rows: [sourceRow()],
   details: new Map([['row-1', detail()]]),
-  ranks: { rows: new Map(), splits: new Map() },
+  ranks: { rows: new Map() },
   overrides: new Map<string, GrindingPlanningBoardProjectionOverride>(),
   category: 'grinding' as const,
   seibanOrder: ['S-001'],
@@ -55,9 +55,117 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it.each([true, false])('adds separate setup/operation fields only on enabled effective resources (enabled=%s)', (enabled) => {
+    const source = sourceRow({ FSIGENCD: '021' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const updatedAt = new Date('2026-11-09');
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 2, nextPosition: 3,
+      sourcePieceSetId: null, plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `op-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt,
+        opCompletions: [{ opNo: 2 }, { opNo: 19 }] })) };
+    const ops = [{ opNo: 1, minutes: 4 }, { opNo: 2, minutes: 6 }];
+    const params = baseParams({ rows: [source], includePieces: true, isResourceInCategory: () => true,
+      pieceSets: new Map([[encodeSessakuPieceKey(key), set]]),
+      resourceMinutes: { ownSourceResourceCds: ['022'], values: [{ resourceCd: '022', fhincd: 'P-001', perUnitMinutes: 10, setupMinutes: 30, ops }] },
+      resourceCapacity: { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: { '022': enabled } },
+      overrides: new Map([[buildGrindingPlanningBoardRowItemId(source.rowData), {
+        overrideResourceCd: '022', overrideDueDate: null, alternateRank: null, version: 1
+      }]]) });
+    const items = projectGrindingPlanningBoard(params).items;
+    expect(items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    if (enabled) {
+      expect(items.map((item) => item.unitRequiredMinutes)).toEqual([10, 20]);
+      expect(items.every((item) => item.setupMinutes === 30 && item.fhincd === 'P-001')).toBe(true);
+      expect(items[0].ops).toEqual(ops);
+      expect(items[0].completedOpNos).toEqual([2]);
+    } else {
+      for (const item of items) expect(item).not.toHaveProperty('unitRequiredMinutes');
+    }
+    const original = projectGrindingPlanningBoard({ ...params,
+      resourceMinutes: { ...params.resourceMinutes!, ownSourceResourceCds: [] } }).items;
+    if (enabled) expect(original[0]).toMatchObject({ unitRequiredMinutes: 100 / 3, setupMinutes: 0 });
+  });
+  it.each(['100', ''])('uses own minutes with CSV %j and the effective resource for rows and split bars', (csvMinutes) => {
+    const source = sourceRow({ FSIGENSHOYORYO: csvMinutes, FHINCD: ' P-001 ' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const updatedAt = new Date('2026-11-09');
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 3,
+      plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `own-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })) };
+    const resourceMinutes = { ownSourceResourceCds: ['G-02'], values: [
+      { resourceCd: 'G-02', fhincd: 'P-001', perUnitMinutes: 10, setupMinutes: 30 }
+    ] };
+    const overrides = new Map([[buildGrindingPlanningBoardRowItemId(source.rowData), {
+      overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1
+    }]]);
+    const params = baseParams({ rows: [source], resourceMinutes, overrides, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) });
+    const parent = projectGrindingPlanningBoard(params).items[0]!;
+    expect(parent).toMatchObject({ requiredMinutes: 60, ownRequiredMinutes: 60, requiredMinutesSource: 'own',
+      originalRequiredMinutes: csvMinutes ? 100 : null });
+    const result = projectGrindingPlanningBoard({ ...params, includePieces: true });
+    expect(result.items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    expect(result.items.map((item) => item.originalRequiredMinutes)).toEqual(csvMinutes ? [100 / 3, 200 / 3] : [null, null]);
+    expect(result.load.find((entry) => entry.resourceCd === 'G-02')?.requiredMinutes).toBe(90);
+    const moved = projectGrindingPlanningBoard({ ...params, includePieces: true,
+      overrides: new Map([...overrides, ['piece:own-0', { overrideResourceCd: 'G-03', overrideDueDate: null, alternateRank: null, version: 1 }]]) });
+    expect(moved.items.find((item) => item.pieceId === 'own-0')).toMatchObject({
+      requiredMinutesSource: 'original', ownRequiredMinutes: null
+    });
+  });
+
+  it('keeps proportional piece minutes unrounded and treats zero or null parents as unknown', () => {
+    const updatedAt = new Date('2026-11-06');
+    const source = sourceRow({ FSIGENSHOYORYO: '1' });
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 3,
+      plannedQuantity: 3, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2].map((quantity, index) => ({ id: `piece-${index}`, pieceSetId: 'set', position: index + 1,
+        quantity, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })) };
+    const project = (minutes: string) => projectGrindingPlanningBoard(baseParams({ rows: [{ ...source, rowData: { ...source.rowData as object, FSIGENSHOYORYO: minutes } }],
+      includePieces: true, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) })).items;
+    const items = project('1');
+    expect(items.map((item) => item.requiredMinutes)).toEqual([1 / 3, 2 / 3]);
+    expect(items.reduce((sum, item) => sum + item.requiredMinutes!, 0)).toBe(1);
+    for (const minutes of ['0', '']) expect(project(minutes).map((item) => [item.requiredMinutes, item.requiredMinutesKnown])).toEqual([[null, false], [null, false]]);
+  });
+  it.each([false, true])('projects the set-level later flag with detached pieces or an empty set (empty=%s)', (empty) => {
+    const updatedAt = new Date('2026-11-07');
+    const key = sessakuPieceKeyFromRow(sourceRow().rowData);
+    const set: SessakuPieceSet = { ...key, id: 'later', sourcePieceSetId: 'cutting', csvDashboardId: 'dashboard',
+      version: 2, nextPosition: 3, plannedQuantity: 5, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: empty ? [] : [2, 3].map((quantity, index) => ({ id: `later-${index}`, sourcePieceId: null,
+        pieceSetId: 'later', position: index + 1, quantity, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })) };
+    const project = (sourcePieceSetId: string | null) => projectGrindingPlanningBoard(baseParams({ includePieces: true,
+      pieceSets: new Map([[encodeSessakuPieceKey(key), { ...set, sourcePieceSetId }]]) })).items;
+    const items = project('cutting');
+    expect(items).toHaveLength(empty ? 1 : 2);
+    expect(items.every((item) => item.isLaterProcess === true)).toBe(true);
+    expect(items.every((item) => item.kind === (empty ? 'row' : 'piece') && !item.sourcePieceId)).toBe(true);
+    expect(project(null).every((item) => item.isLaterProcess === false)).toBe(true);
+  });
+  it.each([5, null])('projects linked grinding pieces with proportional load using supplement total %s', (plannedQuantity) => {
+    const updatedAt = new Date('2026-11-07');
+    const key = sessakuPieceKeyFromRow(sourceRow().rowData);
+    const set: SessakuPieceSet = { ...key, id: 'later', csvDashboardId: 'dashboard', version: 2, nextPosition: 4,
+      plannedQuantity: 5, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: [1, 2, 2].map((quantity, index) => ({ id: `later-${index}`, sourcePieceId: `cut-${index}`, pieceSetId: 'later',
+        position: index + 1, quantity, isCompleted: index === 1, completedAt: index === 1 ? updatedAt : null, createdAt: updatedAt, updatedAt })) };
+    const result = projectGrindingPlanningBoard(baseParams({ includePieces: true,
+      details: new Map([['row-1', detail({ orderSupplements: [{ plannedQuantity, plannedEndDate: null }] })]]),
+      pieceSets: new Map([[encodeSessakuPieceKey(key), set]]) }));
+    expect(result.items.map((item) => [item.sourcePieceId, item.quantity, item.requiredMinutes, item.isCompleted])).toEqual([
+      ['cut-0', 1, 20, false], ['cut-1', 2, 40, true], ['cut-2', 2, 40, false]
+    ]);
+    expect(result.items.map((item) => item.parentPlannedQuantity)).toEqual([5, 5, 5]);
+    expect(result.items.every((item) => item.requiredMinutesKnown)).toBe(true);
+    expect(result.unknownRequiredMinutesCount).toBe(0);
+    expect(result.load[0].requiredMinutes).toBe(60);
+  });
   it.each([
     [false, false, null], [true, false, 'manual'], [false, true, 'import'], [true, true, 'import']
-  ] as const)('projects manual=%s external=%s as %s for rows and splits', (manual, external, completionSource) => {
+  ] as const)('projects manual=%s external=%s as %s for parent rows even with legacy records', (manual, external, completionSource) => {
     const updatedAt = new Date('2026-09-01');
     const sourceDetail = detail({
       productionScheduleProgress: { isCompleted: manual, updatedAt },
@@ -67,12 +175,12 @@ describe('grinding-planning-board-projection', () => {
       details: new Map([['row-1', value]])
     })).items;
     expect(project(sourceDetail)[0]).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
-    const splits = project({ ...sourceDetail, orderSplits: [
+    const splits = project({ ...sourceDetail, ...{ orderSplits: [
       { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt },
       { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt }
-    ] });
-    expect(splits).toHaveLength(2);
-    for (const split of splits) expect(split).toMatchObject({ kind: 'split', isCompleted: manual || external, completionSource });
+    ] } });
+    expect(splits).toHaveLength(1);
+    for (const split of splits) expect(split).toMatchObject({ kind: 'row', isCompleted: manual || external, completionSource });
   });
 
   it('changes the item revision when manual completion becomes import completion', () => {
@@ -96,7 +204,7 @@ describe('grinding-planning-board-projection', () => {
       effectiveDueDate: original.effectiveDueDate, originalRank: original.originalRank, alternateRank: original.alternateRank });
     expect(pinned.itemRevision).not.toBe(original.itemRevision);
   });
-  it('distinguishes CSV fallback clears from explicit original restores and keeps direct split dates first', () => {
+  it('distinguishes CSV fallback clears from explicit original restores and restores parent dates', () => {
     const originalParentDueDate = new Date('2026-09-21T00:00:00.000Z');
     const plannedEndDate = new Date('2026-09-30T00:00:00.000Z');
     expect(resolveGrindingPlanningBoardParentDueDate({
@@ -109,19 +217,17 @@ describe('grinding-planning-board-projection', () => {
       plannedEndDate,
       override: { overrideDueDate: null, dueDateCleared: false }
     })).toBe('2026-09-21');
-    expect(resolveGrindingPlanningBoardItemDueDate({
-      splitDueDate: new Date('2026-09-22T00:00:00.000Z'),
+    expect(resolveGrindingPlanningBoardParentDueDate({
       originalParentDueDate,
       plannedEndDate,
-      parentOverride: { overrideDueDate: null, dueDateCleared: true }
-    })).toBe('2026-09-22');
+      override: { overrideDueDate: null, dueDateCleared: true }
+    })).toBe('2026-09-30');
   });
 
   it('uses the exact logical key and the resolved machine/rank maps', () => {
     const params = baseParams({
       ranks: {
         rows: new Map([['row-1', { resourceCd: 'G-01', orderNumber: 4 }]]),
-        splits: new Map()
       }
     });
     const result = projectGrindingPlanningBoard(params);
@@ -229,13 +335,13 @@ describe('grinding-planning-board-projection', () => {
     ]);
   });
 
-  it('inherits a parent due override into unspecialized split items and rounds split minutes', () => {
+  it('ignores legacy records and applies parent resource, due and rank with full quantity/time', () => {
     const splitDetail = detail({
       orderSplits: [
         { id: 'split-1', splitQuantity: 1, dueDate: null, updatedAt: new Date('2026-09-01T00:00:00.000Z') },
         { id: 'split-2', splitQuantity: 2, dueDate: null, updatedAt: new Date('2026-09-01T00:00:00.000Z') }
       ],
-      orderSupplements: [{ plannedQuantity: 3, plannedEndDate: null }]
+      orderSupplements: [{ plannedQuantity: 5, plannedEndDate: null }]
     });
     const parentOverride: GrindingPlanningBoardProjectionOverride = {
       overrideResourceCd: 'G-02',
@@ -249,12 +355,13 @@ describe('grinding-planning-board-projection', () => {
         overrides: new Map([[buildGrindingPlanningBoardRowItemId(sourceRow().rowData), parentOverride]])
       })
     );
-    expect(result.items.map((item) => item.itemId)).toEqual(['split:split-1', 'split:split-2']);
-    expect(result.items.map((item) => item.effectiveResourceCd)).toEqual(['G-01', 'G-01']);
-    expect(result.items.map((item) => item.originalDueDate)).toEqual(['2026-09-10', '2026-09-10']);
-    expect(result.items.map((item) => item.effectiveDueDate)).toEqual(['2026-09-20', '2026-09-20']);
-    expect(result.items.map((item) => item.alternateRank)).toEqual([null, null]);
-    expect(result.items.map((item) => item.requiredMinutes)).toEqual([33, 67]);
+    expect(result.items.map((item) => item.itemId)).toEqual([buildGrindingPlanningBoardRowItemId(sourceRow().rowData)]);
+    expect(result.items[0]?.plannedQuantity).toBe(5);
+    expect(result.items.map((item) => item.effectiveResourceCd)).toEqual(['G-02']);
+    expect(result.items.map((item) => item.originalDueDate)).toEqual(['2026-09-10']);
+    expect(result.items.map((item) => item.effectiveDueDate)).toEqual(['2026-09-20']);
+    expect(result.items.map((item) => item.alternateRank)).toEqual([1]);
+    expect(result.items.map((item) => item.requiredMinutes)).toEqual([100]);
   });
 
   it('keeps a source-category item visible when its effective resource is supplied by the caller', () => {
@@ -291,7 +398,6 @@ describe('grinding-planning-board-projection', () => {
       })
     );
     expect(result.items.map((item) => item.progress)).toEqual([
-      { completed: 1, total: 3, quantityKnown: false },
       { completed: 1, total: 3, quantityKnown: false }
     ]);
     expect(result.progress.bySeiban.get('S-001')).toEqual({ completed: 1, total: 3 });
@@ -342,5 +448,32 @@ describe('grinding-planning-board-projection', () => {
       }
     ]);
     expect(result.unknownRequiredMinutesCount).toBe(1);
+  });
+});
+
+describe('D schedule due source in the grinding projection', () => {
+  it('uses changed Excel dates by default, newer manual dates, and exact legacy dates in scaw mode', () => {
+    const value = detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: new Date('2026-11-04Z'), manualUpdatedAt: new Date('2026-11-03Z') });
+    const input = baseParams({ details: new Map([['row-1', value]]) });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
+    expect(projectGrindingPlanningBoard({ ...input, dueSource: 'scaw' }).items[0]?.effectiveDueDate).toBe('2026-09-10');
+    value.manualUpdatedAt = new Date('2026-11-05Z');
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-09-10');
+  });
+
+  it('ignores legacy dates and overrides while preserving parent overrides ahead of Excel', () => {
+    const updatedAt = new Date('2026-11-04Z');
+    const input = baseParams({ details: new Map([['row-1', detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: updatedAt,
+      orderSplits: [{ id: 'd-test-split', splitQuantity: 1, dueDate: new Date('2026-11-06Z'), updatedAt }] })]]) });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
+    input.overrides.set('split:d-test-split', { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
+    input.overrides.set(buildGrindingPlanningBoardRowItemId(sourceRow().rowData), { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
+    expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-07');
+  });
+
+  it('produces identical responses for both sources when Excel has no stored rows', () => {
+    const input = baseParams();
+    expect(projectGrindingPlanningBoard({ ...input, dueSource: 'excel' })).toEqual(projectGrindingPlanningBoard({ ...input, dueSource: 'scaw' }));
   });
 });

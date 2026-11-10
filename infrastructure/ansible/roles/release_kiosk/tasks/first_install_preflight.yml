@@ -1,4 +1,11 @@
 ---
+- name: Reject the optional GUI session during first-install
+  ansible.builtin.assert:
+    that: not (kiosk_unprivileged_session_enabled | default(false) | bool)
+    fail_msg: >-
+      kiosk_unprivileged_session_enabled is not supported by first-install.
+      Install with the flag disabled, then enable it in a separate standard release.
+
 - name: Require an exact Pi4-only first-install scope and supported desktop
   ansible.builtin.assert:
     that:

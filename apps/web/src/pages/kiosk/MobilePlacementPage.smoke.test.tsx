@@ -61,7 +61,7 @@ vi.mock('../../features/mobile-placement/useMobilePlacementPageState', () => ({
     setScanField: noop,
     scanFormats: [],
     onScanSuccess: noop,
-    parseActualSlipImageFile: noop,
+    scanActualSlipNative: noop,
     actualSlipImageOcrBusy: false,
     actualSlipOcrFeedback: {
       status: 'idle',
@@ -145,13 +145,9 @@ describe('MobilePlacementPage', () => {
     expect(restoreShelfRegisterRouteState).toHaveBeenCalledExactlyOnceWith(state);
   });
 
-  it('写真入力の既存OCR処理へファイルを渡す', () => {
+  it('通常ブラウザに写真ファイル入力を作らない', () => {
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(['image'], 'slip.jpg', { type: 'image/jpeg' });
-    fireEvent.change(input, { target: { files: [file] } });
-    expect(noop).toHaveBeenCalledWith(file);
-    expect(input.value).toBe('');
-    expect(input).toHaveAttribute('capture', 'environment');
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.queryByRole('button', { name: '写真で製番' })).not.toBeInTheDocument();
   });
 });

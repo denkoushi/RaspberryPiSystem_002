@@ -43,6 +43,6 @@ accepted
 
 ## References
 
-- [KB-363](../knowledge-base/KB-363-load-balancing-production-system-reconciliation.md)
+- [KB-437](../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md)
 - [分析](../analysis/production-load-balancing-reconciliation-with-production-system-20260527.md)
 - [KB-362](../knowledge-base/KB-362-kiosk-load-balancing.md)

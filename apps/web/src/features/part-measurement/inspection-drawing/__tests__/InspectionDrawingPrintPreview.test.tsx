@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import * as zxingReader from '../../../barcode-scan/zxingVideoReader';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
   INSPECTION_DRAWING_PREVIEW_PRINT_TEMPLATE
@@ -23,12 +24,23 @@ function loadPreviewDrawingProbe() {
   return probe;
 }
 
+afterEach(() => { vi.restoreAllMocks(); });
+
 describe('InspectionDrawingPrintPreview', () => {
   const issuedAt = new Date('2026-06-14T08:51:00.000Z');
   const viewModel = buildInspectionDrawingPrintViewModel({
     template: INSPECTION_DRAWING_PREVIEW_PRINT_TEMPLATE,
     resourceName: 'R001（FJV50/80）',
     issuedAt
+  });
+
+  it('shows a loading error instead of waiting forever when ZXing fails', async () => {
+    vi.spyOn(zxingReader, 'loadZxingLibrary').mockRejectedValueOnce(new Error('offline'));
+    render(<InspectionDrawingPrintPreview viewModel={viewModel} imageUrl={INSPECTION_DRAWING_PREVIEW_IMAGE_URL} />);
+    loadPreviewDrawingProbe();
+    expect(await screen.findByRole('alert')).toHaveTextContent('QRコード生成機能を読み込めません');
+    expect(screen.getByRole('button', { name: '読み込みエラー' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '図面読込中…' })).not.toBeInTheDocument();
   });
 
   it('disables print until the drawing natural size is known', async () => {

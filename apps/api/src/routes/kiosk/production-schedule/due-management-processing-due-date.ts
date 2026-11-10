@@ -27,6 +27,8 @@ export async function registerProductionScheduleDueManagementProcessingDueDateRo
       const body = productionScheduleDueManagementSeibanDueDateBodySchema.parse(request.body);
 
       return upsertProductionScheduleSeibanProcessingDueDate({
+        actorClientDeviceId: clientDevice.id,
+        actorDeviceName: clientDevice.name,
         locationKey,
         fseiban: params.fseiban,
         processingType: params.processingType,

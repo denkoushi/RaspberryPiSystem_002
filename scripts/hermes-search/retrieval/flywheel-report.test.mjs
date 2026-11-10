@@ -302,3 +302,25 @@ test('real follow-ups without relevant labels count supported successes and scop
     assert.deepEqual(bucket.lossStages, { follow_up_scope: 1 });
   }
 });
+
+test('synthetic follow-up report separates outcomes by action and excludes content and real buckets', () => {
+  const checks = [
+    ['add', { supported: true, ok: true }],
+    ['replace', { supported: true, ok: false, planOk: false, reason: 'follow_up_plan_mismatch' }],
+    ['drop', { supported: true, ok: false, planOk: true, reason: 'filter_mismatch' }],
+    ['count', { supported: true, ok: false, reason: 'count_mismatch' }],
+    ['count', { supported: false, reason: 'first_turn_mismatch' }],
+  ];
+  const rows = checks.map(([action, followUpCheck]) => ({ source: 'synthetic', kind: 'follow_up', action, followUpCheck,
+    kept: true, a: 'hostile', question: '追質問', previousPlan: {}, live: live(null) }));
+  const summary = summarizeNight(rows);
+  assert.equal(summary.rows, 0);
+  assert.equal(summary.live.scored, 0);
+  assert.deepEqual(summarizeReal(rows), summarizeReal([]));
+  const { byAction, ...total } = summary.syntheticFollowUp;
+  assert.deepEqual(total, { questions: 5, ok: 1, planMismatch: 1, shownMismatch: 1, countMismatch: 1, unsupported: 1 });
+  assert.equal(byAction.count.questions, 2);
+  const report = formatReport('2026-11-08', summary);
+  assert.match(report, /synthetic follow-up: questions 5, ok 1, plan mismatch 1, shown mismatch 1, count mismatch 1, unsupported 1/u);
+  for (const action of ['add', 'replace', 'drop', 'count']) assert.ok(report.includes(`    ${action}: questions`));
+});

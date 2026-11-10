@@ -1,11 +1,12 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../lib/prisma.js';
 import { registerHermesKnowledgeRoutes } from '../hermes-knowledge.js';
 
 const mocks = vi.hoisted(() => ({
-  receive: vi.fn(), choose: vi.fn(), readySources: vi.fn(), get: vi.fn(), kick: vi.fn(),
+  receive: vi.fn(), choose: vi.fn(), readySources: vi.fn(), readySource: vi.fn(), get: vi.fn(), kick: vi.fn(),
   readDisplay: vi.fn(), listPublished: vi.fn(), getPublished: vi.fn(), triageGet: vi.fn().mockResolvedValue([]),
   resolveReviewer: vi.fn(), listRanks: vi.fn(), replaceRanks: vi.fn(),
   listPendingApproval: vi.fn(), getForReview: vi.fn(), approve: vi.fn(), returnRevision: vi.fn(), reportError: vi.fn(),
@@ -17,7 +18,7 @@ vi.mock('../../services/clients/client-device-auth.service.js', () => ({
   findClientDeviceByApiKey: async (key: string) => key === 'valid-key' ? { id: 'device-one' } : null,
 }));
 vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
-  getKnowledgeRuntime: () => ({ fields: mocks.fields, subjects: { search: mocks.subjects, recent: mocks.recentSubjects }, resolvePoster: mocks.resolvePoster, intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, get: mocks.get },
+  getKnowledgeRuntime: () => ({ fields: mocks.fields, subjects: { search: mocks.subjects, recent: mocks.recentSubjects }, resolvePoster: mocks.resolvePoster, intake: { receive: mocks.receive }, repository: { choose: mocks.choose, readySources: mocks.readySources, readySource: mocks.readySource, get: mocks.get },
     assets: { readDisplay: mocks.readDisplay }, worker: { kick: mocks.kick, stop: async () => {} }, documents: { initialize: async () => {} },
     procedures: { listPublished: mocks.listPublished, getPublished: mocks.getPublished, searchTopics: mocks.searchTopics, listPendingApproval: mocks.listPendingApproval, getForReview: mocks.getForReview,
       approve: mocks.approve, returnRevision: mocks.returnRevision, reportError: mocks.reportError },
@@ -25,6 +26,10 @@ vi.mock('../../services/knowledge/knowledge-runtime.js', () => ({
     triage: { get: mocks.triageGet }, triageService: { pending: mocks.pending, decide: mocks.decide },
     procedureWorker: { kick: mocks.procedureKick }, workTypes: async () => ['段取り', 'その他'] }),
 }));
+
+beforeEach(() => { vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
+    vi.spyOn(prisma.user, 'findUnique'); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Knowledge API authentication boundary', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.clearAllMocks(); mocks.triageGet.mockResolvedValue([]); });
@@ -49,11 +54,13 @@ describe('Knowledge API authentication boundary', () => {
   });
   it('requires both a published source and its image membership', async () => {
     const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000'; const image = 'a'.repeat(64);
-    mocks.readySources.mockResolvedValue([{ source: { id, images: [{ id: image }] } }]); mocks.readDisplay.mockResolvedValue(Buffer.from('jpeg'));
+    mocks.readySource.mockImplementation(async (sourceId: string) => sourceId === id ? { source: { id, images: [{ id: image }] } } : null); mocks.readDisplay.mockResolvedValue(Buffer.from('jpeg'));
     const ok = await app.inject({ url: `/hermes-knowledge/sources/${id}/images/${image}`, headers: { 'x-client-key': 'valid-key' } });
     expect(ok.statusCode).toBe(200); expect(ok.headers['content-type']).toContain('image/jpeg');
     const hidden = await app.inject({ url: `/hermes-knowledge/sources/${id}/images/${'b'.repeat(64)}`, headers: { 'x-client-key': 'valid-key' } });
-    expect(hidden.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1); await app.close();
+    expect(hidden.statusCode).toBe(404); expect(mocks.readDisplay).toHaveBeenCalledTimes(1);
+    const other = await app.inject({ url: `/hermes-knowledge/sources/223e4567-e89b-42d3-a456-426614174000/images/${image}`, headers: { 'x-client-key': 'valid-key' } });
+    expect(other.statusCode).toBe(404); expect(mocks.readySources).not.toHaveBeenCalled(); await app.close();
   });
   it('lists and reads only published procedures behind authentication', async () => {
     const app = server(); const id = '123e4567-e89b-42d3-a456-426614174000';
@@ -140,7 +147,10 @@ describe('Knowledge review API', () => {
   const headers = { 'x-client-key': 'valid-key' };
   const reviewer = { id: 'e1', employeeCode: '0001', displayName: '社員A', nfcTagUid: 'tag', positionName: '主任', rank: 'leader' };
   const server = () => { vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', 'true'); const app = Fastify(); registerHermesKnowledgeRoutes(app); return app; };
-  const jwtHeaders = (role: string) => ({ authorization: `Bearer ${jwt.sign({ sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` });
+  const jwtHeaders = (role: string) => {
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user-1', username: 'review-admin', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+    return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'user-1', sub: 'user-1', username: 'review-admin', role }, process.env.JWT_ACCESS_SECRET!)}` };
+  };
   afterEach(() => { vi.unstubAllEnvs(); vi.resetAllMocks(); mocks.triageGet.mockResolvedValue([]); });
 
   it.each(['pending', 'detail', 'approve', 'return'])('requires knowledgeActor for %s', async action => {
@@ -203,7 +213,7 @@ describe('Knowledge review API', () => {
   });
   it('permits active general employees to report errors with a JWT actor', async () => {
     const app = server(); const employee = { ...reviewer, rank: 'general' }; mocks.resolveReviewer.mockResolvedValue(employee); mocks.reportError.mockResolvedValue(undefined);
-    expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers: jwtHeaders('VIEWER'), payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers: jwtHeaders('MANAGER'), payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(200);
     expect(mocks.resolveReviewer).toHaveBeenCalledWith('tag'); expect(mocks.reportError).toHaveBeenCalledWith(id, employee, 'user:user-1', '誤り');
     mocks.reportError.mockRejectedValue(new Error('PROCEDURE_NOT_PUBLISHED'));
     expect((await app.inject({ method: 'POST', url: `/hermes-knowledge/procedures/${id}/error-report`, headers, payload: { reporterTagUid: 'tag', comment: '誤り' } })).statusCode).toBe(409);
@@ -223,6 +233,24 @@ describe('Knowledge review API', () => {
     expect((await app.inject({ url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role) })).json()).toEqual(table);
     expect((await app.inject({ method: 'PUT', url: '/hermes-knowledge/position-ranks', headers: jwtHeaders(role), payload: { ranks: [{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }] } })).statusCode).toBe(200);
     expect(mocks.replaceRanks).toHaveBeenCalledWith([{ positionName: '部長', rank: 'general_manager' }, { positionName: '役員', rank: 'executive' }]); await app.close();
+  });
+  it('lets VIEWER JWT read but not write', async () => {
+    const app = server(); const auth = jwtHeaders('VIEWER');
+    const writes: Array<[string, unknown]> = [
+      [`/hermes-knowledge/intakes/${id}/retry`, {}],
+      [`/hermes-knowledge/intakes/${id}/choice`, {}],
+      [`/hermes-knowledge/triage/${id}/decide`, {}],
+      [`/hermes-knowledge/reviews/${id}/approve`, { reviewerTagUid: 'tag' }],
+      [`/hermes-knowledge/reviews/${id}/return`, { reviewerTagUid: 'tag', comment: '再確認' }],
+      [`/hermes-knowledge/procedures/${id}/error-report`, { reporterTagUid: 'tag', comment: '誤り' }]
+    ];
+    for (const [url, payload] of writes) {
+      expect((await app.inject({ method: 'POST', url, headers: auth, payload: payload as Record<string, unknown> })).statusCode).toBe(403);
+    }
+    expect((await app.inject({ method: 'POST', url: '/hermes-knowledge/intakes', headers: { ...auth, 'content-type': 'application/json' }, payload: {} })).statusCode).toBe(403);
+    expect(mocks.approve).not.toHaveBeenCalled(); expect(mocks.returnRevision).not.toHaveBeenCalled(); expect(mocks.reportError).not.toHaveBeenCalled();
+    expect((await app.inject({ url: '/hermes-knowledge/capabilities', headers: auth })).statusCode).toBe(200);
+    await app.close();
   });
   it('denies device keys and VIEWER JWT for mapping reads and writes', async () => {
     const app = server();

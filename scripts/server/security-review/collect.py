@@ -3,6 +3,7 @@
 import argparse
 from collections import Counter
 from datetime import datetime, timedelta
+import fcntl
 import fnmatch
 import gzip
 import json
@@ -21,22 +22,8 @@ SENSITIVE = re.compile(
     r'''((?:authorization|proxy-authorization|cookie|set-cookie|[\w-]*(?:token|password|passwd|secret|api[_-]?key|client[_-]?key)[\w-]*)["']?\s*[:=]\s*)[^\r\n]*''', re.I)
 
 
-REVIEW_CHUNK_BYTES = 8000
-# Match material.ts MAX_CHUNKS and its round-robin minimum for changes.
-MAX_REVIEW_CHUNKS = 24
-CHANGES_CHUNKS = 8
-# Leave room for API-added ClientLog errors; larger additions can trim trailing changes,
-# which the API counts as truncated.
-API_ERRORS_RESERVE_CHUNKS = 2
-# Line packing shares chunks across files; the actual chunk count enforces unused line/UTF-8 space.
-DEFAULT_CHANGES_BYTE_CAP = REVIEW_CHUNK_BYTES * CHANGES_CHUNKS
-DEFAULT_CHANGE_PRIORITY = [
-    'apps/api/src/routes/*', 'apps/api/src/*auth*', 'apps/api/src/middleware/*',
-    'apps/api/src/config/*', '*Dockerfile*', 'infrastructure/ansible/templates/*',
-    'infrastructure/ansible/roles/*/tasks/*', 'clients/*', '*',
-    '*.test.*', '*.spec.*', '__tests__/*', '*/__tests__/*', 'tests/*', '*/tests/*',
-    'fixtures/*', '*/fixtures/*', '__fixtures__/*', '*/__fixtures__/*',
-]
+QUEUE_STATES = ('pending', 'claimed', 'done', 'failed', 'progress', 'invalid')
+SHA = r'(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})'
 
 
 def redact_code(text):
@@ -61,8 +48,6 @@ class Material:
         self.lines = []
         self.dropped = 0
         self.private_key = False
-        self.carry_over = []
-        self.carry_over_expired = 0
 
     def add(self, text, redactor=redact):
         for line in text.splitlines():
@@ -149,18 +134,19 @@ def docker_log_lines(container, timeout=120):
 
 
 def change_range(repo, previous, since, git_call=git):
-    head = git_call(repo, 'rev-parse', 'HEAD').stdout.strip()
-    if previous and re.fullmatch(r'[a-f0-9]{40,64}', previous):
+    head = git_call(repo, 'rev-parse', 'HEAD').stdout.strip().lower()
+    previous = previous.lower() if previous else None
+    if previous and re.fullmatch(SHA, previous):
         ancestor = git_call(repo, 'merge-base', '--is-ancestor', previous, head, check=False)
         if ancestor.returncode == 0:
             return {'from': previous, 'to': head}, [f'{previous}..{head}'], False
     note = 'rollback_or_missing_previous_commit' if previous else 'first_run'
-    commits = git_call(repo, 'log', '--since-as-filter=' + since.isoformat(), '--format=%H', '--reverse', head).stdout.splitlines()
+    commits = git_call(repo, 'log', '--since-as-filter=' + since.isoformat(), '--format=%H', '--reverse', '--first-parent', head).stdout.lower().splitlines()
     start = ''
     if commits:
         parent = git_call(repo, 'rev-parse', '--verify', commits[0] + '^', check=False)
         if parent.returncode == 0:
-            start = parent.stdout.strip()
+            start = parent.stdout.strip().lower()
     return {'from': start, 'to': head, 'note': note}, commits, True
 
 
@@ -168,166 +154,162 @@ def allowed_file(name, excludes):
     return not any(fnmatch.fnmatch(name, pattern) for pattern in excludes)
 
 
-def change_priority(name, patterns):
-    # Last matching specific pattern wins, so tests inside routes still come last.
-    # A bare * supplies the rank for otherwise unmatched files only.
-    fallback = patterns.index('*') if '*' in patterns else len(patterns)
-    return next((index for index in range(len(patterns) - 1, -1, -1)
-                 if patterns[index] != '*' and fnmatch.fnmatchcase(name, patterns[index])), fallback)
-
-
 def carry_over_file(config):
     return Path(config['state_file']).with_name('changes-carry-over.json')
 
 
-def split_bytes_chunk_count(text):
-    # Match material.ts splitBytes: split on UTF-8 character boundaries, not lines.
-    count = size = 0
-    for character in text:
-        width = len(character.encode('utf-8'))
-        if size + width > REVIEW_CHUNK_BYTES:
-            count += 1
-            size = 0
-        size += width
-    return count + bool(size)
+def range_commits(repo, revision, git_call):
+    if not isinstance(revision, str) or not re.fullmatch(SHA + r'(?:\.\.' + SHA + r')?', revision):
+        raise ValueError('Invalid change revision')
+    revision = revision.lower()
+    if '..' not in revision:
+        return [revision]
+    return git_call(repo, 'rev-list', '--first-parent', '--reverse', revision).stdout.lower().splitlines()
 
 
-def pack_change_line(count, size, line):
-    # State is completed chunks plus bytes used in the last, open chunk.
-    # Match prepareChunks line packing and splitBytes for oversized lines.
-    width = len(line.encode('utf-8'))
-    if size and size + width > REVIEW_CHUNK_BYTES:
-        count += 1
-        size = 0
-    if width > REVIEW_CHUNK_BYTES:
-        for character in line:
-            width = len(character.encode('utf-8'))
-            if size + width > REVIEW_CHUNK_BYTES:
-                count += 1
-                size = 0
-            size += width
-    else:
-        size += width
-    return count, size
+def queue_directories(config):
+    root = Path(config['data_dir']) / 'queue'
+    uid, gid = int(config['api_uid']), int(config['api_gid'])
+    for folder in [root, *(root / state for state in QUEUE_STATES)]:
+        folder.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(folder, 0o700)
+        os.chown(folder, uid, gid)
+    return root
 
 
-def changes_chunk_count(text):
-    count = size = 0
-    for line in re.findall(r'[^\n]*\n|[^\n]+', text):
-        count, size = pack_change_line(count, size, line)
-    return count + bool(size)
+def queue_counts(root):
+    return {state: sum(1 for _ in (root / state).glob('*.json'))
+            for state in QUEUE_STATES if state != 'progress'}
 
 
-def collect_changes(config, material, now, git_call=git, chunk_budget=CHANGES_CHUNKS):
+def enqueue_changes(config, now, git_call=git, source_errors=None):
+    state = Path(config['state_file'])
+    state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    # The lock covers cursor reads, all queue writes and the cursor update.
+    with (state.parent / 'changes-enqueue.lock').open('a') as lock:
+        os.chmod(lock.name, 0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        return _enqueue_changes(config, now, git_call, source_errors if source_errors is not None else [])
+
+
+def _enqueue_changes(config, now, git_call, source_errors):
+    """Persist entire first-parent commits before moving the collection cursor."""
     repo = config['project_dir']
     state = Path(config['state_file'])
     previous = state.read_text().strip() if state.exists() else None
-    reviewed, revisions, fallback = change_range(repo, previous, now - timedelta(hours=24), git_call)
-    pending_file = carry_over_file(config)
-    try:
-        pending = json.loads(pending_file.read_text()) if pending_file.exists() else []
-        if not isinstance(pending, list):
-            raise ValueError('Invalid carry-over list')
-    except (OSError, ValueError, KeyError, TypeError):
-        material.carry_over_expired += 1
-        pending = []
-    candidates = []
-    ancestors = {}
-    for entry in pending:
-        try:
-            revision, name, since = entry['revision'], entry['file'], entry['since']
-            if not all(isinstance(value, str) for value in (revision, name, since)):
-                raise TypeError('Invalid carry-over fields')
-            if not re.fullmatch(r'(?:[a-f0-9]{40}|[a-f0-9]{64})(?:\.\.(?:[a-f0-9]{40}|[a-f0-9]{64}))?', revision):
-                raise ValueError('Invalid carry-over revision')
-            if now - timestamp(since, now.tzinfo) > timedelta(days=7) or not allowed_file(name, config['changes_exclude']):
-                raise ValueError('Expired or excluded carry-over entry')
-        except (OSError, ValueError, KeyError, TypeError):
-            material.carry_over_expired += 1
+    reviewed, revisions, _ = change_range(repo, previous, now - timedelta(hours=24), git_call)
+    root = queue_directories(config)
+    carry = carry_over_file(config)
+    legacy = json.loads(carry.read_text()) if carry.exists() else []
+    if not isinstance(legacy, list):
+        raise ValueError('Invalid carry-over list')
+    # Never expire or silently discard migration entries. Invalid input leaves the
+    # old file and cursor intact so an operator can repair it.
+    extra_revisions = [entry['revision'] for entry in legacy]
+    for span in config.get('changes_backfill', []):
+        extra_revisions.append(span['from'] + '..' + span['to'])
+    commits = dict.fromkeys(sha.lower() for revision in revisions
+                            for sha in range_commits(repo, revision, git_call))
+    for revision in extra_revisions:
+        if not isinstance(revision, str) or not re.fullmatch(SHA + r'(?:\.\.' + SHA + r')?', revision):
+            raise ValueError('Invalid change revision')
+        revision = revision.lower()
+        missing = [sha for sha in revision.split('..')
+                   if git_call(repo, 'cat-file', '-e', sha + '^{commit}', check=False).returncode]
+        if missing:
+            source_errors.extend('changes_revision_unavailable:' + sha[:12] for sha in missing)
             continue
-        tip = revision.split('..')[-1]
-        if tip not in ancestors:
-            ancestors[tip] = git_call(repo, 'merge-base', '--is-ancestor', tip, reviewed['to'], check=False).returncode == 0
-        if not ancestors[tip]:
-            material.carry_over_expired += 1
-        else:
-            candidates.append(entry)
-    fresh = []
-    for revision in revisions:
-        if fallback:
-            names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id', '--no-renames', '--name-only', '-r', '-z', revision).stdout
-        else:
-            names = git_call(repo, 'diff', '--no-renames', '--name-only', '-z', revision).stdout
-        fresh.extend({'revision': revision, 'file': name, 'since': now.isoformat()}
-                     for name in names.split('\0') if name and allowed_file(name, config['changes_exclude']))
-    patterns = config.get('changes_priority', DEFAULT_CHANGE_PRIORITY)
-    candidates.extend(fresh)
-    candidates.sort(key=lambda entry: (change_priority(entry['file'], patterns),
-                                      timestamp(entry['since'], now.tzinfo), entry['file']))
-    seen = set()
+        for sha in range_commits(repo, revision, git_call):
+            commits[sha.lower()] = None
     context = int(config.get('changes_context_lines', 1))
-    if context < 0 or not 0 < material.cap <= REVIEW_CHUNK_BYTES * chunk_budget:
-        raise ValueError('Invalid changes limits')
-    count = used = 0
-    for line in re.findall(r'[^\n]*\n|[^\n]+', material.text()):
-        count, used = pack_change_line(count, used, line)
-    for entry in candidates:
-        revision, name = entry['revision'], entry['file']
-        key = (revision, name)
-        if key in seen:
+    if context < 0:
+        raise ValueError('Invalid changes context')
+    uid, gid = int(config['api_uid']), int(config['api_gid'])
+    for sha in commits:
+        if not re.fullmatch(SHA, sha):
+            raise ValueError('Invalid commit SHA')
+        if any((root / folder / (sha + '.json')).exists() for folder in QUEUE_STATES) or any(
+                (root / 'invalid' / (folder + '-' + sha + '.json')).exists() for folder in QUEUE_STATES):
             continue
-        seen.add(key)
-        if material.bytes >= material.cap and count + bool(used) >= chunk_budget:
-            material.carry_over.append(entry)
+        job = build_job(config, now, sha, git_call)
+        atomic_write(root / 'pending' / (sha + '.json'), json.dumps(job, ensure_ascii=False) + '\n', uid, gid)
+    # Partial enqueue is safe to retry because every SHA is checked in every state.
+    atomic_write(state, reviewed['to'] + '\n', 0, 0)
+    if carry.exists():
+        carry.unlink()
+    return reviewed, queue_counts(root)
+
+
+def build_job(config, now, sha, git_call):
+    repo = config['project_dir']
+    context = int(config.get('changes_context_lines', 1))
+    if context < 0:
+        raise ValueError('Invalid changes context')
+    metadata = git_call(repo, 'show', '--no-patch', '--format=%P%n%cI', sha).stdout.splitlines()
+    parent = metadata[0].split()[0].lower() if metadata[0].strip() else None
+    committed_at = metadata[1]
+    if parent is not None and not re.fullmatch(SHA, parent):
+        raise ValueError('Invalid parent SHA')
+    timestamp(committed_at, now.tzinfo)
+    names = git_call(repo, 'diff-tree', '--root', '-m', '--first-parent', '--no-commit-id',
+                     '--no-renames', '--name-only', '-r', '-z', sha).stdout
+    files = []
+    omitted = 0
+    for name in dict.fromkeys(name for name in names.split('\0') if name):
+        if not allowed_file(name, config['changes_exclude']):
+            omitted += 1
             continue
-        args = (['diff'] if '..' in revision else ['show', '--format=', '--first-parent', '--diff-merges=first-parent'])
+        args = ['diff', parent, sha] if parent else ['show', '--format=', '--root', sha]
         diff = git_call(repo, *args, '--no-ext-diff', '--no-textconv', '--no-renames',
-                        f'--unified={context}', revision, '--', ':(literal)' + name).stdout
-        # Keep provenance in the file section, not in a separate API chunk.
-        if not diff:
-            continue
-        cleaned = Material(float('inf'))
-        cleaned.add(diff, redactor=redact_code)
-        cleaned.add('review revision ' + revision, redactor=redact_code)
-        text = cleaned.text()
-        if cleaned.bytes <= material.cap and changes_chunk_count(text) <= chunk_budget:
-            next_count, next_used = count, used
-            for line in cleaned.lines:
-                next_count, next_used = pack_change_line(next_count, next_used, line)
-            if material.bytes + cleaned.bytes > material.cap or next_count + bool(next_used) > chunk_budget:
-                material.carry_over.append(entry)
+                        f'--unified={context}', '--', ':(literal)' + name).stdout
+        files.append({'path': name, 'diff': redact_code(diff)})
+    job = {'version': 1, 'sha': sha, 'parent': parent, 'committedAt': committed_at,
+           'enqueuedAt': now.isoformat(), 'files': files,
+           'bytes': sum(len(file['diff'].encode('utf-8')) for file in files), 'omittedFiles': omitted}
+    return job
+
+
+def requeue_failed(config, now, reasons, dry_run=False, git_call=git):
+    state = Path(config['state_file'])
+    state.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with (state.parent / 'changes-enqueue.lock').open('a') as lock:
+        os.chmod(lock.name, 0o600)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        root = Path(config['data_dir']) / 'queue' if dry_run else queue_directories(config)
+        counts = {'requeued': 0, 'retained': 0, 'dryRun': dry_run}
+        for record in sorted((root / 'failed').glob('*.json')):
+            try:
+                result = json.loads(record.read_text())
+                sha = record.stem
+                units = result.get('failedUnits')
+                eligible = (re.fullmatch(SHA, sha) and result.get('sha') == sha and
+                            isinstance(units, list) and bool(units) and
+                            all(isinstance(unit, dict) and isinstance(unit.get('reason'), str) and
+                                unit['reason'] in reasons for unit in units))
+            except (ValueError, AttributeError):
+                eligible = False
+            if not eligible:
+                counts['retained'] += 1
                 continue
-        else:
-            # A too-large file is the only lossy case. Keep a contiguous prefix;
-            # if this night is already full, give it a fresh budget next night.
-            if material.bytes >= material.cap:
-                material.carry_over.append(entry)
+            if dry_run:
+                counts['requeued'] += 1
                 continue
-            prefix = []
-            size = 0
-            next_count, next_used = count, used
-            for line in cleaned.lines:
-                width = len(line.encode('utf-8'))
-                if material.bytes + size + width > material.cap:
-                    break
-                trial_count, trial_used = pack_change_line(next_count, next_used, line)
-                if trial_count + bool(trial_used) > chunk_budget:
-                    break
-                next_count, next_used = trial_count, trial_used
-                prefix.append(line)
-                size += width
-            if not prefix and material.bytes:
-                material.carry_over.append(entry)
+            if git_call(config['project_dir'], 'cat-file', '-e', sha + '^{commit}', check=False).returncode:
+                print(json.dumps({'sha': sha, 'reason': 'commit_unreachable'}))
+                counts['retained'] += 1
                 continue
-            # The trailing provenance line is not a discarded diff line.
-            material.dropped += max(0, len(cleaned.lines) - len(prefix) - 1)
-            text = ''.join(prefix)
-        if not text:
-            continue
-        material.lines.append(text)
-        material.bytes += len(text.encode('utf-8'))
-        count, used = next_count, next_used
-    return reviewed
+            # Do not overwrite work that the API already owns.
+            if any((root / folder / record.name).exists() for folder in ('pending', 'claimed', 'done')):
+                counts['retained'] += 1
+                continue
+            job = build_job(config, now, sha, git_call)
+            atomic_write(root / 'pending' / record.name, json.dumps(job, ensure_ascii=False) + '\n',
+                         int(config['api_uid']), int(config['api_gid']))
+            record.unlink()
+            (root / 'progress' / record.name).unlink(missing_ok=True)
+            counts['requeued'] += 1
+        print(json.dumps(counts))
+        return counts
 
 
 def log_lines(patterns, since=None):
@@ -518,9 +500,6 @@ def publish_bundle(config, date, materials, manifest):
             if previous is not None:
                 os.rename(previous, target)
             raise
-        # Advance only after every material and the completion manifest are published.
-        atomic_write(carry_over_file(config), json.dumps(materials['changes'].carry_over, ensure_ascii=False) + '\n', 0, 0)
-        atomic_write(Path(config['state_file']), manifest['reviewedCommits']['to'] + '\n', 0, 0)
     finally:
         if stage.exists():
             shutil.rmtree(stage)
@@ -528,11 +507,20 @@ def publish_bundle(config, date, materials, manifest):
             shutil.rmtree(previous)
 
 
-def collect(config):
+def collect(config, mode='nightly'):
     now = datetime.now(ZoneInfo(config['timezone']))
+    errors = []
+    try:
+        reviewed, counts = enqueue_changes(config, now, source_errors=errors)
+    except Exception:
+        if mode == 'enqueue':
+            raise
+        errors.append('changes_enqueue_failed')
+        reviewed, counts = {'from': '', 'to': ''}, None
+    if mode == 'enqueue':
+        return
     since = now - timedelta(hours=24)
     materials = {kind: Material(int(config['material_byte_cap'])) for kind in ['security', 'errors']}
-    errors = []
     security = materials['security']
     for source, patterns in [('fail2ban', config['fail2ban_logs']), ('caddy', config['caddy_logs'])]:
         try:
@@ -565,28 +553,31 @@ def collect(config):
                 materials['errors'].add(json.dumps(group, ensure_ascii=False))
         except (OSError, RuntimeError, subprocess.TimeoutExpired):
             errors.append(container + '_unavailable')
-    chunk_budget = max(CHANGES_CHUNKS, MAX_REVIEW_CHUNKS - API_ERRORS_RESERVE_CHUNKS
-                       - split_bytes_chunk_count(materials['security'].text())
-                       - split_bytes_chunk_count(materials['errors'].text()))
-    materials['changes'] = Material(chunk_budget * REVIEW_CHUNK_BYTES)
-    reviewed = collect_changes(config, materials['changes'], now, chunk_budget=chunk_budget)
-    manifest = {'reviewedCommits': reviewed, 'droppedLines': {kind: value.dropped for kind, value in materials.items()}, 'sourceErrors': errors,
-                'carriedOver': len(materials['changes'].carry_over),
-                'carryOverExpired': materials['changes'].carry_over_expired}
+    manifest = {'reviewedCommits': reviewed, 'droppedLines': {kind: value.dropped for kind, value in materials.items()},
+                'sourceErrors': errors}
+    if counts is not None:
+        manifest['queue'] = counts
     publish_bundle(config, now.date().isoformat(), materials, manifest)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('config', type=Path)
+    parser.add_argument('--mode', choices=['nightly', 'enqueue', 'requeue-failed'], default='nightly')
+    parser.add_argument('--requeue-reasons', default='refused_or_vague,invalid_model_schema,completion_failed')
+    parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
     with args.config.open(encoding='utf-8') as stream:
         config = json.load(stream)
     os.umask(0o077)
     try:
-        collect(config)
+        if args.mode == 'requeue-failed':
+            requeue_failed(config, datetime.now(ZoneInfo(config['timezone'])),
+                           set(args.requeue_reasons.split(',')), args.dry_run)
+        else:
+            collect(config, args.mode)
     except Exception:
-        parser.exit(1, 'Security review collection failed; state was not advanced before bundle publication.\n')
+        parser.exit(1, 'Security review collection failed; the cursor advances only after all queue jobs are durable.\n')
 
 
 if __name__ == '__main__':

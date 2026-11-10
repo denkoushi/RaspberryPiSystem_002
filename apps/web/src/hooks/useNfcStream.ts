@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { resolveInventoryTag, type InventoryItem, type InventoryTag } from '../api/client';
+import { resolveInventoryTag, type InventoryItem, type InventoryTag, type ResolvedInventoryTag } from '../api/client';
 import { inventoryKeys } from '../api/queryKeys/itemInventory';
 import { resolveNfcRuntimeContract } from '../features/nfc/nfcRuntimeContract';
 
@@ -15,7 +15,7 @@ export interface NfcEvent {
   type?: string;
   eventId?: number;
   eventKey?: string;
-  inventoryTag?: InventoryTag;
+  inventoryTag?: ResolvedInventoryTag;
   inventoryTagNeedsRefresh?: boolean;
   inventoryTagFromCache?: boolean;
 }

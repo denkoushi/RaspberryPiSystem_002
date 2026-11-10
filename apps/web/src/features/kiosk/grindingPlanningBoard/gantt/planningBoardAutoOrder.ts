@@ -2,10 +2,11 @@ import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-sys
 
 import { resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../sortGrindingPlanningBoardItems';
 
-import { forwardPlanningBoardPredecessors, jstDay, nextWorkingStart, placeForward } from './planningBoardGanttLayout';
+import { NO_PREDECESSORS, forwardPlanningBoardPredecessors, jstDay, nextWorkingStart, placeForward } from './planningBoardGanttLayout';
 
 import type { GanttLayout, GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+
 
 export type PlanningBoardOrderMetrics = { lateCount: number; waitMinutes: number };
 
@@ -55,12 +56,17 @@ export function planningBoardAutoOrder(options: GanttLayoutOptions, pinnedItemId
       // but re-sorting saved ranks will move special work ahead of it; round-trip stability excludes this case.
       const candidates = pinnedItemIds.has(head) ? [head] : special ? [special.itemId] : unpinned;
       for (const id of candidates) {
-        const predecessor = predecessors.get(id);
-        if (predecessor && !ends.has(predecessor)) continue;
+        let ready = now;
+        for (const itemId of predecessors.get(id) ?? NO_PREDECESSORS) {
+          const end = ends.get(itemId);
+          if (end == null) { ready = Infinity; break; }
+          ready = Math.max(ready, end);
+        }
+        if (ready === Infinity) continue;
         const item = items.get(id)!;
         const hours = options.dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
         const pausesForBreaks = !options.runsThroughBreaks?.has(resource);
-        const start = nextWorkingStart(Math.max(cursors.get(resource) ?? now, ends.get(predecessor ?? '') ?? now), hours, pausesForBreaks);
+        const start = nextWorkingStart(Math.max(cursors.get(resource) ?? now, ready), hours, pausesForBreaks);
         if (!best || start < best.start - 1e-10 || (Math.abs(start - best.start) < 1e-10 &&
           (due(item).localeCompare(due(best.item)) || ranks.get(id)! - ranks.get(best.item.itemId)!) < 0)) {
           best = { item, resource, start, hours, pausesForBreaks };

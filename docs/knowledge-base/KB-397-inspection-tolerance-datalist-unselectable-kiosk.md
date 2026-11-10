@@ -17,7 +17,7 @@ category: knowledge-base
 | scope | キオスク検査図面テンプレ作成/編集の測定点設定パネル（上限公差・下限公差の候補選択） |
 | date | 2026-07-07 |
 | source_of_truth | this file |
-| related_code | `apps/web/src/features/part-measurement/InspectionDrawingPointSettingsPanel.tsx` |
+| related_code | `apps/web/src/features/part-measurement/inspection-drawing/InspectionDrawingPointSettingsPanel.tsx` |
 
 ## Context
 

@@ -2,26 +2,30 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   useKioskProductionScheduleLoadBalancingWorkspace,
-  useKioskProductionScheduleLoadBalancingWorkspaceDay,
   useKioskProductionScheduleResources,
   usePutKioskProductionScheduleLoadBalancingCapacityBase
 } from '../../../api/hooks';
 
 import { LoadBalancingCellDetail } from './LoadBalancingCellDetail';
-import { addMonths, currentYearMonth, formatHours, formatLoadBalancingMachineName, formatYearMonthSlash } from './loadBalancingFormat';
+import { addMonths, currentYearMonth, formatHours, formatYearMonthSlash } from './loadBalancingFormat';
 import { LoadBalancingHeatmap, type HeatmapResourceRow, type HeatmapSelection } from './LoadBalancingHeatmap';
+import { LoadBalancingOutsourcePanel } from './LoadBalancingOutsourcePanel';
 import {
   LATE_BUCKET,
-  autoLevelCell,
   buildLoadMatrix,
   listCellRows,
-  listTransferDestinations,
   readCapacity,
   readLoad,
   sumOverMinutes,
   type LoadMatrix,
   type ScenarioAction,
-  type ScenarioActionType
+  type ScenarioResult,
+  type ScenarioInput,
+  transferOptions,
+  outsourceOption,
+  applyOutsource,
+  cancelScenarioRow,
+  summarizeScenarioActions
 } from './loadBalancingScenario';
 import { LoadBalancingScenarioBar } from './LoadBalancingScenarioBar';
 import { LoadBalancingUnallocatedPanel } from './LoadBalancingUnallocatedPanel';
@@ -34,37 +38,53 @@ import type {
 
 const SPAN_MONTHS = 6;
 const MAX_OFFSET = 6;
+const EMPTY_ACTIONS: ScenarioAction[] = [];
 
 export function useLoadBalancingWorkspaceState({
   scopeParams,
-  scopeEnabled
+  scopeEnabled,
+  dueSource
 }: {
   scopeParams: { targetDeviceScopeKey?: string };
   scopeEnabled: boolean;
+  dueSource: 'excel' | 'scaw';
 }) {
   const thisMonth = useMemo(() => currentYearMonth(), []);
   const [offset, setOffset] = useState(0);
   const fromMonth = addMonths(thisMonth, offset);
   const toMonth = addMonths(fromMonth, SPAN_MONTHS - 1);
-  const scenarioKey = `${fromMonth}|${scopeParams.targetDeviceScopeKey ?? ''}`;
+  const scopeKey = `${dueSource}|${fromMonth}|${scopeParams.targetDeviceScopeKey ?? ''}`;
 
   const query = useKioskProductionScheduleLoadBalancingWorkspace(
-    { fromMonth, toMonth, ...scopeParams },
+    { fromMonth, toMonth, dueSource, ...scopeParams },
     { enabled: scopeEnabled }
   );
+  const scenarioKey = `${scopeKey}|${JSON.stringify(query.data?.outsourceSettings)}`;
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: !scopeEnabled });
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
     [resourcesQuery.data?.resourceNameMap]
   );
 
-  const [scenario, setScenario] = useState<{ key: string; actions: ScenarioAction[] }>({ key: scenarioKey, actions: [] });
-  const actions = scenario.key === scenarioKey ? scenario.actions : [];
-  const setActions = useCallback(
-    (update: (current: ScenarioAction[]) => ScenarioAction[]) =>
-      setScenario((current) => ({ key: scenarioKey, actions: update(current.key === scenarioKey ? current.actions : []) })),
-    [scenarioKey]
-  );
+  const [scenario, setScenario] = useState<{ key: string; result: ScenarioResult; history: ScenarioResult[] }>({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] });
+  const result = scenario.key === scenarioKey ? scenario.result : { actions: EMPTY_ACTIONS, noTaker: [] };
+  const commitResult = useCallback((next: ScenarioResult) => setScenario((current) => {
+    const currentResult = current.key === scenarioKey ? current.result : { actions: [], noTaker: [] };
+    if (current.key === scenarioKey && JSON.stringify(currentResult) === JSON.stringify(next)) return current;
+    return {
+      key: scenarioKey, result: next,
+      history: [...(current.key === scenarioKey ? current.history : []), currentResult]
+    };
+  }), [scenarioKey]);
+  const undo = () => setScenario((current) => {
+    if (current.key !== scenarioKey || !current.history.length) return current;
+    const previous = current.history[current.history.length - 1]!;
+    return {
+      ...current,
+      result: previous,
+      history: current.history.slice(0, -1)
+    };
+  });
 
   return {
     thisMonth,
@@ -74,17 +94,24 @@ export function useLoadBalancingWorkspaceState({
     toMonth,
     query,
     resourceNameMap,
-    actions,
-    setActions
+    actions: result.actions,
+    result,
+    commitResult,
+    undo,
+    reset: () => setScenario({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] }),
+    canUndo: scenario.key === scenarioKey && scenario.history.length > 0
   };
 }
 
 type WorkspaceViewProps = {
   data: ProductionScheduleLoadBalancingWorkspaceResponse;
+  workspaceSummary: ReturnType<typeof computeWorkspaceSummary>;
+  formattedMachineNames: Map<string, string>;
   thisMonth: string;
   resourceNameMap: Record<string, string[]>;
   actions: ScenarioAction[];
-  setActions: (update: (current: ScenarioAction[]) => ScenarioAction[]) => void;
+  commitResult: (result: ScenarioResult) => void;
+  noTaker: ScenarioResult['noTaker'];
   machine: string;
   highlightUnset: boolean;
   panel: 'cell' | 'unallocated';
@@ -94,10 +121,10 @@ type WorkspaceViewProps = {
 
 export function computeWorkspaceSummary(
   data: ProductionScheduleLoadBalancingWorkspaceResponse,
-  actions: ScenarioAction[]
+  actions: ScenarioAction[],
+  baseMatrix = buildLoadMatrix(data.rows, [], data.months)
 ) {
-  const baseMatrix = buildLoadMatrix(data.rows, [], data.months);
-  const matrix = buildLoadMatrix(data.rows, actions, data.months);
+  const matrix = actions.length > 0 ? buildLoadMatrix(data.rows, actions, data.months) : baseMatrix;
   const before = sumOverMinutes(baseMatrix, data.resources, data.months);
   const after = sumOverMinutes(matrix, data.resources, data.months);
   let lateMinutes = 0;
@@ -125,10 +152,13 @@ function hasAnyLoad(matrix: LoadMatrix, resourceCd: string): boolean {
 
 export function LoadBalancingWorkspaceView({
   data,
+  workspaceSummary,
+  formattedMachineNames,
   thisMonth,
   resourceNameMap,
   actions,
-  setActions,
+  commitResult,
+  noTaker,
   machine,
   highlightUnset,
   panel,
@@ -136,10 +166,16 @@ export function LoadBalancingWorkspaceView({
   scopeParams
 }: WorkspaceViewProps) {
   const buckets = useMemo(() => [LATE_BUCKET, ...data.months], [data.months]);
-  const { baseMatrix, matrix, before, after } = useMemo(() => computeWorkspaceSummary(data, actions), [data, actions]);
+  const { baseMatrix, matrix, before, after } = workspaceSummary;
+  const input: ScenarioInput = { rows: data.rows, months: data.months, actions, resources: data.resources, rules: data.transferRules, settings: data.outsourceSettings, today: data.today, machine };
+  const commitActions = (next: ScenarioAction[]) => {
+    if (JSON.stringify(next) === JSON.stringify(actions)) return;
+    commitResult({ actions: next, noTaker: noTaker.filter((item) => !next.some((action) => action.rowId === item.rowId)) });
+  };
+  const undoRow = (rowId: string) => commitActions(cancelScenarioRow(actions, rowId));
   const machineRows = useMemo(
-    () => (machine ? data.rows.filter((row) => formatLoadBalancingMachineName(row.machineName) === machine) : null),
-    [data.rows, machine]
+    () => (machine ? data.rows.filter((row) => formattedMachineNames.get(row.machineName) === machine) : null),
+    [data.rows, formattedMachineNames, machine]
   );
   const machineMatrix = useMemo(
     () => (machineRows ? buildLoadMatrix(machineRows, actions, data.months) : null),
@@ -181,22 +217,11 @@ export function LoadBalancingWorkspaceView({
   const capacityMutation = usePutKioskProductionScheduleLoadBalancingCapacityBase();
 
   const selectedResource = data.resources.find((resource) => resource.resourceCd === effectiveSelected?.resourceCd);
-  const dayEnabled = Boolean(effectiveSelected && effectiveSelected.bucket !== LATE_BUCKET);
-  const dayQuery = useKioskProductionScheduleLoadBalancingWorkspaceDay(
-    {
-      month: effectiveSelected?.bucket ?? data.months[0]!,
-      resourceCd: effectiveSelected?.resourceCd ?? '',
-      fromMonth: data.fromMonth,
-      toMonth: data.toMonth,
-      ...scopeParams
-    },
-    { enabled: dayEnabled }
-  );
-
   // 矢印キーでセル移動（入力中は除く）
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
+      if (target?.closest('[role="dialog"]')) return;
       if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return;
       if (!effectiveSelected) return;
       const rowIndex = heatmapRows.findIndex((row) => row.resource.resourceCd === effectiveSelected.resourceCd);
@@ -225,14 +250,6 @@ export function LoadBalancingWorkspaceView({
       bucket: effectiveSelected.bucket
     });
   }, [actions, data.months, data.rows, effectiveSelected, machineRows]);
-
-  const removedRowIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const action of actions) {
-      if (action.type !== 'defer' || action.fromBucket === effectiveSelected?.bucket) ids.add(action.rowId);
-    }
-    return ids;
-  }, [actions, effectiveSelected?.bucket]);
 
   const handleEditCapacity = (resourceCd: string) => {
     capacityMutation.reset();
@@ -264,27 +281,11 @@ export function LoadBalancingWorkspaceView({
     />
   );
 
-  const summary: Array<{ type: ScenarioActionType; count: number; minutes: number }> = (
-    ['outsource', 'transfer', 'defer'] as const
-  ).map((type) => {
-    const ofType = actions.filter((action) => action.type === type);
-    const rowsById = new Map(data.rows.map((row) => [row.rowId, row]));
-    return {
-      type,
-      count: ofType.length,
-      minutes: ofType.reduce((sum, action) => {
-        const row = rowsById.get(action.rowId);
-        if (!row) return sum;
-        if (action.type === 'defer') {
-          return sum + (row.allocations.find((allocation) => allocation.bucket === action.fromBucket)?.minutes ?? 0);
-        }
-        return sum + row.totalMinutes;
-      }, 0)
-    };
-  });
+  const summary = useMemo(() => summarizeScenarioActions(data.rows, actions), [data.rows, actions]);
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] gap-2">
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)] gap-2">
+      <div className="grid min-h-0 grid-rows-[minmax(0,0.9fr)_minmax(0,1fr)] gap-2">
       <section className="flex min-h-0 flex-col rounded-[10px] border border-white/15 bg-slate-900/70">
         <div className="min-h-0 flex-1 overflow-auto p-1">
           {heatmapRows.length === 0 ? (
@@ -298,8 +299,6 @@ export function LoadBalancingWorkspaceView({
           summary={summary}
           overBeforeMinutes={before.overMinutes}
           overAfterMinutes={after.overMinutes}
-          onUndoLast={() => setActions((current) => current.slice(0, -1))}
-          onClear={() => setActions(() => [])}
         />
       </section>
 
@@ -314,10 +313,8 @@ export function LoadBalancingWorkspaceView({
           loadMinutes={readLoad(matrix, effectiveSelected.resourceCd, effectiveSelected.bucket)}
           capacityMinutes={readCapacity(selectedResource, effectiveSelected.bucket)}
           cellRows={cellRows}
+          formattedMachineNames={formattedMachineNames}
           canTransfer={Boolean(selectedResource.classCode) && effectiveSelected.bucket !== LATE_BUCKET}
-          day={dayEnabled ? dayQuery.data : undefined}
-          dayLoading={dayQuery.isFetching}
-          removedRowIds={removedRowIds}
           editingCapacity={editingCapacityCd === selectedResource.resourceCd}
           capacitySaving={capacityMutation.isPending}
           capacityError={capacityMutation.error ? '保存できませんでした' : null}
@@ -329,36 +326,21 @@ export function LoadBalancingWorkspaceView({
             )
           }
           onCancelCapacity={() => setEditingCapacityCd(null)}
-          onAutoLevel={() =>
-            setActions((current) =>
-              autoLevelCell({
-                rows: data.rows,
-                actions: current,
-                months: data.months,
-                resources: data.resources,
-                rules: data.transferRules,
-                resourceCd: effectiveSelected.resourceCd,
-                bucket: effectiveSelected.bucket
-              })
-            )
-          }
-          onAction={(action) => setActions((current) => [...current.filter((item) => item.rowId !== action.rowId), action])}
-          onUndo={(rowId) => setActions((current) => current.filter((item) => item.rowId !== rowId))}
+          onAction={(action) => {
+            if (action.type === 'outsource' && action.vendorId) commitActions(applyOutsource(input, action.rowId, action.vendorId));
+            else commitActions([...actions.filter((item) => item.rowId !== action.rowId), action]);
+          }}
+          onUndo={undoRow}
+          vendors={data.outsourceSettings?.vendors ?? []}
+          listVendors={(row) => (data.outsourceSettings?.vendors ?? []).map((vendor) => outsourceOption(input, row, vendor)).sort((a, b) => a.vendor.priority - b.vendor.priority || a.vendor.id.localeCompare(b.vendor.id))}
           resolveName={(resourceCd) => resolveLoadBalancingResourceDisplayName(resourceCd, resourceNameMap)}
-          listDestinations={(rowMinutes) =>
-            listTransferDestinations({
-              sourceResourceCd: effectiveSelected.resourceCd,
-              bucket: effectiveSelected.bucket,
-              rowMinutes,
-              resources: data.resources,
-              rules: data.transferRules,
-              matrix
-            })
-          }
+          listDestinations={(row) => transferOptions(input, row, effectiveSelected.bucket)}
         />
       ) : (
         <section className="rounded-[10px] border border-white/15 bg-slate-900/70" />
       )}
+      </div>
+      <LoadBalancingOutsourcePanel input={input} noTaker={noTaker} onUndo={undoRow} />
     </div>
   );
 }
@@ -428,25 +410,25 @@ export function LoadBalancingHeaderControls(props: {
   onShowUnallocated: () => void;
   loading: boolean;
 }) {
-  const kpi = 'inline-flex h-10 items-center gap-2 rounded-lg bg-slate-800 px-3 font-bold';
+  const kpi = 'inline-flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-slate-800 px-2 font-bold';
   return (
     <>
       <div className="inline-flex items-center gap-0.5 rounded-lg bg-slate-800 p-0.5" aria-label="期間">
         <button
           type="button"
-          className="h-9 w-9 rounded-md font-bold hover:bg-slate-700 disabled:opacity-30"
+          className="h-9 w-7 rounded-md font-bold hover:bg-slate-700 disabled:opacity-30"
           aria-label="前の月へ"
           disabled={!props.canPrev}
           onClick={props.onPrev}
         >
           ◀
         </button>
-        <span className="px-2 font-bold tabular-nums">
+        <span className="whitespace-nowrap px-1 text-sm font-bold tabular-nums">
           {formatYearMonthSlash(props.fromMonth)} 〜 {formatYearMonthSlash(props.toMonth)}
         </span>
         <button
           type="button"
-          className="h-9 w-9 rounded-md font-bold hover:bg-slate-700 disabled:opacity-30"
+          className="h-9 w-7 rounded-md font-bold hover:bg-slate-700 disabled:opacity-30"
           aria-label="次の月へ"
           disabled={!props.canNext}
           onClick={props.onNext}
@@ -455,7 +437,7 @@ export function LoadBalancingHeaderControls(props: {
         </button>
       </div>
       <select
-        className="h-10 rounded-lg border border-white/15 bg-slate-800 px-2.5 font-semibold text-white"
+        className="h-10 w-36 min-w-0 rounded-lg border border-white/15 bg-slate-800 px-2 text-sm font-semibold text-white"
         aria-label="機種"
         value={props.machine}
         onChange={(event) => props.onMachineChange(event.target.value)}
@@ -469,16 +451,16 @@ export function LoadBalancingHeaderControls(props: {
       </select>
       <span className={kpi}>
         <small className="text-[13px] text-white/60">超過資源</small>
-        <b className="text-xl tabular-nums text-rose-400">{props.overResourceCount}</b>
+        <b className="text-lg tabular-nums text-rose-400">{props.overResourceCount}</b>
       </span>
       <span className={kpi}>
         <small className="text-[13px] text-white/60">超過計</small>
-        <b className="text-xl tabular-nums text-rose-400">{formatHours(props.overMinutes)}</b>
+        <b className="text-lg tabular-nums text-rose-400">{formatHours(props.overMinutes)}</b>
         <small className="text-[13px] text-white/60">H</small>
       </span>
       <span className={kpi}>
         <small className="text-[13px] text-white/60">遅れ残</small>
-        <b className="text-xl tabular-nums">{formatHours(props.lateMinutes)}</b>
+        <b className="text-lg tabular-nums">{formatHours(props.lateMinutes)}</b>
         <small className="text-[13px] text-white/60">H</small>
       </span>
       {props.unsetCount > 0 ? (
@@ -491,13 +473,13 @@ export function LoadBalancingHeaderControls(props: {
           onClick={props.onToggleUnset}
         >
           <small className="text-[13px] text-white/60">能力未設定</small>
-          <b className="text-xl tabular-nums text-amber-200">{props.unsetCount}</b>
+          <b className="text-lg tabular-nums text-amber-200">{props.unsetCount}</b>
         </button>
       ) : null}
       {props.unallocatedCount > 0 ? (
         <button type="button" className={kpi} onClick={props.onShowUnallocated}>
           <small className="text-[13px] text-white/60">未配分</small>
-          <b className="text-xl tabular-nums">{props.unallocatedCount}</b>
+          <b className="text-lg tabular-nums">{props.unallocatedCount}</b>
         </button>
       ) : null}
       {props.loading ? <span className="text-sm text-white/50">更新中…</span> : null}

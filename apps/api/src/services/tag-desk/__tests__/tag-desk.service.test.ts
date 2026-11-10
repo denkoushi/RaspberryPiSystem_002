@@ -4,6 +4,7 @@ import { TagDeskService } from '../tag-desk.service.js';
 import { EmployeeService } from '../../tools/employee.service.js';
 
 const db = vi.hoisted(() => ({
+  $transaction: vi.fn(),
   employee: { findMany: vi.fn(), findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
   knowledgePositionRank: { findMany: vi.fn() },
   item: { findUnique: vi.fn() },
@@ -12,6 +13,8 @@ const db = vi.hoisted(() => ({
   riggingGear: { findMany: vi.fn() },
   measuringInstrumentTag: { findUnique: vi.fn() },
   riggingGearTag: { findUnique: vi.fn() },
+  machineNfcTag: { findUnique: vi.fn(), delete: vi.fn() },
+  nfcTagBindingEvent: { create: vi.fn() },
   inventoryNfcTag: { findUnique: vi.fn() },
   loan: { findMany: vi.fn(), count: vi.fn() }
 }));
@@ -120,5 +123,29 @@ describe('TagDeskService organization fields', () => {
     const data = db.employee.update.mock.calls[0][0].data;
     if (positionName === undefined) expect(data).not.toHaveProperty('positionName');
     else expect(data.positionName).toBe(positionName);
+  });
+});
+
+
+describe('machine tag usage', () => {
+  it('unlinks a machine tag and records the binding event', async () => {
+    vi.resetAllMocks();
+    db.$transaction.mockImplementation(async work => work(db));
+    db.machineNfcTag.findUnique.mockResolvedValue({ id: 'tag', uid: 'UID1', machineId: 'm', machine: { name: '旋盤' } });
+    await new TagDeskService().unlink({ kind: 'machine', bindingId: 'tag', clientDeviceId: 'client' });
+    expect(db.machineNfcTag.delete).toHaveBeenCalledWith({ where: { id: 'tag' } });
+    expect(db.nfcTagBindingEvent.create).toHaveBeenCalledWith({ data: {
+      uid: 'UID1', action: 'UNLINK', targetKind: 'machine', targetId: 'm', targetLabel: '旋盤', clientDeviceId: 'client'
+    } });
+  });
+
+  it('reports machine bindings and rejects linking the UID to another domain', async () => {
+    vi.resetAllMocks();
+    db.machineNfcTag.findUnique.mockResolvedValue({ id: 'tag', machine: { id: 'm', name: '旋盤', equipmentManagementNumber: '001' } });
+    const service = new TagDeskService();
+    expect(await service.findUsage(db as never, 'uid')).toBe('加工機 旋盤');
+    db.$transaction.mockImplementation(async work => work(db));
+    await expect(service.link({ kind: 'item', targetId: 'i', uid: 'uid1', clientDeviceId: null })).rejects.toMatchObject({ statusCode: 409 });
+    expect(await service.resolve(' uid ')).toMatchObject([{ kind: 'machine', name: '加工機 旋盤', targetId: 'm' }]);
   });
 });

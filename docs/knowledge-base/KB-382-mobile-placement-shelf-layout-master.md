@@ -12,7 +12,7 @@
 
 **版数表記の注意**: [api/mobile-placement.md](../api/mobile-placement.md) では本機能を **「V22 棚レイアウトマスタ」** と呼ぶ。[KB-339](./KB-339-mobile-placement-barcode-survey.md) の **V22（2026-04-18）** は **キオスク高視認テーマ**（`feature/mobile-placement-contrast-refactor`）であり **別系統**。本 KB では **「棚レイアウトマスタ（2026-05-23）」** と表記する。
 
-スマホ棚マスタの個別目安・8方角対応は [実装・検証記録](../plans/mobile-placement-shelf-landmarks.md) を参照。
+スマホ棚マスタの個別目安・8方角対応の実装・検証記録（Plan）は未作成で、リポジトリに無い。
 
 ## 仕様（正本）
 
@@ -603,3 +603,9 @@ export RASPI_SERVER_HOST="denkon5sd02@100.106.158.2"
 - Zero2W 関連: [KB-368](./KB-368-zero2w-haizen-placement-tracking.md)
 - 沉浸式ヘッダー: [KB-311](./KB-311-kiosk-immersive-header-allowlist.md)
 - 設計プレビュー: [design-previews/README.md](../design-previews/README.md)（`kiosk-shelf-master-*`）
+
+### 完了品の現在棚表示（2026-11-03）
+
+`placement-completion.service.ts` に読取専用の共通フィルタを集約した。製造orderとZero2Wは、スキャン経路の `normalizeSlipToken` で得た ProductNo の全工程が実効完了の場合だけ非表示にする。工程行がない場合は表示を残す。現品票は購買照会と共通の候補選択（照合キー→正規化コード→品名）を使い、選択候補が完了なら非表示にする。完了の正本は `buildProductionScheduleEffectiveCompletedSql()` のみ。
+
+一覧・配膳俯瞰・部品検索・サイネージ・モバイル配置スナップショットと、棚削除／再割当ガードが共通フィルタを使う。件数上限は完了品除外後に適用する。モバイル配置の版には進捗・外部完了・予定日の集計も含める。配置レコードと履歴は保持し、書込処理は変更しない。

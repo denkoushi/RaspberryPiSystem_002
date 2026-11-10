@@ -61,6 +61,23 @@ describe('self-inspection schedule decoration FKOJUN selection', () => {
     expect(result[0]?.selfInspectionResourceCds).toEqual(['R1', 'R2']);
   });
 
+  it('keeps the parent inspection path and all five required entries', async () => {
+    const result = await buildLeaderboardDecorations(
+      [row],
+      {},
+      decorationCache([template('order-10', '10', 'group-10')])
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      id: row.id,
+      hasSelfInspectionDrawing: true,
+      resolvedPlannedQuantity: 5,
+      resolvedRequiredEntryCount: 5
+    });
+    expect(result[0]?.selfInspectionEntryPath).toContain('scheduleRowId=row-1');
+  });
+
   it('falls back to the blank-FKOJUN template for legacy schedule rows', async () => {
     const result = await buildLeaderboardDecorations(
       [{ ...row, rowData: { ...row.rowData, FKOJUN: 20 } }],

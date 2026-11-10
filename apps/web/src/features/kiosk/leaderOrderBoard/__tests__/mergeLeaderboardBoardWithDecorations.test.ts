@@ -37,6 +37,8 @@ describe('mergeLeaderboardBoardWithDecorations', () => {
       rowDecorations: [
         {
           id: 'row-1',
+          arrived: false,
+          specialDue: { kind: 'today', expiresAt: '2026-11-06T00:00:00Z' },
           resolvedMachineName: 'M1',
           customerName: 'C1',
           hasSelfInspectionDrawing: true,
@@ -48,6 +50,7 @@ describe('mergeLeaderboardBoardWithDecorations', () => {
       leaderboardFooterChipsByPartKey: { 'k\0a': [] }
     });
     const merged = mergeLeaderboardBoardWithDecorations(lightBoard, acc);
+    expect(merged.rows[0]).toMatchObject({ arrived: false, specialDue: { kind: 'today' } });
     expect(merged.rows[0]?.resolvedMachineName).toBe('M1');
     expect(merged.rows[0]?.customerName).toBe('C1');
     expect(merged.rows[0]?.selfInspectionTemplateId).toBe('tpl-1');

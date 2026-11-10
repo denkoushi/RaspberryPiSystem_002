@@ -63,7 +63,7 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       'import/no-unresolved': 'off',
       'import/order': 'off',
-      'import/no-cycle': 'error',
+      'import/no-cycle': ['error', { ignoreExternal: true }],
       'import/no-restricted-paths': [
         'error',
         {

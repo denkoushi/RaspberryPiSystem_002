@@ -30,9 +30,9 @@ class SecurityLogrotateContractTests(unittest.TestCase):
             with self.subTest(repo_path=repo_path):
                 config = render_config(**({"repo_path": repo_path} if repo_path else {}))
                 blocks = dict(re.findall(r"([^\s#]+)\s*\{([^}]+)\}", config))
-                root = repo_path or "/opt/RaspberryPiSystem_002"
                 expected = {"/var/log/trivy/*.log": 52,
-                            "/var/log/package-integrity/*.log": 52, f"{root}/alerts/*.json": 26}
+                            "/var/log/package-integrity/*.log": 52}
+                self.assertNotIn("/alerts/", config)
                 self.assertEqual(set(blocks), set(expected))
                 for path, retention in expected.items():
                     self.assertRegex(blocks[path], rf"\brotate\s+{retention}\b")

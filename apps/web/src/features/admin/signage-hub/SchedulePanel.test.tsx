@@ -35,7 +35,7 @@ function createEditor(overrides: Record<string, unknown> = {}): SignageScheduleE
       endTime: '18:00',
       priority: 1,
       enabled: true,
-      targetClientKeys: [],
+      targetClientDeviceIds: [],
     },
     setFormData: noop,
     useNewLayout: true,

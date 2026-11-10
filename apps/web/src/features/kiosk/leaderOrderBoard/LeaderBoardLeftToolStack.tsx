@@ -21,7 +21,7 @@ import type { LeaderOrderBoardDeviceCard } from './useLeaderOrderBoardDeviceCont
 import type { RefObject } from 'react';
 
 export type LeaderBoardLeftToolStackProps = {
-  leftToolStackOuterRef: RefObject<HTMLDivElement>;
+  leftToolStackOuterRef: RefObject<HTMLDivElement | null>;
   drawerReveal: {
     isVisible: boolean;
     onDrawerMouseEnter: () => void;
@@ -62,14 +62,14 @@ export type LeaderBoardLeftToolStackProps = {
   onMoveRegisteredSeibanToRank: (fseiban: string, targetRank1Based: number) => void;
   /** 背景同期中など、製番検索・登録を明示的に無効化 */
   interactionLocked?: boolean;
+  arrivalFilterEnabled?: boolean;
+  onToggleArrivalFilter?: () => void;
+  /** SCAW の日程を表示（既定はエクセルの日程） */
+  scawEnabled?: boolean;
+  onToggleScawMode?: () => void;
   /** ガント表示（所要量比例の行高） */
   ganttEnabled: boolean;
   onToggleGanttMode: () => void;
-  /** 分割機能の状態表示（メインの資源スロット領域を消費しない） */
-  splitFeatureStatus: {
-    label: string;
-    className: string;
-  };
 };
 
 /**
@@ -104,9 +104,10 @@ export function LeaderBoardLeftToolStack({
   registeredSeibansForDisplay,
   onMoveRegisteredSeibanToRank,
   interactionLocked = false,
+  scawEnabled = false, onToggleScawMode,
+  arrivalFilterEnabled = true, onToggleArrivalFilter,
   ganttEnabled,
-  onToggleGanttMode,
-  splitFeatureStatus
+  onToggleGanttMode
 }: LeaderBoardLeftToolStackProps) {
   const seibanControlsLocked = interactionLocked;
   const rankPickerPanelDomId = useId();
@@ -191,17 +192,6 @@ export function LeaderBoardLeftToolStack({
             )}
           </select>
         </label>
-        <div className="flex shrink-0 items-center justify-between gap-2 rounded border border-white/15 bg-slate-950/60 px-2 py-1">
-          <span className={clsx('font-semibold uppercase tracking-wide', kioskMetaTextClassName)}>分割</span>
-          <span
-            className={clsx(
-              'shrink-0 rounded border px-2 py-0.5 text-xs font-bold leading-tight',
-              splitFeatureStatus.className
-            )}
-          >
-            {splitFeatureStatus.label}
-          </span>
-        </div>
         <div className="flex min-h-0 min-w-0 flex-1 flex-col rounded-lg border border-white/15 bg-slate-900 p-2">
           <div className="mb-2 flex min-w-0 shrink-0 items-center justify-between gap-1">
             <span className="shrink-0 text-xs font-semibold uppercase tracking-wide text-white/70">
@@ -434,6 +424,10 @@ export function LeaderBoardLeftToolStack({
           >
             {ganttEnabled ? 'ガントON' : 'ガントOFF'}
           </button>
+          <button type="button" onClick={onToggleScawMode} aria-pressed={scawEnabled}
+            className={clsx('rounded-md border px-2 font-semibold', scawEnabled ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600' : kioskButtonSecondaryClassName)}>SCAW</button>
+          <button type="button" onClick={onToggleArrivalFilter} aria-pressed={arrivalFilterEnabled} aria-label="前工程が済んだものだけ表示"
+            className={clsx('rounded-md border px-2 font-semibold', arrivalFilterEnabled ? 'border-sky-400 bg-sky-500 text-white hover:bg-sky-600' : kioskButtonSecondaryClassName)}>着</button>
         </div>
         {selectedResourceCategory ? (
           <p className={clsx('shrink-0', kioskMetaTextClassName)}>検索: {selectedResourceCategory}</p>

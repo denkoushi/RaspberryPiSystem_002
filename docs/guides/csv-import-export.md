@@ -19,8 +19,8 @@
 
 **実装アーキテクチャ**:
 - ✅ **CSV Import Scalingプラン完了（2025-12-29）**: CSVインポート機能をレジストリ・ファクトリパターンでモジュール化し、計測機器・吊具のCSVインポートに対応。新しいデータタイプの追加が容易になり、コードの重複を削減。スケジュール設定を`targets`配列形式に拡張し、複数のデータタイプを1つのスケジュールで処理可能に。後方互換性を確保（旧`employeesPath`/`itemsPath`形式もサポート）。Gmail件名パターンを管理コンソールから編集できる機能を実装し、設定ファイル（`backup.json`）に保存されるように変更。
-  - プランファイル: `.cursor/plans/csv_import_scaling_ccfbf0e7.plan.md`（全To-do完了済み）
-  - 詳細: [docs/knowledge-base/frontend.md#kb-112](./knowledge-base/frontend.md#kb-112-csvインポート構造改善と計測機器吊具対応) / [docs/knowledge-base/frontend.md#kb-113](./knowledge-base/frontend.md#kb-113-gmail件名パターンの管理コンソール編集機能) / [docs/knowledge-base/api.md#kb-114](./knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [docs/knowledge-base/api.md#kb-115](./knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)
+  - プランファイル: `csv_import_scaling_ccfbf0e7.plan.md`（全To-do完了済み。リポジトリには未収録）
+  - 詳細: [docs/knowledge-base/api.md#kb-114](../knowledge-base/api.md#kb-114-csvインポート構造改善レジストリファクトリパターン) / [docs/knowledge-base/api.md#kb-115](../knowledge-base/api.md#kb-115-gmail件名パターンの設定ファイル管理)
 
 また、トランザクション履歴をCSV形式でエクスポートできます。
 
@@ -53,7 +53,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 
 ### 設定手順
 
-1. **CSVダッシュボードの作成**: 管理コンソール（`/admin/csv-dashboards`）でCSVダッシュボードを作成
+1. **CSVダッシュボードの作成**: 管理コンソール（`/admin/data-boards?type=table`（データボード））でCSVダッシュボードを作成
    - **名前**: ダッシュボード名（例: `ProductionSchedule_Mishima_Grinding`）
    - **Gmail件名パターン**: Gmailの件名パターン（例: `生産日程_三島_研削工程`）
    - **日付列**: CSVの日付列名（例: `date`）
@@ -67,7 +67,7 @@ CSVダッシュボード機能により、Gmail経由で取得したCSVファイ
 
 ### 列定義（columnDefinitions）の確認・編集
 
-CSVダッシュボードの列定義は、管理コンソール（`/admin/csv-dashboards`）で確認・編集できます。
+CSVダッシュボードの列定義は、管理コンソール（`/admin/data-boards?type=table`（データボード））で確認・編集できます。
 
 未点検加工機（当日点検の有無）で使用する場合は、**点検結果CSVダッシュボード**の列定義に最低限以下を揃えてください。
 
@@ -147,13 +147,13 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 #### 前提（安全・秘密）
 
 - **実行者**: Pi5 に SSH できる管理者のみ。**JWT を発行したり `Authorization` ヘッダを扱うコマンドをログに残さない**（手順書にトークンを貼り付けない）。
-- **作業ディレクトリ（本番例）**: `/opt/RaspberryPiSystem_002`（デプロイ手順の標準）。[deployment.md](./deployment.md) の **`docker compose -f infrastructure/docker/docker-compose.server.yml`** と整合させる。
+- **作業ディレクトリ（本番例）**: `/opt/RaspberryPiSystem_002`（デプロイ手順の標準）。本番 API は blue/green の稼働スロットで動くため、`api` コンテナ内の作業は `scripts/server/run-in-active-api.sh <command>` を使う（`docker-compose.server.yml` の `api` は使われない）。
 - **DB / JWT**: ホストの Node やローカル Prisma から `DATABASE_URL` のホスト名 **`db`** に届かないことがある。**JWT 発行・Prisma・API への `curl` は原則 `api` コンテナ内**（または同等に DB に到達できる環境）で行う。
 
 #### A. 通常ルート（ブラウザで足りる場合）
 
-1. 本書冒頭の **設定手順** セクションどおり **`/admin/csv-dashboards`** で CsvDashboard（件名 `gmailSubjectPattern`・列定義など）を作成または確認。
-2. **`/admin/csv-imports`**（または本リポジトリの管理画面ラベルに従う）で **プロバイダー `gmail`**・ターゲット **CSVダッシュボード** を選びスケジュール登録。
+1. 本書冒頭の **設定手順** セクションどおり **`/admin/data-boards?type=table`（データボード）** で CsvDashboard（件名 `gmailSubjectPattern`・列定義など）を作成または確認。
+2. **`/admin/import`**（CSV取り込み）で **プロバイダー `gmail`**・ターゲット **CSVダッシュボード** を選びスケジュール登録。
 3. **手動実行**で疎通。**既存の Gmail スケジュールと同じ「分」に複数本を重ねない**（登録時に衝突警告が返る。`config/backup.json` の `csvImports` で既存 cron の分を確認し、空き分を取る）。
 
 #### B. 固定 ID の CsvDashboard を本番 DB に合わせる（Prisma upsert）
@@ -177,7 +177,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
     ※ 件名はスケジュール側ではなく **`CsvDashboard.gmailSubjectPattern`** から取得される。
   - `schedule`: cron（例: **`24,39,54 * * * *`** — 既存 Gmail 取り込みと **分刻みが被らない**ようにする）
   - `enabled`: `true`
-- **認証**: `Authorization: Bearer <ADMIN JWT>`。JWT は **api コンテナ内**で `jsonwebtoken` と **`JWT_ACCESS_SECRET`（コンテナ環境変数）** を用いて発行する。payload には管理 API が要求する **`role: ADMIN`** を含める（実装は `apps/api/src/lib/auth.js` 系を参照）。
+- **認証**: `Authorization: Bearer <ADMIN JWT>`。JWT は **api コンテナ内**で `jsonwebtoken` と **`JWT_ACCESS_SECRET`（コンテナ環境変数）** を用いて発行する。payload には管理 API が要求する **`role: ADMIN`** を含める（実装は `apps/api/src/lib/auth.ts` を参照）。
 
 保存先は **`config/backup.json` の `csvImports`**（`ImportScheduleAdminService` が `BackupConfigLoader` 経由で更新）。登録後、スケジューラが **reload** される。
 
@@ -197,7 +197,7 @@ CSVダッシュボードのGmail取り込みは、CSVインポートスケジュ
 **本番（Pi5・`api` コンテナ内）**:
 
 ```bash
-docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pnpm backfill:order-supplement-planned-end-date:prod
+scripts/server/run-in-active-api.sh node /app/apps/api/dist/scripts/backfill-order-supplement-planned-end-date.js
 ```
 
 **ローカル**:
@@ -212,7 +212,7 @@ pnpm --filter @raspi-system/api backfill:order-supplement-planned-end-date
 #### E. 期待挙動・検証
 
 - Gmail 側は **未読**メールが対象。処理成功後、実装どおり **既読化・ゴミ箱移動** 等の後処理が走る（詳細は Gmail 取込サービス実装を参照）。
-- **ログ**: `docker compose -f infrastructure/docker/docker-compose.server.yml logs api` で該当スケジュール・取込エラーを確認。
+- **ログ**: `/opt/RaspberryPiSystem_002` で `docker logs --tail 200 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"` を実行し、稼働 API スロットのログで該当スケジュール・取込エラーを確認。
 - **DB**: 対象 `CsvDashboard` の行が増えたか、関連テーブル（例: `ProductionScheduleOrderSupplement`）に照合が入ったかを Prisma / SQL で確認。
 - **キオスク API**: `GET /api/kiosk/production-schedule` の **`x-client-key` は `ClientDevice.apiKey` の実値**（キオスク端末に割り当てられたキー）。ダミー文字列では 401 になる。
 
@@ -235,16 +235,16 @@ pnpm --filter @raspi-system/api backfill:order-supplement-planned-end-date
 
 今後、別データでも同様に「GmailのCSV自動取得」から「サイネージの新コンテンツ」まで作る場合は、以下の順序が安全です（最小の動作確認ポイント込み）。
 
-1. **CSVダッシュボードを作る**（`/admin/csv-dashboards`）
+1. **CSVダッシュボードを作る**（`/admin/data-boards?type=table`（データボード））
    - **最低限**: `gmailSubjectPattern`（件名）、`dateColumnName`（当日/期間フィルタに使う日付列）、列定義（`columnDefinitions`）
    - **未点検加工機（点検結果）**の場合は、`dateColumnName=inspectionAt` を推奨（上記「列定義」参照）
-2. **CSVインポートスケジュールを作る**（`/admin/csv-imports`）
+2. **CSVインポートスケジュールを作る**（`/admin/import`、CSV取り込み）
    - **プロバイダー**: `gmail`
    - **ターゲット**: `CSVダッシュボード`
    - **source**: CSVダッシュボードID（件名ではない）
-3. **手動実行で疎通確認**（`/admin/csv-imports` の「実行」）
+3. **手動実行で疎通確認**（`/admin/import` の「実行」）
    - 失敗時は、まず「Gmail設定（OAuth）」と「CSVダッシュボードの `gmailSubjectPattern`」を疑う
-4. **可視化ダッシュボードを作る/更新する**（`/admin/visualization-dashboards`）
+4. **可視化ダッシュボードを作る/更新する**（`/admin/data-boards?type=graph`（データボード））
    - `uninspected_machines` は `dataSourceConfig.csvDashboardId` が必須（点検結果CSVダッシュボードID）
    - 管理画面上でCSVダッシュボードIDを **ドロップダウン選択**して設定する（手入力しない）
    - 表示仕様（サイネージ向け）:
@@ -252,7 +252,7 @@ pnpm --filter @raspi-system/api backfill:order-supplement-planned-end-date
      - 1設備管理番号あたり1行
      - `点検結果` は `正常X/異常Y` 形式
      - 稼働中マスターに存在し当日記録なしの設備は `未使用`
-5. **サイネージスケジュールに組み込む**（`/admin/signage/schedules`）
+5. **サイネージスケジュールに組み込む**（`/admin/signage`）
    - `layout=FULL` か `layout=SPLIT` を選び、`slot.kind=visualization` に可視化ダッシュボードIDを設定する
 
 #### 取得ロジック（現行仕様）
@@ -344,11 +344,11 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ### 実機検証
 
-実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)を参照してください。
+実機検証手順は、[CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)を参照してください。
 
 ### 関連ドキュメント
 
-- [CSVダッシュボード可視化機能の実機検証手順](./csv-dashboard-verification.md)
+- [CSVダッシュボード可視化機能の実機検証手順](../archive/guides/csv-dashboard-verification.md)
 - [KB-184: 生産スケジュールキオスクページ実装と完了ボタンのグレーアウト・トグル機能](../knowledge-base/frontend.md#kb-184-生産スケジュールキオスクページ実装と完了ボタンのグレーアウトトグル機能)
 - [KB-185: CSVダッシュボードのgmailSubjectPattern設定UI改善](../knowledge-base/api.md#kb-185-csvダッシュボードのgmailsubjectpattern設定ui改善)
 - [KB-201: 生産スケジュールCSVダッシュボードの差分ロジック改善とバリデーション追加](../knowledge-base/api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)（FSEIBANバリデーション修正: `********`を許可）
@@ -363,7 +363,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 ### インポート手順
 
 1. **管理画面にアクセス**: `https://<Pi5のIP>/admin`
-2. **「一括登録」タブにアクセス**: `https://<Pi5のIP>/admin/import`
+2. **システム →「CSV取り込み」にアクセス**: `https://<Pi5のIP>/admin/import`
 3. **CSVファイルを選択**: 各データタイプのフォームからCSVファイルを選択
    - 従業員CSV (`employees.csv`)
    - 工具CSV (`items.csv`)
@@ -417,7 +417,7 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 |------|------|------|-----|
 | `department` | 文字列 | 所属部署 | `製造部` |
 | `positionName`（別名: `職位`） | 文字列 | 人事データの職位名。列なしは既存値を保持、空欄は削除 | `主任` |
-| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 | `status` | 文字列 | ステータス（`ACTIVE` / `INACTIVE` / `SUSPENDED`、未指定時は`ACTIVE`） | `ACTIVE` |
 
 **注意**: `displayName`（氏名）は`lastName + firstName`で自動生成されます。CSVには含めません。
@@ -426,9 +426,9 @@ FHINCD,FSEIBAN,ProductNo,FSIGENCD,FHINMEI,FSIGENSHOYORYO,FKOJUN
 
 ```csv
 employeeCode,lastName,firstName,department,nfcTagUid,status
-0001,山田,太郎,製造部,04C362E1330289,ACTIVE
+0001,山田,太郎,製造部,<nfc-uid-1>,ACTIVE
 0002,佐藤,花子,品質管理部,,ACTIVE
-0003,鈴木,一郎,製造部,04DE8366BC2A81,INACTIVE
+0003,鈴木,一郎,製造部,<nfc-uid-3>,INACTIVE
 ```
 
 #### バリデーションルール
@@ -453,7 +453,7 @@ employeeCode,lastName,firstName,department,nfcTagUid,status
 
 | 列名 | 形式 | 説明 | 例 |
 |------|------|------|-----|
-| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04DE8366BC2A81` |
+| `nfcTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 | `category` | 文字列 | カテゴリ | `工具` |
 | `storageLocation` | 文字列 | 保管場所 | `工具庫A` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`） | `AVAILABLE` |
@@ -463,9 +463,9 @@ employeeCode,lastName,firstName,department,nfcTagUid,status
 
 ```csv
 itemCode,name,nfcTagUid,category,storageLocation,status,notes
-TO0001,ドライバー No.1,04DE8366BC2A81,工具,工具庫A,AVAILABLE,
+TO0001,ドライバー No.1,<nfc-uid-3>,工具,工具庫A,AVAILABLE,
 TO0002,レンチセット,,工具,工具庫B,AVAILABLE,定期点検必要
-TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
+TO0003,ハンマー,<nfc-uid-1>,工具,工具庫A,IN_USE,
 ```
 
 #### バリデーションルール
@@ -494,15 +494,15 @@ TO0003,ハンマー,04C362E1330289,工具,工具庫A,IN_USE,
 | `measurementRange` | 文字列 | 測定範囲 | `0-100mm` |
 | `calibrationExpiryDate` | 日付（YYYY-MM-DD） | 校正期限 | `2025-12-31` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
-| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 
 #### CSV例
 
 ```csv
 managementNumber,name,storageLocation,department,measurementRange,calibrationExpiryDate,status,rfidTagUid
-MI-001,てこ式ダイヤルゲージ,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,04C362E1330289
+MI-001,てこ式ダイヤルゲージ,工具庫A,品質管理部,0-100mm,2025-12-31,AVAILABLE,<nfc-uid-1>
 MI-002,ノギス,工具庫B,品質管理部,0-150mm,2025-06-30,AVAILABLE,
-MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE,04DE8366BC2A81
+MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE,<nfc-uid-3>
 ```
 
 #### バリデーションルール
@@ -537,15 +537,15 @@ MI-003,マイクロメータ,工具庫A,品質管理部,0-25mm,2025-09-30,IN_USE
 | `thicknessMm` | 数値 | 厚さ（mm） | `20` |
 | `status` | 文字列 | ステータス（`AVAILABLE` / `IN_USE` / `MAINTENANCE` / `RETIRED`、未指定時は`AVAILABLE`） | `AVAILABLE` |
 | `notes` | 文字列 | 備考 | `定期点検必要` |
-| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `04C362E1330289` |
+| `rfidTagUid` | 文字列 | NFCタグUID（14文字の16進数） | `<nfc-uid>`（実在タグの UID に置き換える） |
 
 #### CSV例
 
 ```csv
 managementNumber,name,idNum,storageLocation,department,startedAt,usableYears,maxLoadTon,lengthMm,widthMm,thicknessMm,status,notes,rfidTagUid
-RG-001,ワイヤーロープ 10t,101,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,04C362E1330289
+RG-001,ワイヤーロープ 10t,101,工具庫A,製造部,2020-01-01,10,10,5000,100,20,AVAILABLE,,<nfc-uid-1>
 RG-002,チェーンブロック 5t,,工具庫B,製造部,2019-06-01,15,5,3000,80,15,AVAILABLE,定期点検必要,
-RG-003,スリングベルト 3t,305,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,04DE8366BC2A81
+RG-003,スリングベルト 3t,305,工具庫A,製造部,2021-03-15,8,3,2000,50,10,IN_USE,,<nfc-uid-3>
 ```
 
 #### バリデーションルール
@@ -903,7 +903,7 @@ GmailからCSVファイルを自動取得してインポートできます。Pow
 - `GET /api/imports/history/failed`: 失敗した履歴のみ取得
 - `GET /api/imports/history/:historyId`: 詳細履歴取得
 
-**詳細**: [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+**詳細**: [CSVインポート履歴機能の有効化手順](../archive/guides/csv-import-history-migration.md)
 
 #### 429監視の手順（運用）
 
@@ -1076,9 +1076,9 @@ CSVフォーマット仕様実装の実機検証手順は、[検証チェック�
 
 - [デプロイメントガイド](./deployment.md)
 - [PowerAutomate → Dropbox → Pi5 CSV統合ガイド](./powerautomate-dropbox-integration.md)
-- [CSVインポート履歴機能の有効化手順](./csv-import-history-migration.md)
+- [CSVインポート履歴機能の有効化手順](../archive/guides/csv-import-history-migration.md)
 - [Dropbox CSV統合機能の現状分析](../analysis/dropbox-csv-integration-status.md)
-- [トラブルシューティングナレッジベース](../knowledge-base/troubleshooting-knowledge.md#kb-003-p2002エラーnfctaguidの重複が発生する)
+- [トラブルシューティングナレッジベース](../knowledge-base/database.md#kb-003-p2002エラーnfctaguidの重複が発生する)
 - [KB-253: 加工機CSVインポートのデフォルト列定義とDB設定不整合問題](../knowledge-base/api.md#kb-253-加工機csvインポートのデフォルト列定義とdb設定不整合問題)
 - [KB-254: 加工機マスタのメンテナンスページ追加（CRUD機能）](../knowledge-base/frontend.md#kb-254-加工機マスタのメンテナンスページ追加crud機能)
 - [検証チェックリスト](./verification-checklist.md#6-csvフォーマット仕様実装の検証2025-12-31)

@@ -20,6 +20,25 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
         self.security = yaml.safe_load((ANSIBLE / 'roles/kiosk/tasks/security.yml').read_text())
         self.variables = yaml.safe_load((ANSIBLE / 'group_vars/all.yml').read_text())
 
+    def test_kiosk_alerts_inbox_cleanup_is_daily_and_bounded(self):
+        task = next(task for task in self.tasks
+                    if task.get('name') == 'Schedule kiosk alerts inbox cleanup')
+        cron = task['ansible.builtin.cron']
+        self.assertEqual(cron['user'], 'root')
+        self.assertEqual((cron['minute'], cron['hour']), ('25', '4'))
+        for field in ('day', 'month', 'weekday'):
+            self.assertEqual(cron.get(field, '*'), '*')
+        self.assertEqual(task['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertEqual(self.variables['security_review_kiosk_alerts_dir'],
+                         '/opt/RaspberryPiSystem_002/alerts')
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters['quote'] = shlex.quote
+        job = environment.from_string(cron['job']).render(**self.variables)
+        self.assertEqual(shlex.split(job), [
+            'find', '/opt/RaspberryPiSystem_002/alerts', '-maxdepth', '1', '-type', 'f',
+            '-name', 'alert-*.json*', '(', '(', '-empty', '-mmin', '+1440', ')',
+            '-o', '-mmin', '+43200', ')', '-delete'])
+
     def test_full_provisioning_imports_package_integrity_after_clamav(self):
         self.assertEqual(self.security[-1], {
             'name': 'Apply kiosk package integrity check',
@@ -33,12 +52,14 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
 
     def test_kiosk_removes_rkhunter_without_installing_or_scheduling_it(self):
         related = [task for task in self.tasks if 'rkhunter' in str(task)]
-        self.assertEqual(len(related), 3)
+        self.assertEqual(len(related), 4)
         self.assertEqual(related[0]['ansible.builtin.cron'], {
             'name': 'Weekly rkhunter scan (kiosk)', 'user': 'root', 'state': 'absent'})
         self.assertEqual(related[1]['ansible.builtin.file'], {
             'path': '/usr/local/bin/rkhunter-kiosk-scan.sh', 'state': 'absent'})
-        self.assertEqual(related[2]['ansible.builtin.apt'], {
+        self.assertEqual(related[2]['ansible.builtin.file'], {
+            'path': '/etc/cron.d/rkhunter-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(related[3]['ansible.builtin.apt'], {
             'name': 'rkhunter', 'state': 'absent', 'purge': True})
         for task in related:
             self.assertNotIn('when', task)
@@ -153,6 +174,15 @@ class KioskSecurityScansDeliveryTest(unittest.TestCase):
                          {'name': 'kiosk', 'tasks_from': 'clamav'})
         self.assertEqual(len(expected['rescue']), 1)
         self.assertIn('ansible.builtin.debug', expected['rescue'][0])
+
+    def test_clamav_removes_legacy_cron_d_copy_before_scheduling(self):
+        names = [task['name'] for task in self.clamav]
+        legacy = self.clamav[names.index('Remove legacy kiosk ClamAV cron.d entry')]
+        self.assertEqual(legacy['ansible.builtin.file'], {
+            'path': '/etc/cron.d/clamav-kiosk-scan', 'state': 'absent'})
+        self.assertEqual(legacy['when'], "terminal_release_mode | default('full') == 'full'")
+        self.assertLess(names.index('Remove legacy kiosk ClamAV cron.d entry'),
+                        names.index('Schedule kiosk ClamAV scan'))
 
     def test_clamav_packages_daemon_and_kiosk_render_vars(self):
         install = next(task for task in self.clamav if 'ansible.builtin.apt' in task)

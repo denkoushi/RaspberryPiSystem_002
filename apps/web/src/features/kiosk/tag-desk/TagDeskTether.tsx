@@ -3,9 +3,9 @@ import { useEffect, useState, type RefObject } from 'react';
 type Line = { x1: number; y1: number; x2: number; y2: number; width: number; height: number };
 
 type Props = {
-  deskRef: RefObject<HTMLElement>;
-  tokenRef: RefObject<HTMLElement>;
-  listRef: RefObject<HTMLElement>;
+  deskRef: RefObject<HTMLElement | null>;
+  tokenRef: RefObject<HTMLElement | null>;
+  listRef: RefObject<HTMLElement | null>;
   tone: 'signal' | 'cut' | 'pending';
   /** Any value that changes when the rows or the dock re-render. */
   layoutKey: string;

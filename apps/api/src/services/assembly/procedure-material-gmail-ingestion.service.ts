@@ -1,3 +1,5 @@
+import { GmailSenderRejectedError } from '../gmail/gmail-sender-verification.js';
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { ApiError } from '../../lib/errors.js';
@@ -62,8 +64,10 @@ export class ProcedureMaterialGmailIngestionService {
     if (!options.manual && !options.config.procedureMaterialGmailIngest?.enabled) return summary;
     const loggedMessages: Array<Pick<ProcedureMaterialMessageResult, 'messageId' | 'status' | 'reason'> & { errorName?: string }> = [];
     this.running = true;
+    const senderSession = GmailSenderVerificationSession.forRun(options.config);
     try {
-      const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
+      if (senderSession.disabled) return summary;
+      const gmail = senderSession.wrap(await this.gmailFactory(options.config, { allowWait: options.allowWait }));
       const ids = [...new Set(options.messageId ? [options.messageId] : await gmail.searchMessagesAll(buildProcedureMaterialGmailSearchQuery(options.config.procedureMaterialGmailIngest)))];
       summary.scanned = ids.length;
       const eligible = ids.filter((id) => {
@@ -92,6 +96,7 @@ export class ProcedureMaterialGmailIngestionService {
       return summary;
     } finally {
       this.running = false;
+      await senderSession.notify();
       logger.info({
         manual: options.manual ?? false,
         scanned: summary.scanned,
@@ -246,6 +251,7 @@ export class ProcedureMaterialGmailIngestionService {
       this.retryAt.delete(messageId);
       return result;
     } catch (error) {
+      if (error instanceof GmailSenderRejectedError) return { ...result, status: 'skipped', reason: error.reason };
       this.retryAt.set(messageId, Date.now() + RETRY_DELAY_MS);
       return { ...result, status: 'retryable', reason: error instanceof Error ? error.message : String(error), errorName: error instanceof Error ? error.name : 'Error' };
     }

@@ -186,8 +186,8 @@ export async function renameAssemblyProcedureDocument(id: string, name: string, 
   return data.document;
 }
 
-export async function deleteAssemblyProcedureDocument(id: string, holderToken?: string | null) {
-  await api.delete(`/assembly/procedure-documents/${id}`, procedureEditHeaders(holderToken));
+export async function deleteAssemblyProcedureDocument(id: string, accessPassword: string, holderToken?: string | null) {
+  await api.delete(`/assembly/procedure-documents/${id}`, { ...procedureEditHeaders(holderToken), data: { accessPassword } });
 }
 
 export async function publishAssemblyProcedureDocument(input: {
@@ -225,9 +225,10 @@ export async function approvePublishAssemblyProcedureDocument(input: {
   return data.document;
 }
 
-export async function unpublishAssemblyProcedureDocument(id: string) {
+export async function unpublishAssemblyProcedureDocument(id: string, accessPassword: string) {
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
-    `/assembly/procedure-documents/${id}/unpublish`
+    `/assembly/procedure-documents/${id}/unpublish`,
+    { accessPassword }
   );
   return data.document;
 }

@@ -22,7 +22,7 @@ export async function registerProductionScheduleDueManagementNoteRoute(
     { config: { rateLimit: false } },
     async (request) => {
       const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-      requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
+      await requireDueManagementToken(request.headers['x-due-management-token'], clientDevice.id);
       const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
       const dueManagementScope = toDueManagementScopeFromContext(locationScopeContext);
       const locationKey = resolveDueManagementStorageLocationKey(dueManagementScope);

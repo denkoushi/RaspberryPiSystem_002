@@ -74,14 +74,9 @@ sudo chown $USER:$USER cert.pem key.pem
 openssl x509 -in cert.pem -noout -subject
 ```
 
-#### 0.3 Caddyコンテナの再起動
+#### 0.3 証明書の反映
 
-証明書を更新したら、Caddyコンテナを再起動します：
-
-```bash
-cd /opt/RaspberryPiSystem_002
-docker compose -f infrastructure/docker/docker-compose.server.yml restart web
-```
+Pi5本番のTLS終端は、標準releaseが起動する bluegreen project の `gateway`（`bluegreen-gateway-1`、`certs/` を読み取り専用でマウント）である。`docker-compose.server.yml` の `web` は稼働中の経路ではないため、`restart web` では反映されない。証明書更新後の反映手順は確定していないため、gateway などのcontainerを手動で操作せず、運用者に確認する（標準経路は [デプロイ・クイックスタート](./quick-start-deployment.md)）。
 
 #### 0.4 HTTPS接続の確認
 
@@ -341,23 +336,14 @@ CSVダッシュボードや組立手順書取り込みで処理済みメール�
 
 Gmail APIのレート制限エラー（429）を回避するための環境変数：
 
-- `GMAIL_MAX_MESSAGES_PER_BATCH`（デフォルト: `50`）: 1回の処理で取得するメール数の上限
-- `GMAIL_BATCH_REQUEST_DELAY_MS`（デフォルト: `1000`）: バッチ処理時のリクエスト間隔（ミリ秒）
+- `GMAIL_MAX_MESSAGES_PER_BATCH`（デフォルト: `10`）: 1回の処理で取得するメール数の上限
+- `GMAIL_BATCH_REQUEST_DELAY_MS`（デフォルト: `2000`）: バッチ処理時のリクエスト間隔（ミリ秒）
 
 **推奨設定**:
 - 大量のメール（100件以上）を処理する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=50`、`GMAIL_BATCH_REQUEST_DELAY_MS=1000`
 - レート制限エラーが頻発する場合: `GMAIL_MAX_MESSAGES_PER_BATCH=30`、`GMAIL_BATCH_REQUEST_DELAY_MS=1500`
 
-**設定方法**:
-```bash
-# Pi5にSSH接続して、環境変数を設定
-cd /opt/RaspberryPiSystem_002/infrastructure/docker
-echo "GMAIL_MAX_MESSAGES_PER_BATCH=50" >> .env
-echo "GMAIL_BATCH_REQUEST_DELAY_MS=1000" >> .env
-
-# APIコンテナを再起動
-docker compose -f docker-compose.server.yml restart api
-```
+**設定方法**: 現時点で恒久的に設定する経路はない。`infrastructure/docker/.env` はAnsibleが `docker.env.j2` から再生成し、テンプレートに `GMAIL_*` の変数はないため、Pi5で手動追記しても次の再生成で消える。また稼働中のAPIは bluegreen project で動いており、`docker-compose.server.yml` の `restart api` は効かない。値を変える場合は、Ansible側へ変数を追加するPRを作り、標準経路（[デプロイ・クイックスタート](./quick-start-deployment.md)）で反映する。
 
 ## トラブルシューティング
 
@@ -390,6 +376,13 @@ docker compose -f docker-compose.server.yml restart api
 2. **送信元メールアドレスが一致していない**
    - PowerAutomate側で送信するメールの送信元アドレスが、Pi5側で設定した送信元アドレスと一致しているか確認
    - 送信元アドレスを設定していない場合は、すべてのメールを検索します
+
+4. **送信元のドメインが取込の許可リストに無い**
+   - Gmail からの取込（CSV・要領書・手順書・在庫・指示書など全経路）は、`backup.json` 最上位の `gmailIngestSenderPolicy.allowedSenderDomains` に載ったドメインから届き、Gmail の認証結果が合格したメールだけを対象にします
+   - 項目が無い場合の既定値は `["thkintechs.co.jp"]`。ドメインは完全一致（サブドメインは別扱い）
+   - 対象外のメールは取り込まず、既読・ゴミ箱移動はせず受信箱に残し、`rps_sender_rejected` ラベルを付けて以後の取り込み検索から除外します。取込の実行ごとに通知 `gmail-sender-rejected` を1件出します（同じ内容の未確認の通知が24時間以内にあれば追加しません）
+   - 許可リストを修正した後、そのメールを取り込み直す場合は Gmail で `rps_sender_rejected` ラベルを外してください
+   - 明示的に空 `[]` にすると Gmail からの取込は止まり、同じ種類の通知が出ます
 
 3. **メールが既にアーカイブされている**
    - GmailStorageProviderは、処理済みのメールを自動的にアーカイブします

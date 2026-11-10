@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   moveOrderPlacementBranch,
-  parseActualSlipImage,
   registerOrderPlacement,
   snapFseibanTokens,
   verifyMobilePlacementSlipMatch
@@ -148,16 +147,11 @@ export function useMobilePlacementPageState() {
   }, []);
 
   const runActualSlipOcr = useCallback(async (
-    read: () => Promise<ActualSlipOcrResponse | null>,
-    resetBeforeReading: boolean
+    read: () => Promise<ActualSlipOcrResponse | null>
   ) => {
     if (actualSlipOcrInFlight.current) return;
     actualSlipOcrInFlight.current = true;
     setActualSlipImageOcrBusy(true);
-    if (resetBeforeReading) {
-      setSlipResult('idle');
-      setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
-    }
     try {
       const res = await read();
       if (res) applyActualSlipOcrResponse(res);
@@ -185,16 +179,11 @@ export function useMobilePlacementPageState() {
     }
   }, [applyActualSlipOcrResponse]);
 
-  const parseActualSlipImageFile = useCallback(
-    (file: File) => runActualSlipOcr(() => parseActualSlipImage(file), true),
-    [runActualSlipOcr]
-  );
-
   const scanActualSlipNative = useCallback(() => runActualSlipOcr(async () => {
     const result = await scanFseibanNative();
     if (result.status === 'cancelled') return null;
     return snapNativeLocalFirst(result.tokens, result.text, () => snapFseibanTokens({ tokens: result.tokens, text: result.text }));
-  }, false), [runActualSlipOcr]);
+  }), [runActualSlipOcr]);
 
   const linkLastVerifyRecord = useCallback((clientRecordId: string) => verifyRecorder.link({
     transferOrderBarcodeRaw: transferOrder, transferPartBarcodeRaw: transferPart,
@@ -367,7 +356,6 @@ export function useMobilePlacementPageState() {
     setScanField,
     scanFormats,
     onScanSuccess,
-    parseActualSlipImageFile,
     scanActualSlipNative,
     actualSlipImageOcrBusy,
     actualSlipOcrFeedback,

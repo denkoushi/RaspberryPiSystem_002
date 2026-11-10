@@ -1,3 +1,4 @@
+import { validateImageBuffer } from './validated-image.js';
 import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import path from 'path';
@@ -60,6 +61,7 @@ export class AssemblyProcedureImageStorage {
       throw new Error(`手順書画像サイズが大きすぎます（最大 ${MAX_BYTES} バイト）`);
     }
     const ext = this.assertMime(mimetype);
+    await validateImageBuffer(buffer, mimetype);
     const filename = `${randomUUID()}${ext}`;
     await getFileStorageRuntime().store.write({
       key: `assembly-procedure-images/${filename}`,

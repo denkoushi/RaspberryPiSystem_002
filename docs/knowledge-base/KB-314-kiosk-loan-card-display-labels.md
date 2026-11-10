@@ -52,6 +52,6 @@
 - 実装ブランチ: `feat/loan-card-display-labels`
 - VLM 表示名: [KB-319](./KB-319-photo-loan-vlm-tool-label.md)
 - [modules/measuring-instruments/ui.md](../modules/measuring-instruments/ui.md)
-- [guides/measuring-instruments-verification.md](../guides/measuring-instruments-verification.md)
+- [guides/measuring-instruments-verification.md](../archive/guides/measuring-instruments-verification.md)
 - [guides/verification-checklist.md](../guides/verification-checklist.md)（6.6.5）
 - [guides/deployment.md](../guides/deployment.md)

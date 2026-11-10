@@ -1,5 +1,5 @@
 ---
-title: ADR 003: カメラ機能のモジュール化
+title: "ADR 003: カメラ機能のモジュール化"
 tags: [設計決定, カメラ, モジュール化, 拡張性]
 audience: [開発者, アーキテクト]
 last-verified: 2025-11-27
@@ -31,11 +31,10 @@ services/camera/
   ├── drivers/
   │   ├── index.ts               # ドライバーインターフェース
   │   ├── camera-driver.interface.ts  # CameraDriver インターフェース
-  │   ├── raspberry-pi-camera.driver.ts  # Raspberry Pi Camera Module 実装
+  │   ├── raspberry-pi-camera.driver.ts  # Raspberry Pi Camera Module 実装（ファイル未作成・選択時は camera.service.ts が例外）
   │   ├── usb-camera.driver.ts   # USBカメラ実装
   │   └── mock-camera.driver.ts  # モック実装（テスト用）
-  └── config/
-      └── camera.config.ts       # カメラ設定（環境変数から読み込み）
+  （設定は services/camera/ 配下ではなく apps/api/src/config/camera.config.ts。zod で環境変数を読み込む）
 ```
 
 ## 理由
@@ -107,7 +106,7 @@ class CameraService {
 ```typescript
 // apps/api/src/config/camera.config.ts
 export const cameraConfig = {
-  type: process.env.CAMERA_TYPE || 'raspberry-pi-camera', // 'raspberry-pi-camera' | 'usb-camera' | 'mock'
+  type: process.env.CAMERA_TYPE || 'mock', // 'raspberry-pi-camera'（未実装・選択時は例外） | 'usb-camera' | 'mock'
   device: process.env.CAMERA_DEVICE || '/dev/video0', // USBカメラの場合のデバイスパス
   resolution: {
     width: parseInt(process.env.CAMERA_WIDTH || '800'),

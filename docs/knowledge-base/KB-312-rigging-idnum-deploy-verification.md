@@ -22,7 +22,7 @@ category: knowledge-base
 | 現行キー | `managementNumber` は従来どおり一意・必須（変更なし） |
 | API | `POST/PUT /api/rigging-gears` のボディに任意 `idNum`。空文字は `null` 正規化 |
 | 一覧検索 | `GET /api/rigging-gears?search=` は **名称・管理番号・idNum** の部分一致（大文字小文字区別なし） |
-| 管理 UI | `/admin/tools/rigging-gears` … フォーム「旧番号」、一覧「旧番号」列、検索プレースホルダ「名称・管理番号・旧番号で検索」 |
+| 管理 UI | `/admin/tools/rigging-gears` … フォーム「旧番号」、一覧「旧番号」列、検索プレースホルダ「名称・管理番号・旧番号で検索」（当時。現行の `/admin/tools/rigging-gears` はキオスク `/kiosk/tag-desk` への移動案内のみで、登録・編集は `/kiosk/tag-desk`） |
 | キオスク | `/kiosk/rigging/borrow` … 吊具情報ブロックに **旧番号** 行（未設定時は `-`） / `/kiosk/tag` の持出一覧で吊具 **idNum** を表示（下記「持出一覧レイアウト」） |
 | 持出一覧UI | `/kiosk/tag` の持出一覧カードから種別アイコン（📏/⚙️/🔧）を削除。吊具は **管理番号と同一行**に idNum の**値のみ**（プレフィックス「旧番号:」なし、未設定は `-`）。実装: `presentActiveLoanListLines` → `KioskReturnPage` |
 | サイネージ | 持出カードで吊具のみ **旧番号** を表示（計測機器・工具は表示なし） |
@@ -92,7 +92,7 @@ category: knowledge-base
 
 ## References
 
-- 実装（参考）: `apps/api/prisma/schema.prisma`（`RiggingGear.idNum`）、`apps/api/src/routes/rigging/schemas.ts`、`apps/api/src/services/rigging/rigging-gear.service.ts`、`apps/web/src/pages/tools/RiggingGearsPage.tsx`、`apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`、`apps/web/src/features/kiosk/activeLoanListLines.ts`、`apps/web/src/pages/kiosk/KioskReturnPage.tsx`
+- 実装（参考）: `apps/api/prisma/schema.prisma`（`RiggingGear.idNum`）、`apps/api/src/routes/rigging/schemas.ts`、`apps/api/src/services/rigging/rigging-gear.service.ts`、`apps/web/src/features/kiosk/tag-desk/tagDeskModel.ts`（旧 `pages/tools/RiggingGearsPage.tsx` は削除済み）、`apps/web/src/pages/kiosk/KioskRiggingBorrowPage.tsx`、`apps/web/src/features/kiosk/activeLoanListLines.ts`、`apps/web/src/pages/kiosk/KioskReturnPage.tsx`
 - [KB-267 吊具持出画面に吊具情報表示を追加](./frontend.md#kb-267-吊具持出画面に吊具情報表示を追加)
 - [csv-import-export.md](../guides/csv-import-export.md)（吊具 CSV の `idNum`）
 - [verification-checklist.md](../guides/verification-checklist.md)（6.4 / 6.6.3）

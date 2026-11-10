@@ -1,3 +1,5 @@
+import clsx from 'clsx';
+
 import { LoadBalancingMacProxyPanel } from './LoadBalancingMacProxyPanel';
 
 import type { ReactNode } from 'react';
@@ -13,6 +15,8 @@ type MacProxyProps = {
 };
 
 type Props = {
+  scawEnabled: boolean;
+  onToggleScawMode: () => void;
   macProxy?: MacProxyProps;
   children?: ReactNode;
 };
@@ -20,14 +24,25 @@ type Props = {
 const AXIS_NOTE =
   '負荷＝未完了工程の所要時間を 着手日〜納期 の稼働日に日割り。今日より前の分は今日以降へ、納期を過ぎた分は「遅れ」列へ。生産システムの負荷グラフとは集計の仕方が違うため一致しません。';
 
-export function LoadBalancingPageHeader({ macProxy, children }: Props) {
+export function LoadBalancingPageHeader({ macProxy, children, scawEnabled, onToggleScawMode }: Props) {
   return (
-    <header className="flex h-14 shrink-0 items-center gap-3 rounded-[10px] border border-white/15 bg-slate-900/70 px-3">
-      <h1 className="mr-1 text-xl font-extrabold">負荷調整</h1>
+    <header className="flex h-14 shrink-0 items-center gap-2 rounded-[10px] border border-white/15 bg-slate-900/70 px-3">
+      <h1 className="shrink-0 whitespace-nowrap text-xl font-extrabold">負荷調整</h1>
       {children}
+      <button
+        type="button"
+        aria-pressed={scawEnabled}
+        onClick={onToggleScawMode}
+        className={clsx(
+          'grid h-9 w-9 shrink-0 place-items-center rounded-md border text-[11px] font-bold',
+          scawEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300'
+        )}
+      >
+        SCAW
+      </button>
       <details className="relative ml-auto">
         <summary
-          className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg bg-slate-800 font-extrabold [&::-webkit-details-marker]:hidden"
+          className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg bg-slate-800 font-extrabold [&::-webkit-details-marker]:hidden"
           aria-label="集計の説明"
         >
           ⓘ
@@ -39,7 +54,7 @@ export function LoadBalancingPageHeader({ macProxy, children }: Props) {
       {macProxy?.macManualOrderV2 ? (
         <details className="relative">
           <summary
-            className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-lg bg-slate-700 font-black [&::-webkit-details-marker]:hidden"
+            className="grid h-9 w-9 cursor-pointer list-none place-items-center rounded-lg bg-slate-700 font-black [&::-webkit-details-marker]:hidden"
             aria-label="対象絞込を表示"
           >
             V

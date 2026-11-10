@@ -1,0 +1,12 @@
+---
+# Run with --check --diff first. Standard release does not apply these tasks.
+- name: Prepare the Pi5 hourly JPCERT advisories collector
+  hosts: raspberrypi5
+  gather_facts: false
+  become: true
+  serial: 1
+  tasks:
+    - name: Apply JPCERT advisories tasks
+      ansible.builtin.import_role:
+        name: server
+        tasks_from: jpcert-advisories.yml

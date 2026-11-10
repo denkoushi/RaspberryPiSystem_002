@@ -1,3 +1,5 @@
+import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
+import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
@@ -6,7 +8,6 @@ import type { LeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-s
 import { createInMemoryLeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-shell-snapshot.store.js';
 import { readGrindingPlanningBoardSnapshotGenerationToken } from '../leaderboard/leaderboard-shell-snapshot-generation.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } from '../constants.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
 import { type DbClient, type PlanningSnapshotGenerationDetails, type PlanningSnapshotPayload, type PlanningState, type ReusablePlanningPayload, uniqueFseibans } from './shared.js';
 
 const PLANNING_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
@@ -20,6 +21,20 @@ export const reusablePlanningPayloads = new WeakMap<LeaderboardShellSnapshotStor
 
 export function stateOrder(state: { seibanOrder: Prisma.JsonValue }): string[] {
   return Array.isArray(state.seibanOrder) ? uniqueFseibans(state.seibanOrder.filter((value): value is string => typeof value === 'string')) : [];
+}
+
+export function stateUncheckedFseibans(state: PlanningState, legacyUnchecked: readonly string[] = []): string[] {
+  const unchecked = new Set(Array.isArray(state.uncheckedFseibans) ? state.uncheckedFseibans : legacyUnchecked);
+  return stateOrder(state).filter((fseiban) => unchecked.has(fseiban));
+}
+
+export async function readStateUncheckedFseibans(state: PlanningState, client: DbClient): Promise<string[]> {
+  if (state.uncheckedFseibans != null) return stateUncheckedFseibans(state);
+  const minutes = await client.productionScheduleDScheduleMinutes.findMany({
+    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(state) } },
+    select: { fseiban: true, assignees: true, assigneesKnown: true }
+  });
+  return stateUncheckedFseibans(state, minutes.filter((row) => row.assigneesKnown && !isMachineSectionAssigned(row.assignees)).map((row) => row.fseiban));
 }
 
 function orderHash(order: readonly string[]): string { return createHash('sha256').update(JSON.stringify(order)).digest('hex'); }
@@ -78,14 +93,14 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
-  const [leaderboardGeneration, state, overrides, resources, machineNames] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
       select: { version: true, updatedAt: true }
     }),
     prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] },
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
@@ -97,6 +112,19 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       where: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID },
       _count: { _all: true },
       _max: { updatedAt: true }
+    }),
+    readSessakuPieceGeneration(prisma),
+    prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
+    }),
+    prisma.productionScheduleGrindingPlanningBoardResourceCapacity.aggregate({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
+      _count: { _all: true }, _max: { updatedAt: true }
     })
   ]);
   const boardVersion = state?.version ?? 0;
@@ -112,7 +140,15 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       resourceUpdatedAt: resources._max.updatedAt?.toISOString() ?? '',
       machineNameCount: machineNames._count._all,
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
-      splitEnabled: isProductionScheduleOrderSplitEnabled()
+      pieceSetCount: pieces.count,
+      pieceSetVersion: pieces.version,
+      minuteSourceCount: minuteSources._count._all,
+      minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
+      partMinutesCount: partMinutes._count._all,
+      partMinutesUpdatedAt: partMinutes._max.updatedAt?.toISOString() ?? '',
+      capacityCount: capacity._count._all,
+      capacityUpdatedAt: capacity._max.updatedAt?.toISOString() ?? '',
+      payloadFormat: 5
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,
@@ -138,7 +174,7 @@ export async function ensurePlanningBoardState(siteKey: string): Promise<void> {
 
 export async function lockState(client: Prisma.TransactionClient, siteKey: string): Promise<PlanningState> {
   const rows = await client.$queryRaw<PlanningState[]>`
-    SELECT "id", "version", "seibanOrder" FROM "ProductionScheduleGrindingPlanningBoardState"
+    SELECT "id", "version", "seibanOrder", "uncheckedFseibans" FROM "ProductionScheduleGrindingPlanningBoardState"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey} FOR UPDATE
   `;
   if (!rows[0]) throw new ApiError(409, 'ボード状態が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');

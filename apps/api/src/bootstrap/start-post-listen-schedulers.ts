@@ -1,3 +1,4 @@
+import { getWatchCameraRetentionScheduler } from '../services/watch-camera/watch-camera-retention.scheduler.js';
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
 import { getCsvFeedFreshnessEvaluator } from '../services/kiosk-inquiry/csv-feed-freshness-evaluator.js';
@@ -7,6 +8,8 @@ import { getKnowledgeRuntime } from '../services/knowledge/knowledge-runtime.js'
 import { logger } from '../lib/logger.js';
 import { env } from '../config/env.js';
 import { getProcedureTermLearningScheduler } from '../services/assembly/procedure-term-learning.scheduler.js';
+import { getAdvisoryCheckScheduler } from '../services/advisory-check/advisory-check.scheduler.js';
+import { getSecurityReviewQueueScheduler } from '../services/security-review/security-review-queue.scheduler.js';
 import { getSecurityReviewScheduler } from '../services/security-review/security-review.scheduler.js';
 import { getBusinessHermesNightlyScheduler } from '../services/business-hermes/business-hermes-nightly.scheduler.js';
 import { getBackupScheduler } from '../services/backup/backup-scheduler.js';
@@ -38,6 +41,7 @@ import {
   errorForLog,
   isSchedulerStepStateAmbiguousError,
   SchedulerStartupCleanupError,
+  SchedulerStepStateAmbiguousError,
 } from './scheduler-errors.js';
 
 export type SchedulerStep = {
@@ -117,9 +121,25 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     snapshotStore: leaderboardShellSnapshotStore
   });
   if (process.env.HERMES_KNOWLEDGE_ENABLED === 'true') {
+    const stopKnowledge = async () => {
+      const runtime = getKnowledgeRuntime();
+      const stopped = await Promise.allSettled([runtime.worker.stop(), runtime.procedureWorker.stop(), runtime.procedureBoardWorker.stop()]);
+      const errors = stopped.filter(result => result.status === 'rejected').map(result => result.reason);
+      if (errors.length) throw new AggregateError(errors, 'Knowledge workers failed to stop');
+    };
     definitions.push({ name: 'hermes-knowledge',
-      start: async () => { const runtime = getKnowledgeRuntime(); await runtime.documents.initialize(); runtime.worker.start(); await runtime.ensureReferenceData(); runtime.procedureWorker.start(); },
-      stop: async () => { const runtime = getKnowledgeRuntime(); await Promise.all([runtime.worker.stop(), runtime.procedureWorker.stop()]); },
+      start: async () => {
+        const runtime = getKnowledgeRuntime();
+        try {
+          await runtime.documents.initialize(); runtime.worker.start(); await runtime.ensureReferenceData();
+          runtime.procedureWorker.start(); runtime.procedureBoardWorker.start();
+        } catch (error) {
+          try { await stopKnowledge(); }
+          catch (cleanupError) { throw new SchedulerStepStateAmbiguousError('hermes-knowledge', [...asErrors(error), ...asErrors(cleanupError)]); }
+          throw error;
+        }
+      },
+      stop: stopKnowledge,
     });
   }
   if (env.SIGNAGE_RENDER_ENABLED) {
@@ -158,6 +178,10 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       stop: () => grindingPlanningBoardWarmup.stop() },
     { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
       stop: () => getProcedureTermLearningScheduler().stop() },
+    { name: 'advisory-check', start: () => getAdvisoryCheckScheduler().start(),
+      stop: () => getAdvisoryCheckScheduler().stop() },
+    { name: 'security-review-queue', start: () => getSecurityReviewQueueScheduler().start(),
+      stop: () => getSecurityReviewQueueScheduler().stop() },
     { name: 'security-review-nightly', start: () => getSecurityReviewScheduler().start(),
       stop: () => getSecurityReviewScheduler().stop() },
     { name: 'business-hermes-nightly', start: () => getBusinessHermesNightlyScheduler().start(),
@@ -266,6 +290,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       },
     },
     {
+      name: 'watch-camera-retention',
+      start: () => getWatchCameraRetentionScheduler().start(),
+      stop: () => getWatchCameraRetentionScheduler().stop(),
+    },
+    {
       name: 'client-network-log-retention',
       start: () => getClientNetworkLogRetentionScheduler().start(),
       stop: () => getClientNetworkLogRetentionScheduler().stop(),
@@ -340,6 +369,8 @@ export function listPostListenSchedulerNames(): string[] {
     'procedure-term-learning',
     'business-hermes-nightly',
     'security-review-nightly',
+    'security-review-queue',
+    'advisory-check',
     'fkojunst-mail-superseded-prune',
     'file-storage-integrity-backfill',
     'backup',
@@ -351,6 +382,7 @@ export function listPostListenSchedulerNames(): string[] {
     'gmail-trash-cleanup',
     'due-management-tuning',
     'alerts-dispatcher',
+    'watch-camera-retention',
     'client-network-log-retention',
     'client-heartbeat-monitor',
     'system-notice-evaluator',

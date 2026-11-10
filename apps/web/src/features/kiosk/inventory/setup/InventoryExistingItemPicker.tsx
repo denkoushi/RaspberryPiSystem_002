@@ -2,6 +2,7 @@ import { formatInventoryLabelNumber } from '@raspi-system/shared-types';
 import { useState, type ReactNode } from 'react';
 
 import { inventoryThumbnailUrl, type InventoryItem } from '../../../../api/client';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { splitArea } from '../areaNaming';
 import { invButtonSm, invField, invLabelNumber, invPanel, invSeg } from '../inventoryUi';
 
@@ -22,7 +23,7 @@ export function filterExistingItems(items: InventoryItem[], { query, scope, mach
 
 function ItemPhoto({ item, className }: { item: InventoryItem; className: string }) {
   return item.photos[0]
-    ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className={`${className} shrink-0 rounded-lg object-cover`} />
+    ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(item.photos[0].photoUrl)} alt="" className={`${className} shrink-0 rounded-lg object-cover`} />
     : <span className={`${className} flex shrink-0 items-center justify-center rounded-lg bg-inv-s3 text-xs text-inv-faint`}>写真なし</span>;
 }
 

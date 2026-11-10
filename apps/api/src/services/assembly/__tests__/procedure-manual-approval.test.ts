@@ -116,12 +116,12 @@ describe('procedure-manual approval publication', () => {
     expect(approvals).toHaveLength(1);
     expect(prisma.assemblyProcedureDocument.update).toHaveBeenCalledTimes(1);
     const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${id}/publish`, payload: { accessPassword: 'secret', expectedEditVersion: 0 } });
-    expect(response.statusCode).toBe(200); expect(password).toHaveBeenCalledWith('secret');
+    expect(response.statusCode).toBe(200); expect(password).toHaveBeenCalledWith('secret', expect.objectContaining({ ip: expect.any(String) }));
     expect(approvals).toHaveLength(1);
   });
   it('retains password publication without adding approvals', async () => {
     const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${id}/publish`, payload: { accessPassword: 'secret', expectedEditVersion: 3 } });
-    expect(response.statusCode).toBe(200); expect(password).toHaveBeenCalledWith('secret');
+    expect(response.statusCode).toBe(200); expect(password).toHaveBeenCalledWith('secret', expect.objectContaining({ ip: expect.any(String) }));
     expect(document.status).toBe('PUBLISHED'); expect(approvals).toEqual([]);
   });
   it('confirms the approver without publishing', async () => {

@@ -6,10 +6,9 @@
   serial: 1
 
   tasks:
-    - name: Refuse TalkPlaza and require read-only TLS verification approval
+    - name: Require read-only TLS verification approval
       ansible.builtin.assert:
         that:
-          - "'talkplaza' not in group_names"
           - normal_factory_local_tls_verification_approved | default(false) | bool
 
     - name: Verify Pi5 health with hostname and certificate validation enabled

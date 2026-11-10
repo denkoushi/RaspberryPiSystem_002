@@ -1,3 +1,5 @@
+import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
+import { requireDeviceKeyOrViewer } from '../../lib/device-or-viewer.js';
 import { sendStorageReadError } from './shared.js';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { ApiError } from '../../lib/errors.js';
@@ -6,8 +8,9 @@ import { PhotoStorage } from '../../lib/photo-storage.js';
 export function registerThumbnailStorageRoutes(app: FastifyInstance): void {
   app.get(
     '/storage/thumbnails/*',
-    { config: { rateLimit: false } },
+    { config: { rateLimit: createDeviceReadRateLimit() } },
     async (request: FastifyRequest, reply: FastifyReply) => {
+      await requireDeviceKeyOrViewer(request, reply);
       const relativePath = request.url.replace('/api/storage/thumbnails/', '').split('?')[0];
       if (!relativePath) {
         return reply.status(400).send({ message: 'サムネイルのパスが指定されていません' });
@@ -15,7 +18,7 @@ export function registerThumbnailStorageRoutes(app: FastifyInstance): void {
 
       try {
         const buffer = await PhotoStorage.readThumbnail(relativePath);
-        reply.header('Cache-Control', 'public, max-age=86400');
+        reply.header('Cache-Control', 'private, max-age=86400');
         reply.type('image/jpeg');
         return reply.send(buffer);
       } catch (error) {

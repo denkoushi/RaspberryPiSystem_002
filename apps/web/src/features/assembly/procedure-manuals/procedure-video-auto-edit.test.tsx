@@ -108,6 +108,7 @@ describe('procedure video AI desk', () => {
     mocks.get.mockResolvedValue(status === 'none' ? null : status === 'DISMISSED' ? { ...row, decision: 'DISMISSED' } : { ...row, status, suggestion: null });
     render(<ProcedureVideoShelfDialog onClose={vi.fn()} />); await screen.findByText(label);
     if (status !== 'PENDING' && status !== 'RUNNING') {
+      mocks.get.mockResolvedValue({ ...row, id: 'suggestion-2', status: 'PENDING', suggestion: null });
       fireEvent.click(screen.getByRole('button', { name: status === 'none' ? 'AI案を作る' : '作り直す' }));
       await waitFor(() => expect(mocks.regenerate).toHaveBeenCalledExactlyOnceWith('v1'));
       expect(await screen.findByText('AI案を作成中')).toBeInTheDocument();

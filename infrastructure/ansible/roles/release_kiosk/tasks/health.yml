@@ -9,7 +9,7 @@
     export XDG_RUNTIME_DIR="/run/user/$(id -u)"
     export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
     test "$(ibus engine)" = mozc-jp
-  become_user: '{{ ansible_user }}'
+  become_user: '{{ kiosk_gui_user | default(ansible_user) }}'
   changed_when: false
   when: release_kiosk_first_install | bool
 
@@ -23,6 +23,31 @@
   when:
     - release_kiosk_first_install | bool
     - "'nfc-agent' in release_kiosk_services"
+
+- name: Verify Japanese input in the dedicated GUI session
+  ansible.builtin.shell: |
+    set -eu
+    export DISPLAY=:0
+    export XAUTHORITY="${HOME}/.Xauthority"
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+    export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
+    test "$(ibus engine)" = mozc-jp
+  args:
+    executable: /bin/bash
+  become: true
+  become_user: '{{ kiosk_gui_user | default(ansible_user) }}'
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  register: release_kiosk_gui_ime_health
+  retries: 20
+  delay: 2
+  until: release_kiosk_gui_ime_health.rc == 0
+  changed_when: false
+  when:
+    - manage_kiosk_browser | default(false) | bool
+    - kiosk_unprivileged_session_enabled | default(false) | bool
 
 - name: Record verified Pi4 health
   ansible.builtin.set_fact:

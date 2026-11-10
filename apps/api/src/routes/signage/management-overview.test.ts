@@ -1,3 +1,6 @@
+vi.mock('../../services/clients/client-telemetry.service.js', () => ({
+  listClientDevices: vi.fn().mockResolvedValue([{ id: 'key-a' }, { id: 'key-b' }]),
+}));
 import Fastify from 'fastify';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +22,7 @@ import {
 import { registerManagementOverviewRoutes } from './management-overview.js';
 
 const rotation = { scheduleIds: ['s1', 's2'], currentIndex: 1, secondsUntilSwitch: 12, isFallback: false };
-const service = { listSignageRenderClientApiKeys: vi.fn(), getRotationForClient: vi.fn() };
+const service = { listSignageRenderClientDeviceIds: vi.fn(), getRotationForClient: vi.fn() };
 
 describe('signage management overview routes', () => {
   beforeEach(() => {
@@ -29,7 +32,7 @@ describe('signage management overview routes', () => {
   });
 
   it('reports the last device fetch and rotation per client', async () => {
-    service.listSignageRenderClientApiKeys.mockResolvedValue(['key-a', 'key-b']);
+    service.listSignageRenderClientDeviceIds.mockResolvedValue(['key-a', 'key-b']);
     recordSignageImageFetch('key-a', new Date('2026-10-01T05:00:20.000Z'));
     const app = Fastify();
     registerManagementOverviewRoutes(app, service as never);
@@ -38,8 +41,8 @@ describe('signage management overview routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().clients).toEqual([
-      { apiKey: 'key-a', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
-      { apiKey: 'key-b', lastFetchedAt: null, rotation },
+      { clientDeviceId: 'key-a', lastFetchedAt: '2026-10-01T05:00:20.000Z', rotation },
+      { clientDeviceId: 'key-b', lastFetchedAt: null, rotation },
     ]);
     expect(response.json().scheduleSwitchIntervalSeconds).toBeGreaterThan(0);
     await app.close();

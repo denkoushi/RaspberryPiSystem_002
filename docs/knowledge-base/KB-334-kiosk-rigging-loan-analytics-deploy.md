@@ -24,7 +24,7 @@ category: knowledge-base
 
 [`docs/guides/deployment.md`](../guides/deployment.md) の `scripts/update-all-clients.sh` のみ使用する。
 
-**前提**: Pi5 を含む実行では **`export RASPI_SERVER_HOST=<Pi5の到達可能ホスト>`**（例: Tailscale。未設定時はスクリプトが即終了）。
+**前提**: 現行の入口と引数は [deployment.md](../guides/deployment.md#標準更新入口) を正とする（最初に `--print-plan` で対象を確認し、進捗は `--status RUN_ID` で確認する）。以下のコマンド例は 2026-04 時点の記録で、`RASPI_SERVER_HOST` と `--follow` は現行 wrapper では使えない（`--follow` は引数エラーになる）。
 
 ### Pi5 のみ（SPA・API がサーバ `web` / `api` のとき）
 

@@ -1,9 +1,10 @@
 ---
 id: ADR-20260726-deploy-readiness-policy-engine
 title: Data-driven release-readiness policy and sealed admission
-status: accepted
+status: superseded
+superseded_by: ../guides/deployment.md
 date: 2026-07-26
-source_of_truth: true
+source_of_truth: false
 scope: canonical SSH rolling release preflight selection and scope-drift guard
 related_code:
   - scripts/deploy/readiness-gates.json
@@ -14,11 +15,11 @@ related_docs:
   - ../plans/deploy-readiness-policy-engine-20260726.md
   - ../plans/deploy-release-readiness-review-20260725.md
 validation: static registry contracts, pure policy fixtures, complete deploy contracts, required CI, and exact-head production preflight
-open_items:
-  - complete implementation and production rollout
 ---
 
 # ADR-20260726: Data-driven release-readiness policy and sealed admission
+
+> **状態: superseded** — `related_code` の `readiness-gates.json`、`rolling_release/readiness_policy.py`・`application.py`・`coordinator.py` は、2026-08-08 の標準 Ansible route への移行で存在しなくなった（`scripts/deploy/rolling_release/` には `route_preflight.py` などの補助モジュールだけが残る）。現行の対象確認と preflight は [deployment guide](../guides/deployment.md)（`standard-ansible-release.py`、`deploy-release-standard.yml`、`--print-plan`）を正とする。
 
 ## Status
 

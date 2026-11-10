@@ -102,15 +102,15 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
   // console. Each request rechecks the password on the server, even when the
   // browser keeps the PIN in memory after the initial snapshot.
   app.post('/torque-training/settings/snapshot', { config: { rateLimit: kioskSettingsRateLimit } }, async (request) => {
-    await requireKioskClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const body = torqueTrainingSettingsSnapshotSchema.parse(request.body);
-    return { snapshot: await kioskSettingsService.snapshot(body.accessPassword) };
+    return { snapshot: await kioskSettingsService.snapshot(body.accessPassword, { clientDeviceId: clientDevice.id, ip: request.ip }) };
   });
 
   app.post('/torque-training/settings/programs', { config: { rateLimit: kioskSettingsRateLimit } }, async (request, reply) => {
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const body = torqueTrainingSettingsProgramCreateSchema.parse(request.body);
-    const program = await kioskSettingsService.createProgram(body.accessPassword, clientDevice, body.program);
+    const program = await kioskSettingsService.createProgram(body.accessPassword, { ...clientDevice, ip: request.ip }, body.program);
     return reply.code(201).send({ program });
   });
 
@@ -118,7 +118,7 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const params = trainingProgramIdParamsSchema.parse(request.params);
     const body = torqueTrainingSettingsProgramRevisionSchema.parse(request.body);
-    const version = await kioskSettingsService.reviseProgram(body.accessPassword, clientDevice, params.id, body.revision);
+    const version = await kioskSettingsService.reviseProgram(body.accessPassword, { ...clientDevice, ip: request.ip }, params.id, body.revision);
     return reply.code(201).send({ version });
   });
 
@@ -126,14 +126,14 @@ export async function registerTorqueTrainingRoutes(app: FastifyInstance): Promis
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const params = trainingProgramIdParamsSchema.parse(request.params);
     const body = torqueTrainingSettingsDeactivateSchema.parse(request.body);
-    return { program: await kioskSettingsService.deactivateProgram(body.accessPassword, clientDevice, params.id, body.reason) };
+    return { program: await kioskSettingsService.deactivateProgram(body.accessPassword, { ...clientDevice, ip: request.ip }, params.id, body.reason) };
   });
 
   app.post('/torque-training/settings/sessions/:id/exclude', { config: { rateLimit: kioskSettingsRateLimit } }, async (request) => {
     const { clientDevice } = await requireKioskClientDevice(request.headers['x-client-key']);
     const params = trainingSessionParamsSchema.parse(request.params);
     const body = torqueTrainingSettingsExcludeSchema.parse(request.body);
-    return { session: await kioskSettingsService.excludeSession(body.accessPassword, clientDevice, params.id, body.reason) };
+    return { session: await kioskSettingsService.excludeSession(body.accessPassword, { ...clientDevice, ip: request.ip }, params.id, body.reason) };
   });
 
   app.post('/torque-wrenches/:id/usage-lease/acquire', async (request) => {

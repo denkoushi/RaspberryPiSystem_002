@@ -1,7 +1,7 @@
 import type { SignageWebCapture, User } from '@prisma/client';
 
 import { env } from '../../../config/env.js';
-import { signAccessToken } from '../../../lib/auth.js';
+import { signWebCaptureToken } from './web-capture-auth-session.js';
 import { ApiError } from '../../../lib/errors.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -87,7 +87,7 @@ export interface SignageWebCaptureServiceDeps {
   getBaseUrl: () => string | undefined;
   getCaptureUsername: () => string | undefined;
   findUserByUsername: (username: string) => Promise<Pick<User, 'id' | 'username' | 'role' | 'status'> | null>;
-  signToken: (user: Pick<User, 'id' | 'username' | 'role'>) => string;
+  signToken: (user: Pick<User, 'id' | 'username' | 'role'>) => string | Promise<string>;
 }
 
 function defaultDeps(): SignageWebCaptureServiceDeps {
@@ -101,7 +101,7 @@ function defaultDeps(): SignageWebCaptureServiceDeps {
         where: { username },
         select: { id: true, username: true, role: true, status: true },
       }),
-    signToken: (user) => signAccessToken(user as User),
+    signToken: signWebCaptureToken,
   };
 }
 
@@ -287,7 +287,7 @@ export class SignageWebCaptureService {
       throw new ApiError(503, '撮影用ユーザーの権限は MANAGER にしてください', undefined, 'SIGNAGE_WEB_CAPTURE_USER_ROLE');
     }
     return {
-      token: this.deps.signToken(user),
+      token: await this.deps.signToken(user),
       user: { id: user.id, username: user.username, role: user.role },
     };
   }

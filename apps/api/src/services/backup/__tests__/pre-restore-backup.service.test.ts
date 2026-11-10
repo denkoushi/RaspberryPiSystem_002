@@ -86,7 +86,7 @@ describe('runPreRestoreBackup', () => {
       })
     ).rejects.toMatchObject<ApiError>({
       statusCode: 500,
-      message: expect.stringContaining('Pre-backup failed on all providers'),
+      message: '復元前のバックアップに失敗したため、復元を中止しました',
     });
   });
 });

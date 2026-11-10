@@ -85,3 +85,18 @@ describe('business-profile-intent', () => {
     ).toBe('env');
   });
 });
+
+
+it('ignores provider, env, persisted intent and legacy per-use-case profiles with business switch on', () => {
+  getBusinessProfileIntentStore().setFromOrchestration('old-glm');
+  const values = { businessDeepseekSwitchEnabled: true, businessRuntimeStartProfileId: 'env-glm',
+    photoLabelRuntimeStartProfileId: 'photo-glm', documentSummaryRuntimeStartProfileId: 'summary-glm',
+    adminRuntimeStartProfileId: 'admin-glm' };
+  expect(resolveBusinessRuntimeStartProfile(values, provider)).toBeUndefined();
+  for (const useCase of ['photo_label', 'business_hermes', 'document_summary', 'security_review', 'admin_console_chat'] as const) {
+    expect(resolveRuntimeStartProfileIdForBusinessUseCase(useCase, values, provider)).toBeUndefined();
+  }
+  expect(() => assertBusinessProfileIntentEnvConsistency(values)).not.toThrow();
+  // Rebuilding a controller sees the same authority; it cannot roll DGX back from an old intent.
+  expect(resolveBusinessRuntimeStartProfile({ ...values }, { ...provider })).toBeUndefined();
+});

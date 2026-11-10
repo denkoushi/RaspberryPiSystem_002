@@ -23,8 +23,6 @@ import {
   updateKioskProductionScheduleOrder,
   updateKioskProductionScheduleNote,
   updateKioskProductionScheduleDueDate,
-  updateKioskProductionScheduleSplitDueDate,
-  updateKioskProductionScheduleSplitOrder,
   updateKioskProductionScheduleProcessing
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
@@ -481,68 +479,6 @@ export function useUpdateKioskProductionScheduleDueDate() {
         };
       });
       if (cachePolicy === 'leaderBoardFastPath') return;
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-    }
-  });
-}
-
-export function useUpdateKioskProductionScheduleSplitOrder() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: ['kiosk-production-schedule', 'write', 'split-order'],
-    mutationFn: ({
-      splitId,
-      payload
-    }: {
-      splitId: string;
-      payload: {
-        resourceCd: string;
-        orderNumber: number | null;
-        targetLocation?: string;
-        targetDeviceScopeKey?: string;
-      };
-      cachePolicy?: KioskProductionScheduleOrderCachePolicy;
-    }) => updateKioskProductionScheduleSplitOrder(splitId, payload),
-    onMutate: (variables) =>
-      patchOrderCachesOptimistically(queryClient, {
-        rowId: `split:${variables.splitId}`,
-        payload: variables.payload,
-        cachePolicy: variables.cachePolicy
-      }),
-    onSuccess: (data, variables) => {
-      const policy = variables.cachePolicy ?? 'default';
-      patchOrderCacheWithServerValue(queryClient, data, {
-        rowId: `split:${variables.splitId}`,
-        payload: variables.payload,
-        cachePolicy: policy
-      });
-      if (policy === 'leaderBoardFastPath') return;
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderUsageAll });
-      if (policy === 'manualOrderOptimistic') {
-        void queryClient.invalidateQueries({
-          queryKey: productionScheduleQueryKeys.dueManagementManualOrderOverviewAll
-        });
-      }
-    },
-    onError: (_err, variables, context) => {
-      const policy = variables.cachePolicy ?? 'default';
-      if (policy !== 'leaderBoardFastPath' && policy !== 'manualOrderOptimistic') return;
-      rollbackOrderCaches(queryClient, context);
-    }
-  });
-}
-
-export function useUpdateKioskProductionScheduleSplitDueDate() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: ['kiosk-production-schedule', 'write', 'split-due-date'],
-    mutationFn: ({ splitId, dueDate }: { splitId: string; dueDate: string }) =>
-      updateKioskProductionScheduleSplitDueDate(splitId, { dueDate }),
-    onMutate: () => {
-      void queryClient.cancelQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-    },
-    onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
     }
   });

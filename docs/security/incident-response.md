@@ -36,7 +36,7 @@
 
 **確認場所**:
 - 管理画面のアラート一覧（`/admin`）
-- アラートファイル: `/opt/RaspberryPiSystem_002/alerts/*.json`
+- アラートファイル: `/opt/RaspberryPiSystem_002/alerts/*.json`（logrotate対象外。Pi5はAPIがDB取り込み済みを30日後に削除、キオスクは日次cronで30日経過後に削除。空ファイルは1日経過後に削除。Pi5の未取り込み・不正JSONは保持）
 - セキュリティログ: `/var/log/fail2ban.log`, `/var/log/clamav/*.log`, `/var/log/trivy/*.log`, `/var/log/rkhunter/*.log`
 
 **確認コマンド**:

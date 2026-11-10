@@ -8,18 +8,22 @@ import {
   decorateLeaderboardShellRowsForKiosk,
   decorateLeaderboardShellRowsForKioskFromHydratedRows
 } from '../../production-schedule-query.service.js';
-import { fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds } from '../leaderboard-split-expansion.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from '../leaderboard-shell-hydrate.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../leaderboard-part-footer-processes.service.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../../production-schedule-customer-name-enrichment.service.js';
+
+vi.mock('../../process-arrival.service.js', () => ({
+  enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({ ...row, arrived: false, specialDue: null })))
+}));
 
 vi.mock('../../production-schedule-query.service.js', () => ({
   decorateLeaderboardShellRowsForKiosk: vi.fn(),
   decorateLeaderboardShellRowsForKioskFromHydratedRows: vi.fn()
 }));
 
-vi.mock('../leaderboard-split-expansion.service.js', () => ({
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds: vi.fn()
+vi.mock('../leaderboard-shell-hydrate.service.js', () => ({
+  fetchLeaderboardScheduleHydratedRowsOrderedByIds: vi.fn()
 }));
 
 vi.mock('../leaderboard-part-footer-processes.service.js', () => ({
@@ -63,7 +67,7 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
     const merged = [lightRow('a'), lightRow('b')];
     vi.mocked(decorateLeaderboardShellRowsForKiosk).mockResolvedValue({
       rowDecorations: [
-        { id: 'a', resolvedMachineName: 'M-a', customerName: 'C-a' },
+        { id: 'a', arrived: false, specialDue: { kind: 'today', expiresAt: '2026-11-06T00:00:00Z' }, resolvedMachineName: 'M-a', customerName: 'C-a' },
         { id: 'b', resolvedMachineName: null, customerName: null }
       ],
       leaderboardFooterChipsByPartKey: { 'k\0a': [] },
@@ -83,6 +87,7 @@ describe('decorateLeaderboardCompositeBoardShell', () => {
     });
     expect(result.rowsWithDeco[0]?.resolvedMachineName).toBe('M-a');
     expect(result.rowsWithDeco[0]?.customerName).toBe('C-a');
+    expect(result.rowsWithDeco[0]).toMatchObject({ arrived: false, specialDue: { kind: 'today' } });
     expect(result.leaderboardFooterChipsByPartKey).toEqual({ 'k\0a': [] });
     expect(result.leaderboardMaterialArrivalByPartKey).toEqual({ 'k\0a': 'ordered' });
     expect(result.leaderboardMaterialArrivalBasisByPartKey).toEqual({ 'k\0a': 'part' });
@@ -112,11 +117,11 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     const incremental = [lightRow('i1')];
 
     vi.mocked(decorateLeaderboardShellRowsForKioskFromHydratedRows).mockResolvedValue({
-      rowDecorations: [{ id: 'i1', resolvedMachineName: 'M-i1', customerName: 'C-i1' }],
+      rowDecorations: [{ id: 'i1', arrived: true, resolvedMachineName: 'M-i1', customerName: 'C-i1' }],
       leaderboardFooterChipsByPartKey: {}
     });
 
-    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).mockResolvedValue([
+    vi.mocked(fetchLeaderboardScheduleHydratedRowsOrderedByIds).mockResolvedValue([
       { id: 'p1', rowData: { ProductNo: 'p1' }, actualPerPieceMinutes: null, customerName: null },
       { id: 'p2', rowData: { ProductNo: 'p2' }, actualPerPieceMinutes: null, customerName: null }
     ] as never);
@@ -133,8 +138,8 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(decorateLeaderboardShellRowsForKioskFromHydratedRows).toHaveBeenCalledWith(
       expect.objectContaining({ hydratedRows: incremental })
     );
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).toHaveBeenCalledWith(
-      expect.objectContaining({ orderedDisplayItemIds: ['p1', 'p2'] })
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).toHaveBeenCalledWith(
+      expect.objectContaining({ orderedRowIds: ['p1', 'p2'] })
     );
     expect(buildLeaderboardFooterChipsByPartKeyForScheduleRows).toHaveBeenCalledWith(
       expect.objectContaining({ rows: merged })
@@ -143,6 +148,8 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(result.rowsWithDeco.find((r) => r.id === 'i1')?.resolvedMachineName).toBe('M-i1');
     expect(result.rowsWithDeco.find((r) => r.id === 'p1')?.resolvedMachineName).toBe('M-p1');
     expect(result.deltaRowsWithDeco).toHaveLength(1);
+    expect(result.rowsWithDeco.find((r) => r.id === 'p1')?.arrived).toBe(false);
+    expect(result.deltaRowsWithDeco?.[0]?.arrived).toBe(true);
   });
 
   it('canAttachDelta が false のとき累積全行を一括装飾する', async () => {
@@ -166,7 +173,7 @@ describe('decorateLeaderboardCompositeBoardContinue', () => {
     expect(decorateLeaderboardShellRowsForKioskFromHydratedRows).toHaveBeenCalledWith(
       expect.objectContaining({ hydratedRows: merged })
     );
-    expect(fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds).not.toHaveBeenCalled();
+    expect(fetchLeaderboardScheduleHydratedRowsOrderedByIds).not.toHaveBeenCalled();
     expect(buildLeaderboardFooterChipsByPartKeyForScheduleRows).not.toHaveBeenCalled();
   });
 });

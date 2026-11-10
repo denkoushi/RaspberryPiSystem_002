@@ -1,3 +1,4 @@
+import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -46,6 +47,7 @@ describe('assembly procedure document routes', () => {
       getById: vi.fn().mockResolvedValue(document),
       rename: vi.fn().mockResolvedValue({ ...document, name: '変更後' }),
       getReferenceUsage: vi.fn().mockResolvedValue({ inBoltPageRef: false, inCheckPageRef: false }),
+      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn().mockResolvedValue('deleted')
     };
     const options = {
@@ -80,10 +82,11 @@ describe('assembly procedure document routes', () => {
     expect(renameResponse.statusCode).toBe(200);
     expect(renameResponse.json().document.name).toBe('変更後');
 
-    const deleteResponse = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}` });
+    const deleteResponse = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload: { accessPassword: '2520' } });
     expect(deleteResponse.statusCode).toBe(204);
+    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith('2520', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     expect(procedureService.list).toHaveBeenCalledWith({ includeInactive: false, q: '手順書', limit: undefined });
-    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { holderKey: null, holderToken: null });
+    expect(procedureService.rename).toHaveBeenCalledWith(documentId, '変更後', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
   });
 
   it('returns not found for an unknown document without changing the service contract', async () => {
@@ -93,6 +96,7 @@ describe('assembly procedure document routes', () => {
       getById: vi.fn().mockResolvedValue(null),
       rename: vi.fn(),
       getReferenceUsage: vi.fn(),
+      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn()
     };
     app = Fastify();
@@ -158,6 +162,7 @@ describe('assembly procedure document routes', () => {
     const procedureService = {
       getReferenceUsage: vi.fn().mockResolvedValue(usage),
       buildInUseMessage: vi.fn().mockReturnValue(message),
+      requireAccessPassword: vi.fn().mockResolvedValue(undefined),
       deleteIfUnused: vi.fn().mockResolvedValue(result)
     };
     app = Fastify();
@@ -170,7 +175,7 @@ describe('assembly procedure document routes', () => {
       procedureGmailImportService: { ingest: vi.fn() }
     } as unknown as AssemblyProcedureDocumentRouteOptions);
 
-    const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}` });
+    const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload: { accessPassword: '2520' } });
     expect(response.statusCode).toBe(status);
     expect(response.json()).toEqual({
       message,
@@ -186,8 +191,27 @@ describe('assembly procedure document routes', () => {
     if (usage.inProcedureManualAssignment || usage.inBoltPageRef || usage.inCheckPageRef) {
       expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();
     } else {
-      expect(procedureService.deleteIfUnused).toHaveBeenCalledWith(documentId, { holderKey: null, holderToken: null });
+      expect(procedureService.deleteIfUnused).toHaveBeenCalledWith(documentId, { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
     }
+  });
+
+  it.each([undefined, {}, { accessPassword: '' }, { accessPassword: '0000' }])('checks the password before document usage for %j', async (payload) => {
+    const procedureService = {
+      requireAccessPassword: vi.fn().mockRejectedValue(new ApiError(403, '管理パスワードが違います')),
+      getReferenceUsage: vi.fn(),
+      deleteIfUnused: vi.fn()
+    };
+    app = Fastify();
+    registerErrorHandler(app);
+    registerAssemblyProcedureDocumentRoutes(app, {
+      allowView: async () => undefined, allowWriteKiosk: async () => undefined,
+      procedureService, procedureDraftImportService: {}, procedureGmailImportService: {}
+    } as unknown as AssemblyProcedureDocumentRouteOptions);
+    const response = await app.inject({ method: 'DELETE', url: `/assembly/procedure-documents/${documentId}`, payload });
+    expect(response.statusCode).toBe(403);
+    expect(procedureService.requireAccessPassword).toHaveBeenCalledWith(payload?.accessPassword ?? '', { clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null });
+    expect(procedureService.getReferenceUsage).not.toHaveBeenCalled();
+    expect(procedureService.deleteIfUnused).not.toHaveBeenCalled();
   });
 
   it('returns display URLs for owned assets before an IMAGE overlay is saved', async () => {

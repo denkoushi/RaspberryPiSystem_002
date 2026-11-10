@@ -96,16 +96,16 @@ class DistrustedIntermediatesTests(unittest.TestCase):
 
     def test_nss_uses_session_owner_and_preserves_existing_database(self) -> None:
         self.assertEqual(task_with("ansible.builtin.apt")["ansible.builtin.apt"], {"name": "libnss3-tools", "state": "present"})
-        self.assertEqual(task_with("ansible.builtin.getent")["ansible.builtin.getent"]["key"], "{{ ansible_user }}")
+        self.assertEqual(task_with("ansible.builtin.getent")["ansible.builtin.getent"]["key"], "{{ distrusted_nss_user }}")
         directories = next(t for t in TASKS if t.get("loop") == [".pki", ".pki/nssdb"])
-        self.assertEqual(directories["ansible.builtin.file"]["owner"], "{{ ansible_user }}")
+        self.assertEqual(directories["ansible.builtin.file"]["owner"], "{{ distrusted_nss_user }}")
         init = next(t for t in TASKS if "-N" in t.get("ansible.builtin.command", {}).get("argv", []))
         self.assertTrue(init["ansible.builtin.command"]["creates"].endswith("/.pki/nssdb/cert9.db"))
         self.assertIn("--empty-password", init["ansible.builtin.command"]["argv"])
         for task in TASKS:
             if "certutil" in task.get("ansible.builtin.command", {}).get("argv", []):
-                self.assertEqual(task["become_user"], "{{ ansible_user }}")
-        self.assertEqual(POLICY["vars"]["distrusted_nss_home"], "{{ getent_passwd[ansible_user][4] }}")
+                self.assertEqual(task["become_user"], "{{ distrusted_nss_user }}")
+        self.assertEqual(POLICY["vars"]["distrusted_nss_home"], "{{ getent_passwd[distrusted_nss_user][4] }}")
 
     def test_nss_listing_skips_only_explicitly_prohibited_nicknames(self) -> None:
         listing, install = TASKS[-2:]
@@ -124,11 +124,26 @@ class DistrustedIntermediatesTests(unittest.TestCase):
     def test_standard_profiles_and_common_run_without_full_mode_gate(self) -> None:
         plays = yaml.safe_load((ANSIBLE / "playbooks/deploy-release-standard.yml").read_text())
         for tag, hosts in (("pi5", "server"), ("pi4", "kiosk"), ("pi3", "signage")):
-            play = next(play for play in plays if tag in play["tags"])
-            self.assertEqual(play["hosts"], hosts)
-            task = play["pre_tasks"][0]
-            self.assertEqual(task["ansible.builtin.import_role"], {"name": "common", "tasks_from": "distrusted-intermediates"})
+            play = next(play for play in plays if tag in play["tags"] and play.get("roles"))
+            if tag == "pi4":
+                self.assertIn("release_pi4_canary_host", play["hosts"])
+            else:
+                self.assertEqual(play["hosts"], hosts)
+            index, task = next(
+                (i, t)
+                for i, t in enumerate(play["pre_tasks"])
+                if t.get("ansible.builtin.import_role") == {"name": "common", "tasks_from": "distrusted-intermediates"}
+            )
             self.assertNotIn("when", task)
+            # Release-wave guards may precede distrust; stopped hosts only clean preparation data.
+            for guard in play["pre_tasks"][:index]:
+                if "block" in guard:
+                    self.assertEqual(guard["name"], "Stop before this wave when a kiosk in an earlier wave failed")
+                    self.assertIn("not (release_torque_cutover | default(false) | bool)", guard["when"])
+                    self.assertEqual(guard["block"][1]["ansible.builtin.include_role"],
+                                     {"name": "release_kiosk", "tasks_from": "cleanup"})
+                else:
+                    self.assertTrue(set(guard) & {"ansible.builtin.fail", "ansible.builtin.set_fact"}, guard.get("name"))
         common = yaml.safe_load((ANSIBLE / "roles/common/tasks/main.yml").read_text())
         include = next(t for t in common if t.get("ansible.builtin.import_tasks") == "distrusted-intermediates.yml")
         self.assertNotIn("when", include)

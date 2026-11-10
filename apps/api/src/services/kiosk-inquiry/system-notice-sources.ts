@@ -1,3 +1,4 @@
+import { minutesName, type DScheduleMinutesKind } from '../production-schedule/d-schedule-minutes/minutes-kind.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
@@ -69,14 +70,48 @@ export async function expireFileAlertNotice(type: string | undefined, timestamp:
   }
 }
 
-export async function deliverFileAlertNotice(type: string | undefined, timestamp: Date, now = new Date()): Promise<void> {
+export async function deliverFileAlertNotice(type: string | undefined, timestamp: Date, now = new Date(), message?: string): Promise<void> {
   if (!type?.trim() || now.getTime() - timestamp.getTime() >= FILE_NOTICE_EXPIRY_MS) return;
   try {
     await deliverSystemNotice({ key: `${FILE_NOTICE_PREFIX}${type}`, state: 'open',
-      title: type === 'rkhunter-warning' ? 'システムの安全確認' : 'システムの確認',
-      body: type === 'rkhunter-warning' ? '安全確認で注意事項が見つかりました。' : 'システムの確認が必要です。'
+      // Event time dedupes re-ingestion, while each later recovery can append immediately.
+      ...(type === 'pi5-watchdog-recovered' ? { repeatMs: 1 } : {}),
+      title: type === 'pi5-watchdog-recovered' ? '業務用Pi5の復旧' : type === 'rkhunter-warning' ? 'システムの安全確認' : 'システムの確認',
+      body: type === 'pi5-watchdog-recovered' ? message?.trim().slice(0, 500) || '業務用Pi5が戻りました。' : type === 'rkhunter-warning' ? '安全確認で注意事項が見つかりました。' : 'システムの確認が必要です。'
     }, timestamp);
   } catch (err) {
     logger.warn({ err, type }, '[SystemNotice] File alert notice failed');
   }
+}
+
+const minutesWarningExplanations: Record<string, string> = {
+  LARGE_DUE_CHANGE: '部品完成日が大きく変わりました',
+  STALE_FILE: 'より新しい議事録の内容を残しました',
+  DUPLICATE_SEIBAN: '同じ製番の日付が重複して一致しません',
+  MERGED_ACROSS_HEADERS: '別の見出し列にまたがる結合セルです', UNREADABLE_ALIAS: '別名の製番を判別できません',
+  UNREADABLE_DATE: '日付として読めません', INVALID_SEIBAN: '製番の形式が不正です',
+  UNKNOWN_STAR: '処理出しの記号を判別できません', NOT_IN_SCHEDULE: '生産日程にありません',
+  MANUAL_DUE_EXISTS_FIRST_TIME: '手入力の納期が登録されています', REGISTRATION_LIMIT: '登録製番の上限を超えました',
+  FILENAME_DATE_MISMATCH: 'ファイル名の日付と受信日が離れています', MULTIPLE_SCHEDULE_SHEETS: '日程表の候補が複数あります',
+  AMBIGUOUS_YEAR: '日付の年を一意に決められません', MERGED_ACROSS_BLOCKS: '製番をまたぐ結合セルです',
+  FORMULA_NO_RESULT: '数式の計算結果がありません', BLOCK_SHAPE: '製番の4行構成が想定と異なります',
+  MISSING_BLOCK_NUMBER: '先頭の番号1が無い行を読み取りました',
+};
+
+export async function deliverDScheduleMinutesNotice(
+  messageId: string,
+  warnings: import('../production-schedule/d-schedule-minutes/parse-d-schedule-minutes.js').DScheduleMinutesWarning[],
+  kind: DScheduleMinutesKind = 'D_COMPANY'
+): Promise<void> {
+  // Many internal production numbers are outside the schedule by design; keep them in the import history only.
+  warnings = kind === 'INTERNAL' ? warnings.filter((warning) => warning.code !== 'NOT_IN_SCHEDULE') : warnings;
+  if (warnings.length === 0) return;
+  const name = minutesName(kind);
+  const compact = (value: string | null) => (value ?? '—').replace(/\s+/g, ' ').slice(0, 120);
+  const body = [
+    `${name}の取込で確認が必要な箇所が${warnings.length}件あります。`,
+    ...warnings.slice(0, 20).map((warning) => `製番 ${compact(warning.seiban)} / ${compact(warning.cell)} / 「${compact(warning.rawText)}」: ${minutesWarningExplanations[warning.code] ?? '内容を確認してください'}`),
+    ...(warnings.length > 20 ? [`ほか${warnings.length - 20}件（取込履歴で確認できます）。`] : []),
+  ].join('\n');
+  await deliverSystemNotice({ key: kind === 'D_COMPANY' ? `d-schedule-minutes:${messageId}` : `d-schedule-minutes:${messageId}:${kind}`, title: `${name}の確認`, body, state: 'open', once: true });
 }

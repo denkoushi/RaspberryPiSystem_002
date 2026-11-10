@@ -303,3 +303,5 @@ DB 変更はテーブル追加だけで、既存データを変えない。マ�
 
     // apps/web/src/features/admin/data-boards/boardUsageModel.ts
     export function countBoardUsage(schedules: SignageSchedule[]): Map<string, BoardUsage[]>
+
+Stage-one target storage follow-up: [Signage device ID targets](signage-device-id-targets-stage1.md).

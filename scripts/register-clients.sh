@@ -155,8 +155,8 @@ register_client() {
   
   # クライアントデバイスを登録（管理者専用 POST /clients）
   local response payload
-  payload="$(jq -cn --arg key "${api_key}" --arg name "${name}" --arg location "${location}" \
-    '{apiKey: $key, name: $name, location: $location}')"
+  payload="$(jq -cn --arg key "${api_key}" --arg name "${name}" --arg location "${location}" --arg clientId "${status_client_id}" \
+    '{apiKey: $key, name: $name, location: $location, statusClientId: $clientId}')"
   response=$(curl "${curl_common_opts[@]}" -X POST "${API_BASE_URL}/clients" \
     -H "Authorization: Bearer ${TOKEN}" \
     -H "Content-Type: application/json" \

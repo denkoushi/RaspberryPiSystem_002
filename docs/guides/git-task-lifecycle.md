@@ -42,6 +42,8 @@ worktree and reports `main_sync=skipped_dirty` or
 `main_sync=skipped_diverged`. Existing branch or path collisions are kept and
 reported rather than overwritten.
 
+`start` also cleans up `MERGED_CLEAN` task worktrees directly under the task root by default, using the same per-target safety checks as `finish` (it does not fetch again or synchronize main). Pass `--no-merged-cleanup` to skip it. The same cleanup can be run manually with `python3 -m scripts.git_lifecycle.cli finish-merged`.
+
 ## Finish one merged task
 
 After the pull request is merged, pass the exact target worktree path and PR
@@ -104,5 +106,5 @@ lifecycle.
 This is an explicitly invoked development-workstation command. It is not a
 deploy preflight and must not be called from Ansible, Docker builds, fleet
 deployment, Git hooks, or shared CI jobs. Full GitHub PR pagination therefore
-runs only when an operator explicitly invokes `audit`. `finish` reads only the
+runs only when an operator explicitly invokes `audit`, `start` (merged cleanup), or `finish-merged`. `finish` reads only the
 PR number supplied by the operator.

@@ -17,13 +17,15 @@ describe('破壊的変更検知: loans系ペイロードのキー構造', () => 
       'clientId',
       'dueAt',
       'employeeTagUid',
+      'eventKey',
       'itemTagUid',
-      'note'
+      'note',
+      'readAt'
     ]);
   });
 
   it('return schema keys are stable', () => {
-    expect(keysOf(returnSchema)).toEqual(['clientId', 'loanId', 'note', 'performedByUserId']);
+    expect(keysOf(returnSchema)).toEqual(['clientId', 'eventKey', 'loanId', 'note', 'performedByUserId', 'readAt']);
   });
 
   it('active loans query schema keys are stable', () => {

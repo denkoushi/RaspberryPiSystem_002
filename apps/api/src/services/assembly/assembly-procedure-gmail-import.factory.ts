@@ -7,10 +7,8 @@ import { getCsvImportScheduler } from '../imports/csv-import-scheduler.js';
 
 export function createAssemblyProcedureGmailImportService(): AssemblyProcedureGmailImportService {
   return new AssemblyProcedureGmailImportService({
-    createMailGateway: async () => {
-      const config = await BackupConfigLoader.load();
-      return resolveGmailApiClientFromBackupConfig(config);
-    },
+    loadConfig: () => BackupConfigLoader.load(),
+    createMailGateway: (config) => resolveGmailApiClientFromBackupConfig(config),
     draftWriter: new PrismaAssemblyProcedureDraftWriter(),
     jpegNormalizer: {
       normalize: normalizeAssemblyProcedureJpeg

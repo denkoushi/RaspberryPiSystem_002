@@ -28,7 +28,7 @@ describe('GmailStorageProvider', () => {
       searchMessages: vi.fn(),
       searchMessagesLimited: vi.fn(),
       searchMessagesAll: vi.fn(),
-      getMessage: vi.fn(),
+      getMessage: vi.fn().mockResolvedValue({ payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }] } }),
       getFirstAttachment: vi.fn(),
       archiveMessage: vi.fn()
     };
@@ -65,7 +65,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, {
             name: 'Subject',
             value: messageId === validId ? 'CSV Import' : '[Kakou-Dandori-photo] current row',
           }],
@@ -117,7 +117,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, {
             name: 'Subject',
             value: messageId === 'inventory-message' ? ownedSubject : 'CSV Import',
           }],
@@ -335,7 +335,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['INBOX'],
         snippet: 'Test message 1',
         payload: {
-          headers: [
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
             { name: 'Subject', value: 'CSV Import 1' },
             { name: 'Date', value: 'Mon, 29 Dec 2025 12:00:00 +0900' }
           ]
@@ -347,7 +347,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['INBOX'],
         snippet: 'Test message 2',
         payload: {
-          headers: [
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
             { name: 'Subject', value: 'CSV Import 2' },
             { name: 'Date', value: 'Mon, 29 Dec 2025 13:00:00 +0900' }
           ]
@@ -382,7 +382,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['INBOX'],
         snippet: 'Test message 1',
         payload: {
-          headers: [
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' },
             { name: 'Subject', value: 'CSV Import 1' }
           ]
         }
@@ -446,7 +446,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'subject-1' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'subject-1' }],
           parts: []
         }
       });
@@ -535,7 +535,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern1' }],
           parts: []
         }
       };
@@ -545,7 +545,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'CSV Import Pattern2' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern2' }],
           parts: []
         }
       };
@@ -555,7 +555,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern1' }],
           parts: []
         }
       };
@@ -645,7 +645,7 @@ describe('GmailStorageProvider', () => {
           labelIds: ['UNREAD'],
           snippet: '',
           payload: {
-            headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+            headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern1' }],
             parts: []
           }
         };
@@ -688,7 +688,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern1' }],
           parts: []
         }
       };
@@ -724,7 +724,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'CSV Import Pattern1' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'CSV Import Pattern1' }],
           parts: []
         }
       };
@@ -734,7 +734,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         payload: {
-          headers: [{ name: 'Subject', value: 'Unmatched Subject' }],
+          headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'Unmatched Subject' }],
           parts: []
         }
       };
@@ -766,7 +766,7 @@ describe('GmailStorageProvider', () => {
         labelIds: ['UNREAD'],
         snippet: '',
         internalDateMs,
-        payload: { headers: [{ name: 'Subject', value: 'scawSTFUTEKIGO' }], parts: [] },
+        payload: { headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: 'scawSTFUTEKIGO' }], parts: [] },
       });
       mockGmailApiClient.searchMessagesLimited.mockResolvedValueOnce(['new', 'old']);
       mockGmailApiClient.getMessage

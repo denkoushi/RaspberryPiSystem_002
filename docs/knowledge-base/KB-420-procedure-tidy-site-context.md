@@ -116,6 +116,28 @@
 「整える」の提案と保存後の人の修正を記録し、同じ課の次回提案と夜間の用語学習に使う仕組みを追加した。
 仕様と検証記録は[学習ループの実装計画](../plans/procedure-tidy-learning-loop-execplan.md)を参照する。本番反映は未実施。
 
+写真の説明文も、同じ課の人の直し（EDITED、最新50件から1行30字以内・重複なしの最大5例）を次回提案に渡す。課不明では取得せず、夜間の語彙学習には混ぜない。
+本番の研削の直し15件では「重り→コマ」「電磁チャック→マグネットチャック」などがほぼ共通したため、研削の写真指示文をコマ・ジャッキ・ブロックなど現場の呼び名に合わせた。
+採用状況の確認は読み取り専用SQLで、課・結果別の件数を比較する（PROPOSEDは未確定）。
+```sql
+SELECT 'text' AS kind, site, outcome::text, count(*) FROM "AssemblyProcedureTextFeedback"
+GROUP BY site, outcome
+UNION ALL
+SELECT 'caption' AS kind, site, outcome::text, count(*) FROM "AssemblyProcedureCaptionFeedback"
+GROUP BY site, outcome ORDER BY kind, site, outcome;
+```
+
+同じ課の公開済み・有効・改版先頭の本文も書き方の参考にする（同じ改版ルートは除外、類似順で計1,500字以内）。
+毎晩04:30 JSTに公開済み本文から呼び名を抽出し、2文書以上に現れる語だけを最大80語まで文章・写真の提案へ渡す。
+本文に変化がなければ語彙抽出をスキップする。既存の人の直しによる学習は独立して続ける。
+日ごとの累計は `AssemblyProcedureLearningSnapshot` に課・JST日付ごとに保存する。推移の確認は読み取り専用SELECTで行う。
+```sql
+SELECT site, day, "publishedDocuments", "textKept", "textEdited", "textReverted",
+       "captionKept", "captionEdited", "captionDeleted", "learnedTerms", "vocabularyTerms", "vocabularyBuiltAt"
+FROM "AssemblyProcedureLearningSnapshot"
+ORDER BY site, day;
+```
+
 ## References
 
 - `apps/api/src/services/assembly/procedure-site-context.ts`

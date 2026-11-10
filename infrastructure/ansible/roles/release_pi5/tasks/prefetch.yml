@@ -4,8 +4,8 @@
     that:
       - release_torque_cutover | default(false) | bool
       - release_torque_protocol_version | default(0) | int == 1
-      - release_pi5_api_image is match('^ghcr\\.io/denkoushi/raspisys-api:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
-      - release_pi5_web_image is match('^ghcr\\.io/denkoushi/raspisys-web:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
+      - release_pi5_api_image is match('^ghcr\\.io/' ~ (raspisys_github_owner | regex_escape) ~ '/raspisys-api:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
+      - release_pi5_web_image is match('^ghcr\\.io/' ~ (raspisys_github_owner | regex_escape) ~ '/raspisys-web:[0-9a-f]{40}-[0-9a-f]{16}@sha256:[0-9a-f]{64}$')
       - >-
         (not (release_pi5_business_hermes_enabled | bool))
         or (release_pi5_business_hermes_image is match('^nousresearch/hermes-agent:[^@]+@sha256:[0-9a-f]{64}$'))

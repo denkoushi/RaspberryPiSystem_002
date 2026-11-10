@@ -80,7 +80,7 @@ describe('AssemblyProcedureOverlayLayer', () => {
     expect(screen.getByTestId('assembly-procedure-overlay-text-1')).toBeInTheDocument();
     expect(screen.getByTestId('assembly-procedure-overlay-image-1')).toBeInTheDocument();
     expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith('/api/storage/assembly-procedure-assets/asset-png');
-    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:assembly-overlay-image');
+    expect(screen.getByRole('presentation')).toHaveAttribute('src', 'blob:assembly-overlay-image');
     expect(screen.getByTestId('assembly-procedure-overlay-text-1').firstElementChild).toHaveStyle({ fontSize: '2.5cqw' });
   });
 

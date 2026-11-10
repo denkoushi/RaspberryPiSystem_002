@@ -5,6 +5,7 @@ import os from 'os';
 import path from 'path';
 import { promisify } from 'util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BACKUP_ENCRYPTION_OVERHEAD_BYTES } from '../storage/backup-encryption.js';
 import { BackupService } from '../backup.service.js';
 import { LocalStorageProvider } from '../storage/local-storage.provider.js';
 import type { LargeFileUploadProvider, StorageProvider } from '../storage/storage-provider.interface.js';
@@ -27,6 +28,7 @@ describe('DirectoryBackupTarget', () => {
     await fs.mkdir(dir);
     await fs.mkdir(tempDir);
     vi.stubEnv('BACKUP_TEMP_DIR', tempDir);
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     service = new BackupService(new LocalStorageProvider({ baseDir }));
   });
 
@@ -47,7 +49,7 @@ describe('DirectoryBackupTarget', () => {
     expect(result.path).toBeDefined();
     const stored = await fs.stat(path.join(baseDir, result.path!));
     expect(stored.isFile()).toBe(true);
-    expect(stored.size).toBe(result.sizeBytes);
+    expect(stored.size).toBe(result.sizeBytes! + BACKUP_ENCRYPTION_OVERHEAD_BYTES);
     expect(await fs.readdir(tempDir)).toEqual([]);
   }, 120_000);
 
@@ -61,7 +63,9 @@ describe('DirectoryBackupTarget', () => {
     expect(result.success).toBe(true);
     const extracted = path.join(workDir, 'extracted');
     await fs.mkdir(extracted);
-    await execFileAsync('tar', ['-xzf', path.join(baseDir, result.path!), '-C', extracted]);
+    const archive = path.join(workDir, 'restored.tar.gz');
+    expect((await service.restore(result.path!, { destination: archive })).success).toBe(true);
+    await execFileAsync('tar', ['-xzf', archive, '-C', extracted]);
     expect(await fs.readFile(path.join(extracted, 'nested', 'file.txt'), 'utf-8')).toBe(content);
     expect(await fs.readdir(tempDir)).toEqual([]);
   });

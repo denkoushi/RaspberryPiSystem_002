@@ -97,6 +97,8 @@ export function compareGrindingPlanningBoardItems(
     compareText(left.productNo, right.productNo) ||
     compareProcessOrder(left.processOrder, right.processOrder) ||
     compareText(left.fhincd, right.fhincd) ||
+    (left.kind === 'piece' && right.kind === 'piece' && left.parentItemId != null && left.parentItemId === right.parentItemId
+      ? (left.piecePosition ?? UNKNOWN_ORDER) - (right.piecePosition ?? UNKNOWN_ORDER) : 0) ||
     compareText(left.itemId, right.itemId)
   );
 }

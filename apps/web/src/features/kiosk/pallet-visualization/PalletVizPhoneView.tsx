@@ -66,11 +66,12 @@ export function PalletVizPhoneView({ ctrl, onBack }: Props) {
       <div className="flex shrink-0 items-center gap-2.5 border-t border-[var(--hp-line)] px-3.5 pb-2 pt-2.5">
         <span className="font-mono text-[26px] font-bold leading-none text-[var(--hp-teal)]">No.{ctrl.palletNo}</span>
         <span className={`text-[13px] font-bold ${hp.muted}`}>{ctrl.listItems.length}件</span>
-        <button type="button" onClick={() => confirm('clear')} disabled={ctrl.busy || !ctrl.listItems.length}
+        <button type="button" onClick={() => confirm('clear')} disabled={ctrl.busy || ctrl.hasPendingRequests || !ctrl.listItems.length}
           className={`${hp.mini} ml-auto !h-[34px] !text-[var(--hp-ng)] ${armed === 'clear' ? '!bg-[var(--hp-ng)] !text-[var(--hp-bg)]' : ''}`}>
           {armed === 'clear' ? 'もう一度で全部外す' : '全部外す'}
         </button>
       </div>
+      {ctrl.offlineMessage && <p role="status" className="px-3.5 text-sm">{ctrl.offlineMessage}</p>}
       {error && <p role="alert" className="shrink-0 px-3.5 text-sm text-[var(--hp-ng)]">{error}</p>}
       <div data-pallet-viz-item-list-scroll className={`${hp.list} ${hp.hermesBottomPadding}`}>
         {ctrl.listItems.map((item) => {
@@ -89,7 +90,7 @@ export function PalletVizPhoneView({ ctrl, onBack }: Props) {
       <footer className={hp.dock}>
         {ctrl.selectedItemId ? <>
           <button type="button" className={`${hp.primary} !h-[58px] !gap-1 !px-2 bg-[var(--hp-teal)] !text-sm`} disabled={ctrl.busy} onClick={() => ctrl.setScanOpen(true)}><HaizenIcon name="scan" className="h-5 w-5" />入れ替え</button>
-          <button type="button" className={`${hp.mini} !h-[58px] min-w-0 flex-1 !px-1 !text-[var(--hp-ng)]`} disabled={ctrl.busy} onClick={() => confirm('delete')}>{armed === 'delete' ? 'もう一度で外す' : '外す'}</button>
+          <button type="button" className={`${hp.mini} !h-[58px] min-w-0 flex-1 !px-1 !text-[var(--hp-ng)]`} disabled={ctrl.busy || ctrl.hasPendingRequests} onClick={() => confirm('delete')}>{armed === 'delete' ? 'もう一度で外す' : '外す'}</button>
           <button type="button" className={`${hp.mini} !h-[58px] min-w-0 flex-1 !px-1`} disabled={ctrl.busy} onClick={() => ctrl.setSelectedItemId(null)}>やめる</button>
         </> : <button type="button" className={`${hp.primary} bg-[var(--hp-teal)]`} disabled={ctrl.busy || !ctrl.currentMachine} onClick={() => ctrl.setScanOpen(true)}><HaizenIcon name="scan" />読んで No.{ctrl.palletNo} に載せる</button>}
       </footer>

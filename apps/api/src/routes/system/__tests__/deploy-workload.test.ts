@@ -1,3 +1,4 @@
+import { trustImmediateProxy } from '../../../lib/trust-proxy.js';
 import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,10 +8,12 @@ import { env } from '../../../config/env.js';
 import { createSchedulerRuntimeState } from '../../../bootstrap/scheduler-runtime-state.js';
 import { registerDeployWorkloadRoute } from '../deploy-workload.js';
 
+const testDeployToken = 'test-deploy-control-token';
+const originalDeployControlToken = env.DEPLOY_CONTROL_TOKEN;
 const originalSignageRenderEnabled = env.SIGNAGE_RENDER_ENABLED;
 
 function createApp() {
-  const app = Fastify();
+  const app = Fastify({ trustProxy: trustImmediateProxy });
   let signageRunning = true;
   const scheduler = {
     pauseForDeploy: vi.fn(async () => {
@@ -34,11 +37,13 @@ describe('POST /system/deploy-workload/internal', () => {
 
   beforeEach(() => {
     env.SIGNAGE_RENDER_ENABLED = true;
+    env.DEPLOY_CONTROL_TOKEN = testDeployToken;
   });
 
   afterEach(async () => {
     while (apps.length > 0) await apps.pop()?.close();
     env.SIGNAGE_RENDER_ENABLED = originalSignageRenderEnabled;
+    env.DEPLOY_CONTROL_TOKEN = originalDeployControlToken;
   });
 
   it('requires the protected token', async () => {
@@ -52,10 +57,24 @@ describe('POST /system/deploy-workload/internal', () => {
     expect(scheduler.pauseForDeploy).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, ''])('rejects the JWT secret when the deploy token is %s', async (token) => {
+    env.DEPLOY_CONTROL_TOKEN = token;
+    const { app, scheduler } = createApp();
+    apps.push(app);
+    const response = await app.inject({
+      method: 'POST', url: '/system/deploy-workload/internal',
+      headers: { 'x-deploy-control-token': env.JWT_ACCESS_SECRET },
+      payload: { action: 'pause-signage' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json().message).toBe('Deploy workload control token is invalid');
+    expect(scheduler.pauseForDeploy).not.toHaveBeenCalled();
+  });
+
   it('rejects a same-character-count token with a different UTF-8 byte length', async () => {
     const { app, scheduler } = createApp();
     apps.push(app);
-    const expected = env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET;
+    const expected = testDeployToken;
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
       headers: { 'x-deploy-control-token': 'é'.repeat(expected.length) },
@@ -68,7 +87,7 @@ describe('POST /system/deploy-workload/internal', () => {
   it('quiesces and resumes only the signage scheduler', async () => {
     const { app, scheduler } = createApp();
     apps.push(app);
-    const headers = { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET };
+    const headers = { 'x-deploy-control-token': testDeployToken };
     const paused = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal', headers,
       payload: { action: 'pause-signage' },
@@ -98,7 +117,7 @@ describe('POST /system/deploy-workload/internal', () => {
   it('serializes overlapping pause and resume requests', async () => {
     const { app, scheduler } = createApp();
     apps.push(app);
-    const headers = { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET };
+    const headers = { 'x-deploy-control-token': testDeployToken };
     const pauseImplementation = scheduler.pauseForDeploy.getMockImplementation();
     let releasePause!: () => void;
     const pauseGate = new Promise<void>((resolve) => {
@@ -134,7 +153,7 @@ describe('POST /system/deploy-workload/internal', () => {
     apps.push(app);
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'pause-signage' },
     });
 
@@ -153,7 +172,22 @@ describe('POST /system/deploy-workload/internal', () => {
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
       remoteAddress,
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
+      payload: { action: 'pause-signage' },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(scheduler.pauseForDeploy).not.toHaveBeenCalled();
+  });
+
+  it('rejects a spoofed loopback forwarded header even with a valid token', async () => {
+    const { app, scheduler } = createApp();
+    apps.push(app);
+    const response = await app.inject({
+      method: 'POST', url: '/system/deploy-workload/internal', remoteAddress: '172.18.0.2',
+      headers: {
+        'x-forwarded-for': '127.0.0.1',
+        'x-deploy-control-token': testDeployToken,
+      },
       payload: { action: 'pause-signage' },
     });
     expect(response.statusCode).toBe(403);
@@ -166,7 +200,7 @@ describe('POST /system/deploy-workload/internal', () => {
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
       remoteAddress: '::ffff:127.0.0.1',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'pause-signage' },
     });
     expect(response.statusCode).toBe(200);
@@ -179,7 +213,7 @@ describe('POST /system/deploy-workload/internal', () => {
     schedulerRuntimeState.setStandby({ databaseConnection: 'connected' });
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'resume-signage' },
     });
     expect(response.statusCode).toBe(409);
@@ -193,7 +227,7 @@ describe('POST /system/deploy-workload/internal', () => {
     scheduler.resumeAfterDeploy.mockRejectedValueOnce(new Error('worker exited'));
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'resume-signage' },
     });
     expect(response.statusCode).toBe(503);
@@ -208,7 +242,7 @@ describe('POST /system/deploy-workload/internal', () => {
     });
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'resume-signage' },
     });
     expect(response.statusCode).toBe(409);
@@ -224,7 +258,7 @@ describe('POST /system/deploy-workload/internal', () => {
     });
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'pause-signage' },
     });
 
@@ -238,7 +272,7 @@ describe('POST /system/deploy-workload/internal', () => {
     scheduler.pauseForDeploy.mockImplementationOnce(async () => undefined);
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'pause-signage' },
     });
 
@@ -252,7 +286,7 @@ describe('POST /system/deploy-workload/internal', () => {
     scheduler.getTelemetrySnapshot.mockReturnValueOnce({ isRunning: false, runner: 'test' });
     const response = await app.inject({
       method: 'POST', url: '/system/deploy-workload/internal',
-      headers: { 'x-deploy-control-token': env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET },
+      headers: { 'x-deploy-control-token': testDeployToken },
       payload: { action: 'resume-signage' },
     });
     expect(response.statusCode).toBe(503);

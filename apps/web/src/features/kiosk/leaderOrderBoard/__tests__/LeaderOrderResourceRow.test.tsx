@@ -1,4 +1,5 @@
-import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { LeaderOrderResourceRow } from '../LeaderOrderResourceRow';
@@ -8,6 +9,56 @@ import { mkLeaderBoardRow } from './leaderBoardRowTestFixtures';
 const noop = vi.fn();
 
 describe('LeaderOrderResourceRow', () => {
+  it('keeps parent actions available when a cached obsolete status request returns 404', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // Fixture for a browser cache left by the retired status endpoint.
+    await expect(queryClient.fetchQuery({
+      queryKey: ['kiosk-production-schedule-order-split-status'],
+      queryFn: async () => { throw Object.assign(new Error('Not Found'), { status: 404 }); }
+    })).rejects.toMatchObject({ status: 404 });
+    const onComplete = vi.fn();
+    const onNote = vi.fn();
+    const onInspection = vi.fn();
+    const onOrder = vi.fn();
+    const row = mkLeaderBoardRow({ id: 'parent', plannedQuantity: 5, requiredMinutes: 100,
+      hasSelfInspectionDrawing: true, selfInspectionTemplateId: 'template' });
+    render(<QueryClientProvider client={queryClient}>
+      <LeaderOrderResourceRow resourceCd="305" row={row} orderUsageNumbers={undefined}
+        onOrderChange={onOrder} onCompleteRow={onComplete} onOpenNote={onNote}
+        onOpenInspectionWorkflow={onInspection} completePending={false} orderPending={false} />
+    </QueryClientProvider>);
+    fireEvent.click(screen.getByRole('button', { name: '完了にする' }));
+    fireEvent.click(screen.getByRole('button', { name: '備考を追加' }));
+    fireEvent.click(screen.getByRole('button', { name: '検査方法を選択' }));
+    expect(onComplete).toHaveBeenCalledWith('parent', 'complete');
+    expect(onNote).toHaveBeenCalledWith(row);
+    expect(onInspection).toHaveBeenCalledWith(row);
+    expect(screen.getByRole('button', { name: '資源内の順位、タップで設定' })).toBeEnabled();
+    expect(screen.getByText('5個')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '指示数を分割' })).not.toBeInTheDocument();
+    queryClient.clear();
+  });
+
+  it.each([
+    ['2026-11-12', false],
+    ['2026-11-08', true]
+  ] as const)('styles displayed due %s as manual only when it matches the manual date', (displayDue, manual) => {
+    render(
+      <LeaderOrderResourceRow
+        resourceCd="305"
+        row={mkLeaderBoardRow({ dueDate: '2026-11-08T00:00:00.000Z', displayDue })}
+        orderUsageNumbers={undefined}
+        onOrderChange={noop}
+        onCompleteRow={noop}
+        completePending={false}
+        orderPending={false}
+      />
+    );
+    const due = screen.getByTitle(manual ? '手動納期（タップで変更）' : '表示納期（タップで変更）');
+    expect(due.classList.contains('text-amber-200')).toBe(manual);
+    expect(due.classList.contains('text-sky-300/90')).toBe(!manual);
+  });
+
   it('renders part code, quantity, fkojun, and required minutes on the cluster row', () => {
     const row = mkLeaderBoardRow({
       id: 'row-cluster',

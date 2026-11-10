@@ -2,7 +2,8 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
-import { signAccessToken } from '../../lib/auth.js';
+import { prisma } from '../../lib/prisma.js';
+import { signTestAccessToken as signAccessToken } from '../../test/auth-session-fixture.js';
 import type { SignageService } from '../../services/signage/index.js';
 import { registerScheduleRoutes } from './schedules.js';
 
@@ -11,6 +12,7 @@ const publicSchedule = {
   name: '端末別予定',
   contentType: 'TOOLS',
   pdfId: null,
+  targetClientDeviceIds: ['11111111-1111-4111-8111-111111111111'],
   layoutConfig: { layout: 'FULL', slots: [{ kind: 'loans' }] },
   dayOfWeek: [1, 3, 5],
   startTime: '09:00',
@@ -20,6 +22,7 @@ const publicSchedule = {
 };
 const internalSchedule = {
   ...publicSchedule,
+  targetClientDeviceIds: ['11111111-1111-4111-8111-111111111111'],
   targetClientKeys: ['synthetic-schedule-credential'],
   apiKey: 'synthetic-future-credential',
 };
@@ -30,6 +33,7 @@ const service = {
 };
 
 function authHeader(role: User['role']) {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: '11111111-1111-4111-8111-111111111111', username: 'schedule-test-user', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
   const token = signAccessToken({
     id: '11111111-1111-4111-8111-111111111111',
     username: 'schedule-test-user',
@@ -49,6 +53,8 @@ describe('signage schedule response boundaries', () => {
   const apps: ReturnType<typeof Fastify>[] = [];
 
   beforeEach(() => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null }) as never);
+    vi.spyOn(prisma.user, 'findUnique');
     vi.clearAllMocks();
     service.getSchedules.mockResolvedValue([internalSchedule]);
     service.listSchedulesForManagement.mockResolvedValue([internalSchedule]);
@@ -56,6 +62,7 @@ describe('signage schedule response boundaries', () => {
 
   afterEach(async () => {
     await Promise.all(apps.splice(0).map((app) => app.close()));
+    vi.restoreAllMocks();
   });
 
   function buildApp() {
@@ -65,8 +72,8 @@ describe('signage schedule response boundaries', () => {
     return app;
   }
 
-  it('returns public schedule fields anonymously without credentials or changing the internal record', async () => {
-    const response = await buildApp().inject({ method: 'GET', url: '/schedules' });
+  it('returns schedule fields to a viewer without credentials or changing the internal record', async () => {
+    const response = await buildApp().inject({ method: 'GET', url: '/schedules', headers: authHeader('VIEWER') });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ schedules: [publicSchedule] });
@@ -80,13 +87,13 @@ describe('signage schedule response boundaries', () => {
 
   it('preserves an empty public schedule list', async () => {
     service.getSchedules.mockResolvedValue([]);
-    const response = await buildApp().inject({ method: 'GET', url: '/schedules' });
+    const response = await buildApp().inject({ method: 'GET', url: '/schedules', headers: authHeader('VIEWER') });
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ schedules: [] });
   });
 
-  it.each(['ADMIN', 'MANAGER'] as const)('preserves target assignments in the authenticated %s management response', async (role) => {
+  it.each(['ADMIN', 'MANAGER'] as const)('returns device ID targets only in the authenticated %s management response', async (role) => {
     const response = await buildApp().inject({
       method: 'GET',
       url: '/schedules/management',
@@ -94,7 +101,10 @@ describe('signage schedule response boundaries', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schedules: [internalSchedule] });
+    const { targetClientKeys: _legacy, ...expected } = internalSchedule;
+    void _legacy;
+    expect(response.json()).toEqual({ schedules: [expected] });
+    expect(response.body).not.toContain(internalSchedule.targetClientKeys[0]);
     expect(service.getSchedules).not.toHaveBeenCalled();
   });
 

@@ -2,6 +2,7 @@ import { PartMeasurementSheetStatus, Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
+import { escapeCsvCell as esc } from '../../lib/csv.js';
 import { EmployeeService } from '../tools/employee.service.js';
 import { apiProcessGroupToPrisma, parseApiProcessGroup } from './part-measurement-process-group.adapter.js';
 import {
@@ -792,11 +793,6 @@ export class PartMeasurementSheetService {
       assertNumericOnlyMeasurementTemplate(sheet.template);
     }
     const lines: string[] = [];
-    const esc = (v: string | number | null | undefined) => {
-      const s = v === null || v === undefined ? '' : String(v);
-      if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-      return s;
-    };
 
     lines.push('rowType,key,value');
     lines.push(`H,id,${esc(sheet.id)}`);

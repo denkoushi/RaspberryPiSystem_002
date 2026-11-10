@@ -221,7 +221,6 @@ export type SelfInspectionRecordApprovalDto = {
   approverEmployeeId: string | null;
   approverEmployeeCodeSnapshot: string;
   approverEmployeeNameSnapshot: string;
-  approverEmployeeNfcTagUidSnapshot: string;
   comment: string | null;
   clientDeviceId: string | null;
   clientDeviceNameSnapshot: string | null;
@@ -543,7 +542,6 @@ export type SelfInspectionLotEntryDto = {
   inspectorEmployeeId?: string | null;
   inspectorEmployeeCodeSnapshot?: string | null;
   inspectorEmployeeNameSnapshot?: string | null;
-  inspectorEmployeeNfcTagUidSnapshot?: string | null;
   measuringInstrumentId: string | null;
   measuringInstrumentManagementNumberSnapshot: string | null;
   measuringInstrumentNameSnapshot: string | null;
@@ -607,7 +605,6 @@ export type SelfInspectionRecordApprovalRequiredEntryDto = {
         inspectorEmployeeId: string | null;
         inspectorEmployeeCodeSnapshot: string | null;
         inspectorEmployeeNameSnapshot: string | null;
-        inspectorEmployeeNfcTagUidSnapshot: string | null;
         clientDeviceId: string | null;
         clientDeviceNameSnapshot: string | null;
       })

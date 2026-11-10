@@ -124,7 +124,7 @@ STATIC_PLAYBOOKS=(
 )
 
 cd "$ANSIBLE_DIRECTORY"
-for inventory in inventory.yml inventory-talkplaza.yml; do
+for inventory in inventory.yml; do
   output="$TEMP_DIR/${inventory%.yml}.json"
   ANSIBLE_CONFIG="$READ_ONLY_ANSIBLE_CONFIG" \
     ansible-inventory -i "$inventory" \

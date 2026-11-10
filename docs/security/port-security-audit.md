@@ -60,7 +60,7 @@ UFWで遮断されていても LISTEN している限り、攻撃面・監視ノ
 ポート番号だけの検知は誤検知/ノイズになりやすいため、`security-monitor` を `ss -H -tulpen` ベースにし、`addr:port(process,proto)` を含めて原因特定しやすくしました（Tailscale/loopback/link-localは除外）。
 
 - 詳細: [KB-177](../knowledge-base/infrastructure/security.md#kb-177-ports-unexpected-が15分おきに発生し続けるpi5の不要ポート露出監視ノイズ)
-- 証跡: [ports baseline (2026-01-18)](../knowledge-base/infrastructure/ports-baseline-20260118.md)
+- 証跡: [ports baseline (2026-01-18)](../archive/knowledge-base/infrastructure/ports-baseline-20260118.md)
 
 ## セキュリティ実装状況
 
@@ -157,7 +157,7 @@ UFWで遮断されていても LISTEN している限り、攻撃面・監視ノ
 
 **現状**:
 - PostgreSQL: `postgres/postgres`
-- 管理ユーザー: `admin/admin1234`（シードデータ）
+- 管理ユーザー: `admin` / 初期パスワード（シードデータ。現行は `SEED_ADMIN_USERNAME` / `SEED_ADMIN_PASSWORD` で指定し、本番では必須。未指定時の開発用既定値は `apps/api/src/config/seed-credentials.ts`）
 
 **推奨対策**:
 1. **本番環境では強力なパスワードに変更**

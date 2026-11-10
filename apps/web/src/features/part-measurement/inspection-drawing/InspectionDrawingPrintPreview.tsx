@@ -1,5 +1,7 @@
-import { BarcodeFormat, QRCodeWriter } from '@zxing/library';
-import { useMemo, useState } from 'react';
+import BarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
+import { useEffect, useMemo, useState } from 'react';
+
+import { loadZxingLibrary } from '../../barcode-scan/zxingVideoReader';
 
 import {
   INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM,
@@ -20,6 +22,7 @@ import { formatInspectionDrawingPointDisplayName } from './measurementPointSuppl
 import { computePrintCalloutLines, computePrintMarkerPosition } from './printMarkerLayout';
 
 import type { InspectionDrawingPoint } from './types';
+import type { QRCodeWriter } from '@zxing/library';
 import type { CSSProperties } from 'react';
 
 type InspectionDrawingPrintPreviewProps = {
@@ -39,10 +42,8 @@ function markerStyle(leftPercent: number, topPercent: number): CSSProperties {
   };
 }
 
-const inspectionDrawingPrintQrWriter = new QRCodeWriter();
-
-function buildQrCodeSvgPath(payload: string): { width: number; height: number; path: string } {
-  const matrix = inspectionDrawingPrintQrWriter.encode(payload, BarcodeFormat.QR_CODE, 96, 96, new Map());
+function buildQrCodeSvgPath(payload: string, writer: QRCodeWriter): { width: number; height: number; path: string } {
+  const matrix = writer.encode(payload, BarcodeFormat.QR_CODE, 96, 96, new Map());
   const width = matrix.getWidth();
   const height = matrix.getHeight();
   const commands: string[] = [];
@@ -59,15 +60,17 @@ function buildQrCodeSvgPath(payload: string): { width: number; height: number; p
 }
 
 function QrCodeSvg({
+  writer,
   payload,
   label,
   className = 'h-[24mm] w-[24mm]'
 }: {
+  writer: QRCodeWriter;
   payload: string;
   label: string;
   className?: string;
 }) {
-  const qr = useMemo(() => buildQrCodeSvgPath(payload), [payload]);
+  const qr = useMemo(() => buildQrCodeSvgPath(payload, writer), [payload, writer]);
 
   return (
     <svg
@@ -391,10 +394,12 @@ function DrawingPage({
 }
 
 function RecordPageQr({
+  writer,
   page,
   metadata,
   totalPages
 }: {
+  writer: QRCodeWriter;
   page: InspectionDrawingPrintRecordPage;
   metadata: InspectionDrawingPrintMetadata;
   totalPages: number;
@@ -407,6 +412,7 @@ function RecordPageQr({
       className="absolute right-[8mm] top-[2.4mm] z-20 grid justify-items-center leading-none"
     >
       <QrCodeSvg
+        writer={writer}
         payload={payload}
         label={`検査値記録欄 QR ${page.pageLabel}`}
         className="h-[22mm] w-[22mm]"
@@ -416,10 +422,12 @@ function RecordPageQr({
 }
 
 function RecordPage({
+  writer,
   page,
   metadata,
   totalPages
 }: {
+  writer: QRCodeWriter;
   page: InspectionDrawingPrintRecordPage;
   metadata: InspectionDrawingPrintMetadata;
   totalPages: number;
@@ -429,7 +437,7 @@ function RecordPage({
   return (
     <article className="inspection-print-sheet relative mx-auto grid h-[210mm] w-[297mm] grid-rows-[auto_1fr] gap-[1.6mm] overflow-hidden bg-white p-[5mm] shadow-2xl">
       <SheetFiducials />
-      <RecordPageQr page={page} metadata={metadata} totalPages={totalPages} />
+      <RecordPageQr writer={writer} page={page} metadata={metadata} totalPages={totalPages} />
       <section className="pr-[34mm]">
         <div className="min-w-0">
           <SheetHeader title="検査値 記録欄" pageLabel={page.pageLabel} metadata={metadata} />
@@ -518,7 +526,19 @@ export function InspectionDrawingPrintPreview({
 }: InspectionDrawingPrintPreviewProps) {
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const hasNaturalSize = naturalSize.w > 0 && naturalSize.h > 0;
-  const printReady = hasNaturalSize;
+  const [qrLoadError, setQrLoadError] = useState(false);
+  const [qrWriter, setQrWriter] = useState<QRCodeWriter | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const { QRCodeWriter } = await loadZxingLibrary();
+      if (!cancelled) setQrWriter(new QRCodeWriter());
+    })().catch(() => {
+      if (!cancelled) setQrLoadError(true);
+    });
+    return () => { cancelled = true; };
+  }, []);
+  const printReady = hasNaturalSize && qrWriter !== null;
 
   return (
     <div className="min-h-dvh bg-slate-200 px-4 py-6 text-slate-950 print:bg-white print:p-0">
@@ -568,11 +588,13 @@ export function InspectionDrawingPrintPreview({
               onClick={() => window.print()}
               className="rounded bg-slate-900 px-4 py-2 text-sm font-bold text-white shadow disabled:cursor-not-allowed disabled:bg-slate-400"
             >
-              {printReady ? '印刷プレビュー' : '図面読込中…'}
+              {qrLoadError ? '読み込みエラー' : printReady ? '印刷プレビュー' : '図面読込中…'}
             </button>
           </div>
         </div>
       ) : null}
+
+      {qrLoadError && <p role="alert" className="mb-4 text-sm text-red-700">QRコード生成機能を読み込めません</p>}
 
       <img
         src={imageUrl}
@@ -595,6 +617,7 @@ export function InspectionDrawingPrintPreview({
             />
             {viewModel.recordPages.map((page) => (
               <RecordPage
+                writer={qrWriter}
                 key={page.pageNumber}
                 page={page}
                 metadata={viewModel.metadata}

@@ -1,3 +1,11 @@
+import { runSessakuPieceOperation, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
+import type { SessakuPieceSet } from './sessaku-pieces/piece-key.js';
+import { syncWholePiecesOperationCompletions } from './sessaku-pieces/piece-operation-definitions.js';
+import { readOverrides } from './grinding-planning-board/source.js';
+import { runDueDateTransaction } from './due-date-transaction.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, findSessakuPieceWinner, sessakuPieceParentItemId, readSessakuPieceSet, sessakuPieceKeyFromRow, supportsSessakuPieceRelations } from './sessaku-pieces/piece-key.js';
+import { reconcileSessakuPieceQuantities } from './sessaku-pieces/piece-quantity.js';
+import { reconcileSessakuPieceProgress } from './sessaku-pieces/piece-completion.js';
 import { performance } from 'node:perf_hooks';
 
 import { prisma } from '../../lib/prisma.js';
@@ -12,9 +20,8 @@ import { sharedScheduleFieldsRepository } from './shared-schedule-fields.reposit
 import {
   acquireUnifiedOrderSlotLockInTransaction,
   assertUnifiedOrderSlotAvailableInTransaction
-} from './order-split/production-schedule-unified-order-slot.service.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from './order-split/production-schedule-parent-row-lock.service.js';
-import { isProductionScheduleOrderSplitEnabled } from './order-split/production-schedule-order-split-feature.js';
+} from './order-assignment/production-schedule-unified-order-slot.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
 const isValidProcessingType = async (locationKey: string, processingType: string): Promise<boolean> => {
@@ -89,6 +96,16 @@ function buildRowDataWithProgress(
   };
 }
 
+async function parentPieceAuditSnapshot(tx: Parameters<typeof syncWholePiecesOperationCompletions>[0], set: SessakuPieceSet) {
+  const operations = await tx.productionScheduleSessakuPieceOpCompletion.findMany({
+    where: { pieceId: { in: set.pieces.map((piece) => piece.id) } }, select: { pieceId: true, opNo: true },
+    orderBy: [{ pieceId: 'asc' }, { opNo: 'asc' }]
+  });
+  return { count: set.pieces.length, quantities: set.pieces.map((piece) => piece.quantity),
+    pieceIds: set.pieces.map((piece) => piece.id), completedPieceIds: set.pieces.filter((piece) => piece.isCompleted).map((piece) => piece.id),
+    plannedQuantity: set.plannedQuantity, operations };
+}
+
 /**
  * キオスク完了状態を更新する共通実装。
  * - `toggle`: 既存互換の反転
@@ -116,20 +133,9 @@ export async function driveProductionScheduleRowCompletion(params: {
   }
 
   const current = row.rowData as Record<string, unknown>;
-  const progress = await prisma.productionScheduleProgress.findUnique({
-    where: { csvDashboardRowId: row.id },
-    select: { isCompleted: true }
-  });
-  const isCompleted = progress?.isCompleted === true;
-
-  let nextIsCompleted: boolean;
-  if (drive.mode === 'toggle') {
-    nextIsCompleted = !isCompleted;
-  } else {
-    nextIsCompleted = drive.intent === 'complete';
-  }
-
-  const unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
+  let isCompleted = false;
+  let nextIsCompleted = false;
+  let unchanged = false;
 
   const tFindAssignmentStart = performance.now();
   const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
@@ -148,8 +154,60 @@ export async function driveProductionScheduleRowCompletion(params: {
   let txShiftAssignmentsCount: number | null = null;
   const txStart = performance.now();
 
-  if (!unchanged) {
-    await prisma.$transaction(async (tx) => {
+  let pieceHandled = false;
+  let pieceAudit: PieceAuditContext | undefined;
+  const key = sessakuPieceKeyFromRow(current);
+  await prisma.$transaction(async (tx) => {
+      // The logical group also serializes ordinary completion with first split creation.
+      await acquireSessakuPieceLogicalLocks(tx, [key]);
+      const set = await readSessakuPieceSet(tx, key);
+      const related = supportsSessakuPieceRelations(key) ? await tx.productionScheduleSessakuPieceSet.findMany({
+        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: key.fseiban, fhincd: key.fhincd,
+          OR: [{ pieces: { some: {} } }, { sourcePieceSetId: { not: null } }] }, select: { id: true }
+      }) : [];
+      if (set?.pieces.length || set?.sourcePieceSetId || related.length) await acquireSessakuPieceBoardStateLocks(tx);
+      await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+      await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+      const latest = await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: row.id } });
+      isCompleted = latest?.isCompleted === true;
+      nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';
+      unchanged = drive.mode === 'intent' && nextIsCompleted === isCompleted;
+      if (set) {
+        const winner = await findSessakuPieceWinner(tx, key);
+        if (winner?.id !== row.id) throw new ApiError(409, '元行が更新されています', undefined, 'SOURCE_ITEM_MISSING');
+      }
+      if (set?.pieces.length) {
+        pieceHandled = true;
+        const external = await tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: row.id } });
+        if (external?.isExternallyCompleted && !nextIsCompleted) throw new ApiError(409, '外部完了は取消できません', undefined, 'EXTERNALLY_COMPLETED_ITEM');
+        if (external?.isExternallyCompleted) { unchanged = true; nextIsCompleted = true; return; }
+        const siteKey = resolveSiteKeyForScopeKey(locationKey);
+        const parentId = sessakuPieceParentItemId(key);
+        pieceAudit = { action: nextIsCompleted ? 'complete' : 'uncomplete', siteKey, parentItemId: parentId, fseiban: key.fseiban,
+          pieceIds: set.pieces.map((piece) => piece.id), expectedVersion: set.version,
+          beforeJson: await parentPieceAuditSnapshot(tx, set) };
+        const overrides = await readOverrides(tx, siteKey, [parentId, ...set.pieces.map((piece) => `piece:${piece.id}`)]);
+        const operationChanged = await syncWholePiecesOperationCompletions(tx, siteKey, set.pieces.map((piece) => {
+          const override = overrides.get(`piece:${piece.id}`) ?? overrides.get(parentId);
+          return { id: piece.id, isCompleted: piece.isCompleted, effectiveResourceCd: (override?.overrideResourceCd ?? key.fsigencd).trim(), fhincd: key.fhincd };
+        }), nextIsCompleted);
+        const changed = set.pieces.some((piece) => piece.isCompleted !== nextIsCompleted);
+        if (operationChanged && !changed) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 } } });
+        if (changed) {
+          await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { isCompleted: nextIsCompleted, completedAt: nextIsCompleted ? new Date() : null } });
+          await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 } } });
+        }
+        const supplement = await tx.productionScheduleOrderSupplement.findFirst({ where: { csvDashboardRowId: row.id } });
+        await reconcileSessakuPieceQuantities(tx, key, supplement?.plannedQuantity ?? null);
+        const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
+        nextIsCompleted = result?.parentIsCompleted ?? false;
+        unchanged = !changed && !operationChanged && nextIsCompleted === isCompleted;
+        const saved = await readSessakuPieceSet(tx, key);
+        if (saved) Object.assign(pieceAudit, { resultPieceIds: saved.pieces.map((piece) => piece.id), resultVersion: saved.version,
+          afterJson: await parentPieceAuditSnapshot(tx, saved) });
+        return;
+      }
+      if (unchanged) return;
       const tUpdateRowStart = performance.now();
       await tx.productionScheduleProgress.upsert({
         where: { csvDashboardRowId: row.id },
@@ -172,13 +230,14 @@ export async function driveProductionScheduleRowCompletion(params: {
         txShiftAssignmentsMs = txDeleteAssignmentMs;
         txShiftAssignmentsCount = releaseResult.shiftCount;
       }
-    });
-  }
+    }, { timeout: 30000, maxWait: 15000 });
   const txMs = performance.now() - txStart;
+  // Match piece APIs: audit persistence is best effort and outside the committed business transaction.
+  if (pieceAudit) await runSessakuPieceOperation(pieceAudit, async () => undefined);
 
   const respondedRowData = buildRowDataWithProgress(current, unchanged ? isCompleted : nextIsCompleted);
 
-  if (!unchanged) {
+  if (!unchanged && !pieceHandled) {
     const fseibanRaw = current.FSEIBAN;
     const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
     const eventType =
@@ -295,53 +354,43 @@ export async function upsertProductionScheduleNote(params: {
 }
 
 export async function upsertProductionScheduleDueDate(params: {
+  actorClientDeviceId?: string;
+  actorDeviceName?: string;
   rowId: string;
   dueDateText: string;
   locationKey: string;
 }): Promise<{ success: true; dueDate: Date | null }> {
   const { rowId, dueDateText } = params;
-  const row = await prisma.csvDashboardRow.findFirst({
-    where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-    select: { id: true, rowData: true }
-  });
-  if (!row) {
-    throw new ApiError(404, '対象の行が見つかりません');
-  }
-
-  const dueDateValue = dueDateText.trim();
-  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
-
-  if (dueDateValue.length === 0) {
-    const existingNote = existing?.note?.trim() ?? '';
-    const existingProcessing = existing?.processingType?.trim() ?? '';
-    if (existingNote.length === 0 && existingProcessing.length === 0) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
+  const dueDate = await runDueDateTransaction(async (tx) => {
+    const row = await tx.csvDashboardRow.findFirst({
+      where: { id: rowId, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      select: { id: true, rowData: true }
+    });
+    if (!row) throw new ApiError(404, '対象の行が見つかりません');
+    const dueDateValue = dueDateText.trim();
+    if (dueDateValue && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
+      throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
+    }
+    const dueDate = dueDateValue ? new Date(`${dueDateValue}T00:00:00.000Z`) : null;
+    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
+    const note = existing?.note?.trim() ?? '';
+    const processingType = existing?.processingType ?? null;
+    if (!dueDate && !note && !processingType?.trim()) {
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: row.id,
-        note: existingNote,
-        dueDate: null,
-        processingType: existing?.processingType ?? null
-      });
+        csvDashboardRowId: row.id, note, dueDate, processingType
+      }, tx);
     }
-    resetSelfInspectionMachineBoardScheduleRowCaches();
-    return { success: true, dueDate: null };
-  }
-
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
-    throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
-  }
-
-  const dueDate = new Date(`${dueDateValue}T00:00:00.000Z`);
-  await sharedScheduleFieldsRepository.upsertRowNote({
-    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    csvDashboardRowId: row.id,
-    note: existing?.note?.trim() ?? '',
-    dueDate,
-    processingType: existing?.processingType ?? null
+    await tx.productionScheduleDueDateAuditLog.create({ data: {
+      actorClientDeviceId: params.actorClientDeviceId,
+      actorDeviceName: params.actorDeviceName,
+      location: params.locationKey, action: 'row', csvDashboardRowId: row.id,
+      beforeDueDate: existing?.dueDate ?? null, afterDueDate: dueDate
+    } });
+    return dueDate;
   });
-
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return { success: true, dueDate };
 }
@@ -508,45 +557,6 @@ export async function upsertProductionScheduleOrder(params: {
       },
       select: { orderNumber: true, resourceCd: true }
     });
-    const splitCount = await tx.productionScheduleOrderSplit.count({
-      where: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        parentCsvDashboardRowId: row.id
-      }
-    });
-    if (splitCount > 0) {
-      if (isProductionScheduleOrderSplitEnabled()) {
-        throw new ApiError(
-          400,
-          '分割済みの行は親行の手動順番を設定できません',
-          undefined,
-          'PARENT_ORDER_NOT_ALLOWED_FOR_SPLIT_ROW'
-        );
-      }
-
-      if (isSiteCanonicalLocation) {
-        await tx.productionScheduleOrderSplitAssignment.deleteMany({
-          where: {
-            split: {
-              csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-              parentCsvDashboardRowId: row.id
-            },
-            siteKey,
-            location: { not: locationKey }
-          }
-        });
-      }
-      await tx.productionScheduleOrderSplitAssignment.deleteMany({
-        where: {
-          split: {
-            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-            parentCsvDashboardRowId: row.id
-          },
-          location: locationKey
-        }
-      });
-    }
-
     await acquireUnifiedOrderSlotLockInTransaction(tx, {
       locationKey,
       resourceCd,

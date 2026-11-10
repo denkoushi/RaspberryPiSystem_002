@@ -32,16 +32,15 @@ export async function registerKioskSupportRoute(
       throw new ApiError(401, 'クライアントキーが必要です', undefined, 'CLIENT_KEY_REQUIRED');
     }
 
-    // レート制限チェック
-    const rateLimitPassed = await deps.checkRateLimit(clientKey, request.ip);
+    const clientDevice = await findClientDeviceByApiKey(clientKey);
+
+    // 確認済みの端末 ID、未登録キーは接続元 IP で数える。
+    const rateLimitPassed = await deps.checkRateLimit(clientDevice?.id ?? '', clientDevice ? '' : request.ip);
     if (!rateLimitPassed) {
       throw new ApiError(429, 'リクエストが多すぎます。しばらく待ってから再度お試しください。', undefined, 'RATE_LIMIT_EXCEEDED');
     }
 
     const body = supportMessageSchema.parse(request.body);
-
-    // クライアントデバイスを取得
-    const clientDevice = await findClientDeviceByApiKey(clientKey);
 
     if (!clientDevice) {
       throw new ApiError(401, 'クライアントキーが無効です', undefined, 'CLIENT_KEY_INVALID');
@@ -49,8 +48,7 @@ export async function registerKioskSupportRoute(
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorLocation = locationScopeContext.deviceScopeKey;
 
-    // clientIdはリクエストボディから取得（なければclientDevice.idを使用）
-    const clientId = (request.body as { clientId?: string })?.clientId || clientDevice.id;
+    const clientId = clientDevice.id;
 
     // クライアントログとして保存
     const threadId = await recordKioskSupportMessage({

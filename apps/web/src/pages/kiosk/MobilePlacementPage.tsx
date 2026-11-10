@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { HaizenHub } from '../../features/mobile-placement/haizen/HaizenHub';
@@ -23,7 +23,6 @@ export function MobilePlacementPage() {
   const orderBranchesQuery = useOrderPlacementBranches(mp.orderBarcode);
   const location = useLocation();
   const navigate = useNavigate();
-  const actualSlipFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const restoreShelf = isMobilePlacementShelfRegisterRouteState(location.state);
@@ -38,19 +37,6 @@ export function MobilePlacementPage() {
 
   return (
     <div className="flex min-h-0 w-full flex-col">
-      <input
-        ref={actualSlipFileInputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        capture="environment"
-        className="sr-only"
-        aria-hidden
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void mp.parseActualSlipImageFile(f);
-          e.target.value = '';
-        }}
-      />
       <HaizenHub
         mp={mp}
         sheet={sheet}
@@ -62,10 +48,7 @@ export function MobilePlacementPage() {
         onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master', {
           state: mp.buildShelfRegisterRouteState()
         })}
-        onPhoto={() => {
-          if (isHaizenNativeAvailable()) void mp.scanActualSlipNative();
-          else actualSlipFileInputRef.current?.click();
-        }}
+        onPhoto={isHaizenNativeAvailable() ? () => { void mp.scanActualSlipNative(); } : undefined}
       />
     </div>
   );

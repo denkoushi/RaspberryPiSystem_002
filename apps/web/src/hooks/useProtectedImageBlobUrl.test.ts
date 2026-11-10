@@ -54,7 +54,7 @@ describe('useProtectedImageBlobUrl', () => {
     expect(second.result.current.blobUrl).toBe('blob:assembly-0');
   });
 
-  it('clears the old image on path change and evicts unreferenced LRU entries above 12', async () => {
+  it('clears the old image on path change and evicts unreferenced LRU entries above the limit', async () => {
     apiGet.mockImplementation(async () => ({ data: new Blob(['x']) }) as never);
     const hook = renderHook(
       ({ path }) => useProtectedImageBlobUrl(path),
@@ -91,8 +91,8 @@ describe('useProtectedImageBlobUrl', () => {
     }
 
     const newest = renderHook(() => useProtectedImageBlobUrl('/api/storage/newest.png'));
-    await waitFor(() => expect(newest.result.current.blobUrl).toBe('blob:assembly-12'));
-    expect(revokeObjectURL).not.toHaveBeenCalledWith('blob:assembly-12');
+    await waitFor(() => expect(newest.result.current.blobUrl).toBe(`blob:assembly-${PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES}`));
+    expect(revokeObjectURL).not.toHaveBeenCalledWith(`blob:assembly-${PROTECTED_IMAGE_BLOB_CACHE_MAX_ENTRIES}`);
 
     protectedHooks[0]?.unmount();
     expect(__protectedImageBlobCacheSizeForTests()).toBe(

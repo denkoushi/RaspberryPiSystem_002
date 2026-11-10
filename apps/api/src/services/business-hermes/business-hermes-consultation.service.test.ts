@@ -15,6 +15,8 @@ import { projectTrustedEvidence } from './business-hermes-evidence.js';
 import { KioskOperationGuideIndex } from '../assembly/kiosk-operation-guide.service.js';
 import { modelState, signageToolProposal } from './business-hermes-responses.js';
 
+const testCaller = { kind: 'user', userId: 'manager', role: 'MANAGER' } as const;
+
 const consultationId = '00000000-0000-0000-0000-000000000010';
 
 // Existing projection/runtime tests exercise a continuing consultation.
@@ -22,6 +24,8 @@ function dbFixture(newConsultation = false, fixtureId = consultationId) {
   const messages: Array<{ id: string; role: string; content: string; evidence: unknown; confirmation?: unknown; searchDiagnostics?: unknown; createdAt: Date }> = [];
   const row = {
     id: fixtureId,
+    createdByUserId: null,
+    createdByClientDeviceId: null,
     title: null,
     relatedIdentifiers: [],
     confirmedFacts: [],
@@ -33,7 +37,7 @@ function dbFixture(newConsultation = false, fixtureId = consultationId) {
   };
   const db = {
     businessHermesConsultation: {
-      findUnique: vi.fn(async (input: { select?: unknown }) => input.select ? { hermesConversationId: row.hermesConversationId } : { ...row, messages: [...messages].reverse().concat(newConsultation ? [] : [{ id: 'previous-user', role: 'user', content: '以前の相談', evidence: [], createdAt: new Date(0) }]) }),
+      findUnique: vi.fn(async (input: { select?: Record<string, boolean> }) => input.select ? Object.fromEntries(Object.keys(input.select).map((key) => [key, (row as Record<string, unknown>)[key]])) : { ...row, messages: [...messages].reverse().concat(newConsultation ? [] : [{ id: 'previous-user', role: 'user', content: '以前の相談', evidence: [], createdAt: new Date(0) }]) }),
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { Object.assign(row, data); row.updatedAt = new Date(); return row; }),
       create: vi.fn()
     },
@@ -104,9 +108,9 @@ function troubleFixture(fixtureId = consultationId) {
 const troubleQuestion = 'タグをかざしても反応しない';
 
 async function reportTrouble(service: BusinessHermesConsultationService, id = consultationId, question = troubleQuestion) {
-  const first = await service.chat({ consultationId: id, message: question, clientDeviceId: 'device-a' });
+  const first = await service.chat({ caller: testCaller, consultationId: id, message: question, clientDeviceId: 'device-a' });
   const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-  return service.chat({ consultationId: id, message: selection.option, selection, clientDeviceId: 'device-a' });
+  return service.chat({ caller: testCaller, consultationId: id, message: selection.option, selection, clientDeviceId: 'device-a' });
 }
 
 describe('troubleCategory', () => {
@@ -144,7 +148,7 @@ describe('deterministic trouble intake', () => {
     { question: '自主検査の始め方', clientDeviceId: 'device-a', offered: false }
   ])('offers trouble first only for device trouble: $question / $clientDeviceId', async ({ question, clientDeviceId, offered }) => {
     const fixture = troubleFixture();
-    const first = await fixture.service.chat({ consultationId, message: question, clientDeviceId });
+    const first = await fixture.service.chat({ caller: testCaller, consultationId, message: question, clientDeviceId });
     expect(first.confirmation!.options!.includes('不具合を知らせる')).toBe(offered);
     if (offered) expect(first.confirmation!.options![0]).toBe('不具合を知らせる');
     expect(fixture.fetchImpl).not.toHaveBeenCalled();
@@ -154,7 +158,7 @@ describe('deterministic trouble intake', () => {
     const fixture = troubleFixture();
     fixture.answerCache.suggest.mockResolvedValue('既存の質問');
     fixture.answerCache.candidates.mockResolvedValue(['記録の候補']);
-    const first = await fixture.service.chat({ consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
+    const first = await fixture.service.chat({ caller: testCaller, consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
     expect(first.confirmation!.options).toEqual(['不具合を知らせる', `${CACHED_QUESTION_PREFIX}既存の質問`, '記録の候補', '自分の言葉で補足する']);
   });
 
@@ -239,7 +243,7 @@ describe('deterministic trouble intake', () => {
     const fixture = troubleFixture();
     const service = new BusinessHermesConsultationService({ ...fixture.deps,
       openJevIntentSelector: { selectIntent: vi.fn(async ({ options }) => options[0]!) } });
-    const result = await service.chat({ consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
+    const result = await service.chat({ caller: testCaller, consultationId, message: troubleQuestion, clientDeviceId: fixture.device.id });
     expect(result.guide!.note).toContain('担当者に伝えました');
     expect(fixture.threads).toHaveLength(1);
     expect(fixture.fetchImpl).not.toHaveBeenCalled();
@@ -296,7 +300,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache,
       sourceResolver: { resolveAndSearch }, openJevIntentSelector: { selectIntent }, openJevResponder: { generate } });
 
-    const result = await service.chat({ consultationId, message: '三島工場の機械課の不適合を探して' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '三島工場の機械課の不適合を探して' });
 
     expect(result.status).toBe('ready');
     expect(result.message).toContain('不適合を1件確認しました');
@@ -313,7 +317,7 @@ describe('BusinessHermesConsultationService', () => {
     const sourceResolver = { resolveAndSearch: vi.fn() };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver,
       openJevGrounder, openJevResponder: { generate }, answerCache: { suggest: vi.fn(), answer: vi.fn() } });
-    const response = await service.chat({ consultationId, message: 'この資料の日付の意味を教えて' });
+    const response = await service.chat({ caller: testCaller, consultationId, message: 'この資料の日付の意味を教えて' });
     expect(openJevGrounder).toHaveBeenCalledWith({ request: 'この資料の日付の意味を教えて', references: [], history: [] });
     expect(sourceResolver.resolveAndSearch).not.toHaveBeenCalled();
     expect(generate).toHaveBeenCalledTimes(1);
@@ -337,9 +341,9 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
       answerCache: { suggest: vi.fn(), answer: vi.fn() } });
 
-    const first = await service.chat({ consultationId, message: original });
+    const first = await service.chat({ caller: testCaller, consultationId, message: original });
     const selection = { prompt: first.confirmation!.prompt, option: officialDepartment };
-    const result = await service.chat({ consultationId, message: officialDepartment, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: officialDepartment, selection });
 
     expect(result.needsClarification).toBe(false);
     expect(requests).toEqual([original, `${original}\n${officialDepartment}`]);
@@ -360,9 +364,9 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '要領を確認しました。', needsClarification: false }) }) },
       answerCache: { suggest: vi.fn(), answer: vi.fn() } });
 
-    const first = await service.chat({ consultationId, message: original });
+    const first = await service.chat({ caller: testCaller, consultationId, message: original });
     expect(first.needsClarification).toBe(true);
-    const result = await service.chat({ consultationId, message: changedTopic });
+    const result = await service.chat({ caller: testCaller, consultationId, message: changedTopic });
 
     expect(result.needsClarification).toBe(false);
     expect(requests).toEqual([original, changedTopic]);
@@ -387,11 +391,11 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
       answerCache: { suggest: vi.fn(), answer: vi.fn() } });
 
-    const first = await service.chat({ consultationId, message: original });
+    const first = await service.chat({ caller: testCaller, consultationId, message: original });
     const firstSelection = { prompt: first.confirmation!.prompt, option: candidateA };
-    const second = await service.chat({ consultationId, message: candidateA, selection: firstSelection });
+    const second = await service.chat({ caller: testCaller, consultationId, message: candidateA, selection: firstSelection });
     const secondSelection = { prompt: second.confirmation!.prompt, option: candidateB };
-    const result = await service.chat({ consultationId, message: candidateB, selection: secondSelection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: candidateB, selection: secondSelection });
 
     expect(result.needsClarification).toBe(false);
     expect(requests).toEqual([original, `${original}\n${candidateA}`, `${original}\n${candidateB}`]);
@@ -441,11 +445,11 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '確認しました。', needsClarification: false }) }) },
       answerCache: { suggest: vi.fn(), answer: vi.fn() } });
 
-    const first = await service.chat({ consultationId, message: original });
+    const first = await service.chat({ caller: testCaller, consultationId, message: original });
     const firstSelection = { prompt: first.confirmation!.prompt, option: department };
-    const second = await service.chat({ consultationId, message: department, selection: firstSelection });
+    const second = await service.chat({ caller: testCaller, consultationId, message: department, selection: firstSelection });
     const secondSelection = { prompt: second.confirmation!.prompt, option: partNumber };
-    const result = await service.chat({ consultationId, message: partNumber, selection: secondSelection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: partNumber, selection: secondSelection });
 
     expect(result.needsClarification).toBe(false);
     expect(requests).toEqual([original, `${original}\n${department}`, `${original}\n${partNumber}`]);
@@ -477,7 +481,7 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: async () => ({ status: 'completed', output_text: JSON.stringify({
         message: '全999件で、ずれは0.7mmです。処置は未実施です。', needsClarification: false
       }) }) }, answerCache: { suggest: vi.fn(), answer: vi.fn() } });
-    const result = await service.chat({ consultationId, message: 'この品番の不適合を探して' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'この品番の不適合を探して' });
     expect(result.status).toBe('ready');
     expect(result.message).toContain('不適合を1件確認しました');
     expect(result.message).not.toMatch(/999|mm|未実施/);
@@ -510,8 +514,8 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await service.chat({ consultationId, message: 'PN-FOLLOW-UPの不適合を確認して' });
-    const followUp = await service.chat({ consultationId, message: 'その原因は？' });
+    await service.chat({ caller: testCaller, consultationId, message: 'PN-FOLLOW-UPの不適合を確認して' });
+    const followUp = await service.chat({ caller: testCaller, consultationId, message: 'その原因は？' });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
 
     expect(payload.history).toEqual(expect.arrayContaining([
@@ -548,11 +552,11 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await service.chat({ consultationId, message: '三島工場製造部機械課のPN-SAME-PARTの不適合を2件' });
+    await service.chat({ caller: testCaller, consultationId, message: '三島工場製造部機械課のPN-SAME-PARTの不適合を2件' });
     expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(1);
     expect(fixture.messages.some((entry) => Array.isArray(entry.searchDiagnostics)
       && entry.searchDiagnostics.some((diagnostic) => diagnostic.kind === 'business-hermes-source-resolution-v1'))).toBe(true);
-    await service.chat({ consultationId, message: '同じ品番の過去事例は？' });
+    await service.chat({ caller: testCaller, consultationId, message: '同じ品番の過去事例は？' });
 
     expect(sourceResolver.resolveAndSearch.mock.calls[1]![1]).toMatchObject({ previousConditions: { limit: 2 } });
     expect(sourceResolver.resolveAndSearch.mock.calls[1]![0]).toBe('同じ品番の過去事例は？');
@@ -583,8 +587,8 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, sourceResolver,
       fetchImpl: vi.fn().mockResolvedValue(completedResponse()), config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await service.chat({ consultationId, message: 'PN-Aの不適合を2件' });
-    await service.chat({ consultationId, message: 'PN-Bの過去の不適合を調べて' });
+    await service.chat({ caller: testCaller, consultationId, message: 'PN-Aの不適合を2件' });
+    await service.chat({ caller: testCaller, consultationId, message: 'PN-Bの過去の不適合を調べて' });
 
     const correctedRequest = sourceResolver.resolveAndSearch.mock.calls[1]![0];
     expect(correctedRequest).toBe('PN-Bの過去の不適合を調べて');
@@ -601,9 +605,9 @@ describe('BusinessHermesConsultationService', () => {
     const preparedAnswer = { answer: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({ message: '根拠からの回答', needsClarification: false }) }) };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache, preparedAnswer,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '裏面が膨らむ事例の対策は？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '裏面が膨らむ事例の対策は？' });
     expect(first.confirmation!.options).toEqual([option, '自分の言葉で補足する']);
-    const result = await service.chat({ consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
+    const result = await service.chat({ caller: testCaller, consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
     expect(result.message).toBe('根拠からの回答');
     expect(preparedAnswer.answer).toHaveBeenCalledWith(option, '裏面が膨らむ事例の対策は？', expect.any(AbortSignal));
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -641,7 +645,7 @@ describe('BusinessHermesConsultationService', () => {
       signageControl: { prepareSignageProposal, applySignageProposal: vi.fn() } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: '業務進捗サイネージを設定したい' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '業務進捗サイネージを設定したい' });
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(fetchImpl.mock.calls[0])).not.toContain('record-answer');
@@ -692,7 +696,7 @@ describe('BusinessHermesConsultationService', () => {
       signageControl: { applySignageProposal, prepareSignageProposal } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const proposed = await service.chat({ consultationId, message: '業務進捗サイネージを設定したい' });
+    const proposed = await service.chat({ caller: testCaller, consultationId, message: '業務進捗サイネージを設定したい' });
     expect(proposed.confirmation).toMatchObject({ signageProposal: canonicalProposal });
     expect(proposed.message).toContain('業務キオスク');
     expect(proposed.message).toContain('08:00〜17:00');
@@ -703,21 +707,21 @@ describe('BusinessHermesConsultationService', () => {
       prompt: proposed.confirmation!.prompt,
       option: 'このサイネージ設定を適用する'
     };
-    const viewerAttempt = await service.chat({ consultationId, message: selection.option, selection,
+    const viewerAttempt = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection,
       actor: { userId: 'viewer', role: 'VIEWER' } });
     expect(viewerAttempt.reasonCode).toBeUndefined();
     expect(viewerAttempt.confirmation).toMatchObject({ signageProposal: canonicalProposal });
     expect(viewerAttempt.message).toContain('ADMINまたはMANAGER');
     expect(applySignageProposal).not.toHaveBeenCalled();
 
-    const managerApproval = await service.chat({ consultationId, message: selection.option, selection,
+    const managerApproval = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection,
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(managerApproval.message).toBe('サイネージ設定を反映しました。');
     expect(applySignageProposal).toHaveBeenCalledTimes(1);
     expect(applySignageProposal).toHaveBeenCalledWith(canonicalProposal);
     expect(JSON.stringify(fixture.messages)).not.toContain('targetClientKeys');
 
-    await service.chat({ consultationId, message: selection.option, selection,
+    await service.chat({ caller: testCaller, consultationId, message: selection.option, selection,
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(applySignageProposal).toHaveBeenCalledTimes(1);
   });
@@ -747,16 +751,16 @@ describe('BusinessHermesConsultationService', () => {
       signageControl: { applySignageProposal, prepareSignageProposal } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '最初の設定案' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '最初の設定案' });
     const oldSelection = { prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する' };
-    const newer = await service.chat({ consultationId, message: '別の設定案' });
-    const stale = await service.chat({ consultationId, message: oldSelection.option, selection: oldSelection,
+    const newer = await service.chat({ caller: testCaller, consultationId, message: '別の設定案' });
+    const stale = await service.chat({ caller: testCaller, consultationId, message: oldSelection.option, selection: oldSelection,
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(stale.reasonCode).toBe('HERMES_INVALID_SELECTION');
     expect(applySignageProposal).not.toHaveBeenCalled();
 
     const currentSelection = { prompt: newer.confirmation!.prompt, option: oldSelection.option };
-    await service.chat({ consultationId, message: currentSelection.option, selection: currentSelection,
+    await service.chat({ caller: testCaller, consultationId, message: currentSelection.option, selection: currentSelection,
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(applySignageProposal).toHaveBeenCalledWith(canonicalB);
   });
@@ -794,17 +798,17 @@ describe('BusinessHermesConsultationService', () => {
       signageControl: { applySignageProposal, prepareSignageProposal } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '最初のcanvas設定案' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '最初のcanvas設定案' });
     const oldSelection = { prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する' };
-    const newer = await service.chat({ consultationId, message: '位置を変えたcanvas設定案' });
+    const newer = await service.chat({ caller: testCaller, consultationId, message: '位置を変えたcanvas設定案' });
     expect(newer.confirmation!.prompt).not.toBe(oldSelection.prompt);
 
-    const stale = await service.chat({ consultationId, message: oldSelection.option, selection: oldSelection,
+    const stale = await service.chat({ caller: testCaller, consultationId, message: oldSelection.option, selection: oldSelection,
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(stale.reasonCode).toBe('HERMES_INVALID_SELECTION');
     expect(applySignageProposal).not.toHaveBeenCalled();
 
-    await service.chat({ consultationId, message: 'このサイネージ設定を適用する',
+    await service.chat({ caller: testCaller, consultationId, message: 'このサイネージ設定を適用する',
       selection: { prompt: newer.confirmation!.prompt, option: oldSelection.option },
       actor: { userId: 'manager', role: 'MANAGER' } });
     expect(applySignageProposal).toHaveBeenCalledWith(canonicalB);
@@ -838,9 +842,9 @@ describe('BusinessHermesConsultationService', () => {
       signageControl: { applySignageProposal: otherApply, prepareSignageProposal: vi.fn().mockResolvedValue(preparation) } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await firstService.chat({ consultationId, message: '最初の設定案' });
-    await otherService.chat({ consultationId: otherId, message: '別案件の設定案' });
-    const copied = await otherService.chat({ consultationId: otherId, message: 'この設定を適用する', selection: {
+    const first = await firstService.chat({ caller: testCaller, consultationId, message: '最初の設定案' });
+    await otherService.chat({ caller: testCaller, consultationId: otherId, message: '別案件の設定案' });
+    const copied = await otherService.chat({ caller: testCaller, consultationId: otherId, message: 'この設定を適用する', selection: {
       prompt: first.confirmation!.prompt, option: 'このサイネージ設定を適用する'
     }, actor: { userId: 'manager', role: 'MANAGER' } });
     expect(copied.reasonCode).toBe('HERMES_INVALID_SELECTION');
@@ -874,9 +878,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache,
       signageControl: { applySignageProposal, prepareSignageProposal } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: 'サイネージ設定を確認したい' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: 'サイネージ設定を確認したい' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(result.confirmation?.signageProposal).toEqual(proposal);
     expect(applySignageProposal).not.toHaveBeenCalled();
   });
@@ -888,10 +892,10 @@ describe('BusinessHermesConsultationService', () => {
       answer: vi.fn().mockResolvedValue({ status: 'completed', learning: { canonicalQuestion: '部品Aの検査方法は？', question: '部品Aの検査方法は？', answer: '確認済みの手順', sources: [{ kind: 'nonconformity', id: 'r1', sha256: 'a'.repeat(64) }] }, output_text: JSON.stringify({ message: '確認済みの手順', needsClarification: false }) }), remember: vi.fn().mockResolvedValue(true) };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '部品Aはどう検査する？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '部品Aはどう検査する？' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
     expect(selection.option).toBe('この質問の回答：部品Aの検査方法は？');
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(result.message).toBe('確認済みの手順');
     expect(answerCache.answer).toHaveBeenCalledWith('部品Aの検査方法は？', expect.any(AbortSignal));
     expect(answerCache.remember).toHaveBeenCalledWith(expect.objectContaining({ question: '部品Aはどう検査する？', canonicalQuestion: '部品Aの検査方法は？' }), expect.any(AbortSignal));
@@ -906,9 +910,9 @@ describe('BusinessHermesConsultationService', () => {
     const answerCache = { suggest: vi.fn().mockResolvedValue('部品Aの検査方法は？'), answer: vi.fn().mockResolvedValue(null) };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '部品Aはどう検査する？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '部品Aはどう検査する？' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(result.message).toBe('最新の記録に基づく回答');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(fetchImpl.mock.calls[0])).toContain('部品Aの検査方法は？');
@@ -921,25 +925,25 @@ describe('BusinessHermesConsultationService', () => {
     const answerCache = { suggest: vi.fn().mockResolvedValue(null), candidates: vi.fn().mockResolvedValue([option]), answer: vi.fn(), remember: vi.fn().mockResolvedValue(true), feedback: vi.fn().mockResolvedValue(true) };
     const preparedAnswer = { answer: vi.fn().mockResolvedValue({ status: 'completed', learning: learned, output_text: JSON.stringify({ message: learned.answer, needsClarification: false }) }) };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, answerCache, preparedAnswer });
-    const first = await service.chat({ consultationId, message: learned.question });
-    const result = await service.chat({ consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
+    const first = await service.chat({ caller: testCaller, consultationId, message: learned.question });
+    const result = await service.chat({ caller: testCaller, consultationId, message: option, selection: { prompt: first.confirmation!.prompt, option } });
     const answer = result.consultation.messages.at(-1)!;
     expect(answerCache.remember).toHaveBeenCalledWith({ id: answer.id, ...learned }, expect.any(AbortSignal));
     expect(answer.feedback).toBe('pending');
     expect(answer.searchDiagnostics.some((d) => d.kind === 'business-hermes-experience-v1')).toBe(false);
-    expect(await service.feedback('another-consultation', answer.id, 'helpful')).toBe(false);
-    expect(await service.feedback(consultationId, fixture.messages[0]!.id, 'helpful')).toBe(false);
+    expect(await service.feedback('another-consultation', answer.id, 'helpful', testCaller)).toBe(false);
+    expect(await service.feedback(consultationId, fixture.messages[0]!.id, 'helpful', testCaller)).toBe(false);
     expect(answerCache.feedback).not.toHaveBeenCalled();
-    expect(await service.feedback(consultationId, answer.id, 'helpful')).toBe(true);
-    expect(answerCache.feedback).toHaveBeenCalledWith(answer.id, 'helpful');
+    expect(await service.feedback(consultationId, answer.id, 'helpful', testCaller)).toBe(true);
+    expect(answerCache.feedback).toHaveBeenCalledWith(answer.id, 'helpful', true);
     expect((await service.get(consultationId))!.messages.at(-1)!.feedback).toBe('helpful');
     answerCache.feedback.mockResolvedValue(false);
-    expect(await service.feedback(consultationId, answer.id, 'unhelpful')).toBe(false);
+    expect(await service.feedback(consultationId, answer.id, 'unhelpful', testCaller)).toBe(false);
     expect((await service.get(consultationId))!.messages.at(-1)!.feedback).toBe('helpful');
   });
 
   afterEach(async () => {
-    await new BusinessHermesConsultationService({ db: dbFixture().db as never }).cancel(consultationId);
+    await new BusinessHermesConsultationService({ db: dbFixture().db as never }).cancel(consultationId, testCaller);
     vi.useRealTimers();
   });
   it('records adopted prefetch measurements privately without adding inference calls', async () => {
@@ -947,9 +951,9 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(async () => completedResponse());
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '検査の対策は？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '検査の対策は？' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     const measurement = (fixture.messages[2]!.searchDiagnostics as Array<Record<string, unknown>>)[0]!;
     expect(measurement).toMatchObject({ phase: 'answer', status: 'ready', recipeId: 'record-answer',
       recipeVersion: '4', prefetch: 'adopted', question: '検査の対策は？', answerMessageId: fixture.messages[3]!.id });
@@ -964,7 +968,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never,
       fetchImpl: vi.fn().mockResolvedValue(new Response('', { status: 503 })),
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: '対策は？' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '対策は？' });
     expect(result.status).toBe('unavailable');
     expect(fixture.messages[0]!.searchDiagnostics).toEqual([expect.objectContaining({ status: 'unavailable', reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE' })]);
     expect(fixture.messages).toHaveLength(1);
@@ -976,7 +980,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never,
       fetchImpl: vi.fn().mockImplementation(async () => completedResponse()),
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    expect((await service.chat({ consultationId, message: '対策は？' })).status).toBe('ready');
+    expect((await service.chat({ caller: testCaller, consultationId, message: '対策は？' })).status).toBe('ready');
   });
 
   it('does not present a malformed signage proposal as ready', async () => {
@@ -989,7 +993,7 @@ describe('BusinessHermesConsultationService', () => {
         })
       } })}\n\n`)),
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: 'サイネージを作成して' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'サイネージを作成して' });
     expect(result.status).toBe('unavailable');
     expect(result.confirmation).toBeUndefined();
     expect(fixture.messages[0]!.searchDiagnostics).toEqual([
@@ -1017,7 +1021,7 @@ describe('BusinessHermesConsultationService', () => {
       fetchImpl: vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\n`)),
       signageControl: { prepareSignageProposal: prepare, applySignageProposal: apply } as never,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: 'サイネージを停止して' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'サイネージを停止して' });
     expect(result.status).toBe('ready');
     expect(result.confirmation?.signageProposal).toEqual(proposal);
     expect(prepare).toHaveBeenCalledWith(proposal);
@@ -1031,7 +1035,7 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn();
     const runtime = { getMode: () => 'on_demand' as const, ensureReady: vi.fn(), release: vi.fn() };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime });
-    const result = await service.chat({ consultationId, message: '不適合番号7943の対策を教えて' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '不適合番号7943の対策を教えて' });
     expect(result.status).toBe('ready');
     expect(result.needsClarification).toBe(true);
     expect(result.confirmation?.prompt).toBe('知りたい内容');
@@ -1049,7 +1053,7 @@ describe('BusinessHermesConsultationService', () => {
     const fixture = dbFixture(true);
     const service = new BusinessHermesConsultationService({ db: fixture.db as never });
     const question = '登録について'.repeat(80);
-    const result = await service.chat({ consultationId, message: question });
+    const result = await service.chat({ caller: testCaller, consultationId, message: question });
     expect(result.message).toBe(`「${question.slice(0, 430)}」について調べます。下から選んでください。`);
     expect(result.confirmation?.prompt).toBe('知りたい内容');
     expect(fixture.messages.at(-1)?.content).toBe(result.message);
@@ -1063,7 +1067,7 @@ describe('BusinessHermesConsultationService', () => {
       openJevResponder: { generate: vi.fn().mockResolvedValue({ status: 'completed', output_text: JSON.stringify({
         message: '担当者に相談してください。', needsClarification: false, routeDecision
       }) }) } });
-    expect((await service.chat({ consultationId, message: question })).status).toBe('ready');
+    expect((await service.chat({ caller: testCaller, consultationId, message: question })).status).toBe('ready');
     expect(append.mock.calls).toEqual(routeDecision === undefined ? [] : [[{ consultationRoute: {
       route: routeDecision, guideMiss: false, direct: false, question: question.slice(0, 200)
     } }]]);
@@ -1074,15 +1078,15 @@ describe('BusinessHermesConsultationService', () => {
     const question = 'チップの登録手順';
     fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
     fixture.fetchImpl.mockImplementation(async () => completedResponse('通常の回答'));
-    const first = await fixture.service.chat({ consultationId, message: question });
+    const first = await fixture.service.chat({ caller: testCaller, consultationId, message: question });
     expect(fixture.subjectResolver.resolve.mock.calls).toEqual([[[question]]]);
     expect(fixture.operationGuide.matchStrength).toHaveBeenCalledWith(question, { families: ['inventory'] });
     const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-    await fixture.service.chat({ consultationId, message: selection.option, selection });
+    await fixture.service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(fixture.subjectResolver.resolve.mock.calls).toEqual([[[question]], [[question]]]);
     expect(fixture.operationGuide.bestSection).toHaveBeenCalledWith(question, { families: ['inventory'] });
     fixture.operationGuide.matchStrength.mockReturnValue('none');
-    await fixture.service.chat({ consultationId, message: '関連の記録について知りたい' });
+    await fixture.service.chat({ caller: testCaller, consultationId, message: '関連の記録について知りたい' });
     expect(fixture.subjectResolver.resolve).toHaveBeenCalledTimes(2);
     expect(fixture.fetchImpl).toHaveBeenCalledOnce();
   });
@@ -1096,15 +1100,15 @@ describe('BusinessHermesConsultationService', () => {
     fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
     const deps = { ...fixture.deps, operationGuide, receiptLog: { append } };
     const service = new BusinessHermesConsultationService(deps);
-    const first = await service.chat({ consultationId, message: 'チップの登録手順' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: 'チップの登録手順' });
     const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-    const initial = await service.chat({ consultationId, message: selection.option, selection });
+    const initial = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(initial.guide?.screen).toBe('在庫の準備');
     // Recreate the service: the old persisted guide has only screen and sections, no family field.
     const reloaded = new BusinessHermesConsultationService({ ...deps, ...(jev ? { openJevGrounder } : {}) });
     fixture.sourceResolver.resolveAndSearch.mockClear();
     fixture.subjectResolver.resolve.mockClear();
-    const answer = await reloaded.chat({ consultationId, message: 'タグの登録手順' });
+    const answer = await reloaded.chat({ caller: testCaller, consultationId, message: 'タグの登録手順' });
     expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen: '在庫の準備' } });
     expect(answer.guide!.sections.map(({ heading }) => heading)).toEqual(['NFCタグ(数量タグ・補充タグ)']);
     expect(answer.message).toContain('次へ：タグをかざす');
@@ -1120,7 +1124,7 @@ describe('BusinessHermesConsultationService', () => {
     // Known labels need no master lookup. An unknown subject is resolved only after passing the gate.
     expect(fixture.subjectResolver.resolve).not.toHaveBeenCalled();
     fixture.subjectResolver.resolve.mockResolvedValue(['instrument', 'inventory']);
-    await reloaded.chat({ consultationId, message: 'ノギスのタグの登録手順' });
+    await reloaded.chat({ caller: testCaller, consultationId, message: 'ノギスのタグの登録手順' });
     expect(fixture.subjectResolver.resolve).toHaveBeenCalledExactlyOnceWith(['ノギス']);
     expect(bestSection).toHaveBeenLastCalledWith('ノギスのタグの登録手順', { families: ['inventory', 'instrument'] });
     expect(fixture.sourceResolver.resolveAndSearch).not.toHaveBeenCalled();
@@ -1137,12 +1141,12 @@ describe('BusinessHermesConsultationService', () => {
     const operationGuide = KioskOperationGuideIndex.fromDirectory(fileURLToPath(new URL('../../../../../docs/kiosk-operation-guide', import.meta.url)));
     fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
     const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
-    const first = await service.chat({ consultationId, message: 'チップの登録手順' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: 'チップの登録手順' });
     const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-    await service.chat({ consultationId, message: selection.option, selection });
+    await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     fixture.subjectResolver.resolve.mockClear();
     fixture.sourceResolver.resolveAndSearch.mockClear();
-    const answer = await service.chat({ consultationId, message: question });
+    const answer = await service.chat({ caller: testCaller, consultationId, message: question });
     expect(answer).toMatchObject({ status: 'ready', guide: { screen }, needsClarification: false });
     expect(fixture.fetchImpl).not.toHaveBeenCalled();
     expect(fixture.sourceResolver.resolveAndSearch).not.toHaveBeenCalled();
@@ -1155,12 +1159,12 @@ describe('BusinessHermesConsultationService', () => {
       fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
       fixture.fetchImpl.mockImplementation(async () => completedResponse('通常の回答'));
       const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
-      const first = await service.chat({ consultationId, message: 'チップの登録手順' });
+      const first = await service.chat({ caller: testCaller, consultationId, message: 'チップの登録手順' });
       const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-      await service.chat({ consultationId, message: selection.option, selection });
+      await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
       fixture.subjectResolver.resolve.mockClear();
       fixture.sourceResolver.resolveAndSearch.mockClear();
-      const answer = await service.chat({ consultationId, message: question });
+      const answer = await service.chat({ caller: testCaller, consultationId, message: question });
       expect(answer.status).toBe('ready');
       expect(answer.guide).toBeUndefined();
       expect(fixture.fetchImpl).toHaveBeenCalledOnce();
@@ -1178,12 +1182,12 @@ describe('BusinessHermesConsultationService', () => {
     const operationGuide = KioskOperationGuideIndex.fromDirectory(fileURLToPath(new URL('../../../../../docs/kiosk-operation-guide', import.meta.url)));
     fixture.subjectResolver.resolve.mockResolvedValue(question.startsWith('ノギス') ? ['instrument'] : ['inventory']);
     const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
-    const first = await service.chat({ consultationId, message: 'チップの検索手順' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: 'チップの検索手順' });
     const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-    const miss = await service.chat({ consultationId, message: selection.option, selection });
+    const miss = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(miss.guide).toBeUndefined();
     fixture.sourceResolver.resolveAndSearch.mockClear();
-    const answer = await service.chat({ consultationId, message: question });
+    const answer = await service.chat({ caller: testCaller, consultationId, message: question });
     expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen } });
     expect(answer.consultation.messages.at(-1)?.searchDiagnostics).toEqual([
       { kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: false, direct: true }
@@ -1199,11 +1203,11 @@ describe('BusinessHermesConsultationService', () => {
       fixture.subjectResolver.resolve.mockResolvedValue(['inventory']);
       fixture.fetchImpl.mockImplementation(async () => completedResponse('通常の回答'));
       const service = new BusinessHermesConsultationService({ ...fixture.deps, operationGuide });
-      const first = await service.chat({ consultationId, message: 'チップの検索手順' });
+      const first = await service.chat({ caller: testCaller, consultationId, message: 'チップの検索手順' });
       const selection = { prompt: first.confirmation!.prompt, option: '画面の操作方法を見る' };
-      await service.chat({ consultationId, message: selection.option, selection });
+      await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
       fixture.subjectResolver.resolve.mockClear();
-      const answer = await service.chat({ consultationId, message: question });
+      const answer = await service.chat({ caller: testCaller, consultationId, message: question });
       expect(answer.guide).toBeUndefined();
       expect(fixture.fetchImpl).toHaveBeenCalledOnce();
       expect(fixture.subjectResolver.resolve).not.toHaveBeenCalled();
@@ -1227,7 +1231,7 @@ describe('BusinessHermesConsultationService', () => {
         search: () => ({ results: [], total: 0, hasMore: false }), bestSection: () => null, detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: question });
+    const first = await service.chat({ caller: testCaller, consultationId, message: question });
     expect(subjectResolver.resolve).toHaveBeenCalledExactlyOnceWith([question]);
     expect(first.confirmation?.options).toEqual([
       ...(matches ? ['画面の操作方法を見る'] : []),
@@ -1236,7 +1240,7 @@ describe('BusinessHermesConsultationService', () => {
     ]);
     if (matches) expect(fetchImpl).not.toHaveBeenCalled();
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const answer = await service.chat({ consultationId, message: selection.option, selection });
+    const answer = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(subjectResolver.resolve).toHaveBeenCalledTimes(matches ? 2 : 1);
     expect(answer.status).toBe('ready');
     expect(append.mock.calls).toEqual([[{ consultationRoute: {
@@ -1287,11 +1291,11 @@ describe('BusinessHermesConsultationService', () => {
         subjectResolver: { resolve: vi.fn().mockResolvedValue([]) },
         answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
         config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-      const first = await service.chat({ consultationId, message: query });
+      const first = await service.chat({ caller: testCaller, consultationId, message: query });
       expect(fetchImpl).not.toHaveBeenCalled();
       const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
       expect(selection.option).toBe('画面の操作方法を見る');
-      const answer = await service.chat({ consultationId, message: selection.option, selection });
+      const answer = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
       expect(fetchImpl).not.toHaveBeenCalled();
       expect(answer).toMatchObject({ status: 'ready', needsClarification: false, guide: { screen: '自主検査' } });
       expect(answer.recordIds).toBeUndefined();
@@ -1303,7 +1307,7 @@ describe('BusinessHermesConsultationService', () => {
       expect(reloaded?.messages.at(-1)).toMatchObject({ role: 'assistant', guide: answer.guide, searchDiagnostics: [
         { kind: 'business-hermes-route-v1', route: 'operation_guide', guideMiss: false, direct: true }
       ] });
-      await service.chat({ consultationId, message: 'ほかの相談です' });
+      await service.chat({ caller: testCaller, consultationId, message: 'ほかの相談です' });
       expect(fetchImpl).toHaveBeenCalledOnce();
       expect(append.mock.calls).toEqual([[{ consultationRoute: {
         route: 'operation_guide', guideMiss: false, direct: true, question: query
@@ -1323,10 +1327,10 @@ describe('BusinessHermesConsultationService', () => {
       operationGuide: { familiesForScreen: () => [], familyMatchStrength: () => 'none', matchStrength: () => 'screen', isEnabled: () => true, unknownTerms: () => [], search, bestSection, detail: () => null },
       answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '自主検査の始め方' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '自主検査の始め方' });
     expect(fetchImpl).not.toHaveBeenCalled();
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![1]! };
-    const answer = await service.chat({ consultationId, message: mode === 'record' ? selection.option : '関連の記録について知りたい',
+    const answer = await service.chat({ caller: testCaller, consultationId, message: mode === 'record' ? selection.option : '関連の記録について知りたい',
       ...(mode === 'record' ? { selection } : {}) });
     expect(answer.status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledOnce();
@@ -1347,10 +1351,10 @@ describe('BusinessHermesConsultationService', () => {
           search: () => ({ results: [], total: 0, hasMore: false }), detail: () => null },
         answerCache: { suggest: vi.fn().mockResolvedValue(null), answer: vi.fn().mockResolvedValue(null) },
         config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-      const first = await service.chat({ consultationId, message: question });
+      const first = await service.chat({ caller: testCaller, consultationId, message: question });
       fixture.messages.at(-1)!.content = 'まず、知りたい内容を選んでください。';
       fixture.messages.at(-1)!.confirmation = { ...first.confirmation, prompt: selection.prompt, options: [selection.option, '自分の言葉で補足する'] };
-      const result = await service.chat({ consultationId, message: selection.option, selection });
+      const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
       expect(result).toMatchObject({ status: 'ready', message: '通常の回答', needsClarification: false });
       expect(fetchImpl).toHaveBeenCalledOnce();
       expect(bestSection).not.toHaveBeenCalled();
@@ -1365,9 +1369,9 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: JSON.stringify({ message: '記録の対策を確認しました。', needsClarification: false, openQuestions: [] }) } })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '穴の裏が膨らんだ事例の対策は？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '穴の裏が膨らんだ事例の対策は？' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const answer = await service.chat({ consultationId, message: selection.option, selection });
+    const answer = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '穴の裏が膨らんだ事例の対策は？', purpose: selection.option, confirmationComplete: false });
     expect(payload.questionRecipe).toMatchObject({ id: 'record-answer', version: '4', speculative: true });
@@ -1380,7 +1384,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(fixture.row.hermesConversationId).toBe(JSON.parse(fetchImpl.mock.calls[0]![1].body).conversation);
     expect(payload.caseState.openQuestions).toEqual([]);
     expect(answer.message).toBe('記録の対策を確認しました。');
-    await service.chat({ consultationId, message: 'その対策をもう少し詳しく教えて' });
+    await service.chat({ caller: testCaller, consultationId, message: 'その対策をもう少し詳しく教えて' });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -1421,9 +1425,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '三島工場の機械課の直近の不適合を2件探して' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '三島工場の機械課の直近の不適合を2件探して' });
     const selection = { prompt: first.confirmation!.prompt, option: '候補' };
-    const response = await service.chat({ consultationId, message: selection.option, selection });
+    const response = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[0]![1].body).input[0].content);
 
     expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(2);
@@ -1483,9 +1487,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: `品番${partNumber}の公開${shootingTarget}要領の内容を教えて` });
+    const first = await service.chat({ caller: testCaller, consultationId, message: `品番${partNumber}の公開${shootingTarget}要領の内容を教えて` });
     const selection = { prompt: first.confirmation!.prompt, option: '候補' };
-    const response = await service.chat({ consultationId, message: selection.option, selection });
+    const response = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
 
     expect(response.message).toBe('公開作業要領を1グループ（返却ページ内）、2行確認しました。元データ更新日: 2026-09-06。選択した記録カードは概要表示です。原文は詳細表示で確認できます。');
     expect(response.recordIds).toEqual(['work_instruction:step-2']);
@@ -1502,7 +1506,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(cards[0]?.displayFields?.detail.find((field) => field.key === 'text')?.value).toBe(stepTwo.effectiveText);
     expect(response.consultation.messages.at(-1)?.evidence.filter((entry) => entry.kind === 'work_instruction')).toHaveLength(2);
 
-    await service.chat({ consultationId, message: '表示した手順の並びを確認して' });
+    await service.chat({ caller: testCaller, consultationId, message: '表示した手順の並びを確認して' });
     const nextPayload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
     expect(nextPayload.history.at(-1)).toMatchObject({ role: 'assistant', recordIds: ['work_instruction:step-2'] });
     expect(nextPayload.availableEvidence).toEqual(expect.arrayContaining([
@@ -1559,11 +1563,11 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '三島工場の機械課の不適合を2件探して' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '三島工場の機械課の不適合を2件探して' });
     const purposeSelection = { prompt: first.confirmation!.prompt, option: '候補' };
-    const candidatePrompt = await service.chat({ consultationId, message: purposeSelection.option, selection: purposeSelection });
+    const candidatePrompt = await service.chat({ caller: testCaller, consultationId, message: purposeSelection.option, selection: purposeSelection });
     const candidateSelection = { prompt: candidatePrompt.confirmation!.prompt, option: officialDepartment };
-    const result = await service.chat({ consultationId, message: candidateSelection.option, selection: candidateSelection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: candidateSelection.option, selection: candidateSelection });
 
     expect(candidatePrompt.confirmation?.options).toEqual([officialDepartment, '大阪工場製造部機械課']);
     expect(sourceResolver.resolveAndSearch).toHaveBeenCalledTimes(3);
@@ -1604,9 +1608,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '三島工場の機械課の不適合を1件探して' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '三島工場の機械課の不適合を1件探して' });
     const selection = { prompt: first.confirmation!.prompt, option: candidateA };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
 
     expect(result.reasonCode).toBe('HERMES_SEARCH_CONDITIONS_NOT_CONFIRMED');
     expect(fixture.messages).toHaveLength(3);
@@ -1645,9 +1649,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '架空工場の不適合' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '架空工場の不適合' });
     const selection = { prompt: first.confirmation!.prompt, option: cachedOption };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
 
     expect(answerCache.answer).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -1679,9 +1683,9 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, sourceResolver, answerCache, preparedAnswer,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const first = await service.chat({ consultationId, message: '架空工場の不適合' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '架空工場の不適合' });
     const selection = { prompt: first.confirmation!.prompt, option: sourceOption };
-    const result = await service.chat({ consultationId, message: selection.option, selection });
+    const result = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
 
     expect(preparedAnswer.answer).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -1695,14 +1699,14 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(async () => new Response(`data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"確認しました。","needsClarification":false,"openQuestions":[]}' } })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '加工の不具合を調べたい' });
-    const invalid = await service.chat({ consultationId, message: '選ぶ', selection: { prompt: first.confirmation!.prompt, option: '存在しない候補' } });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '加工の不具合を調べたい' });
+    const invalid = await service.chat({ caller: testCaller, consultationId, message: '選ぶ', selection: { prompt: first.confirmation!.prompt, option: '存在しない候補' } });
     expect(invalid.reasonCode).toBe('HERMES_INVALID_SELECTION');
-    const supplement = await service.chat({ consultationId, message: '補足する', selection: { prompt: first.confirmation!.prompt, option: '自分の言葉で補足する' } });
+    const supplement = await service.chat({ caller: testCaller, consultationId, message: '補足する', selection: { prompt: first.confirmation!.prompt, option: '自分の言葉で補足する' } });
     expect(supplement.clarificationMessage).toContain('補足');
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
-    await service.chat({ consultationId, message: '不適合番号7943の再発防止策です' });
+    await service.chat({ caller: testCaller, consultationId, message: '不適合番号7943の再発防止策です' });
     const payload = JSON.parse(JSON.parse(fetchImpl.mock.calls[1]![1].body).input[0].content);
     expect(payload.confirmedIntent).toEqual({ originalQuestion: '加工の不具合を調べたい', purpose: '不適合番号7943の再発防止策です', confirmationComplete: true });
   });
@@ -1722,13 +1726,13 @@ describe('BusinessHermesConsultationService', () => {
     }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '不適合番号7943の再発防止策は？' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '不適合番号7943の再発防止策は？' });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(first.confirmation?.options?.[0]).toBe('不適合の記録から答えを探す');
     expect(fixture.messages).toHaveLength(2);
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const answer = service.chat({ consultationId, message: selection.option, selection });
+    const answer = service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     await vi.waitFor(() => expect(fixture.messages).toHaveLength(3));
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     complete(completedResponse());
@@ -1746,9 +1750,9 @@ describe('BusinessHermesConsultationService', () => {
     })).mockImplementation(async () => completedResponse('選ばれた原因の回答'));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '穴加工について' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '穴加工について' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![1]! };
-    const answer = await service.chat({ consultationId, message: selection.option, selection });
+    const answer = await service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     expect(speculativeSignal.aborted).toBe(true);
     expect(answer.message).toBe('選ばれた原因の回答');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -1763,11 +1767,11 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(async () => completedResponse());
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '番号7943について' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '番号7943について' });
     await vi.advanceTimersByTimeAsync(30_001);
     expect(fixture.messages).toHaveLength(2);
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    expect((await service.chat({ consultationId, message: selection.option, selection })).status).toBe('ready');
+    expect((await service.chat({ caller: testCaller, consultationId, message: selection.option, selection })).status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
   });
@@ -1779,10 +1783,10 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn();
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx' } });
-    const first = await service.chat({ consultationId, message: '確認したい' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '確認したい' });
     expect(first.confirmation).toBeDefined();
     expect(runtime.ensureReady).toHaveBeenCalledTimes(1);
-    expect(await service.cancel(consultationId)).toBe(true);
+    expect(await service.cancel(consultationId, testCaller)).toBe(true);
     ready();
     await vi.waitFor(() => expect(runtime.release).toHaveBeenCalledTimes(1));
     expect(fetchImpl).not.toHaveBeenCalled();
@@ -1794,9 +1798,9 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockRejectedValueOnce(new Error('offline')).mockImplementation(async () => completedResponse());
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '番号7943について' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '番号7943について' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    expect((await service.chat({ consultationId, message: selection.option, selection })).status).toBe('ready');
+    expect((await service.chat({ caller: testCaller, consultationId, message: selection.option, selection })).status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
@@ -1807,9 +1811,9 @@ describe('BusinessHermesConsultationService', () => {
     } })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '記録を見たい' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '記録を見たい' });
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    expect((await service.chat({ consultationId, message: selection.option, selection })).reasonCode).toBe('HERMES_RECORD_NOT_AVAILABLE');
+    expect((await service.chat({ caller: testCaller, consultationId, message: selection.option, selection })).reasonCode).toBe('HERMES_RECORD_NOT_AVAILABLE');
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
     expect(fixture.messages).toHaveLength(3);
   });
@@ -1822,10 +1826,10 @@ describe('BusinessHermesConsultationService', () => {
     }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 500 } });
-    const first = await service.chat({ consultationId, message: '調べてください' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '調べてください' });
     await vi.advanceTimersByTimeAsync(100);
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    const selected = service.chat({ consultationId, message: selection.option, selection });
+    const selected = service.chat({ caller: testCaller, consultationId, message: selection.option, selection });
     await vi.advanceTimersByTimeAsync(501);
     expect((await selected).reasonCode).toBe('HERMES_TIMEOUT');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
@@ -1842,12 +1846,12 @@ describe('BusinessHermesConsultationService', () => {
     const config = { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' };
     const firstService = new BusinessHermesConsultationService({ db: firstFixture.db as never, fetchImpl, config });
     const secondService = new BusinessHermesConsultationService({ db: secondFixture.db as never, fetchImpl, config });
-    await firstService.chat({ consultationId, message: '最初の相談' });
-    const second = await secondService.chat({ consultationId: otherId, message: '別の相談' });
+    await firstService.chat({ caller: testCaller, consultationId, message: '最初の相談' });
+    const second = await secondService.chat({ caller: testCaller, consultationId: otherId, message: '別の相談' });
     expect(second.confirmation).toBeDefined();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const selection = { prompt: second.confirmation!.prompt, option: second.confirmation!.options![0]! };
-    expect((await secondService.chat({ consultationId: otherId, message: selection.option, selection })).status).toBe('ready');
+    expect((await secondService.chat({ caller: testCaller, consultationId: otherId, message: selection.option, selection })).status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(secondFixture.row.hermesConversationId).toBe('hermes-conversation-1');
   });
@@ -1857,10 +1861,10 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(async () => completedResponse());
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const first = await service.chat({ consultationId, message: '元の相談' });
+    const first = await service.chat({ caller: testCaller, consultationId, message: '元の相談' });
     fixture.row.summary = '別の端末から対象を訂正';
     const selection = { prompt: first.confirmation!.prompt, option: first.confirmation!.options![0]! };
-    expect((await service.chat({ consultationId, message: selection.option, selection })).status).toBe('ready');
+    expect((await service.chat({ caller: testCaller, consultationId, message: selection.option, selection })).status).toBe('ready');
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(fixture.row.hermesConversationId).toBe('hermes-conversation-1');
   });
@@ -1915,7 +1919,7 @@ describe('BusinessHermesConsultationService', () => {
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const runtime = { ensureReady: vi.fn().mockResolvedValue(undefined), release: vi.fn().mockResolvedValue(undefined), getMode: vi.fn().mockReturnValue('always_on') };
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', provider: 'dgx', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: '本文を確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '本文を確認してください' });
     expect(result.status).toBe('ready');
     expect(result.evidenceVisible).toBe(true);
     expect(result.evidence[0]).toMatchObject({ imageAssetId: 'asset-1', imageUrl: '/api/work-instructions/assets/asset-1' });
@@ -1942,7 +1946,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: '状態を確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '状態を確認してください' });
 
     expect(result.evidence).toEqual([expect.objectContaining(evidence)]);
     expect(result.evidenceVisible).toBe(false);
@@ -1961,7 +1965,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: '写真を見せてください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '写真を見せてください' });
 
     expect(result).toMatchObject({
       status: 'unavailable',
@@ -1986,7 +1990,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: 'NC-1の根拠を見せてください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'NC-1の根拠を見せてください' });
 
     expect(result.evidence.map((item) => item.id)).toEqual(['nc-1', 'nc-2']);
     expect(result.evidenceVisibleIds).toEqual(['nonconformity:nc-1']);
@@ -2020,7 +2024,7 @@ describe('BusinessHermesConsultationService', () => {
     ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: '記録を見せてください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '記録を見せてください' });
 
     expect(result.recordIds).toEqual(['nonconformity:nc-record']);
     expect(result.recordView).toBe('detail');
@@ -2054,8 +2058,8 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await service.chat({ consultationId, message: '記録を確認してください' });
-    const shown = await service.chat({ consultationId, message: 'その記録を表示してください' });
+    await service.chat({ caller: testCaller, consultationId, message: '記録を確認してください' });
+    const shown = await service.chat({ caller: testCaller, consultationId, message: 'その記録を表示してください' });
 
     expect(shown.recordIds).toEqual(['nonconformity:nc-stored']);
     expect(shown.evidence).toEqual([expect.objectContaining({ id: 'nc-stored', displayFields: expect.objectContaining({
@@ -2086,7 +2090,7 @@ describe('BusinessHermesConsultationService', () => {
       ] } })}\n\n`, { headers: { 'content-type': 'text/event-stream' } }));
       const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-      const result = await service.chat({ consultationId, message: '記録を表示してください' });
+      const result = await service.chat({ caller: testCaller, consultationId, message: '記録を表示してください' });
 
       expect(result).toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_RECORD_NOT_AVAILABLE', message: '記録を表示できませんでした。もう一度お試しください。' });
       expect(fixture.messages.map((message) => message.role)).toEqual(['user']);
@@ -2109,8 +2113,8 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const hidden = await service.chat({ consultationId, message: '公開要領を確認してください' });
-    const shown = await service.chat({ consultationId, message: 'その写真を見せてください' });
+    const hidden = await service.chat({ caller: testCaller, consultationId, message: '公開要領を確認してください' });
+    const shown = await service.chat({ caller: testCaller, consultationId, message: 'その写真を見せてください' });
 
     expect(hidden.evidenceVisible).toBe(false);
     expect(shown.evidence).toEqual([expect.objectContaining({ id: 'wi-1', imageAssetId: 'asset-1', imageUrl: '/api/work-instructions/assets/asset-1' })]);
@@ -2135,8 +2139,8 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, activeAssetLookup: activeLookup,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await service.chat({ consultationId, message: '手順を確認してください' });
-    const shown = await service.chat({ consultationId, message: '写真を見せてください' });
+    await service.chat({ caller: testCaller, consultationId, message: '手順を確認してください' });
+    const shown = await service.chat({ caller: testCaller, consultationId, message: '写真を見せてください' });
 
     expect(shown.evidence).toEqual([expect.objectContaining({ kind: 'work_instruction', id: 'wi-inactive' })]);
     expect(shown.evidence[0]).not.toHaveProperty('imageUrl');
@@ -2156,7 +2160,7 @@ describe('BusinessHermesConsultationService', () => {
         {type: 'message', content: [{type: 'output_text', text: '確認しました。'}]}
       ]}})}\n\n`));
       const service = new BusinessHermesConsultationService({ db: dbFixture().db as never, runtime, fetchImpl });
-      expect((await service.chat({consultationId, message: '確認したい'})).status).toBe('ready');
+      expect((await service.chat({ caller: testCaller,consultationId, message: '確認したい'})).status).toBe('ready');
       expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes');
       expect(runtime.release).toHaveBeenCalledWith('business_hermes');
     } finally { Object.assign(env, previous); }
@@ -2192,7 +2196,7 @@ describe('BusinessHermesConsultationService', () => {
     })}\n\n`));
     const service = new BusinessHermesConsultationService({db: dbFixture().db as never, fetchImpl,
       config: {baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat'}});
-    const result = await service.chat({consultationId, message: '不適合を確認したい'});
+    const result = await service.chat({ caller: testCaller,consultationId, message: '不適合を確認したい'});
     expect(result.evidence).toEqual([expect.objectContaining({kind: 'nonconformity', id: record.id,
       title: record.nonconformityNo, partNumber: '', text: record.remarks})]);
     expect(result.evidenceVisible).toBe(true);
@@ -2213,7 +2217,7 @@ describe('BusinessHermesConsultationService', () => {
     ];
     const fetchImpl = vi.fn().mockResolvedValue(new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('')));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: '漏れを確認したい' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '漏れを確認したい' });
     expect(result.status).toBe('ready');
     expect(result.evidenceVisible).toBe(true);
     expect(result.evidence).toHaveLength(1);
@@ -2228,7 +2232,7 @@ describe('BusinessHermesConsultationService', () => {
     const fixture = dbFixture();
     const fetchImpl = vi.fn().mockResolvedValue(new Response(`data: ${JSON.stringify({ type: 'response.output_text.done', text: '途中の回答' })}\n\n`));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: '確認したい' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '確認したい' });
     expect(result.reasonCode).toBe('HERMES_INCOMPLETE');
     expect(fixture.messages.map((message) => message.role)).toEqual(['user']);
   });
@@ -2240,7 +2244,7 @@ describe('BusinessHermesConsultationService', () => {
       `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '本文だけの回答' } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: '続き' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '続き' });
     expect(result.consultation.summary).toBe('前回の引継ぎ要約');
   });
 
@@ -2260,7 +2264,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 5_000 } });
 
-    const result = await service.chat({ consultationId, message: '続き' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '続き' });
 
     expect(result.consultation).toMatchObject({
       title: '既存相談',
@@ -2283,7 +2287,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 5_000 } });
 
-    const result = await service.chat({ consultationId, message: '前提を訂正します' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '前提を訂正します' });
 
     expect(result.consultation).toMatchObject({
       title: '訂正後の相談',
@@ -2305,7 +2309,7 @@ describe('BusinessHermesConsultationService', () => {
       ] } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: '続き' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '続き' });
     expect(result.message).toBe('確認済み');
     expect(result.evidence.map((item) => item.id)).toEqual(['row-1:step:1', 'row-1:step:2']);
     expect(result.consultation.relatedIdentifiers).toEqual(['PN-1']);
@@ -2321,7 +2325,7 @@ describe('BusinessHermesConsultationService', () => {
       `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"PN-Bの組立工程を確認します","title":"PN-B 組立シール面の漏れ","relatedIdentifiers":["PN-B"],"confirmedFacts":[],"openQuestions":[],"summary":"PN-Bの組立工程を確認"}' } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: 'PN-Bの組立工程に訂正します' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'PN-Bの組立工程に訂正します' });
     expect(result.consultation.title).toBe('PN-B 組立シール面の漏れ');
   });
 
@@ -2332,7 +2336,7 @@ describe('BusinessHermesConsultationService', () => {
       `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: malformed } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: '確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '確認してください' });
     expect(result.status).toBe('unavailable');
     expect(result.reasonCode).toBe('HERMES_RESPONSE_INVALID');
     expect(result.message).toBeNull();
@@ -2346,7 +2350,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
 
-    const result = await service.chat({ consultationId, message: '訂正を確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '訂正を確認してください' });
 
     expect(result).toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_UPSTREAM_UNAVAILABLE', message: null });
     expect(fixture.messages.map((message) => message.role)).toEqual(['user']);
@@ -2362,7 +2366,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
 
-    const result = await service.chat({ consultationId, message: 'エラー文を引用して確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'エラー文を引用して確認してください' });
 
     expect(result).toMatchObject({ status: 'ready', message: quoted });
     expect(fixture.messages.map((message) => message.role)).toEqual(['user', 'assistant']);
@@ -2374,7 +2378,7 @@ describe('BusinessHermesConsultationService', () => {
       `data: ${JSON.stringify({ type: 'response.completed', response: { status: 'completed', output_text: '{"message":"候補を確認しました","title":"漏れ調査","relatedIdentifiers":["PN-B"],"confirmedFacts":[],"openQuestions":["任意の追加確認"],"summary":"候補確認","needsClarification":false,"confirmation":{"prompt":"組立工程のPN-Bで続けますか？","title":"PN-B組立","relatedIdentifiers":["PN-B"]}}' } })}\n\n`
     ].join(''), { headers: { 'content-type': 'text/event-stream' } }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'business-hermes-chat', timeoutMs: 5_000 } });
-    const result = await service.chat({ consultationId, message: '候補を確認してください' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '候補を確認してください' });
     expect(result.needsClarification).toBe(false);
     expect(result.message).toBe('候補を確認しました');
     expect(result.consultation.openQuestions).toEqual([]);
@@ -2391,7 +2395,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: '選択肢を進める', selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' } });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '選択肢を進める', selection: { prompt: 'どの処置を詳しく見ますか？', option: '処置の詳細を見る' } });
 
     expect(fixture.messages[0]).toMatchObject({
       content: '「処置の詳細を見る」が選択されました。',
@@ -2420,7 +2424,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, scanResolver,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    const result = await service.chat({ consultationId, message: 'バーコードの照合結果を確認してください。', scanValue: 'ORDER-SCAN-1' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: 'バーコードの照合結果を確認してください。', scanValue: 'ORDER-SCAN-1' });
 
     expect(scanResolver.resolve).toHaveBeenCalledWith('ORDER-SCAN-1');
     expect(fixture.messages[0]).toMatchObject({
@@ -2432,7 +2436,7 @@ describe('BusinessHermesConsultationService', () => {
     expect(result.consultation.messages.at(-2)).toMatchObject({ scan });
     expect(result.confirmation).toEqual({ prompt: 'この候補で続けますか？', options: ['続ける', '別の内容を相談する'] });
 
-    await service.chat({ consultationId, message: '別の内容を相談する', selection: { prompt: 'この候補で続けますか？', option: '別の内容を相談する' } });
+    await service.chat({ caller: testCaller, consultationId, message: '別の内容を相談する', selection: { prompt: 'この候補で続けますか？', option: '別の内容を相談する' } });
     expect(scanResolver.resolve).toHaveBeenCalledOnce();
     expect(fixture.messages.at(-2)).toMatchObject({
       content: '「別の内容を相談する」が選択されました。',
@@ -2452,9 +2456,9 @@ describe('BusinessHermesConsultationService', () => {
     const fetchImpl = vi.fn().mockImplementation(() => new Response(responseBody));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    await service.chat({ consultationId, message: '最初の相談' });
+    await service.chat({ caller: testCaller, consultationId, message: '最初の相談' });
     fixture.row.summary = '前の製品ではなく、別工程を対象にする';
-    await service.chat({ consultationId, message: 'その訂正を踏まえて調べて' });
+    await service.chat({ caller: testCaller, consultationId, message: 'その訂正を踏まえて調べて' });
     const first = JSON.parse(fetchImpl.mock.calls[0]![1].body);
     const next = JSON.parse(fetchImpl.mock.calls[1]![1].body);
     expect(next.instructions).toBe(first.instructions);
@@ -2474,7 +2478,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, scanResolver,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
     const abort = new AbortController();
-    const request = service.chat({ consultationId, message: 'スキャンを確認してください。', scanValue: 'PENDING-SCAN', signal: abort.signal });
+    const request = service.chat({ caller: testCaller, consultationId, message: 'スキャンを確認してください。', scanValue: 'PENDING-SCAN', signal: abort.signal });
 
     await vi.waitFor(() => expect(scanResolver.resolve).toHaveBeenCalled());
     abort.abort();
@@ -2491,7 +2495,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, scanResolver,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
 
-    await expect(service.chat({ consultationId, message: 'スキャンを確認してください。', scanValue: 'FAILED-SCAN' })).resolves.toMatchObject({
+    await expect(service.chat({ caller: testCaller, consultationId, message: 'スキャンを確認してください。', scanValue: 'FAILED-SCAN' })).resolves.toMatchObject({
       status: 'unavailable',
       reasonCode: 'HERMES_SCAN_LOOKUP_UNAVAILABLE'
     });
@@ -2503,7 +2507,7 @@ describe('BusinessHermesConsultationService', () => {
     const text = '了解しました。相談を締め切ります。\n\n'+JSON.stringify({title:'相談終了',relatedIdentifiers:[],confirmedFacts:[],openQuestions:[],summary:'利用者が相談を終了。'});
     const fetchImpl = vi.fn().mockResolvedValue(new Response('data: '+JSON.stringify({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}})+'\n\n'));
     const service = new BusinessHermesConsultationService({db:fixture.db as never,fetchImpl,config:{baseUrl:'http://hermes.local',apiKey:'secret',model:'chat'}});
-    const response = await service.chat({consultationId,message:'ここで終わります'});
+    const response = await service.chat({ caller: testCaller,consultationId,message:'ここで終わります'});
     expect(response.status).toBe('ready');
     expect(response.message).toBe('了解しました。相談を締め切ります。');
     expect(response.consultation.summary).toBe('利用者が相談を終了。');
@@ -2522,7 +2526,7 @@ describe('BusinessHermesConsultationService', () => {
     }) + '\n\n'));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const result = await service.chat({ consultationId, message: '組立を確認したい' });
+    const result = await service.chat({ caller: testCaller, consultationId, message: '組立を確認したい' });
     expect(result.message).toBe(final.message);
     expect(result.confirmation).toEqual(final.confirmation);
     expect(result.consultation).toMatchObject({ title: final.title, summary: final.summary, openQuestions: final.openQuestions });
@@ -2539,12 +2543,12 @@ describe('BusinessHermesConsultationService', () => {
       const runtime = {ensureReady: vi.fn().mockResolvedValue(undefined), release: vi.fn().mockResolvedValue(undefined)};
       const service = new BusinessHermesConsultationService({db: fixture.db as never, fetchImpl, runtime: runtime as never,
         config: {baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx', timeoutMs: 500}});
-      const first = service.chat({consultationId, message: '時間切れになる調査'});
+      const first = service.chat({ caller: testCaller,consultationId, message: '時間切れになる調査'});
       await vi.advanceTimersByTimeAsync(501);
       expect((await first).reasonCode).toBe('HERMES_TIMEOUT');
       expect(runtime.release).toHaveBeenCalledTimes(1);
       fetchImpl.mockResolvedValueOnce(new Response('data: '+JSON.stringify({type:'response.completed',response:{status:'completed',output:[{type:'message',content:[{type:'output_text',text:'再開しました。'}]}]}})+'\n\n'));
-      const second = await service.chat({consultationId, message: '再開'});
+      const second = await service.chat({ caller: testCaller,consultationId, message: '再開'});
       expect(second.status).toBe('ready');
       expect(runtime.release).toHaveBeenCalledTimes(2);
     } finally { vi.useRealTimers(); }
@@ -2565,14 +2569,14 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx' } });
     const abort = new AbortController();
-    const first = service.chat({ consultationId, message: '準備中に中断', signal: abort.signal });
+    const first = service.chat({ caller: testCaller, consultationId, message: '準備中に中断', signal: abort.signal });
 
     await vi.waitFor(() => expect(runtime.ensureReady).toHaveBeenCalledWith('business_hermes'));
     abort.abort();
     await expect(first).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(fixture.db.businessHermesConsultation.update).not.toHaveBeenCalled();
-    const resumed = service.chat({ consultationId, message: '再開' });
+    const resumed = service.chat({ caller: testCaller, consultationId, message: '再開' });
     await Promise.resolve();
     expect(fetchImpl).not.toHaveBeenCalled();
     resolveReady();
@@ -2595,7 +2599,7 @@ describe('BusinessHermesConsultationService', () => {
       const fetchImpl = vi.fn();
       const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
         config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx', timeoutMs: 500 } });
-      const request = service.chat({ consultationId, message: '準備待ちで時間切れ' });
+      const request = service.chat({ caller: testCaller, consultationId, message: '準備待ちで時間切れ' });
 
       await vi.advanceTimersByTimeAsync(501);
       await expect(request).resolves.toMatchObject({ status: 'unavailable', reasonCode: 'HERMES_TIMEOUT' });
@@ -2618,7 +2622,7 @@ describe('BusinessHermesConsultationService', () => {
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, runtime,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', provider: 'dgx' } });
     const abort = new AbortController();
-    const request = service.chat({ consultationId, message: '準備失敗前に中断', signal: abort.signal });
+    const request = service.chat({ caller: testCaller, consultationId, message: '準備失敗前に中断', signal: abort.signal });
 
     await vi.waitFor(() => expect(runtime.ensureReady).toHaveBeenCalled());
     abort.abort();
@@ -2641,9 +2645,11 @@ describe('BusinessHermesConsultationService', () => {
     }) + '\n\n'));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, activeAssetLookup,
       config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat' } });
-    const request = service.chat({ consultationId, message: '調査してください' });
+    const request = service.chat({ caller: testCaller, consultationId, message: '調査してください' });
     await vi.waitFor(() => expect(activeAssetLookup).toHaveBeenCalled());
-    const cancellation = service.cancel(consultationId);
+    const abortSpy = vi.spyOn(AbortController.prototype, 'abort');
+    const cancellation = service.cancel(consultationId, testCaller);
+    await vi.waitFor(() => expect(abortSpy).toHaveBeenCalled());
     finishLookup([]);
     expect(await cancellation).toBe(true);
     expect((await request).status).toBe('unavailable');
@@ -2660,13 +2666,13 @@ describe('BusinessHermesConsultationService', () => {
     }));
     const service = new BusinessHermesConsultationService({ db: fixture.db as never, fetchImpl, config: { baseUrl: 'http://hermes.local', apiKey: 'secret', model: 'chat', timeoutMs: 5_000 } });
     const abort = new AbortController();
-    const first = service.chat({ consultationId, message: '中断対象', signal: abort.signal });
+    const first = service.chat({ caller: testCaller, consultationId, message: '中断対象', signal: abort.signal });
     await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalled());
-    const busy = await service.chat({ consultationId, message: '同時実行' });
+    const busy = await service.chat({ caller: testCaller, consultationId, message: '同時実行' });
     expect(busy.reasonCode).toBe('HERMES_CONSULTATION_BUSY');
-    expect(await service.cancel(consultationId)).toBe(true);
+    expect(await service.cancel(consultationId, testCaller)).toBe(true);
     const cancelled = await first;
-    expect(await service.cancel(consultationId)).toBe(false);
+    expect(await service.cancel(consultationId, testCaller)).toBe(false);
     expect(cancelled.reasonCode).toBe('HERMES_TIMEOUT');
     expect(resolveFetch).toBeDefined();
   });

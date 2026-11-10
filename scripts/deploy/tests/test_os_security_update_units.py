@@ -51,7 +51,7 @@ class OSUpdateUnitTests(unittest.TestCase):
                              'Nice=10', 'IOSchedulingClass=idle', 'TimeoutStartSec=2h'):
                     self.assertIn(line, service.splitlines())
                 config = json.loads(self.render('raspi-os-security-update.conf', variables))
-                self.assertEqual(config['mode'], 'dry-run')
+                self.assertEqual(config['mode'], 'apply')
                 self.assertEqual(config['browserUnit'], browser)
                 self.assertEqual(config['blacklist'], self.variables['os_security_update_package_blacklist'])
                 self.assertEqual(config['allowlist'], ['^chromium', '^rpi-chromium-mods$'])
@@ -62,23 +62,23 @@ class OSUpdateUnitTests(unittest.TestCase):
                 self.assertEqual(config['lockPath'], '/run/lock/raspi-os-security-update.lock')
                 self.assertEqual(config['stateDir'], '/var/lib/raspi-os-security-update')
 
-    def test_every_host_is_enabled_and_only_the_canary_applies(self):
+    def test_every_host_is_enabled_and_applies(self):
         self.assertTrue(self.variables['os_security_update_enabled'])
-        self.assertEqual(self.variables['os_security_update_mode'], 'dry-run')
+        self.assertEqual(self.variables['os_security_update_mode'], 'apply')
         self.assertNotIn('unattended_upgrades_enabled', self.variables)
-        apply_hosts = []
+        dry_run_hosts = []
 
         def visit(group):
             for name, variables in group.get('hosts', {}).items():
                 variables = variables or {}
                 self.assertNotIn('unattended_upgrades_enabled', variables)
-                if variables.get('os_security_update_mode', self.variables['os_security_update_mode']) == 'apply':
-                    apply_hosts.append(name)
+                if variables.get('os_security_update_mode', self.variables['os_security_update_mode']) != 'apply':
+                    dry_run_hosts.append(name)
             for child in group.get('children', {}).values():
                 visit(child)
 
         visit(tasks('inventory.yml')['all'])
-        self.assertEqual(apply_hosts, ['raspi4-assembly-02'])
+        self.assertEqual(dry_run_hosts, [])
 
     def test_shared_policy_import_is_nonfatal_and_post_health_in_every_role(self):
         for role, entry in [('release_pi5', 'main'), ('release_kiosk', 'main'), ('release_signage', 'health')]:
@@ -131,6 +131,28 @@ class OSUpdateUnitTests(unittest.TestCase):
         self.assertIn("(ansible_failed_result.msg | default('unknown') | string)[:300]", message)
         self.assertNotIn('always', policy)
 
+    def assert_shared_pi4_guard(self, source):
+        # The shared Pi4 preparation and its failure cleanup take the marker
+        # before the first mutation and always clear it. A preparation failure,
+        # including a marker lock timeout, is only recorded so the aggregate
+        # play stops every kiosk before any switch.
+        def nested(items):
+            for item in items:
+                if any(key in item for key in ('block', 'rescue', 'always')):
+                    if item.get('block') and item['block'][0].get('ansible.builtin.import_tasks') == START:
+                        yield item
+                    for key in ('block', 'rescue', 'always'):
+                        yield from nested(item.get(key, []))
+        guards = list(nested(source))
+        self.assertEqual(len(guards), 1)
+        guard = guards[0]
+        self.assertGreater(len(guard['block']), 1)
+        self.assertEqual(guard['always'][0]['ansible.builtin.import_tasks'], END)
+        self.assertNotIn('when', guard['always'][0])
+        for task in guard.get('rescue', []):
+            self.assertEqual(set(task), {'name', 'ansible.builtin.set_fact'})
+            self.assertFalse(task['ansible.builtin.set_fact']['release_pi4_prepared_this_run'])
+
     def assert_guard(self, source):
         self.assertEqual(len(source), 1)
         guard = source[0]
@@ -145,13 +167,19 @@ class OSUpdateUnitTests(unittest.TestCase):
         for role in ('release_pi5', 'release_kiosk', 'release_signage'):
             with self.subTest(role=role):
                 self.assert_guard(tasks(f'roles/{role}/tasks/main.yml'))
-        # PREPARED, QUIESCED and FINALIZE bypass main; cover their rescue too.
+        # PREPARED, QUIESCED, FINALIZE and the shared Pi4 preparation bypass
+        # main; cover their rescue too.
         plays = tasks('playbooks/deploy-release-standard.yml')
         guarded = [play for play in plays if 'tasks' in play]
-        self.assertEqual(len(guarded), 8)
+        self.assertEqual(len(guarded), 10)
+        shared = {'Prepare every selected normal Pi4 before switching waves',
+                  'Require every normal Pi4 candidate before switching any kiosk'}
         for play in guarded:
             with self.subTest(play=play['name']):
-                self.assert_guard(play['tasks'])
+                if play['name'] in shared:
+                    self.assert_shared_pi4_guard(play['tasks'])
+                else:
+                    self.assert_guard(play['tasks'])
         start = tasks('tasks/os-security-update-release-start.yml')
         self.assertEqual(start[0]['ansible.builtin.file']['mode'], '0755')
         marker = start[1]['ansible.builtin.copy']

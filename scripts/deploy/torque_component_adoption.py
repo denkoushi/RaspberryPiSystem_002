@@ -16,6 +16,7 @@ from pathlib import Path
 
 try:
     from .release_artifact_contract import (
+        GHCR_NAMESPACE,
         FULL_SHA_RE,
         SHA256_RE,
         TORQUE_ADOPTED_SOURCE_SHA,
@@ -27,6 +28,7 @@ try:
     )
 except ImportError:  # Direct script execution from scripts/deploy.
     from release_artifact_contract import (
+        GHCR_NAMESPACE,
         FULL_SHA_RE,
         SHA256_RE,
         TORQUE_ADOPTED_SOURCE_SHA,
@@ -47,9 +49,9 @@ ORIGINAL_SOURCE_SHA = TORQUE_ADOPTED_SOURCE_SHA
 ORIGINAL_WORKFLOW = TORQUE_ORIGINAL_WORKFLOW
 ORIGINAL_RUN_ID = TORQUE_ORIGINAL_RUN_ID
 ORIGINAL_JOB_ID = TORQUE_ORIGINAL_JOB_ID
-INDEX_DIGEST = "sha256:d84e19c7f28b45303ac94d5e941eeb2007f18c92c715a088bb31a372d5b8017e"
-ARM64_DIGEST = "sha256:84e3ee17a2da2a3c64c6daf921f6abdcafcbf33d8250a8200659e43fee967432"
-ARMV7_DIGEST = "sha256:2a6697bf84a54b2d2223d0f3b5725f555e77e3560407ccf92cc98cb51221fb90"
+INDEX_DIGEST = "sha256:46fe8df32a27073736534e532009195371c262e6ba37bc024962bf7ba1160b8e"
+ARM64_DIGEST = "sha256:5752fd6e894f6fdf0d33f252309a98ff1e8108a00e207f4394c18e187a046269"
+ARMV7_DIGEST = "sha256:f58fc89029b0138df9ee28d141c65508554bacaa01c74ef8beeac2ca92f4f030"
 
 
 class AdoptionError(ValueError):
@@ -161,7 +163,7 @@ def adoption_predicate(
         "predicateType": TORQUE_ADOPTION_PREDICATE_TYPE,
         "component": "torque-agent",
         "subject": {
-            "repository": "ghcr.io/denkoushi/raspisys-torque-agent",
+            "repository": f"{GHCR_NAMESPACE}/raspisys-torque-agent",
             "indexDigest": INDEX_DIGEST,
             "platforms": [
                 {"platform": name, "digest": digest}

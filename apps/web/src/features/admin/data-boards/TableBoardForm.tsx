@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 import { getApiErrorMessage } from '../../../api/errors';
+import { useAuth } from '../../../contexts/AuthContext';
 import { toUnifiedColumns } from '../csv-dashboards/csvDashboardFormModel';
 import { CsvDashboardPreviewSection } from '../csv-dashboards/CsvDashboardPreviewSection';
 import { CsvDashboardUploadSection } from '../csv-dashboards/CsvDashboardUploadSection';
@@ -23,6 +24,7 @@ const TYPE_LABEL: Record<string, string> = { string: '文字', number: '数値',
  * 状態と保存は既存の useCsvDashboardEditor をそのまま使う（保存形式は変えない）。
  */
 export function TableBoardForm({ editor, selected, onSaved }: { editor: CsvDashboardEditor; selected: CsvDashboard; onSaved: () => void }) {
+  const { user } = useAuth();
   const [tab, setTab] = useState<Tab>('columns');
   const isTable = selected.templateType === 'TABLE';
   const columns = toUnifiedColumns(editor.normalizedColumnDefinitions, isTable ? editor.tableDisplayColumns : editor.normalizedColumnDefinitions.map((column) => column.internalName));
@@ -208,7 +210,7 @@ export function TableBoardForm({ editor, selected, onSaved }: { editor: CsvDashb
             <label className="sh-flbl" htmlFor="sh-tb-gmail">
               Gmail の件名（この件名のメールから CSV を取り込む）
             </label>
-            <input id="sh-tb-gmail" className="sh-input" value={editor.gmailSubjectPattern} placeholder="例: 生産日程_三島_研削工程" onChange={(e) => editor.setGmailSubjectPattern(e.target.value)} />
+            <input id="sh-tb-gmail" disabled={user?.role !== 'ADMIN'} className="sh-input" value={editor.gmailSubjectPattern} placeholder="例: 生産日程_三島_研削工程" onChange={(e) => editor.setGmailSubjectPattern(e.target.value)} />
           </div>
           <details className="sh-details" open>
             <summary>CSV を手動で取り込む</summary>

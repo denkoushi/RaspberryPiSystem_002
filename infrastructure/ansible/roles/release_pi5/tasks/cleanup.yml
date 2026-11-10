@@ -57,6 +57,7 @@
     - release_pi5_route | default('') == 'fresh'
     - release_pi5_business_hermes_existing_id | default('') | trim | length > 0
     - not (release_pi5_business_hermes_existing_running | default(false) | bool)
+    - not (release_pi5_business_hermes_image_transition_rolled_back | default(false) | bool)
     - release_pi5_business_hermes_after_failure_state.stdout | default('false') | trim == 'true'
 
 - name: Remove a business Hermes runtime created by a failed fresh release
