@@ -98,7 +98,7 @@ async function readProjectionSource(tx: Prisma.TransactionClient, fseibans: stri
   return { rows, details, pieceSets };
 }
 async function projection(tx: Prisma.TransactionClient, siteKey: string, key: SessakuPieceLogicalKey, allSiteRows = false,
-  source?: Awaited<ReturnType<typeof readProjectionSource>>, audit?: PieceAuditContext) {
+  source?: Awaited<ReturnType<typeof readProjectionSource>>, audit?: PieceAuditContext, dueSource?: 'excel' | 'scaw') {
   const state = await tx.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
   const fseibans = allSiteRows ? [...stateOrder(state), key.fseiban] : [key.fseiban];
   const shared = source ?? await readProjectionSource(tx, fseibans);
@@ -110,7 +110,7 @@ async function projection(tx: Prisma.TransactionClient, siteKey: string, key: Se
   const ranks = await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
   const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
   const resourceCapacity = await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
-  const input = { resourceMinutes, resourceCapacity, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
+  const input = { dueSource, resourceMinutes, resourceCapacity, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
   return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides }));
 }
@@ -157,7 +157,7 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   }
   return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
 }
-async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[], audit?: PieceAuditContext) {
+async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[], audit?: PieceAuditContext, dueSource?: 'excel' | 'scaw') {
   const started = performance.now();
   try {
     const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites } } });
@@ -165,7 +165,7 @@ async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], 
     const laneScope = await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed, later));
     const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...states.flatMap(stateOrder)])], audit, laneScope);
     const before = new Map<string, Awaited<ReturnType<typeof projection>>>();
-    for (const site of sites) before.set(site, await projection(tx, site, key, true, source, audit));
+    for (const site of sites) before.set(site, await projection(tx, site, key, true, source, audit, dueSource));
     return before;
   } finally {
     if (audit?.timing) audit.timing.beforeProjectionMs += performance.now() - started;
@@ -278,7 +278,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
   }
 }
 
-async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
+async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
   external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
@@ -345,7 +345,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
       if ((set?.version ?? 0) !== params.expectedPieceSetVersion) conflict();
       const laterBefore = await readLaterPieceAuditSnapshots(tx, [key]);
       if (params.audit?.timing) params.audit.timing.siteCount = sites.length;
-      const current = await timed(params.audit, 'beforeProjectionMs', () => projection(tx, params.siteKey, key));
+      const current = await timed(params.audit, 'beforeProjectionMs', () => projection(tx, params.siteKey, key, false, undefined, undefined, params.dueSource));
       const writeStarted = performance.now();
       const beforeProjectionMs = params.audit?.timing?.beforeProjectionMs ?? 0;
       const { saved, result } = await (async () => {
@@ -358,7 +358,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
           if (params.audit?.timing) params.audit.timing.writeMs += performance.now() - writeStarted - (params.audit.timing.beforeProjectionMs - beforeProjectionMs);
         }
       })();
-      const after = await timed(params.audit, 'afterProjectionMs', () => projection(tx, params.siteKey, key));
+      const after = await timed(params.audit, 'afterProjectionMs', () => projection(tx, params.siteKey, key, false, undefined, undefined, params.dueSource));
       if (params.audit) Object.assign(params.audit, { resultPieceIds: [...new Set([...(params.audit.pieceIds ?? []), ...(saved?.pieces ?? []).filter((p) => !set?.pieces.some((before) => before.id === p.id)).map((p) => p.id)])], resultVersion: saved?.version ?? 0, afterJson: { ...params.audit.afterJson, count: saved?.pieces.length ?? 0, quantities: (saved?.pieces ?? []).map((p) => p.quantity), pieceIds: (saved?.pieces ?? []).map((p) => p.id), completedPieceIds: (saved?.pieces ?? []).filter((p) => p.isCompleted).map((p) => p.id), plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null } });
       if (params.audit) {
         const changes = collectLaterPiecePropagationAudits(laterBefore, await readLaterPieceAuditSnapshots(tx, [key], laterBefore), params.siteKey);
@@ -434,7 +434,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     }
     await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
-    const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit);
+    const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit, params.dueSource);
     await rememberPieceHistory(tx, c.key);
     const set = c.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(c.key), plannedQuantity: total } });
     const pieces = c.set?.pieces ?? [];
@@ -475,7 +475,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     // Merging every piece removes the later sets as a whole, including pieces no longer linked to a cutting piece.
     await assertNoOperationCompletions(tx, [...params.pieceIds, ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => all || (piece.sourcePieceId && params.pieceIds.includes(piece.sourcePieceId))).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
-    const before = await beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), c.later, params.audit);
+    const before = await beforeProjections(tx, c.sites, c.key, params.pieceIds.map((id) => `piece:${id}`), c.later, params.audit, params.dueSource);
     await rememberPieceHistory(tx, c.key);
     await removeLaterPieces(tx, c.later, params.pieceIds);
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });

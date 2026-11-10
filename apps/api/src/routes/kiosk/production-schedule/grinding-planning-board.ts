@@ -1,3 +1,4 @@
+import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
@@ -38,7 +39,7 @@ const scheduleSourceSchema = z.enum(['general', 'dCompany', 'both']).default('bo
 
 const querySchema = z.object({
   scheduleSource: scheduleSourceSchema,
-  dueSource: z.enum(['excel', 'scaw']).default('excel'),
+  dueSource: grindingPlanningBoardDueSourceSchema,
   view: z.enum(['seiban', 'resource']).default('seiban'),
   category: grindingPlanningBoardCategorySchema,
   includePieces: z.enum(['true', 'false']).optional().transform((value) => value === 'true'),
@@ -76,6 +77,7 @@ const dueSchema = z.discriminatedUnion('kind', [
 const specialDueSchema = z.enum(['today', 'overnight']);
 
 const overridesBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   sourceRevision: sourceRevisionSchema,
   items: z.array(z.object({
     itemId: z.string().min(1).max(2_000),
@@ -88,12 +90,14 @@ const overridesBodySchema = z.object({
 });
 
 const arrivalBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   itemId: z.string().min(1).max(1000),
   itemRevision: z.string().min(1).max(200),
   overrideVersion: z.number().int().min(0).optional()
 });
 
 const pinsBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   sourceRevision: sourceRevisionSchema,
   items: z.array(z.object({
     itemId: z.string().min(1).max(2_000),
@@ -104,6 +108,7 @@ const pinsBodySchema = z.object({
 });
 
 const rankBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   sourceRevision: sourceRevisionSchema,
   itemId: z.string().min(1).max(2_000),
   itemRevision: z.string().min(1).max(200),
@@ -112,6 +117,7 @@ const rankBodySchema = z.object({
 });
 
 const resourceOrderBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   scheduleSource: scheduleSourceSchema,
   sourceRevision: sourceRevisionSchema,
   itemId: z.string().min(1).max(2_000),
@@ -124,6 +130,7 @@ const resourceOrderBodySchema = z.object({
 });
 
 const resourceOrderBulkBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
   scheduleSource: scheduleSourceSchema,
   sourceRevision: sourceRevisionSchema,
   resourceCd: z.string().trim().min(1).max(20),

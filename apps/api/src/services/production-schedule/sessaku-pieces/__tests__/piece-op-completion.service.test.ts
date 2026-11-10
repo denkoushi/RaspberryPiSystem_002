@@ -49,7 +49,7 @@ let set: SessakuPieceSet;
 let definitions: { opNo: number }[];
 let completed: Set<number>;
 let detail: GrindingPlanningBoardProjectionRowDetail;
-const projection = () => projectGrindingPlanningBoard({ rows: [row], details: new Map([['row', detail]]), overrides: new Map(),
+const projection = (dueSource?: 'excel' | 'scaw') => projectGrindingPlanningBoard({ dueSource, rows: [row], details: new Map([['row', detail]]), overrides: new Map(),
   pieceSets: new Map([[encodeSessakuPieceKey(key), set]]), ranks: { rows: new Map() }, category: 'all', view: 'resource', seibanOrder: ['S'], includePieces: true });
 const apply = (opNo: number, intent: 'complete' | 'incomplete' = 'complete', audit?: PieceAuditContext) => {
   const item = projection().items[0];
@@ -92,6 +92,17 @@ describe('piece operation completion transaction', () => {
     mocks.tx.productionScheduleSessakuPieceSet.update.mockImplementation(async () => { set.version += 1; });
     mocks.progress.mockImplementation(async () => ({ parentIsCompleted: set.pieces.every((piece) => piece.isCompleted) }));
   });
+  it.each(['scaw', undefined] as const)('completes and acknowledges a piece with dueSource=%s', async (dueSource) => {
+    detail.excelDueDate = new Date('2026-09-10');
+    detail.orderSupplements[0].plannedEndDate = new Date('2026-09-20');
+    const item = projection(dueSource).items[0]!;
+    expect(item.originalDueDate).toBe(dueSource === 'scaw' ? '2026-09-20' : '2026-09-10');
+    const response = await setSessakuPieceCompletion({ siteKey: 'site', pieceId: item.pieceId!,
+      expectedPieceSetVersion: set.version, itemRevision: item.itemRevision, intent: 'complete', dueSource });
+    expect(response.pieces[0]).toMatchObject({ isCompleted: true, originalDueDate: item.originalDueDate, effectiveDueDate: item.effectiveDueDate });
+    expect(response.pieces[0].itemRevision).toBe(projection(dueSource).items[0].itemRevision);
+  });
+
   it.each(['resource off', 'quantity outside range', 'predecessor'])(
     'distinguishes temporary eligibility from structural eligibility under the lot lock: %s', async (reason) => {
       vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');

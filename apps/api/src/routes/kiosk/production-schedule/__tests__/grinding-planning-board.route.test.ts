@@ -97,6 +97,33 @@ function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unkno
   }).then(() => app);
 }
 
+describe('planning board write due source', () => {
+  afterEach(() => vi.resetAllMocks());
+  const cases = [
+    ['overrides', 'updateOverrides', { sourceRevision: 'r', items: [{ itemId: 'a', itemRevision: 'r1' }] }],
+    ['pins', 'updatePins', { sourceRevision: 'r', items: [{ itemId: 'a', itemRevision: 'r1' }], pinned: true }],
+    ['rank', 'updateRank', { sourceRevision: 'r', itemId: 'a', itemRevision: 'r1', alternateRank: 1 }],
+    ['resource-order', 'updateResourceOrder', { sourceRevision: 'r', itemId: 'a', itemRevision: 'r1', targetItemId: 'b', targetItemRevision: 'r2', placement: 'before' }],
+    ['resource-order/bulk', 'updateResourceOrderBulk', { sourceRevision: 'r', resourceCd: '305', items: [{ itemId: 'a', itemRevision: 'r1' }] }],
+    ['arrival', 'updateArrival', { itemId: 'a', itemRevision: 'r1' }],
+    ['first-process-arrival', 'updateFirstProcessArrival', { itemId: 'a', itemRevision: 'r1', state: 'arrived' }]
+  ] as const;
+  it.each(cases)('validates and forwards dueSource for %s', async (endpoint, mock, payload) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks[mock].mockResolvedValue({ items: [] });
+    try {
+      for (const dueSource of [undefined, 'excel', 'scaw', 'invalid']) {
+        mocks[mock].mockClear();
+        const response = await app.inject({ method: 'PUT', url: `/kiosk/production-schedule/grinding-planning-board/${endpoint}`,
+          payload: { ...payload, ...(dueSource === undefined ? {} : { dueSource }) } });
+        expect(response.statusCode).toBe(dueSource === 'invalid' ? 400 : 200);
+        if (dueSource === 'invalid') expect(mocks[mock]).not.toHaveBeenCalled();
+        else expect(mocks[mock]).toHaveBeenCalledWith(expect.objectContaining({ dueSource: dueSource ?? 'excel' }));
+      }
+    } finally { await app.close(); }
+  });
+});
+
 describe('grinding planning board process chips', () => {
   const url = '/kiosk/production-schedule/grinding-planning-board/process-chips';
   const part = { fseiban: 'ORDER-1', productNo: '001', fhincd: 'PART-1' };
@@ -373,6 +400,7 @@ describe('grinding planning board route scope', () => {
       });
       expect(response.statusCode).toBe(200);
       expect(mocks.updateResourceOrder).toHaveBeenCalledWith({
+        dueSource: 'excel',
         scheduleSource: 'both',
         siteKey: 'site-a',
         sourceRevision: 'board-revision',
@@ -473,7 +501,7 @@ describe('bulk resource order route', () => {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-order/bulk', payload: { ...payload, siteKey: 'foreign' } });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(result);
-      expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a', scheduleSource: 'both' });
+      expect(mocks.updateResourceOrderBulk).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'site-a', scheduleSource: 'both' });
     } finally { await app.close(); }
   });
   it.each([0, 501, 2])('rejects invalid size or duplicate IDs: %i', async (count) => {
@@ -506,7 +534,7 @@ describe('grinding planning board pins route', () => {
       const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/pins', headers: { 'x-client-key': 'device-key' }, payload: { ...payload, siteKey: 'other-site' } });
       expect(response.statusCode).toBe(200); expect(response.json()).toEqual(result);
       expect(auth).toHaveBeenCalledWith('device-key');
-      expect(mocks.updatePins).toHaveBeenCalledWith({ ...payload, siteKey: 'site-a' });
+      expect(mocks.updatePins).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'site-a' });
     } finally { await app.close(); }
   });
   it.each([{ pinned: 'true' }, { items: [] }, { items: [{ itemId: 'a' }] }])('validates pin requests: %j', async (invalid) => {
@@ -563,7 +591,7 @@ describe('grinding planning board arrival', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(result);
       expect(auth).toHaveBeenCalledWith('key-1');
-      expect(mocks.updateArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, siteKey: 'site-a', recorded: method === 'PUT' });
+      expect(mocks.updateArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, dueSource: 'excel', siteKey: 'site-a', recorded: method === 'PUT' });
     } finally { await app.close(); }
   });
   it.each(['PUT', 'DELETE'] as const)('%s rejects invalid input and missing device authorization', async (method) => {
@@ -645,7 +673,7 @@ describe('grinding planning board first-process arrival', () => {
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual(result);
       expect(auth).toHaveBeenCalledWith('key-1');
-      expect(mocks.updateFirstProcessArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, state, siteKey: 'site-a' });
+      expect(mocks.updateFirstProcessArrival).toHaveBeenCalledExactlyOnceWith({ ...payload, dueSource: 'excel', state, siteKey: 'site-a' });
     } finally { await app.close(); }
   });
   it('rejects invalid states, item identity and missing authorization', async () => {

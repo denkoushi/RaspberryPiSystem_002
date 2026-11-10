@@ -18,11 +18,22 @@ async function app(authenticated = true, logs: unknown[] = []) {
 }
 afterEach(() => vi.resetAllMocks());
 describe('sessaku piece routes', () => {
+  it.each([undefined, 'excel', 'scaw', 'invalid'])('validates dueSource=%s for piece split', async (dueSource) => {
+    const instance = await app(); mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
+    try {
+      const payload = { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64),
+        ...(dueSource === undefined ? {} : { dueSource }) };
+      const response = await instance.inject({ method: 'POST', url: `${base}/split`, payload });
+      expect(response.statusCode).toBe(dueSource === 'invalid' ? 400 : 200);
+      if (dueSource === 'invalid') expect(mocks.split).not.toHaveBeenCalled();
+      else expect(mocks.split).toHaveBeenCalledWith(expect.objectContaining({ dueSource: dueSource ?? 'excel' }));
+    } finally { await instance.close(); }
+  });
   it('uses authenticated site scope and forwards the split contract', async () => {
     const instance = await app(); mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
     const payload = { parentItemId: 'row:parent', quantities: [2, 3], expectedPieceSetVersion: 0, itemRevision: 'a'.repeat(64), siteKey: 'untrusted' };
     expect((await instance.inject({ method: 'POST', headers: { 'x-client-key': 'test-client' }, url: `${base}/split`, payload })).statusCode).toBe(200);
-    expect(mocks.split).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', audit: expect.objectContaining({ requestedQuantities: [2, 3], actorClientDeviceId: 'device-1', actorDeviceName: expect.any(String), requestId: expect.any(String) }) }); await instance.close();
+    expect(mocks.split).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'server-site', audit: expect.objectContaining({ requestedQuantities: [2, 3], actorClientDeviceId: 'device-1', actorDeviceName: expect.any(String), requestId: expect.any(String) }) }); await instance.close();
   });
   it.each([[0, 5], [-1, 6], [1.5, 3.5], [5]])('rejects invalid quantities %j', async (...quantities) => {
     const instance = await app();
@@ -65,7 +76,7 @@ describe('sessaku piece routes', () => {
     mocks.completion.mockResolvedValue({ parentIsCompleted: false });
     const payload = { intent: 'incomplete', expectedPieceSetVersion: 2, itemRevision: 'a'.repeat(64) };
     expect((await instance.inject({ method: 'PUT', headers: { 'x-client-key': 'test-client' }, url: `${base}/${pieceId}/completion`, payload })).statusCode).toBe(200);
-    expect(mocks.completion).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', pieceId, audit: expect.objectContaining({ action: 'uncomplete' }) }); await instance.close();
+    expect(mocks.completion).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'server-site', pieceId, audit: expect.objectContaining({ action: 'uncomplete' }) }); await instance.close();
   });
   it('authenticates automatic split and derives the site on the server', async () => {
     const instance = await app();
@@ -92,7 +103,7 @@ describe('sessaku piece routes', () => {
     const payload = { intent: 'incomplete', expectedPieceSetVersion: 2, itemRevision: 'a'.repeat(64), siteKey: 'untrusted' };
     mocks.opCompletion.mockResolvedValue({ parentIsCompleted: false });
     expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/20/completion`, payload })).statusCode).toBe(200);
-    expect(mocks.opCompletion).toHaveBeenCalledWith({ intent: 'incomplete', expectedPieceSetVersion: 2, itemRevision: payload.itemRevision,
+    expect(mocks.opCompletion).toHaveBeenCalledWith({ intent: 'incomplete', dueSource: 'excel', expectedPieceSetVersion: 2, itemRevision: payload.itemRevision,
       siteKey: 'server-site', pieceId, opNo: 20, audit: expect.objectContaining({ action: 'op_uncomplete' }) });
     for (const opNo of ['0', '21', '1.5', 'x']) {
       expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/${opNo}/completion`, payload })).statusCode).toBe(400);

@@ -468,6 +468,36 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.projectGrindingPlanningBoard.mock.results[0]?.value.items[0]).not.toHaveProperty('arrived');
   });
 
+  it.each(['scaw', undefined] as const)('matches GET and acknowledged revisions using dueSource=%s', async (dueSource) => {
+    const actual = await vi.importActual<typeof import('../grinding-planning-board-projection.js')>('../grinding-planning-board-projection.js');
+    mocks.projectGrindingPlanningBoard.mockImplementation(actual.projectGrindingPlanningBoard);
+    const [detail] = await mocks.prisma.csvDashboardRow.findMany();
+    const dueDetail = { ...detail, rowNotes: [], excelDueDate: new Date('2026-09-10'),
+      orderSupplements: [{ plannedQuantity: 1, plannedEndDate: new Date('2026-09-20') }] };
+    mocks.prisma.csvDashboardRow.findMany.mockResolvedValue([dueDetail]);
+    vi.spyOn(planningSource, 'readPlanningSource').mockResolvedValueOnce({ baseWhere: { strings: ['TRUE'], values: [] } as never,
+      generationToken: 'generation', rows: [mocks.sourceRow], details: new Map([[mocks.sourceRow.id, dueDetail]]), progressRows: [] });
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const board = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource', dueSource, includeLoad: false, snapshotStore });
+    const item = board.items[0]!;
+    expect(item.originalDueDate).toBe(dueSource === 'scaw' ? '2026-09-20' : '2026-09-10');
+    mocks.prisma.$transaction.mockImplementation(async (callback) => callback(mocks.prisma));
+    mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mockImplementation(async ({ create }) => ({ ...create, version: 1 }));
+    await expect(updateGrindingPlanningBoardPins({ siteKey: 'site-a', sourceRevision: board.sourceRevision,
+      dueSource: dueSource === 'scaw' ? undefined : 'scaw', items: [{ itemId: item.itemId, itemRevision: item.itemRevision }], pinned: true
+    })).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM' });
+    const result = await updateGrindingPlanningBoardPins({ siteKey: 'site-a', sourceRevision: board.sourceRevision, dueSource,
+      items: [{ itemId: item.itemId, itemRevision: item.itemRevision }], pinned: true });
+    const saved = result.items[0]!;
+    expect(saved).toMatchObject({ originalDueDate: item.originalDueDate, effectiveDueDate: item.effectiveDueDate, orderPinned: true });
+    expect(saved.itemRevision).not.toBe(item.itemRevision);
+    const projected = actual.projectGrindingPlanningBoard({ rows: [mocks.sourceRow], details: new Map([[mocks.sourceRow.id,
+      dueDetail]]),
+      overrides: new Map([[item.itemId, { ...mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert.mock.calls[0]![0].create, version: 1 }]]),
+      ranks: { rows: new Map() }, seibanOrder: ['ORDER-A'], category: 'grinding', dueSource });
+    expect(saved.itemRevision).toBe(projected.items[0]!.itemRevision);
+  });
+
   it('projects both categories, excludes invalid resources, and retains policy maps in snapshots', async () => {
     const actual = await vi.importActual<typeof import('../grinding-planning-board-projection.js')>('../grinding-planning-board-projection.js');
     mocks.projectGrindingPlanningBoard.mockImplementation(actual.projectGrindingPlanningBoard);

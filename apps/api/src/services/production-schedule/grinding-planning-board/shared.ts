@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
@@ -60,6 +61,7 @@ export type PlanningSnapshotGenerationDetails = {
   boardUpdatedAt: string;
 };
 export type CurrentProjection = {
+  dueSource?: 'excel' | 'scaw';
   resourceMinutes: GrindingPlanningBoardResourceMinutesResponse;
   state: PlanningState;
   byItemId: Map<string, GrindingPlanningBoardItem>;
@@ -217,3 +219,5 @@ export type AppliedOverrides = {
 export function planningBoardArrivalDate(now = new Date()): string {
   return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
+
+export const grindingPlanningBoardDueSourceSchema = z.enum(['excel', 'scaw']).default('excel');
