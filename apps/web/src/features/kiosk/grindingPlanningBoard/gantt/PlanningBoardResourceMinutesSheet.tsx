@@ -7,11 +7,14 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
 
 type Op = { opNo: number; minutes: number | null; setupMinutes: number | null };
-type Value = { perUnitMinutes: number | null; setupMinutes: number | null; ops: Op[]; baseOpIds: string[]; baseOpNos: number[]; usedOpNos: number[]; invalidFields?: string[]; saveBlocked?: boolean; clearOps?: boolean; resetRow?: boolean };
+type Snapshot = NonNullable<GrindingPlanningBoardResourcePartMinutesRequest['expectedMinutes']>;
+type Read = { baseMinutes: Snapshot | null; baseOpIds: string[] };
+type Value = { baseMinutes: Snapshot | null; perUnitMinutes: number | null; setupMinutes: number | null; ops: Op[]; baseOpIds: string[]; baseOpNos: number[]; usedOpNos: number[]; invalidFields?: string[]; saveBlocked?: boolean; awaitingRead?: { ignoredReads: Read[]; pending: boolean }; clearOps?: boolean; resetRow?: boolean };
 type Saved = GrindingPlanningBoardResourceMinutesResponse['values'][number];
-// Keep unfinished edits when the sheet closes or switches machines. Successful saves remove them.
+// Keep unfinished edits and offline saves awaiting their read snapshot across sheet closes.
 const drafts = new Map<string, Value>();
 type SaveQueue = {
+  uncertain?: GrindingPlanningBoardResourcePartMinutesRequest;
   saving: boolean;
   failed: boolean;
   queued: (() => void) | null;
@@ -26,13 +29,41 @@ function queueFor(key: string): SaveQueue {
   }
   return queue;
 }
+function releaseQueue(key: string, queue: SaveQueue) {
+  if (queues.get(key) === queue && !queue.listeners.size && !queue.saving && !queue.queued && !queue.failed && !drafts.has(key)) queues.delete(key);
+}
 const half = (value: number) => Math.round(value * 2) / 2;
-const empty = (): Value => ({ perUnitMinutes: null, setupMinutes: null, ops: [], baseOpIds: [], baseOpNos: [], usedOpNos: [] });
+const empty = (): Value => ({ baseMinutes: null, perUnitMinutes: null, setupMinutes: null, ops: [], baseOpIds: [], baseOpNos: [], usedOpNos: [] });
 const opIds = (saved?: Saved) => (saved?.ops ?? []).flatMap((op) => op.id ? [op.id] : []);
 const fromSaved = (saved?: Saved): Value => {
   const baseOpNos = (saved?.ops ?? []).map((op) => op.opNo);
-  return saved ? { ...saved, baseOpIds: opIds(saved), baseOpNos, usedOpNos: baseOpNos, ops: (saved.ops ?? []).map((op) => ({ ...op, setupMinutes: op.setupMinutes ?? null })) } : empty();
+  if (!saved) return empty();
+  const ops = (saved.ops ?? []).map((op) => ({ ...op, setupMinutes: op.setupMinutes ?? null }));
+  return {
+    ...saved,
+    baseMinutes: {
+      perUnitMinutes: saved.perUnitMinutes,
+      setupMinutes: saved.setupMinutes,
+      ops: ops.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes }))
+    },
+    baseOpIds: opIds(saved),
+    baseOpNos,
+    usedOpNos: baseOpNos,
+    ops
+  };
 };
+function sameRead(left: Read, right: Read) {
+  const a = left.baseMinutes;
+  const b = right.baseMinutes;
+  const close = (x: number | null, y: number | null) => x === null || y === null ? x === y : Math.abs(x - y) <= 1e-6;
+  return left.baseOpIds.length === right.baseOpIds.length && left.baseOpIds.every((id) => right.baseOpIds.includes(id)) &&
+    (a === null || b === null ? a === b : close(a.perUnitMinutes, b.perUnitMinutes) && close(a.setupMinutes, b.setupMinutes) &&
+      a.ops.length === b.ops.length && a.ops.every((op) => {
+        const other = b.ops.find((entry) => entry.opNo === op.opNo);
+        return other && close(op.minutes, other.minutes) && close(op.setupMinutes, other.setupMinutes);
+      }));
+}
+
 const setupOf = (value: Value) => value.ops.length ? value.ops.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) : value.setupMinutes ?? 0;
 const unitOf = (value: Value) => value.ops.length ? value.ops.reduce((sum, op) => sum + (op.minutes ?? 0), 0) : value.perUnitMinutes;
 const complete = (value: Value) => value.ops.length ? value.ops.every((op) => op.minutes !== null && op.minutes > 0) : value.perUnitMinutes !== null;
@@ -80,7 +111,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
   const value = draft ?? fromSaved(saved);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Value | null>(null);
-  const queue = queueFor(key);
+  const queue = useMemo(() => queueFor(key), [key]);
   const wasFrozen = useRef(frozen);
   useEffect(() => {
     if (wasFrozen.current && !frozen) {
@@ -96,34 +127,91 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
   save.current = (next) => {
     if (!gate.canWrite()) return;
     const generation = gate.generation();
-    if (drafts.get(key) !== next || next.saveBlocked || (!next.resetRow && !complete(next))) return;
+    if (drafts.get(key) !== next || next.awaitingRead?.pending || next.saveBlocked || (!next.resetRow && !complete(next))) return;
     if (queue.saving) { queue.queued = () => save.current(next); return; }
     queue.saving = true;
     const payload: GrindingPlanningBoardResourcePartMinutesRequest = {
-      resourceCd, fhincd, perUnitMinutes: unitOf(next), setupMinutes: setupOf(next), expectedOpIds: next.baseOpIds,
+      resourceCd, fhincd, perUnitMinutes: unitOf(next), setupMinutes: setupOf(next), expectedOpIds: next.baseOpIds, expectedMinutes: next.baseMinutes,
       ...(next.ops.length || next.clearOps || unitOf(next) === null ? { ops: next.ops.map((op) => ({ opNo: op.opNo, setupMinutes: op.setupMinutes, minutes: op.minutes! })) } : {})
     };
-    void gate.run(() => mutation.mutateAsync(payload)).then(async (response) => {
-      if (generation !== gate.generation()) return;
-      if (offline.enabled) await Promise.all(['board', 'load', 'resource-minutes'].map(offline.refreshRead));
+    const rememberRead = (response: GrindingPlanningBoardResourceMinutesResponse, pending: boolean) => {
+      const current = drafts.get(key);
+      if (current && offline.enabled && response.savedMinutes !== undefined) {
+        const ignoredReads = current.awaitingRead?.ignoredReads ?? [
+          { baseMinutes: current.baseMinutes, baseOpIds: current.baseOpIds }
+        ];
+        current.awaitingRead = { pending, ignoredReads: [...ignoredReads,
+          { baseMinutes: response.savedMinutes, baseOpIds: response.savedOpIds ?? current.baseOpIds }] };
+      }
+    };
+    let attempted = payload;
+    void gate.run(async () => {
+      if (queue.uncertain) {
+        attempted = queue.uncertain;
+        try {
+          const response = await mutation.mutateAsync(attempted);
+          if (generation !== gate.generation()) return response;
+          delete queue.uncertain;
+          if (JSON.stringify(payload) === JSON.stringify(attempted)) return response;
+          const current = drafts.get(key);
+          rememberRead(response, false);
+          if (response.savedMinutes !== undefined) {
+            payload.expectedMinutes = response.savedMinutes;
+            if (current) current.baseMinutes = response.savedMinutes;
+          }
+          if (response.savedOpIds !== undefined) {
+            payload.expectedOpIds = response.savedOpIds;
+            if (current) current.baseOpIds = response.savedOpIds;
+            if (current && response.savedOpNos !== undefined) current.baseOpNos = response.savedOpNos;
+          }
+        } catch (error: unknown) {
+          const status = isAxiosError(error) ? error.response?.status : undefined;
+          if (generation !== gate.generation() || status === undefined || status < 500 || status >= 600) throw error;
+          delete queue.uncertain;
+        }
+      }
+      attempted = payload;
+      return mutation.mutateAsync(payload);
+    }).then(async (response) => {
       if (generation !== gate.generation()) return;
       persisted.current = payload.perUnitMinutes !== null;
       queue.failed = false;
       const current = drafts.get(key);
-      if (current && current !== next && response.savedOpIds !== undefined) {
+      rememberRead(response, current === next);
+      if (current && response.savedMinutes !== undefined) current.baseMinutes = response.savedMinutes;
+      if (current && response.savedOpIds !== undefined) {
         // Queued saves hold this same draft object, including while the sheet is closed.
         current.baseOpIds = response.savedOpIds;
         if (response.savedOpNos !== undefined) current.baseOpNos = response.savedOpNos;
       }
       if (drafts.get(key) === next) {
-        drafts.delete(key);
-        queue.listeners.forEach((notify) => notify(next, false, true));
+        if (offline.enabled && response.savedMinutes !== undefined) {
+          drafts.set(key, { ...next });
+          queue.listeners.forEach((notify) => notify(next, false, false));
+        } else {
+          drafts.delete(key);
+          queue.listeners.forEach((notify) => notify(next, false, true));
+        }
       } else queue.listeners.forEach((notify) => notify(next, false, false));
+      if (offline.enabled) {
+        const results = await Promise.allSettled(['board', 'load', 'resource-minutes'].map((readKey) => offline.refreshRead(readKey)));
+        results.forEach((result) => {
+          if (result.status === 'rejected') console.warn('Planning board refresh after saving minutes failed', result.reason);
+        });
+      }
     }).catch((error: unknown) => {
       if (generation !== gate.generation()) return;
       const discard = isAxiosError(error) && error.response?.status === 409 &&
-        error.response.data?.errorCode === 'OPERATION_SET_CHANGED';
-      if (discard) { drafts.delete(key); queue.queued = null; }
+        ['OPERATION_SET_CHANGED', 'RESOURCE_MINUTES_CHANGED'].includes(error.response.data?.errorCode);
+      if (discard) {
+        drafts.delete(key); queue.queued = null; delete queue.uncertain;
+        if (offline.enabled) void offline.refreshRead('resource-minutes').catch((reason: unknown) => {
+          console.warn('Planning board refresh after minutes conflict failed', reason);
+        });
+      }
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      if (!discard && (status === undefined || status >= 500)) queue.uncertain = attempted;
+      else if (queue.uncertain === attempted) delete queue.uncertain;
       queue.failed = true;
       queue.listeners.forEach((notify) => notify(next, true, discard));
     }).finally(() => {
@@ -131,12 +219,15 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
       const nextQueued = queue.queued;
       queue.queued = null;
       if (generation === gate.generation() && gate.canWrite()) nextQueued?.();
+      releaseQueue(key, queue);
     });
   };
   useEffect(() => {
-    const queue = queueFor(key);
+    // StrictMode can release this queue during effect cleanup; reuse the rendered queue.
+    queues.set(key, queue);
     const notify = (_next: Value, failed: boolean, discard: boolean) => {
       setError(failed);
+      if (!discard) setDraft(drafts.get(key) ?? null);
       if (discard) {
         setDraft(null); opsChange.current(fhincd, undefined);
         if (failed) setInputVersion((version) => version + 1);
@@ -157,13 +248,25 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
         drafts.set(key, restored);
         if (complete(restored) || restored.resetRow) save.current(restored);
       } else if (pending.current) save.current(pending.current);
+      releaseQueue(key, queue);
     };
-  }, [key, fhincd]);
+  }, [key, fhincd, queue]);
+  useEffect(() => {
+    if (!draft?.awaitingRead?.pending) return;
+    const read = fromSaved(saved);
+    if (!sameRead(draft, read) && draft.awaitingRead.ignoredReads.some((ignored) => sameRead(ignored, read))) return;
+    if (drafts.get(key) !== draft) return;
+    drafts.delete(key);
+    setDraft(null);
+    onOpsChange(fhincd, undefined);
+    releaseQueue(key, queue);
+  }, [draft, saved, key, fhincd, onOpsChange, queue]);
   useEffect(() => {
     const discard = () => {
       if (timer.current) clearTimeout(timer.current);
       pending.current = null;
       queue.queued = null;
+      delete queue.uncertain;
       drafts.delete(key);
     };
     if (frozen) discard();
@@ -171,6 +274,8 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
   }, [frozen, gate, key, queue]);
   const change = (next: Value, reset = false, clearOps = false, cancelSave = false) => {
     if (!gate.attempt()) return;
+    next.awaitingRead = value.awaitingRead ? { ...value.awaitingRead, pending: false } : undefined;
+    next.baseMinutes = value.baseMinutes;
     next.baseOpIds = value.baseOpIds;
     next.baseOpNos = value.baseOpNos;
     next.usedOpNos = [...new Set([...value.usedOpNos, ...value.baseOpNos, ...next.ops.map((op) => op.opNo)])];

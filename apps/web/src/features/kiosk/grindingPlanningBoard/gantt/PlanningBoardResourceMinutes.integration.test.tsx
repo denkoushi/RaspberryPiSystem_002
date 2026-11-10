@@ -37,6 +37,30 @@ function setup(part: string, initial: Settings) {
 }
 afterEach(() => { vi.useRealTimers(); vi.resetAllMocks(); vi.restoreAllMocks(); });
 describe('resource minutes sheet with real save hook', () => {
+  it('retries a lost operation addition before saving a later edit with returned IDs', async () => {
+    vi.useFakeTimers();
+    const part = 'LOST-ADDITION';
+    const initial = settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }]);
+    const added = { ...settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }, { id: 'created-2', opNo: 2, minutes: 2 }]),
+      savedOpIds: ['old-1', 'created-2'], savedOpNos: [1, 2],
+      savedMinutes: { perUnitMinutes: 3, setupMinutes: 0, ops: [
+        { opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 2, minutes: 2, setupMinutes: null }
+      ] } };
+    mocks.save.mockRejectedValueOnce(new Error('response lost')).mockResolvedValue(added);
+    const { element } = setup(part, initial);
+    render(element);
+    fireEvent.click(screen.getByText('＋工程'));
+    fireEvent.change(screen.getByLabelText(`${part} 2工程 1台`), { target: { value: '2' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(`${part} 2工程 1台`), { target: { value: '3' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(mocks.save).toHaveBeenCalledTimes(3);
+    expect(mocks.save.mock.calls[1][0]).toEqual(mocks.save.mock.calls[0][0]);
+    expect(mocks.save.mock.calls[2][0]).toMatchObject({ expectedOpIds: added.savedOpIds,
+      expectedMinutes: added.savedMinutes, ops: [{ opNo: 1, minutes: 1 }, { opNo: 2, minutes: 3 }] });
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
   it('follows an external cache update after saving without blur and sends the displayed value next', async () => {
     vi.useFakeTimers();
     const part = 'FOCUSED-CACHE';
@@ -59,11 +83,11 @@ describe('resource minutes sheet with real save hook', () => {
     fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '5' } });
     await act(async () => vi.advanceTimersByTime(400));
     expect(mocks.save).toHaveBeenCalledTimes(2);
-    expect(mocks.save.mock.lastCall?.[0]).toEqual(expect.objectContaining({ perUnitMinutes: 25, setupMinutes: 5 }));
+    expect(mocks.save.mock.lastCall?.[0]).toEqual(expect.objectContaining({ perUnitMinutes: 25, setupMinutes: 5, expectedMinutes: { perUnitMinutes: 25, setupMinutes: 0, ops: [] } }));
   });
-  it('sends base operation IDs on an operation-free save and discards queued edits on conflict', async () => {
+  it.each(['OPERATION_SET_CHANGED', 'RESOURCE_MINUTES_CHANGED'])('discards queued edits and refreshes after conflict: %s', async (errorCode) => {
     vi.useFakeTimers();
-    const part = 'NO-OPS-CONFLICT';
+    const part = `NO-OPS-CONFLICT-${errorCode}`;
     const initial = settings(part, []);
     const remote = settings(part, [{ id: 'remote-1', opNo: 1, minutes: 4 }, { id: 'remote-2', opNo: 2, minutes: 6 }]);
     let reject!: (error: unknown) => void;
@@ -75,11 +99,12 @@ describe('resource minutes sheet with real save hook', () => {
     await act(async () => vi.advanceTimersByTime(400));
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(mocks.save.mock.calls[0][0]).toEqual({
-      resourceCd: '021', fhincd: part, perUnitMinutes: 10, setupMinutes: 0, expectedOpIds: []
+      resourceCd: '021', fhincd: part, perUnitMinutes: 10, setupMinutes: 0, expectedOpIds: [],
+      expectedMinutes: { perUnitMinutes: 0, setupMinutes: 0, ops: [] }
     });
     fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '11' } });
     await act(async () => vi.advanceTimersByTime(400));
-    await act(async () => reject({ isAxiosError: true, response: { status: 409, data: { errorCode: 'OPERATION_SET_CHANGED' } } }));
+    await act(async () => reject({ isAxiosError: true, response: { status: 409, data: { errorCode } } }));
     await act(async () => vi.advanceTimersByTime(1));
     expect(mocks.save).toHaveBeenCalledTimes(1);
     expect(client.getQueryData(key)).toEqual(remote);
@@ -91,7 +116,7 @@ describe('resource minutes sheet with real save hook', () => {
     const part = `TRANSACTION-IDS-${legacy}`;
     const initial = settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }]);
     const remote = settings(part, [{ id: 'remote-1', opNo: 1, minutes: 9 }]);
-    const response = { ...remote, ...(!legacy ? { savedOpIds: ['own-1'], savedOpNos: [1] } : {}) };
+    const response = { ...remote, ...(!legacy ? { savedOpIds: ['own-1'], savedOpNos: [1], savedMinutes: { perUnitMinutes: 2, setupMinutes: 0, ops: [{ opNo: 1, minutes: 2, setupMinutes: null }] } } : {}) };
     let finish!: (value: Settings) => void;
     mocks.save.mockReturnValueOnce(new Promise<Settings>((resolve) => { finish = resolve; })).mockResolvedValue(response);
     const { element } = setup(part, initial);
@@ -102,17 +127,20 @@ describe('resource minutes sheet with real save hook', () => {
     await act(async () => vi.advanceTimersByTime(400));
     await act(async () => finish(response));
     expect(mocks.save).toHaveBeenCalledTimes(2);
-    expect(mocks.save.mock.lastCall?.[0]).toEqual(expect.objectContaining({ expectedOpIds: [legacy ? 'old-1' : 'own-1'] }));
+    expect(mocks.save.mock.lastCall?.[0]).toEqual(expect.objectContaining({ expectedOpIds: [legacy ? 'old-1' : 'own-1'],
+      expectedMinutes: { perUnitMinutes: legacy ? 1 : 2, setupMinutes: 0, ops: [{ opNo: 1, minutes: legacy ? 1 : 2, setupMinutes: null }] } }));
   });
-  it.each([false, true])('never reuses a newly added operation number while its save is pending, reopen: %s', async (reopen) => {
+  it.each([false, true])('never reuses a pending operation number and advances the baseline, reopen: %s', async (reopen) => {
     vi.useFakeTimers();
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const part = `PENDING-ADDITION-${reopen}`;
     const initial = settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }]);
     const first = { ...settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }, { id: 'created-2', opNo: 2, minutes: 2 }]),
-      savedOpIds: ['old-1', 'created-2'], savedOpNos: [1, 2] };
+      savedOpIds: ['old-1', 'created-2'], savedOpNos: [1, 2],
+      savedMinutes: { perUnitMinutes: 3, setupMinutes: 0, ops: [{ opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 2, minutes: 2, setupMinutes: null }] } };
     const second = { ...settings(part, [{ id: 'old-1', opNo: 1, minutes: 1 }, { id: 'created-3', opNo: 3, minutes: 3 }]),
-      savedOpIds: ['old-1', 'created-3'], savedOpNos: [1, 3] };
+      savedOpIds: ['old-1', 'created-3'], savedOpNos: [1, 3],
+      savedMinutes: { perUnitMinutes: 4, setupMinutes: 0, ops: [{ opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 3, minutes: 3, setupMinutes: null }] } };
     let finish!: (value: Settings) => void;
     mocks.save.mockReturnValueOnce(new Promise<Settings>((resolve) => { finish = resolve; })).mockResolvedValue(second);
     const { element } = setup(part, initial);
@@ -135,6 +163,7 @@ describe('resource minutes sheet with real save hook', () => {
     expect(mocks.save).toHaveBeenCalledTimes(2);
     expect(mocks.save.mock.lastCall?.[0]).toEqual({
       resourceCd: '021', fhincd: part, perUnitMinutes: 4, setupMinutes: 0, expectedOpIds: ['old-1', 'created-2'],
+      expectedMinutes: first.savedMinutes,
       ops: [{ opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 3, minutes: 3, setupMinutes: null }]
     });
   });
@@ -158,7 +187,8 @@ describe('resource minutes sheet with real save hook', () => {
     fireEvent.change(screen.getByLabelText(`${part} 3工程 1台`), { target: { value: '4' } });
     await act(async () => vi.advanceTimersByTime(400));
     await act(async () => reject(new Error('offline')));
-    expect(mocks.save).toHaveBeenCalledTimes(2);
+    expect(mocks.save).toHaveBeenCalledTimes(3);
+    expect(mocks.save.mock.calls[1][0]).toEqual(mocks.save.mock.calls[0][0]);
     expect(mocks.save.mock.lastCall?.[0]).toEqual(expect.objectContaining({
       expectedOpIds: numbers.map((no) => `old-${no}`),
       ops: expect.arrayContaining([{ opNo: 3, minutes: 4, setupMinutes: null }])
