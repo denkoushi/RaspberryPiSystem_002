@@ -216,10 +216,12 @@ export class DatabaseBackupTarget implements BackupTarget {
       };
 
       const args = ['-h', host, '-p', port, '-U', user, '-d', dbName, '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'];
-      if (connection.user === 'raspi_app' && user !== connection.user) {
+      const runtimeUser = decodeURIComponent(new URL(process.env.DATABASE_URL || this.connectionUrl).username || 'postgres');
+      if (user !== runtimeUser) {
+        const quotedRuntimeUser = `"${runtimeUser.replace(/"/g, '""')}"`;
         // Existing default privileges grant CRUD when the dump recreates this
         // table; its GRANT SELECT alone does not revoke those inherited writes.
-        args.push('-c', 'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM raspi_app;');
+        args.push('-c', `REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM ${quotedRuntimeUser};`);
       }
       const psql = spawn('psql', args, {
         env,
@@ -233,7 +235,7 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       psql.on('close', (code) => {
         if (code !== 0) {
-          const detail = redactPassword(errors.join(''));
+          const detail = redactPassword(errors.join('').split(/\r?\n/).filter((line) => !line.startsWith('CONTEXT:')).join('\n')).slice(0, 2000);
           logger?.error({ detail, code }, '[DatabaseBackupTarget] Database restore failed');
           rejectOnce(new ApiError(500, `Database restore failed: ${detail || 'psqlが異常終了しました。'}`));
         } else {

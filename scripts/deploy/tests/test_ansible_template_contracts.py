@@ -78,10 +78,15 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             with self.subTest(template=filename):
                 rendered = template.render(**variables).splitlines()
                 self.assertIn(f"{runtime_key}={app_url}", rendered)
-                self.assertIn(f"BACKUP_RESTORE_DATABASE_URL={owner_url}", rendered)
-                self.assertFalse(any(line.startswith("MIGRATION_DATABASE_URL=") for line in rendered))
-                with self.assertRaises(UndefinedError):
+                if filename == "docker.env.j2":
+                    self.assertIn(f"BACKUP_RESTORE_DATABASE_URL={owner_url}", rendered)
+                    with self.assertRaises(UndefinedError):
+                        template.render(**{key: value for key, value in variables.items() if key != "migration_database_url"})
+                else:
+                    self.assertNotIn("BACKUP_RESTORE_DATABASE_URL", "\n".join(rendered))
+                    self.assertNotIn(owner_url, "\n".join(rendered))
                     template.render(**{key: value for key, value in variables.items() if key != "migration_database_url"})
+                self.assertFalse(any(line.startswith("MIGRATION_DATABASE_URL=") for line in rendered))
         tasks = SERVER_ROLE_TASKS.read_text()
         for name in ("Deploy API environment variables", "Deploy Docker Compose environment variables"):
             task = tasks.split(f"- name: {name}\n", 1)[1].split("\n- name:", 1)[0]

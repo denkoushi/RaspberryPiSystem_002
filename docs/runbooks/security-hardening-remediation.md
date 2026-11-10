@@ -53,25 +53,30 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 - Passwords use `PGPASSWORD`, never psql arguments, and are redacted from restore
   errors. psql runs with `ON_ERROR_STOP=on --single-transaction -f -` so SQL errors
   abort and roll back; every nonzero/signal exit fails the restore.
-- Ansible `api.env.j2` / `docker.env.j2` reuse existing `migration_database_url`;
+- Ansible `docker.env.j2` reuses existing `migration_database_url`;
   no new secret is required. The server role's existing assert fixes both URLs to
   the same Docker endpoint/database and dedicated roles. Render tasks retain 0600
   and use `no_log`. Normal and phase3 blue/green Compose pass the restore-only key
   to API containers. Neither the migration file nor superuser secret is mounted.
+  Owner credentials reside in `infrastructure/docker/.env`, never `apps/api/.env`.
+  Backups (encrypted) and DR copies of this Docker environment file contain owner
+  credentials.
 - `pg_dump --clean --if-exists` retains OWNER and ACL statements; do not add
   `--no-owner` / `--no-acl`. The dump restores `OWNER TO raspi_migrator` and
   `GRANT ... TO raspi_app`; bootstrap's `ALTER DEFAULT PRIVILEGES` also provides
   table CRUD, sequence use and function execution. No additional application GRANT
   is needed. However, existing defaults also grant CRUD when `_prisma_migrations`
   is recreated, and the dump's `GRANT SELECT` does not revoke those writes.
-  When switching from `raspi_app` to the owner, restore reapplies bootstrap's
+  When the restore user differs from the `DATABASE_URL` user, restore reapplies bootstrap's
   migration-ledger write REVOKE at the end of the same transaction.
 - The API image uses PostgreSQL 18 clients. New dumps add
   `--exclude-extension=vector --exclude-extension=pg_trgm` to preserve these
   postgres-owned extensions, which the migrator cannot drop/recreate
   ([pg_dump reference](https://www.postgresql.org/docs/18/app-pgdump.html)).
-  Obtain a new encrypted backup after rollout. Existing dumps containing extension
-  DROP statements cannot use this owner-only restore path and fail with rollback;
+  Take one DB backup immediately after rollout; it is the first restorable generation.
+  Earlier backups contain extension DROP statements; backups predating role
+  separation also contain `OWNER TO postgres`. Admin restore fails and rolls back
+  for these generations;
   do not grant superuser authority or rewrite SQL strings to bypass this limit.
 - Validation covers API credential/destination/error cases, Ansible/Compose
   contracts, and `scripts/deploy/tests/test-postgres-role-boundaries.sh`. The latter

@@ -48,10 +48,10 @@ grep -Fq 'MIGRATION_DATABASE_ENV_FILE=/etc/raspi-database/migration.env' "$DOCKE
   || fail 'Docker environment template omits the host-only migration path'
 ! grep -Eq '^(POSTGRES_SUPERUSER_PASSWORD|MIGRATION_DATABASE_URL)=' "$DOCKER_ENV_TEMPLATE" \
   || fail 'superuser and general migration environment keys must stay host-only'
-for path in "$DOCKER_ENV_TEMPLATE" "$API_ENV_TEMPLATE"; do
-  grep -Fq 'BACKUP_RESTORE_DATABASE_URL={{ migration_database_url }}' "$path" \
-    || fail "restore must reuse the existing migration credential in ${path#$ROOT/}"
-done
+grep -Fq 'BACKUP_RESTORE_DATABASE_URL={{ migration_database_url }}' "$DOCKER_ENV_TEMPLATE" \
+  || fail 'restore must reuse the existing migration credential in Docker environment'
+! grep -Fq 'BACKUP_RESTORE_DATABASE_URL' "$API_ENV_TEMPLATE" \
+  || fail 'restore owner credentials must not be stored in API environment'
 grep -Fq 'DATABASE_URL={{ app_database_url }}' "$API_ENV_TEMPLATE" \
   || fail 'API environment template does not use the application URL'
 ! grep -Eq "DATABASE_URL=.*default\('postgresql://postgres" "$API_ENV_TEMPLATE" \

@@ -104,7 +104,8 @@ describe('DatabaseBackupTarget', () => {
     expect(received).toContain('PostgreSQL database dump');
     expect(spawnMock).toHaveBeenCalledWith(
       'psql',
-      ['-h', 'db', '-p', '5432', '-U', 'postgres', '-d', 'borrow_return', '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'],
+      ['-h', 'db', '-p', '5432', '-U', 'postgres', '-d', 'borrow_return', '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-', '-c',
+        'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM "raspi_app";'],
       expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
     );
   });
@@ -139,11 +140,25 @@ describe('DatabaseBackupTarget', () => {
     const [command, args, options] = spawnMock.mock.calls[0];
     expect(command).toBe('psql');
     expect(args).toEqual(['-h', 'db', '-p', '5432', '-U', 'raspi_migrator', '-d', 'borrow_return', '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-', '-c',
-      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM raspi_app;']);
+      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM "raspi_app";']);
     expect(options.env.PGPASSWORD).toBe('owner@password');
     expect(JSON.stringify(args)).not.toContain('password');
     expect(process.env.DATABASE_URL).toContain('raspi_app:app-password');
     expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('password');
+  });
+
+  it.each([
+    ['custom_app', '"custom_app"'],
+    ['app "role', '"app ""role"'],
+  ])('revokes migration writes from safely quoted DATABASE_URL role %s', async (runtimeUser, quotedUser) => {
+    vi.stubEnv('DATABASE_URL', `postgresql://${encodeURIComponent(runtimeUser)}:app-password@db/borrow_return`);
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner-password@db/borrow_return');
+    const child = createMockChild();
+    child.stdin.on('finish', () => child.emit('close', 0));
+    spawnMock.mockReturnValueOnce(child);
+    await new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;'));
+    expect(spawnMock.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(['-c',
+      `REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM ${quotedUser};`]));
   });
 
   it.each([
@@ -191,6 +206,23 @@ describe('DatabaseBackupTarget', () => {
     const output = JSON.stringify([String(error), vi.mocked(logger.error).mock.calls]);
     expect(output).not.toContain('owner@password');
     expect(output).not.toContain('owner%40password');
+  });
+
+  it('removes COPY context and limits redacted restore diagnostics for errors and logs', async () => {
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner%40password@db/borrow_return');
+    const child = createMockChild();
+    child.stdin.on('finish', () => {
+      child.stderr.write('ERROR: owner@password owner%40password\r\nCON');
+      child.stderr.write('TEXT: COPY private_table, line 1: private row data\r\n');
+      child.stderr.write('DETAIL: ' + 'x'.repeat(2100) + '\nCONTEXT: more private row data\n');
+      child.emit('close', 3);
+    });
+    spawnMock.mockReturnValueOnce(child);
+    const error = await new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;')).catch((err: unknown) => err);
+    const detail = ('ERROR: [REDACTED] [REDACTED]\nDETAIL: ' + 'x'.repeat(2100) + '\n').slice(0, 2000);
+    expect((error as Error).message).toBe(`Database restore failed: ${detail}`);
+    expect(logger.error).toHaveBeenCalledWith({ detail, code: 3 }, '[DatabaseBackupTarget] Database restore failed');
+    expect(detail).toHaveLength(2000);
   });
 
   it('rejects other stdin errors and redacts owner credentials', async () => {
