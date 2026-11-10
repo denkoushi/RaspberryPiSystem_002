@@ -1,6 +1,6 @@
 # ADR-20260523: 配膳棚レイアウトマスタ（キオスク shelf-master）
 
-**Status**: accepted
+**Status**: accepted — 一部廃止（2026-10-30、[KB-382](../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md) 参照）
 
 **Context**:
 

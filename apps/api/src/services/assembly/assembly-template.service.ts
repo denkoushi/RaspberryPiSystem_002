@@ -691,7 +691,7 @@ export class AssemblyTemplateService {
         procedureSteps
       );
     }
-    if ((procedureItems || procedureSteps) && options.requireProcedurePassword !== false) {
+    if (options.requireProcedurePassword !== false) {
       await this.accessService.requireAccessPassword(input.accessPassword, input);
     }
     const normalizedAreas = normalizeAreas(input.areas, traceabilityMode);
