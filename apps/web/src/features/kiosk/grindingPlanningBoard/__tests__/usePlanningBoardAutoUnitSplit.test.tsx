@@ -13,11 +13,11 @@ import type { ReactNode } from 'react';
 vi.mock('../../../../api/domains/production-schedule/grinding-planning-board', () => ({ autoUnitSplitKioskSessakuPieces: vi.fn() }));
 const call = vi.mocked(autoUnitSplitKioskSessakuPieces);
 const response = (splitCount = 0, hasMore = true) => ({ splitCount, hasMore, skippedCount: 0 });
-function setup(strict = false) {
+function setup(strict = false, isBusy?: () => boolean) {
   const client = new QueryClient();
   const invalidate = vi.spyOn(client, 'invalidateQueries').mockResolvedValue();
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{strict ? <StrictMode>{children}</StrictMode> : children}</QueryClientProvider>;
-  return { ...renderHook(() => usePlanningBoardAutoUnitSplit(), { wrapper }), invalidate };
+  return { ...renderHook(() => usePlanningBoardAutoUnitSplit(isBusy), { wrapper }), invalidate };
 }
 const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
 beforeEach(() => { vi.useFakeTimers(); vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true); call.mockReset().mockResolvedValue(response()); });
@@ -73,5 +73,12 @@ describe('usePlanningBoardAutoUnitSplit', () => {
     setup(); await advance(60000); expect(call).not.toHaveBeenCalled();
     vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
     await advance(30000); expect(call).toHaveBeenCalledTimes(10);
+  });
+  it('defers without consuming attempts while the user is saving and resumes afterwards', async () => {
+    let busy = true;
+    setup(false, () => busy); await advance(60000); expect(call).not.toHaveBeenCalled();
+    busy = false;
+    await advance(3000); expect(call).toHaveBeenCalledTimes(1);
+    await advance(27000); expect(call).toHaveBeenCalledTimes(10);
   });
 });

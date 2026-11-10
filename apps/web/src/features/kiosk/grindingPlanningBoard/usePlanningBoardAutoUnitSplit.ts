@@ -5,8 +5,11 @@ import { autoUnitSplitKioskSessakuPieces } from '../../../api/domains/production
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 
 /** Bounded background work, with no overlapping requests or user-facing failures. */
-export function usePlanningBoardAutoUnitSplit() {
+export function usePlanningBoardAutoUnitSplit(isBusy?: () => boolean) {
   const queryClient = useQueryClient();
+  // Defer while the user is saving pieces or completions so their expected versions stay valid.
+  const isBusyRef = useRef(isBusy);
+  useEffect(() => { isBusyRef.current = isBusy; });
   const attempts = useRef(0);
   const finished = useRef(false);
   const requestPending = useRef(false);
@@ -19,7 +22,7 @@ export function usePlanningBoardAutoUnitSplit() {
     };
     const run = async () => {
       if (stopped) return;
-      if (requestPending.current || !navigator.onLine) { schedule(); return; }
+      if (requestPending.current || !navigator.onLine || isBusyRef.current?.()) { schedule(); return; }
       attempts.current++;
       requestPending.current = true;
       try {

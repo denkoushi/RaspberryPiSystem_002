@@ -59,7 +59,6 @@ import type {
 } from '@raspi-system/shared-types';
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
-  usePlanningBoardAutoUnitSplit();
   const { category, changeCategory } = usePlanningBoardCategory();
   const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource();
   const [pinMode, setPinMode] = useState(false);
@@ -241,6 +240,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
     completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
+  usePlanningBoardAutoUnitSplit(() => piecePendingRef.current || completionPendingRef.current.size > 0 || writeQueue.pending);
 
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
