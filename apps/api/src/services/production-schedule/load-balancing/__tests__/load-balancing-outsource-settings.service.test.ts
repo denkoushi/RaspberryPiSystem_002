@@ -76,6 +76,31 @@ describe('outsource settings persistence and site/shared resolution', () => {
     await saveLoadBalancingOutsourceSettings('shared', DEFAULT_OUTSOURCE_SETTINGS);
     expect(mocks.namedCreate).not.toHaveBeenCalled();
   });
+  it('reads orphaned and duplicate named targets without writing, keeping the first valid target', async () => {
+    const value = settings();
+    value.vendors.push({ ...value.vendors[0]!, id: 'stable-2' });
+    value.namedTargets = [
+      { kind: 'seiban', key: 'orphan', vendorId: 'deleted' },
+      { kind: 'machine', key: ' NVD ', vendorId: 'stable-1' },
+      { kind: 'machine', key: 'NVD', vendorId: 'stable-2' },
+      { kind: 'seiban', key: 'S1', vendorId: 'stable-2' },
+      { kind: 'seiban', key: 'S1', vendorId: 'stable-1' }
+    ];
+    mocks.findUnique.mockResolvedValue(stored(value));
+    const result = await getLoadBalancingOutsourceSettings('site');
+    expect(result.namedTargets).toEqual([
+      { kind: 'machine', key: 'NVD', vendorId: 'stable-1' },
+      { kind: 'seiban', key: 'S1', vendorId: 'stable-2' }
+    ]);
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(outsourceSettingsSchema.safeParse(result).success).toBe(true);
+    // Saving the cleaned read snapshot replaces the stored named children normally.
+    await saveLoadBalancingOutsourceSettings('site', result);
+    expect(mocks.namedDelete).toHaveBeenCalledTimes(1);
+    expect(mocks.namedCreate).toHaveBeenCalledTimes(2);
+    expect(mocks.namedCreate.mock.calls.map(([call]) => call.data.vendorId)).toEqual(['stable-1', 'stable-2']);
+  });
+
   it('accepts old requests without namedTargets and adds an empty list', () => {
     const { namedTargets: _targets, ...legacy } = settings();
     expect(outsourceSettingsSchema.parse(legacy).namedTargets).toEqual([]);

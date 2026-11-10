@@ -59,7 +59,18 @@ export function useLoadBalancingWorkspaceState({
     { fromMonth, toMonth, dueSource, ...scopeParams },
     { enabled: scopeEnabled }
   );
-  const scenarioKey = `${scopeKey}|${JSON.stringify(query.data?.outsourceSettings)}`;
+  const dataKey = useMemo(() => {
+    const data = query.data;
+    return data ? JSON.stringify([data.siteKey, data.months, data.today,
+      data.rows.map((row) => [row.rowId, row.resourceCd, row.totalMinutes, row.allocations.map(({ bucket, minutes }) => [bucket, minutes]),
+        row.fseiban, row.productNo, row.fhincd, row.fhinmei, row.machineName, row.plannedStartDate, row.effectiveDueDate]),
+      // Capacity is excluded: it is edited on this page and must not discard the trial.
+      data.resources.map((resource) => [resource.resourceCd, resource.classCode]),
+      data.transferRules.map((rule) => [rule.fromClassCode, rule.toClassCode, rule.priority, rule.efficiencyRatio]),
+      data.outsourceSettings]) : '';
+  }, [query.data]);
+  const scenarioKey = `${scopeKey}|${dataKey}`;
+  const operationsDisabled = !scopeEnabled || !query.data || Boolean(query.isPlaceholderData);
   const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: !scopeEnabled });
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -67,17 +78,22 @@ export function useLoadBalancingWorkspaceState({
   );
 
   const [scenario, setScenario] = useState<{ key: string; result: ScenarioResult; history: ScenarioResult[] }>({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] });
+  // Discard old history as well as hiding it, so returning to old data cannot revive a trial.
+  if (scenario.key !== scenarioKey) {
+    setScenario({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] });
+  }
   const result = scenario.key === scenarioKey ? scenario.result : { actions: EMPTY_ACTIONS, noTaker: [] };
   const commitResult = useCallback((next: ScenarioResult) => setScenario((current) => {
+    if (operationsDisabled) return current;
     const currentResult = current.key === scenarioKey ? current.result : { actions: [], noTaker: [] };
     if (current.key === scenarioKey && JSON.stringify(currentResult) === JSON.stringify(next)) return current;
     return {
       key: scenarioKey, result: next,
       history: [...(current.key === scenarioKey ? current.history : []), currentResult]
     };
-  }), [scenarioKey]);
+  }), [scenarioKey, operationsDisabled]);
   const undo = () => setScenario((current) => {
-    if (current.key !== scenarioKey || !current.history.length) return current;
+    if (operationsDisabled || current.key !== scenarioKey || !current.history.length) return current;
     const previous = current.history[current.history.length - 1]!;
     return {
       ...current,
@@ -94,11 +110,12 @@ export function useLoadBalancingWorkspaceState({
     toMonth,
     query,
     resourceNameMap,
+    operationsDisabled,
     actions: result.actions,
     result,
     commitResult,
     undo,
-    reset: () => setScenario({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] }),
+    reset: () => { if (!operationsDisabled) setScenario({ key: scenarioKey, result: { actions: [], noTaker: [] }, history: [] }); },
     canUndo: scenario.key === scenarioKey && scenario.history.length > 0
   };
 }
@@ -112,6 +129,7 @@ type WorkspaceViewProps = {
   actions: ScenarioAction[];
   commitResult: (result: ScenarioResult) => void;
   noTaker: ScenarioResult['noTaker'];
+  operationsDisabled?: boolean;
   machine: string;
   highlightUnset: boolean;
   panel: 'cell' | 'unallocated';
@@ -159,6 +177,7 @@ export function LoadBalancingWorkspaceView({
   actions,
   commitResult,
   noTaker,
+  operationsDisabled = false,
   machine,
   highlightUnset,
   panel,
@@ -169,6 +188,7 @@ export function LoadBalancingWorkspaceView({
   const { baseMatrix, matrix, before, after } = workspaceSummary;
   const input: ScenarioInput = { rows: data.rows, months: data.months, actions, resources: data.resources, rules: data.transferRules, settings: data.outsourceSettings, today: data.today, machine };
   const commitActions = (next: ScenarioAction[]) => {
+    if (operationsDisabled) return;
     if (JSON.stringify(next) === JSON.stringify(actions)) return;
     commitResult({ actions: next, noTaker: noTaker.filter((item) => !next.some((action) => action.rowId === item.rowId)) });
   };
@@ -314,6 +334,7 @@ export function LoadBalancingWorkspaceView({
           capacityMinutes={readCapacity(selectedResource, effectiveSelected.bucket)}
           cellRows={cellRows}
           formattedMachineNames={formattedMachineNames}
+          operationsDisabled={operationsDisabled}
           canTransfer={Boolean(selectedResource.classCode) && effectiveSelected.bucket !== LATE_BUCKET}
           editingCapacity={editingCapacityCd === selectedResource.resourceCd}
           capacitySaving={capacityMutation.isPending}
@@ -327,6 +348,7 @@ export function LoadBalancingWorkspaceView({
           }
           onCancelCapacity={() => setEditingCapacityCd(null)}
           onAction={(action) => {
+            if (operationsDisabled) return;
             if (action.type === 'outsource' && action.vendorId) commitActions(applyOutsource(input, action.rowId, action.vendorId));
             else commitActions([...actions.filter((item) => item.rowId !== action.rowId), action]);
           }}
@@ -340,7 +362,7 @@ export function LoadBalancingWorkspaceView({
         <section className="rounded-[10px] border border-white/15 bg-slate-900/70" />
       )}
       </div>
-      <LoadBalancingOutsourcePanel input={input} noTaker={noTaker} onUndo={undoRow} />
+      <LoadBalancingOutsourcePanel operationsDisabled={operationsDisabled} input={input} noTaker={noTaker} onUndo={undoRow} />
     </div>
   );
 }
