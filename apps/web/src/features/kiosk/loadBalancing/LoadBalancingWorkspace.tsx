@@ -272,6 +272,7 @@ export function LoadBalancingWorkspaceView({
   }, [actions, data.months, data.rows, effectiveSelected, machineRows]);
 
   const handleEditCapacity = (resourceCd: string) => {
+    if (operationsDisabled) return;
     capacityMutation.reset();
     setEditingCapacityCd(resourceCd);
     if (effectiveSelected?.resourceCd !== resourceCd) {
@@ -289,12 +290,14 @@ export function LoadBalancingWorkspaceView({
       machineMatrix={machineMatrix}
       selected={effectiveSelected}
       highlightUnset={highlightUnset}
+      operationsDisabled={operationsDisabled}
       onSelect={(selection) => {
         setSelected(selection);
         setEditingCapacityCd(null);
         onClosePanel();
       }}
       onEditCapacity={(resourceCd) => {
+        if (operationsDisabled) return;
         onClosePanel();
         handleEditCapacity(resourceCd);
       }}
@@ -340,12 +343,13 @@ export function LoadBalancingWorkspaceView({
           capacitySaving={capacityMutation.isPending}
           capacityError={capacityMutation.error ? '保存できませんでした' : null}
           onEditCapacity={() => handleEditCapacity(selectedResource.resourceCd)}
-          onSaveCapacity={(minutes) =>
+          onSaveCapacity={(minutes) => {
+            if (operationsDisabled) return;
             capacityMutation.mutate(
               { resourceCd: selectedResource.resourceCd, baseAvailableMinutes: minutes, ...scopeParams },
               { onSuccess: () => setEditingCapacityCd(null) }
-            )
-          }
+            );
+          }}
           onCancelCapacity={() => setEditingCapacityCd(null)}
           onAction={(action) => {
             if (operationsDisabled) return;

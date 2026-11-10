@@ -443,6 +443,39 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
   });
 
+  it('disables capacity editing in the heatmap and cell detail during placeholder data', () => {
+    mockUseWorkspace.mockReturnValue({ data: workspace(), isPlaceholderData: true, isFetching: true });
+    render(<ProductionScheduleLoadBalancingPage />);
+
+    for (const testId of ['load-balancing-heatmap', 'load-balancing-cell-detail']) {
+      const buttons = within(screen.getByTestId(testId)).getAllByRole('button', { name: /の能力を編集$/ });
+      for (const button of buttons) {
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(screen.queryByRole('textbox', { name: /の月あたり能力（時間）$/ })).not.toBeInTheDocument();
+      }
+    }
+    expect(mockCapacityMutate).not.toHaveBeenCalled();
+  });
+
+  it('disables saving an already open capacity editor during placeholder data', () => {
+    const data = workspace();
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: false });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(within(screen.getByTestId('load-balancing-cell-detail')).getByRole('button', { name: '033 の能力を編集' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '033 の月あたり能力（時間）' }), { target: { value: '120' } });
+    expect(screen.getByRole('button', { name: '保存' })).toBeEnabled();
+
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: true, isFetching: true });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('textbox', { name: '033 の月あたり能力（時間）' })).toHaveValue('120');
+    const saveButton = screen.getByRole('button', { name: '保存' });
+    expect(saveButton).toBeDisabled();
+    fireEvent.click(saveButton);
+    fireEvent.submit(saveButton.closest('form')!);
+    expect(mockCapacityMutate).not.toHaveBeenCalled();
+  });
+
   it.each(['outsource', 'transfer'])('disables trial controls and an already open %s menu during placeholder data', (menu) => {
     const data = workspace();
     mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: false });
