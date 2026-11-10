@@ -763,3 +763,9 @@ FROM checked;
 - Discovery that stops at the exclusion limit or a deadline logs `sessaku_piece.auto_unit_split_discovery_stopped` (siteKey, reason). Resource capacity is read once per request, outside the page loop.
 - Known limits carried to later work: each extra page re-reads rows and re-projects (worst case about 10 pages per opening); per-fseiban caching or fseiban-level exclusion is deferred. A deadline stop depends on database speed, so a temporarily slow request can return hasMore:false while a splittable lot remains; the next opening retries. The web client must space retries (route has no rate limit).
 
+## PR2a: 段取りはロットで1回
+
+- PR1 の契約「requiredMinutes and its source remain unchanged」は、own の段取り計上だけ変更する。source の選択と original の数量比按分は維持する。
+- 手動分割を含む全 PieceSet で、完了済みを含む最小 position の片だけに段取りを乗せる。先頭が完了済みなら残りに段取りを移さない。
+- 未分割の row は従来どおり。数量10・1台30分・段取り60分の10片は先頭90分、残り各30分、合計360分。
+- 片ごとに資源を付け替えた場合、段取りは先頭の片の資源についていく。資源ごとの段取りは PR3 で扱う。

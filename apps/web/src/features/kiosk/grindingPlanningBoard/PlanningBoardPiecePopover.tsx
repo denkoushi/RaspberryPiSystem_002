@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyn
 
 import { Dialog } from '../../../components/ui/Dialog';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 type PieceBlocking = { ready?: boolean; blocked: boolean; message: string; isError: boolean };
@@ -152,6 +154,7 @@ type PiecePopoverControlProps = {
 
 function PiecePopoverControl(props: PiecePopoverControlProps) {
   const { item, actions, label, disabled, open, setOpen, variant } = props;
+  const { gate, frozen } = usePlanningBoardOffline();
   const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
   const operable = !disabled && ready;
   const removalRef = useRef({ item, onRemoved: actions.onRemoved, open });
@@ -161,14 +164,15 @@ function PiecePopoverControl(props: PiecePopoverControlProps) {
     if (current.open) current.onRemoved?.(current.item);
   }, []);
   return <>
-    <button type="button" data-planning-board-quantity-item={item.itemId} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
+    <button type="button" data-planning-board-quantity-item={item.itemId} aria-disabled={frozen || undefined} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
       aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
-      onClick={() => { setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
+      onClick={() => { if (!gate.attempt()) return; setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
     {open && <PiecePopoverDialog {...props} disabled={!operable} />}
   </>;
 }
 
 function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, open, setOpen }: PiecePopoverControlProps) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const quantity = item.plannedQuantity;
   const [showSplit] = useState(canSplit);
   const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
@@ -178,14 +182,19 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
     }
   }, [open, quantity]);
   const count = quantities.length;
-  const setCount = (value: number) => setQuantities(distributeQuantity(quantity ?? 0, value));
-  const adjust = (index: number, delta: number) => setQuantities((values) => {
+  const setCount = (value: number) => { if (gate.attempt()) setQuantities(distributeQuantity(quantity ?? 0, value)); };
+  const adjust = (index: number, delta: number) => { if (!gate.attempt()) return; setQuantities((values) => {
     const last = values.length - 1;
     if (index === last || values[index]! + delta < 1 || values[last]! - delta < 1) return values;
     return values.map((value, i) => value + (i === index ? delta : i === last ? -delta : 0));
-  });
+  }); };
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<{ message: string; isError: boolean } | null>(null);
+  const wasFrozen = useRef(frozen);
+  useEffect(() => {
+    if (wasFrozen.current && !frozen) { setOpen(false); setPending(false); setFailure(null); }
+    wasFrozen.current = frozen;
+  }, [frozen, setOpen]);
   const [backdropReady, setBackdropReady] = useState(false);
   useEffect(() => {
     if (!open) return;
@@ -198,6 +207,8 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
   const validSplit = canSplit && quantities.length >= 2 && quantities.length <= 2000 && quantities.every((value) => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647) &&
     quantities.reduce((total, value) => total + value, 0) === quantity;
   const run = async (merge: boolean) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     if (pending || (merge ? !mergeItems : !canSplit || typeof quantity !== 'number')) return;
     if (!operable || actions.getBlocking().blocked) return;
     if (!merge && !validSplit) return;
@@ -208,20 +219,24 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
       else if (typeof quantity === 'number') {
         await actions.onSplit(item, quantities);
       }
+      if (generation !== gate.generation()) return;
       setOpen(false);
     } catch (error) {
+      if (generation !== gate.generation()) return;
       if (error instanceof PieceOperationBlockedError && !error.failure) return;
       setFailure({ message: error instanceof Error ? error.message : '保存できませんでした。時間をおいて再試行してください。',
         isError: !(error instanceof PieceOperationBlockedError) || error.failure });
     } finally {
-      setPending(false);
+      if (generation === gate.generation()) setPending(false);
     }
   };
   const toggleOp = async (opNo: number, completed: boolean) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     if (pending || !backdropReady || !operable || actions.getBlocking().blocked) return;
     setPending(true);
     try { await actions.onOpCompletion?.(item, completed ? 'incomplete' : 'complete', opNo); }
-    finally { setPending(false); }
+    finally { if (generation === gate.generation()) setPending(false); }
   };
   return <PieceDialog actions={actions} showSplit={showSplit && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">

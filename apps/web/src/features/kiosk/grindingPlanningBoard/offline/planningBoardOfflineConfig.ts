@@ -1,6 +1,7 @@
 export type BoardOfflineConfig = Readonly<{
   enabled: boolean;
   lossAfterMs: number;
+  refreshTimeoutMs: number;
   probeIntervalMs: number;
   probeTimeoutMs: number;
   recoverySuccesses: number;
@@ -14,11 +15,12 @@ type OfflineEnv = Pick<ImportMetaEnv,
   | 'VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS'
   | 'VITE_PLANNING_BOARD_OFFLINE_RECOVERY_SUCCESSES'
   | 'VITE_PLANNING_BOARD_OFFLINE_RECOVERED_BANNER_MS'
->;
+> & { VITE_PLANNING_BOARD_OFFLINE_REFRESH_TIMEOUT_MS?: string };
 
 export const DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG: BoardOfflineConfig = Object.freeze({
   enabled: false,
   lossAfterMs: 15_000,
+  refreshTimeoutMs: 45_000,
   probeIntervalMs: 5_000,
   probeTimeoutMs: 3_000,
   recoverySuccesses: 2,
@@ -51,6 +53,7 @@ export function readPlanningBoardOfflineConfig(env: OfflineEnv): BoardOfflineCon
   return Object.freeze({
     enabled: env.VITE_PLANNING_BOARD_OFFLINE_ENABLED === 'true',
     lossAfterMs,
+    refreshTimeoutMs: numeric(env.VITE_PLANNING_BOARD_OFFLINE_REFRESH_TIMEOUT_MS, defaults.refreshTimeoutMs, true),
     probeIntervalMs,
     probeTimeoutMs,
     recoverySuccesses: Number.isInteger(successes) ? successes : defaults.recoverySuccesses,

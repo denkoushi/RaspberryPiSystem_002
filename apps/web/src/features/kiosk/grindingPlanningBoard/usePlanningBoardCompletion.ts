@@ -1,10 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useSetKioskProductionScheduleRowCompletion } from '../../../api/hooks';
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 import { reportSessakuPieceError } from '../errorTelemetry';
+
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
 import type { CompletionOverlay, FeedbackKind } from './planningBoardPageModel';
 import type { PlanningBoardStatus } from './types';
@@ -35,6 +37,8 @@ type Options = {
 
 export function usePlanningBoardCompletion({ data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending,
   piecePending = false, piecePendingRef, piecePendingParentRef, currentItemsRef, completePiece, completePieceOp, notify, onCompleted, onIncomplete }: Options) {
+  const { gate, snapshot, enabled } = usePlanningBoardOffline();
+  useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setCompletionOverlay(new Map()); setCompletionPendingParentIds(new Set()); setCompletionPendingItemIds(new Set()); } }, [enabled, snapshot.phase]);
   const queryClient = useQueryClient();
   const { refetch } = boardQuery;
   const { mutateAsync: setCompletionAsync } = useSetKioskProductionScheduleRowCompletion();
@@ -96,6 +100,8 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
     });
   }, [data, boardQuery.isPlaceholderData, completionPendingItemIds]);
   const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo?: number) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     const currentItem = currentItemsRef.current.find((candidate) => candidate.itemId === item.itemId) ?? item;
     if (opNo != null && (currentItem.kind !== 'piece' || !completePieceOp || !currentItem.ops?.some((op) => op.opNo === opNo))) return;
     const parentId = currentItem.kind === 'piece' ? currentItem.parentItemId : undefined;
@@ -127,7 +133,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       if (currentItem.kind === 'piece' && currentItem.pieceId && currentItem.pieceSetVersion != null) {
         const payload = { pieceId: currentItem.pieceId, intent,
           expectedPieceSetVersion: currentItem.pieceSetVersion, itemRevision: currentItem.itemRevision };
-        const response = opNo != null && completePieceOp ? await completePieceOp({ ...payload, opNo }) : await completePiece(payload);
+        const response = await gate.run(() => opNo != null && completePieceOp ? completePieceOp({ ...payload, opNo }) : completePiece(payload));
         savedItem = response.pieces.find((candidate) => candidate.itemId === item.itemId) ?? currentItem;
         const savedPieces = new Map(response.pieces.map((piece) => [piece.itemId, piece]));
         currentItemsRef.current = currentItemsRef.current.map((candidate) => savedPieces.get(candidate.itemId) ?? candidate);
@@ -142,16 +148,18 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
           }
           return next;
         });
-      } else await setCompletionAsync({ rowId: currentItem.sourceRowId, intent });
+      } else await gate.run(() => setCompletionAsync({ rowId: currentItem.sourceRowId, intent }));
       setCompletionOverlay((current) => {
         const overlay = current.get(item.itemId);
         return overlay ? new Map(current).set(item.itemId, { ...overlay, item: savedItem, saved: true }) : current;
       });
-      if (item.kind === 'piece') await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
+      if (item.kind === 'piece' || enabled) await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
       else void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+      if (generation !== gate.generation()) return;
       if (opNo == null ? intent === 'complete' : savedItem.isCompleted) onCompleted(savedItem, opNo);
       else if (intent === 'incomplete') onIncomplete();
     } catch (error) {
+      if (generation !== gate.generation()) return;
       if (currentItem.kind === 'piece') reportSessakuPieceError(intent === 'complete' ? 'complete' : 'uncomplete', currentItem, error);
       setCompletionOverlay((current) => {
         const next = new Map(current);
@@ -165,14 +173,17 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
         : '完了状態を保存できませんでした。時間をおいて再試行してください。', 'error');
       if (item.kind === 'piece' && (status === 409 || status === 403)) await refetch();
     } finally {
+      if (generation !== gate.generation()) { completionPendingRef.current.delete(item.itemId); if (parentId) pendingPieceParentsRef.current.delete(parentId); }
+      else {
       if (parentId) {
         pendingPieceParentsRef.current.delete(parentId);
         setCompletionPendingParentIds(new Set(pendingPieceParentsRef.current));
       }
       completionPendingRef.current.delete(item.itemId);
       setCompletionPendingItemIds(new Set(completionPendingRef.current));
+      }
     }
-  }, [interactionLocked, data, category, setCompletionAsync, completePiece, completePieceOp, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef]);
+  }, [interactionLocked, data, category, setCompletionAsync, completePiece, completePieceOp, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef, gate, enabled]);
   const clearPieceCompletion = useCallback((parentItemId: string) => {
     setCompletionOverlay((current) => new Map([...current].filter(([, overlay]) =>
       overlay.item.itemId !== parentItemId && (overlay.item.kind !== 'piece' || overlay.item.parentItemId !== parentItemId))));

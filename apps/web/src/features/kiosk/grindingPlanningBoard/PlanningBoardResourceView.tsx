@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 
-import {
-  INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX
-} from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
+import { INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems, sortPlanningBoardResources } from './sortGrindingPlanningBoardItems';
@@ -13,11 +12,8 @@ import { usePlanningBoardPaneOrder } from './usePlanningBoardPaneOrder';
 
 import type { PlanningBoardAllocation } from './types';
 import type {
-  GrindingPlanningBoardCategory,
-  GrindingPlanningBoardResponse,
-  GrindingPlanningBoardItem,
-  GrindingPlanningBoardResourceOrderPlacement,
-  GrindingPlanningBoardSpecialDueKind
+  GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem,
+  GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 export type PlanningBoardResourceViewProps = {
@@ -176,7 +172,7 @@ export function PlanningBoardResourceView({
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardResourceViewProps) {
-  const pendingResourceDragRef = useRef<PendingResourceDrag | null>(null);
+  const { gate } = usePlanningBoardOffline(); const pendingResourceDragRef = useRef<PendingResourceDrag | null>(null);
   const suppressedResourceClickPointerIdRef = useRef<number | null>(null);
   const validResources = useMemo(() => new Set(resources), [resources]);
 
@@ -304,6 +300,11 @@ export function PlanningBoardResourceView({
     return drag;
   }, [cancelResourceDragFrame, restoreDropPane]);
 
+  useEffect(() => gate.subscribeReadOnly(() => {
+    const drag = pendingResourceDragRef.current;
+    if (drag) { clearResourceDrag(drag.pointerId); suppressedResourceClickPointerIdRef.current = drag.pointerId; }
+  }), [clearResourceDrag, gate]);
+
   useEffect(() => () => {
     const drag = pendingResourceDragRef.current;
     if (!drag) return;
@@ -339,10 +340,9 @@ export function PlanningBoardResourceView({
 
   const handleResourcePointerDown = useCallback((
     event: React.PointerEvent<HTMLButtonElement>,
-    item: GrindingPlanningBoardItem,
-    currentResource: string | null
+    item: GrindingPlanningBoardItem, currentResource: string | null
   ) => {
-    if (event.button !== 0 || pendingResourceDragRef.current) return;
+    if (event.button !== 0 || pendingResourceDragRef.current || !gate.attempt()) return;
     suppressedResourceClickPointerIdRef.current = null;
     const buttonElement = event.currentTarget;
     pendingResourceDragRef.current = {
@@ -371,7 +371,7 @@ export function PlanningBoardResourceView({
     };
     buttonElement.setPointerCapture?.(event.pointerId);
     event.stopPropagation();
-  }, []);
+  }, [gate]);
 
   const handleResourcePointerMove = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
@@ -381,6 +381,7 @@ export function PlanningBoardResourceView({
       Math.hypot(event.clientX - drag.startClientX, event.clientY - drag.startClientY)
     );
     if (!drag.dragging && drag.maxMovementPx < INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX) return;
+    if (!gate.attempt()) { clearResourceDrag(drag.pointerId); return; }
     drag.dragging = true;
     createResourceDragGhost(drag);
     drag.pendingClientX = event.clientX;
@@ -388,7 +389,7 @@ export function PlanningBoardResourceView({
     scheduleResourceDragFrame();
     event.preventDefault();
     event.stopPropagation();
-  }, [createResourceDragGhost, scheduleResourceDragFrame]);
+  }, [clearResourceDrag, createResourceDragGhost, gate, scheduleResourceDragFrame]);
 
   const handleResourcePointerUp = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
@@ -420,9 +421,10 @@ export function PlanningBoardResourceView({
       event.preventDefault();
       event.stopPropagation();
     }
+    if ((shouldDrop || shouldReorder) && !gate.attempt()) return;
     if (shouldDrop) onResourceDrop?.(item, targetResource);
     else if (shouldReorder && placement != null) onResourceReorder?.(item, targetItem, placement);
-  }, [clearResourceDrag, items, onResourceDrop, onResourceReorder, validTargets]);
+  }, [clearResourceDrag, gate, items, onResourceDrop, onResourceReorder, validTargets]);
 
   const handleResourcePointerCancel = useCallback((event: React.PointerEvent<HTMLElement>) => {
     const drag = pendingResourceDragRef.current;
@@ -445,8 +447,8 @@ export function PlanningBoardResourceView({
       suppressedResourceClickPointerIdRef.current = null;
       return;
     }
-    onResourceClick(item);
-  }, [onResourceClick]);
+    if (gate.attempt()) onResourceClick(item);
+  }, [gate, onResourceClick]);
 
   const seibanRankByFseiban = useMemo(
     () => new Map(seibanOrder.map((fseiban, index) => [fseiban, index + 1] as const)),

@@ -1,27 +1,20 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useKioskSessakuPieceMutations,
-  useKioskProductionScheduleResources,
-  useKioskGrindingPlanningBoardProgressive,
-  useKioskGrindingPlanningBoardProcessChips,
-  useKioskGrindingPlanningBoardLoad,
-  useKioskGrindingPlanningBoardSeibanCandidates,
-  useKioskGrindingPlanningBoardDueDetail,
-  useUpdateKioskGrindingPlanningBoardOverrides,
-  useUpdateKioskGrindingPlanningBoardPins,
-  useUpdateKioskGrindingPlanningBoardDueScope,
-  useUpdateKioskGrindingPlanningBoardRank,
-  useUpdateKioskGrindingPlanningBoardResourceOrder,
-  useUpdateKioskGrindingPlanningBoardResourceOrderBulk,
-  useUpdateKioskGrindingPlanningBoardSeibanOrder,
-  useUpdateKioskGrindingPlanningBoardSeibanChecks
+  useUpdateKioskGrindingPlanningBoardOverrides, useUpdateKioskGrindingPlanningBoardPins,
+  useUpdateKioskGrindingPlanningBoardDueScope, useUpdateKioskGrindingPlanningBoardRank, useUpdateKioskGrindingPlanningBoardResourceOrder,
+  useUpdateKioskGrindingPlanningBoardResourceOrderBulk, useUpdateKioskGrindingPlanningBoardSeibanOrder, useUpdateKioskGrindingPlanningBoardSeibanChecks
 } from '../../api/hooks';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { reportSessakuPieceError } from '../../features/kiosk/errorTelemetry';
 import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingPlanningBoard/createPlanningBoardSeibanActions';
+import { PlanningBoardOfflineMinutesProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineMinutesProvider';
+import { PlanningBoardOfflineProvider, usePlanningBoardOffline, useFrozenValue } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardPageQueries, usePlanningBoardPageChips } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineQueries';
+import { usePlanningBoardOfflineConfig } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardOfflineConfig';
 import { PlanningBoardBulkEditDialog } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardBulkEditDialog';
 import { PlanningBoardDuePanels } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardDuePanels';
 import { EMPTY_ITEMS, EMPTY_ORDER, todayJst, addUtcDays, displayedDue, defaultDueDateFor, applyOptimisticOverride } from '../../features/kiosk/grindingPlanningBoard/planningBoardPageModel';
@@ -58,7 +51,11 @@ import type {
   GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
-export function ProductionScheduleGrindingPlanningBoardPage() {
+export function ProductionScheduleGrindingPlanningBoardPage() { return <PlanningBoardOfflineProvider config={usePlanningBoardOfflineConfig()}><PlanningBoardPage /></PlanningBoardOfflineProvider>; }
+
+export function PlanningBoardPage() {
+  const offline = usePlanningBoardOffline(); const { gate } = offline;
+  const MinutesProvider = offline.enabled ? PlanningBoardOfflineMinutesProvider : DScheduleMinutesProvider;
   const { category, changeCategory } = usePlanningBoardCategory();
   const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource();
   const [pinMode, setPinMode] = useState(false);
@@ -109,7 +106,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const [specialDueMode, setSpecialDueMode] = useState<GrindingPlanningBoardSpecialDueKind | null>(null);
   const [resourceOrderHistory, setResourceOrderHistory] = useState<ResourceOrderHistory[]>([]);
   const resourceOrderHistoryId = useRef(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [liveNowMs, setNowMs] = useState(() => Date.now());
+  const nowMs = useFrozenValue(offline.enabled ? offline.now() : liveNowMs);
   const [dueDetailFseiban, setDueDetailFseiban] = useState<string | null>(null);
   const [dueDetailTargetFseiban, setDueDetailTargetFseiban] = useState<string | null>(null);
   const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
@@ -126,17 +124,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const queryClient = useQueryClient();
   const pieceMutations = useKioskSessakuPieceMutations();
   const [piecePhase, setPiecePhase] = useState<'idle' | 'saving' | 'refreshing'>('idle'); const piecePending = piecePhase !== 'idle'; const piecePendingRef = useRef(false); const piecePendingParentRef = useRef<string | null>(null);
-  const boardQuery = useKioskGrindingPlanningBoardProgressive(
+  const { boardQuery, loadQuery, candidateQuery, resourcesQuery, dueDetailQuery } = usePlanningBoardPageQueries(
     { scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
-    { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined }
+    { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined, drawerOpen, showCompletedCandidates, dueDetailFseiban }
   );
-  const loadQuery = useKioskGrindingPlanningBoardLoad(category, scheduleSource);
-  const candidateQuery = useKioskGrindingPlanningBoardSeibanCandidates({
-    category,
-    completionFilter: showCompletedCandidates ? 'all' : 'incomplete'
-  }, { enabled: drawerOpen });
-  const resourcesQuery = useKioskProductionScheduleResources({ pauseRefetch: true });
-  const dueDetailQuery = useKioskGrindingPlanningBoardDueDetail(dueDetailFseiban);
   const { mutateAsync: updatePinsAsync } = useUpdateKioskGrindingPlanningBoardPins({ invalidateOnSuccess: false });
   const { mutateAsync: updateOverridesAsync } = useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false });
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
@@ -227,8 +218,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     onSuccess: (label) => notify(label === '納期順' ? '納期の早い順に並べ直しました' : label === '順番を戻す' ? '1つ前の順番に戻しました' : `${label}を保存しました。`, 'success'),
     onError: handleError
   });
-  const { enqueue: enqueueWrite, items: queuedItems, order: registeredFseibans, hasPendingSeiban, acceptRefreshedState } = writeQueue;
-  const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !writeQueue.uncheckedFseibans.includes(fseiban))), [registeredFseibans, writeQueue.uncheckedFseibans]);
+  const { enqueue: enqueueWrite, hasPendingSeiban, acceptRefreshedState } = writeQueue;
+  const queuedItems = useFrozenValue(writeQueue.items); const registeredFseibans = useFrozenValue(writeQueue.order); const uncheckedFseibans = useFrozenValue(writeQueue.uncheckedFseibans);
+  const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !uncheckedFseibans.includes(fseiban))), [registeredFseibans, uncheckedFseibans]);
   const onCompleted = useCallback((item: GrindingPlanningBoardItem, opNo?: number) => {
     setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
       const next = new Set(ids); next.delete(item.itemId); return [key, next];
@@ -236,18 +228,20 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setCompletionNotice({ item, opNo });
   }, [setCompletionNotice]);
   const onIncomplete = useCallback(() => setCompletionNotice(null), [setCompletionNotice]);
-  const { displayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
+  const { displayItems: liveDisplayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
     data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
     completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
-  usePlanningBoardAutoUnitSplit(() => piecePendingRef.current || completionPendingRef.current.size > 0 || writeQueue.pending);
+  usePlanningBoardAutoUnitSplit(() => offline.frozen || piecePendingRef.current || completionPendingRef.current.size > 0 || writeQueue.pending);
+
+  const displayItems = useFrozenValue(liveDisplayItems);
 
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
 
   const ganttItems = useMemo(() => displayItems.filter((item) => view === 'seiban' && focusedFseiban ? item.fseiban === focusedFseiban : activeFseibans.has(item.fseiban)), [displayItems, view, focusedFseiban, activeFseibans]);
 
   const chipParts = useMemo(() => collectPlanningBoardProcessChipParts(arrivalItems), [arrivalItems]);
-  const chipsQuery = useKioskGrindingPlanningBoardProcessChips(chipParts, scheduleSource);
+  const chipsQuery = usePlanningBoardPageChips(chipParts, scheduleSource);
   const chipData = usePlanningBoardQueryData(chipsQuery.data);
   const chipsByPart = useMemo(() => buildPlanningBoardProcessChipsByPart(arrivalItems, chipsQuery.isError ? undefined : chipData?.chipsByPartKey), [arrivalItems, chipsQuery.isError, chipData]);
   const placementByPart = useMemo(() => buildPlanningBoardPlacementByPart(arrivalItems), [arrivalItems]);
@@ -278,13 +272,13 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   }, [allocation, baseDueDetail, dueDetailFseiban, pendingDueScope]);
 
   useEffect(() => {
-    if (!pendingDueScope || !dueDetailQuery.data) return;
+    if (offline.frozen || !pendingDueScope || !dueDetailQuery.data) return;
     const currentDetail = dueDetailQuery.data.alternate;
     if (currentDetail.fseiban !== pendingDueScope.fseiban) return;
     if (pendingDueScope.responseScopeRevision != null && dueDetailQuery.data.scopeRevision !== pendingDueScope.baseScopeRevision) {
       setPendingDueScope(null);
     }
-  }, [dueDetailQuery.data, pendingDueScope]);
+  }, [dueDetailQuery.data, pendingDueScope, offline.frozen]);
 
   useEffect(() => {
     if (!data || boardQuery.isPlaceholderData) return;
@@ -326,27 +320,28 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const specialDueModeRef = useRef(specialDueMode); specialDueModeRef.current = specialDueMode;
 
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
-    if (!scopeReady || item.isCompleted) return;
+    if (!gate.attempt()) return; if (!scopeReady || item.isCompleted) return;
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       if (selected) next.add(item.itemId); else next.delete(item.itemId);
       return { ...current, [category]: next };
     });
-  }, [category, scopeReady]);
+  }, [category, scopeReady, gate]);
   const refetchBoard = boardQuery.refetch;
   const splitPieces = pieceMutations.split.mutateAsync; const mergePieces = pieceMutations.merge.mutateAsync;
   const changePieces = useCallback(async (items: GrindingPlanningBoardItem[], quantities?: number[]) => {
-    if (!bulkReady || refreshRequired || Boolean(orderPreview) || piecePendingRef.current || interactionLocked || writeBlocked || writeQueue.pending || completionPendingRef.current.size) {
+    if (!gate.attempt()) return; if (!bulkReady || refreshRequired || Boolean(orderPreview) || piecePendingRef.current || interactionLocked || writeBlocked || writeQueue.pending || completionPendingRef.current.size) {
       throw new PieceOperationBlockedError(refreshRequired
         ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', refreshRequired);
     }
+    const generation = gate.generation();
     piecePendingParentRef.current = items[0]?.parentItemId ?? items[0]?.itemId ?? null; piecePendingRef.current = true; setPiecePhase('saving');
     try {
       let target: { itemId: string; parentItemId: string }; let affectedItemIds: string[] = []; const item = items[0]; if (!item) throw new Error('Missing piece item'); const previousItems = currentItemsRef.current; const previousIds = new Set(previousItems.map((candidate) => candidate.itemId));
       if (quantities) {
-        const response = await splitPieces({ parentItemId: item.parentItemId ?? item.itemId,
+        const response = await gate.run(() => splitPieces({ parentItemId: item.parentItemId ?? item.itemId,
           ...(item.kind === 'piece' ? { targetPieceId: item.pieceId } : {}), quantities,
-          expectedPieceSetVersion: item.pieceSetVersion ?? 0, itemRevision: item.itemRevision });
+          expectedPieceSetVersion: item.pieceSetVersion ?? 0, itemRevision: item.itemRevision }));
         affectedItemIds = response.affectedItemIds ?? []; target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.itemId, parentItemId: item.parentItemId ?? item.itemId };
       } else if (item.parentItemId && item.pieceSetVersion != null) {
         const pieceIds: string[] = [];
@@ -354,8 +349,8 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           if (!piece.pieceId) throw new Error('Missing piece ID');
           pieceIds.push(piece.pieceId);
         }
-        const response = await mergePieces({ parentItemId: item.parentItemId, pieceIds,
-          expectedPieceSetVersion: item.pieceSetVersion, itemRevisions: Object.fromEntries(items.map((piece) => [piece.itemId, piece.itemRevision])) });
+        const response = await gate.run(() => mergePieces({ parentItemId: item.parentItemId!, pieceIds,
+          expectedPieceSetVersion: item.pieceSetVersion!, itemRevisions: Object.fromEntries(items.map((piece) => [piece.itemId, piece.itemRevision])) }));
         affectedItemIds = response.affectedItemIds ?? []; target = { itemId: response.pieces.find((piece) => !piece.isCompleted && !previousIds.has(piece.itemId))?.itemId ?? item.parentItemId, parentItemId: item.parentItemId };
       } else throw new Error('Missing piece set');
       // Saving owns the whole transition, even if a GET has already removed the popup.
@@ -363,21 +358,21 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       const affectedIds = new Set([...affectedItemIds, target.parentItemId, ...items.map((piece) => piece.itemId), ...previousItems.concat(currentItemsRef.current).filter((piece) => piece.parentItemId === target.parentItemId).map((piece) => piece.itemId)]);
       setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, new Set([...ids].filter((id) => !affectedIds.has(id)))])));
       pieceFocusItemIdRef.current = target; pieceRefreshRef.current = refetchBoard; setPiecePhase('refreshing');
-    } catch (error) { if (items[0]) reportSessakuPieceError(quantities ? 'split' : 'merge', items[0], error);
+    } catch (error) { if (generation !== gate.generation()) return; if (items[0]) reportSessakuPieceError(quantities ? 'split' : 'merge', items[0], error);
       const conflict = isAxiosError(error) && (error.response?.status === 409 || (error.response?.status === 400 && error.response.data?.errorCode === 'PIECE_QUANTITY_CONFLICT')); const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
       pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle'); notify(message, 'error'); void refetchBoard().catch(() => undefined);
       throw new Error(message);
     }
-  }, [interactionLocked, writeBlocked, writeQueue.pending, completionPendingRef, notify, splitPieces, mergePieces, refetchBoard, pieceFocusItemIdRef, bulkReady, refreshRequired, orderPreview, clearPieceCompletion, setCompletionNotice]);
+  }, [interactionLocked, writeBlocked, writeQueue.pending, completionPendingRef, notify, splitPieces, mergePieces, refetchBoard, pieceFocusItemIdRef, bulkReady, refreshRequired, orderPreview, clearPieceCompletion, setCompletionNotice, gate]);
   useEffect(() => {
-    if (piecePhase !== 'refreshing') return; const refresh = pieceRefreshRef.current; pieceRefreshRef.current = null; if (!refresh) return;
+    const generation = gate.generation(); if (piecePhase !== 'refreshing') return; const refresh = pieceRefreshRef.current; pieceRefreshRef.current = null; if (!refresh) return;
     // Run after the save's popup close has committed. Keep every piece gate until settle.
     void refresh({ loadAlreadyInvalidated: true }).catch(() => ({ isError: true })).then((result) => {
-      if (result.isError) pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle');
+      if (generation !== gate.generation()) return; if (result.isError) pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle');
     });
-  }, [piecePhase, pieceFocusItemIdRef]);
+  }, [piecePhase, pieceFocusItemIdRef, gate]);
   const toggleAll = useCallback((items: readonly GrindingPlanningBoardItem[], selected: boolean) => {
-    if (!bulkReady) return;
+    if (!gate.attempt()) return; if (!bulkReady) return;
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
@@ -386,7 +381,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       }
       return { ...current, [category]: next };
     });
-  }, [bulkReady, category]);
+  }, [bulkReady, category, gate]);
 
   const canMoveResource = useCallback((item: GrindingPlanningBoardItem, target: string) => {
     const originalCategory = data?.resourceCategories?.[item.originalResourceCd ?? ''];
@@ -396,9 +391,9 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
 
   const enqueueOverrides = useCallback((
     originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
-    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }, onSaved?: () => void
+    label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }, onSaved?: () => void, onDiscarded?: () => void
   ) => {
-    if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
+    if (!gate.attempt()) return false; if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
     if (requests.some((request) => {
       if (request.resourceCd === undefined) return false;
       const item = originals.find((candidate) => candidate.itemId === request.itemId);
@@ -407,7 +402,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const patches = new Map(requests.map((request) => [request.itemId, request]));
     return enqueueWrite({
       label, itemIds: originals.map((item) => item.itemId), seibans: [...new Set(originals.map((item) => item.fseiban))],
-      order: Boolean(orderAction), onSaved: onSaved ?? orderAction?.onSaved,
+      order: Boolean(orderAction), onDiscarded, onSaved: onSaved ?? orderAction?.onSaved,
       apply: (display) => ({ ...display, items: display.items.map((item) => {
         const request = patches.get(item.itemId);
         return request ? applyOptimisticOverride(item, request) : item;
@@ -421,10 +416,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         }) }),
       onFailed
     });
-  }, [enqueueWrite, updateOverridesAsync, writeBlocked, hasPendingSeiban, canMoveResource]);
+  }, [enqueueWrite, updateOverridesAsync, writeBlocked, hasPendingSeiban, canMoveResource, gate]);
 
   const updateSpecialDue = useCallback((original: GrindingPlanningBoardItem) => {
-    const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId) ?? original;
+    if (!gate.attempt()) return; const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId) ?? original;
     const mode = specialDueModeRef.current;
     if (!scopeReady || !rankMutationReady || allocation === 'original' || !mode || item.isCompleted || hasPendingSeiban(item.fseiban)) return;
     const preview = item as PlanningBoardDisplayItem;
@@ -432,10 +427,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     const next = kind === mode ? null : mode;
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, specialDue: next }],
       next === null ? '特別納期の解除' : next === 'today' ? '今日中' : '朝まで');
-  }, [allocation, enqueueOverrides, hasPendingSeiban, rankMutationReady, scopeReady]);
+  }, [allocation, enqueueOverrides, hasPendingSeiban, rankMutationReady, scopeReady, gate]);
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
-    if (!scopeReady || writeBlocked || items.some((item) => hasPendingSeiban(item.fseiban, true))) return;
+    if (!gate.attempt()) return; if (!scopeReady || writeBlocked || items.some((item) => hasPendingSeiban(item.fseiban, true))) return;
     const target = items.filter((item) => !item.isCompleted);
     if (target.length === 0) return;
     if (!data) return;
@@ -453,7 +448,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     setEditorError(null);
     setEditorConflict(false);
     setEditorOpen(true);
-  }, [allocation, clearFeedback, data, scopeReady, writeBlocked, hasPendingSeiban, canMoveResource]);
+  }, [allocation, clearFeedback, data, scopeReady, writeBlocked, hasPendingSeiban, canMoveResource, gate]);
 
   const { openDueDetail, closeDueDetail, openDuePicker, refreshDueDetail, commitDueDate } = usePlanningBoardDueActions({
     dueDetailIdentityRef, setDueDetailTargetFseiban, setDueDetailFseiban, setDuePickerState,
@@ -463,7 +458,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   });
 
   const applyEditor = () => runEditor(async () => {
-    if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
+    if (!gate.attempt()) return; if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
     const offset = Number(offsetDays);
     if (dueMode === 'offsetDays' && (!Number.isInteger(offset) || offset < 1)) {
       setEditorError('加算日数は1以上の整数で入力してください。');
@@ -495,26 +490,26 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         setEditorConflict(conflict);
         setEditorError(conflict ? '表示中のデータが更新されています。最新状態を取得してから対象を選び直してください。' : '保存できませんでした。入力内容と通信状態を確認してください。');
         setEditorOpen(true);
-      }, editorSnapshot.sourceRevision, undefined, () => resolve(true));
+      }, editorSnapshot.sourceRevision, undefined, () => resolve(true), () => resolve(false));
       if (!accepted) resolve(false);
     });
     if (saved && editorGenerationRef.current === editorGeneration) setEditorOpen(false);
   });
 
   const moveResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetResource: string) => {
-    if (!data || !scopeReady || !rankMutationReady || allocation === 'original' || item.isCompleted ||
+    if (!gate.attempt()) return; if (!data || !scopeReady || !rankMutationReady || allocation === 'original' || item.isCompleted ||
       !data.resources.includes(targetResource) || !canMoveResource(item, targetResource) || resolveGrindingPlanningBoardResource(item, allocation) === targetResource) return;
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource }], '資源CD');
-  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, canMoveResource]);
+  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, canMoveResource, gate]);
 
   const moveDueByDrag = useCallback((original: GrindingPlanningBoardItem, date: string) => {
-    const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
+    if (!gate.attempt()) return; const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
     if (!item || !data || !scopeReady || !rankMutationReady || writeBlocked || allocation !== 'alternate' || item.isCompleted) return;
     const before = displayedDue(item, allocation);
     if (!before || date === before || (date < before && date < todayJst())) return;
     enqueueOverrides([item], [{ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version,
       due: { kind: 'date', date } }], '納期');
-  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked]);
+  }, [allocation, data, enqueueOverrides, rankMutationReady, scopeReady, writeBlocked, gate]);
 
   const historyScope = `${data?.siteKey ?? ''}:${category}:${scheduleSource}:${arrivalFilterEnabled}`;
   const rememberResourceOrder = useCallback((id: number, snapshot: ResourceOrderSnapshot) => {
@@ -532,7 +527,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const reorderResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation);
-    if (!data || !scopeReady || !rankMutationReady || writeBlocked || allocation === 'original' || item.isCompleted || targetItem.isCompleted ||
+    if (!gate.attempt()) return; if (!data || !scopeReady || !rankMutationReady || writeBlocked || allocation === 'original' || item.isCompleted || targetItem.isCompleted ||
       !resource || resource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
       (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
       hasPendingSeiban(item.fseiban, true) || hasPendingSeiban(targetItem.fseiban, true)) return;
@@ -571,7 +566,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           alternateRank: ranked.alternateRank, itemRevision: ranked.itemRevision, version: ranked.version })) };
       }
     });
-  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, scheduleSource, updateResourceOrderAsync, writeBlocked, hasPendingSeiban, ganttEnabled, rememberResourceOrder, snapshotResourceOrder]);
+  }, [allocation, data, enqueueWrite, rankMutationReady, scopeReady, scheduleSource, updateResourceOrderAsync, writeBlocked, hasPendingSeiban, ganttEnabled, rememberResourceOrder, snapshotResourceOrder, gate]);
 
   const refreshAfterConflict = async () => {
     setEditorError('最新状態を取得しています…');
@@ -593,7 +588,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const changeRank = useCallback((item: GrindingPlanningBoardItem, rank: number | null) => {
-    if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || writeBlocked || hasPendingSeiban(item.fseiban, true)) return;
+    if (!gate.attempt()) return; if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || writeBlocked || hasPendingSeiban(item.fseiban, true)) return;
     enqueueWrite({ label: '個別順位', itemIds: [item.itemId], seibans: [item.fseiban],
       apply: (display) => ({ ...display, items: display.items.map((candidate) => candidate.itemId === item.itemId ? { ...candidate, alternateRank: rank } : candidate) }),
       save: async (context) => {
@@ -604,10 +599,10 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
           itemRevision: result.itemRevision, version: result.overrideVersion }] };
       }
     });
-  }, [allocation, data, enqueueWrite, rankMutationReady, updateRankAsync, writeBlocked, hasPendingSeiban]);
+  }, [allocation, data, enqueueWrite, rankMutationReady, updateRankAsync, writeBlocked, hasPendingSeiban, gate]);
 
   const persistChecks = (uncheckedFseibans: string[]) => {
-    if (!data || interactionLocked || writeBlocked) return;
+    if (!gate.attempt()) return; if (!data || interactionLocked || writeBlocked) return;
     enqueueWrite({ label: '製番チェック', itemIds: [], seibans: [], order: true,
       apply: (display) => ({ ...display, uncheckedFseibans }),
       save: (context) => updateChecks.mutateAsync({ sourceRevision: context.sourceRevision, uncheckedFseibans }),
@@ -616,7 +611,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   };
 
   const { refreshAfterOrderConflict, addSeibans, addSeiban, moveSeiban } = createPlanningBoardSeibanActions({
-    data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
+    gate, data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
     registeredFseibans, updateOrder, setOrderConflict, notify, boardQuery, setRankConflict,
     acceptRefreshedState, setOpenFseibans
   });
@@ -661,15 +656,21 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
     ready: bulkReady && !writeQueue.blocked && !rankConflict && !orderConflict && !orderPreview, blocked: writeBlocked || writeQueue.pending || completionPendingRef.current.size > 0,
     blockedMessage: refreshRequired ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', blockedIsError: refreshRequired
   });
+  useLayoutEffect(() => {
+    if (!offline.enabled || offline.snapshot.phase !== 'online') return;
+    setEditorOpen(false); setEditorSnapshot(null); setOrderPreview(null); setResourceOrderHistory([]); setSelectedItemIdsByCategory({}); setPendingDueScope(null); setDuePickerState(null);
+    setRankConflict(false); setOrderConflict(false); setPiecePhase('idle'); piecePendingRef.current = false;
+    editorGenerationRef.current += 1; acceptRefreshedState();
+  }, [offline.enabled, offline.snapshot.phase, acceptRefreshedState]);
   const toolbarSelectedItems = focusedFseiban
     ? selectedVisibleItems.filter((item) => item.fseiban === focusedFseiban)
     : selectedVisibleItems;
   return (
-    <DScheduleMinutesProvider dueSource={dueSource}><PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
+    <MinutesProvider dueSource={dueSource}><PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
     <PlanningBoardPlacementContext.Provider value={placementByPart}>
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <main className="relative min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
-      <PlanningBoardToolbar arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter} scawEnabled={scawEnabled} onToggleScawMode={toggleScawMode}
+      <PlanningBoardToolbar arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter} scawEnabled={scawEnabled} onToggleScawMode={() => { if (!offline.frozen || gate.attempt()) toggleScawMode(); }}
         largeScreen={largeScreen} onToggleLargeScreen={() => changeLargeScreen(!largeScreen)}
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}
@@ -683,27 +684,27 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         ganttScale={gantt.scale} onGanttScaleChange={gantt.changeScale}
         ganttMode={gantt.mode} onGanttModeChange={(mode) => { setPinMode(false); gantt.changeMode(mode); }}
         lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => group.resource === gantt.singleResourceCd).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
-        pinMode={pinMode} onTogglePinMode={() => setPinMode((value) => !value)}
+        pinMode={pinMode} onTogglePinMode={() => { if (gate.attempt()) setPinMode((value) => !value); }}
         orderPreview={orderPreview} previewPending={writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict}
-        onApplyOrder={applyResourceOrder} onCancelOrder={() => setOrderPreview(null)}
+        onApplyOrder={applyResourceOrder} onCancelOrder={() => { if (gate.attempt()) setOrderPreview(null); }}
         onProposeOrder={proposeResourceOrder} onSortDue={sortResourceOrdersByDue} onUndoOrder={undoResourceOrder}
         orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)} overlapCount={ganttLayout.overlapCount} onNextOverlap={gantt.scrollToNextOverlap}
-        scheduleSource={scheduleSource} category={category} view={view} onScheduleSourceChange={(value) => { if (!writeQueue.pending) changeScheduleSource(value); }}
+        scheduleSource={scheduleSource} category={category} view={view} onScheduleSourceChange={(value) => { if (!writeQueue.pending && (!offline.frozen || gate.attempt())) changeScheduleSource(value); }}
         status={status} allocation={allocation}
         selectedCount={toolbarSelectedItems.length}
         scopeDisabled={writeQueue.pending || Boolean(orderPreview)}
         bulkDisabled={allocation === 'original' || toolbarSelectedItems.length === 0 || !bulkReady || writeBlocked}
         registeredCount={registeredFseibans.length}
         onOpenDrawer={() => setDrawerOpen(true)}
-        onCategoryChange={(value) => { if (!writeQueue.pending) changeCategory(value); }}
-        onViewChange={(next) => { setPinMode(false); if (next !== 'resource') gantt.changeSingleResource(null); setView(next); }}
-        onStatusChange={(value) => { if (!writeQueue.pending) setStatus(value); }}
+        onCategoryChange={(value) => { if (!writeQueue.pending && (!offline.frozen || gate.attempt())) changeCategory(value); }}
+        onViewChange={(next) => { if (offline.frozen && !gate.attempt()) return; setPinMode(false); if (next !== 'resource') gantt.changeSingleResource(null); setView(next); }}
+        onStatusChange={(value) => { if (!writeQueue.pending && (!offline.frozen || gate.attempt())) setStatus(value); }}
         onAllocationChange={(value) => { if (!writeQueue.pending) setAllocation(value); }}
         onOpenDueEditor={() => openEditor(toolbarSelectedItems)}
         specialDueMode={view === 'resource' ? specialDueMode : null}
-        onSpecialDueModeChange={view === 'resource' ? setSpecialDueMode : undefined}
+        onSpecialDueModeChange={view === 'resource' ? (mode) => { if (gate.attempt()) setSpecialDueMode(mode); } : undefined}
         specialDueDisabled={allocation === 'original' || interactionLocked || resourceDragDisabled}
-        feedback={feedback || refreshRequired ? (
+        feedback={offline.notification ? <div role="status" className="flex h-full items-center px-2 text-xs text-amber-200">{offline.notification}</div> : feedback || refreshRequired ? (
           <div className={`flex h-full min-w-0 items-center gap-1 rounded-md px-2 text-xs ${
             !feedback || feedbackKind === 'error' ? 'bg-rose-950/70 text-rose-100'
               : feedbackKind === 'processing' ? 'bg-sky-950/60 text-sky-100'
@@ -725,7 +726,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
       {completionNotice && <div role="status" className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">
         <span>完了にしました</span>
         <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked || piecesWriting || completionPendingItemIds.has(completionNotice.item.itemId)}
-          onClick={() => { void toggleCompletion(completionNotice.item, 'incomplete', completionNotice.opNo); setCompletionNotice(null); }}>↶ 戻す</button>
+          onClick={() => { if (!gate.attempt()) return; void toggleCompletion(completionNotice.item, 'incomplete', completionNotice.opNo); setCompletionNotice(null); }}>↶ 戻す</button>
       </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className={`${data ? 'absolute z-50 ' : ''}p-5 text-sm text-rose-200`}>一覧を読み込めませんでした。</p> : null}
@@ -762,14 +763,14 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         onRegister={allocation === 'original' || !scopeReady ? async () => false : addSeiban}
         onRegisterMany={allocation === 'original' || !scopeReady ? async () => false : addSeibans}
         onToggle={(fseiban) => {
-          if (interactionLocked) return;
+          if (!gate.attempt() || interactionLocked) return;
           setDueDetailTargetFseiban(fseiban);
           persistChecks(activeFseibans.has(fseiban)
-            ? [...writeQueue.uncheckedFseibans, fseiban]
-            : writeQueue.uncheckedFseibans.filter((value) => value !== fseiban));
+            ? [...uncheckedFseibans, fseiban]
+            : uncheckedFseibans.filter((value) => value !== fseiban));
         }}
         onClear={() => {
-          if (!interactionLocked) {
+          if (gate.attempt() && !interactionLocked) {
             persistChecks(registeredFseibans);
             setDueDetailTargetFseiban(null);
           }
@@ -786,7 +787,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         candidatesError={candidateQuery.isError}
         candidateScopeKey={category}
         showCompletedCandidates={showCompletedCandidates}
-        onShowCompletedCandidatesChange={setShowCompletedCandidates}
+        onShowCompletedCandidatesChange={(value) => { if (!offline.frozen || gate.attempt()) setShowCompletedCandidates(value); }}
       />
       <PlanningBoardDuePanels
         dueDetailFseiban={dueDetailFseiban} closeDueDetail={closeDueDetail} dueDetail={dueDetail}
@@ -799,12 +800,12 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
         editorOpen={editorOpen} editorPending={editorPending} setEditorOpen={setEditorOpen} editorItems={editorItems}
         editorError={editorError} editorConflict={editorConflict} refreshAfterConflict={refreshAfterConflict}
         allocation={allocation} writeBlocked={writeBlocked} editorSnapshot={editorSnapshot}
-        canMoveResource={canMoveResource} data={data} resourceChoice={resourceChoice} setResourceChoice={setResourceChoice}
-        loadQuery={loadQuery} dueMode={dueMode} setDueMode={setDueMode} dueDate={dueDate} setDueDate={setDueDate}
-        offsetDays={offsetDays} setOffsetDays={setOffsetDays} applyEditor={applyEditor}
+        canMoveResource={canMoveResource} data={data} resourceChoice={resourceChoice} setResourceChoice={(value) => { if (gate.attempt()) setResourceChoice(value); }}
+        loadQuery={loadQuery} dueMode={dueMode} setDueMode={(value) => { if (gate.attempt()) setDueMode(value); }} dueDate={dueDate} setDueDate={(value) => { if (gate.attempt()) setDueDate(value); }}
+        offsetDays={offsetDays} setOffsetDays={(value) => { if (gate.attempt()) setOffsetDays(value); }} applyEditor={applyEditor}
       />
     </main>
     </PlanningBoardPiecesContext.Provider></PlanningBoardPlacementContext.Provider>
-    </PlanningBoardProcessChipsContext.Provider></DScheduleMinutesProvider>
+    </PlanningBoardProcessChipsContext.Provider></MinutesProvider>
   );
 }

@@ -13,6 +13,7 @@ export interface ClientDevice {
   /** キオスク棚レイアウト編集を許可 */
   shelfLayoutEditEnabled?: boolean;
   procedureBoardEnabled?: boolean | null;
+  planningBoardOfflineEnabled?: boolean;
   /** 明示拠点（Site.key）。未設定なら location 文字列から推測される */
   siteKey?: string | null;
   /** 他端末の代理操作（手動順番・負荷調整などで対象端末を指定）を許可 */
@@ -47,6 +48,7 @@ export async function updateClient(
     haizenEdgeEnabled?: boolean;
     shelfLayoutEditEnabled?: boolean;
     procedureBoardEnabled?: boolean;
+    planningBoardOfflineEnabled?: boolean;
     siteKey?: string | null;
     canProxyOtherDevices?: boolean;
   }

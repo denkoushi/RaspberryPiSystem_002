@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
+import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { useOfflineResourceMinutes, useOfflineResourceCapacity } from '../offline/planningBoardOfflineQueries';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardQueryData } from '../usePlanningBoardQueryData';
 
@@ -20,15 +22,21 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   enabled: boolean;
   preferenceScope: string;
 }) {
+  const { gate, enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
   const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
-  const minutes = useKioskGrindingPlanningBoardResourceMinutes(enabled);
+  const useMinutes = offlineEnabled ? useOfflineResourceMinutes : useKioskGrindingPlanningBoardResourceMinutes;
+  const useCapacity = offlineEnabled ? useOfflineResourceCapacity : useKioskGrindingPlanningBoardResourceCapacity;
+  const minutes = useMinutes(enabled);
   const resourceMinutes = usePlanningBoardQueryData(minutes.data);
   const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
   const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
-  const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
-  const { mutate, isPending, isError } = useUpdateKioskGrindingPlanningBoardResourceCapacity();
+  const capacity = useCapacity(enabled);
+  const capacityMutation = useUpdateKioskGrindingPlanningBoardResourceCapacity();
+  const { isPending, isError } = capacityMutation;
+  const writeStatus = useFrozenValue({ capacityPending: isPending, capacityError: isError,
+    minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError });
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
   const runsThroughBreaks = useMemo(() => new Set(capacity.data?.runsThroughBreaksResources ?? []), [capacity.data?.runsThroughBreaksResources]);
   const paneResources = useMemo(() => [...new Set([...resources,
@@ -78,15 +86,26 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
   const changeCapacity = useCallback((resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => {
-    if (!isPending) mutate({ resourceCd, dailyHours });
-  }, [isPending, mutate]);
+    if (!gate.attempt() || isPending) return;
+    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, dailyHours });
+    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, dailyHours })).then(() =>
+      Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
+  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
   const changeBreaks = useCallback((resourceCd: string, runsThroughBreaks: boolean) => {
-    if (!isPending) mutate({ resourceCd, runsThroughBreaks });
-  }, [isPending, mutate]);
+    if (!gate.attempt() || isPending) return;
+    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, runsThroughBreaks });
+    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, runsThroughBreaks })).then(() =>
+      Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
+  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
   return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
-    resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError,
-    changeMinutesSource: sourceMutation.mutate, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
+    resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,
+    changeMinutesSource: (source: Parameters<typeof sourceMutation.mutate>[0]) => {
+      if (!gate.attempt()) return;
+      if (!offlineEnabled) sourceMutation.mutate(source);
+      else void gate.run(() => sourceMutation.mutateAsync(source)).then(() =>
+        Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
+    }, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
     toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
     singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
-    capacityPending: isPending, capacityError: isError, changeCapacity };
+    capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

@@ -21,6 +21,7 @@ vi.mock('../../api/hooks', () => ({
         siteKey: null,
         canProxyOtherDevices: true,
         procedureBoardEnabled: true,
+        planningBoardOfflineEnabled: true,
         kioskInitialRoute: 'assembly',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -32,6 +33,7 @@ vi.mock('../../api/hooks', () => ({
         siteKey: '第2工場',
         canProxyOtherDevices: false,
         procedureBoardEnabled: null,
+        planningBoardOfflineEnabled: false,
         statusClientId: 'raspi4-sessaku-01',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -196,11 +198,11 @@ describe('ClientsPage', () => {
 
   it('keeps an unsaved edit when another device is opened', () => {
     render(<ClientsPage />);
-    fireEvent.click(settings().getByRole('switch', { name: '棚レイアウト編集を許可' }));
+    fireEvent.click(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' }));
     fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
     expect(settings().getByRole('button', { name: '保存' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
-    expect(settings().getByRole('switch', { name: '棚レイアウト編集を許可' })).toBeChecked();
+    expect(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' })).toBeChecked();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
@@ -218,6 +220,22 @@ describe('ClientsPage', () => {
     expect(settings().getByRole('switch', { name: '手順づくりを許可' })).not.toBeChecked();
     fireEvent.click(settings().getByRole('button', { name: '保存' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenLastCalledWith({ id: 'mac', payload: expect.objectContaining({ procedureBoardEnabled: false }) }));
+  });
+
+  it('shows, preserves and submits the planning board offline capability', async () => {
+    render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '製番ボード圏外表示を許可' })).toBeChecked();
+    fireEvent.change(settings().getByLabelText('起動先'), { target: { value: 'borrow_tag' } });
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ id: 'mac', payload: expect.objectContaining({ planningBoardOfflineEnabled: true }) }));
+    fireEvent.click(settings().getByRole('switch', { name: '製番ボード圏外表示を許可' }));
+    fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
+    expect(settings().getByRole('switch', { name: '製番ボード圏外表示を許可' })).not.toBeChecked();
+    expect(settings().getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
+    expect(settings().getByRole('switch', { name: '製番ボード圏外表示を許可' })).not.toBeChecked();
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenLastCalledWith({ id: 'mac', payload: expect.objectContaining({ planningBoardOfflineEnabled: false }) }));
   });
 
   it('joins the status report to its device and lists reports without a device', () => {
