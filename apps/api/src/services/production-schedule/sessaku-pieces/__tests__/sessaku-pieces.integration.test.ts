@@ -3,6 +3,7 @@ import * as laneWrites from '../piece-lane-writes.js';
 import { legacyReplaceSiteItems } from './legacy-site-items.js';
 import { readFileSync } from 'node:fs';
 import { autoUnitSplitCandidateSql } from '../auto-unit-split-candidates.js';
+import { sessakuPieceSqlState } from '../piece-db-error.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../../grinding-planning-board-resource-capacity.service.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../../policies/resource-category-policy.service.js';
 import { autoUnitSplitCandidates, autoSplitSessakuUnits, AUTO_UNIT_SPLIT_MAX_LOTS } from '../auto-unit-split.service.js';
@@ -1205,6 +1206,51 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(saved.pieces.slice(0, 5)).toEqual(completed.pieces);
     expect(saved.pieces[5]).toMatchObject({ quantity: 2, isCompleted: false });
     expect((await board()).items.find((item) => item.pieceId === saved.pieces[5].id)?.effectiveResourceCd).toBe('021');
+  });
+  it('commits the first-page lot after a real second-page preprocessing statement timeout', async () => {
+    const lots = Array.from({ length: 8 }, (_, i) => ({ ...rowData, FHINCD: `TIMEOUT-${i}`, FSIGENCD: '021', FKOJUN: '10A' }))
+      .sort((a, b) => Buffer.compare(Buffer.from(buildGrindingPlanningBoardRowItemId(a)), Buffer.from(buildGrindingPlanningBoardRowItemId(b))));
+    for (const [index, data] of lots.entries()) {
+      const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data,
+        occurredAt: new Date(), dataHash: `${site}-timeout-${index}` } });
+      await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: row.id,
+        sourceCsvDashboardId: site, productNo: `timeout-${index}`, resourceCd: '021', processOrder: '10A', plannedQuantity: 3 } });
+      // Only the first and last candidates are eligible after projection.
+      if (index > 0 && index < lots.length - 1) await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+        rowData: { ...data, FSIGENCD: '305', FKOJUN: '1' }, occurredAt: new Date(), dataHash: `${site}-timeout-predecessor-${index}` } });
+    }
+    const originalRead = projectionSource.readWinnerRowsByFseibans;
+    let pageReads = 0;
+    let pageRunner: Prisma.TransactionClient | undefined;
+    let timeoutCode: string | undefined;
+    const readSpy = vi.spyOn(projectionSource, 'readWinnerRowsByFseibans').mockImplementation(async (tx, ...args) => {
+      pageRunner ??= tx;
+      // Lot projection reads use a separate guarded client; count discovery pages only.
+      if (tx !== pageRunner) return originalRead(tx, ...args);
+      pageReads += 1;
+      if (pageReads === 2) {
+        // A real cancellation leaves this transaction aborted until ROLLBACK TO.
+        await tx.$queryRaw`SELECT set_config('statement_timeout', '5ms', true)`;
+        try { await tx.$queryRaw`SELECT pg_sleep(0.1)`; }
+        catch (error) { timeoutCode = sessakuPieceSqlState(error); throw error; }
+        throw new Error('Expected statement_timeout');
+      }
+      return originalRead(tx, ...args);
+    });
+    // Keep the JS budget deterministic; only PostgreSQL expires in this test.
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const requestId = `page-timeout-${randomUUID()}`;
+    try {
+      expect(await autoSplitSessakuUnits({ siteKey: site, audit: { action: 'auto_unit_split', requestId } }))
+        .toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
+    } finally { clock.mockRestore(); readSpy.mockRestore(); }
+    expect(pageReads).toBe(2);
+    expect(timeoutCode).toBe('57014');
+    const saved = await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(lots[0]));
+    expect(saved?.pieces.map((piece) => piece.quantity)).toEqual([1, 1, 1]);
+    expect(await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(lots.at(-1)!))).toBeNull();
+    expect(await prisma.productionScheduleSessakuPieceAuditLog.count({ where: { requestId, action: 'auto_unit_split_lot' } })).toBe(1);
+    expect(await prisma.productionScheduleSessakuPieceAuditLog.count({ where: { requestId, action: 'auto_unit_split' } })).toBe(1);
   });
   it.each([false, true])('passes seven nonnumeric SQL candidates and splits the tail (discovery budget exhausted=%s)', async (exhaustBudget) => {
     const lots = Array.from({ length: 8 }, (_, i) => ({ ...rowData, FHINCD: `LOT-${i}`, FSIGENCD: '021', FKOJUN: '10A' }))
