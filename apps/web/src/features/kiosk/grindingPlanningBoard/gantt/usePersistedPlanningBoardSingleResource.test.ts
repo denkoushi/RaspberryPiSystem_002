@@ -48,3 +48,16 @@ describe('usePersistedPlanningBoardSingleResource', () => {
     expect(result.current.resourceCd).toBeNull();
   });
 });
+
+it.each(['021', '022'])('persists and restores the pair, deselecting when %s disappears', (missing) => {
+  localStorage.clear();
+  const first = renderHook(() => usePersistedPlanningBoardSingleResource('site:cutting', ['021', '022']));
+  act(() => first.result.current.changeResource('021+022'));
+  expect(JSON.parse(localStorage.getItem(key('site:cutting'))!)).toEqual({ schemaVersion: 1, resourceCd: '021+022' });
+  first.unmount();
+  const { result, rerender } = renderHook(({ resources }) => usePersistedPlanningBoardSingleResource('site:cutting', resources),
+    { initialProps: { resources: ['021', '022'] } });
+  expect(result.current.resourceCd).toBe('021+022');
+  rerender({ resources: ['021', '022'].filter((resource) => resource !== missing) });
+  expect(result.current.resourceCd).toBeNull();
+});

@@ -9,6 +9,7 @@ import { pageZoom } from './pageZoom';
 import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
 import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
+import { PLANNING_BOARD_TWO_MACHINE } from './planningBoardTwoMachine';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -268,7 +269,7 @@ export function PlanningBoardToolbar({
             </div>, document.body)}
           </div>
           {onSingleResourceChange && <button type="button" aria-pressed={Boolean(singleResourceCd)} aria-expanded={Boolean(singleResourcePickerAnchor)}
-            aria-label={singleResourceCd ? `${singleResourceCd} 1台表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
+            aria-label={singleResourceCd ? `${singleResourceCd} ${singleResourceCd === PLANNING_BOARD_TWO_MACHINE ? '2台' : '1台'}表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
             onClick={(event) => { setScaleOpen(false); if (singleResourceCd) onSingleResourceChange(null); else onOpenSingleResourcePicker?.(event.currentTarget); }}
             className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}

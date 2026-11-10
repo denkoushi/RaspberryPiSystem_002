@@ -33,45 +33,11 @@ import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
-  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
-  minutesPending?: boolean; minutesError?: boolean;
-  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
-  valueSheetOpen?: boolean; onToggleValueSheet?: () => void;
-  singleResourceCd?: string | null;
-  singleResourcePickerOpen?: boolean;
-  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
-  onSingleResourceChange?: (resource: string | null) => void;
-  onResourceReorder?: ForwardReorder;
-  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
-  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
-  arrivalPending?: boolean;
-  arrivalError?: boolean;
-  onResourceMove?: ForwardMove;
-  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
-  pinMode?: boolean;
-  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
-  runsThroughBreaks?: ReadonlySet<string>;
-  onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
-  colorBySeiban?: boolean;
-  focusedSeiban: string | null;
-  onFocusedSeibanChange: (seiban: string | null) => void;
-  seibanOrder?: readonly string[];
-  layout: GanttLayout;
-  scale: number;
-  /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
-  homeKey?: number;
-  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
-  resourceNameMap: Record<string, string[]>;
-  capacityPending: boolean; capacityError: boolean;
-  onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
-  /** Device-local lane order key, shared with the resource list panes. */
-  preferenceScope?: string;
-};
-export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
+export type { PlanningBoardGanttHandle } from './planningBoardGanttViewTypes';
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 const EMPTY_CHAIN: GanttBar[] = [];
 const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
@@ -97,9 +63,9 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
+  fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
@@ -374,7 +340,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
       setLegendHeight(legend.current?.offsetHeight ?? 0);
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
+      if (fitPane) setViewportHeight(element.clientHeight);
+      else if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -382,7 +349,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [colorBySeiban, singleResourceCd, measureWindow]);
+  }, [colorBySeiban, singleResourceCd, measureWindow, fitPane]);
   // Before paint, so the mounted window follows the new position without a blank frame.
   useLayoutEffect(() => {
     if (!viewport.current) return;
@@ -409,32 +376,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
   };
-  useImperativeHandle(ref, () => ({ scrollToNextOverlap: () => {
-    const element = viewport.current;
-    const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
-    if (!element || !rows.length) return;
-    flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
-    const row = rows[flaggedIndex.current]!;
-    const rowElement = rowElements.current.get(row.key);
-    if (!rowElement) return;
-    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
-    const rect = row.bars.map((bar) => ganttBarGeometry(bar, layout.start, dayWidth, forward)).find((rect) => rect !== null);
-    if (rect) element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
-    measureWindow();
-  }, scrollToNextLate: () => {
-    const element = viewport.current;
-    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || bar.resource === singleResourceCd)) : [];
-    if (!element || !bars.length) return;
-    flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
-    const bar = bars[flaggedIndex.current]!;
-    const location = barLocations.get(bar.item.itemId)?.first;
-    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
-    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
-    if (!rowElement || !rect) return;
-    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
-    element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
-    measureWindow();
-  } }), [layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode, singleResourceCd]);
   const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
     const day = layout.start + i;
     const weekday = new Date(day * 86_400_000).getUTCDay();
@@ -465,6 +406,32 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
   }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
+  useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); if (bar) scrollToBar(bar); }, scrollToNextOverlap: () => {
+    const element = viewport.current;
+    const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
+    if (!element || !rows.length) return;
+    flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
+    const row = rows[flaggedIndex.current]!;
+    const rowElement = rowElements.current.get(row.key);
+    if (!rowElement) return;
+    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
+    const rect = row.bars.map((bar) => ganttBarGeometry(bar, layout.start, dayWidth, forward)).find((rect) => rect !== null);
+    if (rect) element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
+    measureWindow();
+  }, scrollToNextLate: () => {
+    const element = viewport.current;
+    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || bar.resource === singleResourceCd)) : [];
+    if (!element || !bars.length) return;
+    flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
+    const bar = bars[flaggedIndex.current]!;
+    const location = barLocations.get(bar.item.itemId)?.first;
+    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
+    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
+    if (!rowElement || !rect) return;
+    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
+    element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
+    measureWindow();
+  } }), [currentBars, scrollToBar, layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode, singleResourceCd]);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (!pendingJump || !barLocations.has(pendingJump)) return;
@@ -473,7 +440,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setPendingJump(null);
   }, [pendingJump, barLocations, currentBars, scrollToBar]);
   const scrollToStep = (bar: GanttBar) => {
-    if (singleGroup && bar.resource !== singleResourceCd) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
+    if (singleGroup && bar.resource !== singleResourceCd && !onNavigateBar?.(bar)) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
     else scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
   };
@@ -520,17 +487,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {singleGroup && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
-        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={onToggleValueSheet}
+        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} />}
-      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
+      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className={clsx('relative overflow-auto', fitPane ? 'min-h-0 flex-1 overscroll-contain' : 'min-h-48')}
+        style={{ height: fitPane ? undefined : viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
