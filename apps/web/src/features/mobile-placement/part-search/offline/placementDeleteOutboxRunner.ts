@@ -35,9 +35,15 @@ export function createPlacementDeleteOutboxRunner(
         if (record.status !== 'pending') continue;
         if (!canSyncNow()) break;
         try {
-          await mobileRequest(() => deleteOrderPlacementBranch(record.id));
+          await mobileRequest(() => deleteOrderPlacementBranch(record.id, record.row.updatedAt));
         } catch (error) {
           const status = isAxiosError(error) ? error.response?.status : undefined;
+          if (status === 409) {
+            // The server has a newer placement: release the tombstone without restoring the stale row.
+            await queue.remove(record.id);
+            requestSync('placements-refresh');
+            continue;
+          }
           if (status !== 404) {
             if (status && status >= 400 && status < 500 && status !== 408 && status !== 429) {
               await local.restorePlacement(record.row);

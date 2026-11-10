@@ -39,7 +39,19 @@ describe('DELETE /mobile-placement/order-placement-branches/:id', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ deleted });
     expect(requireClientDevice).toHaveBeenCalledExactlyOnceWith('test-key');
-    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith('branch');
+    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith('branch', undefined);
+  });
+  it('passes the observed version and returns 409 for a stale delete', async () => {
+    const expectedUpdatedAt = '2026-10-28T00:00:00.000Z';
+    vi.mocked(deleteOrderPlacementBranch).mockRejectedValue(new ApiError(409, '配置が更新されています'));
+    const response = await app.inject({ method: 'DELETE', url: `/mobile-placement/order-placement-branches/branch?expectedUpdatedAt=${expectedUpdatedAt}` });
+    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith('branch', new Date(expectedUpdatedAt));
+    expect(response.statusCode).toBe(409);
+  });
+  it.each(['invalid', '', '2026-13-01T00:00:00Z'])('rejects an invalid observed version (%s)', async (value) => {
+    const response = await app.inject({ method: 'DELETE', url: `/mobile-placement/order-placement-branches/branch?expectedUpdatedAt=${value}` });
+    expect(response.statusCode).toBe(400);
+    expect(deleteOrderPlacementBranch).not.toHaveBeenCalled();
   });
   it('returns 404 when the branch no longer exists', async () => {
     vi.mocked(deleteOrderPlacementBranch).mockRejectedValue(new ApiError(404, 'この品物はもうありません'));

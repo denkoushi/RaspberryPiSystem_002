@@ -527,7 +527,11 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
       const params = request.params as { id?: string };
       const branchStateId = typeof params.id === 'string' ? params.id.trim() : '';
       if (branchStateId.length === 0) throw new ApiError(400, '分配枝IDが必要です');
-      return { deleted: await deleteOrderPlacementBranch(branchStateId) };
+      const query = z.object({ expectedUpdatedAt: z.string().datetime({ offset: true }).optional() }).parse(request.query);
+      return { deleted: await deleteOrderPlacementBranch(
+        branchStateId,
+        query.expectedUpdatedAt === undefined ? undefined : new Date(query.expectedUpdatedAt)
+      ) };
     }
   );
 
