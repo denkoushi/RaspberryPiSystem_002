@@ -8,6 +8,7 @@ export type SessakuPieceClient = Prisma.TransactionClient | PrismaClient;
 export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPayload<{ include: { pieces: true } }>, 'pieces'> & {
   pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { opCompletions?: Array<{ opNo: number }> }>;
 };
+const RELATED_KEY_CHUNK = 300;
 const columns = ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'] as const;
 
 export function sessakuPieceKeyFromRow(data: unknown): SessakuPieceLogicalKey {
@@ -55,19 +56,27 @@ async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: rea
   const supported = keys.filter(supportsSessakuPieceRelations);
   if (!supported.length) return [...keys];
   let parts = [...new Map(supported.map(({ fseiban, fhincd }) => [JSON.stringify([fseiban, fhincd]), { fseiban, fhincd }])).values()];
-  const sets = await client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts } });
+  const sets: Prisma.ProductionScheduleSessakuPieceSetGetPayload<object>[] = [];
+  // Chunk part filters so long histories do not expand into one oversized OR query.
+  for (let i = 0; i < parts.length; i += RELATED_KEY_CHUNK) {
+    // Append one by one: spreading a large result into push() can exceed the argument limit.
+    for (const set of await client.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: parts.slice(i, i + RELATED_KEY_CHUNK) } })) sets.push(set);
+  }
   if (onlyPartsWithSets) {
     parts = parts.filter((part) => sets.some((set) => set.fseiban === part.fseiban && set.fhincd === part.fhincd));
     if (!parts.length) return [...keys];
   }
-  const rows = await client.$queryRaw<Array<{ rowData: Prisma.JsonValue }>>(Prisma.sql`
+  const rows: Array<{ rowData: Prisma.JsonValue }> = [];
+  for (let i = 0; i < parts.length; i += RELATED_KEY_CHUNK) {
+    for (const row of await client.$queryRaw<Array<{ rowData: Prisma.JsonValue }>>(Prisma.sql`
       SELECT r."rowData" FROM "CsvDashboardRow" r
       WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-        AND (${Prisma.join(parts.map(({ fseiban, fhincd }) => Prisma.sql`
+        AND (${Prisma.join(parts.slice(i, i + RELATED_KEY_CHUNK).map(({ fseiban, fhincd }) => Prisma.sql`
           (COALESCE(r."rowData"->>'FSEIBAN', '') = ${fseiban}
             AND COALESCE(r."rowData"->>'FHINCD', '') = ${fhincd})
         `), ' OR ')})
-    `);
+    `)) rows.push(row);
+  }
   return [...keys, ...sets, ...rows.map((row) => sessakuPieceKeyFromRow(row.rowData))];
 }
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {
