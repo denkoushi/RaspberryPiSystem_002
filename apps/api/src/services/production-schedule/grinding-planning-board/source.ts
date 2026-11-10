@@ -307,9 +307,9 @@ export async function readRowDetails(client: DbClient, rowIds: readonly string[]
   return details;
 }
 
-export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string): Promise<GrindingPlanningBoardProjectionRanks> {
-  const rows: RankRow[] = [];
-  for (const chunk of chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
+export async function readRanks(client: DbClient, rowIds: readonly string[], siteKey: string, records?: readonly RankRow[]): Promise<GrindingPlanningBoardProjectionRanks> {
+  const rows: RankRow[] = records?.filter((row) => row.siteKey === siteKey || row.location === siteKey) ?? [];
+  for (const chunk of records ? [] : chunkLeaderboardRowIdsForHydrate([...new Set(rowIds)])) {
     rows.push(...await client.productionScheduleOrderAssignment.findMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: chunk }, OR: [{ siteKey }, { location: siteKey }] },
       select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true }, orderBy: { updatedAt: 'desc' }

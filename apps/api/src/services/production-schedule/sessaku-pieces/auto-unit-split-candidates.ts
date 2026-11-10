@@ -33,26 +33,34 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
     to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
   const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
-  // MATERIALIZED keeps winner/predecessor work behind the cheap untouched cutting-key gate.
+  // MATERIALIZED keeps winner/predecessor work behind the cheap cutting-key gate.
   const untouched = Prisma.sql`SELECT r.* FROM "CsvDashboardRow" r
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
-      AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
-      AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceSet" s WHERE s."csvDashboardId" = r."csvDashboardId"
-        AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
-        AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', ''))
-      AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceHistory" h WHERE h."csvDashboardId" = r."csvDashboardId"
-        AND h."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND h."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
-        AND h."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND h."fkojun" = COALESCE(r."rowData"->>'FKOJUN', ''))`;
+      AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])`;
+  const pieceEffective = trim(Prisma.sql`COALESCE(CASE WHEN po."id" IS NOT NULL THEN po."overrideResourceCd" ELSE o."overrideResourceCd" END, r."rowData"->>'FSIGENCD')`);
   return Prisma.sql`WITH untouched AS MATERIALIZED (${untouched}), eligible AS MATERIALIZED (
     SELECT r."id", r."csvDashboardId", r."rowData", r."rowData"->>'FSEIBAN' AS "fseiban", ${parentId} AS "parentId" FROM untouched r
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" o ON o."csvDashboardId" = r."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = (${parentId})
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardResourceCapacity" c ON c."csvDashboardId" = r."csvDashboardId" AND c."siteKey" = ${siteKey} AND c."resourceCd" = ${effective}
+    LEFT JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = r."csvDashboardId"
+      AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
+      AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', '')
     JOIN "ProductionScheduleOrderSupplement" q ON q."csvDashboardRowId" = r."id" AND q."csvDashboardId" = r."csvDashboardId"
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       AND ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)} NOT IN ('', '********') AND ${part} <> '' AND ${process} <> ''
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       ${exclusion}
-      AND COALESCE(c."unitSplitEnabled", ${effective} IN ('021', '022')) AND q."plannedQuantity" BETWEEN 2 AND 50
+      AND s."sourcePieceSetId" IS NULL AND s."quantityWarning" IS NULL AND q."plannedQuantity" BETWEEN 2 AND 50
+      AND ((NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id")
+          AND COALESCE(c."unitSplitEnabled", ${effective} IN ('021', '022')))
+        OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p
+          LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" po ON po."csvDashboardId" = r."csvDashboardId"
+            AND po."siteKey" = ${siteKey} AND po."itemKey" = 'piece:' || p."id"
+          LEFT JOIN "ProductionScheduleGrindingPlanningBoardResourceCapacity" pc ON pc."csvDashboardId" = r."csvDashboardId"
+            AND pc."siteKey" = ${siteKey} AND pc."resourceCd" = ${pieceEffective}
+          WHERE p."pieceSetId" = s."id" AND p."sourcePieceId" IS NULL AND NOT p."isCompleted" AND p."quantity" BETWEEN 2 AND 50
+            AND COALESCE(pc."unitSplitEnabled", ${pieceEffective} IN ('021', '022'))
+            AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id")))
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleProgress" p WHERE p."csvDashboardRowId" = r."id" AND p."isCompleted")
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleExternalCompletion" x WHERE x."csvDashboardRowId" = r."id" AND x."isExternallyCompleted")
       AND ${buildMaxProductNoWinnerCondition('r')}

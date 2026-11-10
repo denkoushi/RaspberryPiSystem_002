@@ -24,7 +24,7 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, de
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean };
+type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean; externallyCompleted: boolean; previousCompleted: boolean | null };
 
 async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
   const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
@@ -43,7 +43,9 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
     const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
     const detail = row ? details.get(row.id) : undefined;
     return { key: laterSet, rowId: row?.id, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
-      completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true };
+      completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
+      externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
+      previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null };
   };
   const result = set ? (await readLinked([set])).map(toLaterProcess) : [];
   if (!discoverUnsplit) return result;
@@ -54,7 +56,8 @@ async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPiec
     const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
     const detail = details.get(row.id);
     if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
-    result.push({ key: candidate, rowId: row.id, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true });
+    result.push({ key: candidate, rowId: row.id, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true,
+      externallyCompleted: false, previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null });
     if (laterSet) adopted.push(laterSet);
   }
   // An empty independent cutting set can still own later sets, including missing winners.
@@ -98,21 +101,24 @@ async function readProjectionSource(tx: Prisma.TransactionClient, fseibans: stri
   return { rows, details, pieceSets };
 }
 async function projection(tx: Prisma.TransactionClient, siteKey: string, key: SessakuPieceLogicalKey, allSiteRows = false,
-  source?: Awaited<ReturnType<typeof readProjectionSource>>, audit?: PieceAuditContext) {
-  const state = await tx.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
+  source?: Awaited<ReturnType<typeof readProjectionSource>>, audit?: PieceAuditContext,
+  siteData?: { state: { seibanOrder: Prisma.JsonValue }; overrides: Awaited<ReturnType<typeof readOverrides>>; ranks: Awaited<ReturnType<typeof readRanks>> }) {
+  const state = siteData?.state ?? await tx.productionScheduleGrindingPlanningBoardState.findUniqueOrThrow({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } } });
   const fseibans = allSiteRows ? [...stateOrder(state), key.fseiban] : [key.fseiban];
   const shared = source ?? await readProjectionSource(tx, fseibans);
   const scope = new Set(fseibans.map((value) => value.trim()).filter(Boolean));
   const rows = source ? shared.rows.filter((row) => scope.has(sessakuPieceKeyFromRow(row.rowData).fseiban)) : shared.rows;
-  const itemKeys = [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
+  const itemKeys = siteData ? [] : [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
     ...[...shared.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
-  const overrides = await timed(audit, 'overridesMs', () => readOverrides(tx, siteKey, itemKeys));
-  const ranks = await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
-  const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
-  const resourceCapacity = await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
-  const input = { resourceMinutes, resourceCapacity, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
+  const overrides = siteData?.overrides ?? await timed(audit, 'overridesMs', () => readOverrides(tx, siteKey, itemKeys));
+  const ranks = siteData?.ranks ?? await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
+  // Lane replacement consumes ordering/placement only; durations and operation definitions
+  // do not participate in that order. Keep full enrichment for mutation response/revision checks.
+  const resourceMinutes = allSiteRows ? undefined : await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
+  const resourceCapacity = allSiteRows ? undefined : await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
+  const input = { resourceMinutes, resourceCapacity, placementOnly: allSiteRows, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
-  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides }));
+  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides, stateVersionIncrements: 0 }));
 }
 async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[]): Promise<SessakuLaneSourceScope> {
   // Later replacements share this projection, including their lanes at every affected site.
@@ -164,8 +170,25 @@ async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], 
     // Source rows, details and piece sets are site independent and stable under the operation locks.
     const laneScope = await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed, later));
     const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...states.flatMap(stateOrder)])], audit, laneScope);
+    const itemKeys = [...source.rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
+      ...[...source.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
+    // The same source scope serves every site. Fetch its placements/ranks once and
+    // retain each site's existing rank precedence when projecting its own lanes.
+    const [overrides, ranks] = await Promise.all([
+      timed(audit, 'overridesMs', () => tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites }, itemKey: { in: itemKeys }
+      } })),
+      timed(audit, 'ranksMs', () => tx.productionScheduleOrderAssignment.findMany({ where: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: source.rows.map((row) => row.id) },
+        OR: [{ siteKey: { in: sites } }, { location: { in: sites } }]
+      }, select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true },
+      orderBy: { updatedAt: 'desc' } }))
+    ]);
     const before = new Map<string, Awaited<ReturnType<typeof projection>>>();
-    for (const site of sites) before.set(site, await projection(tx, site, key, true, source, audit));
+    for (const state of states) before.set(state.siteKey, await projection(tx, state.siteKey, key, true, source, audit, {
+      state, overrides: new Map(overrides.filter((row) => row.siteKey === state.siteKey).map((row) => [row.itemKey, row])),
+      ranks: await readRanks(tx, [], state.siteKey, ranks)
+    }));
     return before;
   } finally {
     if (audit?.timing) audit.timing.beforeProjectionMs += performance.now() - started;
@@ -198,6 +221,8 @@ async function replaceSiteItems(tx: Prisma.TransactionClient, key: SessakuPieceL
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
         alternateRank: index + 1
       };
+      // Keep the same dense lane ranks without touching unchanged override versions.
+      if (!isReplacement && own?.alternateRank === data.alternateRank) continue;
       const id = randomUUID();
       values.push(Prisma.sql`(${id}, ${PRODUCTION_SCHEDULE_DASHBOARD_ID}, ${siteKey}, ${item.itemId},
         ${data.overrideResourceCd}::text, ${data.overrideDueDate}::date, ${data.dueDateCleared}::boolean,
@@ -227,17 +252,29 @@ async function replaceSiteItems(tx: Prisma.TransactionClient, key: SessakuPieceL
     `);
     if (audit?.timing) audit.timing.upsertCount += chunk.length;
   }
-  await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: removed.filter((id) => id.startsWith('piece:')) } } });
+  const removedPieces = removed.filter((id) => id.startsWith('piece:'));
+  if (removedPieces.length) await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: removedPieces } } });
   before.pieces = next;
   for (const id of removed.filter((id) => id.startsWith('piece:'))) before.overrides.delete(id);
-  await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } }, data: { version: { increment: 1 } } });
+  before.stateVersionIncrements += 1;
+}
+async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string, Awaited<ReturnType<typeof projection>>>) {
+  // One write per site; preserve the exact version increment of all its lane replacements.
+  for (const [siteKey, state] of before) if (state.stateVersionIncrements) {
+    await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey
+    } }, data: { version: { increment: state.stateVersionIncrements } } });
+  }
 }
 async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], removedSourceIds: string[]) {
   const references = later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId && removedSourceIds.includes(piece.sourcePieceId)) ?? []);
   const ids = references.filter((piece) => !piece.isCompleted).map((piece) => piece.id);
-  await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: references.filter((piece) => piece.isCompleted).map((piece) => piece.id) } }, data: { sourcePieceId: null } });
-  await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
-  await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
+  const completedIds = references.filter((piece) => piece.isCompleted).map((piece) => piece.id);
+  if (completedIds.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: completedIds } }, data: { sourcePieceId: null } });
+  if (ids.length) {
+    await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
+    await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
+  }
   for (const { set, hasWinner } of later) {
     if (hasWinner || !set) continue;
     const unlink = !set.pieces.some((piece) => piece.sourcePieceId && !removedSourceIds.includes(piece.sourcePieceId));
@@ -248,7 +285,7 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   }
 }
 
-async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>, audit?: PieceAuditContext) {
+async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], source: Awaited<ReturnType<typeof readSessakuPieceSet>>, sites: string[], before: Map<string, Awaited<ReturnType<typeof projection>>>, sourcePlannedQuantity: number | null, audit?: PieceAuditContext) {
   // Flatten adopted ownership before quantity synchronization or deleting any later set.
   // A winnerless set unlinked by removeLaterPieces stays unlinked.
   for (const { set, hasWinner } of later) if (set && set.sourcePieceSetId !== source!.id && (hasWinner || set.sourcePieceSetId !== null)) {
@@ -259,17 +296,24 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     if (!source?.pieces.length && !process.set) continue;
     const parentId = sessakuPieceParentItemId(process.key);
     const previous = process.set?.pieces ?? [];
-    const set = process.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(process.key), plannedQuantity: process.plannedQuantity } });
-    if (!process.set || process.set.sourcePieceSetId === source!.id) {
+    const set = process.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: {
+      ...sessakuPieceSetWhere(process.key), plannedQuantity: process.plannedQuantity, sourcePieceSetId: source!.id, version: 2
+    } });
+    if (process.set && process.set.sourcePieceSetId === source!.id) {
       await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { sourcePieceSetId: source!.id, version: { increment: 1 } } });
     }
-    if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity, true);
+    if (source?.pieces.length) await reconcileSessakuPieceQuantities(tx, process.key, process.plannedQuantity, true,
+      !previous.length && !process.completed ? { set: source, plannedQuantity: sourcePlannedQuantity,
+        target: { ...set, sourcePieceSetId: source.id, pieces: [] } } : undefined);
     const saved = await readSessakuPieceSet(tx, process.key);
     const removed = source?.pieces.length ? previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id)) : previous;
     const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];
     if (previous.length || added.length) for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
       previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit);
-    await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true });
+    await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true, source: process.rowId ? {
+      set: saved, rowId: process.rowId, externallyCompleted: process.externallyCompleted,
+      previousCompleted: process.previousCompleted, plannedQuantity: process.plannedQuantity
+    } : undefined });
     if (!source?.pieces.length) {
       // Existing pre-feature manual sets can be adopted; preserve their history before removal.
       await rememberPieceHistory(tx, process.key);
@@ -292,19 +336,31 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
     if (params.deadline !== undefined && performance.now() >= params.deadline) conflict('AUTO_UNIT_SPLIT_BUDGET');
     const remainingMs = params.deadline === undefined ? 30000 : Math.max(1, Math.floor(params.deadline - performance.now()));
     const lockStarted = performance.now();
-    return prisma.$transaction(async (tx) => {
+    let active = true;
+    const executionDeadline = Math.min(params.deadline ?? Infinity, performance.now() + remainingMs);
+    const assertActive = () => {
+      if (!active || performance.now() >= executionDeadline) conflict('AUTO_UNIT_SPLIT_BUDGET');
+    };
+    return prisma.$transaction(async (rawTx) => {
+      // Prisma can reject a timed-out interactive transaction while its callback is still running.
+      // Check before AND after every awaited query, including writes in nested helpers.
+      const guard = <T extends object>(target: T): T => new Proxy(target, {
+        get(object, property) {
+          const value = Reflect.get(object, property);
+          if (typeof value === 'function') return async (...args: unknown[]) => {
+            assertActive();
+            const result = await Reflect.apply(value, object, args);
+            assertActive();
+            return result;
+          };
+          return value && typeof value === 'object' ? guard(value) : value;
+        }
+      });
+      const tx = params.autoUnitSplit ? guard(rawTx) : rawTx;
       if (params.audit?.timing) params.audit.timing.lockWaitMs += performance.now() - lockStarted;
       if (params.deadline !== undefined) {
         await tx.$queryRaw`SELECT set_config('lock_timeout', ${`${Math.min(250, remainingMs)}ms`}, true),
           set_config('statement_timeout', ${`${remainingMs}ms`}, true)`;
-      }
-      if (params.autoUnitSplit) {
-        const where = { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(key) };
-        const [set, history] = await Promise.all([
-          tx.productionScheduleSessakuPieceSet.findUnique({ where, select: { id: true } }),
-          tx.productionScheduleSessakuPieceHistory.findUnique({ where, select: { id: true } })
-        ]);
-        if (set || history) conflict('AUTO_UNIT_SPLIT_ALREADY_TOUCHED');
       }
       let lockedKeys: ReadonlySet<string> = new Set();
       const lockedRowIds = new Set<string>();
@@ -352,7 +408,11 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         try {
           await action(tx, { key, winner, set, current, external: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, sites, later });
           const saved = await readSessakuPieceSet(tx, key);
-          const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true });
+          const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true, source: params.autoUnitSplit ? {
+            set: saved, rowId: winner.id, externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
+            previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null,
+            plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null
+          } : undefined });
           return { saved, result };
         } finally {
           if (params.audit?.timing) params.audit.timing.writeMs += performance.now() - writeStarted - (params.audit.timing.beforeProjectionMs - beforeProjectionMs);
@@ -372,7 +432,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         quantityWarning: saved?.quantityWarning as SessakuPiecesMutationResponse['quantityWarning'],
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
         sourceRowId: winner.id, parentIsCompleted: result?.parentIsCompleted ?? false };
-    }, { timeout: remainingMs, maxWait: params.deadline === undefined ? 15000 : Math.min(250, remainingMs) });
+    }, { timeout: remainingMs, maxWait: params.deadline === undefined ? 15000 : Math.min(250, remainingMs) }).finally(() => { active = false; });
   };
   for (let attempt = 0; attempt < 3; attempt++) {
     try { return await execute(); }
@@ -390,7 +450,7 @@ function assertRevision(item: GrindingPlanningBoardItem | undefined, expected: s
   if (!item || item.itemRevision !== expected) conflict();
 }
 export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { siteKey: string; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number }): Promise<SessakuPiecesMutationResponse> {
-  if (!params.audit) return runSessakuPieceOperation({ action: 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
+  if (!params.audit) return runSessakuPieceOperation({ action: params.autoUnitSplit ? 'auto_unit_split_lot' : 'split', siteKey: params.siteKey, expectedVersion: params.expectedPieceSetVersion,
     requestedQuantities: params.quantities, parentItemId: params.parentItemId, pieceIds: params.targetPieceId ? [params.targetPieceId] : [], itemRevision: params.itemRevision }, (audit) => splitSessakuPieces({ ...params, audit }));
   params.audit.requestedQuantities = params.quantities;
   try { params.audit.fseiban = decodeSessakuPieceParentItemId(params.parentItemId).fseiban; } catch { /* Invalid IDs are rejected by operate when enabled. */ }
@@ -398,15 +458,13 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
   return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
     if (params.autoUnitSplit) {
-      // Recheck inside the same logical-key lock as every manual edit.
-      const history = await tx.productionScheduleSessakuPieceHistory.findUnique({
-        where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(c.key) }
-      });
-      if (c.set || history) conflict('AUTO_UNIT_SPLIT_ALREADY_TOUCHED');
-      const item = c.current.parents.find((item) => item.itemId === params.parentItemId);
+      const item = params.targetPieceId
+        ? c.current.pieces.find((item) => item.pieceId === params.targetPieceId)
+        : c.current.parents.find((item) => item.itemId === params.parentItemId);
       const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
       if (!item || !isUnitSplitEnabled(item.effectiveResourceCd, capacity)
-        || !Number.isSafeInteger(c.plannedQuantity) || c.plannedQuantity! < 2 || c.plannedQuantity! > 50) {
+        || !Number.isSafeInteger(c.plannedQuantity) || c.plannedQuantity! < 2 || c.plannedQuantity! > 50
+        || !Number.isSafeInteger(item.plannedQuantity) || item.plannedQuantity! < 2 || item.plannedQuantity! > 50) {
         conflict('AUTO_UNIT_SPLIT_INELIGIBLE');
       }
       if (!isFirstAutoUnitSplitProcess(item, c.current.parents)) conflict('AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE');
@@ -435,7 +493,8 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
     const before = await beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit);
-    await rememberPieceHistory(tx, c.key);
+    // Automatic work never writes manual-edit history, including on failure.
+    if (!params.autoUnitSplit) await rememberPieceHistory(tx, c.key);
     const set = c.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(c.key), plannedQuantity: total } });
     const pieces = c.set?.pieces ?? [];
     const insertAt = target ? pieces.findIndex((p) => p.id === target.id) : 0;
@@ -445,14 +504,16 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     if (target) await tx.productionScheduleSessakuPiece.delete({ where: { id: target.id } });
     // Move surviving positions above both the old and new ranges before assigning final positions.
     const offset = Math.max(set.nextPosition, ...pieces.map((p) => p.position), ordered.length) + ordered.length + 1;
-    await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
+    if (pieces.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
     for (const [index, piece] of ordered.entries()) {
       if (pieces.some((p) => p.id === piece.id)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { position: index + 1 } });
-      else await tx.productionScheduleSessakuPiece.create({ data: { id: piece.id, quantity: piece.quantity, pieceSetId: set.id, position: index + 1 } });
     }
+    await tx.productionScheduleSessakuPiece.createMany({ data: added.map((piece) => ({ ...piece, pieceSetId: set.id,
+      position: ordered.findIndex((item) => item.id === piece.id) + 1 })) });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { ...(!pieces.length ? { plannedQuantity: total } : {}), nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit);
-    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, params.audit);
+    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit);
+    await saveSiteVersions(tx, before);
   });
 }
 export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
@@ -483,7 +544,8 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`], params.audit);
-    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, params.audit);
+    await replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit);
+    await saveSiteVersions(tx, before);
   });
 }
 export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRequest & { siteKey: string; pieceId: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {

@@ -130,15 +130,284 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(saved.map(encodeSessakuPieceKey).sort()).toEqual(keys.map(encodeSessakuPieceKey).sort());
     }
     const policy = await getResourceCategoryPolicy({ siteKey: site });
-    // A disappeared manual key returning in CSV must stay excluded; a different raw key stays eligible.
+    // Both historical and untouched raw keys are eligible on enabled resources.
     for (const key of [keys[0], { ...keys[0], fhincd: 'UNTOUCHED' }]) {
       const data = { ...rowData, FSEIBAN: key.fseiban, FHINCD: key.fhincd, FSIGENCD: key.fsigencd, FKOJUN: key.fkojun };
       const created = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId, rowData: data, occurredAt: new Date(), dataHash: `${site}-${key.fhincd}` } });
       await prisma.productionScheduleOrderSupplement.create({ data: { csvDashboardId: dashboardId, csvDashboardRowId: created.id,
         sourceCsvDashboardId: site, productNo: key.fhincd === 'UNTOUCHED' ? '124' : '123', resourceCd: key.fsigencd, processOrder: key.fkojun, plannedQuantity: 3 } });
       const candidates = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
-      expect(candidates.some((candidate) => candidate.id === created.id)).toBe(key.fhincd === 'UNTOUCHED');
+      expect(candidates.some((candidate) => candidate.id === created.id)).toBe(true);
     }
+  });
+  async function productionLot(fhincd: string, total: number, productionSeiban?: string) {
+    if (productionSeiban) {
+      seiban = productionSeiban;
+      rowData = { ...rowData, FSEIBAN: seiban };
+      await prisma.productionScheduleGrindingPlanningBoardState.updateMany({ where: { siteKey: { in: [site, other] } }, data: { seibanOrder: [seiban] } });
+    }
+    rowData = { ...rowData, FHINCD: fhincd, FSIGENCD: '021', FKOJUN: '200' };
+    await prisma.csvDashboardRow.update({ where: { id: rowId }, data: { rowData } });
+    const processes = [['200', '10'], ['210', '10'], ['210', '305'], ['210', '588'], ['210', '589'], ['450', 'MSZ'], ['460', 'MSZ']];
+    await prisma.csvDashboardRow.update({ where: { id: nextRowId }, data: { rowData: { ...rowData, FKOJUN: '200', FSIGENCD: '10' } } });
+    const rows = [{ id: rowId, order: '200', resource: '021' }, { id: nextRowId, order: '200', resource: '10' }];
+    for (const [order, resource] of processes.slice(1)) {
+      const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+        rowData: { ...rowData, FKOJUN: order, FSIGENCD: resource }, occurredAt: new Date(), dataHash: `${site}-${order}-${resource}` } });
+      rows.push({ id: row.id, order, resource });
+    }
+    for (const row of rows) {
+      const data = { csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: site,
+        productNo: '123', resourceCd: row.resource, processOrder: row.order, plannedQuantity: total };
+      await prisma.productionScheduleOrderSupplement.upsert({ where: { csvDashboardRowId: row.id }, create: data, update: data });
+    }
+    return rows;
+  }
+  it.each([['MD004291472', 5, 'BA1S7309'], ['MD004845965', 6, 'BA1S7309'], ['MD005194700', 5, 'BA1S9306']] as const)(
+    'ignores retained history and splits the first 021/200 process of %s into %i units and propagates only to later orders', async (part, total, productionSeiban) => {
+      const rows = await productionLot(part, total, productionSeiban);
+      await prisma.productionScheduleSessakuPieceHistory.create({ data: { csvDashboardId: dashboardId, ...key() } });
+      const candidates = autoUnitSplitCandidateSql(site, [seiban], await getResourceCategoryPolicy({ siteKey: site }));
+      // Reproduce the former History gate on the very same database rows.
+      const legacy = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT c."id" FROM (${candidates}) c
+        WHERE NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceHistory" h WHERE h."csvDashboardId" = ${dashboardId}
+          AND h."fseiban" = ${seiban} AND h."fhincd" = ${part} AND h."fsigencd" = '021' AND h."fkojun" = '200')`);
+      expect(legacy).toEqual([]);
+      expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+      const source = (await readSessakuPieceSet(prisma, key()))!;
+      expect(source.pieces.map((piece) => piece.quantity)).toEqual(Array(total).fill(1));
+      for (const row of rows.slice(2)) {
+        const later = await prisma.productionScheduleSessakuPieceSet.findFirst({ where: {
+          csvDashboardId: dashboardId, fseiban: seiban, fhincd: part, fkojun: row.order, fsigencd: row.resource
+        }, include: { pieces: { orderBy: { position: 'asc' } } } });
+        expect(later?.sourcePieceSetId).toBe(source.id);
+        expect(later?.pieces.map((piece) => piece.quantity)).toEqual(Array(total).fill(1));
+        expect(later?.pieces.map((piece) => piece.sourcePieceId)).toEqual(source.pieces.map((piece) => piece.id));
+      }
+      expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId,
+        fseiban: seiban, fhincd: part, fkojun: '200', fsigencd: '10' } })).toBe(0);
+      expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(1);
+    });
+  it.each([5, 6])('measures a production-scale 3315-row / four-site unit split (quantity=%i)', async (total) => {
+    await productionLot(total === 5 ? 'MD004291472' : 'MD004845965', total);
+    const sites = [site, other, `${site}-third`, `${site}-fourth`];
+    const seibans = Array.from({ length: 89 }, (_, i) => `PERF-${i}-${seiban}`);
+    const rows = Array.from({ length: 3307 }, (_, i) => ({ id: randomUUID(), csvDashboardId: dashboardId,
+      rowData: { ...rowData, FSEIBAN: seibans[i % seibans.length], FHINCD: `PART-${i}`,
+        FSIGENCD: i < 1800 ? ['021', '10', '305', '588', '589', 'MSZ'][i % 6] : `UNRELATED-${i % 40}`,
+        FKOJUN: '100', ProductNo: String(1000 + i) }, occurredAt: new Date(), dataHash: `${site}-scale-${i}` }));
+    const audit: PieceAuditContext = { action: 'auto_unit_split_lot', siteKey: site };
+    try {
+      await prisma.csvDashboardRow.createMany({ data: rows });
+      await prisma.productionScheduleOrderSupplement.createMany({ data: rows.map((row) => ({
+        csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: site,
+        resourceCd: row.rowData.FSIGENCD, processOrder: '100', productNo: row.rowData.ProductNo, plannedQuantity: 1
+      })) });
+      for (const [index, targetSite] of sites.entries()) {
+        const order = [...seibans.slice(index * 10), ...seibans.slice(0, index * 10), seiban];
+        await prisma.productionScheduleGrindingPlanningBoardState.upsert({
+          where: { csvDashboardId_siteKey: { csvDashboardId: dashboardId, siteKey: targetSite } },
+          create: { csvDashboardId: dashboardId, siteKey: targetSite, seibanOrder: order }, update: { seibanOrder: order }
+        });
+        const ranks = new Map<string, number>();
+        await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: rows.map((row) => {
+          const resource = row.rowData.FSIGENCD;
+          const rank = (ranks.get(resource) ?? 0) + 1; ranks.set(resource, rank);
+          return { csvDashboardId: dashboardId, siteKey: targetSite, itemKey: buildGrindingPlanningBoardRowItemId(row.rowData), alternateRank: rank };
+        }) });
+      }
+      const p = { itemId: buildGrindingPlanningBoardRowItemId(rowData), itemRevision: '0'.repeat(64) };
+      const result = await runSessakuPieceOperation(audit, (context) => splitSessakuPieces({ siteKey: site,
+        parentItemId: p.itemId, itemRevision: p.itemRevision, expectedPieceSetVersion: 0,
+        quantities: Array(total).fill(1), autoUnitSplit: true, deadline: performance.now() + 3000, audit: context }));
+      expect(result.pieces.map((piece) => piece.quantity)).toEqual(Array(total).fill(1));
+      expect(audit.timing!.sourceRowCount).toBe(1808);
+      expect(audit.timing!.upsertCount).toBeLessThan(300);
+      expect(audit.timing!.totalMs).toBeLessThan(3000);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: { in: sites },
+        itemKey: { in: rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)) }, version: { not: 1 }
+      } })).toBe(0);
+      const states = await prisma.productionScheduleGrindingPlanningBoardState.findMany({ where: { siteKey: { in: sites } } });
+      expect(states.map((state) => state.version)).toEqual([8, 8, 8, 8]);
+      console.info('production-scale unit split', { quantity: total, ...audit.timing });
+    } finally {
+      await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: { in: sites } } });
+      await prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: { in: sites.slice(2) } } });
+      await prisma.csvDashboardRow.deleteMany({ where: { id: { in: rows.map((row) => row.id) } } });
+    }
+  }, 30000);
+  it.each(['budget', 'busy', 'statement-timeout', 'transaction-timeout'] as const)(
+    'leaves no history after %s and splits the production lot on the next call', async (failure) => {
+      await productionLot('MD004845965', 6);
+      const p = await parent();
+      const original = prisma.$transaction.bind(prisma);
+      let injected = false;
+      if (failure !== 'budget') {
+        // Inject a real PostgreSQL failure after source pieces have been created,
+        // at the first lane write (and after the old automatic History upsert).
+        vi.spyOn(prisma, '$transaction').mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
+          original(async (tx) => callback(new Proxy(tx, {
+            get(target, property) {
+              if (property === '$executeRaw') return async (...args: Parameters<typeof target.$executeRaw>) => {
+                const sql = args[0] as Prisma.Sql;
+                if (!sql.sql?.includes('INSERT INTO "ProductionScheduleGrindingPlanningBoardOverride"')) return target.$executeRaw(...args);
+                injected = true;
+                if (failure === 'transaction-timeout') {
+                  await new Promise((resolve) => setTimeout(resolve, 2100));
+                  return target.$executeRaw`SELECT 1`;
+                }
+                if (failure === 'busy') return target.$executeRaw`DO $$ BEGIN RAISE EXCEPTION 'busy' USING ERRCODE = '55P03'; END $$`;
+                await target.$queryRaw`SELECT set_config('statement_timeout', '1ms', true)`;
+                return target.$executeRaw`SELECT pg_sleep(0.05)`;
+              };
+              return Reflect.get(target, property);
+            }
+          })), { ...options, ...(failure === 'transaction-timeout' ? { timeout: 2000 } : {}) })) as typeof prisma.$transaction);
+      }
+      try {
+        await expect(splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, expectedPieceSetVersion: 0,
+          itemRevision: p.itemRevision, quantities: Array(6).fill(1), autoUnitSplit: true,
+          deadline: performance.now() + (failure === 'budget' ? -1 : 3000) })).rejects.toMatchObject({
+          code: failure === 'budget' ? 'AUTO_UNIT_SPLIT_BUDGET' : 'AUTO_UNIT_SPLIT_BUSY'
+        });
+      } finally { vi.restoreAllMocks(); }
+      if (failure !== 'budget') expect(injected).toBe(true);
+      expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(0);
+      expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(0);
+      expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+      expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual(Array(6).fill(1));
+    });
+  it('splits a manually split/merged production lot even after its empty set disappears', async () => {
+    await productionLot('MD005194700', 5, 'BA1S9306');
+    const result = await split();
+    await mergeSessakuPieces({ siteKey: site, parentItemId: result.parentItemId, expectedPieceSetVersion: result.pieceSetVersion,
+      pieceIds: result.pieces.map((piece) => piece.pieceId!), itemRevisions: Object.fromEntries(result.pieces.map((piece) => [piece.itemId, piece.itemRevision])) });
+    await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
+    expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { csvDashboardId: dashboardId, ...key() } })).toBe(1);
+    expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+    expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual(Array(5).fill(1));
+  });
+  it('turns a manual 2+3 production lot into five linked units without rewriting its history', async () => {
+    const rows = await productionLot('MD005194700', 5, 'BA1S9306');
+    await split();
+    const history = await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
+    expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+    const source = (await readSessakuPieceSet(prisma, key()))!;
+    expect(source.pieces.map((piece) => piece.quantity)).toEqual(Array(5).fill(1));
+    for (const row of rows.slice(2)) {
+      const later = await readSessakuPieceSet(prisma, { ...key(), fkojun: row.order, fsigencd: row.resource });
+      expect(later?.pieces.map((piece) => [piece.quantity, piece.sourcePieceId])).toEqual(source.pieces.map((piece) => [1, piece.id]));
+    }
+    expect(await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toEqual(history);
+  });
+  it.each(['completed', 'operation', 'later-completed', 'later-locked'] as const)(
+    'preserves protected production pieces during automatic re-split (%s)', async (protection) => {
+      await productionLot('MD005194700', 5);
+      const result = await split();
+      const source = (await readSessakuPieceSet(prisma, key()))!;
+      if (protection === 'completed') await prisma.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: source.id }, data: { isCompleted: true, completedAt: new Date() } });
+      if (protection === 'operation') await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: source.pieces.map((piece) => ({ pieceId: piece.id, opNo: 9 })) });
+      if (protection === 'later-completed') await prisma.productionScheduleSessakuPiece.updateMany({ where: { pieceSet: { sourcePieceSetId: source.id } }, data: { isCompleted: true, completedAt: new Date() } });
+      if (protection === 'later-locked') await prisma.productionScheduleSessakuPieceSet.updateMany({ where: { sourcePieceSetId: source.id }, data: { quantityWarning: 'INVALID_PLANNED_QUANTITY' } });
+      expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 0 });
+      expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => [piece.id, piece.quantity])).toEqual(source.pieces.map((piece) => [piece.id, piece.quantity]));
+      expect((await readSessakuPieceSet(prisma, key()))?.version).toBe(result.pieceSetVersion);
+    });
+  it.each(['completed', 'operation'] as const)('re-splits only editable siblings beside a protected %s piece', async (protection) => {
+    await productionLot('MD005194700', 5);
+    const result = await split();
+    const protectedPiece = result.pieces.find((piece) => piece.quantity === 2)!;
+    if (protection === 'completed') await prisma.productionScheduleSessakuPiece.update({
+      where: { id: protectedPiece.pieceId! }, data: { isCompleted: true, completedAt: new Date() }
+    });
+    else await prisma.productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId: protectedPiece.pieceId!, opNo: 9 } });
+    expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+    const saved = (await readSessakuPieceSet(prisma, key()))!;
+    expect(saved.pieces.map((piece) => piece.quantity)).toEqual([2, 1, 1, 1]);
+    expect(saved.pieces[0].id).toBe(protectedPiece.pieceId);
+    expect(saved.pieces[0].isCompleted).toBe(protection === 'completed');
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.count({ where: { pieceId: protectedPiece.pieceId! } })).toBe(protection === 'operation' ? 1 : 0);
+    const later = await prisma.productionScheduleSessakuPieceSet.findMany({ where: { sourcePieceSetId: saved.id }, include: { pieces: { orderBy: { position: 'asc' } } } });
+    for (const set of later) expect(set.pieces.map((piece) => [piece.quantity, piece.sourcePieceId])).toEqual(saved.pieces.map((piece) => [piece.quantity, piece.id]));
+  });
+  it.each(['split', 'merge'] as const)('serializes a simultaneous automatic split and manual %s with expectedVersion', async (operation) => {
+    await productionLot('MD005194700', 5);
+    const initial = operation === 'merge' ? await split() : null;
+    const p = await parent();
+    const target = initial?.pieces.find((piece) => piece.quantity === 2);
+    const automatic = () => splitSessakuPieces({ siteKey: site, parentItemId: p.itemId,
+      expectedPieceSetVersion: initial?.pieceSetVersion ?? 0, targetPieceId: target?.pieceId,
+      itemRevision: target?.itemRevision ?? p.itemRevision, quantities: Array(target ? 2 : 5).fill(1),
+      autoUnitSplit: true, deadline: performance.now() + 3000 });
+    const manual = () => initial
+      ? mergeSessakuPieces({ siteKey: site, parentItemId: p.itemId, expectedPieceSetVersion: initial.pieceSetVersion,
+        pieceIds: initial.pieces.map((piece) => piece.pieceId!), itemRevisions: Object.fromEntries(initial.pieces.map((piece) => [piece.itemId, piece.itemRevision])) })
+      : splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, expectedPieceSetVersion: 0, itemRevision: p.itemRevision, quantities: [2, 3] });
+    const results = await Promise.allSettled([automatic(), manual()]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { statusCode: 409 } });
+    await autoSplitSessakuUnits({ siteKey: site });
+    const source = (await readSessakuPieceSet(prisma, key()))!;
+    expect(source.pieces.map((piece) => piece.quantity)).toEqual(Array(5).fill(1));
+    expect(new Set(source.pieces.map((piece) => piece.id)).size).toBe(5);
+    const later = await prisma.productionScheduleSessakuPieceSet.findMany({ where: { sourcePieceSetId: source.id }, include: { pieces: { orderBy: { position: 'asc' } } } });
+    for (const set of later) expect(set.pieces.map((piece) => [piece.quantity, piece.sourcePieceId])).toEqual(source.pieces.map((piece) => [1, piece.id]));
+  });
+  it.each(['deadline', 'transaction-timeout'] as const)('stops the callback before its next write after %s and retries cleanly', async (failure) => {
+    await productionLot('MD004845965', 6);
+    const p = await parent();
+    const original = prisma.$transaction.bind(prisma);
+    let afterExpiry = false;
+    let lateQueries = 0;
+    let callbackFinished!: () => void;
+    const finished = new Promise<void>((resolve) => { callbackFinished = resolve; });
+    const clock = vi.spyOn(performance, 'now');
+    vi.spyOn(prisma, '$transaction').mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
+      original(async (tx) => {
+        const guarded = new Proxy(tx, { get(target, property) {
+          const value = Reflect.get(target, property);
+          if (typeof value === 'function') return (...args: unknown[]) => {
+            if (afterExpiry) lateQueries += 1;
+            return Reflect.apply(value, target, args);
+          };
+          if (property === 'productionScheduleSessakuPieceSet') return new Proxy(value, { get(model, method) {
+            if (method === 'create') return async (...args: unknown[]) => {
+              const saved = await Reflect.apply(model.create, model, args);
+              // A real write has happened, but its awaited result reaches the callback after expiry.
+              if (failure === 'deadline') clock.mockReturnValue(performance.now() + 10000);
+              else await new Promise((resolve) => setTimeout(resolve, 1100));
+              afterExpiry = true;
+              return saved;
+            };
+            const query = Reflect.get(model, method);
+            return typeof query === 'function' ? (...args: unknown[]) => {
+              if (afterExpiry) lateQueries += 1;
+              return Reflect.apply(query, model, args);
+            } : query;
+          } });
+          if (value && typeof value === 'object') return new Proxy(value, { get(model, method) {
+            const query = Reflect.get(model, method);
+            return typeof query === 'function' ? (...args: unknown[]) => {
+              if (afterExpiry) lateQueries += 1;
+              return Reflect.apply(query, model, args);
+            } : query;
+          } });
+          return value;
+        } });
+        try { return await callback(guarded); } finally { callbackFinished(); }
+      }, options)) as typeof prisma.$transaction);
+    try {
+      await expect(splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, expectedPieceSetVersion: 0,
+        itemRevision: p.itemRevision, quantities: Array(6).fill(1), autoUnitSplit: true, deadline: performance.now() + (failure === 'transaction-timeout' ? 1000 : 3000) }))
+        .rejects.toMatchObject({ code: expect.stringMatching(/^AUTO_UNIT_SPLIT_(BUDGET|BUSY)$/) });
+      await finished;
+      expect(afterExpiry).toBe(true);
+      expect(lateQueries).toBe(0);
+    } finally { vi.restoreAllMocks(); }
+    expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(0);
+    expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { csvDashboardId: dashboardId, fseiban: seiban } })).toBe(0);
+    expect(await autoSplitSessakuUnits({ siteKey: site })).toMatchObject({ splitCount: 1 });
+    expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual(Array(6).fill(1));
   });
   it('preserves other-site operation evidence while filling only the saved site definition', async () => {
     const save = (siteKey: string, opNos: number[]) => updateGrindingPlanningBoardResourcePartMinutes({
@@ -198,7 +467,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       pieceIds: current.map((item) => item.pieceId!), expectedPieceSetVersion: saved.version,
       itemRevisions: Object.fromEntries(current.map((item) => [item.itemId, item.itemRevision])) });
     expect((await readSessakuPieceSet(prisma, key()))?.pieces).toHaveLength(0);
-    expect((await autoSplitSessakuUnits({ siteKey: site })).splitCount).toBe(0);
+    expect((await autoSplitSessakuUnits({ siteKey: site })).splitCount).toBe(1);
   });
   it.each([false, true])('unit quantity growth follows effective resource settings (disabled=%s), preserves records and links later units', async (disabled) => {
     await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
@@ -298,7 +567,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       create: { csvDashboardId: dashboardId, siteKey: site, itemKey: parentId, overrideResourceCd: '021' },
       update: { overrideResourceCd: '021' }
     });
-    expect((await autoSplitSessakuUnits({ siteKey: site })).splitCount).toBe(0);
+    expect((await autoSplitSessakuUnits({ siteKey: site })).splitCount).toBe(1);
     expect(await prisma.productionScheduleSessakuPieceHistory.findUnique({ where: {
       csvDashboardId_fseiban_fhincd_fsigencd_fkojun: { csvDashboardId: dashboardId, ...key() }
     } })).not.toBeNull();
@@ -641,7 +910,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     { resource: '999', quantity: 3, expected: false }, { resource: '021', quantity: 1, expected: false },
     { resource: '021', quantity: 51, expected: false }, { resource: '021', quantity: 3, completed: true, expected: false },
     { resource: '021', quantity: 3, external: true, expected: false }, { resource: '021', quantity: 3, earlierGrinding: true, expected: false },
-    { resource: '021', quantity: 3, touched: true, expected: false },
+    { resource: '021', quantity: 3, touched: true, expected: true },
     { resource: '\t021\u3000', quantity: 3, expected: true },
     { resource: '０２１', quantity: 3, expected: false }, { resource: '０２１', quantity: 3, flag: true, expected: true },
     { resource: '021', quantity: 3, originalResource: '３０５', expected: true },
@@ -666,20 +935,20 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     if ('differentPart' in scenario) await prisma.csvDashboardRow.update({ where: { id: nextRowId },
       data: { rowData: { ...rowData, FHINCD: scenario.differentPart, FKOJUN: '2', FSIGENCD: '305' } } });
     if ('warning' in scenario) await prisma.productionScheduleSessakuPieceSet.create({ data: {
-      csvDashboardId: dashboardId, ...key(), quantityWarning: scenario.warning, plannedQuantity: 3
+      csvDashboardId: dashboardId, ...key(), quantityWarning: scenario.warning, plannedQuantity: 3,
+      pieces: { create: { position: 1, quantity: 3 } }
     } });
-    const touched = new Set<string>();
     if ('touched' in scenario) {
-      await prisma.productionScheduleSessakuPieceHistory.create({ data: { csvDashboardId: dashboardId, ...key() } }); touched.add(parentId);
+      await prisma.productionScheduleSessakuPieceHistory.create({ data: { csvDashboardId: dashboardId, ...key() } });
     }
     const policy = await getResourceCategoryPolicy({ siteKey: site });
     const sql = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
     const rows = await readWinnerRowsByFseibans(prisma, [seiban]);
     const items = projectGrindingPlanningBoard({ rows, details: await readRowDetails(prisma, rows.map((row) => row.id)),
       overrides: await readOverrides(prisma, site, rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData))),
-      ranks: { rows: new Map() }, pieceSets: await readSessakuPieceSets(prisma, rows), seibanOrder: [seiban], category: 'all' }).items;
+      ranks: { rows: new Map() }, pieceSets: await readSessakuPieceSets(prisma, rows), seibanOrder: [seiban], category: 'all', includePieces: true }).items;
     const ts = autoUnitSplitCandidates(items, await getGrindingPlanningBoardResourceCapacity({ siteKey: site }),
-      (cd) => isProductionScheduleCuttingResourceCd(cd, policy), touched);
+      (cd) => isProductionScheduleCuttingResourceCd(cd, policy));
     expect(sql.some((row) => row.id === rowId)).toBe(scenario.expected);
     expect(ts.some((item) => item.sourceRowId === rowId)).toBe(scenario.expected);
     expect(sql.map((row) => row.id).sort()).toEqual(ts.map((item) => item.sourceRowId).sort());
@@ -2028,7 +2297,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(new Set(lane.map((item) => item.alternateRank)).size).toBe(lane.length);
       expect(await readSessakuPieceSet(prisma, laterKey())).toMatchObject({ pieces: [], sourcePieceSetId: (await readSessakuPieceSet(prisma, key()))!.id, plannedQuantity: 0 });
       const saved = await prisma.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({ where: { id: before.id } });
-      expect(saved).toEqual(resource === '1' ? { ...before, version: before.version + 1, updatedAt: expect.any(Date) } : before);
+      // Its rank is unchanged, so its override and revision remain unchanged too.
+      expect(saved).toEqual(before);
     });
     it.each(['complete', 'incomplete'] as const)('excludes an unsplit third process from later %s responses and audits', async (intent) => {
       await splitThree();

@@ -12,13 +12,15 @@ describe('automatic candidate SQL contract', () => {
     const item = { fseiban: 'S', fhincd: 'PART', originalResourceCd: '021', processOrder: candidate } as GrindingPlanningBoardItem;
     expect(isFirstAutoUnitSplitProcess(item, [{ ...item, processOrder: base as string }])).toBe(!later);
   });
-  it('gates the probe by flags/defaults, quantity, progress, history, winners and raw part keys and conservative process order', () => {
+  it('gates the probe by flags/defaults, quantity, progress, editable pieces, winners and raw part keys and conservative process order', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: ['MSZ'] });
     expect(sql.sql).toContain('COALESCE(c."unitSplitEnabled",');
     expect(sql.sql).toContain("IN ('021', '022')");
     expect(sql.sql).toContain('q."plannedQuantity" BETWEEN 2 AND 50');
     for (const table of ['ProductionScheduleProgress', 'ProductionScheduleExternalCompletion', 'ProductionScheduleSessakuPieceSet',
-      'ProductionScheduleSessakuPieceHistory', 'ProductionScheduleGrindingPlanningBoardOverride']) expect(sql.sql).toContain(table);
+      'ProductionScheduleGrindingPlanningBoardOverride']) expect(sql.sql).toContain(table);
+    expect(sql.sql).not.toContain('ProductionScheduleSessakuPieceHistory');
+    expect(sql.sql).toContain('ProductionScheduleSessakuPieceOpCompletion');
     expect(sql.sql).toContain('NORMALIZE(e."rowData"');
     expect(sql.sql).toContain('ELSE false END');
     expect(sql.sql).toContain('WITH untouched AS MATERIALIZED');

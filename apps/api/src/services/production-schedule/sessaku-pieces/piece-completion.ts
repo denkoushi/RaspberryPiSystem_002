@@ -12,11 +12,19 @@ export function aggregateSessakuPieceCompletion(pieces: readonly { isCompleted: 
   return pieces.every((piece) => piece.isCompleted);
 }
 /** Caller holds the logical lock. All piece-derived Progress writes go through this function. */
-export async function reconcileSessakuPieceProgress(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, options: { emptyIsIncomplete?: boolean } = {}) {
-  const set = await readSessakuPieceSet(tx, key);
-  const winner = await findSessakuPieceWinner(tx, key);
+export async function reconcileSessakuPieceProgress(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, options: { emptyIsIncomplete?: boolean; source?: {
+  set: Awaited<ReturnType<typeof readSessakuPieceSet>>; rowId: string; externallyCompleted: boolean;
+  previousCompleted: boolean | null; plannedQuantity: number | null;
+} } = {}) {
+  // Split/merge already read these facts under the same logical and parent-row locks.
+  const set = options.source ? options.source.set : await readSessakuPieceSet(tx, key);
+  const winner = options.source ? { id: options.source.rowId } : await findSessakuPieceWinner(tx, key);
   if (!set || !winner || (!set.pieces.length && !options.emptyIsIncomplete)) return null;
-  const [external, previous, supplement] = await Promise.all([
+  const [external, previous, supplement] = options.source ? [
+    { isExternallyCompleted: options.source.externallyCompleted },
+    options.source.previousCompleted === null ? null : { isCompleted: options.source.previousCompleted },
+    { plannedQuantity: options.source.plannedQuantity }
+  ] as const : await Promise.all([
     tx.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } }),
     tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: winner.id } }),
     tx.productionScheduleOrderSupplement.findUnique({ where: { csvDashboardRowId: winner.id }, select: { plannedQuantity: true } })
