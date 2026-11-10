@@ -11,7 +11,7 @@ import { useShelfPhotoEditor } from './useShelfPhotoEditor';
 
 import type { ShelfPhotoEditorProps } from './useShelfPhotoEditor';
 
-export function useDeleteConfirmation(confirmed: boolean, reset: () => void) {
+export function useDeleteConfirmation(confirmed: boolean | string | undefined, reset: () => void) {
   const resetRef = useRef(reset);
   resetRef.current = reset;
   useEffect(() => {

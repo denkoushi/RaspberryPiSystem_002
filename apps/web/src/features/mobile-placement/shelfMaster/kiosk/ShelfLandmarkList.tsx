@@ -3,8 +3,8 @@ import { useShelfLandmarkEditor } from './useShelfLandmarkEditor';
 
 import type { KioskShelf, Landmark } from './shelfKioskModel';
 
-export function ShelfLandmarkList({ marks, shelves, selected, heldKey, onSelect }: { marks: Landmark[]; shelves: KioskShelf[]; selected?: string; heldKey?: string; onSelect: (name: string) => void }) {
-  const editor = useShelfLandmarkEditor({ onSelect, onDelete: () => onSelect('') });
+export function ShelfLandmarkList({ marks, shelves, selected, heldKey, onSelect, onAdded, onDeleted }: { marks: Landmark[]; shelves: KioskShelf[]; selected?: string; heldKey?: string; onSelect: (name: string) => void; onAdded: (name: string) => void; onDeleted: (name: string) => void }) {
+  const editor = useShelfLandmarkEditor({ onSelect: onAdded, onDelete: onDeleted });
   return <section className="sk-marks" aria-label="目安"><div className="sk-mark-list">{marks.map((mark) => {
     const own = shelves.filter((shelf) => { const pos = shelfPosition(shelf.shelfCodeRaw, marks); return mark.other ? !pos : pos?.machine === mark.name; });
     return <div className="sk-mark-row" key={mark.name}><button type="button" className={`sk-mark ${heldKey === `mark:${mark.name}` ? 'sk-held' : ''}`} aria-pressed={selected === mark.name} onClick={() => onSelect(mark.name)}>
