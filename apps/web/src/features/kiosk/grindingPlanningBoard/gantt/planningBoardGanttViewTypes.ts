@@ -1,0 +1,42 @@
+import type { ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
+import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
+import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+
+export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  minutesPending?: boolean; minutesError?: boolean;
+  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
+  valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
+  fitPane?: boolean; onNavigateBar?: (bar: GanttBar) => boolean;
+  singleResourceCd?: string | null;
+  singleResourcePickerOpen?: boolean;
+  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
+  onSingleResourceChange?: (resource: string | null) => void;
+  onResourceReorder?: ForwardReorder;
+  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
+  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
+  arrivalPending?: boolean;
+  arrivalError?: boolean;
+  onResourceMove?: ForwardMove;
+  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
+  pinMode?: boolean;
+  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
+  runsThroughBreaks?: ReadonlySet<string>;
+  onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
+  colorBySeiban?: boolean;
+  focusedSeiban: string | null;
+  onFocusedSeibanChange: (seiban: string | null) => void;
+  seibanOrder?: readonly string[];
+  layout: GanttLayout;
+  scale: number;
+  /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
+  homeKey?: number;
+  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
+  resourceNameMap: Record<string, string[]>;
+  capacityPending: boolean; capacityError: boolean;
+  onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
+  /** Device-local lane order key, shared with the resource list panes. */
+  preferenceScope?: string;
+};
+export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void; scrollToItem: (itemId: string) => void };

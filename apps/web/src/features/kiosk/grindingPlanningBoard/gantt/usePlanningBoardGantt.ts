@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { useOfflineResourceMinutes, useOfflineResourceCapacity } from '../offline/planningBoardOfflineQueries';
+import { planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardQueryData } from '../usePlanningBoardQueryData';
 
@@ -70,7 +71,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     const escape = (event: KeyboardEvent) => {
       // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
-        if (valueSheetResource === singleResourceCd) setValueSheetResource(null);
+        if (valueSheetResource && planningBoardResourceMatches(singleResourceCd, valueSheetResource)) setValueSheetResource(null);
         else changeSingleResource(null);
       }
     };
@@ -104,8 +105,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
       if (!offlineEnabled) sourceMutation.mutate(source);
       else void gate.run(() => sourceMutation.mutateAsync(source)).then(() =>
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
-    }, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
-    toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
+    }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource),
+    valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),
     singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

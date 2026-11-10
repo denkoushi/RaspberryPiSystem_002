@@ -9,6 +9,7 @@ import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from 
 
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
+import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
@@ -856,6 +857,28 @@ describe('forward PlanningBoardGanttView', () => {
     const firstRow = bars[0]!.closest('[data-gantt-window-row]');
     expect(firstRow).not.toBe(document.querySelector('[data-gantt-window-row]'));
     expect(screen.queryByTestId('planning-gantt-bar-pre')).toBeNull();
+  });
+  it.each([false, true])('keeps two-machine drag within its pane (cross machine=%s)', (crossMachine) => {
+    vi.useFakeTimers();
+    const entries = [item({ originalResourceCd: '021', requiredMinutes: 60, alternateRank: 1 }),
+      item({ itemId: 'b', originalResourceCd: crossMachine ? '022' : '021', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 }),
+      item({ itemId: 'c', originalResourceCd: '022', fhincd: 'P3', requiredMinutes: 60 })];
+    const values = forwardProps(entries);
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} scale={1} singleResourceCd="021+022"
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
+    const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!;
+    vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+    fireEvent.pointerDown(source, { clientX: 0, clientY: 20, button: 0 });
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.pointerMove(source, { clientX: 900, clientY: 150 });
+    if (crossMachine) expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    else expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
+    fireEvent.pointerUp(source, { clientX: 900, clientY: 150 });
+    expect(onResourceMove).not.toHaveBeenCalled();
+    if (crossMachine) expect(values.onResourceReorder).not.toHaveBeenCalled();
+    else expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
   });
   it('reorders across working-minute windows after a long press, showing insertion only on the target row', () => {
     vi.useFakeTimers();

@@ -225,10 +225,10 @@ describe('PlanningBoardToolbar forward controls', () => {
   });
 });
 
-function SingleResourceToolbar() {
+function SingleResourceToolbar({ resources = ['305', '306'] }: { resources?: string[] }) {
   const [resource, setResource] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
-  return <PlanningBoardToolbar {...props()} singleResourceCd={resource} singleResourceLanes={['305', '306']}
+  return <PlanningBoardToolbar {...props()} singleResourceCd={resource} singleResourceLanes={resources}
     singleResourceNameMap={{ '305': ['NC旋盤'], '306': ['研削盤'] }} singleResourcePickerAnchor={anchor}
     onOpenSingleResourcePicker={setAnchor} onCloseSingleResourcePicker={() => setAnchor(null)}
     onSingleResourceChange={(next) => { setResource(next); setAnchor(null); }} />;
@@ -265,5 +265,26 @@ describe('single resource toolbar', () => {
     expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
     expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+  });
+});
+
+describe('two machine picker', () => {
+  it.each([[['021']], [['022']], [['305']], [[]]])('does not offer the pair for lanes %j', (resources) => {
+    render(<SingleResourceToolbar resources={resources} />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    expect(screen.queryByRole('button', { name: '021+022 2台' })).toBeNull();
+  });
+  it('offers the pair last, selects it and exits with the toolbar button', () => {
+    render(<SingleResourceToolbar resources={['022', '021']} />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    const picker = screen.getByRole('group', { name: '1台の資源CD' });
+    const pair = within(picker).getByRole('button', { name: '021+022 2台' });
+    expect(within(picker).getAllByRole('button').at(-1)).toBe(pair);
+    fireEvent.click(pair);
+    const button = screen.getByRole('button', { name: '021+022 2台表示をやめる' });
+    expect(button).toHaveTextContent('021+022 ✕');
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1台');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
   });
 });
