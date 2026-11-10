@@ -1,5 +1,5 @@
 import { splitArea } from '@raspi-system/shelf-layout-core';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
@@ -26,7 +26,7 @@ export function ShelfKioskEditor(props: ShelfPhotoEditorProps & { onCancel?: () 
   const e = useShelfPhotoEditor(props);
   const { onPhotoChange } = props;
   const hasPhoto = Boolean(e.photo);
-  useEffect(() => { onPhotoChange?.(hasPhoto); }, [hasPhoto, onPhotoChange]);
+  useLayoutEffect(() => { onPhotoChange?.(hasPhoto); }, [hasPhoto, onPhotoChange]);
   useDeleteConfirmation(e.confirmDelete, () => e.setConfirmDelete(false));
   const position = props.shelf ? splitArea(props.shelf.shelfCodeRaw) : null;
   const selectedDirection = position ? position.direction ?? '' : e.direction;
