@@ -9,3 +9,9 @@ export const SESSAKU_PIECE_LOAD_JOINS_SQL = Prisma.sql`
     AND ps."fkojun" = COALESCE("CsvDashboardRow"."rowData"->>'FKOJUN', '')
   LEFT JOIN "ProductionScheduleSessakuPiece" pc ON pc."pieceSetId" = ps."id"
 `;
+
+/** Setup is counted once per lot: only the lowest-position piece (completed ones included) carries it. */
+export const SESSAKU_PIECE_INCLUDE_SETUP_SQL = Prisma.sql`(pc."id" IS NULL OR pc."position" = (
+  SELECT MIN(first_pc."position") FROM "ProductionScheduleSessakuPiece" first_pc
+  WHERE first_pc."pieceSetId" = ps."id"
+)) AS "includeSetup"`;

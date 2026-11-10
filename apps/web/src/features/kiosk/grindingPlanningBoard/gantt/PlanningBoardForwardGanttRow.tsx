@@ -5,6 +5,7 @@ import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLo
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
@@ -75,6 +76,7 @@ type Props = {
 export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, dayLoad = 0, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
   const [heldItemId, setHeldItemId] = useState<string | null>(null);
   const currentDay = today ?? Math.floor(now);
@@ -115,12 +117,21 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     onDragPreview(null);
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
   };
+  useEffect(() => gate.subscribeReadOnly(() => {
+    cancelLongPress();
+    const pending = drag.current;
+    drag.current = null;
+    suppressClick.current = true;
+    setHeldItemId(null);
+    onDragPreview(null);
+    if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
+  }), [gate, onDragPreview]);
   useEffect(() => {
     const cancel = () => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } };
     globalThis.window.addEventListener('blur', cancel);
     return () => { cancel(); globalThis.window.removeEventListener('blur', cancel); };
   }, [onDragPreview]);
-  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, pinMode, onDragPreview]);
+  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, frozen, pinMode, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
     return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
       track.current?.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth);
@@ -163,6 +174,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
       pending.longPressed = false;
       onToggleItem(pending.bar.item, pending.selected);
     }
+    if (distance >= 8 && !dragDisabled && resourceView && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
       pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || canMoveResource?.(pending.bar.item, lane.resource)).map((lane) => lane.resource));
@@ -314,7 +326,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 const drop = findDrop(event.clientX, event.clientY, pending);
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
-                if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView) {
+                if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView && gate.attempt()) {
                   if (drop.resource !== pending.bar.resource) onResourceMove?.(pending.bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
                   else if (drop.bar) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
                 }
@@ -323,7 +335,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) onTogglePin?.(bar.item); else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
+                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}

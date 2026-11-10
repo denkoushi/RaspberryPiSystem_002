@@ -8,12 +8,16 @@ const MIME_FORMATS: Record<string, string> = {
 };
 
 /** Validate decoded image headers before persisting or generating derivatives. */
-export async function validateImageBuffer(buffer: Buffer, mimetype: string): Promise<void> {
+export async function validateImageBuffer(
+  buffer: Buffer,
+  mimetype: string,
+  maxPixels: number = IMAGE_INPUT_MAX_PIXELS
+): Promise<void> {
   try {
     const expectedFormat = MIME_FORMATS[mimetype.toLowerCase()];
-    const metadata = await sharp(buffer, { limitInputPixels: IMAGE_INPUT_MAX_PIXELS }).metadata();
+    const metadata = await sharp(buffer, { limitInputPixels: maxPixels }).metadata();
     const pixels = (metadata.width ?? 0) * (metadata.height ?? 0) * (metadata.pages ?? 1);
-    if (!expectedFormat || metadata.format !== expectedFormat || pixels <= 0 || pixels > IMAGE_INPUT_MAX_PIXELS) {
+    if (!expectedFormat || metadata.format !== expectedFormat || pixels <= 0 || pixels > maxPixels) {
       throw new Error('Invalid image format or dimensions');
     }
   } catch {

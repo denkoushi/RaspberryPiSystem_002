@@ -7,6 +7,7 @@ import path from 'path';
 import { convertPdfFirstPageToJpeg } from './convert-pdf-first-page-to-jpeg.js';
 import { convertTiffBufferToJpeg } from './convert-tiff-to-jpeg.js';
 import { ApiError } from './errors.js';
+import { DRAWING_UPLOAD_MAX_PIXELS } from './part-measurement-drawing-storage.js';
 import {
   assertPdfMagic,
   classifyDrawingUpload,
@@ -92,7 +93,7 @@ export async function convertDrawingUploadToPreviewBuffer(
     return { buffer: jpegBuffer, contentType: 'image/jpeg' };
   }
 
-  await validateImageBuffer(buffer, resolvedMime);
+  await validateImageBuffer(buffer, resolvedMime, DRAWING_UPLOAD_MAX_PIXELS);
 
   if (kind === 'tiff') {
     const jpegBuffer = await convertTiffToPreviewBuffer(buffer);

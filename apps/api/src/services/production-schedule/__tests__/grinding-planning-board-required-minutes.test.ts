@@ -27,10 +27,18 @@ describe('required minutes resolver', () => {
     expect(resolveRequiredMinutes(unknown, settings)).toMatchObject({ requiredMinutes: 70, requiredMinutesKnown: true, originalRequiredMinutes: null });
     expect(resolveRequiredMinutes({ ...unknown, quantity: null }, settings)).toMatchObject({ requiredMinutes: null, requiredMinutesKnown: false });
   });
-  it('charges setup per split bar, then once after merging', () => {
-    const pieces = [1, 3].map((quantity) => resolveRequiredMinutes({ ...input, quantity }, settings).requiredMinutes);
-    expect(pieces).toEqual([40, 60]);
+  it('charges setup only on the first split piece and once after merging', () => {
+    const pieces = [1, 3].map((quantity, index) => resolveRequiredMinutes({ ...input, quantity, includeSetup: index === 0 }, settings).requiredMinutes);
+    expect(pieces).toEqual([40, 30]);
     expect(resolveRequiredMinutes(input, settings).requiredMinutes).toBe(70);
+  });
+  it('totals 360 minutes for ten units and preserves original when setup is excluded', () => {
+    const unitSettings = { ownSourceResourceCds: ['305'], values: [{ ...settings.values[0]!, perUnitMinutes: 30, setupMinutes: 60 }] };
+    const pieces = Array.from({ length: 10 }, (_, index) => resolveRequiredMinutes({ ...input, quantity: 1, includeSetup: index === 0 }, unitSettings));
+    expect(pieces.map((piece) => piece.requiredMinutes)).toEqual([90, ...Array(9).fill(30)]);
+    expect(pieces.reduce((sum, piece) => sum + piece.requiredMinutes!, 0)).toBe(360);
+    expect(resolveRequiredMinutes({ ...input, includeSetup: false }, { ...unitSettings, ownSourceResourceCds: [] }))
+      .toMatchObject({ requiredMinutes: 100, ownRequiredMinutes: 120, requiredMinutesSource: 'original' });
   });
   it('accepts zero own values', () => {
     expect(resolveRequiredMinutes(input, { ...settings, values: [{ ...settings.values[0]!, perUnitMinutes: 0, setupMinutes: 0 }] }))

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
 import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
@@ -57,6 +58,7 @@ type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: nu
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
   bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
   const tip = useRef<HTMLSpanElement>(null);
@@ -71,16 +73,18 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     if (tip.current) tip.current.hidden = true;
     if (drag.element.hasPointerCapture?.(drag.pointerId)) drag.element.releasePointerCapture(drag.pointerId);
   }, [onHeldItem]);
+  useEffect(() => gate.subscribeReadOnly(clear), [clear, gate]);
   useEffect(() => {
     window.addEventListener('blur', clear);
     return () => { window.removeEventListener('blur', clear); clear(); };
   }, [clear]);
-  useEffect(() => { clear(); }, [bar.due, clear, dayWidth, disabled, dragDisabled, start]);
+  useEffect(() => { clear(); }, [bar.due, clear, dayWidth, disabled, dragDisabled, frozen, start]);
 
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.x) > 4 || Math.abs(event.clientY - drag.y) > 4) drag.moved = true;
+    if (drag.moved && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!drag.moved || dragDisabled || bar.item.isCompleted || !bar.due) return;
     const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / pageZoom() / dayWidth), today);
     drag.delta = dateToDay(date) - dateToDay(bar.due);
@@ -124,7 +128,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         suppressClick.current = drag.moved;
         const date = bar.due ? shiftedDueDate(bar.due, drag.delta, today) : null;
         clear();
-        if (!disabled && !dragDisabled && !bar.item.isCompleted && drag.moved && date && date !== bar.due) onDueDrop(bar.item, date);
+        if (!disabled && !dragDisabled && !bar.item.isCompleted && drag.moved && date && date !== bar.due && gate.attempt()) onDueDrop(bar.item, date);
       }}
       onPointerCancel={() => { suppressClick.current = true; clear(); }}
       onLostPointerCapture={() => { if (pending.current) { suppressClick.current = true; clear(); } }}

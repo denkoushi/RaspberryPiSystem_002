@@ -529,6 +529,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
     const set = row && params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
     if (!set?.pieces.length) return [parent];
     const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
+    const firstPosition = Math.min(...set.pieces.map((piece) => piece.position));
     return set.pieces.map((piece): GrindingPlanningBoardItem => {
       const itemId = `piece:${piece.id}`;
       const inherited = params.overrides.get(parent.itemId);
@@ -538,7 +539,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.originalRequiredMinutes != null && parent.originalRequiredMinutes > 0
         ? parent.originalRequiredMinutes * piece.quantity / total : null;
       const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
-        quantity: piece.quantity, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        quantity: piece.quantity, includeSetup: piece.position === firstPosition, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
         fhincd: parent.fhincd }, params.resourceMinutes);
       const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd);
       const partMinutes = minutesByPart.get(JSON.stringify([effectiveResourceCd, parent.fhincd.trim()]));
@@ -547,7 +548,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const unitFields = isUnitSplitEnabled(effectiveResourceCd, params.resourceCapacity) ? {
         unitRequiredMinutes: resolvedMinutes.requiredMinutesSource === 'own' && partMinutes
           ? partMinutes.perUnitMinutes * piece.quantity : resolvedMinutes.originalRequiredMinutes,
-        setupMinutes: resolvedMinutes.requiredMinutesSource === 'own' ? partMinutes?.setupMinutes ?? 0 : 0,
+        setupMinutes: piece.position === firstPosition && resolvedMinutes.requiredMinutesSource === 'own' ? partMinutes?.setupMinutes ?? 0 : 0,
         ops,
         completedOpNos: (piece.opCompletions ?? []).map((completion) => completion.opNo).filter((opNo) => opNos.has(opNo)).sort((a, b) => a - b)
       } : {};

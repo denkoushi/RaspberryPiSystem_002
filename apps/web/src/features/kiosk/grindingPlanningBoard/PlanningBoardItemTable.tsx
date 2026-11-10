@@ -9,6 +9,7 @@ import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRa
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { planningBoardPartKey } from './gantt/planningBoardGanttLayout';
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { PlanningBoardCompletionButton } from './PlanningBoardCompletionButton';
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import { formatPlanningBoardItemMinutes } from './planningBoardLoad';
@@ -105,6 +106,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   specialDueEnabled,
   specialDueExpired
 }: PlanningBoardItemTableRowProps) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const chipNodes = useMemo(() => processChips ? <KioskResourceProcessChips processes={processChips} className="mt-0.5" /> : null, [processChips]);
   const currentResource = resolveGrindingPlanningBoardResource(item, allocation);
   const currentDue = resolveGrindingPlanningBoardDueDate(item, allocation);
@@ -283,7 +285,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                   ref={rankPickerAnchorRef}
                   type="button"
                   disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
-                  aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
+                  aria-disabled={frozen || undefined} aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
                   aria-haspopup="dialog"
                   aria-expanded={rankPickerOpen}
                   aria-controls={rankPickerOpen ? rankPickerPanelId : undefined}
@@ -292,6 +294,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                   onClick={(event) => {
                     event.stopPropagation();
                     if (!rankDisabled && allocation !== 'original' && !item.isCompleted && onRankChange) {
+                      if (!gate.attempt()) return;
                       setRankPickerOpen((open) => !open);
                     }
                   }}
@@ -318,7 +321,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                 data-planning-board-piece-write="rank"
                 value={rank == null ? '' : String(rank)}
                 disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
-                aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
+                aria-disabled={frozen || undefined} aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
                 className="min-h-11 w-11 rounded-md border border-slate-700 bg-slate-950 px-0.5 text-center text-[10px] text-slate-200 disabled:cursor-not-allowed disabled:opacity-55"
                 onClick={(event) => event.stopPropagation()}
                 onChange={(event) => onRankChange?.(item, event.target.value ? Number(event.target.value) : null)}

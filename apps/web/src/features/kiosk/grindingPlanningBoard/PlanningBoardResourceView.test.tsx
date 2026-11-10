@@ -4,12 +4,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as machineName from '../productionSchedule/machineName';
 
+import { createPlanningBoardWriteGate, passThroughPlanningBoardWriteGate } from './offline/planningBoardWriteGate';
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
 
+import type { PlanningBoardWriteGate } from './offline/planningBoardWriteGate';
 import type {
   GrindingPlanningBoardItem,
   GrindingPlanningBoardResourceOrderPlacement
 } from '@raspi-system/shared-types';
+
+const gateOverride = vi.hoisted(() => ({ current: undefined as PlanningBoardWriteGate | undefined }));
+vi.mock('./offline/PlanningBoardOfflineProvider', () => ({
+  usePlanningBoardOffline: () => ({ gate: gateOverride.current ?? passThroughPlanningBoardWriteGate, frozen: false })
+}));
+afterEach(() => { gateOverride.current = undefined; });
 
 class TestPointerEvent extends MouseEvent {
   readonly pointerId: number;
@@ -83,6 +91,35 @@ describe('PlanningBoardResourceView resource chip drag', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('圏外では行ドラッグ開始と資源CD編集をgateで遮断する', () => {
+    const rejected = vi.fn();
+    gateOverride.current = createPlanningBoardWriteGate(() => false, () => 1, rejected);
+    const { onClick, onDrop } = renderView();
+    const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    fireEvent.pointerDown(source, { pointerId: 40, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 40, clientX: 40, clientY: 10 });
+    fireEvent.pointerUp(pane, { pointerId: 40, clientX: 40, clientY: 10 }); fireEvent.click(source);
+    expect(source.closest('tr')).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).toBeNull();
+    expect(onClick).not.toHaveBeenCalled(); expect(onDrop).not.toHaveBeenCalled(); expect(rejected).toHaveBeenCalled();
+  });
+  it('圏外突入で進行中の行ドラッグを同期取消しghostと装飾を戻す', () => {
+    let online = true;
+    const gate = createPlanningBoardWriteGate(() => online, () => online ? 0 : 1, vi.fn()); gateOverride.current = gate;
+    const { onDrop, onClick } = renderView();
+    const source = screen.getByRole('button', { name: '資源CD 305を変更' });
+    const pane = source.closest('[data-planning-board-resource-pane]')!;
+    fireEvent.pointerDown(source, { pointerId: 41, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.pointerMove(pane, { pointerId: 41, clientX: 40, clientY: 10 });
+    expect(source.closest('tr')).toHaveAttribute('data-planning-board-drag-source');
+    online = false; act(() => gate.close());
+    expect(source.closest('tr')).not.toHaveAttribute('data-planning-board-drag-source');
+    expect(source.style.opacity).toBe(''); expect(document.body.querySelector(':scope > div[aria-hidden="true"]')).toBeNull();
+    fireEvent.pointerUp(pane, { pointerId: 41, clientX: 40, clientY: 10 }); fireEvent.click(source);
+    expect(onDrop).not.toHaveBeenCalled(); expect(onClick).not.toHaveBeenCalled();
   });
 
   it('閾値未満は既存の資源CDクリックとして扱う', () => {

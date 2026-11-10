@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 
 import { useMachineSignalResourceUptime } from '../../../../api/hooks/machine-signal';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { useOfflineUptime } from '../offline/planningBoardOfflineQueries';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
@@ -20,7 +22,7 @@ import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue
 import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
-import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow } from './PlanningBoardGanttRow';
+import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
@@ -31,13 +33,11 @@ import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
-import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
 type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
-  resourceMinutesItems?: readonly GrindingPlanningBoardItem[];
-  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   minutesPending?: boolean; minutesError?: boolean;
   onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
   valueSheetOpen?: boolean; onToggleValueSheet?: () => void;
@@ -66,8 +66,7 @@ type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPe
   homeKey?: number;
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   resourceNameMap: Record<string, string[]>;
-  capacityPending: boolean;
-  capacityError: boolean;
+  capacityPending: boolean; capacityError: boolean;
   onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
   /** Device-local lane order key, shared with the resource list panes. */
   preferenceScope?: string;
@@ -105,8 +104,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
-  const uptime = useMachineSignalResourceUptime(currentLayout.mode === 'forward');
-  const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
+  const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
+  const uptime = useUptime(currentLayout.mode === 'forward'); const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
   const uptimeByResource = useMemo(() => {
     const next = new Map(uptime.data?.resources.map((entry) =>
       [normalizeMachineName(entry.resourceCd), entry.medianRunSeconds]));
@@ -277,6 +276,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const [legendHeight, setLegendHeight] = useState(0);
   const chainStrip = useRef<HTMLDivElement>(null);
   const [chainStripHeight, setChainStripHeight] = useState(0);
+  const { frozen } = usePlanningBoardOffline();
   const [dragPreview, setDragPreview] = useState<ForwardDragPreview | null>(null);
   const dragLanes = useMemo(() => renderedGroups.flatMap((group) => group.resource
     ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars, rowKey: row.key,
@@ -493,8 +493,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
       !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
     aria-pressed={!runsThroughBreaks?.has(resource)}
-    disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
-    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
+    aria-disabled={frozen || undefined} disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
+    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [frozen, runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
   const resourceLabel = useCallback((resource: string, label: string) => <>
     {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-5 font-bold')}
     {resourceMinutes?.ownSourceResourceCds.includes(resource) && <span className="rounded bg-amber-400/15 px-1 text-[10px] font-bold text-amber-300">独自</span>}
@@ -503,7 +503,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
         className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
           (dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
         aria-pressed={(dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
-        disabled={resource === '未設定' || capacityPending || interaction.disabled}
+        aria-disabled={frozen || undefined} disabled={resource === '未設定' || capacityPending || interaction.disabled}
         onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
       {breaksButton(resource)}
     </div>
@@ -511,7 +511,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       <span className="text-[12px] font-bold text-slate-300">月平均</span>
       <span className="font-mono text-[15px] font-bold tabular-nums text-emerald-300">{(uptimeByResource.get(normalizeMachineName(resource))! / 3600).toFixed(1)}h</span>
     </div>}
-  </>, [resourceMinutes, laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
+  </>, [frozen, resourceMinutes, laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
   const previousLabels = useRef<{ render: typeof resourceLabel; labels: Map<string, { text: string; node: React.ReactNode }> } | null>(null);
   const resourceLabels = useMemo(() => new Map(layout.groups.filter((group) => group.resource).map((group) => {
     const old = previousLabels.current?.render === resourceLabel ? previousLabels.current.labels.get(group.resource!) : undefined;
@@ -572,7 +572,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
                     className={clsx('h-7 w-8 shrink-0 rounded border px-0 font-mono text-[13px] font-bold leading-none',
                       (dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
                     aria-pressed={(dailyHoursByResource[group.resource!] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
-                    disabled={capacityPending || interaction.disabled}
+                    aria-disabled={frozen || undefined} disabled={capacityPending || interaction.disabled}
                     onClick={() => onCapacityChange(group.resource!, hours)}>{hours}H</button>)}
                   {breaksButton(group.resource)}
                 </div>}

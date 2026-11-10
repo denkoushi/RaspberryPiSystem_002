@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import path from 'path';
 import sharp from 'sharp';
+import { PART_MEASUREMENT_TIFF_LIMIT_INPUT_PIXELS } from './part-measurement-drawing-import.constants.js';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
@@ -21,10 +22,16 @@ const MAX_BYTES = 12 * 1024 * 1024;
 
 const DRAWING_URL_PREFIX = '/api/storage/part-measurement-drawings/';
 /**
- * 保存済み図面から表示用画像を作るときの画素上限。
- * 新規登録の上限(IMAGE_INPUT_MAX_PIXELS)より前に登録された大きな図面も表示できるよう、sharp 既定の上限(16383×16383)を使う。
+ * 保存済み図面から表示用画像を作るときの画素上限(sharp 既定の 16383×16383)。
+ * 登録の上限より大きな図面が過去に登録されていても表示できるようにする。
  */
-const STORED_DRAWING_MAX_PIXELS = 16383 * 16383;
+const DRAWING_MAX_PIXELS = 16383 * 16383;
+
+/**
+ * 図面を新規登録するときの画素上限。TIFF の変換と寸法の自動読み取りと同じ値にして、
+ * 登録できた図面は後の処理でも扱えるようにする。大判の図面(例: 13248×9355)も通る。
+ */
+export const DRAWING_UPLOAD_MAX_PIXELS = PART_MEASUREMENT_TIFF_LIMIT_INPUT_PIXELS;
 
 /**
  * 取込元の PDF/TIFF 原本。配信 URL を持たせないため、配信ルートが拒否する下位ディレクトリに置く。
@@ -85,7 +92,7 @@ async function generateDerivativeWebp(
   derivativeKey: string,
   width: DerivativeWidth
 ): Promise<void> {
-  const buffer = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: STORED_DRAWING_MAX_PIXELS })
+  const buffer = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: DRAWING_MAX_PIXELS })
     .resize({ width, withoutEnlargement: true })
     .webp({ quality: DERIVATIVE_WEBP_QUALITY })
     .toBuffer();
@@ -193,7 +200,7 @@ export class PartMeasurementDrawingStorage {
       throw new Error(`画像サイズが大きすぎます（最大 ${MAX_BYTES} バイト）`);
     }
     const ext = this.assertMime(mimetype);
-    await validateImageBuffer(buffer, mimetype);
+    await validateImageBuffer(buffer, mimetype, DRAWING_UPLOAD_MAX_PIXELS);
     const id = randomUUID();
     const filename = `${id}${ext}`;
     await getFileStorageRuntime().store.write({
@@ -240,7 +247,7 @@ export class PartMeasurementDrawingStorage {
       getFileStorageRuntime().store.stat(sourceKey),
       getFileStorageRuntime().store.read(sourceKey, { verifyIntegrity: true }),
     ]);
-    const metadata = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: STORED_DRAWING_MAX_PIXELS }).metadata();
+    const metadata = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: DRAWING_MAX_PIXELS }).metadata();
     const sourceWidth = metadata.width ?? 0;
 
     if (sourceWidth > 0 && sourceWidth <= width) {
@@ -267,7 +274,7 @@ export class PartMeasurementDrawingStorage {
     if (buffer.length === 0) {
       throw new Error('図面原本が空です');
     }
-    if (kind === 'tiff') await validateImageBuffer(buffer, 'image/tiff');
+    if (kind === 'tiff') await validateImageBuffer(buffer, 'image/tiff', DRAWING_UPLOAD_MAX_PIXELS);
     const storageKey = `${DRAWING_SOURCE_KEY_PREFIX}${randomUUID()}${DRAWING_SOURCE_EXT[kind]}`;
     await getFileStorageRuntime().store.write({
       key: storageKey,
