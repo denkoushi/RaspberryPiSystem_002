@@ -13,6 +13,7 @@ import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } f
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 import { pieceNotchClipPath } from './planningBoardPieceNotch';
+import { buildSingleResourceWindows } from './planningBoardSingleResourceWindows';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -842,6 +843,76 @@ describe('forward PlanningBoardGanttView', () => {
     expect(viewport.scrollTop).toBe(200);
     rerender(<PlanningBoardGanttView {...values} layout={later} scale={2} singleResourceCd="305" />);
     expect(viewport.scrollTop).toBe(0);
+  });
+  it.each([8, 10, 24] as const)('hides an entire elapsed row at %iH, retaining the current and future rows', (hours) => {
+    const values = forwardProps();
+    const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, hours);
+    const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end - 1 / 86400 }} />);
+    const rowKeys = () => [...document.querySelectorAll<HTMLElement>('[data-gantt-window-row]')].map((row) => row.dataset.ganttWindowRow);
+    const before = rowKeys();
+    expect(before[0]).toContain(`:single:${windows[0]!.key}`);
+    rerender(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end }} />);
+    expect(rowKeys()).toEqual(before.slice(1));
+    expect(rowKeys()[0]).toContain(`:single:${windows[1]!.key}`);
+  });
+  it('removes a row on the next existing clock update without remounting the view', () => {
+    vi.useFakeTimers();
+    const values = forwardProps();
+    const boundary = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, 8)[0]!.end;
+    vi.setSystemTime(new Date((boundary - 9 / 24) * 86400000 - 15000));
+    const draw = () => <PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      layout={{ ...values.layout, now: (Date.now() + 9 * 3600000) / 86400000 }} />;
+    const { rerender } = render(draw());
+    const first = document.querySelector('[data-gantt-window-row]')!;
+    act(() => vi.advanceTimersByTime(30000));
+    // The page supplies layout.now from its existing 30-second clock.
+    rerender(draw());
+    expect(first).not.toBeInTheDocument();
+    expect(document.querySelector('[data-gantt-window-row]')).toBeInTheDocument();
+  });
+  it('filters past calendar windows even when the display begins on an earlier day', () => {
+    const values = forwardProps();
+    const { container } = render(<PlanningBoardGanttView {...values} scale={2} singleResourceCd="305"
+      layout={{ ...values.layout, today: values.layout.today - 4, now: values.layout.today + 0.5 }} />);
+    const rows = container.querySelectorAll<HTMLElement>('[data-gantt-window-row]');
+    expect(rows[0]!.dataset.ganttWindowRow).toContain(`:single:${values.layout.today}:2`);
+  });
+  it('skips late bars in hidden rows and jumps to the first remaining segment, then safely does nothing if all rows elapsed', () => {
+    const values = forwardProps([item({ requiredMinutes: 60, originalDueDate: '2026-10-13', alternateRank: 1 }),
+      item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 600, originalDueDate: '2026-10-13', alternateRank: 2 })]);
+    const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, 8);
+    const ref = { current: null as import('./PlanningBoardGanttView').PlanningBoardGanttHandle | null };
+    const draw = (now: number) => <PlanningBoardGanttView {...values} ref={ref} scale={1} singleResourceCd="305"
+      layout={{ ...values.layout, now }} />;
+    const { rerender } = render(draw(windows[0]!.end));
+    expect(values.layout.lateCount).toBe(2);
+    expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
+    const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!.closest('[data-gantt-window-row]')!;
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 300 } as DOMRect);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    act(() => ref.current!.scrollToNextLate());
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    rerender(draw(values.layout.end + 1));
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    viewport.scrollTop = 123;
+    viewport.scrollLeft = 45;
+    act(() => ref.current!.scrollToNextLate());
+    expect(viewport.scrollTop).toBe(123);
+    expect(viewport.scrollLeft).toBe(45);
+    expect(values.layout.lateCount).toBe(2);
+  });
+  it.each(['forward', 'backward'] as const)('keeps all-resource and backward rows when time advances in %s mode', (mode) => {
+    const values = mode === 'forward' ? forwardProps() : props();
+    const draw = (now: number) => <PlanningBoardGanttView {...values} singleResourceCd={mode === 'backward' ? '305' : null}
+      layout={{ ...values.layout, now }} />;
+    const { rerender } = render(draw(values.layout.today));
+    const rows = [...document.querySelectorAll('[data-testid^="planning-gantt-bar-"]')];
+    expect(rows.length).toBeGreaterThan(0);
+    rerender(draw(values.layout.end + 1));
+    expect([...document.querySelectorAll('[data-testid^="planning-gantt-bar-"]')]).toEqual(rows);
+    expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
   });
   it('keeps cross-resource predecessor timing and clips a long item into distinct registered rows', () => {
     const entries = [item({ itemId: 'pre', originalResourceCd: '306', processOrder: '10', requiredMinutes: 600 }),

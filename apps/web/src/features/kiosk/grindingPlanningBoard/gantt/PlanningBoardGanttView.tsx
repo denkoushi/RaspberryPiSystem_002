@@ -224,7 +224,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
-    scale, singleHours, singlePauses) : [], [singleGroup, layout.today, layout.end, scale, singleHours, singlePauses]);
+    scale, singleHours, singlePauses).filter((window) => window.end > (layout.now ?? -Infinity) + 1e-9) : [], [singleGroup, layout.today, layout.end, layout.now, scale, singleHours, singlePauses]);
   const dayLoads = useMemo(() => {
     const loads = new Map<number, number>();
     for (const row of singleGroup?.rows ?? []) for (const bar of row.bars) for (const segment of bar.segments ?? []) {
@@ -423,7 +423,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     measureWindow();
   }, scrollToNextLate: () => {
     const element = viewport.current;
-    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || bar.resource === singleResourceCd)) : [];
+    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || barLocations.has(bar.item.itemId))) : [];
     if (!element || !bars.length) return;
     flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
     const bar = bars[flaggedIndex.current]!;
@@ -434,7 +434,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
     element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
     measureWindow();
-  } }), [layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode, singleResourceCd]);
+  } }), [layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode]);
   const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
     const day = layout.start + i;
     const weekday = new Date(day * 86_400_000).getUTCDay();
