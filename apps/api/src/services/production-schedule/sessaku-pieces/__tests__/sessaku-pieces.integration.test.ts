@@ -2420,6 +2420,26 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(await readSessakuPieceSet(prisma, key())).toBeNull();
   });
 
+  it('turns JIT off only for the transaction of a lane read with inbound keys', async () => {
+    const jit = async (client: Prisma.TransactionClient | typeof prisma) =>
+      (await client.$queryRaw<Array<{ jit: string }>>`SELECT current_setting('jit') AS "jit"`)[0]!.jit;
+    const laneScope = { targetFseiban: seiban, resourceCds: [rowData.FSIGENCD!], inboundKeys: [key()] };
+    const seen = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL jit = on`;
+      const all = await readWinnerRowsByFseibans(tx, [seiban]);
+      const withoutLane = await jit(tx);
+      await readWinnerRowsByFseibans(tx, [seiban], { ...laneScope, inboundKeys: [] });
+      const emptyInbound = await jit(tx);
+      const rows = await readWinnerRowsByFseibans(tx, [seiban], laneScope);
+      return { withoutLane, emptyInbound, withInbound: await jit(tx), rows: rows.length, all: all.length };
+    });
+    expect(seen).toEqual({ withoutLane: 'on', emptyInbound: 'on', withInbound: 'off', rows: seen.all, all: seen.all });
+    expect(seen.all).toBeGreaterThan(0);
+    const before = await jit(prisma);
+    expect(await readWinnerRowsByFseibans(prisma, [seiban], laneScope)).toHaveLength(seen.all);
+    expect(await jit(prisma)).toBe(before);
+  });
+
   describe('linked later process pieces', () => {
     const laterKey = () => ({ ...key(), fsigencd: '2', fkojun: '2' });
     const allBoard = (targetSite = site) => getGrindingPlanningBoard({ siteKey: targetSite, category: 'all', view: 'resource', includePieces: true, includeLoad: false, snapshotStore: store });

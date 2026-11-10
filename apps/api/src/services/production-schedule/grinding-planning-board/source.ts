@@ -78,7 +78,17 @@ export async function readWinnerRowsByFseibans(client: DbClient, fseibans: reado
       OR BTRIM("r"."rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ANY(${[...laneScope.resourceCds]}::text[])
       OR ${inbound})`;
   }
-  return readWinnerRowsByFseibanFilter(client, Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[]) AND ${scope}`);
+  const filter = Prisma.sql`"r"."rowData"->>'FSEIBAN' = ANY(${values}::text[]) AND ${scope}`;
+  if (!laneScope?.inboundKeys.length) return readWinnerRowsByFseibanFilter(client, filter);
+  // A long inbound tuple IN list pushes the plan cost past jit_above_cost. PostgreSQL 18 JIT then
+  // compiles for minutes without checking interrupts (statement_timeout and pg_terminate_backend
+  // do not stop it), so turn JIT off for this transaction only. SET LOCAL needs the same connection
+  // inside a transaction; a root client gets its own short transaction.
+  const read = async (tx: Prisma.TransactionClient) => {
+    await tx.$executeRaw`SET LOCAL jit = off`;
+    return readWinnerRowsByFseibanFilter(tx, filter);
+  };
+  return '$transaction' in client ? client.$transaction(read) : read(client);
 }
 
 /** Matches the logical-key identity (`COALESCE(raw, '')`) exactly, unlike the trimmed FSEIBAN lookup. */
