@@ -1,7 +1,7 @@
 import sharp from 'sharp';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { IMAGE_INPUT_MAX_PIXELS, validateImageBuffer } from '../validated-image.js';
-import { PartMeasurementDrawingStorage } from '../part-measurement-drawing-storage.js';
+import { DRAWING_MAX_PIXELS, PartMeasurementDrawingStorage } from '../part-measurement-drawing-storage.js';
 import { AssemblyProcedureImageStorage } from '../assembly-procedure-image-storage.js';
 import { MeasuringInstrumentGenreImageStorage } from '../measuring-instrument-genre-image-storage.js';
 import { PalletMachineIllustrationStorage } from '../pallet-machine-illustration-storage.js';
@@ -38,6 +38,13 @@ describe('validated image uploads', () => {
     });
     await expect(validateImageBuffer(png, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
   });
+  it('accepts large drawings up to the drawing limit while other images keep the default limit', async () => {
+    const jpeg = await sharp({ create: { width: 13248, height: 9355, channels: 3, background: 'white' } }).jpeg().toBuffer();
+    await expect(validateImageBuffer(jpeg, 'image/jpeg')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(validateImageBuffer(jpeg, 'image/jpeg', DRAWING_MAX_PIXELS)).resolves.toBeUndefined();
+    await expect(PartMeasurementDrawingStorage.saveDrawing(jpeg, 'image/jpeg')).resolves.toMatchObject({ contentType: 'image/jpeg' });
+    await expect(AssemblyProcedureImageStorage.saveImage(jpeg, 'image/jpeg')).rejects.toMatchObject({ statusCode: 400 });
+  }, 60_000);
   it.each([
     PartMeasurementDrawingStorage.saveDrawing.bind(PartMeasurementDrawingStorage),
     AssemblyProcedureImageStorage.saveImage.bind(AssemblyProcedureImageStorage),
