@@ -18,7 +18,8 @@ vi.mock('../../grinding-planning-board-projection.js', () => ({ projectGrindingP
 vi.mock('../../grinding-planning-board-resource-capacity.service.js', () => ({ getGrindingPlanningBoardResourceCapacity: mocks.capacity }));
 vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: mocks.policy, isProductionScheduleCuttingResourceCd: (cd: string) => cd !== '305' }));
 vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split }));
-vi.mock('../piece-audit.js', () => ({ runSessakuPieceOperation: mocks.audit }));
+vi.mock('../piece-audit.js', async () => ({ runSessakuPieceOperation: mocks.audit,
+  pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage() }));
 import { autoSplitSessakuUnits, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS,
   AUTO_UNIT_SPLIT_BUDGET_MS, AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS, AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS,
   AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS } from '../auto-unit-split.service.js';

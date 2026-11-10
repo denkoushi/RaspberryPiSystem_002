@@ -33,7 +33,7 @@ vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<
   acquireSessakuPieceLogicalLocks: mocks.logicalLocks, acquireSessakuPieceBoardStateLocks: vi.fn(),
   resolveSessakuPieceItemKeys: async (_client: unknown, keys: string[]) => new Map([[keys[0], { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' }]])
 }));
-vi.mock('../piece-audit.js', () => ({ readLaterPieceAuditSnapshots: async () => [], collectLaterPiecePropagationAudits: () => [],
+vi.mock('../piece-audit.js', async () => ({ pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage(), readLaterPieceAuditSnapshots: async () => [], collectLaterPiecePropagationAudits: () => [],
   runSessakuPieceOperation: async (audit: unknown, callback: (audit: unknown) => unknown) => callback(audit) }));
 vi.mock('../piece-completion.js', () => ({ reconcileSessakuPieceProgress: mocks.progress }));
 vi.mock('../piece-quantity.js', () => ({ reconcileSessakuPieceQuantities: mocks.quantities }));

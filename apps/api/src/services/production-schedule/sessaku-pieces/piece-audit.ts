@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { encodeSessakuPieceKey, supportsSessakuPieceRelations, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import { Prisma } from '@prisma/client';
@@ -10,6 +11,9 @@ import { logger } from '../../../lib/logger.js';
 let auditLogger: ReturnType<typeof logger.child> | undefined;
 const getAuditLogger = () => (auditLogger ??= logger.child({}, { level: 'info' }));
 
+// The production-scale test counts driver SQL under these stages without logging SQL or binds.
+export const pieceTimingStage = new AsyncLocalStorage<string>();
+
 // Only IDs, revisions and quantities belong here; never pass request bodies or headers.
 export type PieceOperationTiming = {
   lockWaitMs: number; beforeProjectionMs: number; siteCount: number; writeMs: number;
@@ -17,6 +21,14 @@ export type PieceOperationTiming = {
   sourceWinnerMs: number; sourceDetailsMs: number; sourcePieceSetsMs: number;
   overridesMs: number; ranksMs: number; projectMs: number; sourceRowCount: number;
   laneDiscoveryMs: number;
+  candidateMs: number; candidateSqlCount: number;
+  pieceCreationMs: number; propagationMs: number; rerankMs: number; siteVersionMs: number;
+  versionUpdateMs: number; placementUpsertMs: number;
+  replaceSiteItemsCount: number; laneWriteCount: number; repeatedLaneCount: number;
+  versionUpdateCount: number; versionUpdateSqlCount: number; placementUpsertSqlCount: number;
+  // Delegate calls include raw SQL. Prisma relation reads may issue more than one SQL statement.
+  dbCallCount: number; lockDbCallCount: number; projectionDbCallCount: number;
+  pieceCreationDbCallCount: number; propagationDbCallCount: number; siteVersionDbCallCount: number;
 };
 
 export type PieceAuditContext = {
@@ -41,7 +53,12 @@ const boundedSnapshot = (snapshot: Prisma.InputJsonObject | undefined): Prisma.I
 export async function runSessakuPieceOperation<T>(context: PieceAuditContext, operation: (audit: PieceAuditContext) => Promise<T>): Promise<T> {
   const started = performance.now();
   context.timing = { lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0, totalMs: 0,
-    sourceWinnerMs: 0, sourceDetailsMs: 0, sourcePieceSetsMs: 0, overridesMs: 0, ranksMs: 0, projectMs: 0, sourceRowCount: 0, laneDiscoveryMs: 0 };
+    sourceWinnerMs: 0, sourceDetailsMs: 0, sourcePieceSetsMs: 0, overridesMs: 0, ranksMs: 0, projectMs: 0, sourceRowCount: 0, laneDiscoveryMs: 0,
+    candidateMs: 0, candidateSqlCount: 0, pieceCreationMs: 0, propagationMs: 0, rerankMs: 0, siteVersionMs: 0,
+    versionUpdateMs: 0, placementUpsertMs: 0, replaceSiteItemsCount: 0, laneWriteCount: 0, repeatedLaneCount: 0,
+    versionUpdateCount: 0, versionUpdateSqlCount: 0, placementUpsertSqlCount: 0,
+    dbCallCount: 0, lockDbCallCount: 0, projectionDbCallCount: 0, pieceCreationDbCallCount: 0,
+    propagationDbCallCount: 0, siteVersionDbCallCount: 0 };
   let failure: unknown;
   let failed = false;
   try {

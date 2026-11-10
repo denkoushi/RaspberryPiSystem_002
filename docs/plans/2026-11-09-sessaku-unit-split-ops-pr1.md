@@ -826,3 +826,70 @@ Restoring per-row optimistic invalidation increases tail writes and latency; thi
 - 候補SQLの57014は専用警告とhasMore:true、55P03は従来のbusy扱い。製番検索を既存BTRIM索引に合わせ、後工程の関連ORを索引別UNIONへ変更。セット連結/片だけの連結の同値性テストを追加。
 - DB選択は明示TEST_DATABASE_URL、または確認済みCIワーカーDBに限定。ci.ymlのPrepare API worker databasesがborrow_return_w1〜w4を作成し、setup-env.tsがVITEST_POOL_IDで選択。Run API tests (coverage shard)とvitest.config.tsのsrc/**/*.{test,spec}.tsにより本ファイルも実行対象。
 - 検証(Claude が試験DB localhost:55441 で実行): API build型チェック成功。関連4ファイル 411件成功・2件skip。`SESSAKU_SPLIT_MEASURE=1` で3315行/4サイト: 候補SQL 約50ms(先頭)/約52ms(末尾)、1ロット(候補取得込み) 582ms(先頭)/596ms(末尾)、upsert 8,568/8,600。TEST_DATABASE_URLなし・非CIでは結合ファイルは全件skip。
+
+## Deferred lane writes — 2026-11-10 (local, DB validation pending)
+
+作業起点は `claude/sessaku-auto-split-fix` / `ae205f4d`。既存の未コミット
+4583行・4サイト計測fixtureを保護し、同じfixtureを通常のDB等価テストにも使用する。
+commit/push/stash/reset/checkout、秘密ファイルの読み取り、DB接続は実施しない。
+
+`piece-lane-writes.ts` は工程順のメモリ更新を維持し、全工程の後で書き込む。
+最後のレーンだけを見ると失われる、途中で順位が変わった後工程の親行も保存する。
+順位・上書き列が変わらない既存行はサイト/項目の配列を渡すUPDATEでversionと
+updatedAtだけを更新する。変更行と新規行は10列の配列と共通値2個を渡すunnest
+upsertで保存し、削除片のOverrideは最後にサイト/項目の組で集合削除する。
+スキーマ変更はない。既存行に不要なUUIDを生成する処理も省く。
+
+Override.versionは、同一操作で複数回触れた行について開始時点から+1に集約する。
+新規行は1、触れなかった行は据え置き。ボードState.versionの工程ごとの増分は維持する。
+未完了の順位不変行も更新対象に含める。後工程の選択条件、数量、上書き継承、
+完了行の除外、削除対象は変更しない。
+
+4583行fixtureでの静的な件数（先頭/末尾ともDB不要テストで検証済み）:
+
+- 置換呼び出し28回、サイト/レーン20組。資源10だけ各サイト3回、他の対象資源は各1回。
+- 旧upsert 39,432行/56文。新しい保存対象17,768行（途中で更新されて残る親行8件を含む）。
+- 先頭: upsert 17,768行/1文、版だけのUPDATEなし。
+- 末尾: upsert 148行/1文、版だけのUPDATE 17,620行/1文。
+- 旧VALUESの合計473,184バインドから、先頭12個、末尾16個へ減る。
+
+`piece-audit.ts` の既存timingオブジェクトへ、候補SQL、片作成、メモリ順位更新、
+後工程伝搬、ボードState版更新、版だけのUPDATE、upsertの時間/件数を追加した。
+`dbCallCount`系はPrisma delegate/raw呼び出し数であり、SQL文数とは区別する。
+計測fixtureの `sqlByStage` はpg.Client.queryでドライバSQL実行を数える。
+投影の子工程、ロック、片作成、伝搬、版更新、upsert、その他を区別し、SQLや値は出さない。
+候補SQLの時間はロット開始前の共有探索値であり、ロットtotalMsに加算しない。
+propagationMsは後工程のrerankMsを含むため、各時間を単純加算しない。
+
+旧writerは `__tests__/legacy-site-items.ts` にae205f4dから保存した。
+テスト用タイマー以外のアルゴリズムは同じ。旧writerを実際のsplit操作へ差し込み、
+トランザクション末尾で全Overrideを取得してrollbackする。続いて同じDB入力から
+新writerの操作を実行する。片UUIDは論理キー/positionに対応付け、siteKey/itemKey順で
+全列を比較する。id/createdAt/updatedAtだけを除外し、旧versionの反復増分だけを+1へ
+正規化する。通常DBテストはMEASURE不要、既存の専用DB条件でskipする。
+計測時は旧writerの期待値取得時間をtotalMsから除き、先頭/末尾、direct/autoを出す。
+片の削除、nullレーン、上書き各列、完了行、版だけの更新はDB不要テストでも検証する。
+
+提供された旧Mac観測はtotal 2,150ms、write 1,827ms、beforeProjection 260ms、
+afterProjection 9ms、lock 7〜20ms。候補、片作成、順位CPU、版更新、伝搬の独立した
+ms実測と変更後の実測は未取得。新しい計測ログから取得する必要がある。
+変更後のPi5予測は計測したMac totalMs×2.6で出す。変更前の同換算は5,590ms。
+仮にwriteを0にしても他が同じなら323ms/840ms相当なので、今回のSQL削減だけで
+Mac190ms/Pi5 500msを達成したとは主張できない。実測後に残りの時間を判断する。
+
+ローカル検証: API build tsc成功、変更9ファイルのfocused ESLint成功。
+DB不要の関連テストは、lane writer 4件、lane discovery 4件、audit 27件、
+auto runner 120件、operation completion 23件が成功（合計178件）。
+一時Vitest configでdotenv loaderを空にして秘密ファイルの読み取りを抑止した。
+計測contextの追加に伴う既存mock不足は修正し、該当143件を再実行して成功。
+追加のテスト込みtscは既存テスト等の型エラーを検出したため、全テストの型検査成功とはしない。
+DB等価性/性能、別モデル（Claude）レビュー、hosted CIは未確認。
+
+ユーザー側のDB確認コマンド（リポジトリroot）:
+
+    TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55441/autosplit_test pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/sessaku-pieces src/services/production-schedule/grinding-planning-board
+    TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:55441/autosplit_test SESSAKU_SPLIT_MEASURE=1 pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts -t 'measures one lot with production lane distribution'
+
+残存する行単位SQLはsplit時の既存片position更新とquantity planの既存片更新。
+初回の1台ずつ分割では既存片がないため、そのUPDATEループは実行されない。
+再分割/数量調整の追加最適化は今回に含めない。これは既存計画への今回の変更・検証境界の追記である。

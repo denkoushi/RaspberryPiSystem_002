@@ -11,7 +11,7 @@ import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } fr
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput } from './auto-unit-split-candidates.js';
-import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
+import { runSessakuPieceOperation, pieceTimingStage, type PieceAuditContext } from './piece-audit.js';
 import { sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
 import { splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
@@ -108,12 +108,14 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections);
     await setPreprocessingStatementTimeout(runner, pageDeadline);
     let candidateRows: Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>;
+    const candidateStarted = performance.now();
     try {
-      candidateRows = await runner.$queryRaw(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
+      candidateRows = await pieceTimingStage.run('candidateMs', () => runner.$queryRaw(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`));
     } catch (error) {
       if (sessakuPieceSqlState(error) !== '57014') throw error;
       throw new ApiError(503, '自動分割の候補取得がタイムアウトしました', undefined, 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT');
     }
+    const candidateMs = performance.now() - candidateStarted;
     assertRunnerDeadline(pageDeadline);
     if (!candidateRows.length) return { ...result, hasMore: retryNeeded };
     const candidateIds = new Set(candidateRows.map((row) => row.id));
@@ -206,10 +208,13 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           for (const item of pieces) {
             const saved = await runSessakuPieceOperation({ action: 'auto_unit_split_lot', siteKey: params.siteKey, parentItemId,
               requestId: params.audit?.requestId, actorClientDeviceId: params.audit?.actorClientDeviceId, actorDeviceName: params.audit?.actorDeviceName,
-              expectedVersion, itemRevision: item.itemRevision }, (audit) => splitSessakuPieces({
-              siteKey: params.siteKey, parentItemId, expectedPieceSetVersion: expectedVersion, targetPieceId: item.pieceId, itemRevision: item.itemRevision,
-              quantities: Array.from({ length: item.plannedQuantity! }, () => 1), autoUnitSplit: true, deadline: lotDeadline, audit
-            }));
+              expectedVersion, itemRevision: item.itemRevision }, (audit) => {
+              if (audit.timing) { audit.timing.candidateMs = candidateMs; audit.timing.candidateSqlCount = 1; }
+              return splitSessakuPieces({
+                siteKey: params.siteKey, parentItemId, expectedPieceSetVersion: expectedVersion, targetPieceId: item.pieceId, itemRevision: item.itemRevision,
+                quantities: Array.from({ length: item.plannedQuantity! }, () => 1), autoUnitSplit: true, deadline: lotDeadline, audit
+              });
+            });
             expectedVersion = saved.pieceSetVersion;
             staleInputs.delete(rejectionKey);
             if (!counted) { result.splitCount += 1; counted = true; }
