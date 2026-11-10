@@ -94,6 +94,19 @@ describe('planning board offline page', () => {
       expect(get.mock.calls.filter(([, config]) => config?.kioskTelemetry === 'background')).toHaveLength(0);
     }
   });
+  it('starts in the last known mode and does not remount the board when the capability answer arrives', async () => {
+    const { getResolvedClientKey } = await import('../../api/client');
+    localStorage.setItem(`kiosk.planning-board.offline-enabled:${getResolvedClientKey() ?? ''}`, 'true');
+    const originalGet = get.getMockImplementation()!;
+    get.mockImplementation((url, config) => url === '/mobile-placement/client-capabilities'
+      ? Promise.reject(new Error('Unavailable')) : originalGet(url, config));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    render(<QueryClientProvider client={client}><ProductionScheduleGrindingPlanningBoardPage /></QueryClientProvider>);
+    await advance(); await advance(5000);
+    reachable = false;
+    await advance(15000);
+    expect(screen.getByText('圏外')).toBeVisible();
+  });
   it('keeps a short interruption invisible, blocks writes at 15s, and keeps local browsing available', async () => {
     const put = vi.spyOn(api, 'put');
     await mount(); reachable = false;
