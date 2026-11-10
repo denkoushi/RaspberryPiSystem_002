@@ -51,6 +51,21 @@ describe('PartMeasurementDrawingStorage drawing sources', () => {
     expect(stat).toHaveBeenCalledWith(derivativeKey);
   });
 
+  it('serves a derivative for a stored drawing larger than the upload pixel limit', async () => {
+    const source = await sharp({ create: { width: 13248, height: 9355, channels: 3, background: 'white' } })
+      .jpeg({ quality: 50 })
+      .toBuffer();
+    vi.spyOn(getFileStorageRuntime().store, 'capacity').mockResolvedValue({ availableBytes: 100_000_000, totalBytes: 100_000_000, reserveBytes: 1 });
+    const filename = 'large-legacy-drawing.jpg';
+    await getFileStorageRuntime().store.write({ key: `part-measurement-drawings/${filename}`, data: source, mode: 'replace' });
+    const result = await PartMeasurementDrawingStorage.readDrawingDerivative(
+      `/api/storage/part-measurement-drawings/${filename}`,
+      1920
+    );
+    expect(result.contentType).toBe('image/webp');
+    expect((await sharp(result.buffer).metadata()).width).toBe(1920);
+  }, 60_000);
+
   it('keeps the source bytes under the sources directory and deletes them', async () => {
     const pdf = Buffer.from('%PDF-1.4 source');
     const { storageKey } = await PartMeasurementDrawingStorage.saveDrawingSource(pdf, 'pdf');
