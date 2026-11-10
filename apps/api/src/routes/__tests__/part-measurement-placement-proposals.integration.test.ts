@@ -28,6 +28,7 @@ describe('placement proposals API / Postgres', () => {
   let family: string;
   let image: Buffer;
   const semanticDefault = env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED;
+  const layoutDefault = env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED;
   const url = () => `/api/part-measurement/visual-templates/${targetId}/placement-proposals`;
   const fingerprint = () => createHash('sha256').update(image).digest('hex');
 
@@ -77,6 +78,8 @@ describe('placement proposals API / Postgres', () => {
   beforeEach(async () => {
     // These cases cover the position transfer; semantic transfer needs the business LLM and is unit-tested.
     env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = false;
+    // Layout transfer for CUTTING is unit-tested; keep these cases on the version-per-process paths.
+    env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = false;
     ids = [randomUUID(), randomUUID()];
     [targetId, sourceId] = ids;
     family = `placement-${randomUUID()}`;
@@ -95,6 +98,7 @@ describe('placement proposals API / Postgres', () => {
 
   afterEach(async () => {
     env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = semanticDefault;
+    env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = layoutDefault;
     vi.restoreAllMocks();
     await prisma.partMeasurementTemplate.deleteMany({ where: { visualTemplateId: { in: ids } } });
     await prisma.partMeasurementVisualTemplate.deleteMany({ where: { id: { in: ids } } });
@@ -261,6 +265,21 @@ describe('placement proposals API / Postgres', () => {
     });
     expect(empty).toHaveLength(1);
     expect(empty[0]).toMatchObject({ placementVersion: 'transfer-v2:CUTTING', sourceTemplateId: null });
+  });
+
+  it('creates CUTTING layout runs on request and backfills them per process without redoing them', async () => {
+    env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = true;
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = true;
+    await completedMap(targetId);
+    const response = await app.inject({ method: 'GET', url: url(), headers: { 'x-client-key': client.apiKey } });
+    expect(response.json().status).not.toBe('map-pending');
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = false;
+    await template(sourceId, ['長さ'], 'GRINDING');
+    const service = getPartMeasurementDrawingPlacementService();
+    await service.backfill(1000);
+    await service.backfill(1000);
+    const runs = await prisma.partMeasurementDrawingPlacementRun.findMany({ where: { visualTemplateId: targetId } });
+    expect(runs.map((run) => run.placementVersion).sort()).toEqual(['layout-v1:CUTTING', 'transfer-v2:GRINDING']);
   });
 
   it('retries a PENDING sibling match before an older never-visited drawing with batch limit 1', async () => {
