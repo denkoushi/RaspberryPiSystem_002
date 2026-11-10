@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
@@ -314,6 +315,7 @@ describe('torque-wrench optional settings route integration', () => {
   });
 
   beforeEach(async () => {
+    await configureTestDueManagementAccessPassword();
     await resetOptionalSettingsRouteData();
   });
 

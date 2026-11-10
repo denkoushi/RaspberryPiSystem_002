@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildServer } from '../../app.js';
 import { env } from '../../config/env.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyLotService } from '../../services/assembly/assembly-lot.service.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
@@ -25,6 +26,7 @@ describe('torque wrench traceability API', () => {
   });
 
   beforeEach(async () => {
+    await configureTestDueManagementAccessPassword();
     await prisma.torqueWrenchUsageLeaseHistory.deleteMany({});
     await prisma.torqueWrenchUsageLease.deleteMany({});
     await prisma.assemblyTorqueRecord.deleteMany({});

@@ -59,6 +59,7 @@ describe('torque training API concurrency boundary', () => {
   });
 
   beforeEach(async () => {
+    await configureTestDueManagementAccessPassword();
     await resetTorqueTrainingTestData();
   });
 
