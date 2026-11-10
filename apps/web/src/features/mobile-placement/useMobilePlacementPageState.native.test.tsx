@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { snapFseibanTokens } from '../../api/client';
 
+import { initialActualSlipOcrFeedback } from './actual-slip-ocr-feedback';
 import { resetMobileConnectivityForTests } from './connectivity';
 import { useMobilePlacementPageState } from './useMobilePlacementPageState';
 
@@ -89,6 +90,27 @@ describe('mobile placement native OCR', () => {
     expect(result.current.actualFseiban).toBe(response.fseiban);
     expect(result.current.actualSlipOcrFeedback).toBe(feedback);
     expect(result.current.actualSlipImageOcrBusy).toBe(false);
+  });
+
+  it.each([
+    ['0002178005', '0004099556', true],
+    ['0002178005', '0002178005', false],
+    ['', '0004099556', false],
+    ['0002178005', 'MD004883240', false]
+  ])('resets OCR feedback only when transfer order changes: %s → %s', async (previous, scanned, clears) => {
+    const { result } = mount();
+    await act(async () => {
+      const reading = result.current.scanActualSlipNative();
+      window.__haizenNativeScanResult?.(nativeResult);
+      await reading;
+    });
+    const feedback = result.current.actualSlipOcrFeedback;
+    act(() => {
+      result.current.setTransferOrder(previous);
+      result.current.setScanField('transferOrder');
+    });
+    act(() => result.current.onScanSuccess(scanned));
+    expect(result.current.actualSlipOcrFeedback).toBe(clears ? initialActualSlipOcrFeedback : feedback);
   });
 
   it('handles a native scan with no candidates', async () => {

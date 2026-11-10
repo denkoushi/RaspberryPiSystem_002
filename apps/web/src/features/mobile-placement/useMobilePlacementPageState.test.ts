@@ -19,19 +19,27 @@ import { useMobilePlacementPageState } from './useMobilePlacementPageState';
 import type { ReactNode } from 'react';
 
 describe('useMobilePlacementPageState', () => {
-  it.each([['0004099556', ''], ['0002178005', 'STALE']])('scanning order %s leaves transfer part %j', (order, part) => {
+  it.each([
+    ['0002178005', '0004099556', '', ''],
+    ['0002178005', '0002178005', 'STALE', 'ACTUAL'],
+    ['', '0004099556', 'STALE', 'ACTUAL']
+  ])('scanning order %s → %s preserves only current slip values', (previous, order, part, actual) => {
     const qc = new QueryClient();
     const { result } = renderHook(() => useMobilePlacementPageState(), { wrapper: ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client: qc }, children) });
     act(() => {
-      result.current.setTransferOrder('0002178005');
+      result.current.setTransferOrder(previous);
       result.current.setTransferPart('STALE');
+      result.current.setActualOrder('ACTUAL');
+      result.current.setActualFseiban('ACTUAL');
       result.current.setActualPart('ACTUAL');
       result.current.setScanField('transferOrder');
     });
     act(() => result.current.onScanSuccess(` ${order} `));
     expect(result.current.transferOrder).toBe(order);
     expect(result.current.transferPart).toBe(part);
-    expect(result.current.actualPart).toBe('ACTUAL');
+    expect(result.current.actualOrder).toBe(actual);
+    expect(result.current.actualFseiban).toBe(actual);
+    expect(result.current.actualPart).toBe(actual);
     expect(result.current.scanField).toBeNull();
   });
 
@@ -41,11 +49,17 @@ describe('useMobilePlacementPageState', () => {
     act(() => {
       result.current.setTransferOrder('0002178005');
       result.current.setTransferPart('STALE');
+      result.current.setActualOrder('4501238876');
+      result.current.setActualFseiban('FS1');
+      result.current.setActualPart('ACTUAL');
       result.current.setScanField('transferOrder');
     });
     act(() => result.current.onScanSuccess(part));
     expect(result.current.transferOrder).toBe('0002178005');
     expect(result.current.transferPart).toBe(part.trim());
+    expect(result.current.actualOrder).toBe('4501238876');
+    expect(result.current.actualFseiban).toBe('FS1');
+    expect(result.current.actualPart).toBe('ACTUAL');
     expect(result.current.scanField).toBeNull();
   });
 
