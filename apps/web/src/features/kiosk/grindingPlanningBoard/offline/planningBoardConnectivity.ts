@@ -45,10 +45,13 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
       }, config.recoveredBannerMs);
     }
   };
-  const checkElapsed = () => {
+  const checkElapsed = (lossTimerFired = false) => {
     if (!started || stopped) return;
     if ((snapshot.phase === 'online' || snapshot.phase === 'bootstrapping') && now() - lastSuccess >= config.lossAfterMs) {
       transition('offline');
+    } else if (lossTimerFired) {
+      // A timer can fire a fraction of a millisecond before the monotonic deadline; re-arm instead of waiting for the next probe.
+      scheduleLoss();
     }
     if (snapshot.recoveredUntil !== null && now() >= snapshot.recoveredUntil) {
       clearTimeout(bannerTimer);
@@ -58,7 +61,7 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
   const scheduleLoss = () => {
     clearTimeout(lossTimer);
     if (!stopped && (snapshot.phase === 'online' || snapshot.phase === 'bootstrapping')) {
-      lossTimer = setTimeout(checkElapsed, Math.max(0, config.lossAfterMs - (now() - lastSuccess)));
+      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - lastSuccess))));
     }
   };
   const recordSuccess = () => {

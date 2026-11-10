@@ -35,7 +35,7 @@ function numeric(raw: string | undefined, fallback: number, positive = false): n
 export function readPlanningBoardOfflineConfig(env: OfflineEnv): BoardOfflineConfig {
   const defaults = DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG;
   let probeIntervalMs = numeric(env.VITE_PLANNING_BOARD_OFFLINE_PROBE_INTERVAL_MS, defaults.probeIntervalMs, true);
-  let probeTimeoutMs = numeric(env.VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS, defaults.probeTimeoutMs);
+  let probeTimeoutMs = numeric(env.VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS, defaults.probeTimeoutMs, true);
   let lossAfterMs = numeric(env.VITE_PLANNING_BOARD_OFFLINE_LOSS_AFTER_MS, defaults.lossAfterMs);
   if (probeTimeoutMs >= probeIntervalMs) {
     probeTimeoutMs = defaults.probeTimeoutMs;

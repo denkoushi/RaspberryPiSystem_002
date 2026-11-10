@@ -41,6 +41,15 @@ describe('planning board connectivity', () => {
   });
   afterEach(() => { board.stop(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
+  it('re-arms the loss timer when it fires just before the monotonic deadline', async () => {
+    await start();
+    mono = -1;
+    await advance(15000);
+    expect(phase()).toBe('bootstrapping');
+    await advance(1);
+    expect(phase()).toBe('offline');
+  });
+
   it('keeps bootstrapping at 14999ms and becomes offline at 15000ms', async () => {
     await start();
     const initial = board.getSnapshot();

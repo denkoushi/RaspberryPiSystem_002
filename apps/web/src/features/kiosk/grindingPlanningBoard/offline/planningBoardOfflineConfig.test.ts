@@ -50,9 +50,9 @@ describe('readPlanningBoardOfflineConfig', () => {
     expect(config.probeIntervalMs).toBeGreaterThan(0);
   });
 
-  it('allows zero timeout and banner duration as nonnegative values', () => {
+  it('rejects a zero probe timeout but allows a zero banner duration', () => {
     const config = readPlanningBoardOfflineConfig({ VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS: '0', VITE_PLANNING_BOARD_OFFLINE_RECOVERED_BANNER_MS: '0' });
-    expect(config.probeTimeoutMs).toBe(0);
+    expect(config.probeTimeoutMs).toBe(3000);
     expect(config.recoveredBannerMs).toBe(0);
   });
 
