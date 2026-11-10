@@ -73,6 +73,11 @@ describe('grinding-planning-board-projection', () => {
         overrideResourceCd: '022', overrideDueDate: null, alternateRank: null, version: 1
       }]]) });
     const items = projectGrindingPlanningBoard(params).items;
+    const placement = projectGrindingPlanningBoard({ ...params, placementOnly: true });
+    const orderingFields = (values: typeof items) => values.map(({ itemRevision, progress, ...item }) => item);
+    expect(orderingFields(placement.items)).toEqual(orderingFields(items));
+    expect(placement.items.every((item) => item.itemRevision === '')).toBe(true);
+    expect(placement.load).toEqual([]);
     expect(items.map((item) => item.requiredMinutes)).toEqual([40, 20]);
     if (enabled) {
       expect(items.map((item) => item.unitRequiredMinutes)).toEqual([10, 20]);

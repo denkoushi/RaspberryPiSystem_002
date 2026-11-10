@@ -916,3 +916,30 @@ WHERE "parentItemId" = '<parentItemId>' ORDER BY "createdAt" DESC LIMIT 100;
 - 既存の「7500 rows」テスト名に対するfixture実数は7,478行。fullは7,478行、scopedは72行。4操作の全業務フィールドが一致し、beforeProjectionは全操作でfull（laneDiscoveryを除く）の1/5未満、scoped総時間は15秒未満。計測console原文は `/tmp/sessaku-followup-review/vitest-final.log` に保存した。
 - `pnpm exec eslint src/services/production-schedule/sessaku-pieces/__tests__/sessaku-pieces.integration.test.ts` 成功。初回はTEST_DATABASE_URLだけでは主クライアントの接続先が切り替わらず31件失敗。両URL指定後はDate比較の型差1件だけ失敗し、修正後に上記92件成功を確認した。
 - 今回の編集は統合テストと本追記のみ。既存WIPを保持し、git操作・apps/web変更・migration追加・本番接続・commit/push/PR/merge/release/deployは行っていない。
+
+## 2026-11-10 自動1台分割の呼び出し単位バッチ化（ローカル実装・DB受入未完了）
+
+- 自動runnerのtransactionを全ロットで共有し、critical → logical → board → rowの順でロックを取得する。除外ページの先頭が後続を止めないよう、ロック対象の候補キーは最初に全ページ分を取得する。親行advisory lockは既存の複数行用helperを使う。
+- 列書き換え用のsource・サイト投影・pending placementを共有し、最後にOverrideのflushと変更サイトの版上げを1回にまとめる。個別ロットの判定、数量、楽観チェック、後工程波及は既存splitを使う。直接呼ぶ手動splitのtransactionとauditの扱いは維持する。
+- ロットごとにSAVEPOINTを作り、失敗時はDB変更、同transactionの成功audit、pending placementのメモリsnapshotを戻す。同一ロットの複数片もまとめて戻す。rejectedInputs / excludedParentIds / staleInputsは従来の再評価方針を維持する。runner全体がrollbackした場合、splitCountは0で返す。
+- サイトが候補製番を登録しておらずoverrideだけで対象になる場合、逐次実行と同じ製番範囲・順位を保つため、そのサイトだけ共有sourceと保留overrideから再投影する。全サイトの登録製番が共通の本番規模fixtureでは列書き換え用の投影を共有する。ロット検証・応答用の投影は残る。
+- 既存4583行 / 4サイトfixtureを共通化し、Nロットの全Override・PieceSet/Piece・ロットauditを逐次実行と比較するDBテストを追加した。途中と先頭の失敗を実書き込み後に注入し、失敗ロットを除いた逐次結果との一致、記録の不在、再試行も確認する。サイトの登録製番が異なる場合も比較対象にした。生成IDは論理キーと片位置で対応づけ、時刻、Override版、auditの計測値・revision・requestIdの除外理由をテストに記載した。
+- `SESSAKU_SPLIT_MEASURE=1` でN=1,2,3,5,8,10,15,20を各1呼び出しとして計測する。totalMs、書込以外のpreprocessingMs、writeMs、共有投影、ロット別処理の合計と1ロット平均、Pi5換算（×2.6）、ロック保持の上界として呼び出し総時間を出す。比較snapshot・fixture準備・結果検証は計測区間外。サーバー内部の第2引数で計測時の上限と予算を指定し、HTTP入力には公開しない。
+- 検証: `pnpm exec tsc -p tsconfig.build.json --noEmit` 成功。`pnpm exec vitest run src/services/production-schedule/sessaku-pieces` 相当は12ファイル・342件成功、DB付き275件skip（約5.36秒）。dotenvの自動読込を無効化し、既存Vitest設定を継承した一時configでenvDirを空ディレクトリへ向けた。
+- DB到達確認として既存integrationの1ケースを既存文書の専用URL（127.0.0.1:55609/split_fix_test）で実行したが、fixture作成前にconnect EPERM。Dockerソケットもpermission deniedでpg-autosplit-testを確認できない。DB上の結果一致、実測表、ロット数比例分のms、最大N、2.5秒条件、実際のロック保持時間は未確認。数値は捏造せず、既存のMAX_LOTS=5 / BUDGET_MS=3000を変更していない。失敗・時間打切りなしなら76ロットは16呼び出しだが、合計時間は未測定。
+- 前段の追加改善候補（未実装）: 検証・応答用projection間のwinner/details/設定読み取り共有、ロット別later/snapshot読み取りの一括化、残時間設定SQLの重複整理。適格性入力・ロック順・監査内容を保った比較検証が必要。
+- commit/push/stash/reset/checkout、PR、merge、release、deployは未実施。作業開始時に未コミット変更はなかった。
+
+
+### 2026-11-10 自動分割の候補探索と保存優先の修正（DB受入未完了）
+
+- 候補探索の二次増加は `auto-unit-split-candidates.ts` の候補ごとの `inputVersion` が同一製番の全CSV行・PieceSet/Piece・工程完了を毎回JSON集約していたことによる。製番内の行数がロット数に比例すると、候補数×製番内データ量になる。raw製番ごとのmaterialized CTEへ集約を移し、同じ指紋を参照する。指紋の入力、trim/rawキーの区別、適格性条件、ORDER BYは維持する。candidateMs / candidateSqlCountはロットごとの重複計上をやめ、batch auditと呼び出しログへ1回分ずつ加算する。
+- 自動側の既存250ms lock_timeoutを維持し、取得済みロックに対しては同じ接続からpg_locks / pg_blocking_pidsで待機者を検出する。各DB呼出しの前後（検査間隔25ms以上）とcommit直前（必ず）に確認し、待機者がいれば全runnerをrollbackする。250msは自動側のロック取得待ちの上限であり、人の待ち時間の保証ではない。長いSQL実行中は次の検査まで譲れない。手動のtransactionやAPIには変更を加えない。
+- 競合はロットのSAVEPOINTで握りつぶさずrunnerへ伝播する。先行成功ロットのPiece・配置・版・DB監査も全てrollbackし、rejected/stale入力キャッシュも呼出し前へ戻す。rollbackされ得る自動操作のpino監査は出さず、commit/rollback完了後の `sessaku_piece.auto_unit_split_call` だけで呼出し計測を記録する。成功ロットのDB監査は従来どおり残す。
+- 呼出しログはprocessedLotCount（commitしたロット数）、writtenRowCount（commitしたDMLの影響行数合計。同じ行への複数更新・監査も含む）、totalMs、lockHeldMs（runner排他ロック取得後からtransaction完了まで）、yieldReason、candidateMs / candidateSqlCount。全体rollback時のロット数・書込数は0、ロット単独rollbackの書込数も除外する。MAX_LOTS=5と既存の計測each([1,2,3,5,8,10,15,20])は維持する。
+- lint対処はfinallyでのthrowを監査後の通常制御へ移し、後工程の読取・編集可否判定をpiece-later-processes.tsへ抽出した。手動splitの数量・結果・応答形式は維持する。
+- 保存側のtransaction予算は従来どおり30秒、開始待ちmaxWaitは15秒（grinding-planning-board/write.tsとsessaku-pieces.service.ts）。保存側にSQL lock_timeoutは設定していないため、30秒をPostgreSQLロック待ち自体の厳密な上限とは扱わない。自動runnerの通常予算は10秒（callback側は9秒で打切り）、変更後は待機検出時に早くrollbackするが、保存側の設定上限は変わらない。
+- PrismaのP2028等は既知エラーなら400（error-response.ts / error-handler.ts）、P2034/P2002の変換は409。キオスクは409で「表示中のデータが更新されています。最新状態を取得してください。」、その他で「保存できませんでした。時間をおいて再試行してください。」。Web共通HTTP timeoutは既定120秒、ビルド設定で5〜600秒。
+- 入力保持・自動再送は保証されない。usePlanningBoardWriteQueue.tsは失敗操作と重複する後続操作を破棄して再取得し、再取得失敗なら残りも破棄する。納期保存ではusePlanningBoardDueActions.tsが受付時にpickerを閉じ、失敗時にpendingを消すので選んだ納期は失われ、再入力が必要。PlanningBoardOfflineProvider / planningBoardWriteGateは圏外で書込を止めキューを破棄する設計で、outbox再送はない。手動splitはretry:falseで、開いた数量dialog内には失敗時の値が残るが、閉じたり再マウントした場合の保持保証はない。
+- DB統合に人が先に行ロックを取る場合／自動が既にPieceを書いた場合の2件を追加し、実際のrank保存の成功、DB監査・PieceSet・history・自動の版更新の不在、次回の分割成功を検証する。DBなし単体では待機者検出・commit直前確認・書込行数を4件追加した。DB統合・実測はこの環境では未実行で、線形化の実測証明と人優先のDB受入はClaude側で実施する。
+- 最終ローカル検証: 指定API build tsconfigのtsc --noEmitと対象directoryのeslint --max-warnings=0は成功。対象Vitestは13ファイル346件成功、DB統合277件skip（7.31秒）。初回のモック/競合期待値の失敗を修正して再検証した。dotenvを無効化する一時preloadとenvDirを空ディレクトリに向けた一時configを使用し、configは削除済み。全体typecheck・全テスト・DB接続・実測・commit/push等は未実施。既存のstaged WIPは維持し、本修正はunstaged差分として追加した。
