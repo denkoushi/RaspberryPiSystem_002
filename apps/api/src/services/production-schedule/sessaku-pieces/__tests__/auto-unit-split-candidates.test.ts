@@ -23,7 +23,13 @@ describe('automatic candidate SQL contract', () => {
     expect(sql.sql).toContain('ProductionScheduleSessakuPieceOpCompletion');
     expect(sql.sql).toContain('NORMALIZE(e."rowData"');
     expect(sql.sql).toContain('ELSE false END');
-    expect(sql.sql).toContain('WITH untouched AS MATERIALIZED');
+    expect(sql.sql).toContain('WITH splittable_rows AS MATERIALIZED');
+    const cheapGate = sql.sql.slice(0, sql.sql.indexOf('eligible AS MATERIALIZED'));
+    expect(cheapGate).toContain('q."plannedQuantity" BETWEEN 2 AND 50');
+    expect(cheapGate).toContain('p."quantity" BETWEEN 2 AND 50');
+    expect(cheapGate).toContain('NOT p."isCompleted"');
+    expect(sql.sql).toContain('ds."quantityWarning" IS NOT NULL');
+    expect(sql.sql).toContain('dp."sourcePieceId" = p."id"');
     expect(sql.sql).toContain('ORDER BY array_position(?::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
     expect(sql.sql).toContain(`e."rowData"->>'FHINCD' = r."rowData"->>'FHINCD'`);
     expect(sql.values).toContain(STRING_TRIM_CHARACTERS);

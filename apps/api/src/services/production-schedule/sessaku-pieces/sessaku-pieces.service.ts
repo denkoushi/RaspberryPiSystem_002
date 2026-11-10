@@ -221,8 +221,8 @@ async function replaceSiteItems(tx: Prisma.TransactionClient, key: SessakuPieceL
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
         alternateRank: index + 1
       };
-      // Keep the same dense lane ranks without touching unchanged override versions.
-      if (!isReplacement && own?.alternateRank === data.alternateRank) continue;
+      // Lane operations invalidate row revisions used by reorder and offline writes,
+      // including rows whose dense rank stays the same.
       const id = randomUUID();
       values.push(Prisma.sql`(${id}, ${PRODUCTION_SCHEDULE_DASHBOARD_ID}, ${siteKey}, ${item.itemId},
         ${data.overrideResourceCd}::text, ${data.overrideDueDate}::date, ${data.dueDateCleared}::boolean,

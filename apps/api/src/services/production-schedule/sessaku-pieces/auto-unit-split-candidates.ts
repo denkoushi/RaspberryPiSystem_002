@@ -33,13 +33,25 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
     to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
   const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
-  // MATERIALIZED keeps winner/predecessor work behind the cheap cutting-key gate.
-  const untouched = Prisma.sql`SELECT r.* FROM "CsvDashboardRow" r
+  // MATERIALIZED keeps winner/predecessor joins behind quantity and editable-piece
+  // probes. Unit pieces and quantity-one CSV rows do no expensive discovery work.
+  const splittableRows = Prisma.sql`SELECT r.* FROM "CsvDashboardRow" r
+    JOIN "ProductionScheduleOrderSupplement" q ON q."csvDashboardRowId" = r."id" AND q."csvDashboardId" = r."csvDashboardId"
+    LEFT JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = r."csvDashboardId"
+      AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
+      AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', '')
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
-      AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])`;
+      AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
+      AND q."plannedQuantity" BETWEEN 2 AND 50 AND s."sourcePieceSetId" IS NULL
+      AND s."quantityWarning" IS NULL
+      AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id" AND p."sourcePieceId" IS NOT NULL)
+      AND (NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id")
+        OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id"
+          AND p."sourcePieceId" IS NULL AND NOT p."isCompleted" AND p."quantity" BETWEEN 2 AND 50
+          AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id")))`;
   const pieceEffective = trim(Prisma.sql`COALESCE(CASE WHEN po."id" IS NOT NULL THEN po."overrideResourceCd" ELSE o."overrideResourceCd" END, r."rowData"->>'FSIGENCD')`);
-  return Prisma.sql`WITH untouched AS MATERIALIZED (${untouched}), eligible AS MATERIALIZED (
-    SELECT r."id", r."csvDashboardId", r."rowData", r."rowData"->>'FSEIBAN' AS "fseiban", ${parentId} AS "parentId" FROM untouched r
+  return Prisma.sql`WITH splittable_rows AS MATERIALIZED (${splittableRows}), eligible AS MATERIALIZED (
+    SELECT r."id", r."csvDashboardId", r."rowData", r."rowData"->>'FSEIBAN' AS "fseiban", ${parentId} AS "parentId" FROM splittable_rows r
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" o ON o."csvDashboardId" = r."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = (${parentId})
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardResourceCapacity" c ON c."csvDashboardId" = r."csvDashboardId" AND c."siteKey" = ${siteKey} AND c."resourceCd" = ${effective}
     LEFT JOIN "ProductionScheduleSessakuPieceSet" s ON s."csvDashboardId" = r."csvDashboardId"
@@ -60,7 +72,25 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
             AND pc."siteKey" = ${siteKey} AND pc."resourceCd" = ${pieceEffective}
           WHERE p."pieceSetId" = s."id" AND p."sourcePieceId" IS NULL AND NOT p."isCompleted" AND p."quantity" BETWEEN 2 AND 50
             AND COALESCE(pc."unitSplitEnabled", ${pieceEffective} IN ('021', '022'))
-            AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id")))
+            AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id")
+            AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" dp
+              JOIN "ProductionScheduleSessakuPieceOpCompletion" op ON op."pieceId" = dp."id"
+              WHERE dp."sourcePieceId" = p."id")))
+      -- Match assertLaterProcessesEditable: only linked sets with a current winner
+      -- can block edits through quantity warnings or completed downstream pieces.
+      AND (s."id" IS NULL OR NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceSet" ds
+        JOIN "CsvDashboardRow" d ON d."csvDashboardId" = ds."csvDashboardId"
+          AND COALESCE(d."rowData"->>'FSEIBAN', '') = ds."fseiban" AND COALESCE(d."rowData"->>'FHINCD', '') = ds."fhincd"
+          AND COALESCE(d."rowData"->>'FSIGENCD', '') = ds."fsigencd" AND COALESCE(d."rowData"->>'FKOJUN', '') = ds."fkojun"
+        WHERE ds."csvDashboardId" = r."csvDashboardId"
+          AND (ds."sourcePieceSetId" = s."id" OR EXISTS (
+            SELECT 1 FROM "ProductionScheduleSessakuPiece" dp JOIN "ProductionScheduleSessakuPiece" sp ON sp."id" = dp."sourcePieceId"
+            WHERE dp."pieceSetId" = ds."id" AND sp."pieceSetId" = s."id"))
+          AND (ds."quantityWarning" IS NOT NULL
+            OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" dp WHERE dp."pieceSetId" = ds."id" AND dp."isCompleted")
+            OR EXISTS (SELECT 1 FROM "ProductionScheduleProgress" dp WHERE dp."csvDashboardRowId" = d."id" AND dp."isCompleted")
+            OR EXISTS (SELECT 1 FROM "ProductionScheduleExternalCompletion" dx WHERE dx."csvDashboardRowId" = d."id" AND dx."isExternallyCompleted"))
+          AND ${buildMaxProductNoWinnerCondition('d')}))
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleProgress" p WHERE p."csvDashboardRowId" = r."id" AND p."isCompleted")
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleExternalCompletion" x WHERE x."csvDashboardRowId" = r."id" AND x."isExternallyCompleted")
       AND ${buildMaxProductNoWinnerCondition('r')}
