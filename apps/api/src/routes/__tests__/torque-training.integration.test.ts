@@ -448,6 +448,7 @@ describe('torque training API concurrency boundary', () => {
       }
     });
     const template = await new AssemblyTemplateService().create({
+      accessPassword: '2520',
       modelCode: `TRAINING-LEASE-${randomUUID()}`,
       procedurePattern: 'standard',
       name: 'training lease assembly fixture',

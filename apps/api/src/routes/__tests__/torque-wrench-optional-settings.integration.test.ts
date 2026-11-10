@@ -135,6 +135,7 @@ async function createAssemblyFixture(
   });
   const boltCount = options.boltCount ?? 2;
   const template = await new AssemblyTemplateService().create({
+    accessPassword: '2520',
     modelCode: `OPTIONAL-${randomUUID()}`,
     procedurePattern: 'standard',
     name: 'Optional settings assembly',

@@ -193,6 +193,7 @@ describe('torque wrench traceability API', () => {
     expect((await templateService.getById(preFeatureTemplate.id))?.traceabilityMode).toBe('LEGACY');
 
     const template = await templateService.create({
+      accessPassword: '2520',
       modelCode: 'TRACE-001',
       procedurePattern: '標準',
       name: 'トルク追跡テスト',
@@ -524,6 +525,7 @@ describe('torque wrench traceability API', () => {
       }
     });
     const template = await new AssemblyTemplateService().create({
+      accessPassword: '2520',
       modelCode: `CROSS-${randomUUID()}`,
       procedurePattern: 'standard',
       name: 'cross-work confirmation fixture',
@@ -823,6 +825,7 @@ describe('torque wrench traceability API', () => {
       }
     });
     const template = await new AssemblyTemplateService().create({
+      accessPassword: '2520',
       modelCode: `LEASE-${randomUUID()}`,
       procedurePattern: 'standard',
       name: 'connection lease fixture',
@@ -1281,6 +1284,7 @@ describe('torque wrench traceability API', () => {
       }
     });
     const template = await new AssemblyTemplateService().create({
+      accessPassword: '2520',
       modelCode: `BOLT-ADMIN-${randomUUID()}`,
       procedurePattern: 'standard',
       name: 'BOLT admin fixture',
