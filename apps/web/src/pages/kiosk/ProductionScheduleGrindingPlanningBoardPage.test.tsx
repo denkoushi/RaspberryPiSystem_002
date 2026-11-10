@@ -2225,6 +2225,58 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
 
   });
 
+  it('selects and restores two independent machine panes, totals their late bars and exits', () => {
+    const data = fixture();
+    data.resources = ['021', '022', '305'];
+    data.resourceCategories = { '021': 'grinding', '022': 'grinding', '305': 'grinding' };
+    data.items.forEach((item, index) => {
+      item.originalResourceCd = ['021', '022', '305', '305'][index]!;
+      item.originalDueDate = index === 3 ? '2099-01-01' : '2000-01-01';
+      item.requiredMinutes = 20;
+      item.fhincd = `PART-${index}`;
+    });
+    mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+    const first = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '021+022 2台' }));
+    const upper = screen.getByRole('region', { name: '021', exact: true });
+    const lower = screen.getByRole('region', { name: '022', exact: true });
+    expect(upper.nextElementSibling).toBe(lower);
+    expect(within(upper).getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
+    expect(within(upper).queryByTestId('planning-gantt-bar-b')).toBeNull();
+    expect(within(lower).getByTestId('planning-gantt-bar-b')).toBeInTheDocument();
+    expect(within(lower).queryByTestId('planning-gantt-bar-a')).toBeNull();
+    const topScroll = within(upper).getByLabelText('ガントの日付と工程');
+    const bottomScroll = within(lower).getByLabelText('ガントの日付と工程');
+    topScroll.scrollTop = 180;
+    fireEvent.scroll(topScroll);
+    expect(bottomScroll.scrollTop).toBe(0);
+    expect(screen.getByRole('button', { name: '遅れ 2', exact: true })).toBeInTheDocument();
+    const jumpTop = vi.fn();
+    const jumpBottom = vi.fn();
+    topScroll.scrollTo = jumpTop;
+    bottomScroll.scrollTo = jumpBottom;
+    fireEvent.click(screen.getByRole('button', { name: '遅れ 2', exact: true }));
+    expect(jumpTop).toHaveBeenCalledOnce();
+    expect(jumpBottom).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '遅れ 2', exact: true }));
+    expect(jumpBottom).toHaveBeenCalledOnce();
+    fireEvent.click(within(lower).getByRole('button', { name: /品番の値/ }));
+    expect(within(lower).getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+    expect(within(upper).queryByRole('region', { name: '品番の値' })).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('region', { name: '品番の値' })).toBeNull();
+    expect(screen.getByRole('button', { name: '021+022 2台表示をやめる' })).toHaveTextContent('021+022 ✕');
+    first.unmount();
+    const restored = render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '021+022 2台表示をやめる' }));
+    expect(screen.queryByTestId('planning-two-machine')).toBeNull();
+    restored.unmount();
+    render(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('persists single-resource mode, selects for bulk edit, and handles Escape dialog → picker → sheet → single mode', () => {
     const data = fixture();
     data.items[3]!.originalResourceCd = '584';

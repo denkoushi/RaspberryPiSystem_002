@@ -33,45 +33,11 @@ import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
-  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
-  minutesPending?: boolean; minutesError?: boolean;
-  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
-  valueSheetOpen?: boolean; onToggleValueSheet?: () => void;
-  singleResourceCd?: string | null;
-  singleResourcePickerOpen?: boolean;
-  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
-  onSingleResourceChange?: (resource: string | null) => void;
-  onResourceReorder?: ForwardReorder;
-  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
-  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
-  arrivalPending?: boolean;
-  arrivalError?: boolean;
-  onResourceMove?: ForwardMove;
-  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
-  pinMode?: boolean;
-  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
-  runsThroughBreaks?: ReadonlySet<string>;
-  onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
-  colorBySeiban?: boolean;
-  focusedSeiban: string | null;
-  onFocusedSeibanChange: (seiban: string | null) => void;
-  seibanOrder?: readonly string[];
-  layout: GanttLayout;
-  scale: number;
-  /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
-  homeKey?: number;
-  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
-  resourceNameMap: Record<string, string[]>;
-  capacityPending: boolean; capacityError: boolean;
-  onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
-  /** Device-local lane order key, shared with the resource list panes. */
-  preferenceScope?: string;
-};
-export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
+export type { PlanningBoardGanttHandle } from './planningBoardGanttViewTypes';
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 const EMPTY_CHAIN: GanttBar[] = [];
 const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
@@ -97,9 +63,9 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
+  fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
@@ -209,13 +175,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setCompletionTargetId((current) => current === itemId ? null : itemId);
   }, []);
   const forward = layout.mode === 'forward';
-  const singleGroup = forward && singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const resourceGroup = singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const singleGroup = forward ? resourceGroup : undefined;
+  const showResourceHead = Boolean(singleGroup || (fitPane && resourceGroup));
   const singleMode = Boolean(singleGroup);
   const singleItems = useMemo(() => {
-    const items = resourceMinutesItems ?? singleGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
+    const items = resourceMinutesItems ?? resourceGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
     return [...new Map(items.filter((item) => (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
       .map((item) => [item.itemId, item])).values()];
-  }, [resourceMinutesItems, singleGroup, singleResourceCd]);
+  }, [resourceMinutesItems, resourceGroup, singleResourceCd]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
@@ -348,7 +316,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain]);
-  const sheetHeight = valueSheetOpen && singleGroup ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
   const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
@@ -374,7 +342,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
       setLegendHeight(legend.current?.offsetHeight ?? 0);
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
+      if (fitPane) setViewportHeight(element.clientHeight);
+      else if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -382,7 +351,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [colorBySeiban, singleResourceCd, measureWindow]);
+  }, [colorBySeiban, singleResourceCd, measureWindow, fitPane]);
   // Before paint, so the mounted window follows the new position without a blank frame.
   useLayoutEffect(() => {
     if (!viewport.current) return;
@@ -409,7 +378,38 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
   };
-  useImperativeHandle(ref, () => ({ scrollToNextOverlap: () => {
+  const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
+    const day = layout.start + i;
+    const weekday = new Date(day * 86_400_000).getUTCDay();
+    return { day, weekday, weekend: weekday === 0 || weekday === 6 };
+  }), [layout.end, layout.start]);
+  const dateHeadings = useMemo(() => days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
+              style={{ width: dayWidth }} title={dayToDate(day)}>
+              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
+              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
+            </div>), [days, dayWidth, layout.today, showHours, hourTicks]);
+  const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
+    row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
+  ))), [interaction.selectedItemIds, layout]);
+  const scrollToBar = useCallback((bar: GanttBar) => {
+    const element = viewport.current;
+    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
+    const location = barLocations.get(bar.item.itemId)?.first;
+    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
+    if (!element || !rowElement || !rect) return false;
+    const bounds = element.getBoundingClientRect();
+    // Centre the first segment, keeping its start visible when wider than the chart.
+    const barLeft = labelWidth + rect.left;
+    const left = Math.max(0, Math.min(barLeft + rect.width / 2 - (viewportWidth + labelWidth) / 2, barLeft - labelWidth - 16));
+    const rowTop = (rowElement.getBoundingClientRect().top - bounds.top) / pageZoom() + rect.top;
+    const visibleHeight = element.clientHeight || viewportHeight || bounds.height / pageZoom();
+    const top = Math.max(0, element.scrollTop + rowTop - 36,
+      element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
+    if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
+    else { element.scrollLeft = left; element.scrollTop = top; }
+    return true;
+  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
+  useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); return bar ? scrollToBar(bar) : false; }, scrollToNextOverlap: () => {
     const element = viewport.current;
     const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
     if (!element || !rows.length) return;
@@ -434,37 +434,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
     element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
     measureWindow();
-  } }), [layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode]);
-  const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
-    const day = layout.start + i;
-    const weekday = new Date(day * 86_400_000).getUTCDay();
-    return { day, weekday, weekend: weekday === 0 || weekday === 6 };
-  }), [layout.end, layout.start]);
-  const dateHeadings = useMemo(() => days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
-              style={{ width: dayWidth }} title={dayToDate(day)}>
-              {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
-              {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
-            </div>), [days, dayWidth, layout.today, showHours, hourTicks]);
-  const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
-    row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
-  ))), [interaction.selectedItemIds, layout]);
-  const scrollToBar = useCallback((bar: GanttBar) => {
-    const element = viewport.current;
-    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
-    const location = barLocations.get(bar.item.itemId)?.first;
-    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
-    if (!element || !rowElement || !rect) return;
-    const bounds = element.getBoundingClientRect();
-    // Centre the first segment, keeping its start visible when wider than the chart.
-    const barLeft = labelWidth + rect.left;
-    const left = Math.max(0, Math.min(barLeft + rect.width / 2 - (viewportWidth + labelWidth) / 2, barLeft - labelWidth - 16));
-    const rowTop = (rowElement.getBoundingClientRect().top - bounds.top) / pageZoom() + rect.top;
-    const visibleHeight = element.clientHeight || viewportHeight || bounds.height / pageZoom();
-    const top = Math.max(0, element.scrollTop + rowTop - 36,
-      element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
-    if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
-    else { element.scrollLeft = left; element.scrollTop = top; }
-  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
+  } }), [currentBars, scrollToBar, layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode]);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (!pendingJump || !barLocations.has(pendingJump)) return;
@@ -473,7 +443,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setPendingJump(null);
   }, [pendingJump, barLocations, currentBars, scrollToBar]);
   const scrollToStep = (bar: GanttBar) => {
-    if (singleGroup && bar.resource !== singleResourceCd) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
+    if (singleGroup && bar.resource !== singleResourceCd && !onNavigateBar?.(bar)) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
     else scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
   };
@@ -520,17 +490,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
+    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      {singleGroup && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
-        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={onToggleValueSheet}
+      {showResourceHead && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} />}
-      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
+      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className={clsx('relative overflow-auto', fitPane ? 'min-h-0 flex-1 overscroll-contain' : 'min-h-48')}
+        style={{ height: fitPane ? undefined : viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
@@ -620,7 +590,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
-      {singleGroup && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
+      {showResourceHead && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
         values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} />}
       {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
