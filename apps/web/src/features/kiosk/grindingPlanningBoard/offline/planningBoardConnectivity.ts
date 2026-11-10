@@ -51,11 +51,11 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
   };
   const checkElapsed = (lossTimerFired = false) => {
     if (!started || stopped) return;
-    if (snapshot.phase === 'refreshing' && now() - refreshingStarted >= config.lossAfterMs) {
+    if (snapshot.phase === 'refreshing' && now() - refreshingStarted >= config.refreshTimeoutMs) {
       transition('offline');
-    } else if (snapshot.phase === 'bootstrapping' && now() - bootstrapStarted >= config.lossAfterMs) {
+    } else if (snapshot.phase === 'bootstrapping' && now() - bootstrapStarted >= config.refreshTimeoutMs) {
       transition('offline');
-    } else if (snapshot.phase === 'online' && now() - lastSuccess >= config.lossAfterMs) {
+    } else if (snapshot.phase !== 'offline' && now() - lastSuccess >= config.lossAfterMs) {
       transition('offline');
     } else if (lossTimerFired) {
       // A timer can fire a fraction of a millisecond before the monotonic deadline; re-arm instead of waiting for the next probe.
@@ -68,13 +68,11 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
   };
   const scheduleLoss = () => {
     clearTimeout(lossTimer);
-    if (!stopped && snapshot.phase === 'refreshing') {
-      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - refreshingStarted))));
-    } else if (!stopped && snapshot.phase === 'bootstrapping') {
-      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - bootstrapStarted))));
-    } else if (!stopped && snapshot.phase === 'online') {
-      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - lastSuccess))));
-    }
+    if (stopped || snapshot.phase === 'offline') return;
+    let deadline = lastSuccess + config.lossAfterMs;
+    if (snapshot.phase === 'refreshing') deadline = Math.min(deadline, refreshingStarted + config.refreshTimeoutMs);
+    if (snapshot.phase === 'bootstrapping') deadline = Math.min(deadline, bootstrapStarted + config.refreshTimeoutMs);
+    lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(deadline - now())));
   };
   const recordSuccess = () => {
     lastSuccess = now();
@@ -150,7 +148,7 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
     reportBoardReadSuccess(generation: number) {
       if (!started || stopped) return;
       checkElapsed();
-      if (snapshot.phase === 'online' && generation === snapshot.generation) recordSuccess();
+      if (snapshot.phase !== 'offline' && generation === snapshot.generation) recordSuccess();
     },
     /** Call after publishing all required fresh data, with the generation it was requested in. */
     reportFullRefresh(generation: number, success: boolean) {
@@ -159,7 +157,7 @@ export function createPlanningBoardConnectivity({ config, probe, onBootstrapProb
       if (generation !== snapshot.generation) return;
       if (snapshot.phase !== 'refreshing' && snapshot.phase !== 'bootstrapping') return;
       if (!success) {
-        // At startup, a failed load is retried by the caller; only the 15s rule may declare offline.
+        // At startup, a failed load is retried by the caller; the connectivity and refresh deadlines may declare offline.
         if (snapshot.phase === 'refreshing') transition('offline');
         return;
       }

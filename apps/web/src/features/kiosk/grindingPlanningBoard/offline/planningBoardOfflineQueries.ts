@@ -21,7 +21,7 @@ type Resources = { resources: string[]; resourceItems: { resourceCd: string; exc
 type Result<T> = { data: T | undefined; isError: boolean; error: unknown; scopeKey?: string };
 
 /** This page's reads own their cancellation, generation and success reporting; no shared interceptors. */
-function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortSignal) => Promise<T>, enabled = true) {
+function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortSignal) => Promise<T>, enabled = true, refetchIntervalMs: number | false = 300_000) {
   const offline = usePlanningBoardOffline();
   const { gate, registerRead, publishRead, subscribeFreeze } = offline;
   const latest = useRef({ fetcher, publishRead }); latest.current = { fetcher, publishRead };
@@ -63,9 +63,10 @@ function useOfflineRead<T>(key: string, scope: unknown, fetcher: (signal: AbortS
     if (!enabled || offline.frozen) return;
     if (previousScope.current !== scopeKey || !result.data) void refetch();
     previousScope.current = scopeKey;
-    const timer = setInterval(() => { void refetch(); }, 300_000);
+    if (refetchIntervalMs === false) return;
+    const timer = setInterval(() => { void refetch(); }, refetchIntervalMs);
     return () => clearInterval(timer);
-  }, [scopeKey, enabled, offline.frozen, refetch, result.data]);
+  }, [scopeKey, enabled, offline.frozen, refetch, result.data, refetchIntervalMs]);
   const frozenResult = useFrozenValue(result);
   const visibleFetching = useFrozenValue(fetching);
   return { ...frozenResult, refetch, isFetching: visibleFetching, isLoading: !frozenResult.data && !frozenResult.isError,
@@ -87,7 +88,7 @@ function useRequest() {
   };
 }
 
-export function useOfflineBoard(params: KioskGrindingPlanningBoardQuery, _options?: unknown) {
+export function useOfflineBoard(params: KioskGrindingPlanningBoardQuery, options?: { refetchIntervalMs?: number | false }) {
   const request = useRequest();
   const query = useOfflineRead('board', params, async (signal) => {
     const first = await request<GrindingPlanningBoardResponse>(base, signal, (data) => Array.isArray(data.items) && typeof data.sourceRevision === 'string' && typeof data.siteKey === 'string', { ...params, includeLoad: false, cursor: 0, pageSize: 160 });
@@ -102,7 +103,7 @@ export function useOfflineBoard(params: KioskGrindingPlanningBoardQuery, _option
       previous = next; cursor = page.nextCursor;
     }
     return { ...first, items, nextCursor: null };
-  });
+  }, true, options?.refetchIntervalMs);
   return { ...query, hasStableData: !!query.data && !query.isPlaceholderData, scopeReady: !!query.data && !query.isPlaceholderData, isComplete: !!query.data,
     isAppending: false, appendError: null };
 }

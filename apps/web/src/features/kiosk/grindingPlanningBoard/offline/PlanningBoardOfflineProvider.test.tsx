@@ -76,7 +76,7 @@ describe('PlanningBoardOfflineProvider', () => {
     expect(screen.getByTestId('data')).toHaveTextContent('retried:initial');
   });
 
-  it('waits for a successful probe before retrying and stops startup at fifteen seconds', async () => {
+  it('waits for a successful probe before retrying and stops startup at forty-five seconds', async () => {
     mocks.board.mockRejectedValue(new Error('startup failure'));
     mocks.get.mockRejectedValue(new Error('probe failure'));
     render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>);
@@ -85,7 +85,9 @@ describe('PlanningBoardOfflineProvider', () => {
     mocks.get.mockResolvedValue(capacity);
     await advance(5000); expect(mocks.board).toHaveBeenCalledTimes(2);
     expect(current.snapshot.phase).toBe('bootstrapping');
-    await advance(5000);
+    await advance(34999);
+    expect(current.snapshot.phase).toBe('bootstrapping');
+    await advance(1);
     expect(current.snapshot.phase).toBe('offline');
   });
   it('cancels a pending startup retry on unmount and ignores its late result', async () => {
@@ -145,17 +147,50 @@ describe('PlanningBoardOfflineProvider', () => {
     await advance(1); expect(screen.queryByRole('status')).toBeNull();
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('/resource-capacity'), expect.objectContaining({ timeout: 3000, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' } }));
   });
-  it('returns to offline after a hanging refresh and ignores its later result', async () => {
+  it('aborts a hanging refresh at forty-five seconds despite successful probes and ignores its later result', async () => {
     await offline(); mocks.get.mockResolvedValue(capacity);
     let finish!: (value: string) => void; let signal!: AbortSignal;
     mocks.board.mockImplementation((abort: AbortSignal) => { signal = abort; return new Promise<string>((resolve) => { finish = resolve; }); });
     mocks.commit.mockClear(); await eventProbe(); await eventProbe();
     expect(current.snapshot.phase).toBe('refreshing');
-    await advance(15000);
+    await advance(44999);
+    expect(current.snapshot.phase).toBe('refreshing'); expect(signal.aborted).toBe(false);
+    await advance(1);
     expect(current.snapshot.phase).toBe('offline'); expect(signal.aborted).toBe(true);
     await act(async () => finish('late')); await flush();
     expect(mocks.commit).not.toHaveBeenCalled(); expect(current.gate.canWrite()).toBe(false);
   });
+  it.each(['bootstrapping', 'refreshing'] as const)('publishes a slow full read during %s with successful probes', async (phase) => {
+    if (phase === 'refreshing') await offline();
+    mocks.get.mockResolvedValue(capacity);
+    let finish!: (value: string) => void;
+    mocks.board.mockResolvedValue('fresh');
+    mocks.aux.mockReturnValue(new Promise<string>((resolve) => { finish = resolve; }));
+    mocks.commit.mockClear();
+    if (phase === 'refreshing') { await eventProbe(); await eventProbe(); }
+    else { render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>); await flush(); }
+    await advance(44000);
+    expect(current.snapshot.phase).toBe(phase);
+    expect(mocks.commit).not.toHaveBeenCalled();
+    await act(async () => finish('fresh')); await flush();
+    expect(current.snapshot.phase).toBe('online');
+    expect(screen.getByTestId('data')).toHaveTextContent('fresh:fresh');
+  });
+
+  it.each(['bootstrapping', 'refreshing'] as const)('aborts %s after fifteen seconds without a successful connection', async (phase) => {
+    if (phase === 'refreshing') await offline();
+    mocks.get.mockResolvedValue(capacity);
+    let signal!: AbortSignal;
+    mocks.board.mockImplementation((abort: AbortSignal) => { signal = abort; return new Promise(() => undefined); });
+    if (phase === 'refreshing') { await eventProbe(); await eventProbe(); }
+    else { render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>); await flush(); }
+    mocks.get.mockRejectedValue(new Error('offline'));
+    await advance(14999);
+    expect(current.snapshot.phase).toBe(phase); expect(signal.aborted).toBe(false);
+    await advance(1);
+    expect(current.snapshot.phase).toBe('offline'); expect(signal.aborted).toBe(true);
+  });
+
   it('aborts a refresh and stops probes on unmount', async () => {
     const view = render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>);
     await flush(); await advance(5000); mocks.get.mockRejectedValue(new Error('offline')); await advance(15000);

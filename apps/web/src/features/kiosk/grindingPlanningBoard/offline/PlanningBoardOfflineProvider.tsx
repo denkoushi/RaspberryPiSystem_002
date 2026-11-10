@@ -179,7 +179,7 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
         reported = true;
         controller.reportFullRefresh(snapshot.generation, success);
       };
-      timeout = setTimeout(() => { abort.abort(); report(false); }, config.lossAfterMs);
+      timeout = setTimeout(() => { abort.abort(); report(false); }, config.refreshTimeoutMs);
       void (async () => {
         try {
           await gate.waitForIdle(abort.signal);
@@ -212,7 +212,7 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
       active?.abort();
       if (!complete) controller.reportFullRefresh(snapshot.generation, false);
     };
-  }, [snapshot.phase, snapshot.generation, config.lossAfterMs, config.probeIntervalMs, controller, gate]);
+  }, [snapshot.phase, snapshot.generation, config.refreshTimeoutMs, config.probeIntervalMs, controller, gate]);
   return <OfflineContext.Provider value={value}>
     {children}
     <PlanningBoardConnectivityBanner phase={snapshot.phase} displayedAt={displayedAt} recoveredUntil={snapshot.recoveredUntil} />

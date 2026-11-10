@@ -68,7 +68,7 @@ describe('planning board connectivity', () => {
     expect(phase()).toBe('offline');
   });
 
-  it('returns refreshing to offline at its deadline even when the caller never reports', async () => {
+  it('returns refreshing to offline after fifteen seconds without a success', async () => {
     await offline(); await successfulProbe(); await successfulProbe();
     const refreshing = generation(); expect(phase()).toBe('refreshing');
     await advance(14999); expect(phase()).toBe('refreshing');
@@ -138,14 +138,46 @@ describe('planning board connectivity', () => {
     expect(phase()).toBe('online');
   });
 
-  it('expires bootstrapping at 15 seconds even with successful probes and failed reads', async () => {
+  it('expires bootstrapping at 45 seconds even with successful probes and failed reads', async () => {
     probe.mockResolvedValue(true);
     await start();
     board.reportFullRefresh(generation(), false);
-    await advance(14999);
+    await advance(44999);
     expect(phase()).toBe('bootstrapping');
     await advance(1);
     expect(phase()).toBe('offline');
+  });
+
+  it.each(['bootstrapping', 'refreshing'] as const)('extends %s connectivity with current-generation reads but ignores stale reads', async (target) => {
+    if (target === 'refreshing') { await offline(); await successfulProbe(); await successfulProbe(); }
+    else await start();
+    await advance(14000);
+    board.reportBoardReadSuccess(generation());
+    await advance(14000);
+    expect(phase()).toBe(target);
+    board.reportBoardReadSuccess(generation() - 1);
+    await advance(999);
+    expect(phase()).toBe(target);
+    await advance(1);
+    expect(phase()).toBe('offline');
+  });
+
+  it.each([16000, 30000, 44000])('recovers after a %ims full refresh with successful probes', async (duration) => {
+    await offline(); await successfulProbe(); await successfulProbe();
+    probe.mockResolvedValue(true);
+    await advance(duration);
+    expect(phase()).toBe('refreshing');
+    board.reportFullRefresh(generation(), true);
+    expect(phase()).toBe('online');
+  });
+
+  it('expires refreshing at 45 seconds despite successful probes and ignores late completion', async () => {
+    await offline(); await successfulProbe(); await successfulProbe();
+    probe.mockResolvedValue(true);
+    const refreshing = generation();
+    await advance(44999); expect(phase()).toBe('refreshing');
+    await advance(1); expect(phase()).toBe('offline');
+    board.reportFullRefresh(refreshing, true); expect(phase()).toBe('offline');
   });
 
   it('uses the configured success count', async () => {
