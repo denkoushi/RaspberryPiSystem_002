@@ -47,6 +47,12 @@ update-frequency: medium
 - 生産日程CSV差分消失は、Status `R` や Status 欠落期間でも現場残存行を完了グレーにし得るため、実効完了から外した。
 - `externallyCompletedFromScheduleCsvDisappeared` は互換列として残すが、既存 true は migration で false に収束し、以後の取込では完了へ寄与しない。
 
+### 2026-11-10 追補: 同一行の共有欄・完了と順位割当の競合
+
+- 備考・納期・処理種別の保存は、既存の Serializable + P2034 再試行を利用し、親行 advisory lock → 共有欄再読込 → 自分の欄のみ更新（3欄とも空なら削除）の順で行う。Serializable のスナップショットは advisory lock の取得時点で決まるため、待たされた側は古い値を読むことがあり、その場合は書き込みが P2034 になって再試行で正しい結果になる（正しさを保証するのは Serializable と再試行で、lock は衝突を減らす役目）。同じ行へ3台以上が同時に保存すると再試行上限で 409 になり得る。製番単位の備考保存と納期書戻しは親行 lock を取らず、この対象外。
+- 完了処理の割当読取は transaction 内の親行 advisory lock・親行 `FOR UPDATE` 後に行い、古い割当有無による枠の解放漏れを防ぐ。計測項目は維持する。
+- 回帰テストは `production-schedule-command.service.test.ts` に追加。備考／処理種別の読取後に納期保存を開始するモック競合、全欄空の削除、部分更新、完了時の transaction 内ロック・読取順を検証する。追加13件は修正前コードで失敗し、修正後は対象33件と納期監査・書戻し25件が成功した。実DBでの競合検証・本番反映は未実施。
+
 主要コード:  
 [`production-schedule-command.service.ts`](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts)・[`complete.ts`](../../apps/api/src/routes/kiosk/production-schedule/complete.ts)・[`progress-csv-sync-decision.policy.ts`](../../apps/api/src/services/production-schedule/progress-csv-sync-decision.policy.ts)・[`progress-sync-from-csv.service.ts`](../../apps/api/src/services/production-schedule/progress-sync-from-csv.service.ts)・Web [`client.ts`](../../apps/web/src/api/client.ts) / [`hooks.ts`](../../apps/web/src/api/hooks.ts) / [`useProductionScheduleMutations.ts`](../../apps/web/src/features/kiosk/productionSchedule/useProductionScheduleMutations.ts)。
 
