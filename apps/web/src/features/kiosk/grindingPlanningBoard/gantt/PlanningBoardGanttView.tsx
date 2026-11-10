@@ -66,7 +66,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -312,7 +312,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain, valueSheetContainer]);
-  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
+  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
     values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
   const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
   useLayoutEffect(() => {
