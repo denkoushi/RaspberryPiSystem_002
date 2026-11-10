@@ -88,6 +88,80 @@ describe('planning board background writes', () => {
     expect(h.result.current.blocked).toBe(true); h.change('a', 3);
     expect(h.save).toHaveBeenCalledTimes(1); expect(h.failed).toHaveBeenCalledTimes(2);
   });
+  it('accepts writes after polling delivers a new revision following failed recovery', async () => {
+    const h = setup(); h.refresh.mockResolvedValue({ isError: true }); h.change('a', 1);
+    await act(async () => h.requests[0].reject(new Error('offline')));
+    h.rerender({ data: items, scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-0' });
+    expect(h.result.current.blocked).toBe(true);
+    h.rerender({ data: items, scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-1' });
+    expect(h.result.current.blocked).toBe(false); h.change('b', 2);
+    expect(h.save).toHaveBeenCalledTimes(2);
+  });
+  it('uses recovery response revision before props render for independent queued order writes', async () => {
+    const h = setup();
+    h.refresh.mockResolvedValue({ isError: false, data: { sourceRevision: 'board-2' } });
+    h.change('a', 1);
+    act(() => { h.result.current.enqueue({ label: '製番順', itemIds: [], seibans: [], order: true,
+      apply: (display) => display, save: h.save }); });
+    await act(async () => h.requests[0].reject(new Error('conflict')));
+    expect(h.save.mock.calls[1][0].sourceRevision).toBe('board-2');
+    await act(async () => h.requests[1].resolve({ order: ['b', 'a'], sourceRevision: 'board-3' }));
+    expect(h.result.current.order).toEqual(['b', 'a']);
+    h.rerender({ data: items, scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-0' });
+    expect(h.result.current.order).toEqual(['b', 'a']);
+  });
+  it('fails only unsent writes on unmount and ignores the in-flight response', async () => {
+    const h = setup(); h.change('a', 1); h.change('b', 2);
+    h.unmount();
+    expect(h.failed).toHaveBeenCalledTimes(1);
+    await act(async () => h.requests[0].resolve(h.saved('a', 1, 1)));
+    expect(h.failed).toHaveBeenCalledTimes(1); expect(h.save).toHaveBeenCalledTimes(1);
+    expect(h.refresh).not.toHaveBeenCalled();
+  });
+  it('holds a saved scope until item revisions are refreshed without blocking other seibans', async () => {
+    const h = setup(); h.change('a', 1);
+    await act(async () => h.requests[0].resolve({ awaitItemRefresh: true }));
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(true);
+    h.change('a', 2); h.change('b', 3);
+    expect(h.save).toHaveBeenCalledTimes(2);
+    await act(async () => h.requests[1].resolve(h.saved('b', 3, 1)));
+    h.rerender({ data: [...items], scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-other' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(true);
+    h.rerender({ data: [{ ...items[0], itemRevision: 'a-1' }, items[1]], scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-new' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(false);
+    h.change('a', 4);
+    expect(h.save).toHaveBeenCalledTimes(3);
+  });
+  it('keeps scope edits held when a delayed GET contains a previously confirmed item revision', async () => {
+    const h = setup(); h.change('a', 1);
+    await act(async () => h.requests[0].resolve(h.saved('a', 1, 1)));
+    h.change('a', 2);
+    await act(async () => h.requests[1].resolve({ awaitItemRefresh: true }));
+    h.rerender({ data: [{ ...items[0], itemRevision: 'a-1' }, items[1]], scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-old' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(true);
+    h.rerender({ data: [{ ...items[0], itemRevision: 'a-2' }, items[1]], scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-new' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(false);
+  });
+  it('releases a held seiban on an accepted refresh even when item revisions did not change', async () => {
+    const h = setup(); h.change('a', 1);
+    await act(async () => h.requests[0].resolve({ awaitItemRefresh: true }));
+    h.rerender({ data: [...items], scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-0' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(true);
+    act(() => { h.result.current.acceptRefreshedState(); });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(false);
+    h.change('a', 2);
+    expect(h.save).toHaveBeenCalledTimes(2);
+  });
+  it('releases a seiban when a complete refresh changes only the affected items', async () => {
+    const h = setup();
+    const sameSeiban = items.map((item) => ({ ...item, fseiban: 'a' }));
+    h.rerender({ data: sameSeiban, scope: 'site:grinding', order: ['a'], sourceRevision: 'board-0' });
+    h.change('a', 1);
+    await act(async () => h.requests[0].resolve({ awaitItemRefresh: true }));
+    h.rerender({ data: [{ ...sameSeiban[0], itemRevision: 'a-1' }, sameSeiban[1]],
+      scope: 'site:grinding', order: ['a'], sourceRevision: 'board-1' });
+    expect(h.result.current.hasPendingSeiban('a', true)).toBe(false);
+  });
   it('ignores old responses and queued input after scope changes', async () => {
     const h = setup(); h.change('a', 1); h.change('a', 2);
     h.rerender({ data: items, scope: 'other', order: ['a', 'b'], sourceRevision: 'board-0' });

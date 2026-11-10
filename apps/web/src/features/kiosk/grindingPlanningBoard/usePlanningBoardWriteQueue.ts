@@ -6,6 +6,7 @@ export type PlanningBoardDisplayItem = GrindingPlanningBoardItem & { pendingSpec
 export type PlanningBoardWriteDisplay = { items: PlanningBoardDisplayItem[]; order: string[]; uncheckedFseibans: string[] };
 export type PlanningBoardWriteResult = {
   items?: GrindingPlanningBoardItem[];
+  awaitItemRefresh?: boolean;
   order?: string[];
   uncheckedFseibans?: string[];
   sourceRevision?: string;
@@ -54,12 +55,20 @@ export function usePlanningBoardWriteQueue(options: Options) {
   latest.current = options;
   const createState = () => ({ scope: options.scope, writes: [] as PlanningBoardWrite[], confirmed: new Map<string, Confirmed>(),
     confirmedOrder: null as null | { order: string[]; uncheckedFseibans: string[]; sourceRevision: string; stale: Set<string> },
-    sourceRevision: options.sourceRevision, running: false, recovering: false, blocked: false });
+    sourceRevision: options.sourceRevision, staleRevisions: new Set<string>(),
+    awaitingItems: new Map<string, { items: GrindingPlanningBoardItem[]; sourceRevision: string; stale: Map<string, Set<string>> }>(),
+    blockedAt: null as null | { items: GrindingPlanningBoardItem[]; sourceRevision: string }, running: false, recovering: false, blocked: false });
   const state = useRef(createState());
   const mounted = useRef(true);
   const [revision, render] = useState(0);
   const changed = useCallback(() => { if (mounted.current) render((value) => value + 1); }, []);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; state.current.writes = []; }; }, []);
+  useEffect(() => { mounted.current = true; return () => {
+    mounted.current = false;
+    const current = state.current;
+    const unsent = current.writes.slice(current.running && !current.recovering ? 1 : 0);
+    for (const write of unsent.reverse()) write.onFailed?.(new Error('Board unmounted'));
+    current.writes = [];
+  }; }, []);
   useEffect(() => {
     const current = state.current;
     if (current.scope !== options.scope) {
@@ -69,6 +78,20 @@ export function usePlanningBoardWriteQueue(options: Options) {
     }
     if (current.running || current.recovering) return;
     let dirty = false;
+    if (current.blocked && current.blockedAt && (current.blockedAt.sourceRevision !== options.sourceRevision || current.blockedAt.items !== options.items)) {
+      current.confirmed.clear(); current.confirmedOrder = null;
+      current.sourceRevision = options.sourceRevision; current.staleRevisions.clear();
+      current.blocked = false; current.blockedAt = null; dirty = true;
+    }
+    for (const [seiban, baseline] of current.awaitingItems) {
+      const present = options.items.filter((item) => item.fseiban === seiban);
+      if (options.items !== baseline.items && (present.length > 0
+        ? present.some((item) => !baseline.stale.get(item.itemId)?.has(item.itemRevision) &&
+          !baseline.items.some((old) => old.itemId === item.itemId && old.itemRevision === item.itemRevision))
+        : options.sourceRevision !== baseline.sourceRevision)) {
+        current.awaitingItems.delete(seiban); dirty = true;
+      }
+    }
     for (const item of options.items) {
       const saved = current.confirmed.get(item.itemId);
       if (saved && (item.itemRevision === saved.item.itemRevision || !saved.stale.has(item.itemRevision))) {
@@ -79,7 +102,9 @@ export function usePlanningBoardWriteQueue(options: Options) {
     if (savedOrder && (savedOrder.sourceRevision === options.sourceRevision || !savedOrder.stale.has(options.sourceRevision))) {
       current.confirmedOrder = null; dirty = true;
     }
-    if (!current.confirmedOrder) current.sourceRevision = options.sourceRevision;
+    if (!current.confirmedOrder && !current.staleRevisions.has(options.sourceRevision)) {
+      current.sourceRevision = options.sourceRevision; current.staleRevisions.clear();
+    }
     if (dirty) changed();
   // State is reconstructed only when the owning board scope changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -104,7 +129,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
 
   const enqueue = useCallback((write: PlanningBoardWrite): boolean => {
     const current = state.current;
-    if (current.scope !== latest.current.scope || current.blocked || current.recovering) return false;
+    if (current.scope !== latest.current.scope || current.blocked || current.recovering || write.seibans.some((id) => current.awaitingItems.has(id))) return false;
     current.writes.push(write);
     changed();
     if (current.running) return true;
@@ -123,7 +148,14 @@ export function usePlanningBoardWriteQueue(options: Options) {
             const result = await next.save({ sourceRevision: current.sourceRevision,
               item: (original) => current.confirmed.get(original.itemId)?.item ?? original });
             if (!mounted.current || current !== state.current) return;
-            if (result.sourceRevision) current.sourceRevision = result.sourceRevision;
+            if (result.awaitItemRefresh) {
+              const stale = new Map([...current.confirmed].map(([id, saved]) => [id, new Set([...saved.stale, saved.item.itemRevision])]));
+              for (const seiban of next.seibans) current.awaitingItems.set(seiban, { items: requestItems, sourceRevision: requestRevision, stale });
+            }
+            if (result.sourceRevision && result.sourceRevision !== current.sourceRevision) {
+              current.staleRevisions.add(requestRevision);
+              current.sourceRevision = result.sourceRevision;
+            }
             const latestById = new Map(latest.current.items.map((item) => [item.itemId, item]));
             const requestById = requestItems === latest.current.items ? latestById : new Map(requestItems.map((item) => [item.itemId, item]));
             for (const item of result.items ?? []) {
@@ -136,7 +168,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
               current.confirmed.set(item.itemId, { item: base ? savedFields(base, item) : item, stale });
             }
             if (result.order || result.uncheckedFseibans) {
-              const stale = new Set(current.confirmedOrder?.stale);
+              const stale = new Set([...current.staleRevisions, ...(current.confirmedOrder?.stale ?? [])]);
               stale.add(requestRevision);
               if (current.confirmedOrder) stale.add(current.confirmedOrder.sourceRevision);
               current.confirmedOrder = { order: result.order ?? current.confirmedOrder?.order ?? latest.current.order,
@@ -161,8 +193,19 @@ export function usePlanningBoardWriteQueue(options: Options) {
             changed();
             try {
               const refreshed = await latest.current.refresh();
+              if (!mounted.current || current !== state.current) return;
               if (refreshed && typeof refreshed === 'object' && 'isError' in refreshed && refreshed.isError) throw new Error('Refresh failed');
+              const data = refreshed && typeof refreshed === 'object' && 'data' in refreshed ? refreshed.data : null;
+              const revision = data && typeof data === 'object' && 'sourceRevision' in data ? data.sourceRevision : latest.current.sourceRevision;
+              if (typeof revision === 'string' && revision !== current.sourceRevision &&
+                !current.staleRevisions.has(revision) && !current.confirmedOrder?.stale.has(revision)) {
+                current.staleRevisions.add(current.sourceRevision);
+                current.sourceRevision = revision;
+                if (current.confirmedOrder && !current.confirmedOrder.stale.has(revision)) current.confirmedOrder = null;
+              }
             } catch {
+              if (!mounted.current || current !== state.current) return;
+              current.blockedAt = { items: latest.current.items, sourceRevision: latest.current.sourceRevision };
               current.blocked = true;
               for (const pending of [...current.writes].reverse()) pending.onFailed?.(error);
               current.writes = [];
@@ -194,10 +237,10 @@ export function usePlanningBoardWriteQueue(options: Options) {
     if (state.current.running) return;
     state.current.confirmed.clear(); state.current.confirmedOrder = null;
     state.current.sourceRevision = latest.current.sourceRevision;
-    state.current.blocked = false;
+    state.current.blocked = false; state.current.blockedAt = null; state.current.staleRevisions.clear(); state.current.awaitingItems.clear();
     changed();
   }, [changed]);
-  const hasPendingSeiban = useCallback((fseiban: string, wholeOnly = false) => state.current.writes.some((write) =>
+  const hasPendingSeiban = useCallback((fseiban: string, wholeOnly = false) => state.current.awaitingItems.has(fseiban) || state.current.writes.some((write) =>
     (!wholeOnly || write.wholeSeiban) && write.seibans.includes(fseiban)), []);
   return { ...display, enqueue, pending: state.current.running || state.current.recovering,
     blocked: state.current.blocked || state.current.recovering, hasPendingSeiban, acceptRefreshedState };
