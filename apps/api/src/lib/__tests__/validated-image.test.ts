@@ -1,7 +1,8 @@
 import sharp from 'sharp';
 import { describe, expect, it, vi, afterEach } from 'vitest';
 import { IMAGE_INPUT_MAX_PIXELS, validateImageBuffer } from '../validated-image.js';
-import { DRAWING_MAX_PIXELS, PartMeasurementDrawingStorage } from '../part-measurement-drawing-storage.js';
+import { DRAWING_UPLOAD_MAX_PIXELS, PartMeasurementDrawingStorage } from '../part-measurement-drawing-storage.js';
+import { convertDrawingUploadToPreviewBuffer } from '../part-measurement-drawing-preview.js';
 import { AssemblyProcedureImageStorage } from '../assembly-procedure-image-storage.js';
 import { MeasuringInstrumentGenreImageStorage } from '../measuring-instrument-genre-image-storage.js';
 import { PalletMachineIllustrationStorage } from '../pallet-machine-illustration-storage.js';
@@ -9,6 +10,21 @@ import { PalletMachineIllustrationStorage } from '../pallet-machine-illustration
 const write = vi.hoisted(() => vi.fn());
 vi.mock('../../services/file-storage/file-storage-runtime.js', () => ({ getFileStorageRuntime: () => ({ store: { write } }) }));
 afterEach(() => vi.clearAllMocks());
+
+/** 1×1 の PNG の IHDR だけを書き換え、画素データを持たない大きな画像の見出しを作る。 */
+async function pngHeader(width: number, height: number): Promise<Buffer> {
+  const png = await sharp({ create: { width: 1, height: 1, channels: 3, background: 'white' } }).png().toBuffer();
+  png.writeUInt32BE(width, 16);
+  png.writeUInt32BE(height, 20);
+  // Keep the modified IHDR valid, so rejection demonstrates the pixel bound.
+  let crc = 0xffffffff;
+  for (const byte of png.subarray(12, 29)) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+  }
+  png.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 29);
+  return png;
+}
 
 describe('validated image uploads', () => {
   it.each(['png', 'jpeg', 'webp', 'tiff'] as const)('accepts actual %s image data', async format => {
@@ -23,28 +39,22 @@ describe('validated image uploads', () => {
     await expect(validateImageBuffer(buffer, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
   });
   it('rejects oversized PNG headers before decoding pixel data', async () => {
-    const png = await sharp({ create: { width: 1, height: 1, channels: 3, background: 'white' } }).png().toBuffer();
-    png.writeUInt32BE(100_001, 16);
-    png.writeUInt32BE(1000, 20);
-    // Keep the modified IHDR valid, so rejection demonstrates the pixel bound.
-    let crc = 0xffffffff;
-    for (const byte of png.subarray(12, 29)) {
-      crc ^= byte;
-      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
-    png.writeUInt32BE((crc ^ 0xffffffff) >>> 0, 29);
+    const png = await pngHeader(100_001, 1000);
     await expect(sharp(png, { limitInputPixels: false }).metadata()).resolves.toMatchObject({
       format: 'png', width: 100_001, height: 1000,
     });
     await expect(validateImageBuffer(png, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
   });
-  it('accepts large drawings up to the drawing limit while other images keep the default limit', async () => {
-    const jpeg = await sharp({ create: { width: 13248, height: 9355, channels: 3, background: 'white' } }).jpeg().toBuffer();
-    await expect(validateImageBuffer(jpeg, 'image/jpeg')).rejects.toMatchObject({ statusCode: 400 });
-    await expect(validateImageBuffer(jpeg, 'image/jpeg', DRAWING_MAX_PIXELS)).resolves.toBeUndefined();
-    await expect(PartMeasurementDrawingStorage.saveDrawing(jpeg, 'image/jpeg')).resolves.toMatchObject({ contentType: 'image/jpeg' });
-    await expect(AssemblyProcedureImageStorage.saveImage(jpeg, 'image/jpeg')).rejects.toMatchObject({ statusCode: 400 });
-  }, 60_000);
+  it('accepts large drawings up to the drawing upload limit while other images keep the default limit', async () => {
+    const large = await pngHeader(13248, 9355);
+    await expect(validateImageBuffer(large, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(validateImageBuffer(large, 'image/png', DRAWING_UPLOAD_MAX_PIXELS)).resolves.toBeUndefined();
+    await expect(PartMeasurementDrawingStorage.saveDrawing(large, 'image/png')).resolves.toMatchObject({ contentType: 'image/png' });
+    await expect(AssemblyProcedureImageStorage.saveImage(large, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
+    await expect(convertDrawingUploadToPreviewBuffer({ buffer: large, mimetype: 'image/png', filename: 'large.png' })).resolves.toMatchObject({ contentType: 'image/png' });
+    const tooLarge = await pngHeader(15000, 10001);
+    await expect(PartMeasurementDrawingStorage.saveDrawing(tooLarge, 'image/png')).rejects.toMatchObject({ statusCode: 400 });
+  });
   it.each([
     PartMeasurementDrawingStorage.saveDrawing.bind(PartMeasurementDrawingStorage),
     AssemblyProcedureImageStorage.saveImage.bind(AssemblyProcedureImageStorage),
