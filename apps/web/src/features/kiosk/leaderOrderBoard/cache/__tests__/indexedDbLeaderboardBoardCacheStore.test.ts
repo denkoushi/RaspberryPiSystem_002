@@ -74,6 +74,14 @@ describe('IndexedDB board cache retention', () => {
     expect(records.get('key-1')?.savedAt).toBe(100);
   });
 
+  it('端末の時計が戻っていても、いま保存した控えは残す', async () => {
+    for (let n = 1; n <= 30; n++) records.set(`key-${n}`, record(`key-${n}`, 1000 + n));
+    await store.put(record('new', 5));
+    expect(records.size).toBe(30);
+    expect(records.has('new')).toBe(true);
+    expect(records.has('key-1')).toBe(false);
+  });
+
   it('掃除に失敗しても拒否を外へ漏らさない', async () => {
     objectStore.count.mockRejectedValue(new Error('storage unavailable'));
     await expect(store.put(record('new', 1))).resolves.toBeUndefined();

@@ -684,7 +684,8 @@ export function useCompositeLeaderboardPhasedScheduleWithAutoAppend(options: {
         if (runId === appendRunIdRef.current) {
           setIsAppending(false);
           // 行の中身だけが変わった再取得で打ち切られ、次の追補が始まらなかったときは、残りを取りに戻る。
-          if (cancelled) scheduleRetry();
+          // 条件が切り替わったあとの古い打ち切りでは、新しい条件の待ち時間を進めない。
+          if (cancelled && paramsKey === latestParamsKeyRef.current) scheduleRetry();
         }
       }
     })();

@@ -55,7 +55,8 @@ export function createIndexedDbLeaderboardBoardCacheStore(): LeaderboardBoardCac
           await tx.store.put(record);
           const count = await tx.store.count();
           if (count > 30) {
-            const records = await tx.store.getAll();
+            // 端末の時計が戻っていても、いま保存した控えは消さない。
+            const records = (await tx.store.getAll()).filter((value) => value.cacheKey !== record.cacheKey);
             const savedAt = (value: PersistedLeaderboardBoardCacheRecord) =>
               Number.isFinite(value.savedAt) ? value.savedAt : 0;
             records.sort((a, b) => savedAt(a) - savedAt(b));
