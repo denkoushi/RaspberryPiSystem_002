@@ -111,35 +111,6 @@ export async function getMobilePlacementShelfLayoutZone(macroZoneId: string) {
   return data;
 }
 
-export async function putMobilePlacementShelfLayoutZone(
-  macroZoneId: string,
-  payload: {
-    gridSize: 3 | 4;
-    expectedUpdatedAt?: string | null;
-    entities: Array<{
-      entityKind: 'MACHINE' | 'SHELF' | 'AISLE' | 'UNUSED';
-      cellIndices: number[];
-      resourceCd?: string | null;
-      resourceName?: string | null;
-      aisleLabel?: string | null;
-      shelfCodeRaw?: string | null;
-    }>;
-  }
-) {
-  const { data } = await api.put<ShelfLayoutZoneDto>(`/mobile-placement/shelf-layout/zones/${macroZoneId}`, payload);
-  return data;
-}
-
-export async function postMobilePlacementShelfRelocate(sourceShelfCodeRaw: string, targetShelfCodeRaw: string) {
-  const encoded = encodeURIComponent(sourceShelfCodeRaw);
-  const { data } = await api.post<{
-    sourceShelfCodeRaw: string;
-    targetShelfCodeRaw: string;
-    movedDisplayLabel: string | null;
-  }>(`/mobile-placement/shelves/${encoded}/relocate`, { targetShelfCodeRaw });
-  return data;
-}
-
 export async function getMobilePlacementSchedule(params?: {
   productNo?: string;
   q?: string;
