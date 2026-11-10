@@ -188,7 +188,7 @@ export function usePlanningBoardPageGantt({
     if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
     const options: GanttLayoutOptions = { items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
-      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
+      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, resourceMinutes: gantt.resourceMinutes, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
       today, scale: gantt.scale, now: ganttNow };
     const current = planningBoardLaneOrder(options);
     const visibleProposal = planningBoardAutoOrder({ ...options, items: orderItems }, new Set(orderItems.filter((item) => item.orderPinned).map((item) => item.itemId)));

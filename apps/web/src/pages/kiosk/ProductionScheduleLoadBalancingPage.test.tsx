@@ -388,6 +388,111 @@ describe('ProductionScheduleLoadBalancingPage', () => {
     expect(within(detail).getByRole('menuitem', { name: /034/ })).toBeDisabled();
   });
 
+  it.each([
+    ['minutes', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.rows[0]!.totalMinutes += 60; }],
+    ['allocations', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.rows[0]!.allocations[0]!.minutes += 60; }],
+    ['today', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.today = '2026-10-01'; }],
+    ['rules', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.transferRules = []; }],
+    ['machine', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.rows[0]!.machineName = 'HX'; }],
+    ['settings', (data: ProductionScheduleLoadBalancingWorkspaceResponse) => { data.outsourceSettings!.vendors[0]!.monthlyCapacityMinutes = 0; }]
+  ])('discards the trial and undo history when refetched %s change', (_name, change) => {
+    const original = workspace();
+    mockUseWorkspace.mockReturnValue({ data: original });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('移管 1');
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeEnabled();
+    const updated = structuredClone(original);
+    change(updated);
+    mockUseWorkspace.mockReturnValue({ data: updated });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeDisabled();
+    expect(screen.getByTestId('load-balancing-scenario-bar')).not.toHaveTextContent('移管 1');
+    // Returning to the old content must not resurrect its history.
+    mockUseWorkspace.mockReturnValue({ data: original });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '1つ戻す' }));
+    expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
+  });
+
+  it('keeps the trial when only a capacity edited on this page changes', () => {
+    const original = workspace();
+    mockUseWorkspace.mockReturnValue({ data: original });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('移管 1');
+    const updated = structuredClone(original);
+    updated.resources[0]!.capacityByMonth['2026-10'] = 9000;
+    mockUseWorkspace.mockReturnValue({ data: updated });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('移管 1');
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeEnabled();
+  });
+
+  it('preserves the trial and undo history when refetched calculation inputs have the same content', () => {
+    const data = workspace();
+    mockUseWorkspace.mockReturnValue({ data, dataUpdatedAt: 1 });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    mockUseWorkspace.mockReturnValue({ data: structuredClone(data), dataUpdatedAt: 2 });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('移管 1');
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '1つ戻す' }));
+    expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
+  });
+
+  it.each(['outsource', 'transfer'])('disables trial controls and an already open %s menu during placeholder data', (menu) => {
+    const data = workspace();
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: false });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    const detail = screen.getByTestId('load-balancing-cell-detail');
+    fireEvent.click(within(detail).getAllByRole('button', { name: menu === 'outsource' ? '外注 ▾' : '移管 ▾' })[0]!);
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: true, isFetching: true });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    for (const name of ['自動選定', '1つ戻す', 'クリア', '業者の設定']) {
+      const button = screen.getByRole('button', { name });
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    for (const button of within(detail).getAllByRole('button').filter((button) =>
+      /外注|移管|後ろへ|取り消す|加工A/.test(button.textContent ?? '') || button.getAttribute('aria-label') === '取り消す')) {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    for (const button of within(detail).queryAllByRole('menuitem')) {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+    }
+    expect(screen.getByTestId('load-balancing-scenario-bar')).toHaveTextContent('移管 1');
+    const updated = structuredClone(data);
+    updated.rows[0]!.allocations[0]!.minutes += 60;
+    mockUseWorkspace.mockReturnValue({ data: updated, isPlaceholderData: false });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeDisabled();
+  });
+
+  it('keeps old actions cleared when a new range finishes loading', () => {
+    const data = workspace();
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: false });
+    const { rerender } = render(<ProductionScheduleLoadBalancingPage />);
+    fireEvent.click(screen.getByRole('button', { name: '自動選定' }));
+    mockUseWorkspace.mockReturnValue({ data, isPlaceholderData: true });
+    fireEvent.click(screen.getByRole('button', { name: '次の月へ' }));
+    expect(screen.getByRole('button', { name: '自動選定' })).toBeDisabled();
+    fireEvent.click(within(screen.getByTestId('load-balancing-cell-detail')).getAllByRole('button', { name: '後ろへ' })[0]!);
+    const updated = structuredClone(data);
+    updated.fromMonth = '2026-10'; updated.toMonth = '2027-03';
+    updated.months = ['2026-10', '2026-11', '2026-12', '2027-01', '2027-02', '2027-03'];
+    mockUseWorkspace.mockReturnValue({ data: updated, isPlaceholderData: false });
+    rerender(<ProductionScheduleLoadBalancingPage />);
+    expect(screen.getByRole('button', { name: 'クリア' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '1つ戻す' })).toBeDisabled();
+  });
+
   it('lists rows that could not be placed on any month', () => {
     render(<ProductionScheduleLoadBalancingPage />);
 

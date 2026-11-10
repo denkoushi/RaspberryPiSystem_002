@@ -2307,3 +2307,17 @@ describe('forward PlanningBoardGanttView', () => {
   });
 
 });
+
+it.each(['backward', 'forward', 'single'] as const)('renders setup and operation completion through the %s Gantt view', (mode) => {
+  const entry = item({ kind: 'piece', parentItemId: 'parent', unitRequiredMinutes: 60,
+    ops: [{ opNo: 20, minutes: 30 }, { opNo: 10, minutes: 10 }], completedOpNos: [10] });
+  const layout = buildPlanningBoardGanttLayout({ items: [entry], allocation: 'alternate', view: 'resource',
+    seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: mode === 'backward' ? 14 : 1,
+    now: new Date('2026-10-14T08:00:00+09:00'), mode: mode === 'backward' ? 'backward' : 'forward',
+    resourceMinutes: { ownSourceResourceCds: ['305'], values: [{ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 60, setupMinutes: 15 }] } });
+  const { container } = render(<PlanningBoardGanttView {...props([entry])} layout={layout} scale={mode === 'backward' ? 14 : 1}
+    singleResourceCd={mode === 'single' ? '305' : null} />);
+  expect(container.querySelector('[data-gantt-setup]')).toBeTruthy();
+  expect(container.querySelector('[data-gantt-op="10"]')).toHaveClass('bg-slate-600');
+  expect(container.querySelector('[data-gantt-op="20"]')).not.toHaveClass('bg-slate-600');
+});

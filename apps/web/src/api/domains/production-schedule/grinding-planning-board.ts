@@ -1,7 +1,7 @@
 import { api } from '../../http';
 
 import type {
-  SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
+  SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardFirstProcessArrivalResponse,
   GrindingPlanningBoardArrivalRequest,
@@ -247,5 +247,15 @@ export async function updateKioskGrindingPlanningBoardResourceMinutesSource(payl
 }
 export async function updateKioskGrindingPlanningBoardResourcePartMinutes(payload: GrindingPlanningBoardResourcePartMinutesRequest) {
   const { data } = await api.put<GrindingPlanningBoardResourceMinutesResponse>('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', payload);
+  return data;
+}
+
+export async function autoUnitSplitKioskSessakuPieces() {
+  const { data } = await api.post<SessakuPiecesAutoUnitSplitResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/auto-unit-split', {});
+  return data;
+}
+
+export async function setKioskSessakuPieceOpCompletion(pieceId: string, opNo: number, payload: SessakuPieceOpCompletionRequest) {
+  const { data } = await api.put<SessakuPiecesMutationResponse>(`/kiosk/production-schedule/grinding-planning-board/pieces/${encodeURIComponent(pieceId)}/ops/${opNo}/completion`, payload);
   return data;
 }

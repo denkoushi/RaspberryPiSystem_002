@@ -3,7 +3,7 @@ import { aggregateScenario, indexActions, type NoTaker, type ScenarioInput } fro
 
 import type { ProductionScheduleLoadBalancingWorkspaceRow } from '../../../api/client';
 
-export function LoadBalancingOutsourcePanel({ input, noTaker, onUndo }: { input: ScenarioInput; noTaker: NoTaker[]; onUndo: (rowId: string) => void }) {
+export function LoadBalancingOutsourcePanel({ input, noTaker, onUndo, operationsDisabled = false }: { operationsDisabled?: boolean; input: ScenarioInput; noTaker: NoTaker[]; onUndo: (rowId: string) => void }) {
   noTaker = noTaker.filter((item) => input.rows.some((row) => row.rowId === item.rowId &&
     (!input.machine || formatLoadBalancingMachineName(row.machineName) === formatLoadBalancingMachineName(input.machine))));
   const actions = indexActions(input.actions);
@@ -39,7 +39,7 @@ export function LoadBalancingOutsourcePanel({ input, noTaker, onUndo }: { input:
                 </span>;
               })}
             </div>
-            <table className="w-full text-sm"><tbody>{rows.map((row) => <OutputRow key={row.rowId} row={row} tail={<button type="button" aria-label={`${row.rowId} の外注を取り消す`} className="px-1 text-lg text-white/60" onClick={() => onUndo(row.rowId)}>×</button>} />)}</tbody></table>
+            <table className="w-full text-sm"><tbody>{rows.map((row) => <OutputRow key={row.rowId} row={row} tail={<button type="button" aria-label={`${row.rowId} の外注を取り消す`} className="px-1 text-lg text-white/60 disabled:opacity-30" disabled={operationsDisabled} onClick={() => { if (!operationsDisabled) onUndo(row.rowId); }}>×</button>} />)}</tbody></table>
           </div>;
         })}
         {noTaker.length > 0 ? <div className="px-3 py-2"><div className="flex"><h3 className="flex-1 text-lg font-extrabold text-rose-300">出し先なし</h3><b className="tabular-nums">{formatHours(total(noTaker.flatMap((item) => input.rows.filter((row) => row.rowId === item.rowId))))}H</b></div>

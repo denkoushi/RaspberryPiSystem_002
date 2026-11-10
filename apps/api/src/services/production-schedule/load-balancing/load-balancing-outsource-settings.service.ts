@@ -7,7 +7,7 @@ import { SHARED_LOAD_BALANCING_SITE_KEY } from './load-balancing-settings-merge.
 
 const minutes = z.number().finite().min(0).max(100_000_000).nullable();
 const orderKey = z.enum(['due', 'minutes', 'vendor']);
-export const outsourceSettingsSchema = z.object({
+const outsourceSettingsFieldsSchema = z.object({
   namedTargets: z.array(z.object({
     kind: z.enum(['machine', 'seiban', 'part']),
     key: z.string().trim().min(1),
@@ -27,7 +27,8 @@ export const outsourceSettingsSchema = z.object({
       maxMinutes: minutes
     })).max(1000)
   })).max(1000).refine((vendors) => new Set(vendors.map((vendor) => vendor.id)).size === vendors.length, '業者IDが重複しています')
-}).superRefine((settings, ctx) => {
+});
+export const outsourceSettingsSchema = outsourceSettingsFieldsSchema.superRefine((settings, ctx) => {
   const vendors = new Set(settings.vendors.map((vendor) => vendor.id));
   const seen = new Set<string>();
   settings.namedTargets.forEach((target, index) => {
@@ -53,7 +54,7 @@ export async function getLoadBalancingOutsourceSettings(siteKeyInput: string): P
   const site = await read(siteKey);
   const config = site ?? (siteKey === SHARED_LOAD_BALANCING_SITE_KEY ? null : await read(SHARED_LOAD_BALANCING_SITE_KEY));
   if (!config) return structuredClone(DEFAULT_OUTSOURCE_SETTINGS);
-  return outsourceSettingsSchema.parse({
+  const settings = outsourceSettingsFieldsSchema.parse({
     mode: config.mode, order: config.order,
     namedTargets: config.namedTargets.map(({ kind, key, vendorId }) => ({ kind, key, vendorId })),
     vendors: config.vendors.map((vendor) => ({
@@ -65,6 +66,16 @@ export async function getLoadBalancingOutsourceSettings(siteKeyInput: string): P
       }))
     }))
   });
+  const vendors = new Set(settings.vendors.map((vendor) => vendor.id));
+  const seen = new Set<string>();
+  settings.namedTargets = settings.namedTargets.filter((target) => {
+    if (!vendors.has(target.vendorId)) return false;
+    const identity = JSON.stringify([target.kind, target.key]);
+    if (seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+  return settings;
 }
 
 export async function saveLoadBalancingOutsourceSettings(siteKeyInput: string, input: LoadBalancingOutsourceSettings) {

@@ -251,3 +251,63 @@ describe('usePlanningBoardCompletion without pieces', () => {
     expect(renderRow).toHaveBeenCalledTimes(6);
   });
 });
+
+describe('piece operation completion', () => {
+  const unit = () => piece('a', { unitRequiredMinutes: 40, ops: [{ opNo: 20, minutes: 30 }, { opNo: 10, minutes: 10 }], completedOpNos: [] });
+  it('optimistically completes one operation, keeps the piece visible, and uses the op request with current revisions', async () => {
+    const entry = unit(); const h = setup([entry]);
+    let finish!: (response: SessakuPiecesMutationResponse) => void;
+    const completePieceOp = vi.fn(() => new Promise<SessakuPiecesMutationResponse>(resolve => { finish = resolve; }));
+    h.rerender({ ...h.options, completePieceOp });
+    let pending!: Promise<void>;
+    act(() => { pending = h.result.current.toggleCompletion(entry, 'complete', 10); });
+    expect(completePieceOp).toHaveBeenCalledExactlyOnceWith({ pieceId: 'a', opNo: 10, intent: 'complete', expectedPieceSetVersion: 1, itemRevision: entry.itemRevision });
+    expect(h.options.completePiece).not.toHaveBeenCalled();
+    expect(h.result.current.displayItems[0]).toMatchObject({ isCompleted: false, completedOpNos: [10] });
+    expect(h.result.current.completionPendingParentIds.has('parent')).toBe(true);
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 20); });
+    expect(completePieceOp).toHaveBeenCalledTimes(1);
+    const saved = { ...entry, completedOpNos: [10], pieceSetVersion: 2, itemRevision: 'op-saved' };
+    await act(async () => { finish(response([saved])); await pending; });
+    expect(h.result.current.displayItems[0]).toMatchObject({ completedOpNos: [10], pieceSetVersion: 2, itemRevision: 'op-saved' });
+    expect(h.options.onCompleted).not.toHaveBeenCalled(); expect(h.refetch).toHaveBeenCalledTimes(1);
+  });
+  it('completes a piece after its final operation and reopens it when one operation is undone', async () => {
+    const entry = { ...unit(), completedOpNos: [10] }; const h = setup([entry]);
+    const done = { ...entry, completedOpNos: [10, 20], isCompleted: true, completionSource: 'manual' as const, pieceSetVersion: 2 };
+    const undone = { ...done, completedOpNos: [20], isCompleted: false, completionSource: null, pieceSetVersion: 3 };
+    const completePieceOp = vi.fn().mockResolvedValueOnce(response([done])).mockResolvedValueOnce(response([undone]));
+    h.rerender({ ...h.options, completePieceOp });
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 20); });
+    expect(h.result.current.displayItems).toHaveLength(0); expect(h.options.onCompleted).toHaveBeenCalledWith(done, 20);
+    await act(async () => { await h.result.current.toggleCompletion(done, 'incomplete', 10); });
+    expect(completePieceOp).toHaveBeenLastCalledWith(expect.objectContaining({ opNo: 10, expectedPieceSetVersion: 2, intent: 'incomplete' }));
+    expect(h.result.current.displayItems[0]).toMatchObject({ isCompleted: false, completedOpNos: [20] });
+    expect(h.options.onIncomplete).toHaveBeenCalledOnce();
+  });
+  it('keeps an already saved operation when a subsequent write fails before GET acknowledges it', async () => {
+    const entry = unit(); const h = setup([entry]);
+    const saved = { ...entry, completedOpNos: [10], pieceSetVersion: 2, itemRevision: 'saved-op' };
+    const completePieceOp = vi.fn().mockResolvedValueOnce(response([saved])).mockRejectedValueOnce({ isAxiosError: true, response: { status: 500 } });
+    h.rerender({ ...h.options, completePieceOp });
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 10); });
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 20); });
+    expect(h.result.current.displayItems[0]).toMatchObject({ completedOpNos: [10], itemRevision: 'saved-op', pieceSetVersion: 2 });
+  });
+  it.each([409, 403, 500])('rolls back operation changes after %i and refreshes conflicts', async status => {
+    const entry = unit(); const h = setup([entry]);
+    const completePieceOp = vi.fn().mockRejectedValue({ isAxiosError: true, response: { status } });
+    h.rerender({ ...h.options, completePieceOp });
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 10); });
+    expect(h.result.current.displayItems[0]?.completedOpNos).toEqual([]);
+    expect(h.result.current.completionOverlay.size).toBe(0); expect(h.result.current.completionPendingParentIds.size).toBe(0);
+    expect(h.refetch).toHaveBeenCalledTimes(status === 500 ? 0 : 1);
+    expect(h.options.notify).toHaveBeenCalledWith(status === 409 ? '表示中のデータが更新されています。最新状態を取得してください。' : '完了状態を保存できませんでした。時間をおいて再試行してください。', 'error');
+  });
+  it.each([{ writePending: true }, { bulkReady: false }, { interactionLocked: true }, { piecePendingRef: { current: true } }])('honors existing write gates: %j', async gates => {
+    const entry = unit(); const h = setup([entry]); const completePieceOp = vi.fn();
+    h.rerender({ ...h.options, completePieceOp, ...gates });
+    await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 10); });
+    expect(completePieceOp).not.toHaveBeenCalled();
+  });
+});
