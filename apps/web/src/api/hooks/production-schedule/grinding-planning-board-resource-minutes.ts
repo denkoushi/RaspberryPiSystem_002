@@ -11,8 +11,10 @@ const key = productionScheduleQueryKeys.planningBoardResourceMinutesAll;
 // Preserve refresh requests when a later optimistic save cancels the fetch.
 const needsRefresh = new WeakSet<QueryClient>();
 const empty: Settings = { ownSourceResourceCds: [], values: [] };
+// The board stays open for days; pick up edits made on other kiosks.
+export const PLANNING_BOARD_SETTINGS_REFETCH_MS = 60_000;
 export function useKioskGrindingPlanningBoardResourceMinutes(enabled: boolean) {
-  return useQuery({ queryKey: key, queryFn: getKioskGrindingPlanningBoardResourceMinutes, enabled, staleTime: 10 * 60_000 });
+  return useQuery({ queryKey: key, queryFn: getKioskGrindingPlanningBoardResourceMinutes, enabled, staleTime: 10 * 60_000, refetchInterval: PLANNING_BOARD_SETTINGS_REFETCH_MS });
 }
 function mergeTarget(current: Settings, next: Settings, payload: Source | Value): Settings {
   if ('source' in payload) return { ...current, ownSourceResourceCds: [
