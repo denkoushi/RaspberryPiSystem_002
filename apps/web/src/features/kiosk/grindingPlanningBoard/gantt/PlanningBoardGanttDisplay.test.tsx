@@ -192,6 +192,52 @@ function elapsedRowProps(scale = 1) {
   return { values: { ...values, scale, layout: { ...values.layout, groups, lateCount: 4 } }, windows };
 }
 
+it.each([
+  { elapsed: false, name: 'scrolls to a visible partner chain step without switching to one machine' },
+  { elapsed: true, name: 'keeps two-machine mode without scrolling for an elapsed partner chain step' }
+])('$name', ({ elapsed }) => {
+  const { values, windows } = elapsedRowProps();
+  const upperGroup = values.layout.groups.find(group => group.resource === '021')!;
+  const lowerGroup = values.layout.groups.find(group => group.resource === '022')!;
+  const upperTemplate = upperGroup.rows[0]!.bars.find(bar => bar.item.itemId === 'visible-021')!;
+  const upperBar = { ...upperTemplate, start: windows[1]!.start,
+    segments: [{ start: windows[1]!.start, end: windows[1]!.end }] };
+  const lowerBar = lowerGroup.rows[0]!.bars.find(bar => bar.item.itemId === 'hidden-022')!;
+  expect(lowerBar.item.fseiban).toBe(upperBar.item.fseiban);
+  expect(lowerBar.item.fhincd).toBe(upperBar.item.fhincd);
+  const layout = { ...values.layout, now: windows[0]!.end - (elapsed ? 0 : 1 / 86400), groups: [
+    // Each pane receives only its resource group; include the partner step in the upper chain's source data.
+    { ...upperGroup, rows: [{ ...upperGroup.rows[0]!, bars: [upperBar, lowerBar] }] },
+    { ...lowerGroup, rows: [{ ...lowerGroup.rows[0]!, bars: [lowerBar] }] }
+  ] };
+  const onSingleResourceChange = vi.fn();
+  function Board() {
+    const [selection, setSelection] = useState(values.singleResourceCd);
+    return <PlanningBoardGanttDisplay {...values} layout={layout} singleResourceCd={selection}
+      onSingleResourceChange={next => { onSingleResourceChange(next); setSelection(next); }} />;
+  }
+  render(<Board />, { wrapper: ({ children }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider> });
+  const upper = within(screen.getByRole('region', { name: '021' }));
+  const lower = within(screen.getByRole('region', { name: '022' }));
+  const upperScroll = vi.fn();
+  const lowerScroll = vi.fn();
+  Object.defineProperty(upper.getByLabelText('ガントの日付と工程'), 'scrollTo', { value: upperScroll, configurable: true });
+  Object.defineProperty(lower.getByLabelText('ガントの日付と工程'), 'scrollTo', { value: lowerScroll, configurable: true });
+  expect(lower.queryByTestId('planning-gantt-bar-hidden-022') !== null).toBe(!elapsed);
+  fireEvent.click(upper.getByTestId('planning-gantt-bar-visible-021'));
+  const strip = within(screen.getByRole('region', { name: '工程のつながり' }));
+  fireEvent.click(strip.getByRole('button', { name: /工順.*022/ }));
+  expect(onSingleResourceChange).not.toHaveBeenCalled();
+  expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+  if (elapsed) {
+    expect(upperScroll).not.toHaveBeenCalled();
+    expect(lowerScroll).not.toHaveBeenCalled();
+  } else {
+    expect(lowerScroll).toHaveBeenCalledTimes(1);
+    expect(lowerScroll).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth' }));
+  }
+});
+
 it.each([1, 2])('removes elapsed rows in both panes while retaining the row containing now (scale %s)', scale => {
   const { values, windows } = elapsedRowProps(scale);
   const draw = (now: number) => <PlanningBoardGanttDisplay {...values} layout={{ ...values.layout, now }} />;

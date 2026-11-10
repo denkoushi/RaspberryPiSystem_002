@@ -93,6 +93,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
           onNavigateBar={(bar) => {
             if (!planningBoardResourceMatches(props.singleResourceCd!, bar.resource)) return false;
             handles.current.get(bar.resource)?.scrollToItem(bar.item.itemId);
+            // Keep navigation within two-machine mode even when an elapsed row cannot be scrolled to.
             return true;
           }} />
       </div>
