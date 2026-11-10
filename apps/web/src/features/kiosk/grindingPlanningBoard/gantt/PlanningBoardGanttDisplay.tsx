@@ -16,6 +16,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
   const [headContainer, setHeadContainer] = useState<HTMLDivElement | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; index: number } | null>(null);
+  useEffect(() => {
+    if (props.machineSelectionLocked) setPicker(null);
+  }, [props.machineSelectionLocked]);
   const container = useRef<HTMLDivElement>(null);
   const handles = useRef(new Map<string, PlanningBoardGanttHandle>());
   const nextLate = useRef(0);
@@ -85,9 +88,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     </div>
     {picker && !props.machineSelectionLocked && <PlanningBoardSingleResourcePicker placement="right" anchor={picker.anchor} resources={props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean)}
       resourceCd={resources[picker.index]!} resourceNameMap={props.resourceNameMap}
-      isDisabled={(resource) => !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)} onClose={() => setPicker(null)}
+      isDisabled={(resource) => resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)} onClose={() => setPicker(null)}
       onSelect={(resource) => {
-        if (props.machineSelectionLocked || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)) return;
+        if (props.machineSelectionLocked || resource.includes('+') || !isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)) return;
         const next = [...resources];
         if (resource === resources[1 - picker.index]) next.reverse();
         else next[picker.index] = resource;
@@ -101,7 +104,7 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
   const resources = props.resourceLanes ?? (props.singleResourceCd ? props.layout.groups.map(group => group.resource!).filter(Boolean) : []);
   const pair = planningBoardPair(props.singleResourceCd, resources);
   const top = pair?.[0] ?? props.singleResourceCd;
-  const enabled = resources.filter(resource => isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)).sort();
+  const enabled = resources.filter(resource => !resource.includes('+') && isPlanningBoardUnitSplitEnabled(resource, props.unitSplitEnabledByResource)).sort();
   const canPair = Boolean(top && enabled.includes(top) && enabled.length > 1);
   const partnerKey = `kiosk.planning-board.machine-partners:${props.preferenceScope ?? 'default'}`;
   const lastSelected = useRef<string | null>(null);
@@ -123,7 +126,7 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       if (!pair) return;
       const selectedBars = props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars))
         .filter(bar => props.selectedItemIds.has(bar.item.itemId) && pair.includes(bar.resource));
-      const selectedResource = selectedBars.find(bar => bar.resource === lastSelected.current)?.resource ?? selectedBars[0]?.resource;
+      const selectedResource = selectedBars.find(bar => bar.resource === lastSelected.current)?.resource ?? selectedBars.find(bar => bar.resource === pair[0])?.resource ?? selectedBars[0]?.resource;
       changeSelection(selectedResource ?? top);
     } else if (!pair && canPair) {
       let previous: unknown;
@@ -133,16 +136,16 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       changeSelection(`${top}+${partner}`);
     }
   };
-  const { capacityLoaded, unitSplitEnabledByResource, onSingleResourceChange } = props;
+  const { capacityLoaded, unitSplitEnabledByResource, onSingleResourceChange, machineSelectionLocked } = props;
   const pairTop = pair?.[0];
   const pairBottom = pair?.[1];
   const topAvailable = Boolean(pairTop && resources.includes(pairTop));
   useEffect(() => {
-    if (capacityLoaded && pairTop && pairBottom && topAvailable
+    if (!machineSelectionLocked && capacityLoaded && pairTop && pairBottom && topAvailable
       && [pairTop, pairBottom].some(resource => !isPlanningBoardUnitSplitEnabled(resource, unitSplitEnabledByResource))) {
       onSingleResourceChange?.(pairTop);
     }
-  }, [capacityLoaded, pairTop, pairBottom, topAvailable, unitSplitEnabledByResource, onSingleResourceChange]);
+  }, [machineSelectionLocked, capacityLoaded, pairTop, pairBottom, topAvailable, unitSplitEnabledByResource, onSingleResourceChange]);
   const shared = { ...props, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
   return pair
     ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />

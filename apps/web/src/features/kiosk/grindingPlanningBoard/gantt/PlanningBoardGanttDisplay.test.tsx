@@ -8,13 +8,25 @@ import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy
 
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
+import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { buildSingleResourceWindows } from './planningBoardSingleResourceWindows';
 import { usePersistedPlanningBoardSingleResource } from './usePersistedPlanningBoardSingleResource';
+import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
-afterEach(() => vi.restoreAllMocks());
+const capacityState = vi.hoisted(() => ({
+  data: undefined as undefined | { dailyHoursByResource: Record<string, 8>; unitSplitEnabledByResource?: Record<string, boolean> }
+}));
+vi.mock('../../../../api/hooks', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../api/hooks')>(),
+  useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: undefined }),
+  useUpdateKioskGrindingPlanningBoardResourceMinutesSource: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useKioskGrindingPlanningBoardResourceCapacity: () => ({ data: capacityState.data }),
+  useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false })
+}));
+afterEach(() => { vi.restoreAllMocks(); capacityState.data = undefined; });
 
 function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttProps {
   const fixture = productionFixture(3, 1);
@@ -392,4 +404,99 @@ it.each([['021', '022'], ['022', '021']])('uses the last clicked bar resource af
   for (const resource of [first, last]) fireEvent.click(within(screen.getByRole('region', { name: resource })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
   fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
   expect(screen.getByRole('group', { name: `${last}の1日の稼働時間` })).toBeInTheDocument();
+});
+
+it('excludes enabled resource codes containing + from new and saved partners and disables their picker entries', () => {
+  localStorage.clear();
+  localStorage.setItem('kiosk.planning-board.machine-partners:default', JSON.stringify({ '021': '021+020' }));
+  render(<InteractiveBoard lanes={['021', '021+020', '022', '024']}
+    flags={{ '021': true, '021+020': true, '022': true, '024': false }} />);
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.getByRole('region', { name: '022' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '022の機械を選ぶ' }));
+  const picker = within(screen.getByRole('group', { name: '1台の資源CD' }));
+  const combined = picker.getByRole('button', { name: '021+020' });
+  const off = picker.getByRole('button', { name: '024' });
+  expect(combined).toBeDisabled();
+  expect(combined.className).toBe(off.className);
+  fireEvent.click(combined);
+  expect(screen.getByRole('region', { name: '022' })).toBeInTheDocument();
+});
+
+it('disables 2台 for an enabled current resource containing +', () => {
+  render(<InteractiveBoard start="021+020" lanes={['021+020', '021', '022']}
+    flags={{ '021+020': true, '021': true, '022': true }} />);
+  expect(screen.getByRole('button', { name: '2台', exact: true })).toBeDisabled();
+  expect(screen.queryByTestId('planning-two-machine')).toBeNull();
+});
+
+it('keeps a saved pair through optimistic hours before capacity flags load', () => {
+  localStorage.clear();
+  localStorage.setItem('kiosk.planning-board.single-resource:capacity-loading', JSON.stringify({ schemaVersion: 1, resourceCd: '305+306' }));
+  const fixture = productionFixture(0, 2);
+  const options = { ...fixture.options, resources: ['305', '306'], enabled: true, preferenceScope: 'capacity-loading' };
+  function Board() {
+    const gantt = usePlanningBoardGantt(options);
+    return <PlanningBoardGanttDisplay {...props('forward')} layout={gantt.layout}
+      singleResourceCd={gantt.singleResourceCd} resourceLanes={gantt.singleResourceLanes}
+      dailyHoursByResource={gantt.dailyHoursByResource} capacityLoaded={gantt.capacityLoaded}
+      unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} onSingleResourceChange={gantt.changeSingleResource} />;
+  }
+  const view = render(<Board />);
+  expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+  capacityState.data = { dailyHoursByResource: { '305': 8 } };
+  view.rerender(<Board />);
+  expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+  capacityState.data = { ...capacityState.data, unitSplitEnabledByResource: { '305': true, '306': true } };
+  view.rerender(<Board />);
+  expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+  capacityState.data = { ...capacityState.data, unitSplitEnabledByResource: { '305': true, '306': false } };
+  view.rerender(<Board />);
+  expect(screen.queryByTestId('planning-two-machine')).toBeNull();
+});
+
+it('defers returning an OFF pair to one machine until the order preview ends', () => {
+  const values = props('forward');
+  function Board({ locked }: { locked: boolean }) {
+    const [selection, setSelection] = useState('021+022');
+    return <PlanningBoardGanttDisplay {...values} singleResourceCd={selection} capacityLoaded
+      unitSplitEnabledByResource={{ '021': true, '022': false }} machineSelectionLocked={locked}
+      onSingleResourceChange={next => setSelection(next!)} />;
+  }
+  const view = render(<Board locked />);
+  expect(screen.getByTestId('planning-two-machine')).toBeInTheDocument();
+  view.rerender(<Board locked={false} />);
+  expect(screen.queryByTestId('planning-two-machine')).toBeNull();
+  expect(screen.getByRole('group', { name: '021の1日の稼働時間' })).toBeInTheDocument();
+});
+
+it('prefers the upper selected pane when layout groups list the lower pane first', () => {
+  const values = props('forward');
+  const change = vi.fn();
+  render(<PlanningBoardGanttDisplay {...values} layout={{ ...values.layout, groups: [...values.layout.groups].reverse() }}
+    selectedItemIds={new Set(['item-0000', 'item-0001'])} onSingleResourceChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+  expect(change).toHaveBeenCalledWith('021');
+});
+
+it('keeps the pane picker closed after the order preview ends', () => {
+  const values = props('forward');
+  const view = render(<PlanningBoardGanttDisplay {...values} />);
+  fireEvent.click(screen.getByRole('button', { name: '021の機械を選ぶ' }));
+  expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
+  view.rerender(<PlanningBoardGanttDisplay {...values} machineSelectionLocked />);
+  view.rerender(<PlanningBoardGanttDisplay {...values} machineSelectionLocked={false} />);
+  expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+  expect(screen.getByRole('button', { name: '021の機械を選ぶ' })).toHaveAttribute('aria-expanded', 'false');
+});
+
+it('waits for the shared head container before rendering the upper pane settings row', () => {
+  const values = { ...props('forward'), singleResourceCd: '021', machineMode: 2 as const };
+  const view = render(<PlanningBoardGanttView {...values} resourceHeadContainer={null} />);
+  expect(screen.queryByTestId('planning-single-resource-head')).toBeNull();
+  const target = document.createElement('div');
+  view.container.append(target);
+  view.rerender(<PlanningBoardGanttView {...values} resourceHeadContainer={target} />);
+  expect(within(target).getByTestId('planning-single-resource-head')).toBeInTheDocument();
+  expect(within(screen.getByTestId('planning-board-gantt')).queryByTestId('planning-single-resource-head')).toBeNull();
 });
