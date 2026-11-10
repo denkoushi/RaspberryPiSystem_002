@@ -29,6 +29,11 @@ The lifecycle read-only audit could not reach api.github.com; the existing task 
 
 ## Decision Log
 
+- Decision (2026-11-10): 自動選定の行・操作・候補索引を共有し、変化した資源/月・業者/月だけ元の行/配分順で再集計する。丸め順、選定順、MAX_STEPS、actions/noTaker を維持する（従来の毎ステップ全体再集計を置換）。
+- Decision (2026-11-10): 計算に使う行・配分・months・today・資源の分類・移管ルール・外注設定の内容を試算キーへ含め、内容変更時は試算と履歴を破棄する。同内容の再取得と、この画面での能力の編集では保持する。
+- Decision (2026-11-10): placeholder 応答の間は自動選定・戻す・クリア・マス/外注一覧の操作を無効化し、操作ハンドラも拒否する。新しいデータでは前の試算を引き継がない。
+- Decision (2026-11-10): 設定読み込み時だけ、存在しない業者への名指しと重複名指しを除外し、最初の有効な名指しを残す。読み込みはDBを書き換えず、保存時の厳格検証を維持する。
+
 
 - Decision: Preserve daily allocation and effective-due-date resolution from the API. Use total FSIGENSHOYORYO minutes for per-row eligibility and sort by due ascending, total minutes descending, vendor priority ascending in the configured key order; break ties by rowId/vendorId ascending.
   Rationale: User's fixed calculation contract; ProductNo is not an action identity.
