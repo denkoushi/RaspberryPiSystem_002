@@ -193,15 +193,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
     scale, singleHours, singlePauses).filter((window) => window.end > (layout.now ?? -Infinity) + 1e-9) : [], [singleGroup, layout.today, layout.end, layout.now, scale, singleHours, singlePauses]);
-  const dayLoads = useMemo(() => {
-    const loads = new Map<number, number>();
-    for (const row of singleGroup?.rows ?? []) for (const bar of row.bars) for (const segment of bar.segments ?? []) {
-      for (let day = Math.floor(segment.start); day < segment.end - 1e-9; day++) {
-        loads.set(day, (loads.get(day) ?? 0) + Math.max(0, Math.min(day + 1, segment.end) - Math.max(day, segment.start)) * 1440 / (singleHours * 60));
-      }
-    }
-    return loads;
-  }, [singleGroup, singleHours]);
   const foldedRows = useMemo(() => new Map(singleGroup?.rows.flatMap((row) => foldedWindows.map((window) => {
     const folded = foldSingleResourceRow(row, window, dayWidth);
     return [folded.key, { row: folded, window }] as const;
@@ -553,7 +544,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
               const folded = foldedRows.get(row.key);
               const rowStart = folded?.window.start ?? layout.start;
               const rowEnd = folded?.window.end ?? layout.end;
-              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} dayLoad={folded ? dayLoads.get(folded.window.day) ?? 0 : undefined} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}

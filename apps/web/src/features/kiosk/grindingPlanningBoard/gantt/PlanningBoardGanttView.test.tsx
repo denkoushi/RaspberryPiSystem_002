@@ -2268,6 +2268,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(card).toHaveClass('outline-dashed');
     expect(screen.getByTestId(`planning-gantt-bar-${source}`)).toHaveStyle({ outline: '3px dashed rgb(251 191 36)' });
     expect(marker).toHaveClass('bg-emerald-300', placement === 'before' ? '-left-1.5' : '-right-1');
+    expect(marker.parentElement).toBe(screen.getByTestId(`planning-forward-queue-card-${target}`));
+    screen.getAllByTestId(/^planning-forward-queue-card-/).forEach((queued) => expect(queued.style.transform).toBe(''));
     fireEvent.pointerUp(card, { clientX: destination });
     expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onToggleItem).not.toHaveBeenCalled();

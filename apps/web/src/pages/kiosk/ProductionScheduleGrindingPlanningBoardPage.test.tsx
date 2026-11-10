@@ -2241,6 +2241,11 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '021+022 2台' }));
     const upper = screen.getByRole('region', { name: '021', exact: true });
     const lower = screen.getByRole('region', { name: '022', exact: true });
+    expect(upper.firstElementChild).toHaveTextContent(/^021$/);
+    expect(lower.firstElementChild).toHaveTextContent(/^022$/);
+    expect(lower).toHaveClass('border-t-4');
+    expect(upper).not.toHaveClass('border-t-4');
+    expect(screen.queryByRole('meter')).toBeNull();
     expect(upper.nextElementSibling).toBe(lower);
     expect(within(upper).getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
     expect(within(upper).queryByTestId('planning-gantt-bar-b')).toBeNull();
