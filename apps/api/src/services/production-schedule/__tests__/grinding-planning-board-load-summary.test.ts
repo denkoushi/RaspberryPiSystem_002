@@ -374,13 +374,13 @@ describe('own minutes in load summary paths', () => {
   const settings = { ownSourceResourceCds: ['G-02'], values: [
     { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 10, setupMinutes: 30 }
   ] };
-  it.each([false, true])('resolves per-bar setup and unknown CSV (materialized=%s)', async (materialized) => {
+  it.each([false, true])('resolves first-piece setup and unknown CSV (materialized=%s)', async (materialized) => {
     const sources = [1, 3].map((quantity, index) => ({ id: 'row', fseiban: 'S1', fhinCd: ' part ', productNo: '1',
       resourceCd: 'G-02', processOrder: '1', requiredMinutesRaw: '', requiredMinutes: null, plannedQuantity: 4,
-      isCompleted: false, pieceId: `piece-${index}`, pieceQuantity: quantity, quantityWarning: null }));
+      isCompleted: false, pieceId: `piece-${index}`, pieceQuantity: quantity, includeSetup: index === 0, quantityWarning: null }));
     const queryRaw = vi.fn(async (query: Prisma.Sql) => {
-      if (query.sql.includes('effectiveItems')) return [1, 3].map((quantity) => ({
-        originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: ' part ', quantity,
+      if (query.sql.includes('effectiveItems')) return [1, 3].map((quantity, index) => ({
+        originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: ' part ', quantity, includeSetup: index === 0,
         itemCount: 1n, unknownItemCount: 1n, requiredMinutesSum: null
       }));
       if (query.sql.includes('FROM "CsvDashboardRow"')) return sources;
@@ -390,6 +390,39 @@ describe('own minutes in load summary paths', () => {
       siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes: settings,
       ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
     expect(summary.unknownRequiredMinutesCount).toBe(0);
-    expect(summary.load[0]).toMatchObject({ requiredMinutes: 100, unfinishedItemCount: 2 });
+    expect(summary.load[0]).toMatchObject({ requiredMinutes: 70, unfinishedItemCount: 2 });
   });
+  it.each([false, true])('totals one setup and never transfers completed setup (materialized=%s)', async (materialized) => {
+    const resourceMinutes = { ownSourceResourceCds: ['G-02'], values: [
+      { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 30, setupMinutes: 60 }
+    ] };
+    for (const firstCompleted of [false, true]) {
+      const queryRaw = vi.fn(async (query: Prisma.Sql) => {
+        if (query.sql.includes('FROM "CsvDashboardRow"')) {
+          expect(query.sql).toContain('SELECT MIN(first_pc."position")');
+          expect(query.sql).toContain('WHERE first_pc."pieceSetId" = ps."id"');
+          if (materialized) {
+            expect(query.sql).toContain('"requiredMinutes", "includeSetup"');
+            return [
+              ...(!firstCompleted ? [{ originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: 'part',
+                quantity: 1, includeSetup: true, itemCount: 1n, unknownItemCount: 0n, requiredMinutesSum: 10 }] : []),
+              { originalResourceCd: 'G-02', effectiveResourceCd: 'G-02', fhincd: 'part', quantity: 1, includeSetup: false,
+                itemCount: 9n, unknownItemCount: 0n, requiredMinutesSum: 90 }
+            ];
+          }
+          return Array.from({ length: 10 }, (_, index) => ({ id: 'row', fseiban: 'S1', fhinCd: 'part', productNo: '1',
+            resourceCd: 'G-02', processOrder: '1', requiredMinutesRaw: '100', requiredMinutes: 100, plannedQuantity: 10,
+            isCompleted: false, pieceId: `unit-${index}`, pieceQuantity: 1, includeSetup: index === 0,
+            quantityWarning: null })).filter((_, index) => !firstCompleted || index !== 0);
+        }
+        return [];
+      });
+      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+        siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes,
+        ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
+      expect(summary.load[0]).toMatchObject({ requiredMinutes: firstCompleted ? 270 : 360,
+        unfinishedItemCount: firstCompleted ? 9 : 10 });
+    }
+  });
+
 });
