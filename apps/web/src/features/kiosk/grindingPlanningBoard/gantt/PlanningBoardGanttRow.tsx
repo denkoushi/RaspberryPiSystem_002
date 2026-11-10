@@ -16,6 +16,7 @@ import {
   PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
 } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
+import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GanttWindow } from './usePlanningBoardGanttWindow';
@@ -144,7 +145,9 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
       )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
-        {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
+        {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={bar.start!} end={bar.end!} />}
+        {bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
+          : bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />

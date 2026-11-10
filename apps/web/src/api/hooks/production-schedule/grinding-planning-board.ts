@@ -11,7 +11,7 @@ import {
 import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
-  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion,
+  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, setKioskSessakuPieceOpCompletion,
   getKioskGrindingPlanningBoardDueDetail,
   getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardResourceCapacity,
@@ -552,7 +552,9 @@ export function useKioskSessakuPieceMutations() {
   const merge = useMutation({ mutationFn: (payload: SessakuPiecesMergeRequest) => mergeKioskSessakuPieces(payload), retry: false, onSuccess });
   const completion = useMutation({ mutationFn: ({ pieceId, ...payload }: SessakuPieceCompletionRequest & { pieceId: string }) =>
     setKioskSessakuPieceCompletion(pieceId, payload), retry: false, onSuccess });
-  return { split, merge, completion };
+  const opCompletion = useMutation({ mutationFn: ({ pieceId, opNo, ...payload }: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) =>
+    setKioskSessakuPieceOpCompletion(pieceId, opNo, payload), retry: false, onSuccess });
+  return { split, merge, completion, opCompletion };
 }
 
 export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival() {
