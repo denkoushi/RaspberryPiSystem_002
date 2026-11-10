@@ -182,24 +182,20 @@ export class DatabaseBackupTarget implements BackupTarget {
         reject(error);
       };
 
-      const psql = spawn('psql', ['-h', host, '-p', port, '-U', user, '-d', dbName, '--set', 'ON_ERROR_STOP=off'], {
+      const psql = spawn('psql', ['-h', host, '-p', port, '-U', user, '-d', dbName, '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '--file', '-'], {
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
 
       const errors: string[] = [];
       psql.stderr.on('data', (data: Buffer) => {
-        const errorMsg = data.toString('utf-8');
-        // 警告メッセージは無視（エラーとして扱わない）
-        if (!errorMsg.includes('WARNING') && !errorMsg.includes('NOTICE')) {
-          errors.push(errorMsg);
-        }
+        errors.push(data.toString('utf-8'));
       });
 
       psql.on('close', (code) => {
-        if (code !== 0 && errors.length > 0) {
+        if (code !== 0) {
           logger?.error({ errors, code }, '[DatabaseBackupTarget] Database restore failed');
-          rejectOnce(new ApiError(500, `Database restore failed: ${errors.join(', ')}`));
+          rejectOnce(new ApiError(500, `Database restore failed: ${errors.join('') || `psql exited with code ${code}`}`));
         } else {
           logger?.info({ dbName }, '[DatabaseBackupTarget] Database restore completed');
           resolveOnce({
@@ -208,6 +204,13 @@ export class DatabaseBackupTarget implements BackupTarget {
             timestamp: new Date()
           });
         }
+      });
+
+      psql.stdin.on('error', (error: NodeJS.ErrnoException) => {
+        // ON_ERROR_STOPでpsqlが先に終了した場合は、closeでSQLエラーを報告する。
+        if (error.code === 'EPIPE') return;
+        psql.kill('SIGTERM');
+        rejectOnce(new ApiError(500, `Database restore input failed: ${error.message}`));
       });
 
       psql.on('error', (error) => {

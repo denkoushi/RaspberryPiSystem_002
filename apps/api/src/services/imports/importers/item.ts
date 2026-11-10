@@ -101,30 +101,6 @@ export class ItemCsvImporter implements CsvImporter {
       updated: 0
     };
 
-    // replaceExisting=trueの場合: Loanレコードが存在しないアイテムを削除
-    if (replaceExisting) {
-      const loans = await prisma.loan.findMany({
-        select: { itemId: true }
-      });
-      const itemIdsWithLoans = new Set(
-        loans
-          .map(l => l.itemId)
-          .filter((id): id is string => id !== null)
-      );
-      
-      if (itemIdsWithLoans.size > 0) {
-        await prisma.item.deleteMany({
-          where: {
-            id: {
-              notIn: Array.from(itemIdsWithLoans)
-            }
-          }
-        });
-      } else {
-        await prisma.item.deleteMany();
-      }
-    }
-
     // CSV内のnfcTagUid重複チェック
     const itemNfcTagUidMap = new Map<string, string[]>();
     for (const row of itemRows) {
@@ -146,6 +122,30 @@ export class ItemCsvImporter implements CsvImporter {
 
     // 各行をループ処理
     await prisma.$transaction(async (tx) => {
+      // replaceExisting=trueの場合: Loanレコードが存在しないアイテムを削除
+      if (replaceExisting) {
+        const loans = await tx.loan.findMany({
+          select: { itemId: true }
+        });
+        const itemIdsWithLoans = new Set(
+          loans
+            .map(l => l.itemId)
+            .filter((id): id is string => id !== null)
+        );
+
+        if (itemIdsWithLoans.size > 0) {
+          await tx.item.deleteMany({
+            where: {
+              id: {
+                notIn: Array.from(itemIdsWithLoans)
+              }
+            }
+          });
+        } else {
+          await tx.item.deleteMany();
+        }
+      }
+
       for (const row of itemRows) {
         const updateData = {
           name: row.name,
