@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 
+import { useFrozenValue } from './offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export function usePlanningBoardNotices() {
@@ -15,5 +17,5 @@ export function usePlanningBoardNotices() {
     const timer = window.setTimeout(() => setScanNotice(null), 2000);
     return () => window.clearTimeout(timer);
   }, [scanNotice]);
-  return { completionNotice, setCompletionNotice, scanNotice, setScanNotice };
+  return { completionNotice: useFrozenValue(completionNotice), setCompletionNotice, scanNotice: useFrozenValue(scanNotice), setScanNotice };
 }

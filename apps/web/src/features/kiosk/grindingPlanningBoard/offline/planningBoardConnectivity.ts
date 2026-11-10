@@ -11,18 +11,21 @@ export type BoardConnectivitySnapshot = Readonly<{
 type Options = {
   config: BoardOfflineConfig;
   now?: () => number;
+  onBootstrapProbeSuccess?: () => void;
   /** Resolve true only for a timely 2xx response with the expected JSON shape. */
   probe: (signal: AbortSignal) => Promise<boolean>;
 };
 
 /** Independent, terminal-on-stop controller. The caller owns browser event subscriptions. */
-export function createPlanningBoardConnectivity({ config, probe, now = () => performance.now() }: Options) {
+export function createPlanningBoardConnectivity({ config, probe, onBootstrapProbeSuccess, now = () => performance.now() }: Options) {
   let snapshot: BoardConnectivitySnapshot = Object.freeze({ phase: 'bootstrapping', generation: 0, recoveredUntil: null });
   const listeners = new Set<() => void>();
   let started = false;
   let stopped = false;
   let lastSuccess = 0;
+  let bootstrapStarted = 0;
   let successes = 0;
+  let refreshingStarted = 0;
   let bootstrapComplete = false;
   let interval: ReturnType<typeof setInterval> | undefined;
   let lossTimer: ReturnType<typeof setTimeout> | undefined;
@@ -34,6 +37,7 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
     listeners.forEach((listener) => listener());
   };
   const transition = (phase: BoardConnectivityPhase, recovered = false) => {
+    if (phase === 'refreshing') refreshingStarted = now();
     successes = 0;
     bootstrapComplete = false;
     clearTimeout(bannerTimer);
@@ -47,7 +51,11 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
   };
   const checkElapsed = (lossTimerFired = false) => {
     if (!started || stopped) return;
-    if ((snapshot.phase === 'online' || snapshot.phase === 'bootstrapping') && now() - lastSuccess >= config.lossAfterMs) {
+    if (snapshot.phase === 'refreshing' && now() - refreshingStarted >= config.lossAfterMs) {
+      transition('offline');
+    } else if (snapshot.phase === 'bootstrapping' && now() - bootstrapStarted >= config.lossAfterMs) {
+      transition('offline');
+    } else if (snapshot.phase === 'online' && now() - lastSuccess >= config.lossAfterMs) {
       transition('offline');
     } else if (lossTimerFired) {
       // A timer can fire a fraction of a millisecond before the monotonic deadline; re-arm instead of waiting for the next probe.
@@ -60,7 +68,11 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
   };
   const scheduleLoss = () => {
     clearTimeout(lossTimer);
-    if (!stopped && (snapshot.phase === 'online' || snapshot.phase === 'bootstrapping')) {
+    if (!stopped && snapshot.phase === 'refreshing') {
+      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - refreshingStarted))));
+    } else if (!stopped && snapshot.phase === 'bootstrapping') {
+      lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - bootstrapStarted))));
+    } else if (!stopped && snapshot.phase === 'online') {
       lossTimer = setTimeout(() => checkElapsed(true), Math.max(1, Math.ceil(config.lossAfterMs - (now() - lastSuccess))));
     }
   };
@@ -85,12 +97,13 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
         return;
       }
       recordSuccess();
-      if (snapshot.phase === 'offline' || snapshot.phase === 'bootstrapping') {
+      if (snapshot.phase === 'bootstrapping') {
         successes += 1;
-        if (successes >= config.recoverySuccesses) {
-          if (snapshot.phase === 'offline') transition('refreshing');
-          else if (bootstrapComplete) transition('online');
-        }
+        if (bootstrapComplete) transition('online');
+        else onBootstrapProbeSuccess?.();
+      } else if (snapshot.phase === 'offline') {
+        successes += 1;
+        if (successes >= config.recoverySuccesses) transition('refreshing');
       }
     };
     const request = {
@@ -116,14 +129,18 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
 
   return {
     getSnapshot: () => snapshot,
+    isRunning: () => started && !stopped,
+    checkElapsed,
     subscribe(listener: () => void) {
       if (!stopped) listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    start() {
+    start(initiallyOffline = false) {
       if (started || stopped) return;
       started = true;
       lastSuccess = now();
+      bootstrapStarted = now();
+      if (initiallyOffline) transition('offline');
       scheduleLoss();
       interval = setInterval(probeNow, config.probeIntervalMs);
       probeNow();
@@ -148,7 +165,7 @@ export function createPlanningBoardConnectivity({ config, probe, now = () => per
       }
       if (snapshot.phase === 'bootstrapping') {
         bootstrapComplete = true;
-        if (successes < config.recoverySuccesses) return;
+        if (successes < 1) return;
       }
       const recovered = snapshot.phase === 'refreshing';
       recordSuccess();

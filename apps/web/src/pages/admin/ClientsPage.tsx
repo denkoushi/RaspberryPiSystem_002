@@ -37,6 +37,7 @@ type ClientForm = {
   shelfLayout: boolean;
   isSignage: boolean;
   procedureBoard: boolean;
+  planningBoardOffline: boolean;
 };
 
 /** 台帳（ClientDevice）と稼働状況（ClientStatusEntry）を1行にまとめたもの。台帳にない報告は device が null */
@@ -54,7 +55,8 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   haizenEdge: 'Zero2W配膳',
   shelfLayout: '棚レイアウト編集',
   isSignage: 'サイネージ',
-  procedureBoard: '手順づくり'
+  procedureBoard: '手順づくり',
+  planningBoardOffline: '製番ボード圏外表示'
 };
 const FORM_FIELDS = Object.keys(FORM_FIELD_LABELS) as Array<keyof ClientForm>;
 
@@ -72,7 +74,8 @@ function formFromDevice(device: ClientDevice): ClientForm {
     haizenEdge: Boolean(device.haizenEdgeEnabled),
     shelfLayout: Boolean(device.shelfLayoutEditEnabled),
     isSignage: device.isSignage === true,
-    procedureBoard: device.procedureBoardEnabled === true
+    procedureBoard: device.procedureBoardEnabled === true,
+    planningBoardOffline: device.planningBoardOfflineEnabled === true
   };
 }
 
@@ -338,6 +341,7 @@ export function ClientsPage() {
           shelfLayoutEditEnabled: form.shelfLayout,
           isSignage: form.isSignage,
           procedureBoardEnabled: form.procedureBoard,
+          planningBoardOfflineEnabled: form.planningBoardOffline,
           siteKey: form.siteKey || null,
           canProxyOtherDevices: form.proxy
         }
@@ -619,7 +623,8 @@ export function ClientsPage() {
                                   [row.device?.canProxyOtherDevices, '代理', '代理操作'],
                                   [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳'],
                                   [row.device?.shelfLayoutEditEnabled, '棚', '棚レイアウト編集'],
-                                  [row.device?.procedureBoardEnabled === true, '手順', '手順づくり']
+                                  [row.device?.procedureBoardEnabled === true, '手順', '手順づくり'],
+                                  [row.device?.planningBoardOfflineEnabled === true, '圏外', '製番ボード圏外表示']
                                 ] as const
                               ).map(([enabled, short, title]) =>
                                 enabled ? (
@@ -889,6 +894,12 @@ export function ClientsPage() {
                         ariaLabel="手順づくりを許可"
                         checked={form.procedureBoard}
                         onChange={(procedureBoard) => patchForm({ procedureBoard })}
+                      />
+                      <Switch
+                        label="製番ボード圏外表示"
+                        ariaLabel="製番ボード圏外表示を許可"
+                        checked={form.planningBoardOffline}
+                        onChange={(planningBoardOffline) => patchForm({ planningBoardOffline })}
                       />
                     </div>
 

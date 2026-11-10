@@ -68,6 +68,14 @@ describe('planning board connectivity', () => {
     expect(phase()).toBe('offline');
   });
 
+  it('returns refreshing to offline at its deadline even when the caller never reports', async () => {
+    await offline(); await successfulProbe(); await successfulProbe();
+    const refreshing = generation(); expect(phase()).toBe('refreshing');
+    await advance(14999); expect(phase()).toBe('refreshing');
+    await advance(1); expect(phase()).toBe('offline');
+    board.reportFullRefresh(refreshing, true); expect(phase()).toBe('offline');
+  });
+
   it('needs two distinct consecutive probes and full refresh before recovery', async () => {
     await offline();
     await successfulProbe();
@@ -114,14 +122,30 @@ describe('planning board connectivity', () => {
     expect(board.getSnapshot().recoveredUntil).toBeNull();
   });
 
-  it('accepts full initial data before the two probes but still waits for both', async () => {
+  it('accepts one probe plus a full startup read as independent successes', async () => {
     probe.mockResolvedValue(true);
     await start();
     board.reportFullRefresh(generation(), true);
-    expect(phase()).toBe('bootstrapping');
-    await advance(5000);
     expect(phase()).toBe('online');
     expect(board.getSnapshot().recoveredUntil).toBeNull();
+  });
+
+  it('waits for a probe when the full startup read finishes first', async () => {
+    await start();
+    board.reportFullRefresh(generation(), true);
+    expect(phase()).toBe('bootstrapping');
+    await successfulProbe();
+    expect(phase()).toBe('online');
+  });
+
+  it('expires bootstrapping at 15 seconds even with successful probes and failed reads', async () => {
+    probe.mockResolvedValue(true);
+    await start();
+    board.reportFullRefresh(generation(), false);
+    await advance(14999);
+    expect(phase()).toBe('bootstrapping');
+    await advance(1);
+    expect(phase()).toBe('offline');
   });
 
   it('uses the configured success count', async () => {

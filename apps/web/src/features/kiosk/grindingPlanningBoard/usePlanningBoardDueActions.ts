@@ -3,6 +3,8 @@ import { useCallback } from 'react';
 
 import { normalizeDueDateInput } from '../productionSchedule/dueManagement';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+
 import type { DuePickerState, FeedbackKind, PendingDueScopeUpdate } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
@@ -17,7 +19,7 @@ type Options = {
   setDuePickerState: Dispatch<SetStateAction<DuePickerState | null>>;
   setDueConflict: Dispatch<SetStateAction<boolean>>;
   setDueError: Dispatch<SetStateAction<string | null>>;
-  dueDetailQuery: ReturnType<typeof useKioskGrindingPlanningBoardDueDetail>;
+  dueDetailQuery: { data: ReturnType<typeof useKioskGrindingPlanningBoardDueDetail>['data']; refetch: () => Promise<{ data: ReturnType<typeof useKioskGrindingPlanningBoardDueDetail>['data']; isError: boolean }> };
   dueDetailFseiban: string | null;
   allocation: PlanningBoardAllocation;
   dueConflict: boolean;
@@ -40,6 +42,7 @@ export function usePlanningBoardDueActions({
   hasPendingSeiban, pendingDueScope, notify, boardQuery, setRankConflict, acceptRefreshedState,
   duePickerState, writeBlocked, enqueueWrite, updateDueScope, setPendingDueScope
 }: Options) {
+  const { gate } = usePlanningBoardOffline();
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
     setDueDetailTargetFseiban(fseiban);
@@ -62,6 +65,7 @@ export function usePlanningBoardDueActions({
   }, []);
 
   const openDuePicker = useCallback((scope: GrindingPlanningBoardDueScope, currentDueDate: string | null) => {
+    if (!gate.attempt()) return;
     const detail = dueDetailQuery.data;
     if (!dueDetailFseiban || !detail || allocation === 'original' || dueConflict || hasPendingSeiban(dueDetailFseiban) || pendingDueScope?.fseiban === dueDetailFseiban) return;
     setDueError(null);
@@ -77,7 +81,7 @@ export function usePlanningBoardDueActions({
     });
   // Preserve the original dependencies; the page supplies stable React setters and refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data, pendingDueScope, hasPendingSeiban]);
+  }, [gate, allocation, dueConflict, dueDetailFseiban, dueDetailQuery.data, pendingDueScope, hasPendingSeiban]);
 
   const refreshDueDetail = useCallback(async () => {
     setDueError('最新状態を取得しています…');
@@ -102,6 +106,7 @@ export function usePlanningBoardDueActions({
   }, [boardQuery, dueDetailQuery, notify, acceptRefreshedState]);
 
   const commitDueDate = useCallback((nextDueDate: string) => {
+    if (!gate.attempt()) return;
     const current = duePickerState;
     if (!current || allocation === 'original' || writeBlocked || hasPendingSeiban(current.fseiban)) return;
     const pendingUpdate: PendingDueScopeUpdate = { fseiban: current.fseiban, scope: current.scope, dueDate: nextDueDate,
@@ -109,12 +114,14 @@ export function usePlanningBoardDueActions({
     const accepted = enqueueWrite({ label: `${current.fseiban}の納期`, itemIds: [], seibans: [current.fseiban], wholeSeiban: true,
       apply: (display) => display,
       save: async () => {
-        const result = await updateDueScope.mutateAsync({ fseiban: current.fseiban,
-          payload: { ...current.snapshot, scope: current.scope, dueDate: nextDueDate } });
+        const generation = gate.generation();
+        const result = await gate.run(() => updateDueScope.mutateAsync({ fseiban: current.fseiban,
+          payload: { ...current.snapshot, scope: current.scope, dueDate: nextDueDate } }));
         setPendingDueScope((pending) => pending?.fseiban === current.fseiban
           ? { ...pending, responseScopeRevision: result.scopeRevision } : pending);
         // Scope writes invalidate item revisions without returning them. Read them before this seiban becomes editable again.
         const [detail, board] = await Promise.all([dueDetailQuery.refetch(), boardQuery.refetch()]);
+        if (generation !== gate.generation()) return {};
         if (detail.isError || board.isError) throw new Error('納期保存後の最新状態を取得できませんでした。');
         return {};
       },
@@ -133,7 +140,7 @@ export function usePlanningBoardDueActions({
     if (accepted) { setPendingDueScope(pendingUpdate); setDuePickerState(null); }
   // Preserve the original dependencies; the page supplies stable React setters and refs.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allocation, boardQuery, dueDetailQuery, duePickerState, enqueueWrite, updateDueScope, writeBlocked, hasPendingSeiban]);
+  }, [gate, allocation, boardQuery, dueDetailQuery, duePickerState, enqueueWrite, updateDueScope, writeBlocked, hasPendingSeiban]);
 
   return { openDueDetail, closeDueDetail, openDuePicker, refreshDueDetail, commitDueDate };
 }

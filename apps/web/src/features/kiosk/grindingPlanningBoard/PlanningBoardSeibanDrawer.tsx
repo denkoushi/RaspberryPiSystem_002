@@ -6,6 +6,8 @@ import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
 
 const UNSET_MACHINE_NAME = '未設定';
@@ -80,6 +82,7 @@ export function PlanningBoardSeibanDrawer({
   showCompletedCandidates,
   onShowCompletedCandidatesChange
 }: PlanningBoardSeibanDrawerProps) {
+  const { gate } = usePlanningBoardOffline();
   const { run: runCandidateRegistration, pending: candidateRegistrationPending } = useSingleFlight();
   const [query, setQuery] = useState('');
   const [registrationError, setRegistrationError] = useState<string | null>(null);
@@ -162,10 +165,11 @@ export function PlanningBoardSeibanDrawer({
     });
   }, []);
 
-  const registerSelectedCandidates = () => runCandidateRegistration(async () => {
+  const registerSelectedCandidates = () => gate.attempt() ? runCandidateRegistration(async () => {
     if (selectedCandidateCount === 0 || selectedWouldExceedLimit || orderDisabled) return;
     const fseibans = selectedCandidatesForRegistration.map((candidate) => candidate.fseiban);
-    const saved = await onRegisterMany(fseibans);
+    const generation = gate.generation(); const saved = await onRegisterMany(fseibans);
+    if (generation !== gate.generation()) return;
     if (saved) {
       setSelectedCandidates((current) => {
         const next = new Set(current);
@@ -173,7 +177,7 @@ export function PlanningBoardSeibanDrawer({
         return next;
       });
     }
-  });
+  }) : Promise.resolve();
 
   const candidateCards = useMemo(() => (
     <div className="mt-2 grid max-h-[min(42vh,28rem)] grid-cols-2 items-start gap-1.5 overflow-y-auto pr-1">
@@ -272,7 +276,9 @@ export function PlanningBoardSeibanDrawer({
                 setRegistrationError(null);
               }}
               onRegister={async (value) => {
-                const saved = await onRegister(value);
+                if (!gate.attempt()) return false;
+                const generation = gate.generation(); const saved = await onRegister(value);
+                if (generation !== gate.generation()) return false;
                 if (!saved) setRegistrationError('製番を登録できませんでした。入力値・重複・登録上限を確認してください。');
                 return saved;
               }}
