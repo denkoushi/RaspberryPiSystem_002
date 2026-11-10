@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { useOfflineResourceMinutes, useOfflineResourceCapacity } from '../offline/planningBoardOfflineQueries';
+import { planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardQueryData } from '../usePlanningBoardQueryData';
 
@@ -20,10 +21,11 @@ const EMPTY_ITEMS: GanttLayoutOptions['items'] = [];
 
 export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' | 'dailyHoursByResource' | 'runsThroughBreaks'> & {
   enabled: boolean;
+  machineSelectionLocked?: boolean;
   preferenceScope: string;
 }) {
   const { gate, enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
+  const { enabled, machineSelectionLocked, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const useMinutes = offlineEnabled ? useOfflineResourceMinutes : useKioskGrindingPlanningBoardResourceMinutes;
@@ -70,13 +72,13 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     const escape = (event: KeyboardEvent) => {
       // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
-        if (valueSheetResource === singleResourceCd) setValueSheetResource(null);
-        else changeSingleResource(null);
+        if (valueSheetResource && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources)) setValueSheetResource(null);
+        else if (!machineSelectionLocked) changeSingleResource(null);
       }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource]);
+  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource, paneResources, machineSelectionLocked]);
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
@@ -104,8 +106,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
       if (!offlineEnabled) sourceMutation.mutate(source);
       else void gate.run(() => sourceMutation.mutateAsync(source)).then(() =>
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
-    }, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
-    toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
-    singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+    }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources),
+    valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),
+    capacityLoaded: capacity.data?.unitSplitEnabledByResource !== undefined, unitSplitEnabledByResource: capacity.data?.unitSplitEnabledByResource, singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

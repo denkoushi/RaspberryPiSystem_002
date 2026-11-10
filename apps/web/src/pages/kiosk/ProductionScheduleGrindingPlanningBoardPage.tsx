@@ -24,6 +24,7 @@ import { buildPlanningBoardPlacementByPart, buildPlanningBoardProcessChipsByPart
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
 import { PlanningBoardSeibanDrawer } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardSeibanDrawer';
 import { PlanningBoardToolbar } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardToolbar';
+import { planningBoardResourceMatches } from '../../features/kiosk/grindingPlanningBoard/planningBoardTwoMachine';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
@@ -683,7 +684,7 @@ export function PlanningBoardPage() {
         onToggleGantt={() => { setFocusedSeiban(null); setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
         ganttScale={gantt.scale} onGanttScaleChange={gantt.changeScale}
         ganttMode={gantt.mode} onGanttModeChange={(mode) => { setPinMode(false); gantt.changeMode(mode); }}
-        lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => group.resource === gantt.singleResourceCd).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
+        lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => planningBoardResourceMatches(gantt.singleResourceCd!, group.resource ?? '', gantt.singleResourceLanes)).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
         pinMode={pinMode} onTogglePinMode={() => { if (gate.attempt()) setPinMode((value) => !value); }}
         orderPreview={orderPreview} previewPending={writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict}
         onApplyOrder={applyResourceOrder} onCancelOrder={() => { if (gate.attempt()) setOrderPreview(null); }}

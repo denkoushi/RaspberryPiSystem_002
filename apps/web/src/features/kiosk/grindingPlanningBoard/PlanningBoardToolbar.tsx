@@ -9,6 +9,7 @@ import { pageZoom } from './pageZoom';
 import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
 import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
+import { planningBoardPair } from './planningBoardTwoMachine';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
@@ -175,6 +176,9 @@ export function PlanningBoardToolbar({
   specialDueDisabled = false,
   specialDueCounts = { overnight: 0, today: 0 }
 }: PlanningBoardToolbarProps) {
+  useEffect(() => {
+    if (orderPreview && singleResourcePickerAnchor) onCloseSingleResourcePicker?.();
+  }, [orderPreview, singleResourcePickerAnchor, onCloseSingleResourcePicker]);
   const { frozen } = usePlanningBoardOffline();
   const [scaleOpen, setScaleOpen] = useState(false);
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
@@ -268,13 +272,13 @@ export function PlanningBoardToolbar({
             </div>, document.body)}
           </div>
           {onSingleResourceChange && <button type="button" aria-pressed={Boolean(singleResourceCd)} aria-expanded={Boolean(singleResourcePickerAnchor)}
-            aria-label={singleResourceCd ? `${singleResourceCd} 1台表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
+            aria-label={singleResourceCd ? `${singleResourceCd} ${planningBoardPair(singleResourceCd, singleResourceLanes) ? '2台' : '1台'}表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
             onClick={(event) => { setScaleOpen(false); if (singleResourceCd) onSingleResourceChange(null); else onOpenSingleResourcePicker?.(event.currentTarget); }}
             className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
           </button>}
-          {singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
-            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={singleResourceCd} resourceNameMap={singleResourceNameMap}
+          {!orderPreview && singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
+            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={planningBoardPair(singleResourceCd, singleResourceLanes)?.[0] ?? singleResourceCd} resourceNameMap={singleResourceNameMap}
             onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
           <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}
             className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', colorBySeiban ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
