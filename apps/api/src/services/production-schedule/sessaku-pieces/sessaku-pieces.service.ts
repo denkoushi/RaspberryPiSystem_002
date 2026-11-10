@@ -483,11 +483,13 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     assertRevision(item, params.autoUnitSplit ? item?.itemRevision : params.itemRevision);
     if (target?.isCompleted || item?.isCompleted) conflict('COMPLETED_PIECE');
     const total = target?.quantity ?? c.plannedQuantity;
-    if (params.quantities.length < 2 || params.quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || params.quantities.reduce((a, b) => a + b, 0) !== total) {
+    const quantities = params.autoUnitSplit ? Array.from({ length: total! }, () => 1) : params.quantities;
+    if (params.autoUnitSplit) params.audit!.requestedQuantities = quantities;
+    if (quantities.length < 2 || quantities.some((q) => !Number.isSafeInteger(q) || q <= 0 || q > 2_147_483_647) || quantities.reduce((a, b) => a + b, 0) !== total) {
       throw new ApiError(400, '分割数量の合計が指示数と一致しません', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
     // Same 50-piece cap as quantity sync; reject before touching later processes or history.
-    if ((c.set?.pieces.length ?? 0) - (target ? 1 : 0) + params.quantities.length > 50) {
+    if ((c.set?.pieces.length ?? 0) - (target ? 1 : 0) + quantities.length > 50) {
       throw new ApiError(400, '片は50までです', undefined, 'PIECE_QUANTITY_CONFLICT');
     }
     await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
@@ -498,7 +500,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     const set = c.set ?? await tx.productionScheduleSessakuPieceSet.create({ data: { ...sessakuPieceSetWhere(c.key), plannedQuantity: total } });
     const pieces = c.set?.pieces ?? [];
     const insertAt = target ? pieces.findIndex((p) => p.id === target.id) : 0;
-    const added = params.quantities.map((quantity) => ({ id: randomUUID(), quantity }));
+    const added = quantities.map((quantity) => ({ id: randomUUID(), quantity }));
     const ordered = [...pieces.slice(0, insertAt), ...added, ...pieces.slice(target ? insertAt + 1 : insertAt)];
     await removeLaterPieces(tx, c.later, target ? [target.id] : []);
     if (target) await tx.productionScheduleSessakuPiece.delete({ where: { id: target.id } });

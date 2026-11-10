@@ -608,7 +608,7 @@ Docs: this plan (`docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md`).
 
 - Historyに通常の削除経路・保存期限は無く、生の論理キー単位で増え続ける。目安は操作対象/伝播対象となった新規の論理キーごとに最大1行（同一キーの再操作では増えない）。例: 新規キー1,000件/日なら年間約36.5万行、10,000件/日なら約365万行。実件数や保存サイズの測定は未実施。FKのdashboard削除cascadeはあるが、通常の掃除には使わない。
 - Historyの掃除/保持期限/運用監視は別作業。現行の自動分割候補はHistoryに依存しない。この修正では削除ジョブを導入しない。
-- PR1のDB統合テストは`TEST_DATABASE_URL`が無い場合skipする。現行CIは`DATABASE_URL`だけを設定しており、このDB統合ファイルを実行していない。CIでの有効化は別件とし、今回CIは変更しない。
+- PR1のDB統合テストは明示的な`TEST_DATABASE_URL`、またはCIでsetup-envが選択する`borrow_return_w<VITEST_POOL_ID>`で実行する。現行CIはワーカーDBを作成してAPI全体をcoverage shardで実行するため、このファイルも実行対象。CI設定自体は変更しない。
 
 ### Validation
 
@@ -767,7 +767,7 @@ FROM checked;
 - History never excludes candidates. Linked downstream warnings/completions and per-piece operation evidence are filtered in SQL and TS; missing winners retain locked-validation semantics. SQL-inexpressible structural rejections use the three-minute, version-invalidated process-memory exclusion described above; other exclusions remain request-local, without the former 60-parent cap. At most five lots progress per request; rejection does not consume that success cap.
 - STALE_SESSAKU_PIECES and other reloadable conflicts retain hasMore:true. A deterministic hook commits a manual split/merge after the candidate projection; the next automatic call finishes the lot.
 - `splittable_rows` gates quantity-one rows and sets containing only protected/unit pieces before expensive discovery joins. A null PieceSet bypasses downstream-set probes. Each subsequent preprocessing read refreshes statement_timeout and checks the deadline first.
-- CI integration selection follows process-arrival's TEST_DATABASE_URL-or-DATABASE_URL pattern. setup-env's worker URL is preserved; an explicit test URL is installed before singleton imports. ci.yml and unrelated suites are unchanged.
+- CI integration selection uses setup-env's worker URL only when CI=true, API_TEST_DB_PER_WORKER=1 and the database name exactly matches borrow_return_w<VITEST_POOL_ID>. Other runs require TEST_DATABASE_URL, installed before singleton imports. ci.yml and unrelated suites are unchanged.
 - Deterministic CI checks assert 8,568 / 8,600 upserted rows for quantities 5 / 6, saved unit quantities, dense lane ranks and site versions sorted by siteKey. Clock injection and driver/SQLSTATE failures replace real timeout races. `SESSAKU_SPLIT_MEASURE=1` explicitly enables timing cases; no elapsed-time assertion controls their result.
 - Unchanged lane rows retain their previous upsert/version invalidation. Evidence: grinding-planning-board/write.ts validates per-item revision/version for rank and resource order; ProductionScheduleGrindingPlanningBoardPage.tsx queues those fields for writes and offline replay. The new two-site neighbour test keeps rank 1 but increments its version/revision and rejects stale queued writes.
 
@@ -807,3 +807,13 @@ Restoring per-row optimistic invalidation increases tail writes and latency; thi
 - API `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit`: passed. Three related unit files: 144 passed, 1.54s. DB validation uses only `postgresql://postgres:postgres@localhost:55441/autosplit_test`, with temporary Vitest envDir/setup mocking dotenv so no .env is read. Entire related integration file: 242 passed, 2 optional measurement cases skipped (244 registered), 37.76s including 36.17s test execution. The separate large four-site measurement dataset was not enabled. Final validation totals 386 passing cases across four files; no broader tests, lint, measurements or hosted CI were run.
 - The initial reduced-fixture run failed on duplicate override keys; limiting unrelated filler overrides fixed the fixture, and the focused four-site case then passed (1.46s test execution). No unrelated production code was changed.
 - Final worktree contains only the six service/test files above and this plan, all changes from this task; there was no pre-existing WIP. No git write operation, web edit, .env read, port 55432 access or remote/production database connection was performed. The integration run emitted a pg concurrent-client-query deprecation warning; investigation is outside this correction scope. Process-memory rejection entries are intentionally not shared across API processes and reset on restart.
+
+
+## Third review corrections — 2026-11-10
+
+- 自動分割数量をロック内の現在数量から生成し、候補取得後のCSV数量変更（5→2/7）を結合テストに追加。手動分割の数量指定と既存のversion/revision確認を維持。
+- 入力が同じ4xx拒否も既存の3分TTLで記憶。inputVersionにはCSV全行、数量補足、完了・外部完了、資源ポリシー・設定、該当親/片の資源上書き、PieceSet/Piece、工程完了を含める。一時競合は記憶せず再試行。複数回呼び出しでの後続処理と入力変更による無効化を追加検証。
+- 最初のロットは開始から3000ms、以後は全体期限の残り時間を使用し、いずれもrunnerDeadlineで上限を設定。残りが無ければ開始しない。
+- 候補SQLの57014は専用警告とhasMore:false、55P03は従来のbusy扱い。製番検索を既存BTRIM索引に合わせ、後工程の関連ORを索引別UNIONへ変更。セット連結/片だけの連結の同値性テストを追加。
+- DB選択は明示TEST_DATABASE_URL、または確認済みCIワーカーDBに限定。ci.ymlのPrepare API worker databasesがborrow_return_w1〜w4を作成し、setup-env.tsがVITEST_POOL_IDで選択。Run API tests (coverage shard)とvitest.config.tsのsrc/**/*.{test,spec}.tsにより本ファイルも実行対象。
+- 検証(Claude が試験DB localhost:55441 で実行): API build型チェック成功。関連4ファイル 411件成功・2件skip。`SESSAKU_SPLIT_MEASURE=1` で3315行/4サイト: 候補SQL 約50ms(先頭)/約52ms(末尾)、1ロット(候補取得込み) 582ms(先頭)/596ms(末尾)、upsert 8,568/8,600。TEST_DATABASE_URLなし・非CIでは結合ファイルは全件skip。

@@ -1,4 +1,4 @@
-import { isAutoUnitSplitBusyError } from './piece-db-error.js';
+import { isAutoUnitSplitBusyError, sessakuPieceSqlState } from './piece-db-error.js';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceCapacityResponse, SessakuPiecesAutoUnitSplitResponse } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
@@ -56,6 +56,10 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       return result;
     }, { timeout: AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS, maxWait: 1000 });
   } catch (error) {
+    if (error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT') {
+      logger.warn({ event: 'sessaku_piece.auto_unit_split_candidate_timeout', siteKey: params.siteKey }, 'Automatic unit split candidate query timed out');
+      return { ...result, hasMore: false };
+    }
     if (isAutoUnitSplitBusyError(error) || error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_BUDGET') return { ...result, hasMore: true };
     throw error;
   }
@@ -101,7 +105,13 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     const pageDeadline = excludedParentIds.size ? Math.min(deadline, runnerDeadline) : runnerDeadline;
     const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections);
     await setPreprocessingStatementTimeout(runner, pageDeadline);
-    const candidateRows = await runner.$queryRaw<Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>>(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
+    let candidateRows: Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>;
+    try {
+      candidateRows = await runner.$queryRaw(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
+    } catch (error) {
+      if (sessakuPieceSqlState(error) !== '57014') throw error;
+      throw new ApiError(503, '自動分割の候補取得がタイムアウトしました', undefined, 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT');
+    }
     assertRunnerDeadline(pageDeadline);
     if (!candidateRows.length) return { ...result, hasMore: retryNeeded };
     const candidateIds = new Set(candidateRows.map((row) => row.id));
@@ -151,9 +161,8 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     const candidates = structuralCandidates.filter((item) => candidateIds.has(item.sourceRowId)
       && !blockedParents.has(item.parentItemId ?? item.itemId) && !protectedPieces.has(item.pieceId!));
     assertRunnerDeadline(pageDeadline);
-    // Cache only input-structural refusals. Capacity, completion, missing projection
-    // and reloadable conflicts must remain eligible for immediate re-evaluation.
-    const rememberStructuralRejection = (parentId: string) => {
+    // Rejections expire or are invalidated by any changed eligibility input.
+    const rememberRejection = (parentId: string) => {
       const row = candidateRows.find((row) => row.parentId === parentId);
       if (!row?.inputVersion) return;
       rejectedInputs.set(JSON.stringify([params.siteKey, parentId]), {
@@ -162,7 +171,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
     };
     for (const row of candidateRows) {
       const projected = items.find((item) => item.sourceRowId === row.id);
-      if (projected && !isFirstAutoUnitSplitProcess(projected, items)) rememberStructuralRejection(row.parentId);
+      if (projected && !isFirstAutoUnitSplitProcess(projected, items)) rememberRejection(row.parentId);
     }
     // All other exclusions last only for this request. History never gates discovery.
     const previousExcludedCount = excludedParentIds.size;
@@ -186,7 +195,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         if (result.splitCount >= AUTO_UNIT_SPLIT_MAX_LOTS) break;
         const now = performance.now();
         if (now >= runnerDeadline || attempted > 0 && now >= deadline) break;
-        const lotDeadline = Math.min(runnerDeadline, now + AUTO_UNIT_SPLIT_BUDGET_MS);
+        const lotDeadline = Math.min(runnerDeadline, attempted === 0 ? now + AUTO_UNIT_SPLIT_BUDGET_MS : deadline);
         attempted += 1;
         let expectedVersion = pieces[0].pieceSetVersion ?? 0;
         let counted = false;
@@ -206,8 +215,10 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           const code = (error as { code?: string })?.code;
           if (error instanceof ApiError ? error.statusCode >= 500 : code !== 'P2034') throw error;
           result.skippedCount += 1;
-          if (code === 'AUTO_UNIT_SPLIT_STRUCTURALLY_INELIGIBLE') rememberStructuralRejection(parentItemId);
-          retryNeeded ||= ['P2034', 'STALE_SESSAKU_PIECES', 'STALE_PLANNING_BOARD_ITEM', 'SOURCE_ITEM_MISSING', 'PIECE_REFERENCED'].includes(code ?? '');
+          const reloadable = code === 'P2034' || code?.startsWith('STALE_')
+            || ['SOURCE_ITEM_MISSING', 'PIECE_REFERENCED', 'AUTO_UNIT_SPLIT_BUSY', 'AUTO_UNIT_SPLIT_BUDGET'].includes(code ?? '');
+          if (error instanceof ApiError && !reloadable) rememberRejection(parentItemId);
+          retryNeeded ||= Boolean(reloadable);
           if (error instanceof ApiError) logger.warn({
             event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,
             statusCode: error.statusCode, code: error.code

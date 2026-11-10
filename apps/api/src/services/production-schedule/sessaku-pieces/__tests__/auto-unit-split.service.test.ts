@@ -239,11 +239,16 @@ describe('automatic unit split', () => {
     }), expect.any(String));
     expect(mocks.mark).not.toHaveBeenCalled();
   });
-  it.each([400, 409])('does not request retry for a quantity conflict with status %s', async (statusCode) => {
+  it.each([400, 409])('remembers a persistent locked quantity conflict with status %s', async (statusCode) => {
     mocks.items = [item()];
-    mocks.split.mockRejectedValueOnce(new ApiError(statusCode, 'quantity changed', undefined, 'PIECE_QUANTITY_CONFLICT'));
+    // CSV quantity changes are rebuilt under the lock; this represents a persistent quantity warning.
+    mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'quantity-warning' }]);
+    mocks.split.mockRejectedValueOnce(new ApiError(statusCode, 'quantity warning', undefined, 'PIECE_QUANTITY_CONFLICT'));
     expect(await autoSplitSessakuUnits({ siteKey: `quantity-${statusCode}` })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: false });
     expect(mocks.split).toHaveBeenCalledTimes(1);
+    mocks.query.mockResolvedValueOnce([]);
+    await autoSplitSessakuUnits({ siteKey: `quantity-${statusCode}` });
+    expect(mocks.query.mock.calls[1][0].values).toContainEqual(expect.stringContaining('quantity-warning'));
   });
   it.each(['lock', 'ensureState', 'state', 'policy', 'candidate', 'winners', 'parallel', 'projection'])(
     'stops preprocessing immediately after %s exhausts the runner deadline', async (stage) => {
@@ -282,9 +287,10 @@ describe('automatic unit split', () => {
       expect(read.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.timeout.mock.invocationCallOrder[index + 3]);
     }
   });
-  it('returns hasMore and stops preprocessing after a statement timeout', async () => {
+  it('warns and stops without retry after a candidate statement timeout', async () => {
     mocks.query.mockRejectedValueOnce(Object.assign(new Error('statement timeout'), { code: 'P2010', meta: { code: '57014' } }));
-    expect(await autoSplitSessakuUnits({ siteKey: 'statement-cancelled' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(await autoSplitSessakuUnits({ siteKey: 'statement-cancelled' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'sessaku_piece.auto_unit_split_candidate_timeout' }), expect.any(String));
     expect(mocks.query).toHaveBeenCalledTimes(1);
     expect(mocks.rows).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
   });
@@ -423,7 +429,7 @@ describe('automatic unit split', () => {
       }
       return sqlRows.filter((row) => !excluded.has(row.parentId)).slice(0, 6);
     });
-    expect(await autoSplitSessakuUnits({ siteKey: 'paging-overrun' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(await autoSplitSessakuUnits({ siteKey: 'paging-overrun' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: kind === 'budget' });
     expect(mocks.query).toHaveBeenCalledTimes(2); expect(mocks.audit).not.toHaveBeenCalled(); expect(mocks.split).not.toHaveBeenCalled();
   });
   it('re-evaluates TS process-order rejections on every opening without permanent history', async () => {
@@ -455,6 +461,60 @@ describe('automatic unit split', () => {
     expect(await autoSplitSessakuUnits({ siteKey: 'cross-call-budget' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
     expect(mocks.split).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ parentItemId: tail.itemId }));
     expect(mocks.history).not.toHaveBeenCalled(); expect(mocks.mark).not.toHaveBeenCalled();
+  });
+  it.each(['AUTO_UNIT_SPLIT_INELIGIBLE', 'RESOURCE_CATEGORY_MISMATCH', 'LATER_PROCESS_PIECE_COMPLETED', 'COMPLETED_PIECE', 'EXTERNALLY_COMPLETED_ITEM'])('remembers unchanged %s heads across calls, then invalidates on input change', async (code) => {
+    const heads = Array.from({ length: 3 }, (_, i) => item({ itemId: `row:permanent-${i}`, sourceRowId: `permanent-${i}`, fhincd: `HEAD-${i}` }));
+    const tail = item({ itemId: 'row:tail', sourceRowId: 'tail', fhincd: 'TAIL' });
+    mocks.items = [...heads, tail];
+    const rows = mocks.items.map((row) => ({ id: row.sourceRowId, fseiban: 'S', parentId: row.itemId, inputVersion: 'v1' }));
+    mocks.query.mockImplementation(async (sql) => {
+      const cached = sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('[{'))
+        .flatMap((value: string) => JSON.parse(value)) as { parentId: string; inputVersion: string }[];
+      return rows.filter((row) => !sqlExcludedParents(sql).has(row.parentId)
+        && !cached.some((entry) => entry.parentId === row.parentId && entry.inputVersion === row.inputVersion));
+    });
+    let elapsed = 0;
+    mocks.split.mockImplementation(async ({ parentItemId }) => {
+      elapsed += 3000; vi.mocked(performance.now).mockReturnValue(elapsed);
+      if (parentItemId !== tail.itemId) throw new ApiError(409, 'permanent', undefined, code);
+      return { pieceSetVersion: 1 };
+    });
+    const siteKey = `cached-${code}`;
+    for (let call = 0; call < heads.length; call++) {
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+    }
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
+    expect(mocks.split).toHaveBeenCalledTimes(4);
+    rows[0].inputVersion = 'v2';
+    expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+    expect(mocks.split.mock.calls.at(-1)![0].parentItemId).toBe(heads[0].itemId);
+  });
+  it.each(['P2034', 'STALE_SESSAKU_PIECES', 'STALE_PLANNING_BOARD_ITEM', 'SOURCE_ITEM_MISSING', 'PIECE_REFERENCED'])(
+    'does not remember reloadable %s with unchanged inputVersion', async (code) => {
+      mocks.items = [item()];
+      mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'v1' }]);
+      mocks.split.mockRejectedValueOnce(code === 'P2034' ? Object.assign(new Error('serialization'), { code }) : new ApiError(409, 'reload', undefined, code));
+      const siteKey = `reloadable-${code}`;
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+      expect(mocks.query.mock.calls[1][0].sql).not.toContain('JSONB_TO_RECORDSET');
+    });
+  it('keeps candidate lock waits retryable', async () => {
+    mocks.query.mockRejectedValueOnce(Object.assign(new Error('lock timeout'), { code: 'P2010', meta: { code: '55P03' } }));
+    expect(await autoSplitSessakuUnits({ siteKey: 'candidate-lock' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(mocks.warn).not.toHaveBeenCalled();
+  });
+  it('caps later lots at the remaining request budget', async () => {
+    mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' }), item({ itemId: 'row:three', fhincd: 'THREE' })];
+    mocks.split.mockImplementationOnce(async ({ deadline }) => {
+      expect(deadline).toBe(3000); vi.mocked(performance.now).mockReturnValue(2900);
+      return { pieceSetVersion: 1 };
+    }).mockImplementationOnce(async ({ deadline }) => {
+      expect(deadline).toBe(3000); vi.mocked(performance.now).mockReturnValue(3000);
+      return { pieceSetVersion: 1 };
+    });
+    expect(await autoSplitSessakuUnits({ siteKey: 'remaining' })).toEqual({ splitCount: 2, skippedCount: 0, hasMore: true });
+    expect(mocks.split).toHaveBeenCalledTimes(2);
   });
   it('expires structural rejections after three minutes and isolates them by site', async () => {
     mocks.items = [item({ processOrder: 'B' }), item({ itemId: 'earlier', sourceRowId: 'earlier', processOrder: 'A', originalResourceCd: '305' })];

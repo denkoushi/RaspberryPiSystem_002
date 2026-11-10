@@ -32,17 +32,32 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     ELSE false END`;
   const effective = trim(Prisma.sql`COALESCE(o."overrideResourceCd", r."rowData"->>'FSIGENCD')`);
   // SQL creates the identical base64url row ID from the raw logical key, including whitespace.
-  const parentId = Prisma.sql`'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
-    '[' || to_json(COALESCE(r."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FHINCD', ''))::text || ',' ||
-    to_json(COALESCE(r."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(r."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
-  // Structural rejection depends on every raw row of this seiban, including
-  // predecessors and winner changes, rather than only the rejected parent row.
-  // PieceSet versions also invalidate a rejection after a piece edit.
+  const parentIdFor = (alias: 'r' | 'v') => Prisma.sql`'row:' || RTRIM(TRANSLATE(REPLACE(ENCODE(CONVERT_TO(
+    '[' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSEIBAN', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FHINCD', ''))::text || ',' ||
+    to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FSIGENCD', ''))::text || ',' || to_json(COALESCE(${Prisma.raw(alias)}."rowData"->>'FKOJUN', ''))::text || ']', 'UTF8'), 'base64'), E'\n', ''), '+/', '-_'), '=')`;
+  const parentId = parentIdFor('r');
+  // Include every eligibility source, not just CSV row data or set versions.
+  // BTRIM matches CsvDashboardRow's existing part lookup expression index.
   const inputVersion = Prisma.sql`MD5(JSONB_BUILD_ARRAY(
-    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."rowData") ORDER BY v."id") FROM "CsvDashboardRow" v
-      WHERE v."csvDashboardId" = r."csvDashboardId" AND v."rowData"->>'FSEIBAN' = r."rowData"->>'FSEIBAN'),
-    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."version") ORDER BY v."id") FROM "ProductionScheduleSessakuPieceSet" v
-      WHERE v."csvDashboardId" = r."csvDashboardId" AND v."fseiban" = r."rowData"->>'FSEIBAN')
+    ${JSON.stringify(policy)}::jsonb,
+    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(v."id", v."rowData",
+      (SELECT TO_JSONB(q) FROM "ProductionScheduleOrderSupplement" q WHERE q."csvDashboardRowId" = v."id"),
+      (SELECT TO_JSONB(p) FROM "ProductionScheduleProgress" p WHERE p."csvDashboardRowId" = v."id"),
+      (SELECT TO_JSONB(x) FROM "ProductionScheduleExternalCompletion" x WHERE x."csvDashboardRowId" = v."id"),
+      (SELECT JSONB_BUILD_ARRAY(o."itemKey", o."overrideResourceCd") FROM "ProductionScheduleGrindingPlanningBoardOverride" o
+        WHERE o."csvDashboardId" = v."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = (${parentIdFor('v')}))
+    ) ORDER BY v."id") FROM "CsvDashboardRow" v
+      WHERE v."csvDashboardId" = r."csvDashboardId" AND BTRIM(v."rowData"->>'FSEIBAN') = BTRIM(r."rowData"->>'FSEIBAN')),
+    (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(TO_JSONB(v),
+      (SELECT JSONB_AGG(JSONB_BUILD_ARRAY(TO_JSONB(p),
+        (SELECT JSONB_AGG(TO_JSONB(op) ORDER BY op."id") FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id"),
+        (SELECT JSONB_BUILD_ARRAY(o."itemKey", o."overrideResourceCd") FROM "ProductionScheduleGrindingPlanningBoardOverride" o
+          WHERE o."csvDashboardId" = v."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = 'piece:' || p."id")
+      ) ORDER BY p."id") FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = v."id")
+    ) ORDER BY v."id") FROM "ProductionScheduleSessakuPieceSet" v
+      WHERE v."csvDashboardId" = r."csvDashboardId" AND v."fseiban" = r."rowData"->>'FSEIBAN'),
+    (SELECT JSONB_AGG(TO_JSONB(c) ORDER BY c."id") FROM "ProductionScheduleGrindingPlanningBoardResourceCapacity" c
+      WHERE c."csvDashboardId" = r."csvDashboardId" AND c."siteKey" = ${siteKey})
   )::text)`;
   const rejected = rejectedInputs.length ? Prisma.sql`AND NOT EXISTS (
     SELECT 1 FROM JSONB_TO_RECORDSET(${JSON.stringify(rejectedInputs)}::jsonb) AS rejected("parentId" text, "inputVersion" text)
@@ -94,14 +109,16 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
               WHERE dp."sourcePieceId" = p."id")))
       -- Match assertLaterProcessesEditable: only linked sets with a current winner
       -- can block edits through quantity warnings or completed downstream pieces.
-      AND (s."id" IS NULL OR NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceSet" ds
+      AND (s."id" IS NULL OR NOT EXISTS (SELECT 1 FROM (
+        SELECT ds."id" FROM "ProductionScheduleSessakuPieceSet" ds WHERE ds."sourcePieceSetId" = s."id"
+        UNION
+        SELECT dp."pieceSetId" FROM "ProductionScheduleSessakuPiece" sp
+          JOIN "ProductionScheduleSessakuPiece" dp ON dp."sourcePieceId" = sp."id" WHERE sp."pieceSetId" = s."id"
+      ) linked JOIN "ProductionScheduleSessakuPieceSet" ds ON ds."id" = linked."id"
         JOIN "CsvDashboardRow" d ON d."csvDashboardId" = ds."csvDashboardId"
           AND COALESCE(d."rowData"->>'FSEIBAN', '') = ds."fseiban" AND COALESCE(d."rowData"->>'FHINCD', '') = ds."fhincd"
           AND COALESCE(d."rowData"->>'FSIGENCD', '') = ds."fsigencd" AND COALESCE(d."rowData"->>'FKOJUN', '') = ds."fkojun"
         WHERE ds."csvDashboardId" = r."csvDashboardId"
-          AND (ds."sourcePieceSetId" = s."id" OR EXISTS (
-            SELECT 1 FROM "ProductionScheduleSessakuPiece" dp JOIN "ProductionScheduleSessakuPiece" sp ON sp."id" = dp."sourcePieceId"
-            WHERE dp."pieceSetId" = ds."id" AND sp."pieceSetId" = s."id"))
           AND (ds."quantityWarning" IS NOT NULL
             OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" dp WHERE dp."pieceSetId" = ds."id" AND dp."isCompleted")
             OR EXISTS (SELECT 1 FROM "ProductionScheduleProgress" dp WHERE dp."csvDashboardRowId" = d."id" AND dp."isCompleted")
