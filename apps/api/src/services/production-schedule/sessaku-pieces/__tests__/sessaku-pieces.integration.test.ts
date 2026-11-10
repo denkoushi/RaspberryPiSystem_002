@@ -154,6 +154,34 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await save(other, []);
     expect((await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId }, orderBy: { opNo: 'asc' } })).map((op) => op.opNo)).toEqual([4]);
   });
+  it('charges setup once across ten manual pieces and retains completed-first semantics in both load paths', async () => {
+    await quantity(10);
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '1', fhincd: 'PART-A',
+      perUnitMinutes: 30, setupMinutes: 60 });
+    await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'own' });
+    const p = await parent();
+    expect(p.requiredMinutes).toBe(360);
+    const result = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision,
+      expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: Array(10).fill(1) });
+    const ordered = [...result.pieces].sort((a, b) => a.piecePosition! - b.piecePosition!);
+    expect(ordered.map((piece) => piece.requiredMinutes)).toEqual([90, ...Array(9).fill(30)]);
+    expect(ordered.map((piece) => piece.ownRequiredMinutes)).toEqual([90, ...Array(9).fill(30)]);
+    const readLoads = async () => Promise.all([false, true].map((materialized) => readGrindingPlanningBoardLoadSummary({
+      client: prisma, siteKey: site, category: 'cutting', isResourceInCategory: () => true,
+      ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${rowId}` } : { winnerRowIds: [rowId] })
+    })));
+    for (const summary of await readLoads()) expect(summary.load.find((entry) => entry.resourceCd === '1'))
+      .toMatchObject({ requiredMinutes: 360, unfinishedItemCount: 10 });
+    await complete(ordered[0]);
+    const remaining = (await board(true, site, 'incomplete')).items.filter((item) => item.sourceRowId === rowId);
+    expect(remaining).toHaveLength(9);
+    expect(remaining.every((item) => item.requiredMinutes === 30 && item.ownRequiredMinutes === 30)).toBe(true);
+    for (const summary of await readLoads()) expect(summary.load.find((entry) => entry.resourceCd === '1'))
+      .toMatchObject({ requiredMinutes: 270, unfinishedItemCount: 9 });
+    await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+    expect((await board()).items.filter((item) => item.sourceRowId === rowId).every((item) => item.requiredMinutes === 10)).toBe(true);
+    for (const summary of await readLoads()) expect(summary.load.find((entry) => entry.resourceCd === '1')?.requiredMinutes).toBe(90);
+  });
   it('auto-splits once across two concurrent terminals, propagates later pieces and retains the manual merge marker', async () => {
     await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
       siteKey: site, itemKey: (await parent()).itemId, overrideResourceCd: '021' } });
