@@ -182,7 +182,6 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   }, [autoScrolling, findDrop, onDragPreview]);
   if (!open || !openBar) return null;
   const cards = forwardQueueWindow(layout, openBar);
-  // The drop target can vanish in a refresh before the drag is cleared, so look it up once and tolerate a miss.
   const move = (event: PointerEvent<HTMLDivElement>) => {
     const pending = drag.current;
     if (!pending || pending.pointerId !== event.pointerId) return null;

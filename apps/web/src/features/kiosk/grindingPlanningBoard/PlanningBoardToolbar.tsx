@@ -269,7 +269,7 @@ export function PlanningBoardToolbar({
             </div>, document.body)}
           </div>
           {onSingleResourceChange && <button type="button" aria-pressed={Boolean(singleResourceCd)} aria-expanded={Boolean(singleResourcePickerAnchor)}
-            aria-label={singleResourceCd ? `${singleResourceCd} ${planningBoardPair(singleResourceCd) ? '2台' : '1台'}表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
+            aria-label={singleResourceCd ? `${singleResourceCd} ${planningBoardPair(singleResourceCd, singleResourceLanes) ? '2台' : '1台'}表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
             onClick={(event) => { setScaleOpen(false); if (singleResourceCd) onSingleResourceChange(null); else onOpenSingleResourcePicker?.(event.currentTarget); }}
             className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}

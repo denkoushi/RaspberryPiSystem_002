@@ -65,8 +65,8 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, resourceHeadContainer, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
-  fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
+  onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
@@ -97,8 +97,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   // Stable row handlers must still see current callbacks and acknowledgement revisions.
   const currentBars = useMemo(() => new Map(currentLayout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
-  const latest = useRef({ interaction, currentBars });
-  useLayoutEffect(() => { latest.current = { interaction, currentBars }; });
+  const latest = useRef({ interaction, currentBars, onSelectedBarResource });
+  useLayoutEffect(() => { latest.current = { interaction, currentBars, onSelectedBarResource }; });
   const parentPieceActions = useContext(PlanningBoardPiecesContext);
   const pieceActions = useMemo(() => {
     if (!parentPieceActions) return null;
@@ -131,7 +131,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const rowActions = useMemo(() => {
     const item = (original: GrindingPlanningBoardItem) => latest.current.currentBars.get(original.itemId)?.item ?? original;
     return {
-      onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean) => latest.current.interaction.onToggleItem(item(original), selected),
+      onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean, resource?: string) => {
+        if (selected && resource) latest.current.onSelectedBarResource?.(resource);
+        latest.current.interaction.onToggleItem(item(original), selected);
+      },
       onTogglePin: (original: GrindingPlanningBoardItem) => latest.current.interaction.onTogglePin?.(item(original)),
       onResourceReorder: ((original, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceReorder?.(item(original), item(target), placement); }) as ForwardReorder,
       onResourceMove: ((original, resource, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceMove?.(item(original), resource, target && item(target), placement); }) as ForwardMove,
@@ -480,7 +483,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     return [group.resource!, old?.text === group.label ? old : { text: group.label, node: resourceLabel(group.resource!, group.label) }];
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
-  const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+  const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
         items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}

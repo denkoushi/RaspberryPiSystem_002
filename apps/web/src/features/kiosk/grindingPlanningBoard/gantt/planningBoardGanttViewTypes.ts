@@ -10,6 +10,10 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
   resourceLanes?: readonly string[];
   unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
+  onSelectedBarResource?: (resource: string) => void;
+  capacityLoaded?: boolean;
+  machineSelectionLocked?: boolean;
+  machineSelectionLabel?: string;
   resourceHeadContainer?: HTMLElement | null;
   hideResourceHead?: boolean;
   machineMode?: 1 | 2;

@@ -5,7 +5,9 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+export function PlanningBoardSingleResourceHead({ machineSelectionLabel, machineSelectionLocked = false, resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+  machineSelectionLabel?: string;
+  machineSelectionLocked?: boolean;
   machineMode?: 1 | 2;
   twoMachineDisabled?: boolean;
   onMachineModeChange?: (mode: 1 | 2) => void;
@@ -32,11 +34,11 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
   return <div data-testid="planning-single-resource-head" className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-slate-950 px-2 [scrollbar-width:none]">
     <button type="button" aria-label="1台の資源CDを選ぶ" aria-expanded={pickerOpen} onClick={(event) => onOpenPicker?.(event.currentTarget)}
       className="flex h-8 shrink-0 items-baseline gap-2 whitespace-nowrap rounded-md border border-slate-600 px-2">
-      <b className="font-mono text-[17px]">{resourceCd}</b><span className="text-sm font-bold text-slate-300">{names?.join(' / ')}</span><span className="text-[11px] text-slate-400">▼</span>
+      <b className="font-mono text-[17px]">{machineSelectionLabel ?? resourceCd}</b><span className="text-sm font-bold text-slate-300">{machineMode === 2 ? '2台' : names?.join(' / ')}</span><span className="text-[11px] text-slate-400">▼</span>
     </button>
-    <div className="flex shrink-0 gap-1" role="group" aria-label="表示台数">
-      {([1, 2] as const).map((mode) => <button key={mode} type="button" className={buttonClass(machineMode === mode)}
-        aria-pressed={machineMode === mode} disabled={mode === 2 && twoMachineDisabled} onClick={() => onMachineModeChange?.(mode)}>{mode}台</button>)}
+    <div className="flex h-8 shrink-0 overflow-hidden rounded-md border border-slate-700" role="group" aria-label="表示台数">
+      {([1, 2] as const).map((mode) => <button key={mode} type="button" className={clsx('shrink-0 px-3.5 text-[15px] font-extrabold disabled:opacity-40', machineMode === mode ? 'bg-slate-100 text-slate-950' : 'text-slate-400')}
+        aria-pressed={machineMode === mode} disabled={machineSelectionLocked || (mode === 2 && twoMachineDisabled)} onClick={() => { if (!machineSelectionLocked) onMachineModeChange?.(mode); }}>{mode}台</button>)}
     </div>
     <div className="flex gap-1" role="group" aria-label={`${resourceCd}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((value) => <button key={value} type="button" className={buttonClass(hours === value)}

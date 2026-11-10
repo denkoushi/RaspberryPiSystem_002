@@ -58,7 +58,7 @@ type Props = {
   disabled: boolean;
   dragDisabled: boolean;
   resourceView: boolean;
-  onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean, resource?: string) => void;
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
@@ -172,7 +172,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     if (pending.longPressed) {
       if (distance < 8) return;
       pending.longPressed = false;
-      onToggleItem(pending.bar.item, pending.selected);
+      onToggleItem(pending.bar.item, pending.selected, pending.bar.resource);
     }
     if (distance >= 8 && !dragDisabled && resourceView && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
@@ -312,7 +312,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                   if (!pending || pending.tapCancelled) return;
                   pending.longPressed = true;
                   suppressClick.current = true;
-                  onToggleItem(bar.item, !selected);
+                  onToggleItem(bar.item, !selected, bar.resource);
                 }, 500);
                 event.currentTarget.setPointerCapture?.(event.pointerId);
               }} onPointerMove={move}
@@ -332,7 +332,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
+                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected, bar.resource); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}

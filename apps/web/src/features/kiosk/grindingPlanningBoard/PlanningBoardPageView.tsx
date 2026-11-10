@@ -91,7 +91,7 @@ export function PlanningBoardPageView({
   const content = (
     <>
       {data && ganttEnabled ? (
-        <PlanningBoardGanttDisplay resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
+        <PlanningBoardGanttDisplay capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
           onMinutesSourceChange={gantt.changeMinutesSource} valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}
           resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
