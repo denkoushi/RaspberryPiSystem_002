@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import type { SessakuPieceSet } from '../piece-key.js';
 import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-planning-board-projection.js';
@@ -39,8 +40,8 @@ vi.mock('../piece-completion.js', () => ({ reconcileSessakuPieceProgress: mocks.
 vi.mock('../piece-quantity.js', () => ({ reconcileSessakuPieceQuantities: mocks.quantities }));
 vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: async () => ({}), isProductionScheduleCuttingResourceCd: () => true }));
 vi.mock('../../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: vi.fn() }));
-vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn() }));
-import { setSessakuPieceCompletion, setSessakuPieceOpCompletion, splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.service.js';
+vi.mock('../../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn(), acquireProductionScheduleParentRowLocksInTransaction: vi.fn() }));
+import { runAutoUnitSplitBatch, runAutoUnitSplitLot, setSessakuPieceCompletion, setSessakuPieceOpCompletion, splitSessakuPieces, mergeSessakuPieces } from '../sessaku-pieces.service.js';
 import { projectGrindingPlanningBoard } from '../../grinding-planning-board-projection.js';
 import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js';
 
@@ -92,6 +93,25 @@ describe('piece operation completion transaction', () => {
     mocks.tx.productionScheduleSessakuPiece.update.mockImplementation(async ({ data }) => { Object.assign(set.pieces[0], data); });
     mocks.tx.productionScheduleSessakuPieceSet.update.mockImplementation(async () => { set.version += 1; });
     mocks.progress.mockImplementation(async () => ({ parentIsCompleted: set.pieces.every((piece) => piece.isCompleted) }));
+  });
+  it.each([0, 1])('keeps one set of locks and continues after lot %i rolls back', async (failedLot) => {
+    const tx = mocks.tx as unknown as Prisma.TransactionClient;
+    const completed: number[] = [];
+    const error = new Error('one rejected lot');
+    await runAutoUnitSplitBatch(tx, async () => [sessakuPieceParentItemId(key)], async () => {
+      for (let index = 0; index < 3; index++) {
+        try {
+          await runAutoUnitSplitLot(async () => { if (index === failedLot) throw error; completed.push(index); });
+        } catch (caught) { expect(caught).toBe(error); }
+      }
+    });
+    expect(completed).toEqual([0, 1, 2].filter((index) => index !== failedLot));
+    expect(mocks.logicalLocks).toHaveBeenCalledOnce();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    const statements = mocks.tx.$executeRaw.mock.calls.map(([sql]) => String(sql).trim());
+    expect(statements.filter((sql) => sql === 'SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
+    expect(statements.filter((sql) => sql === 'ROLLBACK TO SAVEPOINT auto_unit_split_lot')).toHaveLength(1);
+    expect(statements.filter((sql) => sql === 'RELEASE SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
   });
   it.each(['resource off', 'quantity outside range', 'predecessor'])(
     'distinguishes temporary eligibility from structural eligibility under the lot lock: %s', async (reason) => {

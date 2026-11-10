@@ -50,7 +50,7 @@ const boundedSnapshot = (snapshot: Prisma.InputJsonObject | undefined): Prisma.I
   };
 };
 
-export async function runSessakuPieceOperation<T>(context: PieceAuditContext, operation: (audit: PieceAuditContext) => Promise<T>): Promise<T> {
+export async function runSessakuPieceOperation<T>(context: PieceAuditContext, operation: (audit: PieceAuditContext) => Promise<T>, options?: { tx: Prisma.TransactionClient; successOnly?: boolean }): Promise<T> {
   const started = performance.now();
   context.timing = { lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0, totalMs: 0,
     sourceWinnerMs: 0, sourceDetailsMs: 0, sourcePieceSetsMs: 0, overridesMs: 0, ranksMs: 0, projectMs: 0, sourceRowCount: 0, laneDiscoveryMs: 0,
@@ -61,49 +61,51 @@ export async function runSessakuPieceOperation<T>(context: PieceAuditContext, op
     propagationDbCallCount: 0, siteVersionDbCallCount: 0 };
   let failure: unknown;
   let failed = false;
+  let result: T | undefined;
   try {
-    return await operation(context);
+    result = await operation(context);
   } catch (error) {
     failure = error;
     failed = true;
-    throw error;
-  } finally {
-    context.timing.totalMs = performance.now() - started;
-    const classification = failed ? classifyErrorResponse(failure) : null;
-    const httpStatus = classification?.status ?? 200;
-    const outcome = failed ? (httpStatus < 500 ? 'rejected' : 'failed') : 'success';
-    // Unknown exceptions can contain SQL, credentials or user input. Keep their message generic.
-    const message = failed ? (httpStatus < 500 && (failure instanceof ApiError || failure instanceof DomainHttpError) ? failure.message : httpStatus === 400 ? 'Invalid request' : 'Internal server error') : null;
-    const beforeJson = boundedSnapshot(context.beforeJson);
-    const pieceIds = (failed ? context.pieceIds : context.resultPieceIds ?? context.pieceIds) ?? [];
-    const data: Prisma.ProductionScheduleSessakuPieceAuditLogCreateInput = {
-      createdAt: new Date(), requestId: context.requestId ?? null, siteKey: context.siteKey ?? null,
-      actorClientDeviceId: context.actorClientDeviceId ?? null, actorDeviceName: context.actorDeviceName ?? null,
-      action: context.action, outcome, errorCode: classification?.errorCode ?? null, httpStatus, message,
-      fseiban: context.fseiban ?? null, parentItemId: context.parentItemId ?? null, pieceIds,
-      requestedQuantities: context.requestedQuantities ?? Prisma.DbNull,
-      timing: context.timing,
-      beforeJson: beforeJson ?? Prisma.JsonNull,
-      afterJson: (outcome === 'success' ? boundedSnapshot(context.afterJson) : beforeJson) ?? Prisma.JsonNull,
-      expectedVersion: context.expectedVersion ?? null, itemRevision: context.itemRevision ?? null,
-      itemRevisions: context.itemRevisions ?? Prisma.JsonNull,
-      resultVersion: outcome === 'success' ? context.resultVersion ?? null : null
-    };
-    getAuditLogger().info({
-      event: `sessaku_piece.${context.action}`, requestId: data.requestId, action: data.action,
-      outcome, httpStatus, errorCode: data.errorCode, siteKey: data.siteKey,
-      actorClientDeviceId: data.actorClientDeviceId, actorDeviceName: data.actorDeviceName,
-      fseiban: data.fseiban, parentItemId: data.parentItemId, pieceCount: pieceIds.length,
-      pieceIds: pieceIds.slice(0, 5), requestedQuantities: context.requestedQuantities?.slice(0, 20) ?? null,
-      ...context.timing, expectedVersion: data.expectedVersion, resultVersion: data.resultVersion
-    }, 'Sessaku piece operation');
-    try {
-      // Deliberately outside the business transaction, including its rejection/rollback path.
-      await prisma.productionScheduleSessakuPieceAuditLog.create({ data });
-    } catch {
-      logger.warn({ event: 'sessaku_piece.audit_write_failed', requestId: context.requestId, action: context.action }, 'Sessaku piece audit write failed');
-    }
   }
+  context.timing.totalMs = performance.now() - started;
+  const classification = failed ? classifyErrorResponse(failure) : null;
+  const httpStatus = classification?.status ?? 200;
+  const outcome = failed ? (httpStatus < 500 ? 'rejected' : 'failed') : 'success';
+  // Unknown exceptions can contain SQL, credentials or user input. Keep their message generic.
+  const message = failed ? (httpStatus < 500 && (failure instanceof ApiError || failure instanceof DomainHttpError) ? failure.message : httpStatus === 400 ? 'Invalid request' : 'Internal server error') : null;
+  const beforeJson = boundedSnapshot(context.beforeJson);
+  const pieceIds = (failed ? context.pieceIds : context.resultPieceIds ?? context.pieceIds) ?? [];
+  const data: Prisma.ProductionScheduleSessakuPieceAuditLogCreateInput = {
+    createdAt: new Date(), requestId: context.requestId ?? null, siteKey: context.siteKey ?? null,
+    actorClientDeviceId: context.actorClientDeviceId ?? null, actorDeviceName: context.actorDeviceName ?? null,
+    action: context.action, outcome, errorCode: classification?.errorCode ?? null, httpStatus, message,
+    fseiban: context.fseiban ?? null, parentItemId: context.parentItemId ?? null, pieceIds,
+    requestedQuantities: context.requestedQuantities ?? Prisma.DbNull,
+    timing: context.timing,
+    beforeJson: beforeJson ?? Prisma.JsonNull,
+    afterJson: (outcome === 'success' ? boundedSnapshot(context.afterJson) : beforeJson) ?? Prisma.JsonNull,
+    expectedVersion: context.expectedVersion ?? null, itemRevision: context.itemRevision ?? null,
+    itemRevisions: context.itemRevisions ?? Prisma.JsonNull,
+    resultVersion: outcome === 'success' ? context.resultVersion ?? null : null
+  };
+  if (!options?.successOnly) getAuditLogger().info({
+    event: `sessaku_piece.${context.action}`, requestId: data.requestId, action: data.action,
+    outcome, httpStatus, errorCode: data.errorCode, siteKey: data.siteKey,
+    actorClientDeviceId: data.actorClientDeviceId, actorDeviceName: data.actorDeviceName,
+    fseiban: data.fseiban, parentItemId: data.parentItemId, pieceCount: pieceIds.length,
+    pieceIds: pieceIds.slice(0, 5), requestedQuantities: context.requestedQuantities?.slice(0, 20) ?? null,
+    ...context.timing, expectedVersion: data.expectedVersion, resultVersion: data.resultVersion
+  }, 'Sessaku piece operation');
+  try {
+    // Manual audits survive rollback; automatic successes belong to their lot SAVEPOINT.
+    if (!failed || !options?.successOnly) await (options?.tx ?? prisma).productionScheduleSessakuPieceAuditLog.create({ data });
+  } catch (error) {
+    if (options?.tx) throw error;
+    logger.warn({ event: 'sessaku_piece.audit_write_failed', requestId: context.requestId, action: context.action }, 'Sessaku piece audit write failed');
+  }
+  if (failed) throw failure;
+  return result as T;
 }
 
 // Snapshots contain only IDs, quantities and completion evidence, never CSV payloads.

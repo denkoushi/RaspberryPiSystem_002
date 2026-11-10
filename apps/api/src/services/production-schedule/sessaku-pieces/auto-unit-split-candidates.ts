@@ -59,9 +59,13 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     (SELECT JSONB_AGG(TO_JSONB(c) ORDER BY c."id") FROM "ProductionScheduleGrindingPlanningBoardResourceCapacity" c
       WHERE c."csvDashboardId" = r."csvDashboardId" AND c."siteKey" = ${siteKey})
   )::text)`;
+  // One fingerprint per raw seiban, even when many candidate parts share it.
+  // Raw seiban still scopes piece sets; the CSV subquery retains String.trim matching.
+  const version = Prisma.sql`(SELECT versions."inputVersion" FROM input_versions versions
+    WHERE versions."csvDashboardId" = r."csvDashboardId" AND versions."fseiban" = r."rowData"->>'FSEIBAN')`;
   const rejected = rejectedInputs.length ? Prisma.sql`AND NOT EXISTS (
     SELECT 1 FROM JSONB_TO_RECORDSET(${JSON.stringify(rejectedInputs)}::jsonb) AS rejected("parentId" text, "inputVersion" text)
-    WHERE rejected."parentId" = (${parentId}) AND rejected."inputVersion" = (${inputVersion}))` : Prisma.empty;
+    WHERE rejected."parentId" = (${parentId}) AND rejected."inputVersion" = (${version}))` : Prisma.empty;
   const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
   // MATERIALIZED keeps winner/predecessor joins behind quantity and editable-piece
   // probes. Unit pieces and quantity-one CSV rows do no expensive discovery work.
@@ -80,7 +84,13 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
           AND p."sourcePieceId" IS NULL AND NOT p."isCompleted" AND p."quantity" BETWEEN 2 AND 50
           AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPieceOpCompletion" op WHERE op."pieceId" = p."id")))`;
   const pieceEffective = trim(Prisma.sql`COALESCE(CASE WHEN po."id" IS NOT NULL THEN po."overrideResourceCd" ELSE o."overrideResourceCd" END, r."rowData"->>'FSIGENCD')`);
-  return Prisma.sql`WITH splittable_rows AS MATERIALIZED (${splittableRows}), eligible AS MATERIALIZED (
+  return Prisma.sql`WITH splittable_rows AS MATERIALIZED (${splittableRows}),
+    version_keys AS MATERIALIZED (
+      SELECT DISTINCT "csvDashboardId", "rowData"->>'FSEIBAN' AS "fseiban" FROM splittable_rows
+    ), input_versions AS MATERIALIZED (
+      SELECT r."csvDashboardId", r."rowData"->>'FSEIBAN' AS "fseiban", ${inputVersion} AS "inputVersion"
+      FROM (SELECT "csvDashboardId", JSONB_BUILD_OBJECT('FSEIBAN', "fseiban") AS "rowData" FROM version_keys) r
+    ), eligible AS MATERIALIZED (
     SELECT r."id", r."csvDashboardId", r."rowData", r."rowData"->>'FSEIBAN' AS "fseiban", ${parentId} AS "parentId" FROM splittable_rows r
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" o ON o."csvDashboardId" = r."csvDashboardId" AND o."siteKey" = ${siteKey} AND o."itemKey" = (${parentId})
     LEFT JOIN "ProductionScheduleGrindingPlanningBoardResourceCapacity" c ON c."csvDashboardId" = r."csvDashboardId" AND c."siteKey" = ${siteKey} AND c."resourceCd" = ${effective}
@@ -139,6 +149,6 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         AND ${trim(Prisma.sql`e."rowData"->>'FSIGENCD'`)} <> '' AND ${earlierProcess} <> ''
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})
-    ) SELECT "id", "fseiban", "parentId", ${inputVersion} AS "inputVersion" FROM eligible r
+    ) SELECT "id", "fseiban", "parentId", ${version} AS "inputVersion" FROM eligible r
       ORDER BY array_position(${order}::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
 }

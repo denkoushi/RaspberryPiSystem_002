@@ -48,7 +48,7 @@ describe('automatic candidate SQL contract', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: [], cuttingExcludedResourceCds: [] }, [], rejected);
     expect(sql.sql).toContain('JSONB_TO_RECORDSET(');
     expect(sql.values).toContain(JSON.stringify(rejected));
-    expect(sql.sql).toContain('rejected."inputVersion" = (MD5(');
+    expect(sql.sql).toContain('rejected."inputVersion" = ((SELECT versions."inputVersion"');
     expect(sql.sql).toContain('v."rowData"');
     expect(sql.sql).toContain('TO_JSONB(v)');
     expect(sql.sql).toContain(`BTRIM(COALESCE(v."rowData"->>'FSEIBAN', ''), ?) = BTRIM(COALESCE(r."rowData"->>'FSEIBAN', ''), ?)`);

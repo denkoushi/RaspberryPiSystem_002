@@ -1,3 +1,4 @@
+import { autoUnitSplitMetrics, isAutoUnitSplitYield } from './auto-unit-split-transaction.js';
 import { createLaneWrites, replaceSiteItems, flushSiteItems } from './piece-lane-writes.js';
 import { isAutoUnitSplitBusyError } from './piece-db-error.js';
 import { isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
@@ -6,10 +7,11 @@ import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-b
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 import { getGrindingPlanningBoardResourceMinutes, resourcePartOpMinutesSchema } from '../grinding-planning-board-resource-minutes.service.js';
 import { sessakuPieceCompletionSchema } from './sessaku-pieces.schemas.js';
-import { isLaterProcessOrder } from '../process-order.js';
+import { readLaterProcesses, assertLaterProcessesEditable, type LaterProcess } from './piece-later-processes.js';
 import { runSessakuPieceOperation, readLaterPieceAuditSnapshots, collectLaterPiecePropagationAudits, pieceTimingStage, type PieceAuditContext, type PieceOperationTiming } from './piece-audit.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '@prisma/client';
 import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuPiecesMergeRequest, SessakuPiecesMutationResponse, SessakuPiecesSplitRequest } from '@raspi-system/shared-types';
 import { prisma } from '../../../lib/prisma.js';
@@ -20,68 +22,11 @@ import { readOverrides, readRanks, readRowDetails, readWinnerRowsByLogicalKeyFse
 import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, supportsSessakuPieceRelations, type SessakuPieceLogicalKey } from './piece-key.js';
+import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
-type LaterProcess = { key: SessakuPieceLogicalKey; rowId?: string; set: Awaited<ReturnType<typeof readSessakuPieceSet>>; plannedQuantity: number | null; completed: boolean; hasWinner: boolean; externallyCompleted: boolean; previousCompleted: boolean | null };
-
-async function readLaterProcesses(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, set: Awaited<ReturnType<typeof readSessakuPieceSet>>, discoverUnsplit: boolean) {
-  const rows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => {
-    const candidate = sessakuPieceKeyFromRow(row.rowData);
-    return supportsSessakuPieceRelations(candidate) && candidate.fhincd === key.fhincd && isLaterProcessOrder(candidate.fkojun, key.fkojun);
-  });
-  const details = await readRowDetails(tx, rows.map((row) => row.id));
-  const sets = await readSessakuPieceSets(tx, rows);
-  const readLinked = (sources: NonNullable<typeof set>[]) => tx.productionScheduleSessakuPieceSet.findMany({
-    where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [
-      { sourcePieceSetId: { in: sources.map((source) => source.id) } },
-      { pieces: { some: { sourcePieceId: { in: sources.flatMap((source) => source.pieces.map((piece) => piece.id)) } } } }
-    ] }, include: { pieces: { orderBy: { position: 'asc' } } }
-  });
-  const toLaterProcess = (laterSet: NonNullable<typeof set>): LaterProcess => {
-    const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));
-    const detail = row ? details.get(row.id) : undefined;
-    return { key: laterSet, rowId: row?.id, set: laterSet, hasWinner: Boolean(row), plannedQuantity: row ? detail?.orderSupplements[0]?.plannedQuantity ?? null : laterSet.plannedQuantity,
-      completed: detail?.productionScheduleProgress?.isCompleted === true || detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
-      externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
-      previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null };
-  };
-  const result = set ? (await readLinked([set])).map(toLaterProcess) : [];
-  if (!discoverUnsplit) return result;
-  let adopted: NonNullable<typeof set>[] = [];
-  for (const row of rows) {
-    const candidate = sessakuPieceKeyFromRow(row.rowData);
-    if (result.some((process) => encodeSessakuPieceKey(process.key) === encodeSessakuPieceKey(candidate))) continue;
-    const laterSet = sets.get(encodeSessakuPieceKey(candidate)) ?? null;
-    const detail = details.get(row.id);
-    if (laterSet?.sourcePieceSetId || laterSet?.pieces.length || detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) continue;
-    result.push({ key: candidate, rowId: row.id, set: laterSet, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, completed: false, hasWinner: true,
-      externallyCompleted: false, previousCompleted: detail?.productionScheduleProgress?.isCompleted ?? null });
-    if (laterSet) adopted.push(laterSet);
-  }
-  // An empty independent cutting set can still own later sets, including missing winners.
-  const seen = new Set([set?.id, ...result.map((process) => process.set?.id)]);
-  while (adopted.length) {
-    const dependents = await readLinked(adopted);
-    adopted = [];
-    for (const dependent of dependents) {
-      if (seen.has(dependent.id)) continue;
-      seen.add(dependent.id);
-      result.push(toLaterProcess(dependent));
-      adopted.push(dependent);
-    }
-  }
-  return result;
-}
-
-function assertLaterProcessesEditable(later: LaterProcess[]) {
-  if (later.some(({ set, hasWinner }) => hasWinner && set?.quantityWarning)) conflict('PIECE_QUANTITY_CONFLICT');
-  if (later.some(({ set, completed, hasWinner }) => hasWinner && (completed || set?.pieces.some((piece) => piece.isCompleted)))) {
-    throw new ApiError(409, '後工程の片が完了しています', undefined, 'LATER_PROCESS_PIECE_COMPLETED');
-  }
-}
 function assertCuttingPieceSet(set: Awaited<ReturnType<typeof readSessakuPieceSet>>) {
   if (set?.sourcePieceSetId || set?.pieces.some((piece) => piece.sourcePieceId)) throw new ApiError(409, '後工程の片は分割・結合できません', undefined, 'LATER_PROCESS_PIECE_LOCKED');
 }
@@ -176,37 +121,62 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   return { targetFseiban: key.fseiban, resourceCds: [...resources].filter((value): value is string => value != null), inboundKeys: [...inboundKeys.values()] };
 }
 async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[], audit?: PieceAuditContext) {
-  const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites } } });
+  const batch = autoUnitSplitBatch.getStore();
+  if (batch?.before) {
+    // An override-only site can see a different extra seiban on each lot. Re-project that
+    // site's view from the shared source and pending overrides, preserving sequential scope/rank precedence.
+    const scoped = sites.filter((site) => {
+      const state = batch.states!.find((state) => state.siteKey === site);
+      if (!state) conflict('STALE_SESSAKU_PIECES');
+      return batch.keys.some((candidate) => !stateOrder(state).includes(candidate.fseiban));
+    });
+    if (scoped.length) {
+      const source = { ...batch.source!, pieceSets: await readSessakuPieceSets(tx, batch.source!.rows) };
+      for (const site of scoped) {
+        const previous = batch.before.get(site)!;
+        const next = await projection(tx, site, key, true, source, audit, {
+          state: batch.states!.find((state) => state.siteKey === site)!, overrides: previous.overrides, ranks: batch.ranks!.get(site)!
+        });
+        batch.before.set(site, { ...next, laneWrites: previous.laneWrites, stateVersionIncrements: previous.stateVersionIncrements });
+      }
+    }
+    return batch.before;
+  }
+  const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ...(batch ? {} : { siteKey: { in: sites } }) } });
   // Source rows, details and piece sets are site independent and stable under the operation locks.
-  const laneScope = await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed, later));
-  const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...states.flatMap(stateOrder)])], audit, laneScope);
+  const projectionSites = states.map((state) => state.siteKey);
+  const laneScope = batch ? undefined : await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed, later));
+  const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...(batch?.keys.map((key) => key.fseiban) ?? []), ...states.flatMap(stateOrder)])], audit, laneScope);
   const itemKeys = [...source.rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
     ...[...source.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
   // The same source scope serves every site. Fetch its placements/ranks once and
   // retain each site's existing rank precedence when projecting its own lanes.
   const [overrides, ranks] = await Promise.all([
     timed(audit, 'overridesMs', () => tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: {
-      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: sites }, itemKey: { in: itemKeys }
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: projectionSites }, itemKey: { in: itemKeys }
     } })),
     timed(audit, 'ranksMs', () => tx.productionScheduleOrderAssignment.findMany({ where: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: source.rows.map((row) => row.id) },
-      OR: [{ siteKey: { in: sites } }, { location: { in: sites } }]
+      OR: [{ siteKey: { in: projectionSites } }, { location: { in: projectionSites } }]
     }, select: { csvDashboardRowId: true, resourceCd: true, orderNumber: true, updatedAt: true, siteKey: true, location: true },
     orderBy: { updatedAt: 'desc' } }))
   ]);
   const before = new Map<string, Awaited<ReturnType<typeof projection>>>();
+  const siteRanks = new Map<string, Awaited<ReturnType<typeof readRanks>>>();
+  for (const state of states) siteRanks.set(state.siteKey, await readRanks(tx, [], state.siteKey, ranks));
   for (const state of states) before.set(state.siteKey, await projection(tx, state.siteKey, key, true, source, audit, {
     state, overrides: new Map(overrides.filter((row) => row.siteKey === state.siteKey).map((row) => [row.itemKey, row])),
-    ranks: await readRanks(tx, [], state.siteKey, ranks)
+    ranks: siteRanks.get(state.siteKey)!
   }));
+  if (batch) { batch.before = before; batch.initialBefore = copyBatchProjections(before); batch.states = states; batch.source = source; batch.ranks = siteRanks; }
   return before;
 }
-async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string, Awaited<ReturnType<typeof projection>>>) {
-  // One write per site; preserve the exact version increment of all its lane replacements.
+async function saveSiteVersions(tx: Prisma.TransactionClient, before: Map<string, Awaited<ReturnType<typeof projection>>>, once = false) {
+  // Automatic batches invalidate each changed site once; manual operations preserve their existing increments.
   for (const [siteKey, state] of before) if (state.stateVersionIncrements) {
     await tx.productionScheduleGrindingPlanningBoardState.update({ where: { csvDashboardId_siteKey: {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey
-    } }, data: { version: { increment: state.stateVersionIncrements } } });
+    } }, data: { version: { increment: once ? 1 : state.stateVersionIncrements } } });
   }
 }
 async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProcess[], removedSourceIds: string[]) {
@@ -265,14 +235,83 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
   }
 }
 
+type AutoUnitSplitBatch = {
+  tx: Prisma.TransactionClient; audit?: PieceAuditContext; keys: SessakuPieceLogicalKey[]; lockedKeys: ReadonlySet<string>; rowIds: Set<string>;
+  before?: Map<string, Awaited<ReturnType<typeof projection>>>;
+  initialBefore?: Map<string, Awaited<ReturnType<typeof projection>>>;
+  states?: Array<{ siteKey: string; seibanOrder: Prisma.JsonValue }>;
+  source?: Awaited<ReturnType<typeof readProjectionSource>>;
+  ranks?: Map<string, Awaited<ReturnType<typeof readRanks>>>;
+};
+const autoUnitSplitBatch = new AsyncLocalStorage<AutoUnitSplitBatch>();
+
+/** Only the automatic runner shares this transaction; direct/manual splits keep operate's transaction. */
+export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
+  parentIds: () => Promise<string[]>, work: () => Promise<T>, audit?: PieceAuditContext): Promise<T> {
+  await tx.$queryRaw`SELECT set_config('lock_timeout', '250ms', true)`;
+  await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+  // Discover every possible page before taking board locks, preserving critical -> logical -> board -> row.
+  const keys = (await parentIds()).map(decodeSessakuPieceParentItemId);
+  const lockedKeys = await acquireSessakuPieceLogicalLocks(tx, keys);
+  await acquireSessakuPieceBoardStateLocks(tx);
+  const rows = await readWinnerRowsByLogicalKeyFseibans(tx, [...new Set(keys.map((key) => key.fseiban))]);
+  const selected = rows.filter((row) => lockedKeys.has(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData))));
+  selected.sort((a, b) => a.id.localeCompare(b.id));
+  await acquireProductionScheduleParentRowLocksInTransaction(tx, selected.map((row) => row.id));
+  if (selected.length) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "CsvDashboardRow"
+    WHERE "id" IN (${Prisma.join(selected.map((row) => row.id))}) ORDER BY "id" FOR UPDATE`);
+  const batch: AutoUnitSplitBatch = { tx, audit, keys, lockedKeys, rowIds: new Set(selected.map((row) => row.id)) };
+  return autoUnitSplitBatch.run(batch, async () => {
+    const result = await work();
+    if (batch.before) {
+      await timed(audit, 'writeMs', () => flushSiteItems(tx, batch.before!, audit));
+      await timed(audit, 'siteVersionMs', () => saveSiteVersions(tx, batch.before!, true));
+    }
+    return result;
+  });
+}
+
+function copyBatchProjections(states: NonNullable<AutoUnitSplitBatch['before']>): NonNullable<AutoUnitSplitBatch['before']> {
+  return new Map([...states].map(([site, state]) => [site, {
+    ...state, overrides: new Map(state.overrides), laneWrites: {
+      original: state.laneWrites.original, pending: new Set(state.laneWrites.pending),
+      removed: new Set(state.laneWrites.removed), laneVisits: new Map(state.laneWrites.laneVisits)
+    }
+  }]));
+}
+
+/** Roll back both DB writes (including successful audits) and pending in-memory placements for one lot. */
+export async function runAutoUnitSplitLot<T>(work: () => Promise<T>): Promise<T> {
+  const batch = autoUnitSplitBatch.getStore();
+  if (!batch) return work();
+  const before = batch.before && copyBatchProjections(batch.before);
+  const metrics = autoUnitSplitMetrics.getStore();
+  const writtenRows = metrics?.writtenRowCount ?? 0;
+  await batch.tx.$executeRaw`SAVEPOINT auto_unit_split_lot`;
+  try {
+    const result = await work();
+    await batch.tx.$executeRaw`RELEASE SAVEPOINT auto_unit_split_lot`;
+    return result;
+  } catch (error) {
+    // A human waiter cancels the entire runner, including prior lots and audits.
+    if (isAutoUnitSplitYield(error) || isAutoUnitSplitBusyError(error)) throw error;
+    await batch.tx.$executeRaw`ROLLBACK TO SAVEPOINT auto_unit_split_lot`;
+    await batch.tx.$executeRaw`RELEASE SAVEPOINT auto_unit_split_lot`;
+    if (metrics) metrics.writtenRowCount = writtenRows;
+    batch.before = before ?? (batch.initialBefore && copyBatchProjections(batch.initialBefore));
+    throw error;
+  }
+}
+
 async function operate(params: { siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
   external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
+  const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
   const key = decodeSessakuPieceParentItemId(params.parentItemId);
   if (params.audit) Object.assign(params.audit, { parentItemId: params.parentItemId, fseiban: key.fseiban });
-  await ensurePlanningBoardState(params.siteKey);
+  if (!batch) await ensurePlanningBoardState(params.siteKey);
   const retryWithExpandedLocks = new Error('Later process lock scope changed');
   const discoveredKeys = new Map<string, SessakuPieceLogicalKey>();
   const execute = () => {
@@ -284,7 +323,10 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
     const assertActive = () => {
       if (!active || performance.now() >= executionDeadline) conflict('AUTO_UNIT_SPLIT_BUDGET');
     };
-    return prisma.$transaction(async (rawTx) => {
+    const transaction: typeof prisma.$transaction = batch
+      ? ((callback: (tx: Prisma.TransactionClient) => Promise<unknown>) => callback(batch.tx)) as typeof prisma.$transaction
+      : prisma.$transaction.bind(prisma);
+    return transaction(async (rawTx) => {
       // Prisma can reject a timed-out interactive transaction while its callback is still running.
       // Check before AND after every awaited query, including writes in nested helpers.
       const guard = <T extends object>(target: T): T => new Proxy(target, {
@@ -302,13 +344,13 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
       });
       const tx = params.autoUnitSplit || params.audit?.timing ? guard(rawTx) : rawTx;
       if (params.audit?.timing) params.audit.timing.lockWaitMs += performance.now() - lockStarted;
-      if (params.deadline !== undefined) {
+      if (!batch && params.deadline !== undefined) {
         await tx.$queryRaw`SELECT set_config('lock_timeout', ${`${Math.min(250, remainingMs)}ms`}, true),
           set_config('statement_timeout', ${`${remainingMs}ms`}, true)`;
       }
       let lockedKeys: ReadonlySet<string> = new Set();
       const lockedRowIds = new Set<string>();
-      await timed(params.audit, 'lockWaitMs', async () => {
+      if (!batch) await timed(params.audit, 'lockWaitMs', async () => {
         await acquireFkojunstStatusMailCriticalTransactionLock(tx);
         const candidateRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => sessakuPieceKeyFromRow(row.rowData).fhincd === key.fhincd);
         const candidates = candidateRows.map((row) => sessakuPieceKeyFromRow(row.rowData));
@@ -320,10 +362,12 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
           lockedRowIds.add(row.id);
         }
       });
+      if (batch) { lockedKeys = batch.lockedKeys; for (const id of batch.rowIds) lockedRowIds.add(id); }
       const set = await readSessakuPieceSet(tx, key);
       const discoverUnsplit = typeof params.discoverUnsplitLater === 'function' ? params.discoverUnsplitLater(set) : params.discoverUnsplitLater === true;
       const later = await readLaterProcesses(tx, key, set, discoverUnsplit);
       const unlocked = later.filter((process) => !lockedKeys.has(encodeSessakuPieceKey(process.key)) || (process.rowId && !lockedRowIds.has(process.rowId)));
+      if (batch && (!lockedKeys.has(encodeSessakuPieceKey(key)) || unlocked.length)) conflict('STALE_SESSAKU_PIECES');
       if (unlocked.length) {
         for (const process of unlocked) discoveredKeys.set(encodeSessakuPieceKey(process.key), process.key);
         // Roll back before expanding locks so every attempt preserves critical -> logical -> board -> row.
@@ -336,7 +380,8 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
         .filter((state) => state.siteKey === params.siteKey || stateOrder(state).includes(key.fseiban) || overrideSites.has(state.siteKey)).map((s) => s.siteKey);
       const winner = await findSessakuPieceWinner(tx, key);
       if (!winner) conflict('SOURCE_ITEM_MISSING');
-      await timed(params.audit, 'lockWaitMs', async () => {
+      if (batch && !batch.rowIds.has(winner.id)) conflict('STALE_SESSAKU_PIECES');
+      if (!batch) await timed(params.audit, 'lockWaitMs', async () => {
         await acquireProductionScheduleParentRowLockInTransaction(tx, winner.id);
         await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${winner.id} FOR UPDATE`;
       });
@@ -348,6 +393,7 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
       const current = await timed(params.audit, 'beforeProjectionMs', () => projection(tx, params.siteKey, key));
       const writeStarted = performance.now();
       const beforeProjectionMs = params.audit?.timing?.beforeProjectionMs ?? 0;
+      const batchProjectionMs = batch?.audit?.timing?.beforeProjectionMs ?? 0;
       const { saved, result } = await (async () => {
         try {
           await action(tx, { key, winner, set, current, external: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, sites, later });
@@ -359,7 +405,8 @@ async function operate(params: { siteKey: string; parentItemId: string; expected
           } : undefined });
           return { saved, result };
         } finally {
-          if (params.audit?.timing) params.audit.timing.writeMs += performance.now() - writeStarted - (params.audit.timing.beforeProjectionMs - beforeProjectionMs);
+          if (params.audit?.timing) params.audit.timing.writeMs += performance.now() - writeStarted - (params.audit.timing.beforeProjectionMs - beforeProjectionMs)
+            - ((batch?.audit?.timing?.beforeProjectionMs ?? 0) - batchProjectionMs);
         }
       })();
       const after = await timed(params.audit, 'afterProjectionMs', () => projection(tx, params.siteKey, key));
@@ -438,7 +485,10 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     }
     await assertNoOperationCompletions(tx, [...(target ? [target.id] : []), ...c.later.flatMap(({ set }) => set?.pieces.filter((piece) => piece.sourcePieceId === target?.id).map((piece) => piece.id) ?? [])]);
     assertLaterProcessesEditable(c.later);
-    const before = await timed(params.audit, 'beforeProjectionMs', () => beforeProjections(tx, c.sites, c.key, [itemId], c.later, params.audit));
+    const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
+    const projectionAudit = batch?.audit ?? params.audit;
+    const before = await timed(projectionAudit, 'beforeProjectionMs',
+      () => beforeProjections(tx, c.sites, c.key, [itemId], c.later, projectionAudit));
     // Automatic work never writes manual-edit history, including on failure.
     if (!params.autoUnitSplit) await rememberPieceHistory(tx, c.key);
     const added = await timed(params.audit, 'pieceCreationMs', async () => {
@@ -462,8 +512,10 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
     });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit);
     await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
-    await flushSiteItems(tx, before, params.audit);
-    await timed(params.audit, 'siteVersionMs', () => saveSiteVersions(tx, before));
+    if (!autoUnitSplitBatch.getStore()) {
+      await flushSiteItems(tx, before, params.audit);
+      await timed(params.audit, 'siteVersionMs', () => saveSiteVersions(tx, before));
+    }
   });
 }
 export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
