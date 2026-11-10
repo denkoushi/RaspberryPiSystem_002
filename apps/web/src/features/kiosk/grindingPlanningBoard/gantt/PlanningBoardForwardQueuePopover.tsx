@@ -182,9 +182,6 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   }, [autoScrolling, findDrop, onDragPreview]);
   if (!open || !openBar) return null;
   const cards = forwardQueueWindow(layout, openBar);
-  // The drop target can vanish in a refresh before the drag is cleared, so look it up once and tolerate a miss.
-  const dropCard = drop ? cards.find((entry) => entry.bar.item.itemId === drop.bar.item.itemId) : undefined;
-  const gapFrom = drop && dropCard ? dropCard.position + (drop.placement === 'after' ? 1 : 0) : null;
   const move = (event: PointerEvent<HTMLDivElement>) => {
     const pending = drag.current;
     if (!pending || pending.pointerId !== event.pointerId) return null;
@@ -232,8 +229,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           bar.item.itemId === openBar.item.itemId && 'outline outline-2 outline-amber-400',
           draggedItemId === bar.item.itemId && 'outline outline-2 outline-dashed outline-amber-400 [&>*]:opacity-30')}
         data-viewport-visible={isVisible(bar) || undefined}
-        style={{ borderTop: isVisible(bar) ? '3px solid rgb(251 191 36)' : undefined,
-          transform: gapFrom !== null && queuePosition >= gapFrom ? 'translateX(10px)' : undefined, transition: 'transform 120ms' }}
+        style={{ borderTop: isVisible(bar) ? '3px solid rgb(251 191 36)' : undefined }}
         onPointerDown={(event) => {
           if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || bar.item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
           if (!gate.attempt()) return;

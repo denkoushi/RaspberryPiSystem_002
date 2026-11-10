@@ -3,6 +3,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import { useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../../../api/hooks/production-schedule';
 import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
 
@@ -267,8 +268,8 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     </div></td>
   </tr>;
 });
-export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, disabled }: {
-  resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean;
+export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, disabled, unitSplitEnabledByResource }: {
+  resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean; unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [opOverrides, setOpOverrides] = useState<Record<string, number[] | undefined>>({});
@@ -293,7 +294,7 @@ export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, d
     const nos = opOverrides[fhincd] ?? drafts.get(`${resourceCd}:${fhincd}`)?.ops.map((op) => op.opNo) ?? values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)?.ops?.map((op) => op.opNo) ?? [];
     nos.forEach((no) => used.add(no));
   }
-  const hasOps = resourceCd === '021' || resourceCd === '022' || used.size > 0;
+  const hasOps = isPlanningBoardUnitSplitEnabled(resourceCd, unitSplitEnabledByResource) || used.size > 0;
   const columnKey = used.size ? [...used].sort((a, b) => a - b).join(',') : '1';
   const columns = useMemo(() => columnKey.split(',').map(Number), [columnKey]);
   const header = 'sticky top-0 z-20 border-b border-slate-700 bg-slate-950 px-2 py-2 text-[15px] font-normal text-slate-400';

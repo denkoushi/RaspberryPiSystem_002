@@ -656,6 +656,25 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  it('keeps chain navigation on the current machine during an order preview without queuing a jump', () => {
+    const values = forwardProps([item({ requiredMinutes: 60 }), item({ itemId: 'b', originalResourceCd: '306', processOrder: '20', requiredMinutes: 60 })]);
+    const change = vi.fn(); const navigate = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} singleResourceCd="305" machineSelectionLocked onSingleResourceChange={change} onNavigateBar={navigate} />);
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const scroll = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scroll });
+    const strip = within(screen.getByTestId('planning-gantt-chain-strip'));
+    fireEvent.click(strip.getByRole('button', { name: /工順.*305/ }));
+    expect(scroll).toHaveBeenCalledOnce();
+    scroll.mockClear();
+    fireEvent.click(strip.getByRole('button', { name: /工順.*306/ }));
+    expect(change).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    rerender(<PlanningBoardGanttView {...values} singleResourceCd="306" onSingleResourceChange={change} />);
+    expect(scroll).not.toHaveBeenCalled();
+  });
   it.each(['piece', 'row'] as const)('notches a single forward segment only for pieces (%s)', (kind) => {
     render(<PlanningBoardGanttView {...forwardProps([item({ kind, requiredMinutes: 60 })])} />);
     expect(screen.getByTestId('planning-gantt-bar-a').style.clipPath).toBe(kind === 'piece' ? pieceNotchClipPath({ left: true, right: true }) : '');
@@ -2268,6 +2287,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(card).toHaveClass('outline-dashed');
     expect(screen.getByTestId(`planning-gantt-bar-${source}`)).toHaveStyle({ outline: '3px dashed rgb(251 191 36)' });
     expect(marker).toHaveClass('bg-emerald-300', placement === 'before' ? '-left-1.5' : '-right-1');
+    expect(marker.parentElement).toBe(screen.getByTestId(`planning-forward-queue-card-${target}`));
+    screen.getAllByTestId(/^planning-forward-queue-card-/).forEach((queued) => expect(queued.style.transform).toBe(''));
     fireEvent.pointerUp(card, { clientX: destination });
     expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onToggleItem).not.toHaveBeenCalled();

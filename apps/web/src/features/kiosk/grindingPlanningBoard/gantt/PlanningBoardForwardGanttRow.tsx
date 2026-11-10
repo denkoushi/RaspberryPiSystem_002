@@ -33,7 +33,6 @@ export type ForwardDragPreview = { rowKey?: string; source?: 'queue'; bar: Gantt
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   foldedWindow?: SingleResourceWindow;
-  dayLoad?: number;
   row: GanttRow;
   window?: GanttWindow;
   registerRow?: (key: string, element: HTMLDivElement | null) => void;
@@ -59,7 +58,7 @@ type Props = {
   disabled: boolean;
   dragDisabled: boolean;
   resourceView: boolean;
-  onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
+  onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean, resource?: string) => void;
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
@@ -74,7 +73,7 @@ type Props = {
   onFocusChain: (bar: GanttBar, keepOpen?: boolean) => void;
 };
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, dayLoad = 0, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const { gate, frozen } = usePlanningBoardOffline();
@@ -173,7 +172,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     if (pending.longPressed) {
       if (distance < 8) return;
       pending.longPressed = false;
-      onToggleItem(pending.bar.item, pending.selected);
+      onToggleItem(pending.bar.item, pending.selected, pending.bar.resource);
     }
     if (distance >= 8 && !dragDisabled && resourceView && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
@@ -222,7 +221,6 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   };
   const shiftPeriods = workingPeriods(hours, pausesForBreaks);
   const firstOfDay = !foldedWindow?.working || Math.abs(start - day - shiftPeriods[0]!.start) < 1e-9;
-  const lastOfDay = !foldedWindow?.working || Math.abs(foldedWindow.end - day - shiftPeriods[shiftPeriods.length - 1]!.end) < 1e-9;
   const workingWidth = foldedWindow?.periods.reduce((sum, period) => sum + period.end - period.start, 0) ?? 0;
   const rowBaseHeight = foldedWindow ? 96 : 76;
   return <div ref={rowRef} data-gantt-window-row={foldedWindow ? row.key : undefined}
@@ -234,8 +232,6 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           <span className="text-sm font-bold text-slate-400">{['日', '月', '火', '水', '木', '金', '土'][weekday]}</span>
         </div>}
         <span className="whitespace-nowrap font-mono text-sm font-bold text-slate-400">{foldedWindow.working ? `${timeLabel(foldedWindow.start)}–${timeLabel(foldedWindow.end)}時` : `–${dayLabel(foldedWindow.end - 1)}`}</span>
-        {lastOfDay && <span role="meter" aria-label={`${dayLabel(day)}の負荷`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(Math.min(1, dayLoad) * 100)}
-          className="relative mb-2 mt-auto h-1.5 overflow-hidden rounded-sm bg-slate-800"><i className="absolute inset-y-0 left-0 bg-sky-400" style={{ width: `${Math.min(1, dayLoad) * 100}%` }} /></span>}
       </> : label ?? <><strong className="truncate">{row.label}</strong><span className="truncate text-slate-400">{row.detail}</span></>}
       <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={focusedSeiban} onToggleSeiban={onToggleSeiban} />
     </div>
@@ -316,7 +312,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                   if (!pending || pending.tapCancelled) return;
                   pending.longPressed = true;
                   suppressClick.current = true;
-                  onToggleItem(bar.item, !selected);
+                  onToggleItem(bar.item, !selected, bar.resource);
                 }, 500);
                 event.currentTarget.setPointerCapture?.(event.pointerId);
               }} onPointerMove={move}
@@ -336,7 +332,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected); onFocusChain(bar, true); } else onFocusChain(bar); }
+                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected, bar.resource); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}

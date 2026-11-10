@@ -87,7 +87,7 @@ export function usePlanningBoardPageGantt({
   );
   const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
     today, now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
@@ -165,7 +165,7 @@ export function usePlanningBoardPageGantt({
     for (const item of orderItems) {
       if (item.isCompleted) continue;
       const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
-      if (gantt.singleResourceCd && !planningBoardResourceMatches(gantt.singleResourceCd, resource)) continue;
+      if (gantt.singleResourceCd && !planningBoardResourceMatches(gantt.singleResourceCd, resource, gantt.singleResourceLanes)) continue;
       const members = itemsByResource.get(resource);
       if (members) members.push(item);
       else itemsByResource.set(resource, [item]);
