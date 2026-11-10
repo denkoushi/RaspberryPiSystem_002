@@ -25,6 +25,8 @@ done
 for path in "$SERVER_COMPOSE" "$PHASE3_COMPOSE"; do
   grep -Fq 'DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}' "$path" \
     || fail "runtime API is not restricted to APP_DATABASE_URL in ${path#$ROOT/}"
+  grep -Fq 'BACKUP_RESTORE_DATABASE_URL: ${BACKUP_RESTORE_DATABASE_URL:-}' "$path" \
+    || fail "restore-only owner URL is not wired in ${path#$ROOT/}"
   ! grep -Eq 'DATABASE_URL:.*postgres|POSTGRES_PASSWORD:-postgres' "$path" \
     || fail "production Compose retains a postgres/default runtime credential in ${path#$ROOT/}"
 done
@@ -45,7 +47,11 @@ grep -Fq 'POSTGRES_SUPERUSER_PASSWORD_FILE=/etc/raspi-database/postgres-superuse
 grep -Fq 'MIGRATION_DATABASE_ENV_FILE=/etc/raspi-database/migration.env' "$DOCKER_ENV_TEMPLATE" \
   || fail 'Docker environment template omits the host-only migration path'
 ! grep -Eq '^(POSTGRES_SUPERUSER_PASSWORD|MIGRATION_DATABASE_URL)=' "$DOCKER_ENV_TEMPLATE" \
-  || fail 'privileged database credentials must not enter the ordinary Compose environment'
+  || fail 'superuser and general migration environment keys must stay host-only'
+for path in "$DOCKER_ENV_TEMPLATE" "$API_ENV_TEMPLATE"; do
+  grep -Fq 'BACKUP_RESTORE_DATABASE_URL={{ migration_database_url }}' "$path" \
+    || fail "restore must reuse the existing migration credential in ${path#$ROOT/}"
+done
 grep -Fq 'DATABASE_URL={{ app_database_url }}' "$API_ENV_TEMPLATE" \
   || fail 'API environment template does not use the application URL'
 ! grep -Eq "DATABASE_URL=.*default\('postgresql://postgres" "$API_ENV_TEMPLATE" \

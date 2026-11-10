@@ -29,15 +29,60 @@ The code-level fixes in KB-393 (Batch A/B) are **deployed to production** (PR #9
 ## C-2. PostgreSQL password (Critical)
 
 - Repository preparation separates `raspi_app`, `raspi_migrator`, and the DB
-  bootstrap credential. Runtime API receives only `raspi_app`; Prisma runs in
-  an ephemeral migration container; known defaults fail closed.
+  bootstrap credential. Runtime Prisma/pg_dump use `raspi_app`; migrations run
+  in an ephemeral container. Admin DB restore alone receives owner credentials
+  as described below; known defaults fail closed.
 - Operational order: verify a backup no older than 24 hours → separately
   approve and run `prepare-pi5-database-roles.yml` → standard release → verify
   API and kiosk operations → rotate the retained `postgres` rollback credential
   only after the release is stable.
-- Never place migration or bootstrap authority in the ordinary API environment.
+- Keep bootstrap secrets and the migration environment file out of the API.
+  The restore-only owner URL is the explicit exception to the runtime boundary.
 - Verify: API health, representative kiosk read/write, backup `pg_dump`, Prisma
   status, and rejection of DDL/migration-ledger writes by `raspi_app`.
+
+### Admin DB restore owner connection (2026-11-10)
+
+- `DatabaseBackupTarget.restore` uses only the username/password from optional
+  `BACKUP_RESTORE_DATABASE_URL` for psql. Prisma, pg_dump and ordinary operations
+  keep `DATABASE_URL`. Production rejects a missing restore URL with a Japanese
+  configuration error before spawning psql; development/test may use the original
+  connection. Invalid URLs and host/port/database mismatches against both
+  `DATABASE_URL` and the existing effective restore target are rejected without
+  echoing values. Port defaults to 5432; new URL query options never redirect psql.
+- Passwords use `PGPASSWORD`, never psql arguments, and are redacted from restore
+  errors. psql runs with `ON_ERROR_STOP=on --single-transaction -f -` so SQL errors
+  abort and roll back; every nonzero/signal exit fails the restore.
+- Ansible `api.env.j2` / `docker.env.j2` reuse existing `migration_database_url`;
+  no new secret is required. The server role's existing assert fixes both URLs to
+  the same Docker endpoint/database and dedicated roles. Render tasks retain 0600
+  and use `no_log`. Normal and phase3 blue/green Compose pass the restore-only key
+  to API containers. Neither the migration file nor superuser secret is mounted.
+- `pg_dump --clean --if-exists` retains OWNER and ACL statements; do not add
+  `--no-owner` / `--no-acl`. The dump restores `OWNER TO raspi_migrator` and
+  `GRANT ... TO raspi_app`; bootstrap's `ALTER DEFAULT PRIVILEGES` also provides
+  table CRUD, sequence use and function execution. No additional application GRANT
+  is needed. However, existing defaults also grant CRUD when `_prisma_migrations`
+  is recreated, and the dump's `GRANT SELECT` does not revoke those writes.
+  When switching from `raspi_app` to the owner, restore reapplies bootstrap's
+  migration-ledger write REVOKE at the end of the same transaction.
+- The API image uses PostgreSQL 18 clients. New dumps add
+  `--exclude-extension=vector --exclude-extension=pg_trgm` to preserve these
+  postgres-owned extensions, which the migrator cannot drop/recreate
+  ([pg_dump reference](https://www.postgresql.org/docs/18/app-pgdump.html)).
+  Obtain a new encrypted backup after rollout. Existing dumps containing extension
+  DROP statements cannot use this owner-only restore path and fail with rollback;
+  do not grant superuser authority or rewrite SQL strings to bypass this limit.
+- Validation covers API credential/destination/error cases, Ansible/Compose
+  contracts, and `scripts/deploy/tests/test-postgres-role-boundaries.sh`. The latter
+  dumps as app, restores as owner, then verifies CRUD/sequences, extension retention
+  and denial of application DDL/migration-ledger writes in an isolated database.
+- Rollout requires reapplying Ansible including the server role to render the
+  environment files, then recreating the target API containers with the updated
+  image/Compose. Restart alone does not update container environment variables.
+  An already bootstrapped production database needs no new migration, manual SQL
+  or password. Verify a fresh encrypted backup/restore and application read/write
+  after separately approved rollout; local checks do not prove production success.
 
 ## C-3. NFC agent reboot/poweroff + bind address (Critical)
 

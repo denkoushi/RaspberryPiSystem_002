@@ -11,8 +11,11 @@ const { spawnMock } = vi.hoisted(() => ({
 vi.mock('child_process', () => ({
   spawn: spawnMock,
 }));
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../../lib/logger.js', () => ({ logger: { info: vi.fn(), error: vi.fn() } }));
 
 import { DatabaseBackupTarget } from '../targets/database-backup.target.js';
+import { logger } from '../../../lib/logger.js';
 
 function createMockChild() {
   return Object.assign(new EventEmitter(), {
@@ -26,6 +29,9 @@ function createMockChild() {
 describe('DatabaseBackupTarget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('NODE_ENV', 'test');
+    vi.stubEnv('DATABASE_URL', 'postgresql://raspi_app:app-password@db:5432/borrow_return');
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', '');
   });
 
   afterEach(() => {
@@ -33,38 +39,48 @@ describe('DatabaseBackupTarget', () => {
     vi.unstubAllEnvs();
   });
 
-  it('keeps the configured source identity while using the runtime connection for pg_dump', async () => {
-    vi.stubEnv('DATABASE_URL', 'postgresql://codex:codex@127.0.0.1:55432/codex_review');
-    const child = createMockChild();
-    spawnMock.mockReturnValueOnce(child);
+  it.each(['', 'postgresql://raspi_migrator:owner-password@127.0.0.1:55432/codex_review'])(
+    'keeps source identity and application authentication for pg_dump (restore URL=%s)', async (restoreUrl) => {
+      vi.stubEnv('NODE_ENV', 'production');
+      vi.stubEnv('DATABASE_URL', 'postgresql://codex:codex@127.0.0.1:55432/codex_review');
+      vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', restoreUrl);
+      const child = createMockChild();
+      spawnMock.mockReturnValueOnce(child);
 
-    queueMicrotask(() => {
-      child.stdout.end('-- PostgreSQL database dump\nSELECT 1;\n');
-      child.stderr.end();
-      child.emit('close', 0);
-    });
+      queueMicrotask(() => {
+        child.stdout.end('-- PostgreSQL database dump\nSELECT 1;\n');
+        child.stderr.end();
+        child.emit('close', 0);
+      });
 
-    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@localhost:5432/borrow_return');
-    expect(target.info).toEqual({ type: 'database', source: 'borrow_return' });
-    const source = await target.createUploadSource();
+      const target = new DatabaseBackupTarget('postgresql://postgres:postgres@localhost:5432/borrow_return');
+      expect(target.info).toEqual({ type: 'database', source: 'borrow_return' });
+      const source = await target.createUploadSource();
 
-    expect(source.kind).toBe('file');
-    if (source.kind !== 'file') return;
-    expect(source.filePath).toMatch(/\.sql\.gz$/);
+      expect(source.kind).toBe('file');
+      if (source.kind !== 'file') return;
+      expect(source.filePath).toMatch(/\.sql\.gz$/);
 
-    const compressed = await fs.readFile(source.filePath);
-    expect(compressed[0]).toBe(0x1f);
-    expect(compressed[1]).toBe(0x8b);
-    expect(gunzipSync(compressed).toString('utf-8')).toContain('PostgreSQL database dump');
+      const compressed = await fs.readFile(source.filePath);
+      expect(compressed[0]).toBe(0x1f);
+      expect(compressed[1]).toBe(0x8b);
+      expect(gunzipSync(compressed).toString('utf-8')).toContain('PostgreSQL database dump');
 
-    const [, args] = spawnMock.mock.calls[0] ?? [];
-    expect(args).toContain('codex_review');
-    expect(args).toContain('--clean');
-    expect(args).toContain('--if-exists');
-    expect(args).not.toContain('-f');
+      const [, args] = spawnMock.mock.calls[0] ?? [];
+      expect(args).toContain('codex_review');
+      expect(args).toContain('--clean');
+      expect(args).toContain('--if-exists');
+      expect(args).toContain('--exclude-extension=vector');
+      expect(args).toContain('--exclude-extension=pg_trgm');
+      expect(args).toEqual(expect.arrayContaining(['-U', 'codex']));
+      expect(args).not.toContain('--no-owner');
+      expect(args).not.toContain('--no-acl');
+      expect(args).not.toContain('--no-privileges');
+      expect(spawnMock.mock.calls[0]?.[2].env.PGPASSWORD).toBe('codex');
+      expect(args).not.toContain('-f');
 
-    await source.cleanup?.();
-    await expect(fs.stat(source.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await source.cleanup?.();
+      await expect(fs.stat(source.filePath)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it('restores gzip database backups through psql stdin', async () => {
@@ -86,8 +102,100 @@ describe('DatabaseBackupTarget', () => {
     expect(received).toContain('PostgreSQL database dump');
     expect(spawnMock).toHaveBeenCalledWith(
       'psql',
-      expect.arrayContaining(['-d', 'borrow_return']),
+      expect.arrayContaining(['-d', 'borrow_return', 'ON_ERROR_STOP=on', '--single-transaction']),
       expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
     );
+  });
+
+  it.each(['development', 'test'])('uses DATABASE_URL without restore credentials in %s', async (nodeEnv) => {
+    vi.stubEnv('NODE_ENV', nodeEnv);
+    const child = createMockChild();
+    child.stdin.on('finish', () => child.emit('close', 0));
+    spawnMock.mockReturnValueOnce(child);
+    await new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;'));
+    expect(spawnMock.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(['-U', 'raspi_app']));
+    expect(spawnMock.mock.calls[0]?.[2].env.PGPASSWORD).toBe('app-password');
+  });
+
+  it.each([undefined, '', '  '])('rejects missing production restore credentials (%s) before spawning psql', async (value) => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', value);
+    await expect(new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;')))
+      .rejects.toThrow('所有者権限の接続設定 BACKUP_RESTORE_DATABASE_URL が必要');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('uses only owner authentication and keeps the effective runtime destination', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgres://raspi_migrator:owner%40password@db/borrow_return?host=other&dbname=other');
+    const child = createMockChild();
+    child.stdin.on('finish', () => child.emit('close', 0));
+    spawnMock.mockReturnValueOnce(child);
+    // The historical localhost source still resolves to the runtime DATABASE_URL.
+    await new DatabaseBackupTarget('postgresql://postgres:postgres@localhost:5432/borrow_return')
+      .restore(Buffer.from('SELECT 1;'));
+    const [command, args, options] = spawnMock.mock.calls[0];
+    expect(command).toBe('psql');
+    expect(args).toEqual(['-h', 'db', '-p', '5432', '-U', 'raspi_migrator', '-d', 'borrow_return', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-', '-c',
+      'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM raspi_app;']);
+    expect(options.env.PGPASSWORD).toBe('owner@password');
+    expect(JSON.stringify(args)).not.toContain('password');
+    expect(process.env.DATABASE_URL).toContain('raspi_app:app-password');
+    expect(JSON.stringify(vi.mocked(logger.info).mock.calls)).not.toContain('password');
+  });
+
+  it.each([
+    'postgresql://raspi_migrator:owner-secret@other:5432/borrow_return',
+    'postgresql://raspi_migrator:owner-secret@db:5433/borrow_return',
+    'postgresql://raspi_migrator:owner-secret@db:5432/other',
+    'https://raspi_migrator:owner-secret@db:5432/borrow_return',
+    'postgresql://raspi_migrator@db:5432/borrow_return',
+    'postgresql://:owner-secret@db:5432/borrow_return',
+    'postgresql://raspi_migrator:%ZZ@db:5432/borrow_return',
+    'postgresql://raspi_migrator:owner-secret%00password@db:5432/borrow_return',
+    'postgresql://raspi%00migrator:owner-secret@db:5432/borrow_return',
+    'not-a-url-owner-secret',
+  ])('rejects mismatched or invalid restore settings without revealing them (%s)', async (value) => {
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', value);
+    const error = await new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;')).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('BACKUP_RESTORE_DATABASE_URL が不正');
+    expect((error as Error).message).not.toContain('owner-secret');
+    expect((error as Error).message).not.toContain(value);
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a configured target different from DATABASE_URL instead of redirecting restore', async () => {
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner-secret@db/borrow_return');
+    await expect(new DatabaseBackupTarget('other').restore(Buffer.from('SELECT 1;')))
+      .rejects.toThrow('一致しません');
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('rejects nonzero psql exit and redacts owner credentials (stderr=%s)', async (withStderr) => {
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner%40password@db/borrow_return');
+    const child = createMockChild();
+    child.stdin.on('finish', () => {
+      if (withStderr) {
+        child.stderr.write('ERROR: owner@pass');
+        child.stderr.write('word owner%40password');
+      }
+      child.emit('close', 3);
+    });
+    spawnMock.mockReturnValueOnce(child);
+    const error = await new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;')).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('Database restore failed');
+    const output = JSON.stringify([String(error), vi.mocked(logger.error).mock.calls]);
+    expect(output).not.toContain('owner@password');
+    expect(output).not.toContain('owner%40password');
+  });
+
+  it('handles psql closing stdin early without an unhandled stream error', async () => {
+    const child = createMockChild();
+    spawnMock.mockReturnValueOnce(child);
+    queueMicrotask(() => child.stdin.emit('error', new Error('write EPIPE')));
+    await expect(new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;'))).rejects.toThrow('write EPIPE');
+    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 });
