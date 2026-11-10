@@ -57,6 +57,7 @@ export function LoadBalancingCellDetail(props: Props) {
             resourceCd={resource.resourceCd}
             currentMinutes={resource.baseCapacityMinutes}
             saving={props.capacitySaving}
+            disabled={props.operationsDisabled}
             error={props.capacityError}
             onSave={props.onSaveCapacity}
             onCancel={props.onCancelCapacity}
@@ -64,7 +65,8 @@ export function LoadBalancingCellDetail(props: Props) {
         ) : isLate ? null : (
           <button
             type="button"
-            className="rounded-lg px-1 text-left hover:bg-slate-800"
+            className="rounded-lg px-1 text-left hover:bg-slate-800 disabled:opacity-30"
+            disabled={props.operationsDisabled}
             aria-label={`${resource.resourceCd} の能力を編集`}
             onClick={props.onEditCapacity}
           >
