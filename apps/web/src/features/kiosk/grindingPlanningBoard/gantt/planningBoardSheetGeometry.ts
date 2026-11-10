@@ -9,3 +9,8 @@ export function planningBoardSheetGeometry(containerHeight: number, paneTop: num
   const bottomInset = Math.min(paneHeight, Math.max(sheetOverlap, paneBottom - chainTop));
   return { sheetHeight, sheetOverlap, chainBottom, bottomInset };
 }
+
+export function planningBoardSharedBottomInset(paneTop: number, paneBottom: number, sheetOverlap: number, chainTop: number, chainHeight: number) {
+  const overlaps = chainTop < paneBottom && chainTop + chainHeight > paneTop;
+  return overlaps ? Math.min(Math.max(0, paneBottom - paneTop), Math.max(sheetOverlap, paneBottom - chainTop)) : sheetOverlap;
+}

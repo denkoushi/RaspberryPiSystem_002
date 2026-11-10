@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { planningBoardSheetGeometry } from './planningBoardSheetGeometry';
+import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 
 describe('planningBoardSheetGeometry', () => {
   it.each([
@@ -17,5 +17,18 @@ describe('planningBoardSheetGeometry', () => {
     expect(result.chainBottom).toBeCloseTo(stripBottom);
     expect(result.chainBottom).toBeGreaterThanOrEqual(result.sheetHeight);
     expect(height - result.chainBottom - 64).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe('planningBoardSharedBottomInset', () => {
+  it.each([
+    { name: 'strip ends at pane top', top: 300, bottom: 600, sheet: 0, chainTop: 240, height: 60, inset: 0 },
+    { name: 'strip above pane with sheet', top: 300, bottom: 600, sheet: 300, chainTop: 204, height: 60, inset: 300 },
+    { name: 'strip starts at pane bottom', top: 40, bottom: 300, sheet: 0, chainTop: 300, height: 60, inset: 0 },
+    { name: 'strip crosses pane top', top: 300, bottom: 600, sheet: 0, chainTop: 280, height: 60, inset: 300 },
+    { name: 'strip inside pane', top: 40, bottom: 300, sheet: 0, chainTop: 240, height: 60, inset: 60 },
+    { name: 'lower strip above sheet overlaps upper pane', top: 40, bottom: 300, sheet: 36, chainTop: 204, height: 60, inset: 96 }
+  ])('$name', ({ top, bottom, sheet, chainTop, height, inset }) => {
+    expect(planningBoardSharedBottomInset(top, bottom, sheet, chainTop, height)).toBe(inset);
   });
 });

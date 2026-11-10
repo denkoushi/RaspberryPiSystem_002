@@ -21,7 +21,7 @@ export function PlanningBoardSingleResourcePicker({ anchor, resources, resourceC
     const rect = anchor.getBoundingClientRect();
     const bounds = panel.current.getBoundingClientRect();
     const zoom = pageZoom();
-    setPosition(placement === 'right' ? { left: rect.right / zoom + 6, top: Math.max(16, Math.min(rect.top / zoom, (window.innerHeight - bounds.height) / zoom - 16)) } : { left: Math.max(8, Math.min(rect.left / zoom, (window.innerWidth - bounds.width) / zoom - 8)),
+    setPosition(placement === 'right' ? { left: Math.max(8, Math.min(rect.right / zoom + 6, (window.innerWidth - bounds.width) / zoom - 8)), top: Math.max(16, Math.min(rect.top / zoom, (window.innerHeight - bounds.height) / zoom - 16)) } : { left: Math.max(8, Math.min(rect.left / zoom, (window.innerWidth - bounds.width) / zoom - 8)),
       top: Math.max(8, Math.min(rect.bottom / zoom + 4, (window.innerHeight - bounds.height) / zoom - 8)) });
     (panel.current.querySelector<HTMLButtonElement>('button[aria-pressed="true"]:not(:disabled)') ?? panel.current.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();
     return () => anchor.focus();

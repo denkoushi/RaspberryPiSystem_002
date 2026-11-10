@@ -20,7 +20,8 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   chainOwner?: string | null;
   onChainFocus?: (resource: string) => void;
   sharedChainTop?: number | null;
-  onChainTopChange?: (resource: string, top: number | null) => void;
+  sharedChainHeight?: number;
+  onChainTopChange?: (resource: string, top: number | null, height: number) => void;
   machineModeButtonRef?: (button: HTMLButtonElement | null) => void;
   hideResourceHead?: boolean;
   machineMode?: 1 | 2;

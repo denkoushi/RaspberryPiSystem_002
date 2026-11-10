@@ -26,7 +26,7 @@ import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, ty
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
-import { planningBoardSheetGeometry } from './planningBoardSheetGeometry';
+import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
@@ -66,7 +66,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, onChainTopChange, machineModeButtonRef,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -339,10 +339,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const chainTop = sharedBounds.height - sharedGeometry.chainBottom - chainStripHeight;
   useLayoutEffect(() => {
     if (!singleResourceCd || !onChainTopChange) return;
-    onChainTopChange(singleResourceCd, showChain ? chainTop : null);
-    return () => onChainTopChange(singleResourceCd, null);
-  }, [singleResourceCd, onChainTopChange, showChain, chainTop]);
-  const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : Math.min(Math.max(0, sharedBounds.bottom - sharedBounds.top), Math.max(sharedGeometry.sheetOverlap, sharedBounds.bottom - sharedChainTop));
+    onChainTopChange(singleResourceCd, showChain ? chainTop : null, chainStripHeight);
+    return () => onChainTopChange(singleResourceCd, null, 0);
+  }, [singleResourceCd, onChainTopChange, showChain, chainTop, chainStripHeight]);
+  const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
     if (singleResourceCd) onChainFocus?.(singleResourceCd);
@@ -470,7 +470,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     setPendingJump(null);
   }, [pendingJump, barLocations, currentBars, scrollToBar]);
   const scrollToStep = (bar: GanttBar) => {
-    if (singleGroup && bar.resource !== singleResourceCd && !onNavigateBar?.(bar)) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
+    if (!machineSelectionLocked && singleGroup && bar.resource !== singleResourceCd && !onNavigateBar?.(bar)) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
     else scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
   };

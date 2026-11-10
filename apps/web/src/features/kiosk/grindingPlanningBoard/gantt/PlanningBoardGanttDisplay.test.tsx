@@ -119,7 +119,7 @@ it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open
   expect(screen.getByRole('region', { name: '工程のつながり' })).toBeInTheDocument();
 });
 
-it('includes the lower pane chain above the value sheet in the upper pane scroll inset', () => {
+it.each(['021', '022'])('reserves only overlapping chain space in each pane (owner %s)', owner => {
   const rect = HTMLElement.prototype.getBoundingClientRect;
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
     if (this.dataset.testid === 'planning-two-machine') return { top: 0, bottom: 600, height: 600 } as DOMRect;
@@ -137,12 +137,16 @@ it('includes the lower pane chain above the value sheet in the upper pane scroll
   });
   const values = props('forward');
   const view = render(<PlanningBoardGanttDisplay {...values} />, { wrapper: ({ children }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider> });
-  fireEvent.click(within(screen.getByRole('region', { name: '022' })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
+  fireEvent.click(within(screen.getByRole('region', { name: owner })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
   const upper = within(screen.getByRole('region', { name: '021' })).getByLabelText('ガントの日付と工程');
-  expect(upper.style.scrollPaddingBottom).toBe('0px');
+  const lower = within(screen.getByRole('region', { name: '022' })).getByLabelText('ガントの日付と工程');
+  expect(upper.style.scrollPaddingBottom).toBe(owner === '021' ? '60px' : '0px');
+  expect(lower.style.scrollPaddingBottom).toBe(owner === '021' ? '0px' : '60px');
+  expect(lower.firstElementChild).toHaveStyle({ paddingBottom: owner === '021' ? '0px' : '60px' });
   view.rerender(<PlanningBoardGanttDisplay {...values} valueSheetResource="021" />);
   expect(parseFloat(screen.getByRole('region', { name: '工程のつながり' }).style.bottom)).toBeCloseTo(336);
   expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(96);
+  expect(parseFloat(lower.style.scrollPaddingBottom)).toBeCloseTo(300);
   fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
   expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(36);
 });

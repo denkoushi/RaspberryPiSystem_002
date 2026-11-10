@@ -16,9 +16,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
-  const [chainTops, setChainTops] = useState<Record<string, number | null>>({});
-  const onChainTopChange = useCallback((resource: string, top: number | null) => {
-    setChainTops(current => current[resource] === top ? current : { ...current, [resource]: top });
+  const [chainTops, setChainTops] = useState<Record<string, { top: number | null; height: number }>>({});
+  const onChainTopChange = useCallback((resource: string, top: number | null, height: number) => {
+    setChainTops(current => current[resource]?.top === top && current[resource]?.height === height ? current : { ...current, [resource]: { top, height } });
   }, []);
   const [headContainer, setHeadContainer] = useState<HTMLDivElement | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; index: number } | null>(null);
@@ -87,7 +87,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
       <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className={`flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-600 font-mono text-[22px] font-black tracking-[.1em] [writing-mode:vertical-rl] ${index ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-sky-300'}`}>{resource}<span className="text-xs">▼</span></button>
       <div className="min-h-0 min-w-0 flex-1">
-        <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner] : null} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+        <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
           ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
           valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
           onNavigateBar={(bar) => {
