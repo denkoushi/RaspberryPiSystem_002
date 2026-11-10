@@ -5,6 +5,7 @@ import type { CsvImportConfigService } from '../csv-import-config.service.js';
 import { RiggingGearCsvImporter } from '../importers/rigging-gear.js';
 
 const mocks = vi.hoisted(() => ({
+  outsideDeleteMany: vi.fn(),
   riggingGear: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   riggingGearTag: { findFirst: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   loan: { findMany: vi.fn() },
@@ -12,11 +13,13 @@ const mocks = vi.hoisted(() => ({
   machineNfcTag: { findUnique: vi.fn() },
 }));
 
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('../../../lib/prisma.js', () => {
-  const tx = { riggingGear: mocks.riggingGear, riggingGearTag: mocks.riggingGearTag, machineNfcTag: mocks.machineNfcTag };
+  const tx = { loan: mocks.loan, riggingInspectionRecord: mocks.riggingInspectionRecord, riggingGear: mocks.riggingGear, riggingGearTag: mocks.riggingGearTag, machineNfcTag: mocks.machineNfcTag };
   return {
     prisma: {
-      riggingGear: mocks.riggingGear,
+      riggingGear: { ...mocks.riggingGear, deleteMany: mocks.outsideDeleteMany },
       loan: mocks.loan,
       riggingInspectionRecord: mocks.riggingInspectionRecord,
       $transaction: async (run: (client: unknown) => unknown) => run(tx),
@@ -273,12 +276,14 @@ describe('RiggingGearCsvImporter.import', () => {
     expect(mocks.riggingGear.create).not.toHaveBeenCalled();
   });
 
-  it('rejects duplicate UIDs inside the CSV', async () => {
+  it.each([false, true])('rejects duplicate UIDs inside the CSV', async (replaceExisting) => {
     const error = await importer()
-      .import([{ ...baseRow, rfidTagUid: 'E3' }, { ...baseRow, managementNumber: 'RG-002', rfidTagUid: 'E3' }], false)
+      .import([{ ...baseRow, rfidTagUid: 'E3' }, { ...baseRow, managementNumber: 'RG-002', rfidTagUid: 'E3' }], replaceExisting)
       .catch((e: unknown) => e);
     expect((error as ApiError).statusCode).toBe(400);
     expect((error as ApiError).message).toBe('CSV内でrfidTagUidが重複しています: rfidTagUid="E3" (managementNumber: RG-001, RG-002)');
+    expect(mocks.riggingGear.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
   });
 
   it('replaceExisting protects gear with active loans or inspection records', async () => {
@@ -306,5 +311,16 @@ describe('RiggingGearCsvImporter.import', () => {
     await importer().import([baseRow], false);
     expect(mocks.riggingGear.deleteMany).not.toHaveBeenCalled();
     expect(mocks.loan.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps replacement deletion inside the transaction when a later insert fails', async () => {
+    mocks.riggingGear.findUnique.mockResolvedValue(null);
+    const failure = new Error('insert failed');
+    mocks.riggingGear.create.mockRejectedValueOnce(failure);
+    await expect(importer().import([{ name: 'A', managementNumber: 'RG-001' }], true)).rejects.toBe(failure);
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.riggingGear.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mocks.riggingGear.deleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.riggingGear.create.mock.invocationCallOrder[0]);
   });
 });

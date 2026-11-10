@@ -215,7 +215,7 @@ export class DatabaseBackupTarget implements BackupTarget {
         reject(error);
       };
 
-      const args = ['-h', host, '-p', port, '-U', user, '-d', dbName, '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'];
+      const args = ['-h', host, '-p', port, '-U', user, '-d', dbName, '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'];
       if (connection.user === 'raspi_app' && user !== connection.user) {
         // Existing default privileges grant CRUD when the dump recreates this
         // table; its GRANT SELECT alone does not revoke those inherited writes.
@@ -228,11 +228,7 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       const errors: string[] = [];
       psql.stderr.on('data', (data: Buffer) => {
-        const errorMsg = data.toString('utf-8');
-        // 警告メッセージは無視（エラーとして扱わない）
-        if (!errorMsg.includes('WARNING') && !errorMsg.includes('NOTICE')) {
-          errors.push(errorMsg);
-        }
+        errors.push(data.toString('utf-8'));
       });
 
       psql.on('close', (code) => {
@@ -258,8 +254,10 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       // バックアップデータをstdinに書き込む。gzip済みDBバックアップも復元できるようにする。
       const inputStream = this.createRestoreInputStream(backupData);
-      psql.stdin.on('error', (error) => {
+      psql.stdin.on('error', (error: NodeJS.ErrnoException) => {
         inputStream.destroy();
+        // ON_ERROR_STOPでpsqlが先に終了した場合は、closeでSQLエラーを報告する。
+        if (error.code === 'EPIPE') return;
         psql.kill('SIGTERM');
         rejectOnce(new ApiError(500, `Database restore input failed: ${redactPassword(error.message)}`));
       });

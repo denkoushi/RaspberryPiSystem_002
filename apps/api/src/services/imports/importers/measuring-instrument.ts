@@ -104,51 +104,6 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
       updated: 0
     };
 
-    // replaceExisting=trueの場合: LoanまたはInspectionRecordが存在しない計測機器を削除
-    if (replaceExisting) {
-      try {
-        // 返却されていないLoanが存在する計測機器IDを取得
-        const activeLoans = await prisma.loan.findMany({
-          where: { returnedAt: null },
-          select: { measuringInstrumentId: true }
-        });
-        const instrumentIdsWithActiveLoans = new Set(
-          activeLoans
-            .map(l => l.measuringInstrumentId)
-            .filter((id): id is string => id !== null)
-        );
-
-        // InspectionRecordが存在する計測機器IDを取得
-        const inspectionRecords = await prisma.inspectionRecord.findMany({
-          select: { measuringInstrumentId: true }
-        });
-        const instrumentIdsWithInspections = new Set(
-          inspectionRecords.map(r => r.measuringInstrumentId)
-        );
-
-        // 削除対象外のIDを結合
-        const protectedIds = new Set([
-          ...instrumentIdsWithActiveLoans,
-          ...instrumentIdsWithInspections
-        ]);
-
-        if (protectedIds.size > 0) {
-          await prisma.measuringInstrument.deleteMany({
-            where: {
-              id: {
-                notIn: Array.from(protectedIds)
-              }
-            }
-          });
-        } else {
-          await prisma.measuringInstrument.deleteMany();
-        }
-      } catch (error) {
-        logger?.error({ err: error }, '[MeasuringInstrumentCsvImporter] Error in deleteMany');
-        throw error;
-      }
-    }
-
     // CSV内のrfidTagUid重複チェック
     const rfidTagUidMap = new Map<string, string[]>();
     for (const row of instrumentRows) {
@@ -171,6 +126,51 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
 
     // 各行をループ処理
     await prisma.$transaction(async (tx) => {
+      // replaceExisting=trueの場合: LoanまたはInspectionRecordが存在しない計測機器を削除
+      if (replaceExisting) {
+        try {
+          // 返却されていないLoanが存在する計測機器IDを取得
+          const activeLoans = await tx.loan.findMany({
+            where: { returnedAt: null },
+            select: { measuringInstrumentId: true }
+          });
+          const instrumentIdsWithActiveLoans = new Set(
+            activeLoans
+              .map(l => l.measuringInstrumentId)
+              .filter((id): id is string => id !== null)
+          );
+
+          // InspectionRecordが存在する計測機器IDを取得
+          const inspectionRecords = await tx.inspectionRecord.findMany({
+            select: { measuringInstrumentId: true }
+          });
+          const instrumentIdsWithInspections = new Set(
+            inspectionRecords.map(r => r.measuringInstrumentId)
+          );
+
+          // 削除対象外のIDを結合
+          const protectedIds = new Set([
+            ...instrumentIdsWithActiveLoans,
+            ...instrumentIdsWithInspections
+          ]);
+
+          if (protectedIds.size > 0) {
+            await tx.measuringInstrument.deleteMany({
+              where: {
+                id: {
+                  notIn: Array.from(protectedIds)
+                }
+              }
+            });
+          } else {
+            await tx.measuringInstrument.deleteMany();
+          }
+        } catch (error) {
+          logger?.error({ err: error }, '[MeasuringInstrumentCsvImporter] Error in deleteMany');
+          throw error;
+        }
+      }
+
       for (const row of instrumentRows) {
         const tagUid = row.rfidTagUid?.trim() || null;
 

@@ -8,6 +8,8 @@ const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
 }));
 
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('child_process', () => ({
   spawn: spawnMock,
 }));
@@ -102,7 +104,7 @@ describe('DatabaseBackupTarget', () => {
     expect(received).toContain('PostgreSQL database dump');
     expect(spawnMock).toHaveBeenCalledWith(
       'psql',
-      expect.arrayContaining(['-d', 'borrow_return', 'ON_ERROR_STOP=on', '--single-transaction']),
+      ['-h', 'db', '-p', '5432', '-U', 'postgres', '-d', 'borrow_return', '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'],
       expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
     );
   });
@@ -136,7 +138,7 @@ describe('DatabaseBackupTarget', () => {
       .restore(Buffer.from('SELECT 1;'));
     const [command, args, options] = spawnMock.mock.calls[0];
     expect(command).toBe('psql');
-    expect(args).toEqual(['-h', 'db', '-p', '5432', '-U', 'raspi_migrator', '-d', 'borrow_return', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-', '-c',
+    expect(args).toEqual(['-h', 'db', '-p', '5432', '-U', 'raspi_migrator', '-d', 'borrow_return', '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-', '-c',
       'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM raspi_app;']);
     expect(options.env.PGPASSWORD).toBe('owner@password');
     expect(JSON.stringify(args)).not.toContain('password');
@@ -191,11 +193,49 @@ describe('DatabaseBackupTarget', () => {
     expect(output).not.toContain('owner%40password');
   });
 
-  it('handles psql closing stdin early without an unhandled stream error', async () => {
+  it('rejects other stdin errors and redacts owner credentials', async () => {
     const child = createMockChild();
     spawnMock.mockReturnValueOnce(child);
-    queueMicrotask(() => child.stdin.emit('error', new Error('write EPIPE')));
-    await expect(new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;'))).rejects.toThrow('write EPIPE');
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner%40password@db/borrow_return');
+    queueMicrotask(() => child.stdin.emit('error', new Error('write failed owner@password owner%40password')));
+    await expect(new DatabaseBackupTarget().restore(Buffer.from('SELECT 1;'))).rejects.toThrow('write failed [REDACTED] [REDACTED]');
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
+  });
+
+  it.each([
+    [3, 'NOTICE: restoring\nERROR: cannot drop table because other objects depend on it\n'],
+    [1, ''],
+    [null, ''],
+  ])('rejects psql exit %s and retains SQL diagnostics', async (code, diagnostics) => {
+    const child = createMockChild();
+    spawnMock.mockReturnValueOnce(child);
+    child.stdin.on('finish', () => {
+      child.stderr.write(diagnostics);
+      child.emit('close', code);
+    });
+    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@db:5432/borrow_return');
+    await expect(target.restore(Buffer.from('SELECT 1;'))).rejects.toThrow(
+      diagnostics || 'Database restore failed'
+    );
+  });
+
+  it('reports redacted SQL diagnostics after EPIPE when psql closes stdin early', async () => {
+    vi.stubEnv('BACKUP_RESTORE_DATABASE_URL', 'postgresql://raspi_migrator:owner%40password@db/borrow_return');
+    const child = createMockChild();
+    spawnMock.mockReturnValueOnce(child);
+    child.stdin.on('finish', () => {
+      child.stdin.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      setImmediate(() => {
+        child.stderr.write('ERROR: cannot drop table owner@password owner%40password');
+        child.emit('close', 3);
+      });
+    });
+    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@db:5432/borrow_return');
+    await expect(target.restore(Buffer.from('SELECT 1;'))).rejects.toThrow('ERROR: cannot drop table [REDACTED] [REDACTED]');
+    expect(child.kill).not.toHaveBeenCalled();
+    const output = JSON.stringify(vi.mocked(logger.error).mock.calls);
+    expect(output).toContain('ERROR: cannot drop table');
+    expect(output).not.toContain('owner@password');
+    expect(output).not.toContain('owner%40password');
   });
 });
