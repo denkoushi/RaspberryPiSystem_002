@@ -1,18 +1,15 @@
-import type { UpdateOrderFn } from './applyResourceOrderReorder';
 import type { LeaderBoardAutoRankAssignment } from './buildLeaderBoardAutoRankAssignments';
+import type { ProductionScheduleAutoRankRequest } from '@raspi-system/shared-types';
 
-/**
- * 自動順位付与計画を直列で API に反映する（order-usage 楽観パッチの競合回避）。
- */
 export async function applyLeaderBoardAutoRankAssignments(
   assignments: readonly LeaderBoardAutoRankAssignment[],
-  updateOrder: UpdateOrderFn
+  save: (payload: ProductionScheduleAutoRankRequest) => Promise<unknown>,
+  targetDeviceScopeKey?: string
 ): Promise<void> {
-  for (const assignment of assignments) {
-    await updateOrder({
-      rowId: assignment.rowId,
-      resourceCd: assignment.resourceCd,
-      orderNumber: assignment.orderNumber
-    });
-  }
+  if (assignments.length === 0) return;
+  await save({
+    resourceCd: assignments[0].resourceCd,
+    assignments: assignments.map(({ rowId, orderNumber }) => ({ rowId, orderNumber })),
+    ...(targetDeviceScopeKey ? { targetDeviceScopeKey } : {})
+  });
 }

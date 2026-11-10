@@ -1,7 +1,7 @@
 import { api } from '../../http';
 
 import type { SelfInspectionStatus } from '../../../features/part-measurement/types';
-import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { ProductionScheduleAutoRankRequest, ProductionScheduleAutoRankResponse, GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 
 export interface ProductionScheduleRow {
   id: string;
@@ -206,6 +206,13 @@ export async function getKioskProductionScheduleOrderSearchCandidates(params: {
   const { data } = await api.get<KioskProductionScheduleOrderSearchResponse>(
     '/kiosk/production-schedule/order-search',
     { params }
+  );
+  return data;
+}
+
+export async function autoRankKioskProductionScheduleOrder(payload: ProductionScheduleAutoRankRequest) {
+  const { data } = await api.put<ProductionScheduleAutoRankResponse>(
+    '/kiosk/production-schedule/order/auto-rank', payload
   );
   return data;
 }

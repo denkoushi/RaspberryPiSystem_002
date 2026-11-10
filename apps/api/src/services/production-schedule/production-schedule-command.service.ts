@@ -17,10 +17,7 @@ import { dueManagementLearningEventRepository } from './due-management-learning-
 import { releaseOrderAssignmentAtLocation } from './order-assignment/order-assignment-release.repository.js';
 import { getProductionScheduleProcessingTypeOptions } from './production-schedule-settings.service.js';
 import { sharedScheduleFieldsRepository } from './shared-schedule-fields.repository.js';
-import {
-  acquireUnifiedOrderSlotLockInTransaction,
-  assertUnifiedOrderSlotAvailableInTransaction
-} from './order-assignment/production-schedule-unified-order-slot.service.js';
+import { assignProductionScheduleOrderInTransaction } from './production-schedule-auto-rank.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 import { snapshotEventLoopObservability } from '../system/event-loop-observability.js';
 
@@ -539,91 +536,9 @@ export async function upsertProductionScheduleOrder(params: {
     return { success: true, orderNumber: null };
   }
 
-  await prisma.$transaction(async (tx) => {
-    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-    const currentRow = await tx.csvDashboardRow.findFirst({
-      where: { id: row.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
-      select: { id: true, rowData: true }
-    });
-    if (!currentRow) {
-      throw new ApiError(404, '対象の行が見つかりません');
-    }
-    const lockedAssignment = await tx.productionScheduleOrderAssignment.findUnique({
-      where: {
-        csvDashboardRowId_location: {
-          csvDashboardRowId: currentRow.id,
-          location: locationKey
-        }
-      },
-      select: { orderNumber: true, resourceCd: true }
-    });
-    await acquireUnifiedOrderSlotLockInTransaction(tx, {
-      locationKey,
-      resourceCd,
-      orderNumber
-    });
-    await assertUnifiedOrderSlotAvailableInTransaction(tx, {
-      locationKey,
-      resourceCd,
-      orderNumber,
-      excludeParentRowId: row.id
-    });
-
-    await tx.productionScheduleOrderAssignment.upsert({
-      where: {
-        csvDashboardRowId_location: {
-          csvDashboardRowId: row.id,
-          location: locationKey
-        }
-      },
-      update: {
-        resourceCd,
-        orderNumber,
-        siteKey
-      },
-      create: {
-        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: row.id,
-        location: locationKey,
-        siteKey,
-        resourceCd,
-        orderNumber
-      }
-    });
-    if (isSiteCanonicalLocation) {
-      await tx.productionScheduleOrderAssignment.deleteMany({
-        where: {
-          csvDashboardRowId: row.id,
-          siteKey,
-          location: { not: locationKey }
-        }
-      });
-    }
-    const lockedRowData = currentRow.rowData as Record<string, unknown>;
-    const fseibanRaw = lockedRowData.FSEIBAN;
-    const fseiban = typeof fseibanRaw === 'string' ? fseibanRaw.trim() : '';
-    const isCompleted = lockedRowData.progress === COMPLETED_PROGRESS_VALUE;
-    const reorderDelta =
-      typeof lockedAssignment?.orderNumber === 'number' ? orderNumber - lockedAssignment.orderNumber : null;
-    await dueManagementLearningEventRepository.saveOutcomeEvent({
-      locationKey,
-      eventType: 'manual_order_update',
-      csvDashboardRowId: currentRow.id,
-      fseiban: fseiban.length > 0 ? fseiban : null,
-      isCompleted,
-      occurredAt: new Date(),
-      metadata: {
-        from: 'kiosk_order_update',
-        actorLocation: actorLocationKey ?? locationKey,
-        targetLocation: locationKey,
-        resourceCd,
-        previousResourceCd: lockedAssignment?.resourceCd ?? null,
-        previousOrderNumber: lockedAssignment?.orderNumber ?? null,
-        nextOrderNumber: orderNumber,
-        reorderDelta
-      }
-    }, tx);
-  });
+  await prisma.$transaction((tx) => assignProductionScheduleOrderInTransaction(tx, {
+    rowId, resourceCd, orderNumber, locationKey, actorLocationKey
+  }));
 
   return { success: true, orderNumber };
 }

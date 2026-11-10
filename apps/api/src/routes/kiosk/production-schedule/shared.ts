@@ -314,6 +314,23 @@ export const productionScheduleOrderBodySchema = z.object({
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
+export const productionScheduleAutoRankBodySchema = productionScheduleOrderBodySchema
+  .omit({ orderNumber: true })
+  .extend({
+    assignments: z.array(z.object({
+      rowId: productionScheduleOrderParamsSchema.shape.rowId,
+      orderNumber: productionScheduleOrderBodySchema.shape.orderNumber.unwrap()
+    })).min(1).max(10)
+  })
+  .superRefine(({ assignments }, ctx) => {
+    if (new Set(assignments.map(({ rowId }) => rowId)).size !== assignments.length) {
+      ctx.addIssue({ code: 'custom', message: 'rowId must be unique', path: ['assignments'] });
+    }
+    if (new Set(assignments.map(({ orderNumber }) => orderNumber)).size !== assignments.length) {
+      ctx.addIssue({ code: 'custom', message: 'orderNumber must be unique', path: ['assignments'] });
+    }
+  });
+
 export const productionScheduleNoteParamsSchema = z.object({
   rowId: z.string().guid()
 });
