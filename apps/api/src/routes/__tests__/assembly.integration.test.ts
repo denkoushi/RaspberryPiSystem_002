@@ -54,6 +54,7 @@ function buildTemplatePayload(documentId: string, overrides: Partial<Record<'mod
   const modelCode = overrides.modelCode ?? 'DFL7161';
   const procedurePattern = overrides.procedurePattern ?? '手順7';
   return {
+    accessPassword: '2520',
     modelCode,
     procedurePattern,
     name: overrides.name ?? `${modelCode} ${procedurePattern}`,
@@ -305,6 +306,7 @@ describe('assembly torque management API', () => {
       }
     });
     const requiredPayload = (modelCode: string) => ({
+      accessPassword: '2520',
       modelCode,
       procedurePattern: '標準',
       name: `${modelCode} 標準`,
@@ -671,6 +673,7 @@ describe('assembly torque management API', () => {
       url: '/api/assembly/templates',
       headers: { ...headers, 'Content-Type': 'application/json' },
       payload: {
+        accessPassword: '2520',
         modelCode: 'DFL7161',
         procedurePattern: '手順7',
         name: 'DFL7161 手順7',
@@ -1150,6 +1153,20 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(imageAfterDelete.statusCode).toBe(404);
+  });
+
+  it('requires the edit password for template creation without procedure items', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, headers, 'Creation manual');
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/assembly/templates',
+      headers,
+      payload: { ...buildTemplatePayload(document.id), accessPassword: undefined }
+    });
+    expect(response.statusCode).toBe(403);
+    expect(await prisma.assemblyTemplate.count()).toBe(0);
   });
 
   it('requires the operation password for template retirement, procedure unpublication and deletion', async () => {
