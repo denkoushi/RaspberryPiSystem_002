@@ -410,7 +410,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         const originalTransaction = prisma.$transaction.bind(prisma);
         const replaceSpy = vi.spyOn(laneWrites, 'replaceSiteItems').mockImplementation(legacyReplaceSiteItems);
         const flushSpy = vi.spyOn(laneWrites, 'flushSiteItems').mockResolvedValue(undefined);
-        const transactionSpy = vi.spyOn(prisma, '$transaction').mockImplementation(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
+        // Intercept only the outer reference: nested lane-read transactions must not re-enter countDriverSql.
+        const transactionSpy = vi.spyOn(prisma, '$transaction').mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
           originalTransaction(async (tx) => {
             legacySql = (await countDriverSql(() => callback(tx))).counts;
             const snapshotStarted = performance.now(); legacy = await snapshot(tx);
@@ -506,7 +507,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     'measures one lot with production lane distribution at 4583 rows / four sites (%s)', async (placement) => {
       await productionLaneScale(placement, true);
     });
-  async function productionBatchScale(lots: number, options: { measure?: boolean; measureHumanSave?: boolean; failureIndex?: number; failureCode?: string; differentSiteScopes?: boolean } = {}) {
+  async function productionBatchScale(lots: number, options: { measure?: boolean; measureHumanSave?: boolean; failureIndex?: number; failureCode?: string; postgresError?: boolean; differentSiteScopes?: boolean } = {}) {
     const { sites, seibans, targets, rows } = productionLaneFixture(lots);
     if (options.differentSiteScopes) for (const row of targets.slice(7)) row.rowData.FSEIBAN = `SCOPE-${seiban}`;
     const targetSeibans = [...new Set(targets.map((row) => row.rowData.FSEIBAN))];
@@ -632,19 +633,34 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       const requestId = `batch-${randomUUID()}`;
       const failedParent = options.failureIndex === undefined ? undefined : buildGrindingPlanningBoardRowItemId(parents[options.failureIndex].rowData);
       let injected = false;
+      let raw: Prisma.TransactionClient | undefined;
+      let postgresCode: string | undefined;
+      const originalTransaction = prisma.$transaction.bind(prisma);
+      const transactionSpy = options.postgresError ? vi.spyOn(prisma, '$transaction').mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, txOptions: object) =>
+        originalTransaction(async (tx) => { raw = tx; return callback(tx); }, txOptions)) as typeof prisma.$transaction) : undefined;
       const originalSplit = pieceOperations.splitSessakuPieces;
       const splitSpy = failedParent ? vi.spyOn(pieceOperations, 'splitSessakuPieces').mockImplementation(async (params) => {
         if (params.parentItemId !== failedParent) return originalSplit(params);
         // Reject AFTER all source/propagation writes and pending lane edits, exercising DB + memory rollback.
         await originalSplit(params);
         injected = true;
+        if (options.postgresError) {
+          try { await raw!.$queryRaw`SELECT 1 / 0`; }
+          catch (error) {
+            postgresCode = (error as { meta?: { driverAdapterError?: { cause?: { originalCode?: string } } } }).meta?.driverAdapterError?.cause?.originalCode;
+            // Leave PostgreSQL aborted beyond the cooperative probe's 25 ms throttle.
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            throw error;
+          }
+          throw new Error('Expected PostgreSQL division by zero');
+        }
         throw new ApiError(409, 'injected per-lot rejection', undefined, options.failureCode ?? 'STALE_SESSAKU_PIECES');
       }) : undefined;
       let result;
       const started = performance.now();
       try { result = await autoSplitSessakuUnits({ siteKey: site, audit: { action: 'auto_unit_split', requestId } },
         options.measure ? { maxLots: lots, budgetMs: 30000 } : undefined); }
-      finally { splitSpy?.mockRestore(); }
+      finally { splitSpy?.mockRestore(); transactionSpy?.mockRestore(); }
       const totalMs = performance.now() - started;
       expect(result.splitCount).toBe(lots - (failedParent ? 1 : 0));
       const actual = await snapshot();
@@ -658,6 +674,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(timing.placementUpsertSqlCount).toBe(1);
       if (failedParent) {
         expect(injected).toBe(true);
+        if (options.postgresError) expect(postgresCode).toBe('22012');
         expect(result.skippedCount).toBe(1);
         const failed = parents[options.failureIndex!].rowData;
         expect(await prisma.productionScheduleSessakuPieceSet.count({ where: { fseiban: { in: targetSeibans }, fhincd: failed.FHINCD } })).toBe(0);
@@ -699,6 +716,9 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     { failureIndex: 0, failureCode: 'STALE_SESSAKU_PIECES' }
   ])('rolls back one lot and its audit while splitting the rest ($failureIndex / $failureCode)', async (options) => {
     await productionBatchScale(AUTO_UNIT_SPLIT_MAX_LOTS, options);
+  }, 180000);
+  it('rolls back a PostgreSQL-aborted lot after the cooperative probe throttle and splits the rest', async () => {
+    await productionBatchScale(3, { failureIndex: 1, postgresError: true });
   }, 180000);
   it.skipIf(process.env.SESSAKU_SPLIT_MEASURE !== '1')(
     'measures human rank save latency during a production-scale bulk placement upsert', async () => {
@@ -2435,9 +2455,30 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     });
     expect(seen).toEqual({ withoutLane: 'on', emptyInbound: 'on', withInbound: 'off', rows: seen.all, all: seen.all });
     expect(seen.all).toBeGreaterThan(0);
-    const before = await jit(prisma);
-    expect(await readWinnerRowsByFseibans(prisma, [seiban], laneScope)).toHaveLength(seen.all);
-    expect(await jit(prisma)).toBe(before);
+    const singleUrl = new URL(url!);
+    singleUrl.searchParams.set('connection_limit', '1');
+    const single = createPrismaClient(singleUrl.toString());
+    const settings = async () => (await single.$queryRaw<Array<{ pid: number; jit: string }>>`SELECT pg_backend_pid() AS pid, current_setting('jit') AS jit`)[0]!;
+    let during: { pid: number; jit: string } | undefined;
+    const transaction = single.$transaction.bind(single);
+    // Observe the setting on the actual read connection, after SET LOCAL and before its SELECT.
+    const spy = vi.spyOn(single, '$transaction').mockImplementationOnce(((callback: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
+      transaction(async (tx) => {
+        const execute = tx.$executeRaw.bind(tx);
+        const executeSpy = vi.spyOn(tx, '$executeRaw').mockImplementation((async (...args: Parameters<typeof tx.$executeRaw>) => {
+          const result = await execute(...args);
+          during = (await tx.$queryRaw<Array<{ pid: number; jit: string }>>`SELECT pg_backend_pid() AS pid, current_setting('jit') AS jit`)[0];
+          return result;
+        }) as typeof tx.$executeRaw);
+        try { return await callback(tx); } finally { executeSpy.mockRestore(); }
+      }, options)) as typeof single.$transaction);
+    try {
+      const before = await settings();
+      expect(before.jit).toBe('on');
+      expect(await readWinnerRowsByFseibans(single, [seiban], laneScope)).toHaveLength(seen.all);
+      expect(during).toEqual({ pid: before.pid, jit: 'off' });
+      expect(await settings()).toEqual(before);
+    } finally { spy.mockRestore(); await single.$disconnect(); }
   });
 
   describe('linked later process pieces', () => {

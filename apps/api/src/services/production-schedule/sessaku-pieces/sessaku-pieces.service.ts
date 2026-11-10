@@ -236,7 +236,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
 }
 
 type AutoUnitSplitBatch = {
-  tx: Prisma.TransactionClient; audit?: PieceAuditContext; keys: SessakuPieceLogicalKey[]; lockedKeys: ReadonlySet<string>; rowIds: Set<string>;
+  tx: Prisma.TransactionClient; raw: Prisma.TransactionClient; audit?: PieceAuditContext; keys: SessakuPieceLogicalKey[]; lockedKeys: ReadonlySet<string>; rowIds: Set<string>;
   before?: Map<string, Awaited<ReturnType<typeof projection>>>;
   initialBefore?: Map<string, Awaited<ReturnType<typeof projection>>>;
   states?: Array<{ siteKey: string; seibanOrder: Prisma.JsonValue }>;
@@ -247,7 +247,7 @@ const autoUnitSplitBatch = new AsyncLocalStorage<AutoUnitSplitBatch>();
 
 /** Only the automatic runner shares this transaction; direct/manual splits keep operate's transaction. */
 export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
-  parentIds: () => Promise<string[]>, work: () => Promise<T>, audit?: PieceAuditContext): Promise<T> {
+  parentIds: () => Promise<string[]>, work: () => Promise<T>, audit?: PieceAuditContext, raw: Prisma.TransactionClient = tx): Promise<T> {
   await tx.$queryRaw`SELECT set_config('lock_timeout', '250ms', true)`;
   await acquireFkojunstStatusMailCriticalTransactionLock(tx);
   // Discover every possible page before taking board locks, preserving critical -> logical -> board -> row.
@@ -260,7 +260,7 @@ export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
   await acquireProductionScheduleParentRowLocksInTransaction(tx, selected.map((row) => row.id));
   if (selected.length) await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "CsvDashboardRow"
     WHERE "id" IN (${Prisma.join(selected.map((row) => row.id))}) ORDER BY "id" FOR UPDATE`);
-  const batch: AutoUnitSplitBatch = { tx, audit, keys, lockedKeys, rowIds: new Set(selected.map((row) => row.id)) };
+  const batch: AutoUnitSplitBatch = { tx, raw, audit, keys, lockedKeys, rowIds: new Set(selected.map((row) => row.id)) };
   return autoUnitSplitBatch.run(batch, async () => {
     const result = await work();
     if (batch.before) {
@@ -295,8 +295,9 @@ export async function runAutoUnitSplitLot<T>(work: () => Promise<T>): Promise<T>
   } catch (error) {
     // A human waiter cancels the entire runner, including prior lots and audits.
     if (isAutoUnitSplitYield(error) || isAutoUnitSplitBusyError(error)) throw error;
-    await batch.tx.$executeRaw`ROLLBACK TO SAVEPOINT auto_unit_split_lot`;
-    await batch.tx.$executeRaw`RELEASE SAVEPOINT auto_unit_split_lot`;
+    // Recovery must run before any cooperative probe: PostgreSQL rejects SELECT while aborted.
+    await batch.raw.$executeRaw`ROLLBACK TO SAVEPOINT auto_unit_split_lot`;
+    await batch.raw.$executeRaw`RELEASE SAVEPOINT auto_unit_split_lot`;
     if (metrics) metrics.writtenRowCount = writtenRows;
     batch.before = before ?? (batch.initialBefore && copyBatchProjections(batch.initialBefore));
     throw error;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 const mocks = vi.hoisted(() => ({ split: vi.fn(), items: [] as GrindingPlanningBoardItem[], query: vi.fn(),
-  transaction: vi.fn(), tryLock: vi.fn(), timeout: vi.fn(), state: vi.fn(), ensureState: vi.fn(), policy: vi.fn(), capacity: vi.fn(), details: vi.fn(), overrides: vi.fn(), ranks: vi.fn(), warn: vi.fn(), sets: vi.fn(), history: vi.fn(), projection: vi.fn(), rows: vi.fn(), mark: vi.fn(), audit: vi.fn(), callLog: vi.fn() }));
+  transaction: vi.fn(), tryLock: vi.fn(), timeout: vi.fn(), state: vi.fn(), ensureState: vi.fn(), policy: vi.fn(), capacity: vi.fn(), details: vi.fn(), overrides: vi.fn(), ranks: vi.fn(), warn: vi.fn(), sets: vi.fn(), history: vi.fn(), projection: vi.fn(), rows: vi.fn(), mark: vi.fn(), audit: vi.fn(), callLog: vi.fn(), execute: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: {
   $transaction: mocks.transaction,
   $queryRaw: mocks.query,
@@ -47,6 +47,7 @@ describe('automatic unit split', () => {
       $queryRaw: (sql: { sql?: string } | TemplateStringsArray, ...values: unknown[]) => Array.isArray(sql)
         ? sql.join('').includes('pg_blocking_pids') ? Promise.resolve([{ waiting: false }]) : sql.join('').includes('set_config') ? mocks.timeout(sql, ...values) : mocks.tryLock(sql, ...values)
         : mocks.query(sql),
+      $executeRaw: (sql: TemplateStringsArray) => { mocks.execute(sql.join('')); return Promise.resolve(0); },
       productionScheduleGrindingPlanningBoardState: { findUniqueOrThrow: mocks.state },
       productionScheduleSessakuPieceSet: { findMany: mocks.sets },
       productionScheduleSessakuPieceHistory: { findMany: mocks.history }
@@ -96,6 +97,7 @@ describe('automatic unit split', () => {
     mocks.items = [item()];
     mocks.split.mockImplementation(async () => { mocks.items = [item({ kind: 'piece', parentItemId: 'row:one', pieceId: 'unit', plannedQuantity: 1, pieceSetVersion: 1 })]; });
     expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    expect(mocks.execute).toHaveBeenCalledWith('SET LOCAL jit = off');
     expect(mocks.split).toHaveBeenCalledWith(expect.objectContaining({ siteKey: 'site', expectedPieceSetVersion: 0,
       quantities: [1, 1, 1], autoUnitSplit: true, audit: expect.objectContaining({ action: 'auto_unit_split_lot' }) }));
     expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });

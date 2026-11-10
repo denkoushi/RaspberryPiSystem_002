@@ -66,9 +66,12 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
         SELECT pg_try_advisory_xact_lock(hashtextextended('sessaku-auto-unit-split', 0)) AS acquired`;
       if (!lock.acquired) { metrics.yieldReason = 'runner_busy'; return result; }
       metrics.lockStarted = performance.now();
+      // KB-452: JIT compilation ignores statement_timeout. Production row counts can push plan costs
+      // past jit_above_cost, so keep this transaction (and only this one) out of JIT.
+      await raw.$executeRaw`SET LOCAL jit = off`;
       previousStale = new Map(staleInputs);
       previousRejected = new Map(rejectedInputs);
-      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started);
+      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started, raw);
       await check(true);
       return result;
     }, { timeout: runnerTimeoutMs, maxWait: 1000 }));
@@ -118,7 +121,7 @@ async function setPreprocessingStatementTimeout(runner: Prisma.TransactionClient
 }
 
 async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteKey: string; audit?: PieceAuditContext }, deadline: number, runnerDeadline: number,
-  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number): Promise<SessakuPiecesAutoUnitSplitResponse> {
+  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number, raw: Prisma.TransactionClient): Promise<SessakuPiecesAutoUnitSplitResponse> {
   assertRunnerDeadline(runnerDeadline);
   await ensurePlanningBoardState(params.siteKey);
   await setPreprocessingStatementTimeout(runner, runnerDeadline);
@@ -317,5 +320,5 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         if (candidateRows.length <= limits.maxLots) return { ...result, hasMore: retryNeeded };
         if (excludedParentIds.size === previousExcludedCount) return { ...result, hasMore: true };
       }
-    }, batchAudit), { tx: runner, successOnly: true });
+    }, batchAudit, raw), { tx: runner, successOnly: true });
 }
