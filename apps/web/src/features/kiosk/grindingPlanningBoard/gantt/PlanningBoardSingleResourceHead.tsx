@@ -5,7 +5,10 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false }: {
+export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+  machineMode?: 1 | 2;
+  twoMachineDisabled?: boolean;
+  onMachineModeChange?: (mode: 1 | 2) => void;
   items?: GrindingPlanningBoardItem[];
   minutes?: GrindingPlanningBoardResourceMinutesResponse;
   onSourceChange?: (source: 'original' | 'own') => void;
@@ -31,6 +34,10 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
       className="flex h-8 shrink-0 items-baseline gap-2 whitespace-nowrap rounded-md border border-slate-600 px-2">
       <b className="font-mono text-[17px]">{resourceCd}</b><span className="text-sm font-bold text-slate-300">{names?.join(' / ')}</span><span className="text-[11px] text-slate-400">▼</span>
     </button>
+    <div className="flex shrink-0 gap-1" role="group" aria-label="表示台数">
+      {([1, 2] as const).map((mode) => <button key={mode} type="button" className={buttonClass(machineMode === mode)}
+        aria-pressed={machineMode === mode} disabled={mode === 2 && twoMachineDisabled} onClick={() => onMachineModeChange?.(mode)}>{mode}台</button>)}
+    </div>
     <div className="flex gap-1" role="group" aria-label={`${resourceCd}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((value) => <button key={value} type="button" className={buttonClass(hours === value)}
         aria-disabled={frozen || undefined} aria-pressed={hours === value} disabled={disabled} onClick={() => onCapacityChange(resourceCd, value)}>{value}H</button>)}

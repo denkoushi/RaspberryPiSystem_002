@@ -8,6 +8,13 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   minutesPending?: boolean; minutesError?: boolean;
   onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
   valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
+  resourceLanes?: readonly string[];
+  unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
+  resourceHeadContainer?: HTMLElement | null;
+  hideResourceHead?: boolean;
+  machineMode?: 1 | 2;
+  twoMachineDisabled?: boolean;
+  onMachineModeChange?: (mode: 1 | 2) => void;
   fitPane?: boolean; onNavigateBar?: (bar: GanttBar) => boolean;
   singleResourceCd?: string | null;
   singleResourcePickerOpen?: boolean;

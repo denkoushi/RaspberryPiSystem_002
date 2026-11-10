@@ -107,6 +107,6 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
     }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource),
     valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),
-    singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+    unitSplitEnabledByResource: capacity.data?.unitSplitEnabledByResource, singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

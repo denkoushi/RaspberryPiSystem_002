@@ -274,17 +274,11 @@ describe('two machine picker', () => {
     fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
     expect(screen.queryByRole('button', { name: '021+022 2台' })).toBeNull();
   });
-  it('offers the pair last, selects it and exits with the toolbar button', () => {
+  it('offers only individual resources even when both legacy machines are available', () => {
     render(<SingleResourceToolbar resources={['022', '021']} />);
     fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
     const picker = screen.getByRole('group', { name: '1台の資源CD' });
-    const pair = within(picker).getByRole('button', { name: '021+022 2台' });
-    expect(within(picker).getAllByRole('button').at(-1)).toBe(pair);
-    fireEvent.click(pair);
-    const button = screen.getByRole('button', { name: '021+022 2台表示をやめる' });
-    expect(button).toHaveTextContent('021+022 ✕');
-    fireEvent.click(button);
-    expect(button).toHaveTextContent('1台');
-    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(within(picker).getAllByRole('button')).toHaveLength(2);
+    expect(within(picker).queryByRole('button', { name: /2台/ })).toBeNull();
   });
 });

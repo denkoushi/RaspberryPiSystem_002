@@ -4,6 +4,7 @@ import { createRef, useState } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { productionFixture } from '../__perf__/fixture';
+import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
@@ -37,8 +38,8 @@ it.each(['forward', 'backward'] as const)('keeps 022 empty with its resource hea
   expect(upper.getByTestId('planning-gantt-bar-item-0000')).toBeInTheDocument();
   expect(lower.queryByTestId('planning-gantt-bar-item-0000')).not.toBeInTheDocument();
   expect(lower.queryAllByTestId(/^planning-gantt-bar-/)).toHaveLength(0);
-  expect(lower.getByTestId('planning-single-resource-head')).toHaveTextContent('022');
-  expect(within(lower.getByTestId('planning-single-resource-head')).getByRole('group', { name: '022の1日の稼働時間' })).toBeInTheDocument();
+  expect(screen.getAllByTestId('planning-single-resource-head')).toHaveLength(1);
+  expect(within(screen.getByTestId('planning-single-resource-head')).getByRole('group', { name: '021の1日の稼働時間' })).toBeInTheDocument();
 });
 
 it.each(['forward', 'backward'] as const)('renders each resource only in its own pane (%s)', mode => {
@@ -51,22 +52,25 @@ it.each(['forward', 'backward'] as const)('renders each resource only in its own
   expect(lower.queryByTestId('planning-gantt-bar-item-0000')).not.toBeInTheDocument();
 });
 
-it.each(['forward', 'backward'] as const)('opens the value sheet only in the clicked pane (%s)', mode => {
+it('uses one shared settings row for the upper machine and opens its value sheet', () => {
+  const values = props('forward');
+  const onSource = vi.fn(); const onBreaks = vi.fn();
   function Board() {
     const [resource, setResource] = useState<string | null>(null);
-    return <PlanningBoardGanttDisplay {...props(mode, true)} valueSheetResource={resource}
+    return <PlanningBoardGanttDisplay {...values} onMinutesSourceChange={onSource} onBreaksChange={onBreaks} valueSheetResource={resource}
       onToggleValueSheet={(next) => setResource(current => current === next ? null : next ?? null)} />;
   }
   render(<QueryClientProvider client={new QueryClient()}><Board /></QueryClientProvider>);
-  const upper = within(screen.getByRole('region', { name: '021' }));
-  const lower = within(screen.getByRole('region', { name: '022' }));
-  fireEvent.click(lower.getByRole('button', { name: /品番の値/ }));
-  expect(lower.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
-  expect(upper.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
-  fireEvent.click(upper.getByRole('button', { name: /品番の値/ }));
-  expect(upper.getByRole('region', { name: '品番の値' })).toBeInTheDocument();
-  expect(lower.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
-  fireEvent.click(upper.getByRole('button', { name: /品番の値/ }));
+  expect(screen.getAllByTestId('planning-single-resource-head')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: '8H', exact: true }));
+  expect(values.onCapacityChange).toHaveBeenCalledWith('021', 8);
+  fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
+  expect(onBreaks).toHaveBeenCalledWith('021', true);
+  fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
+  expect(onSource).toHaveBeenCalledWith({ resourceCd: '021', source: 'own' });
+  fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
+  expect(within(screen.getByRole('region', { name: '021' })).getByRole('region', { name: '品番の値' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
 });
 
@@ -178,4 +182,101 @@ it.each(['021', '022'])('does not scroll to a hidden item in %s, but scrolls to 
   act(() => { moved = ref.current!.scrollToItem(`visible-${resource}`); });
   expect(moved).toBe(true);
   expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ top: 300 + 22 - 36, behavior: 'smooth' }));
+});
+
+function InteractiveBoard({ start = '021', lanes = ['021', '022', '023', '024'], flags = { '021': true, '022': true, '023': true, '024': false }, selected = new Set<string>() }: {
+  start?: string; lanes?: string[]; flags?: Record<string, boolean>; selected?: Set<string>;
+}) {
+  const [selection, setSelection] = useState(start);
+  return <PlanningBoardGanttDisplay {...props('forward')} singleResourceCd={selection} resourceLanes={lanes}
+    unitSplitEnabledByResource={flags} onSingleResourceChange={next => setSelection(next ?? '')} selectedItemIds={selected} />;
+}
+
+it('switches to the next ON machine, swaps from a lane label, and restores the previous partner after remount', () => {
+  localStorage.clear();
+  const view = render(<InteractiveBoard />);
+  expect(screen.getByRole('button', { name: '1台', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.getByRole('region', { name: '022' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '022の機械を選ぶ' }));
+  let picker = within(screen.getByRole('group', { name: '1台の資源CD' }));
+  expect(picker.getByRole('button', { name: '024' })).toBeDisabled();
+  fireEvent.click(picker.getByRole('button', { name: '024' }));
+  expect(screen.getByRole('region', { name: '022' })).toBeInTheDocument();
+  fireEvent.click(picker.getByRole('button', { name: '021' }));
+  expect(screen.getAllByRole('region').filter(node => ['021', '022'].includes(node.getAttribute('aria-label') ?? '')).map(node => node.getAttribute('aria-label'))).toEqual(['022', '021']);
+  fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+  expect(screen.getByRole('group', { name: '022の1日の稼働時間' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '021の機械を選ぶ' }));
+  picker = within(screen.getByRole('group', { name: '1台の資源CD' }));
+  fireEvent.click(picker.getByRole('button', { name: '023' }));
+  view.unmount();
+  render(<InteractiveBoard start="022" />);
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.getByRole('region', { name: '023' })).toBeInTheDocument();
+});
+
+it.each([{ '021': false, '022': true }, { '021': true, '022': false }])('disables two machines when current is OFF or no other is ON: %j', flags => {
+  render(<InteractiveBoard flags={flags} lanes={['021', '022']} />);
+  expect(screen.getByRole('button', { name: '2台', exact: true })).toBeDisabled();
+});
+
+it('wraps the next ON machine to the first resource code', () => {
+  localStorage.clear();
+  render(<InteractiveBoard start="022" lanes={['022', '021']} />);
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.getByRole('region', { name: '021' })).toBeInTheDocument();
+});
+
+it('returns to the selected bar machine instead of the upper machine', () => {
+  render(<InteractiveBoard start="021+022" selected={new Set(['item-0001'])} />);
+  fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+  expect(screen.getByRole('group', { name: '022の1日の稼働時間' })).toBeInTheDocument();
+});
+
+it('splits bars for an arbitrary enabled pair and excludes other resources', () => {
+  const values = props('forward');
+  const remap = (resource: string) => resource === '021' ? '305' : '306';
+  const layout = { ...values.layout, groups: values.layout.groups.map(group => ({ ...group, resource: remap(group.resource!),
+    rows: group.rows.map(row => ({ ...row, bars: row.bars.map(bar => ({ ...bar, resource: remap(bar.resource) })) })) })) };
+  render(<PlanningBoardGanttDisplay {...values} layout={layout} singleResourceCd="306+305" resourceLanes={['305', '306']}
+    unitSplitEnabledByResource={{ '305': true, '306': true }} />);
+  expect(within(screen.getByRole('region', { name: '306' })).getByTestId('planning-gantt-bar-item-0001')).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: '306' })).queryByTestId('planning-gantt-bar-item-0000')).toBeNull();
+  expect(within(screen.getByRole('region', { name: '305' })).getByTestId('planning-gantt-bar-item-0000')).toBeInTheDocument();
+});
+
+it('ignores a previous partner that is now OFF', () => {
+  localStorage.clear();
+  localStorage.setItem('kiosk.planning-board.machine-partners:default', JSON.stringify({ '021': '024' }));
+  render(<InteractiveBoard />);
+  fireEvent.click(screen.getByRole('button', { name: '2台', exact: true }));
+  expect(screen.getByRole('region', { name: '022' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: '024' })).toBeNull();
+});
+
+it('uses explicit unit-split flags and defaults only the legacy machines to ON', () => {
+  expect(isPlanningBoardUnitSplitEnabled('021')).toBe(true);
+  expect(isPlanningBoardUnitSplitEnabled('022')).toBe(true);
+  expect(isPlanningBoardUnitSplitEnabled('305')).toBe(false);
+  expect(isPlanningBoardUnitSplitEnabled('021', { '021': false })).toBe(false);
+  expect(isPlanningBoardUnitSplitEnabled('305', { '305': true })).toBe(true);
+  expect(isPlanningBoardUnitSplitEnabled('305', Object.create({ '305': true }))).toBe(false);
+});
+
+it.each([0, 1])('changes pane %s from its label and keeps capacity controls on the upper resource', index => {
+  const values = props('forward');
+  function Board() {
+    const [selection, setSelection] = useState('021+022');
+    return <PlanningBoardGanttDisplay {...values} singleResourceCd={selection} resourceLanes={['021', '022', '023']}
+      unitSplitEnabledByResource={{ '023': true }} onSingleResourceChange={next => setSelection(next!)} />;
+  }
+  render(<Board />);
+  fireEvent.click(screen.getByRole('button', { name: `${index === 0 ? '021' : '022'}の機械を選ぶ` }));
+  fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '023' }));
+  expect(screen.getByRole('region', { name: '023' })).toBeInTheDocument();
+  expect(screen.getAllByTestId('planning-single-resource-head')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: '8H', exact: true }));
+  expect(values.onCapacityChange).toHaveBeenCalledWith(index === 0 ? '023' : '021', 8);
 });
