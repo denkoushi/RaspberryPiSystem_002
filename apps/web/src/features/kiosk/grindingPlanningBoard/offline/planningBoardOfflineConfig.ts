@@ -31,7 +31,7 @@ function numeric(raw: string | undefined, fallback: number, positive = false): n
   return Number.isFinite(value) && (positive ? value > 0 : value >= 0) ? value : fallback;
 }
 
-/** Pass import.meta.env at the integration boundary; this parser has no global reads. */
+/** The caller passes the build-time env object; this parser has no global reads. */
 export function readPlanningBoardOfflineConfig(env: OfflineEnv): BoardOfflineConfig {
   const defaults = DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG;
   let probeIntervalMs = numeric(env.VITE_PLANNING_BOARD_OFFLINE_PROBE_INTERVAL_MS, defaults.probeIntervalMs, true);
