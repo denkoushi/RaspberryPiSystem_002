@@ -31,15 +31,17 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     bar.tone === 'late' && planningBoardResourceMatches(PLANNING_BOARD_TWO_MACHINE, bar.resource)), [props.layout]);
   const navigate = (itemId: string) => {
     const bar = props.layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((bar) => bar.item.itemId === itemId);
-    if (bar) handles.current.get(bar.resource)?.scrollToItem(itemId);
+    return bar ? handles.current.get(bar.resource)?.scrollToItem(itemId) ?? false : false;
   };
   useImperativeHandle(ref, () => ({
     scrollToItem: navigate,
     scrollToNextLate: () => {
-      if (!lateBars.length) return;
-      const bar = lateBars[nextLate.current]!;
-      nextLate.current = (nextLate.current + 1) % lateBars.length;
-      handles.current.get(bar.resource)?.scrollToItem(bar.item.itemId);
+      // Folded rows can disappear as time advances; skip them within the same press.
+      for (let attempt = 0; attempt < lateBars.length; attempt++) {
+        const bar = lateBars[nextLate.current]!;
+        nextLate.current = (nextLate.current + 1) % lateBars.length;
+        if (handles.current.get(bar.resource)?.scrollToItem(bar.item.itemId)) return;
+      }
     },
     scrollToNextOverlap: () => {
       if (!overlapBars.length) return;

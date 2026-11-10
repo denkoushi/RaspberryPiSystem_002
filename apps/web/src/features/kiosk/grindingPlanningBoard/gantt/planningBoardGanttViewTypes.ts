@@ -39,4 +39,4 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   /** Device-local lane order key, shared with the resource list panes. */
   preferenceScope?: string;
 };
-export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void; scrollToItem: (itemId: string) => void };
+export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void; scrollToItem: (itemId: string) => boolean };

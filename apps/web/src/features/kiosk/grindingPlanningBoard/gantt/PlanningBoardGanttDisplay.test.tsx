@@ -7,6 +7,7 @@ import { productionFixture } from '../__perf__/fixture';
 
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
+import { buildSingleResourceWindows } from './planningBoardSingleResourceWindows';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 
@@ -92,4 +93,89 @@ it.each(['scrollToNextOverlap', 'scrollToNextLate'] as const)('moves one pane pe
   act(() => ref.current![method]());
   expect(upperScroll).toHaveBeenCalledTimes(1);
   expect(lowerScroll).not.toHaveBeenCalled();
+});
+
+function elapsedRowProps(scale = 1) {
+  const values = props('forward');
+  const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, scale, 8);
+  const groups = values.layout.groups.map(group => {
+    const row = group.rows[0]!;
+    const template = row.bars[0]!;
+    return { ...group, rows: [{ ...row, bars: ['hidden', 'visible'].map((kind) => {
+      const start = windows[0]!.start;
+      const end = windows[kind === 'hidden' ? 0 : 1]!.end;
+      return { ...template, item: { ...template.item, itemId: `${kind}-${group.resource}` },
+        start, end, segments: [{ start, end }], tone: 'late' as const };
+    }) }] };
+  });
+  return { values: { ...values, scale, layout: { ...values.layout, groups, lateCount: 4 } }, windows };
+}
+
+it.each([1, 2])('removes elapsed rows in both panes while retaining the row containing now (scale %s)', scale => {
+  const { values, windows } = elapsedRowProps(scale);
+  const draw = (now: number) => <PlanningBoardGanttDisplay {...values} layout={{ ...values.layout, now }} />;
+  const { rerender } = render(draw(windows[0]!.end - 1 / 86400));
+  const rows = (resource: string) => [...screen.getByRole('region', { name: resource })
+    .querySelectorAll<HTMLElement>('[data-gantt-window-row]')].map(row => row.dataset.ganttWindowRow);
+  const before = ['021', '022'].map(rows);
+  for (const keys of before) expect(keys[0]).toContain(`:single:${windows[0]!.key}`);
+
+  rerender(draw(windows[0]!.end));
+  for (const [index, resource] of ['021', '022'].entries()) {
+    expect(rows(resource)).toEqual(before[index]!.slice(1));
+    expect(screen.queryByTestId(`planning-gantt-bar-hidden-${resource}`)).not.toBeInTheDocument();
+    expect(screen.getByTestId(`planning-gantt-bar-visible-${resource}`)).toBeInTheDocument();
+  }
+
+  rerender(draw(windows[1]!.end - 1 / 86400));
+  for (const resource of ['021', '022']) expect(rows(resource)[0]).toContain(`:single:${windows[1]!.key}`);
+  expect(values.layout.lateCount).toBe(4);
+});
+
+it('cycles only remaining late bars across both panes and refreshes the targets when time advances', () => {
+  const { values, windows } = elapsedRowProps();
+  const ref = createRef<PlanningBoardGanttHandle>();
+  const draw = (now: number) => <PlanningBoardGanttDisplay {...values} ref={ref} layout={{ ...values.layout, now }} />;
+  const { rerender } = render(draw(windows[0]!.end - 1 / 86400));
+  const scrolls = ['021', '022'].map(resource => {
+    const viewport = within(screen.getByRole('region', { name: resource })).getByLabelText('ガントの日付と工程');
+    const scroll = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { value: scroll, configurable: true });
+    return scroll;
+  });
+  act(() => ref.current!.scrollToNextLate());
+  expect(scrolls[0]).toHaveBeenCalledTimes(1);
+  rerender(draw(windows[0]!.end));
+  for (const index of [0, 1, 0, 1, 0]) {
+    scrolls.forEach(scroll => scroll.mockClear());
+    act(() => ref.current!.scrollToNextLate());
+    expect(scrolls[index]).toHaveBeenCalledTimes(1);
+    expect(scrolls[1 - index]).not.toHaveBeenCalled();
+  }
+  rerender(draw(windows[1]!.end));
+  scrolls.forEach(scroll => scroll.mockClear());
+  act(() => ref.current!.scrollToNextLate());
+  act(() => ref.current!.scrollToNextLate());
+  scrolls.forEach(scroll => expect(scroll).not.toHaveBeenCalled());
+  expect(values.layout.lateCount).toBe(4);
+});
+
+it.each(['021', '022'])('does not scroll to a hidden item in %s, but scrolls to its first remaining segment', resource => {
+  const { values, windows } = elapsedRowProps();
+  const ref = createRef<PlanningBoardGanttHandle>();
+  render(<PlanningBoardGanttDisplay {...values} ref={ref} layout={{ ...values.layout, now: windows[0]!.end }} />);
+  const pane = screen.getByRole('region', { name: resource });
+  const viewport = within(pane).getByLabelText('ガントの日付と工程');
+  const scroll = vi.fn();
+  Object.defineProperty(viewport, 'clientHeight', { value: 200, configurable: true });
+  Object.defineProperty(viewport, 'scrollTo', { value: scroll, configurable: true });
+  const targetRow = within(pane).getByTestId(`planning-gantt-bar-visible-${resource}`).closest('[data-gantt-window-row]')!;
+  vi.spyOn(targetRow, 'getBoundingClientRect').mockReturnValue({ top: 300 } as DOMRect);
+  let moved: boolean | undefined;
+  act(() => { moved = ref.current!.scrollToItem(`hidden-${resource}`); });
+  expect(moved).toBe(false);
+  expect(scroll).not.toHaveBeenCalled();
+  act(() => { moved = ref.current!.scrollToItem(`visible-${resource}`); });
+  expect(moved).toBe(true);
+  expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ top: 300 + 22 - 36, behavior: 'smooth' }));
 });

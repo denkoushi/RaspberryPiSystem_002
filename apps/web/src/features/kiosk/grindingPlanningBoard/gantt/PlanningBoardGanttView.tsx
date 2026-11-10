@@ -192,7 +192,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
-    scale, singleHours, singlePauses) : [], [singleGroup, layout.today, layout.end, scale, singleHours, singlePauses]);
+    scale, singleHours, singlePauses).filter((window) => window.end > (layout.now ?? -Infinity) + 1e-9) : [], [singleGroup, layout.today, layout.end, layout.now, scale, singleHours, singlePauses]);
   const dayLoads = useMemo(() => {
     const loads = new Map<number, number>();
     for (const row of singleGroup?.rows ?? []) for (const bar of row.bars) for (const segment of bar.segments ?? []) {
@@ -396,7 +396,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
     const location = barLocations.get(bar.item.itemId)?.first;
     const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
-    if (!element || !rowElement || !rect) return;
+    if (!element || !rowElement || !rect) return false;
     const bounds = element.getBoundingClientRect();
     // Centre the first segment, keeping its start visible when wider than the chart.
     const barLeft = labelWidth + rect.left;
@@ -407,8 +407,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
+    return true;
   }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
-  useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); if (bar) scrollToBar(bar); }, scrollToNextOverlap: () => {
+  useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); return bar ? scrollToBar(bar) : false; }, scrollToNextOverlap: () => {
     const element = viewport.current;
     const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
     if (!element || !rows.length) return;
@@ -422,7 +423,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     measureWindow();
   }, scrollToNextLate: () => {
     const element = viewport.current;
-    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || bar.resource === singleResourceCd)) : [];
+    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || barLocations.has(bar.item.itemId))) : [];
     if (!element || !bars.length) return;
     flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
     const bar = bars[flaggedIndex.current]!;
@@ -433,7 +434,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
     element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
     measureWindow();
-  } }), [currentBars, scrollToBar, layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode, singleResourceCd]);
+  } }), [currentBars, scrollToBar, layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode]);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (!pendingJump || !barLocations.has(pendingJump)) return;
