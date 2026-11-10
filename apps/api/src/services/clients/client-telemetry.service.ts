@@ -233,6 +233,7 @@ export async function updateClientDevice(params: {
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
   procedureBoardEnabled?: boolean;
+  planningBoardOfflineEnabled?: boolean;
   siteKey?: string | null;
   canProxyOtherDevices?: boolean;
   isSignage?: boolean;
@@ -254,6 +255,7 @@ export async function updateClientDevice(params: {
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
         ...(params.procedureBoardEnabled !== undefined ? { procedureBoardEnabled: params.procedureBoardEnabled } : {}),
+        ...(params.planningBoardOfflineEnabled !== undefined ? { planningBoardOfflineEnabled: params.planningBoardOfflineEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
           : {}),

@@ -41,6 +41,7 @@ export async function deleteMobilePlacementShelf(shelfCodeRaw: string) {
 export type MobilePlacementClientCapabilities = {
   shelfLayoutEditEnabled: boolean;
   haizenEdgeEnabled: boolean;
+  planningBoardOfflineEnabled?: boolean;
 };
 
 export async function getMobilePlacementClientCapabilities() {

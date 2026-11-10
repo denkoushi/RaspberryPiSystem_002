@@ -1,6 +1,8 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
 
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
 export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false }: {
@@ -21,7 +23,8 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
   onCapacityChange: (resource: string, hours: GrindingPlanningBoardResourceDailyHours) => void;
   onBreaksChange?: (resource: string, runsThroughBreaks: boolean) => void;
 }) {
-  const buttonClass = (pressed: boolean) => clsx('h-8 w-[52px] shrink-0 rounded-md border text-[15px] font-bold disabled:opacity-40',
+  const { frozen } = usePlanningBoardOffline();
+  const buttonClass = (pressed: boolean) => clsx('h-8 w-[52px] shrink-0 rounded-md border text-[15px] font-bold disabled:opacity-40 aria-disabled:opacity-40',
     pressed ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200');
   return <div data-testid="planning-single-resource-head" className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-slate-950 px-2 [scrollbar-width:none]">
     <button type="button" aria-label="1台の資源CDを選ぶ" aria-expanded={pickerOpen} onClick={(event) => onOpenPicker?.(event.currentTarget)}
@@ -30,8 +33,8 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
     </button>
     <div className="flex gap-1" role="group" aria-label={`${resourceCd}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((value) => <button key={value} type="button" className={buttonClass(hours === value)}
-        aria-pressed={hours === value} disabled={disabled} onClick={() => onCapacityChange(resourceCd, value)}>{value}H</button>)}
-      <button type="button" className={clsx(buttonClass(pausesForBreaks), 'w-[60px]')} aria-pressed={pausesForBreaks} disabled={disabled || hours === 24}
+        aria-disabled={frozen || undefined} aria-pressed={hours === value} disabled={disabled} onClick={() => onCapacityChange(resourceCd, value)}>{value}H</button>)}
+      <button type="button" className={clsx(buttonClass(pausesForBreaks), 'w-[60px]')} aria-disabled={frozen || undefined} aria-pressed={pausesForBreaks} disabled={disabled || hours === 24}
         onClick={() => onBreaksChange?.(resourceCd, pausesForBreaks)}>休憩</button>
     </div>
     {averageSeconds !== undefined && <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap" title="稼働した日の1日あたり稼働時間の中央値">
@@ -39,7 +42,7 @@ export function PlanningBoardSingleResourceHead({ resourceCd, names, hours, paus
     </div>}
     <div className="flex-1" />
     <div className="flex shrink-0 rounded-md border border-slate-600" role="group" aria-label="所要時間の値">
-      {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-pressed={(minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own')}
+      {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-disabled={frozen || undefined} aria-pressed={(minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own')}
         className={clsx('h-8 whitespace-nowrap px-3 text-sm font-bold disabled:opacity-40', (minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own') ? 'bg-amber-400 text-slate-950' : 'text-slate-300')}
         onClick={() => onSourceChange?.(source)}>{source === 'original' ? '元の値' : '独自の値'} <span className="font-mono">{(items.reduce((sum, item) => sum + ((source === 'own' ? item.ownRequiredMinutes ?? item.originalRequiredMinutes : item.originalRequiredMinutes) ?? 0), 0) / 60).toFixed(1)}h</span></button>)}
     </div>

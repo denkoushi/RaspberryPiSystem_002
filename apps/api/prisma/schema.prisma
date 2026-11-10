@@ -542,6 +542,7 @@ model ClientDevice {
   haizenEdgeEnabled                             Boolean                                        @default(false)
   /// Null/false disable the kiosk procedure board.
   procedureBoardEnabled                         Boolean?
+  planningBoardOfflineEnabled                   Boolean                                        @default(false)
   /// キオスク棚レイアウト編集（区画フロアプラン・マス割当）を許可する端末
   shelfLayoutEditEnabled                        Boolean                                        @default(false)
   /// 明示的な拠点（未設定時は location 文字列から推測する旧互換）

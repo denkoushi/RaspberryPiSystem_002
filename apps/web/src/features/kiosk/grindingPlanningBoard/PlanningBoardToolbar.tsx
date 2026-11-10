@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
@@ -174,6 +175,7 @@ export function PlanningBoardToolbar({
   specialDueDisabled = false,
   specialDueCounts = { overnight: 0, today: 0 }
 }: PlanningBoardToolbarProps) {
+  const { frozen } = usePlanningBoardOffline();
   const [scaleOpen, setScaleOpen] = useState(false);
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
   const scaleButton = useRef<HTMLButtonElement>(null);
@@ -212,7 +214,7 @@ export function PlanningBoardToolbar({
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
-    <div className="flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
+    <div className="[&_button[aria-disabled=true]]:opacity-55 flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}
@@ -300,24 +302,24 @@ export function PlanningBoardToolbar({
               <span>遅れ {orderPreview.before.lateCount} → <b className={clsx(orderPreview.after.lateCount < orderPreview.before.lateCount && 'text-emerald-300')}>{orderPreview.after.lateCount}</b> 件</span>
               <span>待ち {formatWait(orderPreview.before.waitMinutes)} → <b className={clsx(orderPreview.after.waitMinutes < orderPreview.before.waitMinutes && 'text-emerald-300')}>{formatWait(orderPreview.after.waitMinutes)}</b></span>
             </div>
-            <button type="button" onClick={onApplyOrder} disabled={previewPending}
+            <button type="button" aria-disabled={frozen || undefined} onClick={onApplyOrder} disabled={previewPending}
               className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-[13px] font-bold text-slate-950 disabled:opacity-40">適用</button>
             <button type="button" onClick={onCancelOrder} disabled={previewPending}
               className="min-h-11 shrink-0 rounded-md border border-slate-600 px-3 text-[13px] font-bold text-slate-200 disabled:opacity-40">やめる</button>
           </> : <>
-            <button type="button" aria-label="固定" aria-pressed={pinMode} onClick={onTogglePinMode} disabled={orderDisabled}
+            <button type="button" aria-label="固定" aria-disabled={frozen || undefined} aria-pressed={pinMode} onClick={onTogglePinMode} disabled={orderDisabled}
               className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border disabled:opacity-40', pinMode ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
               <PlanningBoardPinIcon />
             </button>
-            <button type="button" onClick={onProposeOrder} disabled={allocation !== 'alternate' || orderDisabled}
+            <button type="button" aria-disabled={frozen || undefined} onClick={onProposeOrder} disabled={allocation !== 'alternate' || orderDisabled}
               className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-sky-300 disabled:opacity-40">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true"><path d="M7 20V4m-4 4 4-4 4 4M17 4v16m-4-4 4 4 4-4" /></svg>並べ替え
             </button>
           </>)}
-          {!orderPreview && <button type="button" aria-label="納期順に並べる" onClick={onSortDue}
+          {!orderPreview && <button type="button" aria-label="納期順に並べる" aria-disabled={frozen || undefined} onClick={onSortDue}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled}
             className="min-h-11 shrink-0 rounded-md bg-emerald-900 px-2 text-[13px] font-bold text-emerald-100 disabled:opacity-40">納期順</button>}
-          <button type="button" onClick={onUndoOrder}
+          <button type="button" aria-disabled={frozen || undefined} onClick={onUndoOrder}
             disabled={ganttMode !== 'forward' || allocation !== 'alternate' || orderDisabled || !canUndoOrder}
             className="min-h-11 shrink-0 rounded-md border border-slate-600 px-2 text-[13px] font-bold text-slate-200 disabled:opacity-40">↶ 戻す</button>
       </div>}
@@ -349,6 +351,7 @@ export function PlanningBoardToolbar({
                 <button
                   type="button"
                   aria-pressed={specialDueMode === mode}
+                  aria-disabled={frozen || undefined}
                   disabled={specialDueDisabled}
                   className={clsx(
                     'min-h-11 shrink-0 rounded-md border px-2 text-[11px] font-semibold transition-colors',
@@ -377,6 +380,7 @@ export function PlanningBoardToolbar({
         </span>
         <button
           type="button"
+          aria-disabled={frozen || undefined}
           onClick={onOpenDueEditor}
           disabled={bulkDisabled}
           className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-4 text-[13px] font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-300"

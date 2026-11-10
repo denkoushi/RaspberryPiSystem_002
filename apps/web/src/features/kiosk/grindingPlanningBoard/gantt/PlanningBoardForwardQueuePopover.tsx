@@ -3,6 +3,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
@@ -55,6 +56,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   folded = false, viewport, lanes, start, dayWidth, labelWidth, viewportWidth, onDragPreview, draggedItemId, onResourceMove, canMoveResource,
   layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError
 }, ref) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const [open, setOpen] = useState<OpenQueue | null>(null);
   const pinned = useRef(false);
   const [isPinned, setPinned] = useState(false);
@@ -88,6 +90,8 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     if (pending) pending.element.style.touchAction = '';
     if (pending?.element.hasPointerCapture?.(pending.pointerId)) pending.element.releasePointerCapture(pending.pointerId);
   }, [onDragPreview]);
+  useEffect(() => gate.subscribeReadOnly(clearDrag), [clearDrag, gate]);
+  useEffect(() => { if (frozen) clearDrag(); }, [clearDrag, frozen]);
   const close = useCallback(() => { cancelHide(); clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, clearDrag]);
   const hideSoon = useCallback(() => {
     cancelHide();
@@ -232,6 +236,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           transform: gapFrom !== null && queuePosition >= gapFrom ? 'translateX(10px)' : undefined, transition: 'transform 120ms' }}
         onPointerDown={(event) => {
           if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || bar.item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
+          if (!gate.attempt()) return;
           cancelHide();
           const element = event.currentTarget;
           drag.current = { bar, x: event.clientX, y: event.clientY, pointerId: event.pointerId, element, moved: false, ready: event.pointerType !== 'touch',
@@ -250,6 +255,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           if (!pending || pending.pointerId !== event.pointerId) return;
           const target = move(event);
           clearDrag();
+          if (target && !gate.attempt()) return;
           if (target?.queue) onResourceReorder?.(pending.bar.item, target.queue.bar.item, target.queue.placement);
           if (target?.gantt) {
             const destination = target.gantt;
