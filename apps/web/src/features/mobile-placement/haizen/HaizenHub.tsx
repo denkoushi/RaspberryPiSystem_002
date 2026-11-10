@@ -198,7 +198,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (actual) mp.resetActualSlipOcrFeedback();
   };
   const fields = [
-    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) mp.setTransferPart(''); mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
+    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) { mp.setTransferPart(''); clearActual(); } mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
     { label: '現品票 注文番号 / 製造order', value: mp.actualOrder, set: mp.setActualOrder, scan: 'actualOrder', actual: true },
     { label: '移動票 部品番号', value: mp.transferPart, set: mp.setTransferPart, scan: 'transferPart', actual: false },
     { label: '現品票 部品番号', value: mp.actualPart, set: mp.setActualPart, scan: 'actualPart', actual: true },

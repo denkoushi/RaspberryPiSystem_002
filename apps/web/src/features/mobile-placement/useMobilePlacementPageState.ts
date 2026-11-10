@@ -81,7 +81,13 @@ export function useMobilePlacementPageState() {
           if (/^[a-z]/i.test(v)) {
             setTransferPart(v);
           } else {
-            if (transferOrder && transferOrder !== v) setTransferPart('');
+            if (transferOrder && transferOrder !== v) {
+              setTransferPart('');
+              setActualOrder('');
+              setActualFseiban('');
+              setActualPart('');
+              setActualSlipOcrFeedback(initialActualSlipOcrFeedback);
+            }
             setTransferOrder(v);
           }
           break;
