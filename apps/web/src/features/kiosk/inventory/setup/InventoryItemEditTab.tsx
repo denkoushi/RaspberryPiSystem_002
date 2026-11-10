@@ -4,12 +4,14 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { inventoryThumbnailUrl, resolveInventoryTag, type InventoryCompartment, type InventoryOptionField, type InventoryShelf } from '../../../../api/client';
 import { useInventoryItems, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { InventoryPhotoReadDialog } from '../../../../components/kiosk/InventoryPhotoReadDialog';
 import { KioskDigitTenkey } from '../../KioskDigitTenkey';
-import { compartmentLocationText, unitLabel } from '../inventoryDailyFlow';
-import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
+import { compartmentLocationText, needsOrdering, needsReorder, unitLabel } from '../inventoryDailyFlow';
+import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, CheckIcon, CloseIcon, SearchIcon, PinIcon, PlusIcon, TrashIcon } from '../InventoryIcons';
 import {
   invSetupTargets,
+  invButton,
   invButtonDanger,
   invButtonGhost,
   invButtonPrimary,
@@ -23,7 +25,6 @@ import {
   invPanel,
   invLabelNumber,
   invSeg,
-  invSuccess,
 } from '../inventoryUi';
 
 import { InventoryUnitPicker } from './InventoryUnitPicker';
@@ -47,6 +48,16 @@ type Panel =
 const DETAIL_LABEL = Object.fromEntries(TOOL_BOARD_COLUMNS.map((column) => [column.key, column.label])) as Record<InventoryOptionField, string>;
 const provisionalTag = 'shrink-0 rounded-[5px] bg-inv-amber/[0.12] px-1.5 text-[10.5px] font-bold tracking-[0.08em] text-inv-amber';
 const iconSm = `${invButtonSm} w-11 px-0`;
+
+function stepQuantity(button: HTMLButtonElement, name: string, delta: number) {
+  const input = button.form?.elements.namedItem(name) as HTMLInputElement | null;
+  if (!input || (input.value === '' && delta < 0)) return;
+  const min = Number(input.min);
+  const max = Number(input.max);
+  input.value = String(input.value === '' ? min : Math.min(max, Math.max(min, Number(input.value) + delta)));
+}
+const quantityField = `${invField} h-11 w-24 shrink-0 px-2 text-center font-bold tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`;
+const stepButton = `${invButton} w-11 !px-0 !text-[22px]`;
 
 const tagTail = (uid: string | null) => uid ? `…${uid.slice(-5)}` : 'タグなし';
 const placeText = (place: InventoryCompartment) => `${place.area}・棚${place.shelfNumber}・引き出し${place.drawerNumber}`;
@@ -91,9 +102,10 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const [scanPending, setScanPending] = useState(false);
   const scanBusy = useRef(false);
   const [done, setDone] = useState<string | null>(null);
+  useEffect(() => { if (!done) return; const timer = setTimeout(() => setDone(null), 2500); return () => clearTimeout(timer); }, [done]);
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [department, setDepartment] = useState<string | null>(null);
-  const groupRefs = useRef(new Map<string, HTMLDivElement>());
+  const [selectedShelf, setSelectedShelf] = useState<{ area: string; shelfNumber: number } | null>(null);
   const [swapped, setSwapped] = useState<{ id: string; oldUid: string | null; uid: string } | null>(null);
   const [filter, setFilter] = useState('');
   const [provisionalOnly, setProvisionalOnly] = useState(false);
@@ -124,7 +136,8 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const read = useArmedNfcRead(scanMode !== null && !scanPending);
   const handledRef = useRef<NfcEvent | null>(null);
   const pending = scanPending || mutations.setItemUnit.isPending || mutations.move.isPending || mutations.bindCompartment.isPending || mutations.deleteItemPhoto.isPending
-    || mutations.rotateItemPhoto.isPending || mutations.reorderItemPhotos.isPending || mutations.deleteItem.isPending;
+    || mutations.rotateItemPhoto.isPending || mutations.reorderItemPhotos.isPending || mutations.deleteItem.isPending
+    || mutations.setReorderPoint.isPending || mutations.setOrdered.isPending || mutations.restock.isPending;
 
   useEffect(() => {
     if (!read || !scanMode || handledRef.current === read || scanBusy.current) return;
@@ -153,6 +166,7 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
             setFilter('');
             setProvisionalOnly(false);
             setDepartment(null);
+            setSelectedShelf(null);
             setScanMessage('品物を開きました');
           } else setScanMessage(!tag ? '未登録のタグです' : tag.kind === 'QUANTITY' ? '数量タグです' : tag.kind === 'RESTOCK' ? '補充タグです' : '品物が見つかりません');
         }
@@ -213,70 +227,94 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
     if (provisionalOnly && !isProvisionalInventoryName(entry.name) && entry.id !== itemId) return false;
     return !needle || [entry.name, entry.itemCode, entry.model ?? '', ...entry.compartments.map(place => formatInventoryLabelNumber(place.labelNumber))].some(text => text.normalize('NFKC').toLowerCase().includes(needle));
   }).map(entry => ({ entry, place: entry.compartments.find(place => needle && formatInventoryLabelNumber(place.labelNumber).includes(needle)) ?? entry.compartments[0] }));
-  const shown = base.filter(({ place }) => department === null || splitArea(place?.area ?? '').machine === department);
+  const shelfKey = (place: { area: string; shelfNumber: number }) => `${place.area}・棚${place.shelfNumber}`;
+  const shelfNodes = [...new Map([...shelves, ...items.flatMap(entry => entry.compartments)].map(place => [shelfKey(place), { area: place.area, shelfNumber: place.shelfNumber }])).values()]
+    .sort((a, b) => shelfKey(a).localeCompare(shelfKey(b), 'ja', { numeric: true }));
+  const shown = base.filter(({ place }) => selectedShelf
+    ? place?.area === selectedShelf.area && place.shelfNumber === selectedShelf.shelfNumber
+    : department === null || splitArea(place?.area ?? '').machine === department);
+  const shelfTitle = (place: { area: string; shelfNumber: number }) => `${splitArea(place.area).direction ?? splitArea(place.area).machine}・棚${place.shelfNumber}`;
+  const nodeClass = (on: boolean, count: number, machine: string | null) => `relative grid min-h-11 shrink-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-[10px] px-2 text-left text-[13px] ${count === 0 ? 'opacity-[0.32]' : ''} ${on ? `bg-inv-s3 text-inv-text ring-1 ring-inset ${machine === '生産技術課' ? 'ring-inv-violet' : 'ring-inv-cyan'}` : 'text-inv-muted hover:bg-inv-s2'}`;
   const groups = new Map<string, typeof shown>();
   for (const row of shown) {
     const key = row.place ? `${row.place.area}・棚${row.place.shelfNumber}` : '置き場所なし';
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
-  const sortedGroups = [...groups].sort(([a], [b]) => a.localeCompare(b, 'ja', { numeric: true }));
-  const banner = (
-    <div className="flex h-12 shrink-0 items-center gap-3 overflow-hidden">
-        {done ? <p className={`rounded-xl border px-3 py-2 text-base font-bold ${invSuccess}`} role="status">{done}</p> : null}
-
-    </div>
-  );
+  const orderedGroups = [...groups].sort(([a], [b]) => a.localeCompare(b, 'ja', { numeric: true }));
+  const sortedGroups = [0, 1, 2].flatMap(priority => orderedGroups.map(([key, rows]) => [key, rows.filter(({ entry }) => (entry.compartments.some(needsOrdering) ? 0 : entry.compartments.some(needsReorder) ? 1 : 2) === priority)] as const).filter(([, rows]) => rows.length > 0));
+  const banner = <p role="status" className={`pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2 whitespace-nowrap rounded-xl border px-5 py-3 text-base font-bold shadow-lg border-inv-green bg-inv-s3 text-[#d7fbe9]`}>{done}</p>;
   const localError = (target: string) => error && errorAt === target ? <p role="alert" className="text-sm text-[#ffd0d0]">{error}</p> : null;
   const list = (
-    <nav className="flex min-h-0 flex-col gap-1.5" aria-label="アイテム一覧">
-      <div className="mb-1 flex shrink-0 gap-1.5">
-        <input aria-label="品名・型式・番号で探す" placeholder="品名・型式・番号で探す" className={`${invField} h-11 min-w-0 flex-1`} value={filter} onChange={(event) => setFilter(event.target.value)} />
-        <button type="button" aria-pressed={provisionalOnly} aria-label={`仮名だけ ${provisionalCount}件`} className={`inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] border px-3 text-[13px] font-bold ${provisionalOnly ? 'border-inv-amber bg-inv-amber/[0.12] text-[#ffe8bf]' : 'border-inv-line2 bg-inv-s2 text-inv-muted hover:bg-inv-s3'}`} onClick={() => setProvisionalOnly((on) => !on)}>
-            仮名 <b className="tabular-nums text-inv-amber">{provisionalCount}</b>
+    <nav className="grid min-h-0 grid-rows-[48px_minmax(0,1fr)] gap-2" aria-label="アイテム一覧">
+      <div className="flex h-12 min-w-0 items-center rounded-xl border border-inv-line2 bg-inv-s1 focus-within:border-inv-cyan">
+        <span className="ml-3 shrink-0 text-inv-faint"><SearchIcon /></span>
+        <input aria-label="品名・型式・番号で探す" placeholder="品名・型式・番号で探す" className="h-full min-w-0 flex-1 bg-transparent px-1.5 text-base text-inv-text outline-none placeholder:text-inv-faint" value={filter} onChange={(event) => { setFilter(event.target.value); if (event.target.value) { setDepartment(null); setSelectedShelf(null); } }} />
+        {filter ? <button type="button" aria-label="消す" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-inv-muted hover:bg-inv-s2" onClick={() => setFilter('')}><CloseIcon /></button> : null}
+        <button type="button" aria-pressed={provisionalOnly} aria-label={`仮名だけ ${provisionalCount}件`} className={`mr-0.5 inline-flex h-11 shrink-0 items-center gap-1 rounded-[9px] border px-2 text-[13px] font-bold ${provisionalOnly ? 'border-inv-amber bg-inv-amber/[0.12] text-[#ffe8bf]' : 'border-inv-line2 bg-inv-s2 text-inv-muted hover:bg-inv-s3'}`} onClick={() => setProvisionalOnly((on) => !on)}>
+          仮名 <b className="tabular-nums text-inv-amber">{provisionalCount}</b>
         </button>
       </div>
-      <div className="grid shrink-0 gap-1 overflow-x-auto rounded-xl bg-inv-s2 p-[3px]" style={{ gridTemplateColumns: `repeat(${departments.length + 1}, minmax(76px, 1fr))` }} role="group" aria-label="課">
-        {[null, ...departments].map(machine => <button key={machine ?? 'all'} type="button" aria-pressed={department === machine} className={`flex h-11 min-w-0 flex-col items-center justify-center rounded-[9px] text-[13px] font-bold leading-tight ${department === machine ? `bg-inv-s3 text-inv-text ring-1 ring-inset ${machine === '生産技術課' ? 'ring-[#a99bff]' : 'ring-inv-cyan'}` : 'text-inv-muted'}`} onClick={() => setDepartment(machine)}>
-          {machine ?? 'すべて'}<small className="text-[11px] font-normal tabular-nums text-inv-faint">{base.filter(({ place }) => machine === null || splitArea(place?.area ?? '').machine === machine).length}件</small>
-        </button>)}
-      </div>
-      <div className="flex shrink-0 gap-1 overflow-x-auto pb-0.5" aria-label="棚へ移動">
-        {sortedGroups.map(([key]) => <button key={key} type="button" className="h-9 shrink-0 whitespace-nowrap rounded-lg border border-inv-line bg-inv-s1 px-2.5 text-[12.5px] font-bold text-inv-muted hover:bg-inv-s2" onClick={() => groupRefs.current.get(key)?.scrollIntoView({ block: 'start' })}>{key}</button>)}
-      </div>
-      <div className="h-8 shrink-0 overflow-hidden text-sm leading-4"><p role={scanMessage || scanPending ? 'status' : undefined} className="line-clamp-2 text-inv-muted">{scanPending ? 'タグを確認中…' : scanMessage ?? '品物タグでも開けます'}</p></div>
-      {itemsQuery.isLoading ? <p className="text-inv-faint">読み込み中…</p> : null}
-      {!itemsQuery.isLoading && items.length === 0 ? <p className="text-inv-faint">登録済みのアイテムはありません</p> : null}
-      <div className="flex min-h-0 flex-col gap-1.5 overflow-y-auto">
-        {sortedGroups.map(([key, rows]) => <div key={key} className="contents">
-          <div ref={node => { if (node) groupRefs.current.set(key, node); else groupRefs.current.delete(key); }} className="sticky top-0 z-10 flex h-[30px] shrink-0 items-center gap-2 border-b border-inv-line bg-inv-bg px-2 text-[12.5px] font-black text-inv-muted">
-            <span className={`h-2 w-2 rounded-sm ${splitArea(rows[0].place?.area ?? '').machine === '生産技術課' ? 'bg-[#a99bff]' : 'bg-inv-cyan'}`} aria-hidden="true" />
-            <span>{key}</span><span className="ml-auto font-normal tabular-nums text-inv-faint">{rows.length}件</span>
-          </div>
-          {rows.map(({ entry, place }) => {
-            const on = entry.id === item?.id;
-            return <button key={entry.id} type="button" aria-pressed={on} className={`flex h-14 shrink-0 items-center gap-2.5 rounded-xl px-2.5 text-left text-sm font-bold ${on ? 'border-2 border-inv-cyan bg-inv-cyan/[0.12]' : 'border border-inv-line bg-inv-s1 hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
-              {entry.photos[0] ? <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-lg bg-inv-s3" aria-hidden="true" />}
-              <span className="min-w-0 flex-1 line-clamp-2 break-all">{highlight(entry.name, needle)}</span>
-              <span className="flex shrink-0 flex-col items-end gap-0.5">
-                {place ? <span className={invLabelNumber}>{highlight(formatInventoryLabelNumber(place.labelNumber), needle)}</span> : null}
-                {isProvisionalInventoryName(entry.name) ? <span className={provisionalTag}>仮名</span> : <span className="text-xs font-normal tabular-nums text-inv-faint">{place ? `引${place.drawerNumber} ・ ${place.stockQuantity}${unitLabel(entry)}` : '置き場所なし'}</span>}
-              </span>
-            </button>;
+      <div className="grid min-h-0 grid-cols-[124px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-inv-line bg-inv-s1">
+        <div role="group" aria-label="課と棚" className="flex min-h-0 flex-col gap-0.5 overflow-y-auto border-r border-inv-line bg-inv-bg p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button type="button" aria-label={`すべて ${base.length}件`} aria-pressed={department === null && selectedShelf === null} className={`${nodeClass(department === null && selectedShelf === null, base.length, null)} font-black`} onClick={() => { setDepartment(null); setSelectedShelf(null); }}><span>すべて</span><span className="text-xs font-normal tabular-nums text-inv-faint">{base.length}</span></button>
+          {departments.map(machine => {
+            const count = base.filter(({ place }) => splitArea(place?.area ?? '').machine === machine).length;
+            return <div key={machine} className="contents">
+              <button type="button" aria-label={`${machine} ${count}件`} aria-pressed={department === machine && !selectedShelf} className={`${nodeClass(department === machine && !selectedShelf, count, machine)} mt-2 font-black`} onClick={() => { setDepartment(machine); setSelectedShelf(null); }}>
+                <span className="flex min-w-0 items-center gap-1"><span className={`h-2 w-2 shrink-0 rounded-sm ${machine === '生産技術課' ? 'bg-inv-violet' : 'bg-inv-cyan'}`} aria-hidden="true" /><span className="break-words [overflow-wrap:anywhere] leading-tight">{machine}</span></span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span>
+              </button>
+              {shelfNodes.filter(place => splitArea(place.area).machine === machine).map(shelf => {
+                const count = base.filter(({ place }) => place && shelfKey(place) === shelfKey(shelf)).length;
+                const on = selectedShelf !== null && shelfKey(selectedShelf) === shelfKey(shelf);
+                return <button key={shelfKey(shelf)} type="button" aria-label={`${shelf.area}・棚${shelf.shelfNumber} ${count}件`} aria-pressed={on} className={`${nodeClass(on, count, machine)} pl-[23px] font-bold before:absolute before:bottom-0 before:left-[11px] before:top-0 before:w-px before:bg-inv-line`} onClick={() => { setDepartment(machine); setSelectedShelf(shelf); }}><span className="break-words [overflow-wrap:anywhere] leading-tight">{shelfTitle(shelf)}</span><span className="text-xs font-normal tabular-nums text-inv-faint">{count}</span></button>;
+              })}
+            </div>;
           })}
-        </div>)}
-        {shown.length === 0 && items.length > 0 ? <p className="py-4 text-inv-faint">見つかりません</p> : null}
+        </div>
+        <div className="grid min-h-0 min-w-0 grid-rows-[52px_minmax(0,1fr)_34px]">
+          <div className="flex min-w-0 items-center gap-2 border-b border-inv-line px-3">
+            <h2 className="min-w-0 flex-1 truncate text-base font-black">{selectedShelf ? <><span className="text-inv-faint">{department}</span> {shelfTitle(selectedShelf)}</> : department ?? 'すべての棚'}</h2><span className="shrink-0 text-xs tabular-nums text-inv-faint">{shown.length}件</span>
+          </div>
+          <div className="flex min-h-0 flex-col overflow-y-auto px-1.5 pb-2 pt-1">
+            {itemsQuery.isLoading ? <p className="text-inv-faint">読み込み中…</p> : null}
+            {!itemsQuery.isLoading && items.length === 0 ? <p className="text-inv-faint">登録済みのアイテムはありません</p> : null}
+            {sortedGroups.map(([key, rows], index) => <div key={`${index}:${key}`} className="contents">
+              {!selectedShelf ? <div role="heading" aria-level={3} className="sticky top-0 z-10 mt-1 flex h-[30px] shrink-0 items-center gap-1.5 bg-inv-s1 px-2 text-xs font-black text-inv-muted">
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-sm ${splitArea(rows[0].place?.area ?? '').machine === '生産技術課' ? 'bg-inv-violet' : 'bg-inv-cyan'}`} aria-hidden="true" />
+                <span className="truncate">{department && rows[0].place ? shelfTitle(rows[0].place) : key}</span><span className="ml-auto shrink-0 font-normal tabular-nums text-inv-faint">{rows.length}件</span>
+              </div> : null}
+              {rows.map(({ entry, place }) => {
+                const on = entry.id === item?.id;
+                const low = entry.compartments.filter(needsReorder);
+                const edge = low.length ? (entry.compartments.some(needsOrdering) ? 'border-2 border-inv-red' : 'border-2 border-inv-blue') : on ? '' : 'border-b border-inv-line';
+                return <button key={entry.id} type="button" aria-pressed={on} className={`grid h-[62px] shrink-0 grid-cols-[44px_minmax(0,1fr)] items-center gap-2.5 rounded-xl px-2 text-left ${edge} ${on ? 'bg-inv-cyan/[0.12] ring-2 ring-inset ring-inv-cyan' : 'hover:bg-inv-s2'}`} onClick={() => open(entry.id)}>
+                  {entry.photos[0] ? <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(entry.photos[0].photoUrl)} alt="" className="h-11 w-11 rounded-[9px] object-cover" /> : <span className="h-11 w-11 rounded-[9px] bg-inv-s3" aria-hidden="true" />}
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="truncate text-[15px] font-bold">{highlight(entry.name, needle)}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {place ? <span className={invLabelNumber}>{highlight(formatInventoryLabelNumber(place.labelNumber), needle)}</span> : null}
+                      {isProvisionalInventoryName(entry.name) ? <span className={provisionalTag}>仮名</span> : <span className="truncate text-xs tabular-nums text-inv-text">{place ? `引き出し${place.drawerNumber} ・ ${place.stockQuantity}${unitLabel(entry)}` : '置き場所なし'}</span>}
+                    </span>
+                  </span>
+                </button>;
+              })}
+            </div>)}
+            {shown.length === 0 && items.length > 0 ? <p className="py-4 text-inv-faint">見つかりません</p> : null}
+          </div>
+          <div className="flex items-center overflow-hidden border-t border-inv-line px-3 text-[13px] text-inv-muted"><p role={scanMessage || scanPending ? 'status' : undefined} className="line-clamp-2">{scanPending ? 'タグを確認中…' : scanMessage ?? '品物タグでも開けます'}</p></div>
+        </div>
       </div>
     </nav>
   );
 
   if (!item) {
     return (
-      <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}
+      <div className={`${invSetupTargets} relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
         onFocusCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(true); }}
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
         {done ? banner : null}
-        <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-5">
+        <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] gap-4">
           {list}
           <p className="self-center justify-self-center text-inv-faint">左の一覧からアイテムを選んでください</p>
         </div>
@@ -339,94 +377,127 @@ export function InventoryItemEditTab({ accessPassword }: { accessPassword: strin
   const photo = item.photos[index];
 
   return (
-    <div className={`${invSetupTargets} flex min-h-0 flex-1 flex-col gap-3 pt-4`}
+    <div className={`${invSetupTargets} relative flex min-h-0 flex-1 flex-col gap-3 overflow-hidden pt-4`}
         onFocusCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(true); }}
         onBlurCapture={(event) => { if (event.target instanceof HTMLInputElement) setInputFocused(false); }}
       >
       {done ? banner : null}
-      <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-5">
+      <div className="grid min-h-0 flex-1 grid-cols-[400px_minmax(0,1fr)] gap-4">
         {list}
 
-        <div className="flex min-h-0 min-w-0 flex-col gap-3.5">
-        <div className="relative grid h-[250px] shrink-0 grid-cols-[400px_minmax(0,1fr)] gap-3.5">
+        <div className="flex min-h-0 min-w-0 flex-col gap-3">
+        <div className="relative grid min-h-[280px] shrink-0 grid-cols-[236px_minmax(0,1fr)] gap-3">
           <section className={`${invPanel} relative min-h-0 overflow-hidden`} aria-label="写真">
             {photo ? <button type="button" className="block h-full w-full" aria-label={`写真${index + 1}を拡大`} onClick={() => setSelectedPhoto(photo.id)}>
-              <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
+              <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-cover" />
             </button> : <p className="p-4 text-inv-faint">写真はありません</p>}
             {item.photos.length > 1 ? <>
               {([-1, 1] as const).map((offset) => <button key={offset} type="button" aria-label={offset === -1 ? '前の写真' : '次の写真'} className={`absolute bottom-2 flex h-11 w-11 items-center justify-center rounded-lg border border-inv-line2 bg-inv-bg/75 text-xl ${offset === -1 ? 'left-2' : 'left-[60px]'}`} onClick={() => { setPhotoIndex((index + offset + item.photos.length) % item.photos.length); setConfirmPhotoId(null); }}>{offset === -1 ? '＜' : '＞'}</button>)}
               <span className="absolute bottom-2 right-2 rounded-md bg-inv-bg/75 px-2 text-sm font-bold tabular-nums">{index + 1}/{item.photos.length}</span>
             </> : null}
+            {photo ? <div className="absolute left-0 right-0 top-0 flex items-center justify-center gap-1 bg-inv-bg/75 py-1" aria-label="写真の操作">
+              <span className={invEyebrow}>写真</span>
+              <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || pending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
+              <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === item.photos.length - 1 || pending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
+              <button type="button" className={iconSm} aria-label={`写真${index + 1}を右に回す`} title={`写真${index + 1}を右に回す`} disabled={pending} onClick={() => void run(() => mutations.rotateItemPhoto.mutateAsync({ itemId: item.id, photoId: photo.id }), '写真を回しました', { kind: 'none' }, 'photos')}><RotateRightIcon /></button>
+              <button type="button" className={`${iconSm} border-inv-red/45 text-[#ffb3b3]`} aria-label={`写真${index + 1}を削除`} disabled={pending} onClick={() => setConfirmPhotoId(photo.id)}><TrashIcon /></button>
+              {confirmPhotoId !== photo.id ? localError('photos') : null}
+            </div> : null}
           </section>
+          {photo && confirmPhotoId === photo.id ? <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border border-inv-red/40 bg-inv-bg p-6">
+            <div className="flex items-center gap-3">
+            <span>この写真を削除しますか？</span>
+            <button type="button" className={invButtonDanger} disabled={pending} onClick={() => { setConfirmPhotoId(null); void run(() => mutations.deleteItemPhoto.mutateAsync({ itemId: item.id, photoId: photo.id }), '写真を削除しました', { kind: 'none' }, 'photos'); }}>削除</button>
+            <button type="button" className={invButtonGhost} onClick={() => setConfirmPhotoId(null)}>やめる</button>
+            </div>
+            {localError('photos')}
+          </div> : null}
           <div className={`${invPanel} flex min-h-0 min-w-0 flex-col gap-2 p-3`}>
-            <div className="flex h-11 shrink-0 items-center gap-3">
+            <div className="flex min-h-11 shrink-0 items-center gap-3">
               <h2 className="min-w-0 flex-1 truncate text-[22px] font-black">{item.name}</h2>
               {isProvisionalInventoryName(item.name) ? <span className={provisionalTag}>仮名</span> : null}
-              <span className="font-mono text-[13px] text-inv-faint">{item.itemCode}</span>
-          <section className="shrink-0" aria-label="アイテムの削除">
-            {panel.kind === 'delete-item' ? (
-              <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border border-inv-red/40 bg-inv-bg p-6">
-                <div className="flex items-center gap-3">
-                <p className="text-[15px] text-[#ffd0d0]">「{item.name}」を削除しますか？ 履歴は残ります。</p>
-                <button type="button" className={`${invButtonDanger} border-inv-red bg-inv-red/15`} disabled={pending} onClick={() => void run(async () => { await mutations.deleteItem.mutateAsync(item.id); setItemId(null); }, `「${item.name}」を削除しました`, { kind: 'none' }, 'delete')}>削除する</button>
-                <button type="button" className={invButtonGhost} onClick={() => setPanel({ kind: 'none' })}>やめる</button>
-                </div>
-                {localError('delete')}
-              </div>
-            ) : (
-              <button type="button" className={invButtonDanger} disabled={pending} onClick={() => setPanel({ kind: 'delete-item' })}><TrashIcon />アイテムを削除</button>
-            )}
-            {panel.kind !== 'delete-item' ? localError('delete') : null}
-          </section>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <section className="flex min-w-0 flex-1 items-center gap-2 [&_[role=group]]:flex-nowrap [&_[role=group]]:overflow-x-auto [&_[role=group]>div:empty]:hidden" aria-label="単位の設定">
+              <section className="flex min-w-0 shrink-0 items-center gap-1.5 [&_h3]:whitespace-nowrap [&_[role=group]]:min-w-0 [&_[role=group]]:flex-nowrap [&_[role=group]]:overflow-x-auto [&_[role=group]>div:empty]:hidden" aria-label="単位の設定">
                 <h3 className={invEyebrow}>単位</h3>
                 <InventoryUnitPicker value={item.unit} accessPassword={accessPassword} disabled={mutations.setItemUnit.isPending} onChange={(unit) => { if (unit !== unitLabel(item)) void run(() => mutations.setItemUnit.mutateAsync({ itemId: item.id, unit }), `単位を「${unit}」にしました`, { kind: 'none' }, 'unit'); }} />
                 {localError('unit')}
               </section>
-              <form key={`${item.id}:${item.unitPrice}`} className="flex shrink-0 items-center gap-2" onSubmit={(event) => {
+              <form key={`${item.id}:${item.unitPrice}`} className="flex min-w-0 shrink-0 items-center gap-1" onSubmit={(event) => {
                 event.preventDefault();
                 const input = event.currentTarget.elements.namedItem('unitPrice') as HTMLInputElement;
                 const unitPrice = input.value === '' ? null : Number(input.value);
                 if (unitPrice !== (item.unitPrice ?? null)) void run(() => mutations.updateItemDetails.mutateAsync({ itemId: item.id, details: { unitPrice } }), '単価を保存しました', { kind: 'none' }, 'price');
               }}>
-                <label htmlFor="inventory-unit-price" className={invEyebrow}>単価</label>
-                <input id="inventory-unit-price" name="unitPrice" type="number" inputMode="numeric" min="0" max="10000000" step="1" defaultValue={item.unitPrice ?? ''} placeholder="未設定" className={`${invField} h-11 w-28`} />
-                <span className="text-sm text-inv-muted">円 / {unitLabel(item)}</span>
+                <label htmlFor="inventory-unit-price" className={`${invEyebrow} whitespace-nowrap`}>単価</label>
+                <input id="inventory-unit-price" name="unitPrice" type="number" inputMode="numeric" min="0" max="10000000" step="1" defaultValue={item.unitPrice ?? ''} placeholder="未設定" className={`${invField} h-11 w-28 shrink-0 px-2`} />
+                <span className="shrink-0 whitespace-nowrap text-xs text-inv-muted">円 / {unitLabel(item)}</span>
                 <button type="submit" className={invButtonSm} disabled={mutations.updateItemDetails.isPending}>保存</button>
                 {localError('price')}
               </form>
-              {photo ? <div className="flex shrink-0 items-center gap-1.5" aria-label="写真の操作">
-                <span className={invEyebrow}>写真</span>
-                <button type="button" className={iconSm} aria-label={`写真${index + 1}を前へ`} disabled={index === 0 || pending} onClick={() => movePhoto(index, -1)}><ArrowLeftIcon /></button>
-                <button type="button" className={iconSm} aria-label={`写真${index + 1}を後ろへ`} disabled={index === item.photos.length - 1 || pending} onClick={() => movePhoto(index, 1)}><ArrowRightIcon size={16} /></button>
-                <button type="button" className={iconSm} aria-label={`写真${index + 1}を右に回す`} title={`写真${index + 1}を右に回す`} disabled={pending} onClick={() => void run(() => mutations.rotateItemPhoto.mutateAsync({ itemId: item.id, photoId: photo.id }), '写真を回しました', { kind: 'none' }, 'photos')}><RotateRightIcon /></button>
-                <button type="button" className={`${iconSm} border-inv-red/45 text-[#ffb3b3]`} aria-label={`写真${index + 1}を削除`} disabled={pending} onClick={() => setConfirmPhotoId(photo.id)}><TrashIcon /></button>
-                {confirmPhotoId === photo.id ? <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border border-inv-red/40 bg-inv-bg p-6">
-                  <div className="flex items-center gap-3">
-                  <span>この写真を削除しますか？</span>
-                  <button type="button" className={invButtonDanger} disabled={pending} onClick={() => { setConfirmPhotoId(null); void run(() => mutations.deleteItemPhoto.mutateAsync({ itemId: item.id, photoId: photo.id }), '写真を削除しました', { kind: 'none' }, 'photos'); }}>削除</button>
-                  <button type="button" className={invButtonGhost} onClick={() => setConfirmPhotoId(null)}>やめる</button>
+              <span className="shrink-0 font-mono text-[13px] text-inv-faint">{item.itemCode}</span>
+              <section className="shrink-0" aria-label="アイテムの削除">
+                {panel.kind === 'delete-item' ? (
+                  <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 rounded-xl border border-inv-red/40 bg-inv-bg p-6">
+                    <div className="flex items-center gap-3">
+                    <p className="text-[15px] text-[#ffd0d0]">「{item.name}」を削除しますか？ 履歴は残ります。</p>
+                    <button type="button" className={`${invButtonDanger} border-inv-red bg-inv-red/15`} disabled={pending} onClick={() => void run(async () => { await mutations.deleteItem.mutateAsync(item.id); setItemId(null); }, `「${item.name}」を削除しました`, { kind: 'none' }, 'delete')}>削除する</button>
+                    <button type="button" className={invButtonGhost} onClick={() => setPanel({ kind: 'none' })}>やめる</button>
+                    </div>
+                    {localError('delete')}
                   </div>
-                  {localError('photos')}
-                </div> : null}
-                {confirmPhotoId !== photo.id ? localError('photos') : null}
-              </div> : null}
+                ) : (
+                  <button type="button" className={`${invButtonSmGhost} border-inv-red/45 text-[#ffb3b3]`} disabled={pending} onClick={() => setPanel({ kind: 'delete-item' })}><TrashIcon />アイテムを削除</button>
+                )}
+                {panel.kind !== 'delete-item' ? localError('delete') : null}
+              </section>
             </div>
-            <section className="flex min-h-0 flex-1 flex-col gap-1" aria-label="置き場所">
+            <section className="flex flex-col gap-1" aria-label="置き場所">
               <div className="flex shrink-0 items-center gap-2">
                 <h3 className={`${invEyebrow} flex-1`}>置き場所</h3>
                 <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => setPanel({ kind: 'add-place', area: item.compartments[0]?.area ?? null, shelfId: null })}><PlusIcon />別の引き出しにも置く</button>
               </div>
               {item.compartments.length === 0 ? <p className="text-inv-faint">置き場所がありません</p> : null}
-              <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-                {item.compartments.map((compartment) => <div key={compartment.id} className={`flex shrink-0 items-center gap-2 rounded-lg border px-2 ${swapped?.id === compartment.id ? 'flex-wrap border-inv-green/[0.55] bg-inv-green/10' : 'border-transparent bg-inv-s2'}`}>
-                  <PinIcon /><span className="min-w-0 flex-1 truncate font-bold"><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span> {compartment.area}・棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
-                  <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}</span>
-                  <span className={`shrink-0 whitespace-nowrap rounded-md border px-1.5 text-[12.5px] ${compartment.itemTagUid ? 'border-inv-line2 font-mono text-inv-muted' : 'border-inv-amber/45 text-inv-amber'}`} title={compartment.itemTagUid ?? undefined}>{tagTail(compartment.itemTagUid)}</span>
-                  <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => { setError(null); setPanel({ kind: 'replace-tag', compartment }); }}>タグを交換</button>
-                  <button type="button" className={invButtonSm} aria-label="別の引き出しへ移す" disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>移す</button>
+              <div className="flex flex-col gap-1">
+                {item.compartments.map((compartment) => <div key={compartment.id} className={`flex shrink-0 flex-col gap-2 rounded-[10px] border px-2 py-2 ${swapped?.id === compartment.id ? 'border-inv-green/[0.55] bg-inv-green/10' : 'border-transparent bg-inv-s2'}`}>
+                  <div className="flex items-center gap-2">
+                    <PinIcon /><span className={invLabelNumber}>{formatInventoryLabelNumber(compartment.labelNumber)}</span><span className="min-w-0 flex-1 truncate font-bold">{compartment.area}{'　'}棚{compartment.shelfNumber}・引き出し{compartment.drawerNumber}</span>
+                    <span className="text-[13px] tabular-nums text-inv-faint">{compartment.stockQuantity}{unitLabel(item)}</span>
+                    <span className={`ml-3 shrink-0 whitespace-nowrap rounded-md border px-1.5 text-[12.5px] ${compartment.itemTagUid ? 'border-inv-line2 font-mono text-inv-muted' : 'border-inv-amber/45 text-inv-amber'}`} title={compartment.itemTagUid ?? undefined}>{compartment.itemTagUid ? `タグ ${tagTail(compartment.itemTagUid)}` : 'タグなし'}</span>
+                    <button type="button" className={invButtonSmGhost} disabled={pending} onClick={() => { setError(null); setPanel({ kind: 'replace-tag', compartment }); }}>タグを交換</button>
+                    <button type="button" className={invButtonSm} aria-label="別の引き出しへ移す" disabled={pending} onClick={() => setPanel({ kind: 'move', compartment })}>移す</button>
+                  </div>
+                  <div className="flex items-center gap-3 border-t border-inv-line pt-2.5">
+                    <form key={`${compartment.id}:${compartment.reorderPoint}`} className="flex min-w-0 items-center gap-2" onSubmit={(event) => {
+                      event.preventDefault();
+                      const input = event.currentTarget.elements.namedItem('reorderPoint') as HTMLInputElement;
+                      const reorderPoint = input.value === '' ? null : Number(input.value);
+                      if (reorderPoint !== (compartment.reorderPoint ?? null)) void run(() => mutations.setReorderPoint.mutateAsync({ id: compartment.id, reorderPoint }), '発注点を保存しました', { kind: 'none' }, compartment.id);
+                    }}>
+                      <label htmlFor={`reorder-point-${compartment.id}`} className="whitespace-nowrap text-[15px] font-bold text-inv-muted">発注点</label>
+                      <button type="button" aria-label="1減らす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'reorderPoint', -1)}>−</button>
+                      <input id={`reorder-point-${compartment.id}`} name="reorderPoint" type="number" inputMode="numeric" min="0" max="2147483647" step="1" defaultValue={compartment.reorderPoint ?? ''} className={quantityField} />
+                      <button type="button" aria-label="1増やす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'reorderPoint', 1)}>＋</button>
+                      <span className="shrink-0 text-[15px] text-inv-muted">{unitLabel(item)}</span>
+                      <button type="submit" className={invButton} disabled={pending}>保存</button>
+                    </form>
+                    <span aria-hidden="true" className="h-8 w-px shrink-0 bg-inv-line" />
+                    <form className="flex min-w-0 items-center gap-2" onSubmit={(event) => {
+                      event.preventDefault();
+                      const form = event.currentTarget;
+                      const input = form.elements.namedItem('quantity') as HTMLInputElement;
+                      const quantity = Number(input.value);
+                      void run(async () => { await mutations.restock.mutateAsync({ id: compartment.id, quantity, idempotencyKey: crypto.randomUUID() }); form.reset(); }, '補充しました', { kind: 'none' }, compartment.id);
+                    }}>
+                      <label htmlFor={`restock-${compartment.id}`} className="whitespace-nowrap text-[15px] font-bold text-inv-muted">補充</label>
+                      <button type="button" aria-label="1減らす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'quantity', -1)}>−</button>
+                      <input id={`restock-${compartment.id}`} name="quantity" type="number" inputMode="numeric" min="1" max="999999" step="1" required className={quantityField} />
+                      <button type="button" aria-label="1増やす" className={stepButton} disabled={pending} onClick={event => stepQuantity(event.currentTarget, 'quantity', 1)}>＋</button>
+                      <span className="shrink-0 text-[15px] text-inv-muted">{unitLabel(item)}</span>
+                      <button type="submit" className={`${invButton} !border-inv-green !bg-inv-green/10 !text-inv-green`} disabled={pending}>補充</button>
+                    </form>
+                    <span aria-hidden="true" className="h-8 w-px shrink-0 bg-inv-line" />
+                    <button type="button" aria-pressed={Boolean(compartment.reorderedAt)} className={`${invButton} !border-inv-blue ${compartment.reorderedAt ? '!bg-inv-blue !text-inv-bg' : '!bg-inv-blue/10 !text-inv-blue'}`} disabled={pending || !needsReorder(compartment)} onClick={() => void run(() => mutations.setOrdered.mutateAsync({ id: compartment.id, ordered: !compartment.reorderedAt }), '発注済みを変更しました', { kind: 'none' }, compartment.id)}>発注済み</button>
+                    {localError(compartment.id)}
+                  </div>
                   {swapped?.id === compartment.id ? <p role="status" className="flex basis-full flex-wrap items-center gap-2 py-1 pl-6 text-[13.5px] font-bold text-[#d7fbe9]">
                     <CheckIcon />タグを交換しました <span className="font-mono text-inv-faint line-through">{tagTail(swapped.oldUid)}</span><span className="text-inv-green">→</span><span className="font-mono">{tagTail(swapped.uid)}</span><span className="font-normal text-inv-muted">{swapped.oldUid && swapped.oldUid !== swapped.uid ? '古いタグは使えなくなりました' : null}</span>
                   </p> : null}

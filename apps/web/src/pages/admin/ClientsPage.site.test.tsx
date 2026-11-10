@@ -3,6 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mutateAsync = vi.fn(async () => ({}));
 const createSiteAsync = vi.fn(async () => ({}));
+const authUser = { role: 'ADMIN' };
+
+vi.mock('../../contexts/AuthContext', () => ({
+  useAuth: () => ({ user: authUser })
+}));
 
 vi.mock('../../api/hooks', () => ({
   useClients: () => ({
@@ -13,9 +18,9 @@ vi.mock('../../api/hooks', () => ({
         id: 'mac',
         name: 'Mac',
         location: null,
-        apiKey: 'client-key-mac-kiosk1',
         siteKey: null,
         canProxyOtherDevices: true,
+        procedureBoardEnabled: true,
         kioskInitialRoute: 'assembly',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -24,9 +29,9 @@ vi.mock('../../api/hooks', () => ({
         id: 'kiosk',
         name: 'raspi4-sessaku-01',
         location: '第2工場 - Sessaku-01',
-        apiKey: 'client-key-raspi4-sessaku-01-kiosk1',
         siteKey: '第2工場',
         canProxyOtherDevices: false,
+        procedureBoardEnabled: null,
         statusClientId: 'raspi4-sessaku-01',
         createdAt: '2026-09-26T00:00:00Z',
         updatedAt: '2026-09-26T00:00:00Z'
@@ -71,14 +76,90 @@ vi.mock('../../api/hooks', () => ({
   useCreateSite: () => ({ mutateAsync: createSiteAsync, isPending: false })
 }));
 
+vi.mock('../../api/domains/clients', () => ({ getClientApiKey: vi.fn() }));
+
+import { getClientApiKey } from '../../api/domains/clients';
+
 import { ClientsPage } from './ClientsPage';
 
 const settings = () => within(screen.getByRole('region', { name: '端末の設定' }));
 
 describe('ClientsPage', () => {
   beforeEach(() => {
+    vi.mocked(getClientApiKey).mockReset().mockResolvedValue('fixture-requested-key');
     mutateAsync.mockClear();
     createSiteAsync.mockClear();
+    authUser.role = 'ADMIN';
+  });
+
+  it('fetches and copies the key only after ADMIN requests it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    render(<ClientsPage />);
+    expect(settings().getByText('APIキー')).toBeInTheDocument();
+    expect(settings().queryByText('fixture-requested-key')).not.toBeInTheDocument();
+    expect(settings().queryByRole('button', { name: 'コピー' })).not.toBeInTheDocument();
+    expect(getClientApiKey).not.toHaveBeenCalled();
+    fireEvent.click(settings().getByRole('button', { name: 'キーを表示' }));
+    expect(await settings().findByText('fixture-requested-key', { selector: 'code' })).toBeInTheDocument();
+    expect(getClientApiKey).toHaveBeenCalledExactlyOnceWith('mac');
+    fireEvent.click(settings().getByRole('button', { name: 'コピー' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('fixture-requested-key'));
+    expect(await settings().findByRole('button', { name: 'コピー済み' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
+    expect(settings().queryByText('fixture-requested-key')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Mac/ }));
+    expect(settings().getByRole('button', { name: 'キーを表示' })).toBeInTheDocument();
+    expect(settings().queryByText('fixture-requested-key')).not.toBeInTheDocument();
+  });
+
+  it('hides the key section from MANAGER', () => {
+    authUser.role = 'MANAGER';
+    render(<ClientsPage />);
+    expect(settings().queryByText('APIキー')).not.toBeInTheDocument();
+    expect(settings().queryByRole('button', { name: 'キーを表示' })).not.toBeInTheDocument();
+    expect(getClientApiKey).not.toHaveBeenCalled();
+  });
+
+  it('shows a key fetch error and allows retry', async () => {
+    vi.mocked(getClientApiKey).mockRejectedValueOnce(new Error('failed'));
+    render(<ClientsPage />);
+    fireEvent.click(settings().getByRole('button', { name: 'キーを表示' }));
+    expect(await settings().findByText('キーの取得に失敗しました。')).toHaveClass('text-red-600');
+    fireEvent.click(settings().getByRole('button', { name: 'キーを表示' }));
+    expect(await settings().findByText('fixture-requested-key')).toBeInTheDocument();
+  });
+
+  it('discards a pending key response after switching devices', async () => {
+    let resolveKey!: (key: string) => void;
+    vi.mocked(getClientApiKey).mockReturnValueOnce(new Promise(resolve => { resolveKey = resolve; }));
+    render(<ClientsPage />);
+    fireEvent.click(settings().getByRole('button', { name: 'キーを表示' }));
+    fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
+    resolveKey('old-device-key');
+    await waitFor(() => expect(settings().getByRole('button', { name: 'キーを表示' })).toBeEnabled());
+    expect(settings().queryByText('old-device-key')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Mac/ }));
+    expect(settings().queryByText('old-device-key')).not.toBeInTheDocument();
+  });
+
+  it('lets only ADMIN switch proxy operation', () => {
+    const { unmount } = render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '他端末の代理操作を許可' })).toBeEnabled();
+    unmount();
+    authUser.role = 'MANAGER';
+    render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '他端末の代理操作を許可' })).toBeDisabled();
+  });
+
+  it.each(['ADMIN', 'MANAGER'])('allows %s to change the signage flag', async (role) => {
+    authUser.role = role;
+    render(<ClientsPage />);
+    fireEvent.click(settings().getByRole('switch', { name: 'サイネージを許可' }));
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({
+      id: 'mac', payload: expect.objectContaining({ isSignage: true })
+    }));
   });
 
   it('marks a device without a site and warns in its settings', () => {
@@ -121,6 +202,22 @@ describe('ClientsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
     expect(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' })).toBeChecked();
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('shows, preserves and submits the procedure board capability', async () => {
+    render(<ClientsPage />);
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).toBeChecked();
+    fireEvent.change(settings().getByLabelText('起動先'), { target: { value: 'borrow_tag' } });
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith({ id: 'mac', payload: expect.objectContaining({ procedureBoardEnabled: true }) }));
+    fireEvent.click(settings().getByRole('switch', { name: '手順づくりを許可' }));
+    fireEvent.click(screen.getByRole('button', { name: /raspi4-sessaku-01/ }));
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).not.toBeChecked();
+    expect(settings().getByRole('button', { name: '保存' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: /Mac.*未保存/ }));
+    expect(settings().getByRole('switch', { name: '手順づくりを許可' })).not.toBeChecked();
+    fireEvent.click(settings().getByRole('button', { name: '保存' }));
+    await waitFor(() => expect(mutateAsync).toHaveBeenLastCalledWith({ id: 'mac', payload: expect.objectContaining({ procedureBoardEnabled: false }) }));
   });
 
   it('joins the status report to its device and lists reports without a device', () => {

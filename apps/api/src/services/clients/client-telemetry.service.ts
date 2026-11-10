@@ -1,4 +1,7 @@
+import { claimStatusClientId } from './status-client-id-claim.js';
 import crypto from 'crypto';
+import type { ClientDevice } from '@prisma/client';
+import { resolveSignagePreviewTargetInput } from '../kiosk/kiosk-signage-preview.service.js';
 import { AlertChannel, AlertDeliveryStatus, Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/client';
 
@@ -20,11 +23,10 @@ import {
 } from './client-telemetry-alert-policy.js';
 
 import { deployWindowEndedAt } from './kiosk-deploy-window.js';
+import { loadHeartbeatAlertConfig } from './client-heartbeat-alert-policy.js';
 
 const isKioskLog = (entry: ClientTelemetryLogEntry) =>
-  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats';
-
-const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
+  entry.context?.category === 'kiosk_ui_error' || entry.context?.category === 'kiosk_net_stats' || entry.context?.category === 'sessaku-pieces';
 
 async function createTelemetrySlackAlerts(params: {
   clientId: string;
@@ -145,6 +147,7 @@ async function resolveRegisteredSiteKeyForNewDevice(location: string | undefined
 
 export async function registerClientDeviceAdmin(params: {
   apiKey: string;
+  statusClientId?: string;
   name: string;
   location?: string | null;
 }) {
@@ -154,14 +157,16 @@ export async function registerClientDeviceAdmin(params: {
   const device = await prisma.clientDevice.upsert({
     where: { apiKey: params.apiKey },
     update: {
-      location,
+      ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
       lastSeenAt: now,
     },
     create: {
+      ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
       name: params.name,
       location,
       siteKey: siteKeyForNewDevice,
       apiKey: params.apiKey,
+      isSignage: params.apiKey.toLowerCase().includes('signage'),
       lastSeenAt: now,
     },
   });
@@ -171,23 +176,18 @@ export async function registerClientDeviceAdmin(params: {
 }
 
 /**
- * 登録済み端末のみ: x-client-key 相当のキーで生存通知（lastSeen / location）。
+ * 登録済み端末のみ: x-client-key 相当のキーで生存通知（lastSeen）。
  * 未登録キーは 404。
  */
-export async function touchClientHeartbeat(params: { clientKey: string; location?: string | null }) {
+export async function touchClientHeartbeat(params: { clientKey: string }) {
   const now = new Date();
-  const location = normalizeOptionalLocation(params.location);
   try {
     const device = await prisma.clientDevice.update({
       where: { apiKey: params.clientKey },
       data: {
-        location,
         lastSeenAt: now,
       },
     });
-    if (location !== undefined) {
-      invalidateSiteDirectory();
-    }
     return device;
   } catch (error) {
     if (error instanceof PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -214,28 +214,46 @@ async function requireRegisteredClientDevice(clientKey: string, data: {
   }
 }
 
-export async function listClientDevices() {
-  return prisma.clientDevice.findMany({ orderBy: { name: 'asc' } });
+export function listClientDevices(options: { omitApiKey: true }): Promise<Omit<ClientDevice, 'apiKey'>[]>;
+export function listClientDevices(): Promise<ClientDevice[]>;
+export async function listClientDevices(options?: { omitApiKey: true }) {
+  return prisma.clientDevice.findMany({
+    orderBy: { name: 'asc' },
+    ...(options?.omitApiKey ? { omit: { apiKey: true } } : {})
+  });
 }
 
 export async function updateClientDevice(params: {
   id: string;
+  statusClientId?: string;
   name?: string;
+  location?: string | null;
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
   shelfLayoutEditEnabled?: boolean;
+  procedureBoardEnabled?: boolean;
   siteKey?: string | null;
   canProxyOtherDevices?: boolean;
+  isSignage?: boolean;
+  signagePreviewTargetDeviceId?: string | null;
 }) {
   try {
+    const previewTarget = params.signagePreviewTargetDeviceId !== undefined
+      ? await resolveSignagePreviewTargetInput(params)
+      : {};
     const updated = await prisma.clientDevice.update({
       where: { id: params.id },
       data: {
+        ...(params.statusClientId !== undefined ? { statusClientId: params.statusClientId } : {}),
+        ...previewTarget,
+        ...(params.isSignage !== undefined ? { isSignage: params.isSignage } : {}),
         name: params.name ?? undefined,
+        ...(params.location !== undefined ? { location: params.location } : {}),
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
+        ...(params.procedureBoardEnabled !== undefined ? { procedureBoardEnabled: params.procedureBoardEnabled } : {}),
         ...(params.shelfLayoutEditEnabled !== undefined
           ? { shelfLayoutEditEnabled: params.shelfLayoutEditEnabled }
           : {}),
@@ -246,7 +264,7 @@ export async function updateClientDevice(params: {
       }
     });
     // 拠点・端末名（location 未設定時の端末スコープキー）の変更を、次のリクエストから反映する。
-    if (params.siteKey !== undefined || params.name !== undefined) {
+    if (params.siteKey !== undefined || params.name !== undefined || params.location !== undefined) {
       invalidateSiteDirectory();
     }
     return updated;
@@ -280,15 +298,26 @@ export async function upsertClientStatus(params: {
   const { clientKey, metrics, requestId } = params;
   const now = new Date();
 
+  const registeredDevice = await prisma.clientDevice.findUnique({ where: { apiKey: clientKey } });
+  if (!registeredDevice) {
+    throw new ApiError(404, 'クライアントデバイスが見つかりません', undefined, 'CLIENT_DEVICE_NOT_FOUND');
+  }
+  const statusClientId = registeredDevice.statusClientId ?? metrics.clientId;
+  if (registeredDevice.statusClientId != null && registeredDevice.statusClientId !== metrics.clientId) {
+    logger.warn({ storedClientId: registeredDevice.statusClientId, payloadClientId: metrics.clientId },
+      '[ClientTelemetry] status client ID differs from registered value');
+  }
+  if (registeredDevice.statusClientId == null) {
+    await claimStatusClientId(registeredDevice.id, statusClientId);
+  }
   const clientDevice = await requireRegisteredClientDevice(clientKey, {
-    statusClientId: metrics.clientId,
-    lastSeenAt: now,
+    lastSeenAt: now
   });
 
   const status = await prisma.clientStatus.upsert({
-    where: { clientId: metrics.clientId },
+    where: { clientId: statusClientId },
     create: {
-      clientId: metrics.clientId,
+      clientId: statusClientId,
       hostname: metrics.hostname,
       ipAddress: metrics.ipAddress,
       cpuUsage: metrics.cpuUsage,
@@ -315,17 +344,22 @@ export async function upsertClientStatus(params: {
   const logEntries = (metrics.logs ?? [])
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
+  for (const entry of logEntries) {
+    if (isKioskLog(entry)) {
+      entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
+    }
+  }
   if (logEntries.length > 0) {
     await prisma.clientLog.createMany({
       data: logEntries.map((entry) => ({
-        clientId: metrics.clientId,
+        clientId: statusClientId,
         level: entry.level,
         message: entry.message.slice(0, 1000),
         context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
       }))
     });
     await createTelemetrySlackAlerts({
-      clientId: metrics.clientId,
+      clientId: statusClientId,
       logs: logEntries,
       requestId
     });
@@ -345,12 +379,17 @@ export async function storeClientLogs(params: {
   logs: ClientTelemetryLogEntry[];
   requestId: string;
 }) {
-  const { clientKey, clientId, requestId } = params;
+  const { clientKey, requestId } = params;
   const logs = params.logs
     .map(sanitizeClientTelemetryLogEntry)
     .filter((entry): entry is ClientTelemetryLogEntry => entry !== null);
   const clientDevice = await requireRegisteredClientDevice(clientKey, { lastSeenAt: new Date() });
-  const kioskClientId = clientDevice.statusClientId ?? clientId;
+  let clientId = clientDevice.statusClientId;
+  if (clientId == null) {
+    const existing = await prisma.clientDevice.findFirst({ where: { statusClientId: params.clientId, id: { not: clientDevice.id } } });
+    if (existing) throw new ApiError(409, '監視端末IDはすでに登録されています');
+    clientId = params.clientId;
+  }
   for (const entry of logs) {
     if (isKioskLog(entry)) {
       entry.context = { ...entry.context, clientDeviceId: clientDevice.id, clientDeviceName: clientDevice.name };
@@ -359,14 +398,14 @@ export async function storeClientLogs(params: {
 
   await prisma.clientLog.createMany({
     data: logs.map((entry) => ({
-      clientId: isKioskLog(entry) ? kioskClientId : clientId,
+      clientId,
       level: entry.level,
       message: entry.message.slice(0, 1000),
       context: entry.context ? (entry.context as Prisma.InputJsonValue) : undefined
     }))
   });
   await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category !== 'kiosk_ui_error'), requestId });
-  await createTelemetrySlackAlerts({ clientId: kioskClientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
+  await createTelemetrySlackAlerts({ clientId, logs: logs.filter((entry) => entry.context?.category === 'kiosk_ui_error'), requestId });
 
   return { requestId, logsStored: logs.length };
 }
@@ -376,6 +415,7 @@ export async function getClientStatusesWithLatestLogs(requestId: string) {
     orderBy: { hostname: 'asc' }
   });
 
+  const staleThresholdMs = loadHeartbeatAlertConfig().staleAfterMs;
   const clientIds = statuses.map((status) => status.clientId);
   let groupedLogs = new Map<string, { level: string; message: string; createdAt: Date }[]>();
   if (clientIds.length > 0) {

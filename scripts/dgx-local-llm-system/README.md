@@ -92,7 +92,7 @@ python3 ./gateway-server.py
 ./start-embedding-server.sh
 ```
 
-`sudo` や `loginctl enable-linger` を前提にしない最小構成として、DGX ユーザーの `crontab` に次を入れる運用を取れる:
+旧運用（systemd 移行前）では、`sudo` や `loginctl enable-linger` を前提にしない最小構成として、DGX ユーザーの `crontab` に次を入れていた。移行後は外す:
 
 ```cron
 @reboot /srv/dgx/system-prod/bin/start-control-server.sh
@@ -218,7 +218,7 @@ manifest 例は [`model-registry.examples/`](./model-registry.examples/) に置�
 - **`storageLocation`**: 移行**先**（正規配置）。未移行なら存在しないことがある。
 - **`currentStorageLocation`**: **現配置**。HF cache 利用時は **`/srv/dgx/system-prod/data/hf-cache/hub/models--<org>--<model>`**（**`hub/` 配下**）。`hub` を抜いたパスは実在チェックに失敗し、`status: unavailable` になる。
 - **`profile_storage_available()`**（[`model_profiles.py`](./model_profiles.py)）: `currentStorageLocation` と `storageLocation` の **OR 存在チェック**。どちらか一方でもディレクトリがあれば `GET /system/model-profiles` では `available`。
-- **管理 UI**: 業務復帰ドロップダウンは `businessOrchestrationEligible !== false` かつ `status === 'available'` の profile のみ（Pi5 は overview の `businessReturnSelectable` を正本）。`START_MODEL_PROFILE` 固定ボタンは別契約。manifest パスがずれると **API は複数件返るが UI は一部のみ**になり得る。切り分けは [KB-365 §storage availability](../../docs/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)。
+- **管理 UI**: 業務復帰ドロップダウンは `businessOrchestrationEligible !== false` かつ `status === 'available'` の profile のみ（Pi5 は overview の `businessReturnSelectable` を正本）。`START_MODEL_PROFILE` 固定ボタンは別契約。manifest パスがずれると **API は複数件返るが UI は一部のみ**になり得る。切り分けは [KB-365 §storage availability](../../docs/archive/knowledge-base/KB-365-dgx-resource-phase3-workload-orchestration.md#dgx-model-profile-storage-availability)。
 - **`businessOrchestrationEligible`**（manifest・既定 `true`）: `false` の profile は業務復帰 orchestration では選択不可（例: `qwen36_35b_uncensored`）。
 - **`runtimeProfile`**: profile 別の運用予算。vLLM は `vllm.gpuMemoryUtilization` / `maxModelLen` / `maxNumSeqs` / `quantization` / `disableCustomAllReduce` / `tensorParallelSize`、llama.cpp は `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を持つ。`0.65` は各 profile の known-good default であり、グローバル値ではない。
 - **resource-state**: `control-server.py` は `/start` / `/stop` / `/stop-force` 後に `/srv/dgx/system-prod/state/dgx-resource-state.json` を更新する。`GET /system/resource-state` と `GET /system/model-profiles` の `resourceState` で、業務Pi5 UI と Private Pi5 直通 route が同じ owner/state を見られる。
@@ -327,6 +327,31 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 - まずは `vLLM` 単体で起動成立を確認し、その後に必要なら `z-lab/Qwen3.6-27B-DFlash` を追加する
 - blue backend の起動確認が取れるまでは `ACTIVE_LLM_BACKEND=green` を維持し、内部 port `38083` を直接叩いて検証する
 
+### 業務 lifecycle の上限と復旧
+
+control と gateway には同じ値を設定する。秒数は正の有限値のみ。
+
+| 環境変数 | 既定値（秒） | 対象 |
+| --- | ---: | --- |
+| `LLM_RUNTIME_COMMAND_TIMEOUT_SEC` | 120 | control の各コマンドの上限（request の残り予算以内）。超過時は同じ process group を停止して reap |
+| `LLM_RUNTIME_REQUEST_BUDGET_SEC` | 360 | control の `/start`・`/stop`・`/stop-force` 全体の予算。lock 待ちと各コマンドで共有 |
+| `LLM_RUNTIME_FORWARD_MARGIN_SEC` | 30 | gateway の `/start`・`/stop`・`/stop-force` 転送で request budget に足す余裕（既定の転送 timeout は 390 秒） |
+| `BUSINESS_STATE_LOCK_TIMEOUT_SEC` | 30 | lifecycle の通常 lock 待ち |
+| `BUSINESS_FORCE_STOP_DRAIN_SEC` | 30 | `/stop-force` の drain・排他 lock 待ち |
+| `BUSINESS_REQUEST_MAX_LIFETIME_SEC` | 300 | gateway の業務リクエスト・stream 全体 |
+| `BUSINESS_RESPONSE_WRITE_TIMEOUT_SEC` | 10 | gateway の業務レスポンス socket 書き込み |
+
+`/stop-force` は期限付き `.drain` で新規リクエストを拒否する。期限内に reader が完了しなければ
+`503 business_drain_timeout` を返し、稼働中の業務 runtime を維持する。期限切れの drain は新規受付を妨げない。
+DeepSeek の launch marker は `pending` → `confirmed` の二段階。pending の停止後は両 rank の
+container・GPU 解放・launcher・watchdog・listener を確認し、曖昧な状態では marker を保持する。
+選択 state が欠落・破損していても `/stop-force` は両 backend を停止する。復旧用 state は
+`failed` / `business_selection_recovery_required` となり、operator が正しい選択 state を復旧するまで `/start` を拒否する。
+
+GLM の検査・readiness・業務転送は adapter と同じ `BLUE_CONTAINER_NAME` → `TRTLLM_CONTAINER_NAME`
+→ `system-prod-trtllm`、`BLUE_SERVER_PORT` → `TRTLLM_SERVER_PORT` → `38083` を使用する。
+container 名と port（1–65535）は検証する。`BLUE_LLM_BASE_URL` の通常転送契約は従来どおり。
+
 ## 優先順
 
 - まずは **既存の `system-prod-primary` を単一 VLM endpoint として成立**させる
@@ -338,7 +363,7 @@ BLUE_LLM_BASE_URL=http://127.0.0.1:38083
 
 - DGX 実機では `node` が未導入だったため、まずは `python3 ./control-server.py` を正とする
 - tailnet 参加前の localhost smoke では `python3 ./gateway-server.py` で `38081` を再現できる
-- 実機確認では、**再起動後に `control-server.py` / `gateway-server.py` が自動復帰しない穴**があったため、現時点では **`start-control-server.sh` / `start-gateway-server.sh` / `start-embedding-server.sh` を `@reboot` で起動**する運用を正とする
+- 常駐は `systemd/` の unit（`dgx-llm-control` / `dgx-llm-gateway` / `dgx-llm-embedding`）を正とする。`@reboot` からの移行と戻し方は [runbook の systemd 移行節](../../docs/runbooks/dgx-system-prod-local-llm.md)
 - この雛形は **実値なし** のテンプレートです。秘密は別ファイルで注入してください
 - `DOCKER_BRIDGE_GATEWAY` は tailscale sidecar から見た host gateway を実機で確認して設定してください
 - `photo_label` の vision 互換は、まず **現行 `Qwen3.5-35B` + `mmproj` の単体疎通**で確認する

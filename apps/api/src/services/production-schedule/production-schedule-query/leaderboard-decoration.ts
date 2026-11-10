@@ -1,4 +1,5 @@
 import { prisma } from '../../../lib/prisma.js';
+import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { enrichProductionScheduleRowsWithResolvedMachineName } from '../production-schedule-machine-name-enrichment.service.js';
 import { enrichProductionScheduleRowsWithCustomerName } from '../production-schedule-customer-name-enrichment.service.js';
 import { buildLeaderboardFooterChipsByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-footer-processes.service.js';
@@ -8,15 +9,15 @@ import {
 import type { LeaderboardPartFooterProcessItem } from '../leaderboard/leaderboard-part-footer-processes.service.js';
 import { buildLeaderboardMaterialArrivalByPartKeyForScheduleRows } from '../leaderboard/leaderboard-part-material-arrival.service.js';
 import {
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds,
-} from '../leaderboard/leaderboard-split-expansion.service.js';
+  fetchLeaderboardScheduleHydratedRowsOrderedByIds,
+} from '../leaderboard/leaderboard-shell-hydrate.service.js';
 import { normalizeLeaderboardDisplayRowIdScope } from '../leaderboard/leaderboard-display-row-scope.js';
 import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import {
   getResourceCategoryPolicy,
   resolvePartMeasurementProcessGroupForApi,
 } from '../policies/resource-category-policy.service.js';
-import type { MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSpecialDue, MaterialArrivalBasis, MaterialArrivalStatus } from '@raspi-system/shared-types';
 import type {
   ProductionScheduleListResult,
   ProductionScheduleRow,
@@ -57,7 +58,10 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
   }));
 
   const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
-  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+  const enrichedRows = await enrichRowsWithProcessArrival(
+    await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName),
+    { siteKey, locationKey, includeSpecialDue: true }
+  );
   const selfInspectionService = new SelfInspectionService();
   const selfInspectionDecorations = await selfInspectionService.buildLeaderboardDecorations(enrichedRows, {
     siteKey
@@ -76,6 +80,8 @@ export async function decorateLeaderboardShellRowsForKioskFromHydratedRows(param
   return {
     rowDecorations: enrichedRows.map((r) => ({
       id: r.id,
+      arrived: r.arrived,
+      specialDue: r.specialDue,
       resolvedMachineName: r.resolvedMachineName ?? null,
       customerName: r.customerName ?? null,
       hasSelfInspectionDrawing: selfInspectionById.get(r.id)?.hasSelfInspectionDrawing ?? false,
@@ -113,8 +119,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
   const leaderboardMaterializedBaseWhere =
     await resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma);
 
-  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
-    orderedDisplayItemIds: preferredDisplayRowIds,
+  const rawRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+    orderedRowIds: preferredDisplayRowIds,
     locationKey,
     siteScopedGlobalRankLocation: siteKey?.trim().length ? siteKey.trim() : locationKey,
     leaderboardMaterializedBaseWhere
@@ -137,6 +143,8 @@ export async function decorateLeaderboardShellRowsForKiosk(params: {
 export type ProductionScheduleLeaderboardDecorationPayload = {
   rowDecorations: Array<{
     id: string;
+    arrived?: boolean;
+    specialDue?: GrindingPlanningBoardSpecialDue | null;
     resolvedMachineName: string | null;
     customerName: string | null;
     hasSelfInspectionDrawing: boolean;
@@ -168,7 +176,10 @@ export async function enrichLeaderboardListRowsAndFooter(params: {
   }));
 
   const rowsWithResolvedMachineName = await enrichProductionScheduleRowsWithResolvedMachineName(lightRows);
-  const enrichedRows = await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName);
+  const enrichedRows = await enrichRowsWithProcessArrival(
+    await enrichProductionScheduleRowsWithCustomerName(rowsWithResolvedMachineName),
+    { siteKey, locationKey, includeSpecialDue: true }
+  );
   const resourcePolicy = await getResourceCategoryPolicy({ siteKey });
   const rowsWithProcessGroup = enrichedRows.map((row) => {
     const rowData = (row.rowData ?? {}) as Record<string, unknown>;

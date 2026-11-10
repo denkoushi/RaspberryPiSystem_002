@@ -266,7 +266,7 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 1. **Caddy設定の確認**:
    - `infrastructure/docker/Caddyfile.local`でWebSocketプロキシ設定を確認
    - `/api/webrtc/signaling`へのリクエストが正しくプロキシされているか確認
-   - **重要**: WebSocketアップグレードヘッダーは`/api/webrtc/signaling`のみに適用すること（[KB-141](../knowledge-base/infrastructure/docker-caddy.md#kb-141)参照）
+   - **重要**: WebSocketアップグレードヘッダーは`/api/webrtc/signaling`のみに適用すること（[KB-141](../knowledge-base/infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題)参照）
 
 2. **APIログの確認**:
 ```bash
@@ -278,10 +278,10 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
    - `WebSocket onerror` が表示されないこと
 
 4. **Route not found エラーの場合**:
-   - `Route GET:/api/webrtc/webrtc/signaling not found`のようなダブルプレフィックスがないか確認（[KB-132](../knowledge-base/api.md#kb-132)参照）
+   - `Route GET:/api/webrtc/webrtc/signaling not found`のようなダブルプレフィックスがないか確認（[KB-132](../knowledge-base/api.md#kb-132-webrtcシグナリングルートのダブルプレフィックス問題)参照）
 
 5. **TypeError: Cannot read properties of undefined エラーの場合**:
-   - `@fastify/websocket`の`connection.socket`がundefinedになる場合がある（[KB-133](../knowledge-base/api.md#kb-133)参照）
+   - `@fastify/websocket`の`connection.socket`がundefinedになる場合がある（[KB-133](../knowledge-base/api.md#kb-133-fastifywebsocketのconnectionsocketがundefinedになる問題)参照）
    - `connection`オブジェクト自体がWebSocketの場合に対応しているか確認
 
 ### 発信先一覧が表示されない
@@ -342,7 +342,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 
 4. **着信モーダルが表示されない場合**:
    - コンソールログで`cleanup called`が`incoming`の直後に発生していないか確認
-   - 発生している場合は`useWebRTC`フックのコールバック安定化を確認（[KB-136](../knowledge-base/frontend.md#kb-136)参照）
+   - 発生している場合は`useWebRTC`フックのコールバック安定化を確認（[KB-136](../knowledge-base/frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題)参照）
 
 ### マイク未接続端末で「Could not start audio source」エラー
 
@@ -352,7 +352,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
    - 現在の実装では**recvonly（受信専用）モードで通話を継続**するフォールバックあり
    - エラーダイアログが表示されず通話が維持されることを確認
 
-3. **詳細**: [KB-137](../knowledge-base/frontend.md#kb-137)参照
+3. **詳細**: [KB-137](../knowledge-base/frontend.md#kb-137-マイク未接続端末でのrecvonlyフォールバック実装)参照
 
 ### ビデオを有効化しても黒い画面が表示される
 
@@ -361,7 +361,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 2. **DOM要素へのバインディング**:
    - ビデオ要素が条件付きレンダリングされている場合、`srcObject`のバインドタイミングに注意
    - `useEffect`でストリームとDOM要素の両方が存在する時にバインドする
-   - 詳細: [KB-138](../knowledge-base/frontend.md#kb-138)参照
+   - 詳細: [KB-138](../knowledge-base/frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題)参照
 
 3. **古いJavaScriptが残っている場合**:
    - `docker compose build --no-cache web`でキャッシュを無効化してビルド
@@ -380,7 +380,7 @@ localStorage.setItem('kiosk-client-key', JSON.stringify('client-key-mac-kiosk1')
 ssh denkon5sd02@100.106.158.2 "docker logs --since 10m docker-api-1 2>&1 | grep -E 'ping|pong'"
 ```
 
-4. **詳細**: [KB-134](../knowledge-base/api.md#kb-134)参照
+4. **詳細**: [KB-134](../knowledge-base/api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策)参照
 
 ### 「Callee is not connected」エラー
 
@@ -521,18 +521,18 @@ status-agentは以下の方法でIPアドレスを取得します：
 
 ### ナレッジベース（WebRTC関連）
 
-- [KB-132: WebRTCシグナリングルートのダブルプレフィックス問題](../knowledge-base/api.md#kb-132)
-- [KB-133: @fastify/websocketのconnection.socket問題](../knowledge-base/api.md#kb-133)
-- [KB-134: WebSocket keepalive対策](../knowledge-base/api.md#kb-134)
-- [KB-135: キオスク通話候補取得APIエンドポイント](../knowledge-base/api.md#kb-135)
-- [KB-136: useWebRTCのcleanup早期実行問題](../knowledge-base/frontend.md#kb-136)
-- [KB-137: マイク未接続端末でのrecvonlyフォールバック](../knowledge-base/frontend.md#kb-137)
-- [KB-138: ビデオ通話時のsrcObjectバインディング問題](../knowledge-base/frontend.md#kb-138)
-- [KB-139: WebSocket接続管理（重複接続防止）](../knowledge-base/frontend.md#kb-139)
-- [KB-140: useLocalStorageとの互換性](../knowledge-base/frontend.md#kb-140)
-- [KB-141: CaddyのWebSocketアップグレードヘッダー問題](../knowledge-base/infrastructure/docker-caddy.md#kb-141)
-- [KB-241: WebRTCビデオ通話の常時接続と着信自動切り替え機能実装](../knowledge-base/frontend.md#kb-241)
-- [KB-243: WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善](../knowledge-base/frontend.md#kb-243)
+- [KB-132: WebRTCシグナリングルートのダブルプレフィックス問題](../knowledge-base/api.md#kb-132-webrtcシグナリングルートのダブルプレフィックス問題)
+- [KB-133: @fastify/websocketのconnection.socket問題](../knowledge-base/api.md#kb-133-fastifywebsocketのconnectionsocketがundefinedになる問題)
+- [KB-134: WebSocket keepalive対策](../knowledge-base/api.md#kb-134-websocket接続の5分タイムアウト問題とkeepalive対策)
+- [KB-135: キオスク通話候補取得APIエンドポイント](../knowledge-base/api.md#kb-135-キオスク通話候補取得用apiエンドポイント追加)
+- [KB-136: useWebRTCのcleanup早期実行問題](../knowledge-base/frontend.md#kb-136-webrtc-usewebrtcフックのcleanup関数が早期実行される問題)
+- [KB-137: マイク未接続端末でのrecvonlyフォールバック](../knowledge-base/frontend.md#kb-137-マイク未接続端末でのrecvonlyフォールバック実装)
+- [KB-138: ビデオ通話時のsrcObjectバインディング問題](../knowledge-base/frontend.md#kb-138-ビデオ通話時のdom要素へのsrcobjectバインディング問題)
+- [KB-139: WebSocket接続管理（重複接続防止）](../knowledge-base/frontend.md#kb-139-webrtcシグナリングのwebsocket接続管理重複接続防止)
+- [KB-140: useLocalStorageとの互換性](../knowledge-base/frontend.md#kb-140-uselocalstorageとの互換性のためのjsonstringify対応)
+- [KB-141: CaddyのWebSocketアップグレードヘッダー問題](../knowledge-base/infrastructure/docker-caddy.md#kb-141-caddyがすべてのapi要求にwebsocketアップグレードヘッダーを強制する問題)
+- [KB-241: WebRTCビデオ通話の常時接続と着信自動切り替え機能実装](../knowledge-base/frontend.md#kb-241-webrtcビデオ通話の常時接続と着信自動切り替え機能実装)
+- [KB-243: WebRTCビデオ通話の映像不安定問題とエラーダイアログ改善](../knowledge-base/frontend.md#kb-243-webrtcビデオ通話の映像不安定問題とエラーダイアログ改善)
 
 ## 実機検証結果（2026-02-10）
 

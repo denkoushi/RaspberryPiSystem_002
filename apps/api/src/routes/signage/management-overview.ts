@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { listClientDevices } from '../../services/clients/client-telemetry.service.js';
 import { env } from '../../config/env.js';
 import { authorizeRoles } from '../../lib/auth.js';
 import { SignageService } from '../../services/signage/index.js';
@@ -17,12 +18,12 @@ export function registerManagementOverviewRoutes(app: FastifyInstance, signageSe
 
   // 端末ごとの「最後に取りに来た時刻」と「いま順番に映している予定」。ファイルは読まない（メモリと DB だけ）
   app.get('/management/overview', { preHandler: canManage }, async () => {
-    const clientKeys = await signageService.listSignageRenderClientApiKeys();
+    const devices = await listClientDevices({ omitApiKey: true });
     const clients = await Promise.all(
-      clientKeys.map(async (apiKey) => ({
-        apiKey,
-        lastFetchedAt: getSignageImageLastFetchedAt(apiKey)?.toISOString() ?? null,
-        rotation: await signageService.getRotationForClient(apiKey),
+      devices.map(async ({ id: clientDeviceId }) => ({
+        clientDeviceId,
+        lastFetchedAt: getSignageImageLastFetchedAt(clientDeviceId)?.toISOString() ?? null,
+        rotation: await signageService.getRotationForClient(clientDeviceId),
       })),
     );
     return {

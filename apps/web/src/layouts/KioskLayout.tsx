@@ -16,6 +16,7 @@ import {
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
 import { KIOSK_ASSEMBLY_CHECK_SHEETS_PATH, KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from '../features/assembly/assemblyRoutes';
+import { useInventoryOutboxReplay } from '../features/kiosk/inventory/offline/useInventoryOutboxReplay';
 import { InventoryNfcRouter } from '../features/kiosk/InventoryNfcRouter';
 import {
   KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,
@@ -30,6 +31,8 @@ import {
   advanceKioskWebActivation,
   kioskWebNavigation
 } from '../features/kiosk/kioskWebActivation';
+import { useLoanOutboxReplay } from '../features/kiosk/loan/offline/useLoanOutboxReplay';
+import { usePalletOutboxReplay } from '../features/kiosk/pallet-visualization/offline/usePalletOutboxReplay';
 import { KioskPortalControls } from '../features/kiosk/portal/KioskPortalControls';
 import { useKioskPortalLargeScreen } from '../features/kiosk/portal/useKioskPortalLargeScreen';
 import { useKioskSeamlessWebUpdate } from '../features/kiosk/useKioskSeamlessWebUpdate';
@@ -43,6 +46,9 @@ import { useKioskBottomRightHeaderReveal } from '../hooks/useKioskBottomRightHea
 import type { TimedHoverRevealCloseReason } from '../hooks/useTimedHoverReveal';
 
 export function KioskLayout() {
+  useInventoryOutboxReplay();
+  useLoanOutboxReplay();
+  usePalletOutboxReplay();
   const clientKey = getResolvedClientKey();
   const callTargetsQuery = useKioskCallTargets();
   const selfClientId = callTargetsQuery.data?.selfClientId ?? '';
@@ -296,7 +302,7 @@ export function KioskLayout() {
         ref={headerRef}
         id="kiosk-dock"
         aria-hidden={!isPortal && !headerReveal.isVisible}
-        {...(!isPortal && !headerReveal.isVisible ? { inert: '' } : {})}
+        {...(!isPortal && !headerReveal.isVisible ? { inert: true } : {})}
         className={clsx(
           'shrink-0 bg-inv-bg px-5 py-[14px]',
           isPortal ? 'relative z-40 border-b border-inv-line2' : KIOSK_IMMERSIVE_HEADER_BORDER_CLASS,

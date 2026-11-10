@@ -6,7 +6,7 @@ export const SIGNAGE_CANVAS_DEFAULT_WIDTH = 1920;
 export const SIGNAGE_CANVAS_DEFAULT_HEIGHT = 1080;
 export const SIGNAGE_CANVAS_MAX_ELEMENTS = 12;
 
-const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+export const hexColorSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 const geometrySchema = z.object({
   id: z.string().trim().min(1).max(64),

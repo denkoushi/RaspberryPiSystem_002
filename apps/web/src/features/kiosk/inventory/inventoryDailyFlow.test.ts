@@ -5,6 +5,7 @@ import {
   correctionSummary,
   groupCompartmentsByLocation,
   pickedCompartmentTag,
+  needsOrdering,
 } from './inventoryDailyFlow';
 
 import type { InventoryCompartment, InventoryItem } from '../../../api/client';
@@ -14,6 +15,16 @@ function compartment(id: string, area: string, shelfNumber: number, drawerNumber
 }
 
 describe('inventoryDailyFlow', () => {
+  it.each([
+    [0, 0, null, true],
+    [5, 5, null, true],
+    [5, 5, '2026-11-04T00:00:00Z', false],
+    [6, 5, null, false],
+    [0, null, null, false],
+  ])('checks whether stock %s at point %s with order %s needs ordering', (stockQuantity, reorderPoint, reorderedAt, expected) => {
+    expect(needsOrdering({ stockQuantity, reorderPoint, reorderedAt })).toBe(expected);
+  });
+
   it('groups compartments of every item by area, shelf and drawer in order', () => {
     const items = [
       { compartments: [compartment('b', 'A-2', 1, 3), compartment('a', 'A-1', 2, 1)] },

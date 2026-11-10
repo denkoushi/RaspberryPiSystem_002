@@ -1,7 +1,9 @@
+import { isAxiosError } from 'axios';
+
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
 import { KioskNetworkReporter } from './networkReporter';
-import { KioskErrorReporter, urlPath, type ErrorKind } from './reporter';
+import { KioskErrorReporter, isSessakuPiecePath, urlPath, type ErrorKind } from './reporter';
 
 let reporter: KioskErrorReporter | undefined;
 let initialized = false;
@@ -45,6 +47,8 @@ export function reportKioskApi(input: { method?: string; url?: string; status?: 
     else if (input.durationMs >= 10000) kind = 'slow_request';
     else return;
     if (input.kioskTelemetry === 'background' && (kind === 'api_timeout' || kind === 'api_network')) return;
+    // Piece operation failures are reported once, by reportSessakuPieceError.
+    if (kind !== 'slow_request' && isSessakuPiecePath(input.url)) return;
     getReporter()?.record(kind, { ...input, urlPath: urlPath(input.url) });
   } catch { /* Best effort. */ }
 }
@@ -62,4 +66,15 @@ export function initializeKioskErrorTelemetry(send: (payload: { clientId: string
     window.setInterval(() => { void current?.flush(); void network?.flush(); }, 5000);
     void current?.flush();
   } catch { /* Best effort. */ }
+}
+
+export function reportSessakuPieceError(action: string, item: { itemId: string; parentItemId?: string | null }, error: unknown) {
+  try {
+    const response = isAxiosError(error) ? error.response : undefined;
+    getReporter()?.record('sessaku_piece', {
+      action, itemId: item.itemId, parentItemId: item.parentItemId ?? item.itemId,
+      errorCode: typeof response?.data?.errorCode === 'string' ? response.data.errorCode : undefined,
+      status: response?.status, requestId: response?.data?.requestId
+    });
+  } catch { /* Telemetry must never affect an operation. */ }
 }

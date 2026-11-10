@@ -1,17 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  getKioskProductionScheduleOrderSplitStatus,
   getProductionScheduleResourceCategorySettings,
   getProductionScheduleResourceCodeMappings,
   importProductionScheduleResourceCodeMappingsFromCsv,
   getProductionScheduleDueManagementAccessPasswordSettings,
-  getProductionScheduleOrderSplitPilotSettings,
   getProductionScheduleProcessingTypeOptions,
   updateProductionScheduleResourceCategorySettings,
   updateProductionScheduleResourceCodeMappings,
   updateProductionScheduleDueManagementAccessPassword,
-  updateProductionScheduleOrderSplitPilotSettings,
   updateProductionScheduleProcessingTypeOptions
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
@@ -29,13 +26,6 @@ export function useProductionScheduleDueManagementAccessPasswordSettings(locatio
     queryKey: productionScheduleQueryKeys.dueManagementAccessPasswordSettings(location),
     queryFn: () => getProductionScheduleDueManagementAccessPasswordSettings(location),
     enabled: location.trim().length > 0
-  });
-}
-
-export function useProductionScheduleOrderSplitPilotSettings() {
-  return useQuery({
-    queryKey: productionScheduleQueryKeys.orderSplitPilotSettingsAll,
-    queryFn: getProductionScheduleOrderSplitPilotSettings
   });
 }
 
@@ -79,26 +69,6 @@ export function useUpdateProductionScheduleDueManagementAccessPassword() {
         queryKey: productionScheduleQueryKeys.dueManagementAccessPasswordSettings(settings.location)
       });
     }
-  });
-}
-
-export function useUpdateProductionScheduleOrderSplitPilotSettings() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (payload: { enabled: boolean }) => updateProductionScheduleOrderSplitPilotSettings(payload),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitPilotSettingsAll });
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderSplitStatusAll });
-      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll });
-    }
-  });
-}
-
-export function useKioskProductionScheduleOrderSplitStatus() {
-  return useQuery({
-    queryKey: productionScheduleQueryKeys.orderSplitStatusAll,
-    queryFn: getKioskProductionScheduleOrderSplitStatus,
-    refetchInterval: 15000
   });
 }
 

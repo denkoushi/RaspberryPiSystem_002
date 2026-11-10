@@ -12,6 +12,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Progress
 
+- [x] (2026-10-31) Implement the persistent first-parent commit queue, resumable unit results, length splitting, and nightly `changeQueue` coverage; update collector delivery and hourly enqueue timers in both roles.
+- [ ] (2026-10-31) Complete validation with the repository-declared API dependencies. Python and focused API tests pass with local cached dependencies, but full API type-check, lint and bootstrap validation are blocked by missing or mismatched dependencies. Integration and production rollout are outside this task.
 - [x] (2026-10-26 14:00 JST) Agreed the scope and boundaries with the user (see Decision Log).
 - [x] (2026-10-26 15:00 JST) Researched existing nightly LLM jobs, log locations, storage conventions and DGX boundaries; findings are folded into Context and Orientation.
 - [x] (2026-10-26 16:00 JST) Independent review of the first draft; corrected the storage mount, file ownership, container names, scheduler registration, use-case routing, timeouts, retries, scan exclusion and deploy order.
@@ -55,6 +57,11 @@ You can see it working when, the morning after a deploy, a dated report exists i
   Evidence: `/var/log/trivy/trivy-scan.log` and `trivy-image-scan.log` FATAL lines on the Pi5; `infrastructure/ansible/templates/trivy-scan.sh.j2` and `trivy-image-scan.sh.j2`.
 
 ## Decision Log
+
+- Decision (2026-10-31): collect each first-parent commit into a private, idempotent job and review it whenever background inference is available. Save each completed unit, retain deferred work without expiry, and mark a commit done only after all units succeed. Migrate existing carry-over and enqueue configured backfill ranges; exclude tests from changes. Keep security/errors in the nightly run and report unreported queue results using `reportedAt`, with pending/claimed/failed counts in `changeQueue`; pending work alone does not make a report partial.
+  Rationale: user-confirmed production measurements showed changes exceeding the nightly budget by three to nine times, while cursor advancement and seven-day carry-over expiry permanently lost unread changes. The old partial flag also conflated backlog with failed review. Operational details are maintained in the [runbook](../runbooks/nightly-security-review.md#commit-review-queue).
+- Decision (2026-10-31): request only concrete medium/high findings with short fields, use 2000 output tokens and request-scoped 120-second provider and caller timeouts, preserve `finish_reason`, and recursively halve length-truncated inputs down to the minimum review unit. Persist an explicit failure if the minimum still truncates.
+  Rationale: the former 1200-token budget included reasoning tokens and truncated valid answers; identical retries repeated the failure. Raising tokens alone hit the provider and caller deadlines. Short prompts completed measured 8 KB inputs, so bounded splitting handles remaining truncation without silently dropping material. Other text-completion callers retain their provider timeout.
 
 - Decision (2026-10-28): close the morning review loop with a scheduled Claude task, verified small fixes through PRs, merges and deployments through the progress-tracking session, false-alarm feedback and private count records. Raw findings remain private.
 - Decision (2026-10-28): review the most security-relevant changed files first and carry files that do not fit to the next night instead of dropping them. Changes are packed across files at line boundaries and receive the chunks the logs leave unused, keeping room for the client errors the API adds.
@@ -104,6 +111,8 @@ You can see it working when, the morning after a deploy, a dated report exists i
 
 ## Outcomes & Retrospective
 
+2026-10-31 queue implementation: collector tests (131) and related deployment contracts (27) pass. Review/inference tests including the queue scheduler (206) pass with temporary local dependency links and dotenv disabled. The installed pnpm launcher is missing its declared version; cached API dependencies do not match the lockfile, lack the Prisma adapter and workspace outputs, and lack the lint configuration dependency. Full API type-check, lint and scheduler bootstrap therefore remain unverified. No commit, push or deployment was performed. `triage.py` has no report reader or report-status/count assumptions, so it requires no format change.
+
 Repository work for Milestones 1 and 2 and the repository portions of Milestones 3 and 4 is implemented (2026-10-26). Production preparation, deployment, enablement, real report verification and the trial remain unperformed. See the [runbook](../runbooks/nightly-security-review.md) for the approved rollout sequence.
 
 Local validation: collector/known-finding fixtures passed (24 tests); security-review and inference Vitest passed (115 tests); scheduler bootstrap passed (8 tests) after building the existing shared-types package; the isolated availability route tests passed (15 tests); CI path classification passed (32 tests). API lint and the final focused lint passed. The dedicated Ansible playbook passed syntax checking with a writable local temp directory and the repository roles path; the collector template rendered typed JSON locally. No database or remote machine was used.
@@ -113,6 +122,8 @@ The original `tsc --noEmit -p .` check failed because the API config includes Pr
 Review corrections (2026-10-26): skip enabling unwritten collector units during check mode; create private bind directories during the standard release with the existing API UID/GID pattern; log scheduler error names and messages; preserve TypeScript operators and commit/digest hex strings while redacting request queries and credentials; retry missing bundles until the final attempt and allow later bundles to replace `no_bundle` reports; stream merged Docker log output with the existing timeout, error-level filter and material caps; treat missing or invalid known-findings files as empty and record their state in the report; inherit `repo_path` from inventory. Regression tests cover these paths locally, including deployment task contracts and a fake Docker executable.
 
 Review validation completed locally in a few minutes: `python3 -m pytest scripts/server/tests/test_security_review_collect.py scripts/ci/tests/test_classify_changes.py -q` passed (72 tests); `pnpm --filter @raspi-system/api exec tsc -p tsconfig.build.json --noEmit` passed; `pnpm --filter @raspi-system/api exec vitest run src/services/security-review src/services/inference src/bootstrap` passed (27 files, 152 tests); `pnpm --filter @raspi-system/api lint` passed; `git diff --check` passed. Existing uncommitted implementation work was preserved. No remote machine, deployment or state-changing Git command was used.
+
+Weekly triage (2026-11-09, `summary --days 7`, 2026-11-03 to 2026-11-09): 7 nights, 0 skipped; 126 findings, 28 confirmed, 96 false alarms, 1 known, 0 refused chunks, 3 fixed; confirmed ratio 0.23.
 
 ## Context and Orientation
 

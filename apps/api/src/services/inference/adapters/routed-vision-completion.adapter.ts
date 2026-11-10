@@ -68,6 +68,7 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
             max_tokens: input.maxTokens ?? this.deps.getMaxTokens(),
             temperature: input.temperature ?? this.deps.getTemperature(),
             chat_template_kwargs: { enable_thinking: false },
+            ...(input.stream ? { stream: true } : {}),
             ...(input.jsonOutput ? { response_format: { type: 'json_object' } } : {}),
           }), signal: combined,
         });
@@ -75,7 +76,57 @@ export class RoutedVisionCompletionAdapter implements VisionCompletionPort, Mult
       if (input.background && [429, 503].includes(response.status)) throw new InferenceDeferredError();
       if ([429, 502, 503, 504].includes(response.status)) throw new InferenceUnavailableError();
       if (!response.ok) throw new Error(`Inference vision upstream error: HTTP ${response.status}`);
-      const rawText = extractTextFromOpenAiStylePayload(await response.json() as OpenAiStyleChatResponse);
+      let rawText: string | null;
+      if (input.stream) {
+        rawText = '';
+        const reader = response.body?.getReader();
+        if (reader) {
+          const decoder = new TextDecoder();
+          let pending = '';
+          const consumeLine = (line: string): boolean => {
+            if (!line.startsWith('data:')) return false;
+            const data = line.slice(5).trim();
+            if (data === '[DONE]') return true;
+            if (!data) return false;
+            let payload: { choices?: Array<{ delta?: { content?: unknown } }> };
+            try {
+              payload = JSON.parse(data) as typeof payload;
+            } catch { throw new InferenceUnavailableError(); }
+            const content = payload.choices?.[0]?.delta?.content;
+            if (typeof content === 'string') rawText += content;
+            return false;
+          };
+          try {
+            let finished = false;
+            while (!finished) {
+              let chunk: ReadableStreamReadResult<Uint8Array>;
+              try {
+                // eslint-disable-next-line no-await-in-loop
+                chunk = await reader.read();
+              } catch { throw new InferenceUnavailableError(); }
+              pending += decoder.decode(chunk.value, { stream: !chunk.done });
+              let newline: number;
+              while ((newline = pending.indexOf('\n')) !== -1) {
+                const line = pending.slice(0, newline);
+                pending = pending.slice(newline + 1);
+                if (consumeLine(line)) { finished = true; break; }
+              }
+              if (chunk.done) {
+                // Only a complete [DONE] may end without a newline; any other tail is a cut line.
+                if (!finished) finished = pending.startsWith('data:') && pending.slice(5).trim() === '[DONE]';
+                // The gateway closes the connection without [DONE] when the upstream is cut mid-stream.
+                if (!finished) throw new InferenceUnavailableError();
+                break;
+              }
+            }
+          } finally {
+            void reader.cancel().catch(() => {});
+            reader.releaseLock();
+          }
+        }
+      } else {
+        rawText = extractTextFromOpenAiStylePayload(await response.json() as OpenAiStyleChatResponse);
+      }
       if (!rawText) throw new Error('Inference vision response missing assistant text');
       ok = true;
       return { rawText, modelRoute: `${this.deps.useCase}:${provider.id}`, modelName };

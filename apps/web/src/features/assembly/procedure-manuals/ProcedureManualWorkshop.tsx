@@ -220,7 +220,7 @@ export function ProcedureManualWorkshop() {
         }))
       });
       unassigned = true;
-      if (deleteDocument && checkAccess()) await deleteAssemblyProcedureDocument(item.documentId);
+      if (deleteDocument && checkAccess()) await deleteAssemblyProcedureDocument(item.documentId, readProcedureEditorAccess()?.pin ?? '');
       setVersion(value => value + 1);
     } catch (e) {
       if (unassigned && deleteDocument) {

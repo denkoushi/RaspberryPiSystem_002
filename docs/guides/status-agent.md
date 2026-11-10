@@ -3,6 +3,8 @@
 Raspberry Pi クライアントが 1 分間隔で `/api/clients/status` にメトリクスを送信するための常駐エージェントです。  
 CPU / メモリ / ディスク / 温度 / 稼働時間を計測し、`x-client-key` で Fastify API に報告します。
 
+> **適用範囲**: 本番の Pi4/Pi3 は標準 route（`release_kiosk` / `release_signage`）が status-agent・timer・`/etc/raspi-status-agent.conf` を配置する（[deployment.md](./deployment.md)）。§2〜4 の手動手順は開発端末と macOS 用で、本番端末の初回導入には使わない（[client-initial-setup.md](./client-initial-setup.md)）。
+
 ---
 
 ## 1. 前提条件
@@ -11,7 +13,7 @@ CPU / メモリ / ディスク / 温度 / 稼働時間を計測し、`x-client-k
 | --- | --- |
 | OS | Raspberry Pi OS (Debian 系。Python3 がプリインストール) |
 | 依存ツール | 追加パッケージ不要（標準ライブラリのみ） |
-| 配置先 | `/opt/RaspberryPiSystem_002/clients/status-agent` |
+| 配置先 | Pi4（`release_kiosk`）: `/usr/local/lib/raspi-status-agent/status-agent.py`／Pi3（`release_signage`）: `/usr/local/bin/raspi-signage-status-agent.pyz`／開発端末: リポジトリの `clients/status-agent` |
 | 設定ファイル | `/etc/raspi-status-agent.conf` |
 | 認証 | `clientDevice.apiKey` と同じ `x-client-key` |
 
@@ -95,7 +97,7 @@ journalctl -u status-agent.service -n 20
 
 ### 5.1 SDカード予防保全ログ
 
-Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布します。Pi5（2026-10-01、`release_pi5/tasks/host-status-agent-storage.yml`）とPi3 Signage（`release_signage/tasks/host-status-agent-storage.yml`）は、標準リリースのたびに既存の `/etc/raspi-status-agent.conf` の同じ行を `1` にします。TalkPlazaでは無効です。Pi3は毎日03:00に再起動するため、書込ペースと摩耗レポートは起動から12時間後（15時以降）に出ます。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS=3600` により1時間ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
+Pi4 kiosk groupではAnsibleにより `STORAGE_HEALTH_ENABLED=1` を配布します。Pi5（2026-10-01、`release_pi5/tasks/host-status-agent-storage.yml`）とPi3 Signage（`release_signage/tasks/host-status-agent-storage.yml`）は、標準リリースのたびに既存の `/etc/raspi-status-agent.conf` の同じ行を `1` にします。Pi3は毎日03:00に再起動するため、書込ペースと摩耗レポートは起動から12時間後（15時以降）に出ます。通常実行では `STORAGE_HEALTH_INTERVAL_SECONDS=3600` により1時間ごとに確認し、`--dry-run` では現場確認のため毎回確認します。
 
 検出対象:
 
@@ -135,7 +137,9 @@ SDカードが壊れると端末上のstatus-agentも止まるため、SDヘル�
 | `CLIENT_HEARTBEAT_STALE_MINUTES` | `10` | 無連絡がこの分数を超えたら通知 |
 | `CLIENT_HEARTBEAT_CLIENT_ID_PATTERN` | `^(raspi\|raspberrypi)` | 対象にする `clientId` の正規表現。開発用Mac（`mac-kiosk-*`）や自宅のZero 2 W（`zero2w-*`）は対象外 |
 
-7日以上無連絡の端末は撤去済みとみなし、見回りの対象から外します。API自身が起動した直後は、端末が再送してくるまで（10分間）判定しません。キオスクの電源オフ操作で止めた端末も通知されます。意図した停止なら対応は不要です。管理画面の「無連絡端末」の集計（12時間）は従来のままです。
+`statusClientId` を持つ登録端末を、定期連絡が届くべき端末の台帳として扱います。監視対象の端末が登録後一度も報告しない場合は、登録から10分を超えると通知します。台帳の端末は7日を超えて無連絡でも監視を続けます。撤去した端末の通知を止めるには、管理画面のクライアント一覧から端末を削除してください。
+
+台帳にない端末は、7日を超えて無連絡なら見回りの対象から外します。API自身が起動した直後は、端末が再送してくるまで（10分間）判定しません。キオスクの電源オフ操作で止めた端末も通知されます。意図した停止なら対応は不要です。管理画面の「無連絡端末」の集計も同じ分数（既定10分）で判定します。
 
 ---
 
@@ -238,5 +242,5 @@ rm ~/Library/LaunchAgents/com.raspberrypisystem.status-agent.plist
 ## 8. 参考
 
 - 詳細なファイル構成・コメント付き手順: `clients/status-agent/README.md`
-- API 側の受け皿: `apps/api/src/routes/clients.ts`
+- API 側の受け皿: `apps/api/src/routes/clients/core.ts`（`POST /api/clients/status`）
 - 管理画面の実装タスク: `docs/plans/production-deployment-phase2-execplan.md`

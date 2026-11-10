@@ -126,6 +126,9 @@
         mode: '0600'
       no_log: true
       notify: Restart status-agent
+      vars:
+        # zero-edge does not install the pinned server certificate.
+        client_server_cert_pin_enabled: false
 
     - name: Install scanner service
       ansible.builtin.copy:

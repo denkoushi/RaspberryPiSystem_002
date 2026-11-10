@@ -28,7 +28,7 @@ class KioskRateLimitService {
       return count <= params.max;
     } catch (error) {
       logger.warn(
-        { err: error, scope: params.scope, key },
+        { err: error, scope: params.scope },
         '[RateLimiter] Primary store failed. Falling back to in-memory store'
       );
       const fallbackCount = await this.fallbackStore.increment(key, params.windowMs);

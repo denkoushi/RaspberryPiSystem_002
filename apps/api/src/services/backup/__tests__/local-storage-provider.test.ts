@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+import { decryptBackupIfEncrypted } from '../storage/backup-encryption.js';
 import { LocalStorageProvider } from '../storage/local-storage.provider';
 
 describe('LocalStorageProvider path containment', () => {
@@ -11,6 +12,7 @@ describe('LocalStorageProvider path containment', () => {
   let provider: LocalStorageProvider;
 
   beforeEach(async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     rootDir = await fs.mkdtemp(path.join(os.tmpdir(), 'local-storage-provider-'));
     baseDir = path.join(rootDir, 'backups');
     await fs.mkdir(baseDir, { recursive: true });
@@ -18,6 +20,7 @@ describe('LocalStorageProvider path containment', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(rootDir, { recursive: true, force: true });
   });
 
@@ -25,8 +28,8 @@ describe('LocalStorageProvider path containment', () => {
     await provider.upload(Buffer.from('a'), 'database/2026/a.dump');
     await provider.upload(Buffer.from('b'), '/csv/b.csv');
 
-    expect((await provider.download('database/2026/a.dump')).toString()).toBe('a');
-    expect((await provider.download('/csv/b.csv')).toString()).toBe('b');
+    expect(decryptBackupIfEncrypted(Buffer.alloc(32, 7), await provider.download('database/2026/a.dump')).toString()).toBe('a');
+    expect(decryptBackupIfEncrypted(Buffer.alloc(32, 7), await provider.download('/csv/b.csv')).toString()).toBe('b');
     const listed = (await provider.list('')).map((entry) => entry.path).sort();
     expect(listed).toEqual(['csv/b.csv', 'database/2026/a.dump']);
   });

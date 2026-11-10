@@ -34,7 +34,7 @@ describe('KioskItemInventoryDashboardPage', () => {
     clearSetupPin();
     vi.clearAllMocks();
     vi.mocked(verifyKioskDueManagementAccessPassword).mockResolvedValue({ success: true } as never);
-    vi.mocked(getInventoryDashboard).mockResolvedValue({ weeks: [], items: [], machines: [], totalIssued: 0, previousTotalIssued: 0, lowStockCount: 0, pricedItemCount: 0, itemCount: 0, cost: { total: 0, previousTotal: 0, byMonth: [] } });
+    vi.mocked(getInventoryDashboard).mockResolvedValue({ weeks: [], items: [], machines: [], machineUsage: [], totalIssued: 0, previousTotalIssued: 0, lowStockCount: 0, pricedItemCount: 0, itemCount: 0, cost: { total: 0, previousTotal: 0, byMonth: [] } });
     vi.mocked(getInventoryValueVariants).mockResolvedValue({ groups: [{ field: 'maker', to: 'OSG', from: [{ value: 'オーエスジー', count: 2 }], auto: false }], autoMergedValueCount: 0 });
     vi.mocked(mergeInventoryValueVariants).mockResolvedValue({});
     vi.mocked(dismissInventoryValueVariants).mockResolvedValue({});
@@ -43,6 +43,7 @@ describe('KioskItemInventoryDashboardPage', () => {
 
   it('renders the dashboard without a PIN', async () => {
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     expect(await screen.findByRole('button', { name: 'OSG にまとめる' })).toBeInTheDocument();
     expect(screen.queryByText('4桁のパスワード')).not.toBeInTheDocument();
     expect(screen.queryByText('解除中')).not.toBeInTheDocument();
@@ -52,6 +53,7 @@ describe('KioskItemInventoryDashboardPage', () => {
 
   it.each([true, false])('unlocks and performs the pending action once (merge=%s)', async merge => {
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     fireEvent.click(await screen.findByRole('button', { name: merge ? 'OSG にまとめる' : '別のもの' }));
     const keypad = within(screen.getByRole('group', { name: 'パスワードのテンキー' }));
     expect(mergeInventoryValueVariants).not.toHaveBeenCalled();
@@ -67,8 +69,10 @@ describe('KioskItemInventoryDashboardPage', () => {
 
   it('cancels without performing the pending merge', async () => {
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'OSG にまとめる' }));
     fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     expect(await screen.findByRole('button', { name: 'OSG にまとめる' })).toBeInTheDocument();
     expect(mergeInventoryValueVariants).not.toHaveBeenCalled();
     expect(readSetupPin()).toBeNull();
@@ -77,6 +81,7 @@ describe('KioskItemInventoryDashboardPage', () => {
   it.each([true, false])('acts immediately when unlocked (merge=%s)', async merge => {
     rememberSetupPin('2520');
     renderPage();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     fireEvent.click(await screen.findByRole('button', { name: merge ? 'OSG にまとめる' : '別のもの' }));
     await waitFor(() => expect(merge ? mergeInventoryValueVariants : dismissInventoryValueVariants).toHaveBeenCalledOnce());
     expect(verifyKioskDueManagementAccessPassword).not.toHaveBeenCalled();

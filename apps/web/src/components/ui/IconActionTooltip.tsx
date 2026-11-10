@@ -6,8 +6,8 @@ import type { CSSProperties, ReactNode } from 'react';
 export function useIconTooltip(tipSide: 'left' | 'top', disabled = false) {
   const [tipVisible, setTipVisible] = useState(false);
   const [tipPosition, setTipPosition] = useState<{ right: number; top: number } | null>(null);
-  const showTimer = useRef<ReturnType<typeof setTimeout>>();
-  const hideTimer = useRef<ReturnType<typeof setTimeout>>();
+  const showTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   useEffect(() => () => {
     clearTimeout(showTimer.current);
     clearTimeout(hideTimer.current);

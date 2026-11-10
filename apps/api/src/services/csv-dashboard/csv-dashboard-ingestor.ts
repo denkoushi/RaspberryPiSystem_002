@@ -1,3 +1,6 @@
+import { readSessakuPieceSets } from '../production-schedule/sessaku-pieces/piece-key.js';
+import { publishSessakuPieceSourceCreates } from '../production-schedule/sessaku-pieces/piece-source-publication.js';
+import { prepareSessakuPiecePublication, publishSessakuPieceProgress } from '../production-schedule/sessaku-pieces/piece-sync.js';
 import { createHash } from 'crypto';
 import { parse } from 'csv-parse/sync';
 import { Prisma } from '@prisma/client';
@@ -183,6 +186,11 @@ export class CsvDashboardIngestor {
             }))
           : productionScheduleDedupRows;
 
+      const pieceSets = isProductionScheduleDashboard
+        ? await readSessakuPieceSets(prisma, ingestRows.map((row) => ({ rowData: row.data })))
+        : new Map();
+      const hasSessakuPieces = [...pieceSets.values()].some((set) => set.pieces.length > 0 || set.sourcePieceSetId);
+
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
       let rowsSkipped = 0;
@@ -190,8 +198,7 @@ export class CsvDashboardIngestor {
 
       if (dashboard.ingestMode === 'APPEND') {
         // 追加モード：すべて追加
-        await prisma.csvDashboardRow.createMany({
-          data: ingestRows.map((row) => ({
+        const createRows = ingestRows.map((row) => ({
             csvDashboardId: dashboardId,
             occurredAt: row.occurredAt,
             dataHash: null,
@@ -199,8 +206,10 @@ export class CsvDashboardIngestor {
             sourceIngestRunId: row.sourceIngestRunId,
             sourceRowOrdinal: row.sourceRowOrdinal,
             sourceIngestRunStartedAt: row.sourceIngestRunStartedAt,
-          })),
-        });
+          }));
+        if (isProductionScheduleDashboard) {
+          await publishSessakuPieceSourceCreates(prisma, createRows, { collectCreatedRows: false, pieceSets });
+        } else await prisma.csvDashboardRow.createMany({ data: createRows });
         rowsAdded = ingestRows.length;
         rowsSkipped = preDedupSkippedRows;
       } else {
@@ -245,17 +254,7 @@ export class CsvDashboardIngestor {
 
         if (rowsToCreate.length > 0) {
           if (isProductionScheduleDashboard) {
-            for (const row of rowsToCreate) {
-              const created = await prisma.csvDashboardRow.create({
-                data: row,
-                select: { id: true },
-              });
-              progressSyncCandidates.push({
-                rowId: created.id,
-                rowData: row.rowData as Prisma.JsonValue,
-                occurredAt: row.occurredAt,
-              });
-            }
+            progressSyncCandidates.push(...await publishSessakuPieceSourceCreates(prisma, rowsToCreate, { pieceSets }));
           } else {
             await prisma.csvDashboardRow.createMany({ data: rowsToCreate });
           }
@@ -285,7 +284,18 @@ export class CsvDashboardIngestor {
             const chunkSize = 100;
             for (let i = 0; i < updates.length; i += chunkSize) {
               const chunk = updates.slice(i, i + chunkSize);
-              await prisma.$transaction(
+              if (hasSessakuPieces) {
+                await prisma.$transaction(async (tx) => {
+                  await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+                  const previous = await tx.csvDashboardRow.findMany({ where: { id: { in: chunk.map((u) => u.id) } }, select: { rowData: true } });
+                  const states = await prepareSessakuPiecePublication(tx, [...previous, ...chunk]);
+                  for (const u of chunk) await tx.csvDashboardRow.update({ where: { id: u.id }, data: {
+                    occurredAt: u.occurredAt, rowData: u.rowData, sourceIngestRunId: u.sourceIngestRunId,
+                    sourceRowOrdinal: u.sourceRowOrdinal, sourceIngestRunStartedAt: u.sourceIngestRunStartedAt
+                  } });
+                  await publishSessakuPieceProgress(tx, states);
+                }, { timeout: 30000, maxWait: 15000 });
+              } else await prisma.$transaction(
                 chunk.map((u) =>
                   prisma.csvDashboardRow.update({
                     where: { id: u.id },
@@ -383,7 +393,7 @@ export class CsvDashboardIngestor {
             rows: productionScheduleDedupRows,
             keyColumns,
           });
-          const { deletedCount } = await this.dedupCleanupService.deleteDuplicateLosersForKeys({
+          const cleanupParams = {
             csvDashboardId: dashboardId,
             keyColumns,
             keys: dedupKeys,
@@ -396,7 +406,22 @@ export class CsvDashboardIngestor {
               isProductionScheduleDashboard,
               dashboardId
             }),
-          });
+          };
+          let deletedCount = 0;
+          if (hasSessakuPieces) {
+            for (let i = 0; i < productionScheduleDedupRows.length; i += 100) {
+              const chunk = productionScheduleDedupRows.slice(i, i + 100);
+              const result = await prisma.$transaction(async (tx) => {
+                await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+                const states = await prepareSessakuPiecePublication(tx, chunk.map((row) => ({ rowData: row.data })));
+                const keys = CsvDashboardIngestor.extractDedupKeysFromRows({ rows: chunk, keyColumns });
+                const result = await this.dedupCleanupService.deleteDuplicateLosersForKeys({ ...cleanupParams, keys }, tx);
+                await publishSessakuPieceProgress(tx, states);
+                return result;
+              }, { timeout: 30000, maxWait: 15000 });
+              deletedCount += result.deletedCount;
+            }
+          } else deletedCount = (await this.dedupCleanupService.deleteDuplicateLosersForKeys(cleanupParams)).deletedCount;
           logger.info(
             { dashboardId, deletedCount, keys: dedupKeys.length, keyColumns },
             '[CsvDashboardIngestor] Dashboard duplicate loser cleanup completed'

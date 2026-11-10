@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { mockKioskSopFetch } from '../../test/mockKioskSopFetch';
+
 import { KioskInspectionDrawingLibraryPage } from './KioskInspectionDrawingLibraryPage';
 
 import type { KioskInspectionDrawingTemplateSummaryDto } from '../../features/part-measurement/types';
@@ -85,6 +87,8 @@ function renderPage() {
   );
 }
 
+mockKioskSopFetch();
+
 describe('KioskInspectionDrawingLibraryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -112,7 +116,7 @@ describe('KioskInspectionDrawingLibraryPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'この画面の操作手順を開く' }));
 
-    const frame = screen.getByTitle('検査図面 操作取説 — 一覧・検索');
+    const frame = await screen.findByTitle('検査図面 操作取説 — 一覧・検索');
     expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
     expect(frame.getAttribute('srcdoc')).toContain('.sheet[data-sheet="library-entry-search"]');
   });

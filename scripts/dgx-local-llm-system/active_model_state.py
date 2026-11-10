@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
+import fcntl
+import math
+import time
+import threading
+import subprocess
+from time import monotonic as lock_monotonic, sleep as lock_sleep
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -8,6 +16,147 @@ from typing import Any
 
 from model_profiles import ModelProfile
 from profile_capabilities import capabilities_to_api
+
+GLM_PROFILE = "business_glm53_flash_fp4_tp2"
+DEEPSEEK_PROFILE = "business_deepseek_v41_flash_tp2"
+BUSINESS_PROFILES = {GLM_PROFILE, DEEPSEEK_PROFILE}
+
+
+def business_switch_enabled() -> bool:
+    return os.environ.get("BUSINESS_DEEPSEEK_SWITCH_ENABLED", "") in {"true", "1"}
+
+
+def positive_env_seconds(name: str, default: float) -> float:
+    value = float(os.environ.get(name) or default)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"invalid {name}")
+    return value
+
+
+def control_command_timeout() -> float:
+    return positive_env_seconds("LLM_RUNTIME_COMMAND_TIMEOUT_SEC", 120)
+
+
+def control_request_budget() -> float:
+    return positive_env_seconds("LLM_RUNTIME_REQUEST_BUDGET_SEC", 360)
+
+
+_control_request = threading.local()
+
+
+def request_timeout(limit: float) -> float:
+    deadline = getattr(_control_request, "deadline", None)
+    if deadline is None:
+        return limit
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise subprocess.TimeoutExpired("control request", control_request_budget())
+    return min(limit, remaining)
+
+
+class BusinessLockTimeout(TimeoutError):
+    pass
+
+
+def business_draining(path: str) -> bool:
+    flag = Path(path + ".drain")
+    try:
+        deadline = float(flag.read_text())
+        if math.isfinite(deadline):
+            return deadline > time.time()
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        pass
+    # A crashed writer must not block business admission indefinitely.
+    try:
+        return time.time() - flag.stat().st_mtime <= positive_env_seconds("BUSINESS_FORCE_STOP_DRAIN_SEC", 30) + 5
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+@contextmanager
+def business_force_drain(path: str, seconds: float):
+    # Serialize drain writers independently of the readers they must drain.
+    target = Path(path + ".drain.lock")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise BusinessLockTimeout("business_drain_in_progress") from error
+        flag = Path(path + ".drain")
+        tmp = Path(path + ".drain.tmp")
+        tmp.write_text(str(time.time() + seconds))
+        tmp.replace(flag)
+        try:
+            yield
+        finally:
+            flag.unlink(missing_ok=True)
+
+
+@contextmanager
+def business_state_lock(path: str, *, exclusive: bool = True, blocking: bool = True,
+                        timeout: float | None = None):
+    # Shared by the gateway (including streams) and lifecycle writer processes.
+    target = Path(path + ".lock")
+    if exclusive:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    with target.open("a" if exclusive else "r") as lock:
+        mode = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        if blocking:
+            limit = timeout if timeout is not None else positive_env_seconds("BUSINESS_STATE_LOCK_TIMEOUT_SEC", 30)
+            deadline = lock_monotonic() + limit
+            while True:
+                try:
+                    fcntl.flock(lock, mode | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError as error:
+                    remaining = deadline - lock_monotonic()
+                    if remaining <= 0:
+                        raise BusinessLockTimeout("business_state_lock_timeout") from error
+                    lock_sleep(min(.05, remaining))
+        else:
+            fcntl.flock(lock, mode | fcntl.LOCK_NB)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def replace_active_payload(path: str, payload: dict) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(target)
+
+
+def business_selection_state(path: str, registry_root: str | None = None) -> dict:
+    """Only the control server calls this with a registry to migrate old state."""
+    from model_profiles import validate_startable_profile, BusinessRestoreUnavailableError
+    try:
+        body = json.loads(Path(path).read_text())
+        active = body.get("modelProfileId") or body.get("activeProfileId")
+        if "selectedBusinessProfileId" not in body:
+            if registry_root is None or active not in BUSINESS_PROFILES or read_active_model_state(path) is None:
+                raise ValueError("valid active business state required")
+            profile = validate_startable_profile(registry_root, active)
+            if not profile.business_orchestration_eligible:
+                raise ValueError("ineligible active state")
+            body.update(selectedBusinessProfileId=active, selectionRevision=0, businessTransition="idle")
+            replace_active_payload(path, body)
+        if (body["selectedBusinessProfileId"] not in BUSINESS_PROFILES
+                or type(body["selectionRevision"]) is not int or body["selectionRevision"] < 0
+                or body["businessTransition"] not in {"idle", "loading", "ready", "failed"}
+                or not (active in BUSINESS_PROFILES or (isinstance(active, str)
+                    and active.startswith("private_") and body.get("businessOrchestrationEligible") is False))):
+            raise ValueError("invalid business selection")
+        return body
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as error:
+        raise BusinessRestoreUnavailableError("business selection unavailable; operator recovery required") from error
 
 
 @dataclass(frozen=True)
@@ -22,6 +171,7 @@ class ActiveModelState:
     declared_capabilities: tuple[str, ...] = ("text",)
     runtime_ready_capabilities: tuple[str, ...] = ("text",)
     vision_ready_reason: str | None = None
+    business_selection: dict[str, Any] | None = None
 
 
 def state_from_profile(
@@ -62,6 +212,8 @@ def active_model_state_to_api(state: ActiveModelState) -> dict[str, Any]:
         payload["modelFamily"] = state.model_family
     if state.vision_ready_reason:
         payload["visionReadyReason"] = state.vision_ready_reason
+    if business_switch_enabled() and state.business_selection is not None:
+        payload.update(state.business_selection)
     return payload
 
 
@@ -77,6 +229,13 @@ def write_active_model_state(
         runtime_ready_capabilities=runtime_ready_capabilities,
         vision_ready_reason=vision_ready_reason,
     )
+    if business_switch_enabled():
+        from dataclasses import replace
+        previous = business_selection_state(path)
+        selection = {k: v for k, v in previous.items() if k.startswith("business") or k in {
+            "selectedBusinessProfileId", "selectionRevision"}}
+        selection["businessOrchestrationEligible"] = profile.business_orchestration_eligible
+        state = replace(state, business_selection=selection)
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
@@ -127,4 +286,6 @@ def read_active_model_state(path: str) -> ActiveModelState | None:
         declared_capabilities=declared,
         runtime_ready_capabilities=runtime_ready,
         vision_ready_reason=vision_reason if isinstance(vision_reason, str) and vision_reason else None,
+        business_selection=({k: v for k, v in body.items() if k.startswith("business") or k in {
+            "selectedBusinessProfileId", "selectionRevision"}} if business_switch_enabled() else None),
     )

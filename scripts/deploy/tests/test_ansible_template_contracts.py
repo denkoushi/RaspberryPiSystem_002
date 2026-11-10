@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from scripts.deploy.release_artifact_contract import GHCR_NAMESPACE, GITHUB_OWNER
+
 import json
 import subprocess
 import sys
@@ -30,7 +32,6 @@ ANSIBLE_ROOT = ROOT / "infrastructure/ansible"
 TORQUE_HELPER = ANSIBLE_ROOT / "roles/client/templates/torque-bluetooth-adapter.sh.j2"
 WEB_BUILD_VARS = ANSIBLE_ROOT / "group_vars/server/web-build.yml"
 PRIMARY_INVENTORY = ANSIBLE_ROOT / "inventory.yml"
-TALKPLAZA_INVENTORY = ANSIBLE_ROOT / "inventory-talkplaza.yml"
 WEB_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/web.env.j2"
 DOCKER_ENV_TEMPLATE = ANSIBLE_ROOT / "templates/docker.env.j2"
 STATUS_AGENT_CONFIG_TEMPLATE = ANSIBLE_ROOT / "templates/status-agent.conf.j2"
@@ -121,19 +122,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         self.assertIn("VITE_API_BASE_URL=/api", rendered)
         self.assertIn("VITE_AGENT_WS_MODE=local", rendered)
         self.assertIn("VITE_KIOSK_SOP_POPUP_ENABLED=true", rendered)
-        self.assertIn(
-            "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false",
-            rendered,
-        )
-
-        talkplaza = TALKPLAZA_INVENTORY.read_text(encoding="utf-8")
-        for key in (
-            "web_kiosk_due_mgmt_layout_v2_enabled",
-            "web_kiosk_sop_popup_enabled",
-            "web_kiosk_production_schedule_order_split_enabled",
-        ):
-            with self.subTest(talkplaza_key=key):
-                self.assertIn(f'{key}: "false"', talkplaza)
 
     def test_every_repository_template_parses(self) -> None:
         templates = discover_templates(ANSIBLE_ROOT)
@@ -155,7 +143,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             web_api_base_url="/api",
             web_kiosk_due_mgmt_layout_v2_enabled="true",
             web_kiosk_leaderboard_defer_residual_summary_enabled="false",
-            web_kiosk_production_schedule_order_split_enabled="false",
             web_kiosk_sop_popup_enabled="true",
             web_kiosk_target_location_selector_enabled="true",
             release_build_contract_sha=sha,
@@ -273,10 +260,6 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             "pi5_artifact_promotion_enabled:",
             PRIMARY_INVENTORY.read_text(encoding="utf-8"),
         )
-        self.assertNotIn(
-            "pi5_artifact_promotion_enabled:",
-            TALKPLAZA_INVENTORY.read_text(encoding="utf-8"),
-        )
         environment = Environment(undefined=StrictUndefined)
         environment.filters["to_json"] = json.dumps
         environment.filters["bool"] = bool
@@ -284,8 +267,9 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         rendered = environment.from_string(
             ARTIFACT_PROMOTION_TEMPLATE.read_text(encoding="utf-8")
         ).render(
+            raspisys_github_owner=GITHUB_OWNER,
             pi5_artifact_promotion_enabled=False,
-            pi5_artifact_ghcr_username="denkoushi",
+            pi5_artifact_ghcr_username=GITHUB_OWNER,
             pi5_artifact_ghcr_token="test-token",
         )
         policy = json.loads(rendered)
@@ -303,7 +287,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         )
         self.assertEqual(
             policy["releaseSetRepository"],
-            "ghcr.io/denkoushi/raspisys-release-set",
+            f"{GHCR_NAMESPACE}/raspisys-release-set",
         )
 
         tasks = SERVER_ROLE_TASKS.read_text(encoding="utf-8")

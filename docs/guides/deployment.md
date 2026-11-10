@@ -16,8 +16,20 @@ last_verified: 2026-08-18
 このfoundationで固定した境界は次のとおりである。
 
 - Pi5: 稼働中にCI image、資源、migrationをAnsibleが直接確認し、`release_pi5` roleのslot lifecycleと5回の連続health sampleを利用する。
-- Pi4: exact `--limit`と`serial: 1`で一台ずつ、image pull完了後に`--no-build`で変更serviceだけを切り替える。他hostは停止しない。
+- Pi4: exact `--limit`のhostを`serial: [1, 5, "25%", "100%"]`の波（1台、5台、約25%、残り）で、image pull完了後に`--no-build`で変更serviceだけを切り替える。ある波で1台でも失敗すると、その波の他hostは自分の更新を終え、後続波のhostは準備データを回収し、切り替えずに止まる。最後の波で失敗したときはPi3（signage）に進まずに止まる。最初の1台は指定試験端末 `raspi4-kensaku-stonebase01` が対象ならその端末、それ以外はinventory順で選ぶ。トルク切り替え（`--torque-cutover`）は従来どおり一台ずつ。他hostは停止しない。
 - Pi3: controllerから完成tarを転送し、端末で代表SHA-256を一度確認する。固定allowlistを検証してrun-scoped tempへ展開・read-only化後、digest名へatomic renameする。端末固有値はimmutable release外のenv/drop-inに置き、Pi3からGit、GHCR、外部HTTPへ接続しない。
+
+### SSH ホスト鍵の登録・更新
+
+初回デプロイ前に、Pi5 controller で `ssh-keyscan -t ed25519 <接続先IP>` を実行し、
+候補鍵を一時ファイルへ保存する。`ssh-keygen -lf <一時ファイル>` の fingerprint を、
+端末コンソールで実行した `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` と比較する。
+一致を確認してから、候補鍵の先頭のIPを `inventory.yml` のホスト名へ置き換え、
+`infrastructure/ansible/known_hosts` にホストごとに1行の `ssh-ed25519` 鍵として登録する。
+SSH は接続IPによらず、このホスト名を `HostKeyAlias` として参照する。
+
+再イメージ後も同じ手順で fingerprint を確認し、該当ホストの既存行を新しい鍵へ置き換える。
+更新したファイルを controller のデプロイ用リポジトリへ反映してから、デプロイを再開する。
 
 ### 標準更新入口
 
@@ -28,7 +40,11 @@ scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --full-fleet [--detach]
 scripts/update-all-clients.sh <branch> <inventory> --print-plan [--limit PATTERN]
 scripts/update-all-clients.sh --status RUN_ID [--inventory INVENTORY]
+scripts/update-all-clients.sh <branch> <inventory> --limit HOST[:HOST...] --first-install [--print-plan | --detach]
+scripts/update-all-clients.sh <branch> <inventory> --limit PATTERN --skip-kiosk-notice [--detach]
 ```
+
+`--first-install` は[空のPi4キオスクへの初回導入](#空のpi4キオスクへの初回導入)、`--skip-kiosk-notice` は[Pi4 キオスクの更新予告](#pi4-キオスクの更新予告)を省く緊急時だけに使う。
 
 トルクレンチ所有権契約をAPI/Webと既設agentへ同時に切り替える場合だけ、次の限定モードを使う。現在の本番対象は、torque設定が完成しているStoneBaseとAssembly-01の2台に限る。
 
@@ -128,9 +144,11 @@ scripts/update-all-clients.sh
 ```
 
 - `standard-ansible-release.py` は対象SHA、inventory、対象host、systemd実行単位を解決する。
-- `deploy-release-standard.yml` は server、kiosk、signage の順序と `serial: 1` を宣言する。
+- `deploy-release-standard.yml` は Pi5 更新後、通常の Pi4 全選択端末を `strategy: free`（最大 forks=5 の task 並列）で先に prepare し、全台成功後だけ切り替えの波へ進む。失敗・到達不能なら到達可能な端末の候補と run データを回収し、Pi4 の切り替えと Pi3 を停止する。到達不能端末の未回収データは復旧後に確認する。波は linear を維持し、`max_fail_percentage: 0` による停止を有効にする。通常波の第1台は `release_pi4_canary_host`（既定 `raspi4-kensaku-stonebase01`）が選択対象ならその端末、それ以外は inventory 順。前の波の失敗は明示ゲートで後続波の準備データを回収して止める。トルク経路は既存の PREPARED 集約・linear・`serial: 1`、初回導入は role 内の prepare を維持する。実fleetでの時間計測は未実施。
 - `release_pi5` はPi5のimage、migration、health、slot切替、失敗時rollbackをAnsible role内で確認する。
-- `release_kiosk` はPi4のimage/configと有効agentのhealthを一台ずつ確認する。
+通常Pi4リリースのAnsibleが非ゼロで終了した場合、entry scriptは同じinventory・実効limit・run IDで一度だけ後処理を実行する（上限40分）。`prepared.json` があり `switch-attempted` がない端末だけ、このrunのrollback tag、新規pull候補、backup、run directoryを回収する。切り替え開始済み端末の復旧証跡は保持し、後処理の失敗はWARNINGとして元の終了コードを維持する。entry script自体がsignalで終了した場合は後処理が実行されないことがあり、到達不能端末とあわせて復旧後に残存データを確認する。
+
+- `release_kiosk` はPi4のimage/configと有効agentのhealthを端末ごとに確認する。
 - `release_signage` はPi3の検証済み配布artifactをatomicにstageし、端末側のGitや外部HTTP取得を行わない。
 
 旧control planeや削除済みentrypointを標準手順の入力や操作として使用しない。
@@ -172,6 +190,16 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-f
 
 目安は、`--print-plan`が数分、detach開始が1分未満、実行本体が対象host数とartifact pull/health待ちに応じて数分から数十分である。固定時間で打ち切らず、返却されたrunの`--status`が終端状態になるまで確認する。
 
+### Pi5 gatewayの一度限りの再作成
+
+既存gatewayへ現在のCompose定義（json-fileログ上限10m × 3）を適用する場合は、対象Pi5だけをexact patternで指定し、次の標準更新を一度だけ実行する。既定はOFF（未指定・空文字・`false`）で、`true` / `false` / 空文字以外は拒否する。
+
+```bash
+PI5_GATEWAY_RECREATE=true scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit <pi5 exact pattern>
+```
+
+commitとcleanupの成功後に、同じgatewayイメージと確定済みCaddyfileで再作成する。APIへのアクセスが数秒間停止するため、営業時間外に実施する。完了後はフラグを外し、常設の環境変数にしない。再作成前のCaddyfile検証に失敗した場合は再作成しない。さらに、現在のCompose補間結果と稼働中gatewayのbind mount（source・target・read_only）、公開ポート、user、image、ネットワークを比較し、差異があれば一覧を表示して再作成前に停止する。失敗メッセージは再作成の未実行と実行開始後を区別する。再作成後の稼働・ログ上限・ネットワーク・API確認の失敗はplayを失敗にし、自動rollbackは行わない。staging inventoryも同じroleとフラグを使用する。
+
 ### 停止条件と完了条件
 
 次のいずれかに該当したら、Deployを開始・再起動せずに停止する。
@@ -195,3 +223,22 @@ scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --full-f
 ## 履歴
 
 旧設計、過去の実績、ADR、ExecPlanは履歴として保持する。現行手順の判断にはこのガイドと、[デプロイ停止・復旧Runbook](../runbooks/deploy-status-recovery.md)だけを使用する。
+
+## Client server certificate pin
+
+対象ホストの inventory で `client_server_cert_pin_enabled: true` を設定すると、
+status-agent / haizen-agent / torque-agent / signage は Pi5 証明書の pin を使用する。
+既定は無効。配布元は `client_server_cert_source`（既定:
+`{{ playbook_dir }}/../../../certs/cert.pem`）、配布先は
+`/etc/raspi-client/server-cert.pem`。controller 上の PEM の SHA-256 が
+`client_server_cert_sha256` と一致しない場合、配布を停止する。
+承認済みの標準リリース手順で対象ホストへ反映する。
+
+Pi5 証明書を更新する際は、公開 PEM の SHA-256 (`client_server_cert_sha256`) と
+公開鍵の base64 SHA-256 SPKI (`kiosk_server_cert_spki_sha256`) を同時に更新し、
+対象 clients へ配布する。kiosk の個別 override も同じ値へ揃える。
+切替中は旧証明書を pin した clients が新証明書へ接続できないため、サーバーと
+clients の切替順序・保守時間を事前に調整する。
+配布した証明書はリリースの切り戻し対象に含まれない。リリースが途中で失敗して
+旧版へ戻っても、端末には新しい証明書が残る。証明書の入れ替えは他の変更と混ぜず
+単独のリリースで行い、失敗したときは旧証明書の値へ戻すリリースを流す。

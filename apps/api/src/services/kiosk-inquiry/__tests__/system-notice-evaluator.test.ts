@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ statuses: vi.fn(), device: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn(), resolveQuiet: vi.fn(), warn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ statuses: vi.fn(), device: vi.fn(), devices: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn(), resolveQuiet: vi.fn(), warn: vi.fn() }));
 vi.mock('../../../lib/logger.js', () => ({ logger: { warn: mocks.warn } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  clientStatus: { findMany: mocks.statuses }, clientDevice: { findFirst: mocks.device }
+  clientStatus: { findMany: mocks.statuses }, clientDevice: { findFirst: mocks.device, findMany: mocks.devices }
 } }));
 vi.mock('../system-notice.service.js', () => ({ deliverSystemNotice: mocks.deliver, resolveInactiveFileNotices: mocks.expire, resolveUnmonitoredTerminalNotices: mocks.resolveUnmonitored, resolveQuietKioskUiErrorNotices: mocks.resolveQuiet }));
 import { evaluateSystemNotices, getSystemNoticeEvaluator, TERMINAL_INACTIVE_MS, TERMINAL_STALE_MS } from '../system-notice-evaluator.js';
@@ -14,6 +14,7 @@ beforeEach(() => {
   vi.stubEnv('CLIENT_HEARTBEAT_ALERT_ENABLED', 'false');
   vi.resetAllMocks(); mocks.statuses.mockResolvedValue([status]);
   mocks.device.mockResolvedValue({ name: '端末', location: 'StoneBase01' });
+  mocks.devices.mockResolvedValue([]);
 });
 describe('system notice evaluator', () => {
   it('resolves quiet kiosk errors on each evaluation', async () => {
@@ -75,6 +76,22 @@ describe('system notice evaluator', () => {
     mocks.deliver.mockRejectedValueOnce(new Error('unavailable'));
     await evaluateSystemNotices(now);
     expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: 'status:raspi4-second:stale' }), now);
+  });
+  it.each([TERMINAL_STALE_MS - 1, TERMINAL_STALE_MS])('never-reported registered terminal boundary %i', async (age) => {
+    mocks.statuses.mockResolvedValue([]);
+    mocks.devices.mockResolvedValue([{ statusClientId: 'raspi4-new', createdAt: new Date(now.getTime() - age) }]);
+    await evaluateSystemNotices(now);
+    if (age < TERMINAL_STALE_MS) expect(mocks.deliver).not.toHaveBeenCalled();
+    else expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: 'status:raspi4-new:stale',
+      title: 'StoneBase01 通信', body: '端末から一度も連絡がありません。', state: 'open' }), now);
+  });
+  it('skips registered terminals that reported, are not monitored, or repeat', async () => {
+    mocks.statuses.mockResolvedValueOnce([]).mockResolvedValueOnce([{ clientId: 'raspi4-stone' }]);
+    const createdAt = new Date(now.getTime() - TERMINAL_STALE_MS);
+    mocks.devices.mockResolvedValue([{ statusClientId: 'raspi4-stone', createdAt }, { statusClientId: 'zero2w-home', createdAt },
+      { statusClientId: 'raspi4-new', createdAt }, { statusClientId: 'raspi4-new', createdAt }]);
+    await evaluateSystemNotices(now);
+    expect(mocks.deliver.mock.calls.map(([notice]) => notice.key)).toEqual(['status:raspi4-new:stale']);
   });
   it('does not start timers in tests', async () => {
     const timer = vi.spyOn(global, 'setInterval');

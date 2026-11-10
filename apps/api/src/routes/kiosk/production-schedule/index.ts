@@ -1,5 +1,7 @@
+import { registerSessakuPiecesRoutes } from './sessaku-pieces.js';
 import type { FastifyInstance } from 'fastify';
 
+import { registerProductionScheduleDScheduleMinutesRoute } from './d-schedule-minutes.js';
 import { registerProductionScheduleLeaderboardPhasedReadRoutes } from './leaderboard-phased-read.js';
 import { registerProductionScheduleListRoute } from './list.js';
 import { registerProductionScheduleResourcesRoute } from './resources.js';
@@ -31,7 +33,6 @@ import { registerProductionScheduleManualOrderResourceAssignmentsRoute } from '.
 import { registerProductionScheduleProcessingTypeOptionsRoute } from './processing-type-options.js';
 import { registerProductionScheduleProgressOverviewRoute } from './progress-overview.js';
 import { registerProductionScheduleLoadBalancingRoutes } from './load-balancing.js';
-import { registerProductionScheduleOrderSplitRoutes } from './order-split.js';
 import { registerProductionScheduleGrindingPlanningBoardRoute } from './grinding-planning-board.js';
 import { registerProductionScheduleGrindingPlanningBoardSeibanCandidatesRoute } from './grinding-planning-board-seiban-candidates.js';
 import type { KioskRouteDeps } from './shared.js';
@@ -40,6 +41,7 @@ export async function registerProductionScheduleRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
+  await registerProductionScheduleDScheduleMinutesRoute(app, deps);
   await registerProductionScheduleListRoute(app, deps);
   await registerProductionScheduleLeaderboardPhasedReadRoutes(app, deps);
   await registerProductionScheduleResourcesRoute(app, deps);
@@ -50,8 +52,8 @@ export async function registerProductionScheduleRoutes(
   await registerProductionScheduleDueDateRoute(app, deps);
   await registerProductionScheduleProcessingRoute(app, deps);
   await registerProductionScheduleOrderRoute(app, deps);
-  await registerProductionScheduleOrderSplitRoutes(app, deps);
   await registerProductionScheduleGrindingPlanningBoardRoute(app, deps);
+  await registerSessakuPiecesRoutes(app, deps);
   await registerProductionScheduleGrindingPlanningBoardSeibanCandidatesRoute(app, deps);
   await registerProductionScheduleSearchStateRoute(app, deps);
   await registerProductionScheduleHistoryProgressRoute(app, deps);

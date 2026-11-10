@@ -10,6 +10,8 @@ update-frequency: medium
 
 # MacからRaspberry Pi 5へのSSH接続ガイド
 
+> **status: 一部見直し**: デプロイは [deployment.md](./deployment.md)、RealVNC による Pi4/Pi3 接続と復旧は [vnc-tailscale-recovery.md](../runbooks/vnc-tailscale-recovery.md) を正本とする。本書は Mac から Pi5 への SSH 接続設定と接続トラブルの切り分けだけを扱う。
+
 最終更新: 2026-03-06（Pi4/Pi3のVNC接続をPi5経由SSHトンネル方式に統一）
 
 ## 概要
@@ -34,7 +36,7 @@ update-frequency: medium
 # IPアドレスを確認
 hostname -I
 
-# 例: 192.168.128.131
+# 例: 192.168.10.230
 ```
 
 ### 1.2 MacからSSH接続のテスト
@@ -43,7 +45,7 @@ hostname -I
 
 ```bash
 # SSH接続のテスト
-ssh denkon5sd02@192.168.128.131
+ssh denkon5sd02@192.168.10.230
 
 # 初回接続時は、ホスト鍵の確認を求められます
 # Are you sure you want to continue connecting (yes/no)? yes
@@ -74,7 +76,7 @@ cat ~/.ssh/id_ed25519.pub
 
 ```bash
 # Macのターミナルで実行
-ssh-copy-id denkon5sd02@192.168.128.131
+ssh-copy-id denkon5sd02@192.168.10.230
 ```
 
 **方法2: 手動で追加**
@@ -85,7 +87,7 @@ ssh-copy-id denkon5sd02@192.168.128.131
 cat ~/.ssh/id_ed25519.pub
 
 # Raspberry Pi 5に接続して公開鍵を追加
-ssh denkon5sd02@192.168.128.131
+ssh denkon5sd02@192.168.10.230
 mkdir -p ~/.ssh
 chmod 700 ~/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..." >> ~/.ssh/authorized_keys
@@ -98,7 +100,7 @@ exit
 ```bash
 # Macのターミナルで実行
 # パスワードなしで接続できるか確認
-ssh denkon5sd02@192.168.128.131
+ssh denkon5sd02@192.168.10.230
 ```
 
 ---
@@ -118,7 +120,7 @@ nano ~/.ssh/config
 
 ```
 Host raspi5
-    HostName 192.168.128.131
+    HostName 192.168.10.230
     User denkon5sd02
     IdentityFile ~/.ssh/id_ed25519
     ServerAliveInterval 60
@@ -153,33 +155,20 @@ ssh raspi5
 
 ### 3.1 Git操作
 
-**Macのターミナルで実行:**
-
-```bash
-# Raspberry Pi 5に接続してGit操作
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && git pull origin main"
-
-# または、接続してから実行
-ssh raspi5
-cd /opt/RaspberryPiSystem_002
-git pull origin main
-git status
-exit
-```
+コードの反映は [deployment.md](./deployment.md) の標準手順で行う。
 
 ### 3.2 Docker Compose操作
 
+本番の API は blue/green 構成（compose project `bluegreen`、`docker-compose.phase3.yml` の `api-blue` / `api-green`）で動く。`docker-compose.server.yml` で動いているのは `db` だけなので、APIのログは稼働中スロットのcontainer（`bluegreen-api-blue-1` または `bluegreen-api-green-1`）から読む。
+
 **Macのターミナルで実行:**
 
 ```bash
-# Dockerコンテナの状態確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml ps"
+# Dockerコンテナの状態確認（bluegreen と db の両方）
+ssh raspi5 "docker ps --format '{{.Names}}\t{{.Status}}'"
 
-# Dockerコンテナの再起動
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
-
-# Dockerログの確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=50"
+# 稼働中APIスロットのログ確認
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs --tail 50 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"'
 ```
 
 ### 3.3 ファイルのコピー（scp）
@@ -201,9 +190,6 @@ scp raspi5:/opt/RaspberryPiSystem_002/logs/ansible-update-*.log ~/Downloads/
 ```bash
 # 単一コマンドの実行
 ssh raspi5 "systemctl status docker"
-
-# 複数コマンドの実行
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && git pull && docker compose -f infrastructure/docker/docker-compose.server.yml restart api"
 ```
 
 ---
@@ -229,7 +215,7 @@ ssh raspi5
 
 # 接続できない場合、IPアドレスが変わっている可能性がある
 # Raspberry Pi 5のIPアドレスを確認（管理画面または直接確認）
-ping -c 1 192.168.128.131
+ping -c 1 192.168.10.230
 ```
 
 ### 4.3 IPアドレスが変わった場合の対応
@@ -259,16 +245,13 @@ ssh denkon5sd02@<新しいIPアドレス>
 
 ```bash
 # 1. Macでコードを編集・コミット・プッシュ
-cd /Users/tsudatakashi/RaspberryPiSystem_002
+cd <ローカルのリポジトリ>
 git add .
 git commit -m "feat: 新機能の追加"
 git push origin feature/new-feature
 
-# 2. Raspberry Pi 5で最新コードを取得
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && git pull origin feature/new-feature"
-
-# 3. Dockerコンテナを再ビルド・再起動
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api"
+# 2. 標準デプロイ経路で対象と順序を確認（反映は docs/guides/deployment.md の標準手順に従う。Pi5での git pull や個別コンテナ操作はしない）
+./scripts/update-all-clients.sh feature/new-feature infrastructure/ansible/inventory.yml --print-plan --limit raspberrypi5
 ```
 
 ### 5.2 ログの確認
@@ -276,11 +259,11 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 **Macのターミナルで実行:**
 
 ```bash
-# APIログを確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail=100"
+# APIログを確認（稼働中スロット）
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs --tail 100 "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1"'
 
 # エラーログのみを確認
-ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml logs api | grep -i error"
+ssh raspi5 'cd /opt/RaspberryPiSystem_002 && docker logs "bluegreen-$(python3 scripts/server/resolve-active-backup-api.py logs/deploy/bluegreen/Caddyfile)-1" 2>&1 | grep -i error'
 ```
 
 ### 5.3 データベース操作
@@ -306,15 +289,15 @@ ssh raspi5 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/do
 2. Raspberry Pi 5が起動しているか
 3. SSHサーバーが起動しているか
 4. ファイアウォール設定が正しいか
-5. **fail2banによるBanが発生していないか**（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因fail2banによるip-ban存在しないユーザーでの認証試行)参照）
+5. **fail2banによるBanが発生していないか**（[KB-218](../knowledge-base/infrastructure/ansible-deployment.md#kb-218-ssh接続失敗の原因-fail2banによるip-ban存在しないユーザーでの認証試行)参照）
 
 **解決方法:**
 ```bash
 # Raspberry Pi 5のIPアドレスを確認
-ping -c 1 192.168.128.131
+ping -c 1 192.168.10.230
 
 # SSH接続をテスト
-ssh -v denkon5sd02@192.168.128.131
+ssh -v denkon5sd02@192.168.10.230
 ```
 
 ### Tailscale 接続済みなのに `https://100.106.158.2/admin` が開けない場合（2026-06-03）
@@ -328,7 +311,7 @@ ssh -v denkon5sd02@192.168.128.131
 
 **原因（典型）**:
 
-- 運用 Mac の **`tag:admin` が外れている**（Pi5 は `tag:server`）。ACL で `tag:admin` → `tag:server` の `tcp:443` のみ許可されているため、タグなし Mac から Pi5 に届かない（[KB-278](../knowledge-base/infrastructure/security.md#kb-278-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。
+- 運用 Mac の **`tag:admin` が外れている**（Pi5 は `tag:server`）。ACL で `tag:admin` → `tag:server` の `tcp:443` のみ許可されているため、タグなし Mac から Pi5 に届かない（[KB-442](../knowledge-base/infrastructure/security.md#kb-442-tailscale経由で-https-admin-にアクセスできないtagadmin-欠落)）。
 
 **確認**:
 
@@ -357,7 +340,7 @@ sudo tailscale up --advertise-tags=tag:server
 # 表示 URL を Tailscale 管理画面で承認
 ```
 
-**注意**: Pi4 キオスク復旧は **`tag:kiosk`**（[KB-384](../knowledge-base/infrastructure/security.md#kb-384-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）。Pi5 に `tag:kiosk` を付けない。
+**注意**: Pi4 キオスク復旧は **`tag:kiosk`**（[KB-443](../knowledge-base/infrastructure/security.md#kb-443-pi4-キオスク非表示tailscale-再認証後の-netmap-未同期)）。Pi5 に `tag:kiosk` を付けない。
 
 **参照**: [KB-385](../knowledge-base/infrastructure/security.md#kb-385-pi5-tailscale-needslogin-と-node-key-失効)
 
@@ -370,7 +353,7 @@ sudo tailscale up --advertise-tags=tag:server
 
 **原因**:
 - fail2banがSSH認証失敗を検知し、IPアドレスをBanしている
-- 誤ったユーザー名（例: `tsudatakashi`）での認証試行が閾値（10分/5回）を超えた
+- 誤ったユーザー名（例: Mac のローカルユーザー名）での認証試行が閾値（10分/5回）を超えた
 
 **解決方法（RealVNC経由）**:
 
@@ -529,54 +512,8 @@ SSH接続が失敗した場合（fail2ban Banなど）、RealVNC経由でPi5の�
 
 ## RealVNC経由でのPi4/Pi3アクセス（Pi5経由SSHトンネル）
 
-### 概要
-
-**採用方式**: MacからPi4/Pi3へは **Pi5経由のSSHトンネル** で接続する。`admin -> server` を唯一の入口に固定し、`tag:admin -> tag:kiosk/signage` の直接許可は行わない（攻撃面拡大を避ける）。
-
-**運用**: VNC接続するたびにMacでSSHトンネルを張る。永続化はしない。
-
-### 前提条件
-
-- Pi5にRealVNCで接続できること（`100.106.158.2:5900`）
-- Tailscale ACLに `tag:server -> tag:kiosk: tcp:5900` と `tag:server -> tag:signage: tcp:5900` が含まれていること
-- 各端末（Pi4/Pi3）がTailscale上で `online` であること
-- 各端末でVNC Serverが起動していること（ポート5900）
-
-### 接続手順
-
-1. **各端末のTailscale IPを確認**（Pi5で実行）:
-   ```bash
-   tailscale status
-   # 例: raspberrypi-1 100.74.144.79, raspberrypi-2 100.105.224.86, raspi4-robodrill01 100.123.1.113
-   ```
-
-2. **MacでSSHトンネルを張る**（接続中はターミナルを開いたまま）:
-   ```bash
-   ssh -N \
-     -L 5904:<Pi4_研削メイン_IP>:5900 \
-     -L 5905:<Pi4_RoboDrill01_IP>:5900 \
-     -L 5903:<Pi3_IP>:5900 \
-     denkon5sd02@100.106.158.2
-   ```
-   例（2026-03-06実測）:
-   ```bash
-   ssh -N -L 5904:100.74.144.79:5900 -L 5905:100.123.1.113:5900 -L 5903:100.105.224.86:5900 denkon5sd02@100.106.158.2
-   ```
-
-3. **RealVNC Viewerで接続**:
-   | 端末 | 接続先 |
-   |------|--------|
-   | Pi4 研削メイン | `localhost:5904` |
-   | Pi4 RoboDrill01 | `localhost:5905` |
-   | Pi3 | `localhost:5903` |
-
-### Pi4/Pi3が繋がらない場合
-
-詳細は [vnc-tailscale-recovery.md](../runbooks/vnc-tailscale-recovery.md) を参照。
-
-- **Tailscale ACL**: `tag:server -> tag:kiosk/signage: tcp:5900` が含まれているか確認
-- **端末状態**: `tailscale status` で `offline` でないか確認
-- **Pi5からの到達**: Pi5で `nc -vz -w 3 <各端末IP> 5900` が成功するか確認
+採用方式: Pi5経由SSHトンネル。
+手順と復旧は [vnc-tailscale-recovery.md](../runbooks/vnc-tailscale-recovery.md) の 1・3.4・3.5・4 を参照。
 
 ---
 

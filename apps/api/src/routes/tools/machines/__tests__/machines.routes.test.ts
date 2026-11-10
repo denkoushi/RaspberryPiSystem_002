@@ -7,7 +7,16 @@ vi.mock('../../../../config/env.js', () => ({
   env: { JWT_ACCESS_SECRET: 'machine-route-test-secret', ADMIN_MFA_REQUIRED: false },
 }));
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: {
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) },
+    user: { findUnique: vi.fn() },
+    machineNfcTag: { findUnique: vi.fn(), create: vi.fn(), delete: vi.fn() },
+    employee: { findUnique: vi.fn() },
+    item: { findUnique: vi.fn() },
+    measuringInstrumentTag: { findUnique: vi.fn() },
+    riggingGearTag: { findUnique: vi.fn() },
+    inventoryNfcTag: { findUnique: vi.fn() },
+    nfcTagBindingEvent: { create: vi.fn() },
+    $transaction: vi.fn(),
     machine: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), create: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn() },
   },
@@ -22,15 +31,20 @@ const machine = {
   maker: null, processClassification: null, coolant: null,
   createdAt: new Date(), updatedAt: new Date(),
 };
-const headers = (role = 'ADMIN') => ({
-  authorization: `Bearer ${jwt.sign({ sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
-});
+const headers = (role = 'ADMIN') => {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'u1', username: 'tester', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+  return {
+    authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'u1', sub: 'u1', username: 'tester', role }, 'machine-route-test-secret')}`,
+  };
+};
 let app: FastifyInstance;
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  vi.mocked(prisma.$transaction).mockImplementation(async (work: unknown) => (work as (tx: unknown) => Promise<unknown>)(prisma));
   vi.mocked(prisma.machine.findUnique).mockResolvedValue(machine);
-  vi.mocked(prisma.machine.update).mockImplementation(async ({ data }) => ({ ...machine, ...data }) as typeof machine);
+  vi.mocked(prisma.machine.update).mockImplementation((async ({ data }: { data: object }) => ({ ...machine, ...data })) as never);
+  vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([]);
   app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
     void reply.code(error instanceof ZodError ? 400 : (error.statusCode ?? 500)).send({ message: error.message });
@@ -101,5 +115,66 @@ describe('machine resourceCd routes', () => {
     expect(viewer.statusCode).toBe(403);
     expect(prisma.machine.update).not.toHaveBeenCalled();
     expect(prisma.productionScheduleResourceMaster.findMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('machine factories and NFC routes', () => {
+  it.each(['POST', 'PUT'] as const)('ignores siteKey in %s', async method => {
+    if (method === 'POST') vi.mocked(prisma.machine.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.machine.create).mockResolvedValue(machine);
+    const response = await app.inject({ method, url: method === 'POST' ? '/machines' : '/machines/m1', headers: headers(), payload: { siteKey: 'missing', name: '旋盤', equipmentManagementNumber: '1' } });
+    expect(response.statusCode).toBe(200);
+    const write = method === 'POST' ? prisma.machine.create : prisma.machine.update;
+    expect(vi.mocked(write).mock.calls[0][0].data).not.toHaveProperty('siteKey');
+  });
+
+  it('includes derived factories and tags without site fields', async () => {
+    vi.mocked(prisma.productionScheduleResourceMaster.findMany).mockResolvedValue([
+      { resourceCd: 'S001', resourceGroupCd: ' s-sendai ' },
+      { resourceCd: '021', resourceGroupCd: 'M-1' },
+    ] as never);
+    vi.mocked(prisma.machine.findMany).mockResolvedValue([
+      { ...machine, nfcTags: [{ id: 't', uid: 'ABCD' }] },
+      { ...machine, id: 'm2', resourceCd: ' s001 ' },
+      { ...machine, id: 'm3', resourceCd: null },
+    ] as never);
+    const response = await app.inject({ method: 'GET', url: '/machines', headers: headers() });
+    expect(response.statusCode).toBe(200);
+    const rows = response.json().machines;
+    expect(rows.map((row: { factory: string }) => row.factory)).toEqual(['MISHIMA', 'SENDAI', 'MISHIMA']);
+    expect(rows[0].nfcTags).toEqual([{ id: 't', uid: 'ABCD' }]);
+    for (const row of rows) { expect(row).not.toHaveProperty('site'); expect(row).not.toHaveProperty('siteKey'); }
+  });
+
+  it('adds and removes a normalized tag and records both events', async () => {
+    vi.mocked(prisma.machineNfcTag.create).mockResolvedValue({ id: 't', uid: 'ABCD', machineId: 'm1' } as never);
+    const added = await app.inject({ method: 'POST', url: '/machines/m1/nfc-tags', headers: headers('MANAGER'), payload: { uid: ' ABCD ' } });
+    expect(added.statusCode).toBe(200);
+    expect(prisma.machineNfcTag.create).toHaveBeenCalledWith({ data: { machineId: 'm1', uid: 'ABCD' } });
+    vi.mocked(prisma.machineNfcTag.findUnique).mockResolvedValue({ id: 't', uid: 'ABCD', machineId: 'm1', machine } as never);
+    const removed = await app.inject({ method: 'DELETE', url: '/machines/m1/nfc-tags/t', headers: headers() });
+    expect(removed.statusCode).toBe(200);
+    for (const action of ['LINK', 'UNLINK']) expect(prisma.nfcTagBindingEvent.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action, targetKind: 'machine', targetId: 'm1', uid: 'ABCD' }) });
+  });
+
+  it.each(['employee', 'item', 'measuringInstrumentTag', 'riggingGearTag', 'inventoryNfcTag', 'machineNfcTag'] as const)('rejects a UID bound to %s', async domain => {
+    const usage = { displayName: '社員', name: '工具', measuringInstrument: { name: '計測器' }, riggingGear: { name: '吊具' }, kind: 'RESTOCK', machine: { name: '旋盤' } };
+    vi.mocked(prisma[domain].findUnique).mockResolvedValue(usage as never);
+    const response = await app.inject({ method: 'POST', url: '/machines/m1/nfc-tags', headers: headers(), payload: { uid: 'ABCD' } });
+    expect(response.statusCode).toBe(409);
+    expect(prisma.machineNfcTag.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses removing a tag belonging to another machine', async () => {
+    vi.mocked(prisma.machineNfcTag.findUnique).mockResolvedValue({ machineId: 'other' } as never);
+    const response = await app.inject({ method: 'DELETE', url: '/machines/m1/nfc-tags/t', headers: headers() });
+    expect(response.statusCode).toBe(404);
+    expect(prisma.machineNfcTag.delete).not.toHaveBeenCalled();
+  });
+
+  it.each(['POST', 'DELETE'] as const)('denies viewer NFC writes (%s)', async method => {
+    const response = await app.inject({ method, url: '/machines/m1/nfc-tags' + (method === 'DELETE' ? '/t' : ''), headers: headers('VIEWER'), ...(method === 'POST' ? { payload: { uid: 'ABCD' } } : {}) });
+    expect(response.statusCode).toBe(403);
   });
 });

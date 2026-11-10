@@ -2,19 +2,25 @@ import Fastify from 'fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { User } from '@prisma/client';
 
-import { signAccessToken } from '../../../../lib/auth.js';
+import { signTestAccessToken as signAccessToken } from '../../../../test/auth-session-fixture.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { LoanService } from '../../../../services/tools/loan.service.js';
 import { registerActiveLoansRoute } from '../active.js';
 import { registerBorrowRoute } from '../borrow.js';
 import { registerLoanCancelRoute } from '../cancel.js';
+import { registerLoanDeleteRoute } from '../delete.js';
 import { registerPhotoBorrowRoute } from '../photo-borrow.js';
 import { registerReturnRoute } from '../return.js';
 
 vi.mock('../../../../lib/prisma.js', () => ({
-  prisma: { clientDevice: { findUnique: vi.fn() } },
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() }, clientDevice: { findUnique: vi.fn() } },
 }));
+
+function tokenForUser(user: User): string {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { ...user, status: 'ACTIVE', mfaEnabled: false } }) as never);
+  return signAccessToken(user);
+}
 
 const clientId = '11111111-1111-4111-8111-111111111111';
 const otherClientId = '22222222-2222-4222-8222-222222222222';
@@ -44,6 +50,7 @@ describe('貸出ルートのデバイス認証', () => {
       vi.spyOn(loanService, method).mockResolvedValue({ id: loanId, clientId } as never);
     }
     vi.spyOn(loanService, 'findActive').mockResolvedValue([]);
+    vi.spyOn(loanService, 'delete').mockResolvedValue(undefined as never);
     app = Fastify();
     registerErrorHandler(app);
     registerBorrowRoute(app, loanService);
@@ -51,6 +58,7 @@ describe('貸出ルートのデバイス認証', () => {
     registerActiveLoansRoute(app, loanService);
     registerReturnRoute(app, loanService);
     registerLoanCancelRoute(app, loanService);
+    registerLoanDeleteRoute(app, loanService);
   });
 
   afterEach(async () => { await app.close(); });
@@ -106,7 +114,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/borrow', '/photo-borrow'])('%sはJWTだけでは401を返す', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
     const route = routes.find((candidate) => candidate.path === path)!;
     const response = await app.inject({
       method: 'POST', url: path, headers: { authorization: `Bearer ${token}` }, payload: route.payload,
@@ -140,15 +148,22 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['ADMIN', 'MANAGER', 'VIEWER'] as const)('activeは%sのJWTだけでも成功する', async (role) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role } as User);
     const response = await app.inject({ method: 'GET', url: '/active', headers: { authorization: `Bearer ${token}` } });
     expect(response.statusCode).toBe(200);
     expect(loanService.findActive).toHaveBeenCalledWith({ clientId: undefined });
     expect(prisma.clientDevice.findUnique).not.toHaveBeenCalled();
   });
 
+  it.each(['/return', '/cancel'])('%s requires a managing JWT role', async (path) => {
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const response = await app.inject({ method: 'POST', url: path, headers: { authorization: `Bearer ${token}` }, payload: { loanId } });
+    expect(response.statusCode).toBe(403);
+    expect(loanService[path === '/return' ? 'return' : 'cancel']).not.toHaveBeenCalled();
+  });
+
   it.each(['/return', '/cancel'])('%sは既存のJWTだけの経路を維持する', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'MANAGER' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'MANAGER' } as User);
     for (const specifiedClientId of [undefined, clientId]) {
       const response = await app.inject({
         method: 'POST', url: path, headers: { authorization: `Bearer ${token}` },
@@ -162,7 +177,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it('/activeは不正キーでも有効なJWTがあれば閲覧できる', async () => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
     const response = await app.inject({
       method: 'GET', url: '/active',
       headers: { authorization: `Bearer ${token}`, 'x-client-key': 'fixture-only-invalid' },
@@ -171,7 +186,7 @@ describe('貸出ルートのデバイス認証', () => {
   });
 
   it.each(['/borrow', '/photo-borrow', '/return', '/cancel'])('%sはJWTがあっても不正キーを401にする', async (path) => {
-    const token = signAccessToken({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
+    const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'ADMIN' } as User);
     const route = routes.find((candidate) => candidate.path === path);
     const response = await app.inject({
       method: route ? 'POST' : 'GET', url: path,
@@ -179,5 +194,24 @@ describe('貸出ルートのデバイス認証', () => {
       ...(route ? { payload: { ...route.payload, clientId } } : {}),
     });
     expect(response.statusCode).toBe(401);
+  });
+  it('deleteは正しい端末キーだけでは401を返す', async () => {
+    const response = await app.inject({ method: 'DELETE', url: `/${loanId}`, headers: { 'x-client-key': clientKey } });
+    expect(response.statusCode).toBe(401);
+    expect(loanService.delete).not.toHaveBeenCalled();
+  });
+
+  it('deleteはVIEWERのJWTを403にし、ADMIN/MANAGERだけ許可する', async () => {
+    const viewer = tokenForUser({ id: 'user-fixture', username: 'fixture', role: 'VIEWER' } as User);
+    const viewerResponse = await app.inject({ method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${viewer}` } });
+    expect(viewerResponse.statusCode).toBe(403);
+    for (const role of ['ADMIN', 'MANAGER'] as const) {
+      const token = tokenForUser({ id: 'user-fixture', username: 'fixture', role } as User);
+      const response = await app.inject({
+        method: 'DELETE', url: `/${loanId}`, headers: { authorization: `Bearer ${token}`, 'x-client-key': clientKey },
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    expect(loanService.delete).toHaveBeenCalledTimes(2);
   });
 });

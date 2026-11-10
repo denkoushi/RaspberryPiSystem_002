@@ -154,7 +154,7 @@ category: knowledge-base
 1. **仕様どおりの厳密照合**により、補助3キーに合う本体 winner が無い → `unmatched` → 画面は空。
 2. **本体CSVが最新化されていない**（列不一致で失敗・一部時刻帯だけ成功など）→ 本体側 `ProductNo` や工程構成が古いまま → 1 へ接続。
 3. **上流で工程・資源が動く**と、補助CSVと本体CSVの **キー設計の前提がズレる** → 1 が大量発生しうる。
-4. （UI）**プレビュー用ファイル入力とアップロード用入力が別**で、ユーザーがプレビューだけ選ぶと **API 未到達**（`CsvDashboardsPage.tsx`）。**KB-326 の「同期が走らない」と混同しやすい**。
+4. （UI）**プレビュー用ファイル入力とアップロード用入力が別**で、ユーザーがプレビューだけ選ぶと **API 未到達**（当時の `CsvDashboardsPage.tsx`。現行は `CsvDashboardPreviewSection` / `CsvDashboardUploadSection`）。**KB-326 の「同期が走らない」と混同しやすい**。
 
 ## Fix / 対策候補（記録のみ・未実施のもの含む）
 
@@ -184,7 +184,7 @@ category: knowledge-base
 - `apps/api/src/services/production-schedule/order-supplement-sync.pipeline.ts`
 - `apps/api/src/services/csv-dashboard/csv-dashboard-post-ingest.service.ts`
 - `apps/api/src/services/production-schedule/retention/production-schedule-cleanup.service.ts`
-- `apps/web/src/pages/admin/CsvDashboardsPage.tsx`（プレビュー／アップロードの二重 `input`）
+- `apps/web/src/features/admin/csv-dashboards/CsvDashboardPreviewSection.tsx` / `CsvDashboardUploadSection.tsx`（プレビュー／アップロードの二重 `input`。旧 `pages/admin/CsvDashboardsPage.tsx`）
 
 ## Related KB
 

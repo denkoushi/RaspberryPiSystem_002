@@ -14,7 +14,13 @@ CURRENT_IMAGE="${CACHE_DIR}/current.jpg"
 TEMP_IMAGE="${CACHE_DIR}/current.tmp.jpg"
 MAINTENANCE_SVG="${SIGNAGE_MAINTENANCE_SVG:-/usr/local/share/signage-maintenance.svg}"
 CURL_OPTIONS=(-sS -f)
-if [[ "${SIGNAGE_ALLOW_INSECURE_TLS:-0}" == 1 ]]; then
+if [[ "${SIGNAGE_SERVER_CERT_PIN_ENABLED:-0}" == 1 ]]; then
+  # curl --pinnedpubkey is independent of --insecure: the peer key is still
+  # verified with -k (https://curl.se/docs/manpage.html#--pinnedpubkey).
+  # IP connections cannot pass this certificate's hostname check.
+  [[ "${SIGNAGE_SERVER_CERT_SPKI:-}" =~ ^[A-Za-z0-9+/]{43}=$ ]] || exit 2
+  CURL_OPTIONS+=(-k --pinnedpubkey "sha256//${SIGNAGE_SERVER_CERT_SPKI}")
+elif [[ "${SIGNAGE_ALLOW_INSECURE_TLS:-0}" == 1 ]]; then
   CURL_OPTIONS+=(-k)
 fi
 

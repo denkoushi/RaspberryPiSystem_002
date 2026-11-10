@@ -1,15 +1,15 @@
 /**
- * キオスクのプレビュー対象キーから、実際に GET /signage/current-image に渡す apiKey を決める。
- * DB 保存値が欠落・無効（サイネージ候補に無い）ならキオスク自身のキーにフォールバックする。
+ * キオスクのプレビュー対象端末 IDから、実際に GET /signage/current-image に渡す id を決める。
+ * DB 保存値が欠落・無効（サイネージ候補に無い）ならキオスク自身の端末 IDにフォールバックする。
  */
-export function resolveEffectiveKioskSignagePreviewApiKey(params: {
-  kioskApiKey: string;
+export function resolveEffectiveKioskSignagePreviewDeviceId(params: {
+  kioskDeviceId: string;
   storedTarget: string | null;
-  validSignageApiKeys: Set<string>;
+  validSignageDeviceIds: Set<string>;
 }): string {
-  const { kioskApiKey, storedTarget, validSignageApiKeys } = params;
-  if (storedTarget && validSignageApiKeys.has(storedTarget)) {
+  const { kioskDeviceId, storedTarget, validSignageDeviceIds } = params;
+  if (storedTarget && validSignageDeviceIds.has(storedTarget)) {
     return storedTarget;
   }
-  return kioskApiKey;
+  return kioskDeviceId;
 }

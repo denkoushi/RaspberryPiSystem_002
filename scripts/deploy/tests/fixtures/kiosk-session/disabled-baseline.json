@@ -1,0 +1,539 @@
+{
+  "hosts": {
+    "raspberrypi4": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "tools03",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-robodrill01": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "tools04",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-fjv60-80": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-fjv60-80",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-kensaku-stonebase01": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-kensaku-stonebase01",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-sessaku-01": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-sessaku-01",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-assembly-01": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-assembly-01",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-kensaku-02": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-kensaku-02",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    },
+    "raspi4-assembly-02": {
+      "kiosk_browser_engine": "chromium",
+      "kiosk_browser_mode": "app-like",
+      "kiosk_browser_chromium_binary": "/usr/bin/chromium-browser",
+      "kiosk_browser_flags_common": [
+        "--start-maximized"
+      ],
+      "kiosk_browser_flags_chromium": [
+        "--ozone-platform=x11",
+        "--gtk-version=3",
+        "--disable-renderer-accessibility",
+        "--remote-debugging-address=127.0.0.1",
+        "--remote-debugging-port=9222",
+        "--noerrdialogs",
+        "--disable-session-crashed-bubble",
+        "--autoplay-policy=no-user-gesture-required",
+        "--disable-translate",
+        "--overscroll-history-navigation=0",
+        "--use-fake-ui-for-media-stream",
+        "--allow-insecure-localhost",
+        "--allow-running-insecure-content",
+        "--disable-infobars",
+        "--test-type",
+        "--password-store=basic",
+        "--disable-features=AccessibilityFocusHighlight,AccessibilityFocusAlert"
+      ],
+      "kiosk_server_cert_spki_sha256": "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE=",
+      "kiosk_browser_flags_firefox_app_like": [
+        "--new-window"
+      ],
+      "kiosk_browser_flags_firefox_kiosk": [
+        "--kiosk"
+      ],
+      "kiosk_firefox_minimize_chrome_enabled": true,
+      "kiosk_firefox_profile_dirname": "kiosk-system",
+      "ansible_user": "raspi4-assembly-02",
+      "kiosk_url": "https://example.invalid/kiosk",
+      "repo_path": "/opt/RaspberryPiSystem_002",
+      "release_kiosk_user_uid": {
+        "stdout": "1000"
+      }
+    }
+  },
+  "templates": {
+    "templates/kiosk-browser.service.j2": {
+      "raspberrypi4": "1ceb3c97ad93ac2527efc89c01936392a9a461386fbea97b77e9c7f7d5b3817a",
+      "raspi4-robodrill01": "bb644ee98cd8ab290e95033a0bbb714bee994bae340f56375e8ff2d24be06f33",
+      "raspi4-fjv60-80": "0b4095026179131100d9a1f9d25aad5eb5f15e3a884b42a58ec3030fca1e7cc7",
+      "raspi4-kensaku-stonebase01": "e154f8d9714a8b9f95a364191d131b60432633bdcb1d5a9fe061980c82dc69a5",
+      "raspi4-sessaku-01": "4987e290a4ec71ddc41ffe78cddbd0650e95f659c40b2584615b5801df1e1cd0",
+      "raspi4-assembly-01": "3a42e79bbe81deb3de060763f6b2ad84774f0a42cbecdb2777bed99cfb7ae00a",
+      "raspi4-kensaku-02": "5d27bc2bc1559da103b3c98b10f07b63e5827f44cfed99feb142ed0527317d34",
+      "raspi4-assembly-02": "e060ac893ae0adebe7408c8938b1ba218da505854a3c5037c9ff474d00313a93"
+    },
+    "templates/kiosk-launch.sh.j2": {
+      "raspberrypi4": "d46d2e54c7ce6923b04ad6e7270e775961241dfa316aec63568e08640b95943f",
+      "raspi4-robodrill01": "7440a9f2ee68685f3bc6c9b9351a9078f5edfea6692e3315da90a15b3f903826",
+      "raspi4-fjv60-80": "a4589b596a9fd702e9313c0068f3815499daf6c730f983bf8bd6ac109d32b132",
+      "raspi4-kensaku-stonebase01": "d844e5818c590516000e67db3b77d63625ce86e573e585c1fed52cddf8c69774",
+      "raspi4-sessaku-01": "62497b05b93195178ec53245effb73b6f4fd1651196cf3b29c3adeaddde64a00",
+      "raspi4-assembly-01": "df51fa8a6c4da1ba62c13402b3d13fc230cb8908d28a909275f3ce6691cb88f7",
+      "raspi4-kensaku-02": "2d23999b297bc2fedd0eb4bcd7efd14d73a7ff5789ec54f93e79bf41e3dcc103",
+      "raspi4-assembly-02": "1e7762d5151909953cc7d5dbb2329bdd5ab23c99e78db1316066f6eeaa41e148"
+    },
+    "roles/release_kiosk/templates/kiosk-hotcorner.service.j2": {
+      "raspberrypi4": "49e7377270c15aee6f2090b4e7132f69527a12793ffe9f599ee69a92b8371250",
+      "raspi4-robodrill01": "cf166f372117859583733b5c3bfe65de4fbfa7a606f5fb3b51d716cd10d8a99b",
+      "raspi4-fjv60-80": "1e4ccc5b8558b4d9557e637ed87de31e531775afbd7cf90747a936219abe0f35",
+      "raspi4-kensaku-stonebase01": "e06eb215570216b80641be530c47937f4a6f25f942c34a96f99a3912a45afaa7",
+      "raspi4-sessaku-01": "5f6325fff0bb09716495c80b8b99a81e3672f16703ee30c05a39d9bd68f4385b",
+      "raspi4-assembly-01": "6f013c22eb260ba2762cf8a0783c672c01b4c5afa9df81d9992a17730248989b",
+      "raspi4-kensaku-02": "4ed1ec8d3f04b4b2e4f8b473c82081628133436865088856b2e21d8fa530d541",
+      "raspi4-assembly-02": "7ddbaf0e2dc6e62a23653fdaaa6e66eeefb62f2cda99fbb0339898ea26ae29ec"
+    },
+    "roles/kiosk/templates/show-kiosk-panel.sh.j2": {
+      "raspberrypi4": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-robodrill01": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-fjv60-80": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-kensaku-stonebase01": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-sessaku-01": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-assembly-01": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-kensaku-02": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa",
+      "raspi4-assembly-02": "9a852689f11f8f43388c512ff4e900e441c299c0687d673adf21f8f2f172fbaa"
+    }
+  },
+  "tasks": {
+    "roles/kiosk/tasks/main.yml": {
+      "Ensure labwc config directory exists for kiosk user": {
+        "ansible.builtin.file.path": "/home/fixture-deployer/.config/labwc",
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "fixture-deployer"
+      },
+      "Check labwc configuration directory before release": {
+        "ansible.builtin.stat.path": "/home/fixture-deployer/.config/labwc"
+      },
+      "Check if labwc user rc.xml exists": {
+        "ansible.builtin.stat.path": "/home/fixture-deployer/.config/labwc/rc.xml"
+      },
+      "Copy system labwc rc.xml to user config (first run)": {
+        "ansible.builtin.copy.dest": "/home/fixture-deployer/.config/labwc/rc.xml",
+        "ansible.builtin.copy.owner": "fixture-deployer",
+        "ansible.builtin.copy.group": "fixture-deployer"
+      },
+      "Add Super+Shift+P keybind to labwc rc.xml (show panel for Wi-Fi GUI)": {
+        "ansible.builtin.blockinfile.path": "/home/fixture-deployer/.config/labwc/rc.xml"
+      }
+    },
+    "roles/kiosk/tasks/ibus-process-owner.yml": {
+      "Create ibus autostart directory": {
+        "ansible.builtin.file.path": "/home/fixture-deployer/.config/autostart",
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "fixture-deployer"
+      },
+      "Check ibus autostart directory before release": {
+        "ansible.builtin.stat.path": "/home/fixture-deployer/.config/autostart"
+      },
+      "Deploy ibus autostart desktop file": {
+        "ansible.builtin.template.dest": "/home/fixture-deployer/.config/autostart/ibus.desktop",
+        "ansible.builtin.template.owner": "fixture-deployer",
+        "ansible.builtin.template.group": "fixture-deployer"
+      },
+      "Enable IBus process owner autostart in single-owner mode": {
+        "ansible.builtin.copy.dest": "/home/fixture-deployer/.config/autostart/ibus-owner.desktop",
+        "ansible.builtin.copy.owner": "fixture-deployer",
+        "ansible.builtin.copy.group": "fixture-deployer"
+      },
+      "Disable IBus process owner autostart in legacy mode": {
+        "ansible.builtin.file.path": "/home/fixture-deployer/.config/autostart/ibus-owner.desktop"
+      },
+      "Disable competing global IME autostart entries for kiosk user": {
+        "ansible.builtin.copy.dest": "/home/fixture-deployer/.config/autostart/fixture.desktop",
+        "ansible.builtin.copy.owner": "fixture-deployer",
+        "ansible.builtin.copy.group": "fixture-deployer"
+      },
+      "Reconcile IBus owner process in active user session": {
+        "become_user": "fixture-deployer"
+      },
+      "Verify IBus process ownership without reconciling it": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/kiosk/tasks/ibus-settings.yml": {
+      "Force mozc-jp as initial IBus engine on login": {
+        "ansible.builtin.copy.dest": "/home/fixture-deployer/.config/autostart/ibus-engine.desktop",
+        "ansible.builtin.copy.owner": "fixture-deployer",
+        "ansible.builtin.copy.group": "fixture-deployer"
+      },
+      "Persist IBus engine order and hotkey for kiosk user": {
+        "become_user": "fixture-deployer"
+      },
+      "Verify IBus settings without changing the active session": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/kiosk/tasks/diagnose-ime.yml": {
+      "Run IME diagnostic script on kiosk host": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/kiosk/tasks/firefox-chrome.yml": {
+      "Compute absolute path for kiosk Firefox profile directory": {
+        "ansible.builtin.set_fact.kiosk_firefox_profile_abs": "/home/fixture-deployer/.mozilla/firefox/kiosk-system"
+      },
+      "Ensure Firefox kiosk profile root exists": {
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "fixture-deployer"
+      },
+      "Ensure Firefox kiosk profile chrome directory exists": {
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "fixture-deployer"
+      },
+      "Converge Firefox session restore directory during full provisioning": {
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "fixture-deployer"
+      },
+      "Deploy Firefox userChrome.css (kiosk minimize chrome)": {
+        "ansible.builtin.template.owner": "fixture-deployer",
+        "ansible.builtin.template.group": "fixture-deployer"
+      },
+      "Deploy Firefox user.js (enable userChrome.css loading)": {
+        "ansible.builtin.template.owner": "fixture-deployer",
+        "ansible.builtin.template.group": "fixture-deployer"
+      }
+    },
+    "roles/release_kiosk/tasks/prepare_hotcorner.yml": {
+      "Read the kiosk user's runtime UID": {
+        "ansible.builtin.command.argv.2": "fixture-deployer"
+      },
+      "Read the kiosk user's primary group": {
+        "ansible.builtin.command.argv.2": "fixture-deployer"
+      },
+      "Remember the previous hotcorner service state": {
+        "ansible.builtin.set_fact.release_kiosk_labwc_dir": "/home/fixture-deployer/.config/labwc"
+      }
+    },
+    "roles/release_kiosk/tasks/switch.yml": {
+      "Ensure the kiosk user owns the labwc directory": {
+        "ansible.builtin.file.owner": "fixture-deployer"
+      },
+      "Reconfigure labwc for the kiosk user": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/release_kiosk/tasks/health.yml": {
+      "Verify first-install Japanese input in the active desktop": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/release_kiosk/tasks/rollback.yml": {
+      "Reconfigure the restored labwc session": {
+        "become_user": "fixture-deployer"
+      }
+    },
+    "roles/common/tasks/distrusted-intermediates.yml": {
+      "Distrust the compromised eMudhra G3B intermediates on the host": {
+        "vars.distrusted_nss_home": "/home/fixture-deployer"
+      },
+      "Resolve the Chromium session user's home and primary group": {
+        "ansible.builtin.getent.key": "fixture-deployer"
+      },
+      "Ensure the Chromium user's NSS directories exist with user ownership": {
+        "ansible.builtin.file.owner": "fixture-deployer",
+        "ansible.builtin.file.group": "1000"
+      },
+      "Initialize the user NSS database only when missing": {
+        "become_user": "fixture-deployer"
+      },
+      "List existing NSS certificates and trust attributes": {
+        "become_user": "fixture-deployer"
+      },
+      "Prohibit each compromised intermediate in the Chromium user database": {
+        "become_user": "fixture-deployer"
+      }
+    }
+  },
+  "protected": {
+    "roles/client/templates/sudoers-client.j2": "a08c381fbcc513f331fad1dc2e82b4f660b556cc5b3dede828de03a074541154",
+    "roles/kiosk/tasks/package-integrity.yml": "9286b6270f8e5a16d241d30684a7b223f4d8d7c4a5edeac8f69ac9298263c157",
+    "roles/release_kiosk/templates/status-agent.service.j2": "32cf80b0ae28989cc9c93b41f508c75c65490adf8a15d77030bb3ea392d0344d",
+    "templates/security-review-kiosk-fetch.service.j2": "26f36410c4cf07994b85586de60ffdbc20fc34f9f12d37725c71fd805c403495",
+    "playbooks/power-control.yml": "2d93ce69d3f6e9261e5d380bdc00c34f2cc51b770f5d006aa7b5ff1f610cd414"
+  }
+}

@@ -1,4 +1,4 @@
-import { BarcodeFormat } from '@zxing/library';
+import BarcodeFormat from '@zxing/library/esm/core/BarcodeFormat';
 
 // Local structural types: lib.dom does not currently declare Shape Detection.
 export interface NativeBarcode {

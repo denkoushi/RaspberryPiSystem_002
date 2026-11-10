@@ -20,6 +20,7 @@ export type PurchaseOrderLookupSyncResult = {
   scanned: number;
   /** 後方互換のため維持。意味は `upserted` と同じ。 */
   inserted: number;
+  /** 実際に書き込んだ行数（CSV 内の同一キーは 1 行にまとめた後の数）。`upserted + skippedStale` は重複をまとめた行数になる。 */
   upserted: number;
   /** DB の行より古い、または内容が同じため、書き込まなかった行数。 */
   skippedStale: number;
@@ -125,8 +126,8 @@ export class PurchaseOrderLookupSyncService {
 
     return {
       scanned: records.length,
-      inserted: parsed.length,
-      upserted: parsed.length,
+      inserted: written,
+      upserted: written,
       skippedStale: rows.length - written,
     };
   }

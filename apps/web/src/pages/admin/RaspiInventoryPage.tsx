@@ -13,6 +13,7 @@ import {
   useInventoryLocations,
   useInventoryMutations,
 } from '../../api/hooks';
+import { ProtectedImage } from '../../components/common/ProtectedImage';
 import { InventoryPhotoDialog } from '../../components/kiosk/InventoryPhotoDialog';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -396,7 +397,7 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
                           className={`w-24 rounded border bg-slate-900/70 p-1.5 ${dragOverPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedPhotoId === photo.id ? 'opacity-50' : ''}`}
                         >
                           <button type="button" className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.filename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.filename })}>
-                            <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-24 w-full rounded object-cover" />
+                            <ProtectedImage path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-24 w-full rounded object-cover" />
                           </button>
                           <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.filename}>{index + 1}. {photo.filename}</figcaption>
                           <div className="mt-1 flex items-center gap-1">
@@ -543,7 +544,7 @@ export function RaspiInventoryPage({ accessPassword }: { accessPassword?: string
                   className={`w-40 shrink-0 rounded border bg-slate-900/70 p-1 ${dragOverRegisteredPhotoId === photo.id ? 'border-sky-400' : 'border-white/15'} ${draggedRegisteredPhoto?.photoId === photo.id ? 'opacity-50' : ''}`}
                 >
                   <button type="button" className="block w-full rounded focus:outline-none focus:ring-2 focus:ring-sky-300" aria-label={`${photo.originalFilename}を拡大`} onClick={() => setSelectedPhoto({ url: photo.photoUrl, alt: photo.originalFilename })}>
-                    <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-40 w-full rounded object-cover" />
+                    <ProtectedImage path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-40 w-full rounded object-cover" />
                   </button>
                   <figcaption className="truncate px-1 pt-1 text-xs text-white/70" title={photo.originalFilename}>{index + 1}. {photo.originalFilename}</figcaption>
                   <div className="mt-1 flex items-center gap-1">

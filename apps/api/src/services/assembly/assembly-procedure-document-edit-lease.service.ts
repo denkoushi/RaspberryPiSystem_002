@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 
 export const ASSEMBLY_PROCEDURE_EDIT_LOCKED = 'ASSEMBLY_PROCEDURE_EDIT_LOCKED';
-export type AssemblyProcedureEditActor = { holderKey?: string | null; holderToken?: string | null };
+export type AssemblyProcedureEditActor = { clientDeviceId?: string | null; ip?: string; holderKey?: string | null; holderToken?: string | null };
 
 const LEASE_DURATION_MS = 5 * 60 * 1000;
 

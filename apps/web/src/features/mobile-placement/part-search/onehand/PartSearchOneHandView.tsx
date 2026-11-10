@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { isHaizenSpeechAvailable, recognizeSpeechNative, stopSpeechNative } from '../../haizenNative';
 import { haizenPhoneStyle, hp } from '../../ui/haizenPhoneTokens';
+import { useRegisteredShelves } from '../../useRegisteredShelves';
 
 import { ONEHAND_ABC_KEYS, ONEHAND_KANA_KEYS, PartSearchOneHandDock } from './PartSearchOneHandDock';
 import { PartSearchOneHandHit } from './PartSearchOneHandHit';
@@ -16,6 +17,8 @@ const nextFields: PartSearchField[] = ['machine', 'seiban', 'name', 'hinban'];
 export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: {
   rows: PartSearchRow[]; offline: boolean; topLeftChip?: ReactNode; onDelete: (row: PartSearchRow) => Promise<void>;
 }) {
+  const shelves = useRegisteredShelves();
+  const shelvesByCode = useMemo(() => new Map(shelves.data?.shelves.map((shelf) => [shelf.shelfCodeRaw, shelf])), [shelves.data]);
   const [query, setQuery] = useState<PartSearchQuery>({ field: 'all', typed: '', filters: [] });
   const [mode, setMode] = useState<'kana' | 'abc'>('kana');
   const [keysVisible, setKeysVisible] = useState(true);
@@ -83,17 +86,16 @@ export function PartSearchOneHandView({ rows, offline, topLeftChip, onDelete }: 
   };
 
   return <div style={haizenPhoneStyle} className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[var(--hp-bg)] text-[var(--hp-ink)] [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]">
-    <div className="flex min-h-7 items-center gap-2 px-3.5 pb-1.5 pt-3">
+    {offline && <div className="flex min-h-7 items-center gap-2 px-3.5 pb-1.5 pt-3">
       {topLeftChip ?? (offline && <span className="inline-flex h-[26px] items-center rounded-full border border-[color-mix(in_srgb,var(--hp-shelf)_45%,var(--hp-line))] px-2.5 text-xs font-extrabold text-[var(--hp-shelf)]">圏外</span>)}
-      <span className="ml-auto text-[13px] font-extrabold tabular-nums text-[var(--hp-ink3)]">{result.total}件</span>
-    </div>
+    </div>}
     <section aria-label="検索結果" aria-live="polite" className={hp.list} onScroll={() => setKeysVisible(false)}>
       {result.total === 0 && <p className={hp.empty}>見つかりません</p>}
-      {result.hits.slice(0, 40).map((row) => <PartSearchOneHandHit key={row.id} row={row} selected={selected === row.id} filters={query.filters}
+      {result.hits.slice(0, 40).map((row) => <PartSearchOneHandHit key={row.id} row={row} shelf={shelvesByCode.get(row.shelfCodeRaw ?? '')} selected={selected === row.id} filters={query.filters}
         onSelect={() => { const next = selected === row.id ? null : row.id; setSelected(next); if (next !== null) setKeysVisible(false); }}
         onFilter={addFilter} onDelete={deleteRow} />)}
     </section>
-    <PartSearchOneHandDock query={query} facets={result.facets} keysVisible={keysVisible} mode={mode} availableKeys={availableKeys}
+    <PartSearchOneHandDock count={result.total} query={query} facets={result.facets} keysVisible={keysVisible} mode={mode} availableKeys={availableKeys}
       speechAvailable={speechAvailable} listening={listening} onSpeech={speech}
       onFilter={addFilter} onRemoveFilter={removeFilter} onTyped={setTyped} onKeysVisible={setKeysVisible} onMode={setMode}
       onField={(field) => { setQuery({ ...query, field, typed: '' }); fieldMode(field); setKeysVisible(true); }}

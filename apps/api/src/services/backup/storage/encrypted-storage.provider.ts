@@ -9,28 +9,29 @@ import {
   type StorageProvider,
   type UploadOptions
 } from './storage-provider.interface.js';
-import { decryptBackupIfEncrypted, encryptBackup, encryptBackupFile } from './backup-encryption.js';
+import { encryptBackup, encryptBackupFile, requireBackupEncryptionKey } from './backup-encryption.js';
 
 /**
- * 外部ストレージへ送る前に暗号化し、取得時に復号する StorageProvider。
+ * 外部ストレージへ送る前に暗号化する StorageProvider。復号は復元の信頼判定で行う。
  * 保存先のパスや一覧は変えないため、既存の保持・一覧・復元の処理はそのまま使える。
  */
 export class EncryptedStorageProvider implements StorageProvider, LargeFileUploadProvider {
   constructor(
     private readonly inner: StorageProvider,
-    private readonly key: Buffer,
+    private readonly key?: Buffer,
     private readonly tempDir: string = process.env.BACKUP_TEMP_DIR || os.tmpdir()
   ) {}
 
   async upload(file: Buffer, filePath: string, options?: UploadOptions): Promise<void> {
-    await this.inner.upload(encryptBackup(this.key, file), filePath, options);
+    await this.inner.upload(encryptBackup(this.key ?? requireBackupEncryptionKey(), file), filePath, options);
   }
 
   async uploadFromFile(sourcePath: string, filePath: string, options?: UploadOptions): Promise<void> {
+    const key = this.key ?? requireBackupEncryptionKey();
     const encryptedPath = path.join(this.tempDir, `backup-encrypted-${randomUUID()}`);
     try {
-      await fs.mkdir(this.tempDir, { recursive: true });
-      await encryptBackupFile(this.key, sourcePath, encryptedPath);
+      await fs.mkdir(this.tempDir, { recursive: true, mode: 0o700 });
+      await encryptBackupFile(key, sourcePath, encryptedPath);
       if (isLargeFileUploadProvider(this.inner)) {
         await this.inner.uploadFromFile(encryptedPath, filePath, options);
       } else {
@@ -41,8 +42,8 @@ export class EncryptedStorageProvider implements StorageProvider, LargeFileUploa
     }
   }
 
-  async download(filePath: string): Promise<Buffer> {
-    return decryptBackupIfEncrypted(this.key, await this.inner.download(filePath));
+  download(filePath: string): Promise<Buffer> {
+    return this.inner.download(filePath);
   }
 
   delete(filePath: string): Promise<void> {

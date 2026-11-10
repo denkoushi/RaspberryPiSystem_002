@@ -10,7 +10,8 @@ import {
   getUnifiedItems,
   postClientLogs
 } from '../../api/client';
-import { useActiveLoans, useBorrowMutation, useKioskConfig } from '../../api/hooks';
+import { useActiveLoans, useKioskConfig } from '../../api/hooks';
+import { useKioskBorrowMutation } from '../../api/hooks/tools';
 import { readProductionBuildConfig } from '../../config/productionBuildConfig';
 import { createBorrowMachine } from '../../features/kiosk/borrowMachine';
 import {
@@ -21,6 +22,7 @@ import {
   kioskStepCardInactiveClassName,
   kioskSuccessPanelClassName,
 } from '../../features/kiosk/kioskTheme';
+import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
 import { PalletVizEmbeddedPanel } from '../../features/kiosk/pallet-visualization';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
@@ -37,7 +39,10 @@ export function KioskBorrowPage() {
   // 親コンポーネントでデータを取得し、子コンポーネントにpropsで渡す（根本解決）
   // 返却一覧は全クライアント分を表示（過去の貸出も見落とさないため）
   const loansQuery = useActiveLoans(undefined, resolvedClientKey);
-  const borrowMutation = useBorrowMutation(resolvedClientKey);
+  const borrowMutation = useKioskBorrowMutation();
+  const outbox = useLoanOfflineQueue();
+  const readAtRef = useRef<string | undefined>(undefined);
+  const submittingRef = useRef(false);
   const machine = useMemo(() => createBorrowMachine(), []);
   const [state, send] = useMachine(machine);
   // スコープ分離: このページがアクティブな場合のみNFCを有効にする
@@ -71,10 +76,12 @@ export function KioskBorrowPage() {
   }, []);
 
   useEffect(() => {
-    if (state.value !== 'submitting' || borrowMutation.isPending) {
+    if (state.value !== 'submitting' || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
     const payload = {
+      readAt: readAtRef.current ?? new Date().toISOString(),
       itemTagUid: state.context.itemTagUid ?? '',
       employeeTagUid: state.context.employeeTagUid ?? '',
       clientId: resolvedClientId
@@ -105,7 +112,7 @@ export function KioskBorrowPage() {
     };
 
     attemptBorrow()
-      .then((loan) => send({ type: 'SUCCESS', loan }))
+      .then((loan) => send(loan ? { type: 'SUCCESS', loan } : { type: 'QUEUED' }))
       .catch(async (error: unknown) => {
         const apiError = error as Partial<AxiosError<{ message?: string }>>;
         const apiMessage: string | undefined = apiError.response?.data?.message;
@@ -154,7 +161,7 @@ export function KioskBorrowPage() {
         if ((notFoundItem || notFoundEmployee) && payload.itemTagUid && payload.employeeTagUid) {
           try {
             const loan = await attemptBorrow(true);
-            send({ type: 'SUCCESS', loan });
+            send(loan ? { type: 'SUCCESS', loan } : { type: 'QUEUED' });
             return;
           } catch (retryError: unknown) {
             const retryApiErr = retryError as Partial<AxiosError<{ message?: string }>>;
@@ -191,7 +198,7 @@ export function KioskBorrowPage() {
         }
 
         send({ type: 'FAIL', message: message ?? '登録エラーが発生しました' });
-      });
+      }).finally(() => { submittingRef.current = false; });
   }, [borrowMutation, resolvedClientId, resolvedClientKey, send, state]);
 
   useEffect(() => {
@@ -272,6 +279,7 @@ export function KioskBorrowPage() {
       if (enableDebugLogs) {
         console.log(`Sending ${eventType}:`, nfcEvent.uid);
       }
+      readAtRef.current = nfcEvent.timestamp;
       send({ type: eventType, uid: nfcEvent.uid });
       lastEventKeyRef.current = eventKey;
     };
@@ -314,6 +322,7 @@ export function KioskBorrowPage() {
                 リセット
               </button>
             </div>
+            {outbox.message ? <p role="status" className="text-sm font-semibold">{outbox.message}</p> : null}
             {state.context.error ? <p className="text-sm font-semibold text-red-400">{state.context.error}</p> : null}
             {state.context.loan ? (
               <div className={kioskSuccessPanelClassName}>

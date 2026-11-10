@@ -27,10 +27,14 @@ const addItemBodySchema = z.object({
   machineCd: z.string().min(1),
   palletNo: z.number().int().min(1),
   manufacturingOrderBarcodeRaw: z.string().min(1),
+  eventKey: z.string().uuid().optional(),
+  readAt: z.string().datetime({ offset: true }).transform(value => new Date(value)).optional(),
 });
 
 const replaceBodySchema = z.object({
   manufacturingOrderBarcodeRaw: z.string().min(1),
+  eventKey: z.string().uuid().optional(),
+  readAt: z.string().datetime({ offset: true }).transform(value => new Date(value)).optional(),
 });
 
 const clearParamsSchema = z.object({
@@ -85,6 +89,8 @@ export async function registerKioskPalletVisualizationRoutes(
       machineCd: body.machineCd,
       palletNo: body.palletNo,
       manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
+      eventKey: body.eventKey,
+      readAt: body.readAt,
     });
   });
 
@@ -96,6 +102,8 @@ export async function registerKioskPalletVisualizationRoutes(
       clientDeviceId: requireDeviceId(clientDevice),
       itemId: id,
       manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,
+      eventKey: body.eventKey,
+      readAt: body.readAt,
     });
   });
 

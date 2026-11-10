@@ -2,6 +2,7 @@ import { resolveKioskLoanCardSurfaceTokens } from '@raspi-system/shared-types';
 import { useState } from 'react';
 
 import { kioskButtonPrimaryClassName, kioskButtonSecondaryClassName } from '../../features/kiosk/kioskTheme';
+import { ProtectedImage } from '../common/ProtectedImage';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 
 import {
@@ -68,17 +69,14 @@ export function KioskActiveLoanCard({
       <div className={kioskActiveLoanCardMainRowClassName}>
         {thumbnailUrl ? (
           <div className={kioskActiveLoanCardThumbWrapClassName}>
-            <img
-              src={thumbnailUrl}
+            <ProtectedImage
+              path={thumbnailUrl}
               alt="撮影した写真"
               className={kioskActiveLoanCardThumbImgClassName}
               onClick={() => {
                 if (photoUrl && onThumbnailClick) {
                   onThumbnailClick(photoUrl);
                 }
-              }}
-              onError={(e) => {
-                (e.target as HTMLImageElement).style.display = 'none';
               }}
             />
           </div>

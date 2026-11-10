@@ -1,3 +1,4 @@
+import { registerWatchCameraRoutes } from './watch-camera/index.js';
 import type { FastifyInstance } from 'fastify';
 import { registerSystemRoutes } from './system/index.js';
 import { registerAuthRoutes } from './auth.js';
@@ -27,6 +28,7 @@ import { registerLoanReportRoutes } from './reports/loan-report.js';
 import { registerTorqueWrenchRoutes } from './torque-wrenches/index.js';
 import { registerTorqueTrainingRoutes } from './torque-training/index.js';
 import { registerWorkInstructionRoutes } from './work-instructions/index.js';
+import { registerKioskProcedureBoardRoutes } from './kiosk-procedure-boards.js';
 import { registerHermesKnowledgeRoutes } from './hermes-knowledge.js';
 import { registerItemInventoryRoutes } from './item-inventory/index.js';
 import { registerMachineSignalRoutes } from './machine-signal/index.js';
@@ -45,6 +47,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       await registerAuthRoutes(subApp);
       await registerAssemblyRoutes(subApp);
       registerHermesKnowledgeRoutes(subApp);
+      registerKioskProcedureBoardRoutes(subApp);
       await registerTorqueWrenchRoutes(subApp);
       await registerTorqueTrainingRoutes(subApp);
 
@@ -60,6 +63,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       registerKioskDocumentRoutes(subApp);
       await registerPartMeasurementRoutes(subApp);
       await registerMobilePlacementRoutes(subApp);
+      await registerWatchCameraRoutes(subApp);
       await registerImportRoutes(subApp);
       await registerStorageRoutes(subApp);
       await registerSignageRoutes(subApp);

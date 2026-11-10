@@ -135,8 +135,8 @@ export class AssemblyProcedureDocumentAssetsService {
     this.accessService = deps.accessService ?? new AssemblyTemplateAccessService();
   }
 
-  private async assertEditable(documentId: string, accessPassword: string | undefined, db: Prisma.TransactionClient = prisma) {
-    await this.accessService.requireAccessPassword(accessPassword);
+  private async assertEditable(documentId: string, accessPassword: string | undefined, db: Prisma.TransactionClient = prisma, caller: AssemblyProcedureEditActor = {}) {
+    await this.accessService.requireAccessPassword(accessPassword, caller);
     const document = await db.assemblyProcedureDocument.findUnique({
       where: { id: documentId },
       select: {
@@ -199,7 +199,7 @@ export class AssemblyProcedureDocumentAssetsService {
     if (!db) return runAssemblyTransaction((tx) => this.uploadOverlayImage(params, tx));
     await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
-    await this.assertEditable(params.documentId, params.accessPassword, db);
+    await this.assertEditable(params.documentId, params.accessPassword, db, params);
     assertBytes(params.bytes);
     const contentType = params.contentType.trim().toLowerCase();
     const saved = await this.storage.save({
@@ -300,7 +300,7 @@ export class AssemblyProcedureDocumentAssetsService {
     if (!db) return runAssemblyTransaction((tx) => this.createImageRegion(params, tx));
     await db.$queryRaw`SELECT id FROM "AssemblyProcedureDocument" WHERE id = ${params.documentId} FOR UPDATE`;
     await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, db, params.holderToken ?? null);
-    const editable = await this.assertEditable(params.documentId, params.accessPassword, db);
+    const editable = await this.assertEditable(params.documentId, params.accessPassword, db, params);
     let roi: ReturnType<typeof normalizeAssemblyProcedureAssetRoi>;
     try {
       roi = normalizeAssemblyProcedureAssetRoi(params.bbox);
@@ -336,14 +336,14 @@ export class AssemblyProcedureDocumentAssetsService {
     }
   }
 
-  async findTextCandidates(params: {
+  async findTextCandidates(params: AssemblyProcedureEditActor & {
     documentId: string;
     accessPassword?: string;
     pageIndex: number;
     bbox: AssemblyProcedureRegionBBox;
     overlays?: OverlayRegionImage[];
   }): Promise<AssemblyProcedureTextCandidate[]> {
-    const editable = await this.assertEditable(params.documentId, params.accessPassword);
+    const editable = await this.assertEditable(params.documentId, params.accessPassword, prisma, params);
     let roi: ReturnType<typeof normalizeAssemblyProcedureAssetRoi>;
     try {
       roi = normalizeAssemblyProcedureAssetRoi(params.bbox);

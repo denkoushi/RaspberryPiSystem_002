@@ -106,7 +106,7 @@ async function correctionWrite(request: FastifyRequest, reply: FastifyReply): Pr
 async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   const rawPassword = request.headers['x-kiosk-access-password'];
   if (rawPassword) {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     if (inventorySettingsAttemptsBlocked(request)) {
       throw new ApiError(429, '操作パスワードの試行回数が上限に達しました。しばらくしてから再試行してください', undefined, 'INVENTORY_SETTINGS_ACCESS_RATE_LIMITED');
     }
@@ -117,6 +117,8 @@ async function authorizeManageOrKiosk(request: FastifyRequest, reply: FastifyRep
     }
     const result = await verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: clientDevice.id,
+      ip: request.ip,
       password: password.trim()
     });
     if (!result.success) {
@@ -164,6 +166,7 @@ const transactionBody = z.object({
   quantityTagUid: z.string().trim().min(1).max(256),
   restockTagUid: z.string().trim().min(1).max(256).optional(),
   restock: z.boolean().default(false),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const touchTransactionBody = z.object({
@@ -171,6 +174,7 @@ const touchTransactionBody = z.object({
   quantity: z.number().int().min(1).max(999999),
   restock: z.boolean().default(false),
   expectedBeforeQuantity: z.number().int().min(0).optional(),
+  machineId: z.string().guid().optional(),
   idempotencyKey: z.string().trim().min(1).max(200).optional(),
 });
 const inventorySettingsAccessPasswordBody = z.object({
@@ -181,12 +185,26 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   const services = getItemInventoryServices();
 
   app.post('/kiosk/item-inventory/settings/verify-access-password', { config: { rateLimit: inventorySettingsRateLimit } }, async (request) => {
-    await requireClientDevice(request.headers['x-client-key']);
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = inventorySettingsAccessPasswordBody.parse(request.body ?? {});
     return verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: clientDevice.id,
+      ip: request.ip,
       password: body.password
     });
+  });
+
+  app.get('/item-inventory/machines', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    return { machines: await services.inventory.listMachines(clientDevice.id) };
+  });
+
+  app.put('/item-inventory/machines/order', async (request) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { machineIds } = z.object({ machineIds: z.array(z.string().guid()) }).parse(request.body);
+    await services.inventory.saveMachineOrder(clientDevice.id, machineIds);
+    return { success: true };
   });
 
   app.get('/item-inventory/tags/resolve', { preHandler: [read] }, async (request) => {
@@ -259,6 +277,12 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
   });
   app.get('/item-inventory/tags', { preHandler: [read] }, async () => ({ tags: await services.inventory.listTags() }));
   app.get('/item-inventory/locations', { preHandler: [read] }, async () => ({ locations: await services.inventory.listLocations() }));
+  app.get('/item-inventory/machine-optional-departments', { preHandler: [read] }, async () => ({ departments: await services.inventory.listMachineOptionalDepartments() }));
+  app.put('/item-inventory/machine-optional-departments', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const body = z.object({ department: z.string().trim().min(1).max(200), machineRequired: z.boolean() }).parse(request.body);
+    return services.inventory.setDepartmentMachineRequired(body.department, body.machineRequired);
+  });
+
   app.get('/item-inventory/items', { preHandler: [read] }, async () => ({ items: await services.inventory.listItems() }));
   app.get('/item-inventory/history', { preHandler: [read] }, async (request) => {
     const query = z.object({
@@ -355,7 +379,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     return { result: await services.inventory.restoreImport(id) };
   });
 
-  app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
+  app.post('/item-inventory/import-photos/suggest-tool-fields', { preHandler: [authorizeManageOrKiosk], config: { rateLimit: { max: 4, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
       z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid() }).strict(),
       z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid() }).strict(),
@@ -372,7 +396,7 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     } finally { reply.raw.off('close', abort); }
   });
 
-  app.post('/item-inventory/photos/read-region', { preHandler: [authorizeManageOrKiosk] }, async (request, reply) => {
+  app.post('/item-inventory/photos/read-region', { preHandler: [authorizeManageOrKiosk], config: { rateLimit: { max: 4, timeWindow: '1 minute' } } }, async (request, reply) => {
     const body = z.discriminatedUnion('source', [
       z.object({ source: z.literal('import'), payloadId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),
       z.object({ source: z.literal('item'), itemId: z.string().guid(), photoId: z.string().guid(), bbox: overlayRegionBBoxSchema }).strict(),
@@ -448,6 +472,25 @@ export function registerItemInventoryRoutes(app: FastifyInstance): void {
     const config = await BackupConfigLoader.load();
     const result = await services.ingestion.retryRecord(id, { config, allowWait: true });
     return { result };
+  });
+
+  app.put('/item-inventory/compartments/:id/reorder-point', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const { reorderPoint } = z.object({ reorderPoint: z.number().int().min(0).max(2147483647).nullable() }).parse(request.body ?? {});
+    return { compartment: await services.inventory.setReorderPoint(id, reorderPoint) };
+  });
+
+  app.put('/item-inventory/compartments/:id/ordered', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const { ordered } = z.object({ ordered: z.boolean() }).parse(request.body ?? {});
+    return { compartment: await services.inventory.setOrdered(id, ordered) };
+  });
+
+  app.post('/item-inventory/compartments/:id/restock', { preHandler: [authorizeManageOrKiosk] }, async (request) => {
+    const { id } = compartmentParams.parse(request.params);
+    const body = z.object({ quantity: z.number().int().min(1).max(999999), idempotencyKey: z.string().trim().min(1).max(200).optional() }).parse(request.body ?? {});
+    const result = await services.inventory.processTouchTransaction({ ...body, compartmentId: id, restock: true, actor: await actor(request) });
+    return { ...result, transaction: { ...result.transaction, createdAt: result.transaction.createdAt.toISOString() } };
   });
 
   app.put('/item-inventory/compartments/:id/location', { preHandler: [authorizeManageOrKiosk] }, async (request) => {

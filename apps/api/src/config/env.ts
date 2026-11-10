@@ -1,9 +1,11 @@
+import { hasSharedProductionJwtSecret } from './env/jwt-secret-warning.js';
 import './env/load-dotenv.js';
 
 import { z } from 'zod';
 
 import { parseInferenceProvidersJsonQuiet } from '../services/inference/config/inference-providers-json.schema.js';
 import { collectLocalLlmProviderAlignmentIssues } from '../services/inference/config/local-llm-env-alignment.js';
+import { advisoryCheckEnvShape } from './env/advisory-check.js';
 import { alertsEnvShape } from './env/alerts.js';
 import { securityReviewEnvShape } from './env/security-review.js';
 import { businessHermesEnvShape } from './env/business-hermes.js';
@@ -23,13 +25,16 @@ import { networkEnvShape } from './env/network.js';
 import { procedureVideoEnvShape } from './env/procedure-video.js';
 import { procedureMaterialEnvShape } from './env/procedure-material.js';
 import { photoToolEnvShape } from './env/photo-tool.js';
+import { watchCameraEnvShape } from './env/watch-camera.js';
 import { signageEnvShape } from './env/signage.js';
 
 const envSchema = z
   .object({
     ...coreEnvShape,
+    ...watchCameraEnvShape,
     ...businessHermesEnvShape,
     ...securityReviewEnvShape,
+    ...advisoryCheckEnvShape,
     ...signageEnvShape,
     ...networkEnvShape,
     ...alertsEnvShape,
@@ -138,3 +143,10 @@ const envSchema = z
   });
 
 export const env = envSchema.parse(process.env);
+
+if (hasSharedProductionJwtSecret(env)) {
+  void import('../lib/logger.js').then(({ logger }) => {
+    logger.warn('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET use the same signing key');
+    return import('../services/auth/jwt-secret-alert.js').then(({ notifySharedJwtSecret }) => notifySharedJwtSecret());
+  }).catch(() => { console.warn('Failed to report shared JWT signing key configuration'); });
+}

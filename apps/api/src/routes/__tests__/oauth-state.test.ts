@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { prisma } from '../../lib/prisma.js';
 import { registerErrorHandler } from '../../plugins/error-handler.js';
 import { BackupConfigLoader } from '../../services/backup/backup-config.loader.js';
 import { defaultBackupConfig } from '../../services/backup/backup-config.js';
@@ -14,6 +15,9 @@ import { registerGmailOAuthRoutes } from '../gmail/oauth.js';
 vi.mock('../../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'oauth-test-access-secret' }
 }));
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { authSession: { findUnique: vi.fn(async ({ where }) => ({ userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, id: where.id })) }, user: { findUnique: vi.fn() } }
+}));
 vi.mock('../../lib/logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 }));
@@ -21,11 +25,14 @@ vi.mock('../../services/backup/backup-config.loader.js', () => ({
   BackupConfigLoader: { load: vi.fn(), save: vi.fn() }
 }));
 
-const headersFor = (role: string) => ({
-  authorization: `Bearer ${jwt.sign(
-    { sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
-  )}`
-});
+const headersFor = (role: string) => {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'admin-id', username: 'admin', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+  return {
+    authorization: `Bearer ${jwt.sign(
+      { tokenType: 'access', sessionId: 'admin-id', sub: 'admin-id', username: 'admin', role }, 'oauth-test-access-secret'
+    )}`
+  };
+};
 
 describe.each([
   { provider: 'dropbox', path: '/backup/oauth', otherPath: '/gmail/oauth' },
@@ -35,6 +42,7 @@ describe.each([
   let now: number;
 
   beforeEach(async () => {
+    vi.spyOn(prisma.user, 'findUnique');
     now = Date.now();
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     vi.spyOn(oauthStateStore, 'issueOAuthState');
@@ -137,6 +145,32 @@ describe.each([
     vi.mocked(service.prototype.exchangeCodeForTokens).mockClear();
     vi.mocked(BackupConfigLoader.save).mockClear();
     expect((await callback({ code: 'authorization-code', state })).statusCode).toBe(400);
+    expectNoExchangeOrSave();
+  });
+
+  it('accepts the authenticated issuer at callback', async () => {
+    const state = await authorize();
+    const response = await app.inject({
+      url: `${path}/callback?code=authorization-code&state=${state}`, headers: headersFor('ADMIN')
+    });
+    expect(response.statusCode).toBe(200);
+    expect(BackupConfigLoader.save).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a different authenticated issuer before exchanging tokens', async () => {
+    const state = await authorize();
+    const headers = headersFor('ADMIN');
+    vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: {
+      id: 'other-admin', username: 'other', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false
+    } }) as never);
+    const response = await app.inject({ url: `${path}/callback?code=authorization-code&state=${state}`, headers });
+    expect(response.statusCode).toBe(403);
+    expectNoExchangeOrSave();
+  });
+
+  it('rejects a state without a recorded issuer', async () => {
+    const state = oauthStateStore.issueOAuthState('', provider);
+    expect((await callback({ code: 'authorization-code', state })).statusCode).toBe(403);
     expectNoExchangeOrSave();
   });
 

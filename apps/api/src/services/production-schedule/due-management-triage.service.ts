@@ -33,12 +33,17 @@ type TopProcessingTypeRow = {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 const toUtcDayStart = (value: Date): number => Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+
+// 納期は暦日のUTC 0時で保存される。今日は日次計画・繰越と同じくJSTの暦日で数える。
+const toJstDayStart = (value: Date): number => toUtcDayStart(new Date(value.getTime() + JST_OFFSET_MS));
 
 const computeDaysUntilDue = (dueDate: Date | null, now: Date): number | null => {
   if (!dueDate) return null;
   const dueDayStart = toUtcDayStart(dueDate);
-  const todayStart = toUtcDayStart(now);
+  const todayStart = toJstDayStart(now);
   return Math.floor((dueDayStart - todayStart) / DAY_MS);
 };
 

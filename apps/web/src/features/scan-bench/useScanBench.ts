@@ -1,15 +1,15 @@
-import { ChecksumException, FormatException, NotFoundException } from '@zxing/library';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getBarcodeDetector } from '../barcode-scan/barcodeDetector';
 import { BARCODE_READER_OPTIONS_KIOSK_DEFAULT } from '../barcode-scan/readerOptionPresets';
-import { createBrowserMultiFormatReader } from '../barcode-scan/zxingVideoReader';
+import { createBrowserMultiFormatReader, loadZxingLibrary } from '../barcode-scan/zxingVideoReader';
 
 import { NATIVE_FORMATS, supportsRequiredFormats, toNativeFormat, ZXING_FORMATS } from './helpers';
 import { useBenchCamera } from './useBenchCamera';
 
 import type { CameraQuality, ScanEngine, ScanRecord } from './helpers';
 import type { NativeBarcode, NativeBarcodeDetector } from '../barcode-scan/barcodeDetector';
+import type { BrowserMultiFormatReader } from '@zxing/library';
 
 export function useScanBench() {
   const [engine, setEngine] = useState<ScanEngine>('zxing');
@@ -61,9 +61,7 @@ export function useScanBench() {
     setError(null);
     let active = true;
     let frame = 0;
-    const reader = engine === 'zxing'
-      ? createBrowserMultiFormatReader(ZXING_FORMATS, BARCODE_READER_OPTIONS_KIOSK_DEFAULT)
-      : null;
+    let reader: BrowserMultiFormatReader | null = null;
     const cleanup = () => {
       active = false;
       window.clearTimeout(timeout);
@@ -92,12 +90,18 @@ export function useScanBench() {
     };
     const timeout = window.setTimeout(() => finish(null, null), 15000);
     cancelRef.current = cleanup;
-    if (reader) {
-      // Same continuous loop and retry timing as decodeFromStream, using the already-playing video.
-      reader.decodeContinuously(video, (result, decodeError) => {
-        if (result) finish(result.getText(), toNativeFormat(result.getBarcodeFormat()) ?? String(result.getBarcodeFormat()));
-        else if (decodeError && !(decodeError instanceof NotFoundException || decodeError instanceof ChecksumException || decodeError instanceof FormatException)) fail();
-      });
+    if (engine === 'zxing') {
+      void (async () => {
+        const { ChecksumException, FormatException, NotFoundException } = await loadZxingLibrary();
+        const loadedReader = await createBrowserMultiFormatReader(ZXING_FORMATS, BARCODE_READER_OPTIONS_KIOSK_DEFAULT);
+        if (!active) return;
+        reader = loadedReader;
+        // Same continuous loop and retry timing as decodeFromStream, using the already-playing video.
+        reader.decodeContinuously(video, (result, decodeError) => {
+          if (result) finish(result.getText(), toNativeFormat(result.getBarcodeFormat()) ?? String(result.getBarcodeFormat()));
+          else if (decodeError && !(decodeError instanceof NotFoundException || decodeError instanceof ChecksumException || decodeError instanceof FormatException)) fail();
+        });
+      })().catch(fail);
     } else {
       const native = detector.current!;
       const loop = async () => {

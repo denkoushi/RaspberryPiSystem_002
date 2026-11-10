@@ -43,6 +43,11 @@ import json
 import sys
 import subprocess
 import time
+import socket
+import http.client
+import threading
+from contextlib import contextmanager
+from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -50,7 +55,11 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 
-from active_model_state import active_model_state_to_api, read_active_model_state
+from glm_runtime_config import glm_runtime_config
+from business_diagnostics import log_business_failure  # noqa: E402
+from active_model_state import (active_model_state_to_api, read_active_model_state, business_switch_enabled,
+    business_selection_state, business_state_lock, GLM_PROFILE, DEEPSEEK_PROFILE,
+    business_draining, positive_env_seconds, control_request_budget)
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
 from model_profiles import UnknownModelProfileError, find_model_profile, load_model_profiles, model_profile_to_api
 from model_storage_delete import (
@@ -205,6 +214,157 @@ def resolve_backend_base_url(config: GatewayConfig) -> str:
     if active_backend == "blue":
         return config.blue_backend_base_url or config.legacy_backend_base_url
     return config.green_backend_base_url or config.legacy_backend_base_url
+
+
+def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
+    state = business_selection_state(config.active_model_state_path)
+    profile = state.get("modelProfileId") or state.get("activeProfileId")
+    active = read_active_model_state(config.active_model_state_path)
+    generation = state.get("businessGeneration")
+    legacy_glm = (not generation and state["selectedBusinessProfileId"] == GLM_PROFILE
+        and state["businessTransition"] == "idle" and state["selectionRevision"] == 0)
+    if (active is None or active.backend != "blue" or active.served_alias != "system-prod-primary"
+            or profile != state["selectedBusinessProfileId"]
+            or (not legacy_glm and (state["businessTransition"] != "ready"
+                or not isinstance(generation, str) or not generation))):
+        raise ValueError("business_runtime_unavailable")
+    if profile == GLM_PROFILE:
+        return glm_runtime_config()[2], {}, profile
+    if profile == DEEPSEEK_PROFILE:
+        key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
+        if not key:
+            raise ValueError("business_upstream_key_missing")
+        return "http://192.168.100.11:8889", {"Authorization": "Bearer " + key}, profile
+    raise ValueError("business_runtime_unavailable")
+
+
+def attest_private_sharing(config: GatewayConfig, runtime: dict) -> dict:
+    """Called under the routing/lifecycle lock; only this gateway proves fencing."""
+    runtime = dict(runtime)
+    evidence = runtime.pop("privateSharingEvidence", None)
+    runtime.pop("privateSharing", None)
+    if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") not in {"true", "1"}:
+        return runtime
+    try:
+        _, _, profile = business_route(config)
+        state = business_selection_state(config.active_model_state_path)
+        generation = state["businessGeneration"]
+        expected = {'generation': generation, 'weightsRevision': '878f5689-ablit-0bdc2036',
+            'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking',
+            'promptCacheGiB': 0, 'learn': False, 'logDriver': 'none',
+            'requestResponseLogging': False, 'persistsConversations': False}
+        ranks = runtime['ranks']
+        if (profile != DEEPSEEK_PROFILE or runtime['modelProfileId'] != profile
+                or runtime['generation'] != generation
+                or type(runtime['selectionRevision']) is not int
+                or runtime['selectionRevision'] != state['selectionRevision']
+                or runtime['prepared'] is not True or runtime['failureReason'] is not None
+                or runtime['apiListenerClosed'] is not False
+                or len(ranks) != 2 or {r['rank'] for r in ranks} != {0, 1}
+                or any(r['generation'] != generation or r['running'] is not True
+                       or r['gpuReleased'] is not False for r in ranks)
+                or not isinstance(evidence, dict) or evidence != expected
+                or any(type(evidence[k]) is not type(v) for k, v in expected.items())):
+            return runtime
+        runtime['privateSharing'] = {**evidence, 'selectionRevision': state['selectionRevision'],
+                                     'generationFenced': True}
+    except (OSError, RuntimeError, ValueError, KeyError, TypeError):
+        pass
+    return runtime
+
+
+def business_has_image(value) -> bool:
+    messages = value.get("messages", [])
+    return isinstance(messages, list) and any(
+        isinstance(message, dict) and isinstance(message.get("content"), list) and any(
+            isinstance(part, dict) and part.get("type") in {"image_url", "input_image", "image"}
+            for part in message["content"])
+        for message in messages)
+
+
+def business_sse_alias(line: bytes) -> bytes:
+    if not line.startswith(b"data:"):
+        return line
+    try:
+        value = json.loads(line[5:])
+    except (ValueError, UnicodeDecodeError):
+        return line
+    if not isinstance(value, dict) or "model" not in value:
+        return line
+    value["model"] = "system-prod-primary"
+    return b"data: " + json.dumps(value, ensure_ascii=False).encode() + (b"\r" if line.endswith(b"\r") else b"")
+
+
+def business_response_alias(body: bytes) -> bytes:
+    value = json.loads(body)
+    if isinstance(value, dict) and "model" in value:
+        value["model"] = "system-prod-primary"
+    return json.dumps(value, ensure_ascii=False).encode()
+
+
+def deepseek_json_request(payload: dict) -> tuple[dict, bool]:
+    guided = [key for key in payload if key.startswith("guided_")]
+    if "response_format" not in payload and not guided:
+        return payload, False
+    result = {key: value for key, value in payload.items() if key != "response_format" and key not in guided}
+    response_format = payload.get("response_format")
+    if isinstance(response_format, dict) and response_format.get("type") == "text" and not guided:
+        return result, False
+    schema = None
+    if isinstance(response_format, dict) and isinstance(response_format.get("json_schema"), dict):
+        schema = response_format["json_schema"].get("schema")
+    if schema is None:
+        schema = payload.get("guided_json")
+        if isinstance(schema, str):
+            try:
+                schema = json.loads(schema)
+            except ValueError:
+                schema = None
+    instruction = "Answer with exactly one JSON object, no code fences, no text before or after it."
+    if isinstance(schema, dict):
+        instruction += "\nJSON schema: " + json.dumps(schema, ensure_ascii=False)
+    messages = list(result.get("messages") or [])
+    first = messages[0] if messages else None
+    if isinstance(first, dict) and first.get("role") == "system" and isinstance(first.get("content"), (str, list)):
+        content = first["content"]
+        content = content + "\n\n" + instruction if isinstance(content, str) else content + [{"type": "text", "text": instruction}]
+        messages[0] = {**first, "content": content}
+    else:
+        messages.insert(0, {"role": "system", "content": instruction})
+    result["messages"] = messages
+    return result, True
+
+
+def deepseek_json_response(body: bytes) -> bytes:
+    try:
+        value = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return body
+    choices = value.get("choices", []) if isinstance(value, dict) else []
+    for choice in choices if isinstance(choices, list) else []:
+        message = choice.get("message") if isinstance(choice, dict) else None
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+            continue
+        content = re.sub(r"<think>.*?</think>", "", message["content"], flags=re.DOTALL).strip()
+        content = re.sub(r"<think>.*$", "", content, flags=re.DOTALL)
+        content = re.sub(r"^.*?</think>", "", content, count=1, flags=re.DOTALL).strip()
+        content = re.sub(r"^```(?:json)?\s*\n?(.*?)\s*```$", r"\1", content, flags=re.DOTALL).strip()
+        try:
+            obj = json.loads(content)
+        except ValueError:
+            obj = None
+        if not isinstance(obj, dict):
+            decoder = json.JSONDecoder()
+            for match in re.finditer(r"\{", content):
+                try:
+                    obj, _ = decoder.raw_decode(content, match.start())
+                except ValueError:
+                    continue
+                if isinstance(obj, dict):
+                    break
+        if isinstance(obj, dict):
+            message["content"] = json.dumps(obj, ensure_ascii=False)
+    return business_response_alias(json.dumps(value, ensure_ascii=False).encode())
 
 
 def read_body(handler: BaseHTTPRequestHandler) -> bytes:
@@ -390,36 +550,19 @@ def run_worker_command(target: str, command: str, timeout: int) -> dict:
     return result
 
 
-def emit_agent_debug_log(hypothesis_id: str, location: str, message: str, data: dict) -> None:
-    payload = {
-        "sessionId": "504530",
-        "runId": "dgx-resource-debug",
-        "hypothesisId": hypothesis_id,
-        "location": location,
-        "message": message,
-        "data": data,
-        "timestamp": int(time.time() * 1000),
-    }
-    try:
-        # region agent log
-        with open(
-            "/Users/tsudatakashi/RaspberryPiSystem_002/.cursor/debug-504530.log",
-            "a",
-            encoding="utf-8",
-        ) as fp:
-            fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        # endregion
-    except Exception:
-        pass
 
 
 def is_container_running(container_name: str) -> bool:
-    proc = subprocess.run(
-        ["bash", "-lc", "docker ps --format '{{.Names}}'"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", "docker ps --format '{{.Names}}'"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        return False
     if proc.returncode != 0:
         return False
     names = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
@@ -449,12 +592,16 @@ def avg_or_none(values: list[float]) -> float | None:
 
 
 def read_proc_meminfo_gib() -> dict[str, float]:
-    proc = subprocess.run(
-        ["bash", "-lc", "awk '/MemTotal:|MemAvailable:/ {print $1,$2}' /proc/meminfo"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            ["bash", "-lc", "awk '/MemTotal:|MemAvailable:/ {print $1,$2}' /proc/meminfo"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        return {}
     if proc.returncode != 0:
         return {}
     values: dict[str, float] = {}
@@ -480,6 +627,7 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
         capture_output=True,
         text=True,
         check=False,
+        timeout=10,
     )
     if proc.returncode != 0:
         legacy_proc = subprocess.run(
@@ -491,6 +639,7 @@ def collect_compute_app_processes() -> tuple[float, list[dict[str, object]]]:
             capture_output=True,
             text=True,
             check=False,
+            timeout=10,
         )
         total_mib = 0.0
         if legacy_proc.returncode == 0:
@@ -571,39 +720,27 @@ def run_nvidia_smi_gpu_query(query: str):
         capture_output=True,
         text=True,
         check=False,
+        timeout=10,
     )
 
 
 def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
-    proc = run_nvidia_smi_gpu_query(
-        "utilization.gpu,memory.used,memory.total,temperature.gpu,"
-        "power.draw,power.limit,clocks.sm,clocks.gr,clocks.mem,pstate,"
-        "clocks_throttle_reasons.active,name,driver_version"
-    )
-    if proc.returncode != 0:
-        legacy_proc = run_nvidia_smi_gpu_query("utilization.gpu,memory.used,memory.total")
-        if legacy_proc.returncode == 0:
-            proc = legacy_proc
-    if proc.returncode != 0:
-        # region agent log
-        emit_agent_debug_log(
-            "H6",
-            "gateway-server.py:collect_gpu_metrics:nvidia-smi-failed",
-            "nvidia-smi command failed",
-            {"returncode": proc.returncode},
+    try:
+        proc = run_nvidia_smi_gpu_query(
+            "utilization.gpu,memory.used,memory.total,temperature.gpu,"
+            "power.draw,power.limit,clocks.sm,clocks.gr,clocks.mem,pstate,"
+            "clocks_throttle_reasons.active,name,driver_version"
         )
-        # endregion
+        if proc.returncode != 0:
+            legacy_proc = run_nvidia_smi_gpu_query("utilization.gpu,memory.used,memory.total")
+            if legacy_proc.returncode == 0:
+                proc = legacy_proc
+    except subprocess.TimeoutExpired:
+        return False, None
+    if proc.returncode != 0:
         return False, None
     rows = [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
     if not rows:
-        # region agent log
-        emit_agent_debug_log(
-            "H6",
-            "gateway-server.py:collect_gpu_metrics:no-rows",
-            "nvidia-smi returned no rows",
-            {},
-        )
-        # endregion
         return False, None
     gpu_utils: list[float] = []
     gpu_temperatures: list[float] = []
@@ -656,18 +793,13 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
             if driver_version is not None:
                 driver_versions.append(driver_version)
     if not gpu_utils:
-        # region agent log
-        emit_agent_debug_log(
-            "H6",
-            "gateway-server.py:collect_gpu_metrics:no-gpu-utils",
-            "gpu utilization parse failed",
-            {"rows": rows[:3]},
-        )
-        # endregion
         return False, None
     util_avg = sum(gpu_utils) / len(gpu_utils)
     meminfo_gib = read_proc_meminfo_gib()
-    compute_apps_used_mib, compute_processes = collect_compute_app_processes()
+    try:
+        compute_apps_used_mib, compute_processes = collect_compute_app_processes()
+    except subprocess.TimeoutExpired:
+        return False, None
     used_gib: float | None = None
     total_gib: float | None = None
     memory_metric_source = "gpu_memory"
@@ -675,31 +807,10 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
         used_gib = sum(v[0] for v in mem_pairs) / 1024.0
         total_gib = sum(v[1] for v in mem_pairs) / 1024.0
     else:
-        # region agent log
-        emit_agent_debug_log(
-            "H6",
-            "gateway-server.py:collect_gpu_metrics:compute-apps-fallback",
-            "memory columns unavailable; try compute-apps memory",
-            {"rows": rows[:3]},
-        )
-        # endregion
         if meminfo_gib.get("MemTotal", 0) > 0:
             used_gib = compute_apps_used_mib / 1024.0
             total_gib = meminfo_gib["MemTotal"]
             memory_metric_source = "compute_apps_memtotal"
-            # region agent log
-            emit_agent_debug_log(
-                "H8",
-                "gateway-server.py:collect_gpu_metrics:compute-apps-fallback",
-                "compute-apps memory fallback succeeded",
-                {
-                    "appUsedMiB": round(compute_apps_used_mib, 1),
-                    "memTotalGiB": round(meminfo_gib["MemTotal"], 1),
-                    "usedGiB": round(used_gib, 1),
-                    "totalGiB": round(total_gib, 1),
-                },
-            )
-            # endregion
         else:
             payload: dict[str, object] = {"gpuUtilPct": round(util_avg, 1), "memoryMetricSource": "gpu_only"}
             if compute_processes:
@@ -722,21 +833,6 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
                 gpu_names,
                 driver_versions,
             )
-            # region agent log
-            emit_agent_debug_log(
-                "H6",
-                "gateway-server.py:collect_gpu_metrics:payload",
-                "gpu-only metrics payload produced",
-                {
-                    "gpuUtilAvg": payload["gpuUtilPct"],
-                    "usedRamFallback": False,
-                    "rows": rows[:3],
-                    "appMemoryFallbackTried": True,
-                    "appUsedMiB": round(compute_apps_used_mib, 1),
-                    "memInfo": meminfo_gib,
-                },
-            )
-            # endregion
             return True, payload
 
     if used_gib is None or total_gib is None or total_gib <= 0:
@@ -771,21 +867,107 @@ def collect_gpu_metrics() -> tuple[bool, dict[str, object] | None]:
         gpu_names,
         driver_versions,
     )
-    # region agent log
-    emit_agent_debug_log(
-        "H6",
-        "gateway-server.py:collect_gpu_metrics:payload",
-        "gpu metrics payload produced",
-        {
-            "gpuUtilAvg": round(util_avg, 1),
-            "usedGiB": payload["unifiedMemoryUsedGiB"],
-            "totalGiB": payload["unifiedMemoryTotalGiB"],
-            "usedRamFallback": memory_metric_source == "compute_apps_memtotal",
-            "rows": rows[:3],
-        },
-    )
-    # endregion
     return True, payload
+
+
+_business_request = threading.local()
+
+
+@contextmanager
+def business_request_lifetime(handler):
+    """Interrupt upstream reads and downstream writes at an absolute deadline."""
+    lifetime = positive_env_seconds("BUSINESS_REQUEST_MAX_LIFETIME_SEC", 300)
+    write_timeout = positive_env_seconds("BUSINESS_RESPONSE_WRITE_TIMEOUT_SEC", 10)
+    handler._business_timed_out = False
+    guard = threading.Lock()
+    sockets = []
+    previous_timeout = None
+    connection = handler.connection
+    if isinstance(connection, socket.socket):
+        previous_timeout = connection.gettimeout()
+        connection.settimeout(min(write_timeout, lifetime))
+        sockets.append(connection)
+    deadline = time.monotonic() + lifetime
+    def expire():
+        with guard:
+            handler._business_timed_out = True
+            for current in sockets:
+                try:
+                    current.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+    _business_request.context = (deadline, guard, sockets, handler)
+    timer = threading.Timer(lifetime, expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+        if handler._business_timed_out:
+            raise TimeoutError("business_request_lifetime_exceeded")
+    finally:
+        timer.cancel()
+        timer.join()
+        del _business_request.context
+        if isinstance(connection, socket.socket):
+            connection.settimeout(previous_timeout)
+
+
+def business_upstream_timeout(default: float) -> float:
+    context = getattr(_business_request, "context", None)
+    if context is None:
+        return default
+    remaining = context[0] - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("business_request_lifetime_exceeded")
+    return min(default, remaining)
+
+
+@contextmanager
+def business_upstream_response(response):
+    context = getattr(_business_request, "context", None)
+    upstream = None
+    if context is not None:
+        _, guard, sockets, handler = context
+        # urllib's HTTP(S)Response owns this socket. Shutting it down interrupts
+        # read(), including an indefinitely trickling body or SSE stream.
+        upstream = getattr(getattr(getattr(response, "fp", None), "raw", None), "_sock", None)
+        if isinstance(upstream, socket.socket):
+            with guard:
+                if handler._business_timed_out:
+                    raise TimeoutError("business_request_lifetime_exceeded")
+                sockets.append(upstream)
+    try:
+        yield response
+    finally:
+        if context is not None and isinstance(upstream, socket.socket):
+            with guard:
+                sockets.remove(upstream)
+
+
+class BusinessHTTPConnection(http.client.HTTPConnection):
+    def connect(self):
+        super().connect()
+        context = getattr(_business_request, "context", None)
+        if context is not None:
+            deadline, guard, sockets, handler = context
+            with guard:
+                if handler._business_timed_out or time.monotonic() >= deadline:
+                    self.close()
+                    raise TimeoutError("business_request_lifetime_exceeded")
+                # Register before sending the request or parsing response headers.
+                # A peer trickling headers cannot extend the absolute deadline.
+                sockets.append(self.sock)
+
+
+class BusinessHTTPHandler(urllib.request.HTTPHandler):
+    def http_open(self, request):
+        return self.do_open(BusinessHTTPConnection, request)
+
+
+def business_urlopen(request, *, timeout):
+    if getattr(_business_request, "context", None) is None:
+        return urllib.request.urlopen(request, timeout=timeout)
+    return urllib.request.build_opener(BusinessHTTPHandler()).open(request, timeout=timeout)
 
 
 def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -> tuple[int, bytes, str]:
@@ -793,10 +975,14 @@ def proxy_request(method: str, url: str, body: bytes, headers: dict[str, str]) -
     for key, value in headers.items():
         req.add_header(key, value)
     try:
-        with urllib.request.urlopen(req, timeout=120) as response:
+        timeout = 120
+        if urlsplit(url).path in {"/start", "/stop", "/stop-force"}:
+            timeout = control_request_budget() + positive_env_seconds("LLM_RUNTIME_FORWARD_MARGIN_SEC", 30)
+        with business_urlopen(req, timeout=business_upstream_timeout(timeout)) as response, business_upstream_response(response):
             return response.status, response.read(), response.headers.get("Content-Type", "application/octet-stream")
     except urllib.error.HTTPError as exc:
-        return exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
+        with exc, business_upstream_response(exc):
+            return exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
     except urllib.error.URLError as exc:
         body = f"bad gateway: {exc.reason}".encode("utf-8")
         return 502, body, "text/plain; charset=utf-8"
@@ -821,19 +1007,24 @@ def make_handler(
             return self.headers.get("Authorization", "") == f"Bearer {config.embedding_api_key}"
 
         def _send(self, status: int, body: bytes, content_type: str) -> None:
-            self.send_response(status)
-            self.send_header("Content-Type", content_type)
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except socket.timeout:
+                if getattr(_business_request, "context", None) is not None:
+                    self._business_timed_out = True
+                raise
 
-        def _proxy_stream(self, url: str, body: bytes, headers: dict[str, str]) -> None:
+        def _proxy_stream(self, url: str, body: bytes, headers: dict[str, str], *, business: bool = False) -> None:
             req = urllib.request.Request(url, data=body, method="POST", headers=headers)
             self.close_connection = True
             response_started = False
             try:
                 try:
-                    with urllib.request.urlopen(req, timeout=120) as response:
+                    with business_urlopen(req, timeout=business_upstream_timeout(120)) as response, business_upstream_response(response):
                         # Read before committing headers so an initial timeout can still return 502.
                         chunk = response.read1(65536)
                         self.send_response(response.status)
@@ -844,12 +1035,24 @@ def make_handler(
                         self.send_header("Connection", "close")
                         response_started = True
                         self.end_headers()
+                        pending = b""
                         while chunk:
+                            if business:
+                                pending += chunk
+                                lines = pending.split(b"\n")
+                                pending = lines.pop()
+                                out = []
+                                for line in lines:
+                                    out.append(business_sse_alias(line) + b"\n")
+                                chunk = b"".join(out)
                             self.wfile.write(chunk)
                             self.wfile.flush()
                             chunk = response.read1(65536)
+                        if business and pending:
+                            self.wfile.write(business_sse_alias(pending))
+                            self.wfile.flush()
                 except urllib.error.HTTPError as exc:
-                    with exc:
+                    with exc, business_upstream_response(exc):
                         if not response_started:
                             self._send(
                                 exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
@@ -873,6 +1076,8 @@ def make_handler(
             )
 
         def do_GET(self) -> None:
+            if self._reject_unroutable_shared_request():
+                return
             if self.path == "/healthz":
                 self._send_text(200, "ok\n")
                 return
@@ -912,6 +1117,29 @@ def make_handler(
                     self._send_json(503, {"ok": False, "code": "MODEL_PROFILES_UNAVAILABLE", "message": str(exc)})
                 return
             if self.path == "/system/resource-state":
+                if business_switch_enabled():
+                    if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
+                        self._send_text(403, "forbidden")
+                        return
+                    status, body, content_type = proxy_impl("GET", config.runtime_control_base_url + self.path, b"",
+                        {"X-Runtime-Control-Token": config.runtime_control_token})
+                    if status == 200:
+                        try:
+                            runtime = json.loads(body)["businessRuntime"]
+                            if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") in {"true", "1"}:
+                                with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                                    runtime = attest_private_sharing(config, runtime)
+                            else:
+                                runtime = dict(runtime)
+                                runtime.pop("privateSharingEvidence", None)
+                                runtime.pop("privateSharing", None)
+                            resource = read_resource_state(config.resource_state_path)
+                            self._send_json(200, {"ok": True, **(state_to_api(resource) if resource else {}), "businessRuntime": runtime})
+                        except (OSError, ValueError, KeyError, TypeError):
+                            self._send_json(503, {"ok": False, "code": "BUSINESS_RUNTIME_UNAVAILABLE"})
+                    else:
+                        self._send(status, body, content_type)
+                    return
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
@@ -987,6 +1215,9 @@ def make_handler(
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
+                if business_switch_enabled():
+                    self._business_v1("GET", b"")
+                    return
                 active_backend = resolve_active_backend(config)
                 status, body, content_type = proxy_impl(
                     "GET",
@@ -999,6 +1230,8 @@ def make_handler(
             self._send_text(404, "not found")
 
         def do_POST(self) -> None:
+            if self._reject_unroutable_shared_request():
+                return
             body = read_body(self)
             if self.path in ("/system/model-storage-delete/preview", "/system/model-storage-delete/execute"):
                 if self.headers.get("X-Runtime-Control-Token", "") != config.runtime_control_token:
@@ -1112,18 +1345,6 @@ def make_handler(
                             config.private_comfy_cmd_timeout_sec,
                         )
                     if rc == 0:
-                        # region agent log
-                        emit_agent_debug_log(
-                            "H9",
-                            "gateway-server.py:private-comfyui-runtime",
-                            "private-comfyui runtime command succeeded",
-                            {
-                                "path": self.path,
-                                "exitCode": rc,
-                                "outputSample": output[:200],
-                            },
-                        )
-                        # endregion
                         is_start = self.path.endswith("/start")
                         resource_state = write_gateway_resource_state_best_effort(
                             config,
@@ -1138,18 +1359,6 @@ def make_handler(
                         payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:private-comfyui-runtime",
-                        "private-comfyui runtime command failed",
-                        {
-                            "path": self.path,
-                            "exitCode": rc,
-                            "outputSample": output[:300],
-                        },
-                    )
-                    # endregion
                     payload = json.dumps(
                         {
                             "ok": False,
@@ -1162,32 +1371,10 @@ def make_handler(
                     self._send(502, payload, "application/json; charset=utf-8")
                     return
                 except subprocess.TimeoutExpired:
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:private-comfyui-runtime",
-                        "private-comfyui runtime command timeout",
-                        {
-                            "path": self.path,
-                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
-                        },
-                    )
-                    # endregion
                     payload = json.dumps({"ok": False, "path": self.path, "message": "timeout", **worker_payload}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:private-comfyui-runtime",
-                        "private-comfyui runtime command exception",
-                        {
-                            "path": self.path,
-                            "error": str(exc),
-                        },
-                    )
-                    # endregion
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc), **worker_payload}
                     ).encode("utf-8")
@@ -1209,18 +1396,6 @@ def make_handler(
                         config.private_comfy_cmd_timeout_sec,
                     )
                     if rc == 0:
-                        # region agent log
-                        emit_agent_debug_log(
-                            "H9",
-                            "gateway-server.py:experiment-lab-runtime",
-                            "experiment-lab runtime command succeeded",
-                            {
-                                "path": self.path,
-                                "exitCode": rc,
-                                "outputSample": output[:200],
-                            },
-                        )
-                        # endregion
                         is_start = self.path.endswith("/start")
                         resource_state = write_gateway_resource_state_best_effort(
                             config,
@@ -1235,18 +1410,6 @@ def make_handler(
                         payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:experiment-lab-runtime",
-                        "experiment-lab runtime command failed",
-                        {
-                            "path": self.path,
-                            "exitCode": rc,
-                            "outputSample": output[:300],
-                        },
-                    )
-                    # endregion
                     payload = json.dumps(
                         {
                             "ok": False,
@@ -1258,32 +1421,10 @@ def make_handler(
                     self._send(502, payload, "application/json; charset=utf-8")
                     return
                 except subprocess.TimeoutExpired:
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:experiment-lab-runtime",
-                        "experiment-lab runtime command timeout",
-                        {
-                            "path": self.path,
-                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
-                        },
-                    )
-                    # endregion
                     payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
-                    # region agent log
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:experiment-lab-runtime",
-                        "experiment-lab runtime command exception",
-                        {
-                            "path": self.path,
-                            "error": str(exc),
-                        },
-                    )
-                    # endregion
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc)}
                     ).encode("utf-8")
@@ -1305,16 +1446,6 @@ def make_handler(
                         config.private_comfy_cmd_timeout_sec,
                     )
                     if rc == 0:
-                        emit_agent_debug_log(
-                            "H9",
-                            "gateway-server.py:agent-container-runtime",
-                            "agent-container runtime command succeeded",
-                            {
-                                "path": self.path,
-                                "exitCode": rc,
-                                "outputSample": output[:200],
-                            },
-                        )
                         is_start = self.path.endswith("/start")
                         resource_state = write_gateway_resource_state_best_effort(
                             config,
@@ -1329,16 +1460,6 @@ def make_handler(
                         payload = json.dumps(payload_body).encode("utf-8")
                         self._send(200, payload, "application/json; charset=utf-8")
                         return
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:agent-container-runtime",
-                        "agent-container runtime command failed",
-                        {
-                            "path": self.path,
-                            "exitCode": rc,
-                            "outputSample": output[:300],
-                        },
-                    )
                     payload = json.dumps(
                         {
                             "ok": False,
@@ -1350,28 +1471,10 @@ def make_handler(
                     self._send(502, payload, "application/json; charset=utf-8")
                     return
                 except subprocess.TimeoutExpired:
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:agent-container-runtime",
-                        "agent-container runtime command timeout",
-                        {
-                            "path": self.path,
-                            "timeoutSec": config.private_comfy_cmd_timeout_sec,
-                        },
-                    )
                     payload = json.dumps({"ok": False, "path": self.path, "message": "timeout"}).encode("utf-8")
                     self._send(504, payload, "application/json; charset=utf-8")
                     return
                 except Exception as exc:
-                    emit_agent_debug_log(
-                        "H9",
-                        "gateway-server.py:agent-container-runtime",
-                        "agent-container runtime command exception",
-                        {
-                            "path": self.path,
-                            "error": str(exc),
-                        },
-                    )
                     payload = json.dumps(
                         {"ok": False, "path": self.path, "message": str(exc)}
                     ).encode("utf-8")
@@ -1393,6 +1496,9 @@ def make_handler(
             if self.path.startswith("/v1/"):
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
+                    return
+                if business_switch_enabled():
+                    self._business_v1("POST", body)
                     return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
                 active_backend = resolve_active_backend(config)
@@ -1419,7 +1525,90 @@ def make_handler(
                 return
             self._send_text(404, "not found")
 
+        def _reject_unroutable_shared_request(self) -> bool:
+            if (self.headers.get("X-Private-Shared-Runtime") is not None
+                    and (not self.path.startswith("/v1/") or not business_switch_enabled())):
+                self._send(409, b"", "application/json")
+                return True
+            return False
+
+        def _business_v1(self, method: str, body: bytes) -> None:
+            shared = self.headers.get("X-Private-Shared-Runtime")
+            json_mode = False
+            profile = generation = None
+            try:
+                # A lifecycle mutation waits for every normal/streaming request to
+                # finish; arrivals during that mutation fail closed immediately.
+                if business_draining(config.active_model_state_path):
+                    raise ValueError("business_draining")
+                with business_request_lifetime(self), business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
+                    # Close the admission race between the first check and LOCK_SH.
+                    if business_draining(config.active_model_state_path):
+                        raise ValueError("business_draining")
+                    snapshot = business_selection_state(config.active_model_state_path)
+                    profile = snapshot["selectedBusinessProfileId"]
+                    generation = snapshot.get("businessGeneration")
+                    base, auth, profile = business_route(config)
+                    if shared is not None:
+                        state = business_selection_state(config.active_model_state_path)
+                        if (profile != DEEPSEEK_PROFILE or len(self.headers.get_all("X-Private-Shared-Runtime")) != 1
+                                or shared != f"{state['selectionRevision']}:{state['businessGeneration']}"):
+                            self._send(409, b"", "application/json")
+                            return
+                        status, snapshot, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                            {"X-Runtime-Control-Token": config.runtime_control_token})
+                        runtime = attest_private_sharing(config, json.loads(snapshot)['businessRuntime']) if status == 200 else {}
+                        proof = runtime.get('privateSharing', {})
+                        if shared != f"{proof.get('selectionRevision')}:{proof.get('generation')}":
+                            self._send(409, b"", "application/json")
+                            return
+                    headers = {"Content-Type": "application/json", **auth}
+                    if method == "POST":
+                        try:
+                            payload = json.loads(body)
+                            if not isinstance(payload, dict):
+                                raise ValueError("invalid_request")
+                            if payload.get("model", "system-prod-primary") != "system-prod-primary":
+                                raise ValueError("unsupported_model")
+                            if profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path):
+                                raise ValueError("image_requests_unsupported")
+                        except (ValueError, UnicodeDecodeError) as error:
+                            self._send_json(400, {"error": {"code": str(error)}})
+                            return
+                        payload["model"] = "system-prod-primary"
+                        body = json.dumps(payload, ensure_ascii=False).encode()
+                        if profile == GLM_PROFILE:
+                            body = inject_blue_chat_completions_defaults(self.path, body, "blue", config)
+                        elif profile == DEEPSEEK_PROFILE and self.path.rstrip("/").endswith("/chat/completions"):
+                            payload, json_mode = deepseek_json_request(payload)
+                            body = json.dumps(payload, ensure_ascii=False).encode()
+                        if self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
+                            self._proxy_stream(base + self.path, body, headers, business=True)
+                            return
+                    status, response, content_type = proxy_impl(method, base + self.path, body, headers)
+                    if 200 <= status < 300:
+                        if self.path == "/v1/models":
+                            models = json.loads(response).get("data", [])
+                            if not any(m.get("id") == "system-prod-primary" for m in models):
+                                raise ValueError("business_alias_unavailable")
+                            response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
+                        else:
+                            response = deepseek_json_response(response) if json_mode else business_response_alias(response)
+                    self._send(status, response, content_type)
+            except Exception as exc:
+                if getattr(self, "_business_timed_out", False) or isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                    self.close_connection = True
+                    return
+                log_business_failure("inference", profile, generation, exc,
+                    secrets=(*config.llm_shared_tokens, config.runtime_control_token))
+                if shared is not None:
+                    self._send(409, b"", "application/json")
+                else:
+                    self._send_json(503, {"error": {"code": "business_runtime_unavailable"}})
+
         def log_message(self, fmt: str, *args: object) -> None:
+            if getattr(self, "headers", {}).get("X-Private-Shared-Runtime") is not None:
+                return
             sys.stderr.write("[dgx-local-llm-gateway] " + (fmt % args) + "\n")
 
     return Handler

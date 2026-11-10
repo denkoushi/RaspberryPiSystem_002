@@ -48,6 +48,33 @@ alwaysApply: false
 - 無関係な失敗が必須証拠を妨げる場合は検証未完了と報告し、全面成功を主張しない。
 - 契約上の根拠なく、広い`skip`、assertionの弱体化、恣意的なtimeout延長で通さない。
 
+## PRレビューの深さ
+
+変更したファイルと差分で、軽い変更と重い変更を分ける。次に1つでも当てはまれば重い変更とし、迷ったら重い変更とする。
+
+- DBの形: `apps/api/prisma/**`
+- データを書き換える処理: 差分（追加・削除とも）が、Prismaの書き込み（`create`、`createMany`、`update`、`updateMany`、`upsert`、`delete`、`deleteMany`、`$transaction`、`$executeRaw*`、`$queryRaw*`）の呼び出し式やその引数（`where`、`data` など）、または生SQLに及ぶ
+- CSV取り込み・同期: `apps/api/src/services/imports/**`、`apps/api/src/routes/imports.ts`、`apps/api/src/routes/imports/**`、`apps/api/src/routes/csv-import-*.ts`、`apps/api/src/services/csv-dashboard/**`、ファイル名に `sync` を含むファイル
+- ログイン・権限: `apps/api/src/routes/auth.ts`、`apps/api/src/services/auth/**`、`apps/api/src/services/security/**`、`apps/api/src/lib/{auth,mfa,client-key,kiosk-document-auth,kiosk-settings-pin}.ts`、`apps/api/src/plugins/**`、`apps/api/src/config/env/**`、ファイル名に `auth` を含むファイル、`infrastructure/docker/Caddyfile*`
+- 外から入力を受けるAPI: `apps/api/src/routes/**` で、エンドポイントの追加、受け取る入力の形、認証・権限の確認を変える（処理の中身だけの変更は含まない）
+- 反映の仕組み: `infrastructure/**`、`scripts/deploy/**`、`scripts/update-all-clients.sh`、`scripts/server/**`、`scripts/ci/**`、`.github/workflows/**`、`.github/actions/**`
+- 秘密の扱い: `**/vault.yml*`、`**/.env*`、秘密を読む・渡すコード
+
+軽い変更はCodexのレビュー1回とする。重大・中は直し、重大を直したときだけもう1回見る。重い変更は、毎回Codexと別のモデル（Claude環境ではFable）の両方でレビューし、次の止め方まで繰り返す（例: PR #2616）。
+
+- 重大または中が出たら、直してもう1回。両方のモデルで重大・中が0件なら終える。
+- 中が同じ運用の場面に集まったら、次の回の前にその場面を一文で決めてレビュー記録（PR本文か計画文書。安全上のものはリポジトリ外のメモ）に書く。後から場面を広げない。
+- 重大0件の回で、中がすべてその場面に収まれば、既知の制約として記録して打ち切る。場面の外の中が出たら、直してもう1回。
+- 最後の回は、両方のモデルが同じ最終差分を見る。同じ指摘が2回続けて直らない、またはレビューが実行できないときは止めてユーザーに報告する。
+
+レビューでは次の3つを見る。
+
+- 正しさ: 仕様どおりか、同時実行や途中失敗でデータが壊れないか。
+- 安全: 秘密の露出、権限の抜け、外部入力の検証漏れ。
+- 増えても耐えるか: 端末やデータが10倍でも遅くならないか、作りが複雑すぎないか。
+
+公開リポジトリなので、安全上の穴の詳細（攻撃の手順、突ける箇所）はPR本文、PRコメント、commit、リポジトリ内の文書に書かない。直したものは安全上の修正とだけ書き、直さず残すものはリポジトリ外のメモに記録する。
+
 ## 作業報告
 
 - 変更した契約、実行コマンド、結果と概算時間、未実行の必須検査と理由を記載する。

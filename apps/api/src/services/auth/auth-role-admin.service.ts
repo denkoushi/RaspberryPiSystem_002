@@ -27,6 +27,7 @@ type AuthRoleAdminPrismaPort = {
       findUnique: (args: { where: { id: string } }) => Promise<RoleTargetUser | null>;
       update: (args: { where: { id: string }; data: { role: UserRole } }) => Promise<RoleUpdatedUser>;
     };
+    authSession: { updateMany: (args: { where: { userId: string; revokedAt: null; id?: { not: string } }; data: { revokedAt: Date } }) => Promise<unknown> };
     roleAuditLog: {
       create: (args: {
         data: { actorUserId: string; targetUserId: string; fromRole: UserRole; toRole: UserRole };
@@ -67,6 +68,7 @@ const defaultPolicyConfig: AuthRoleAdminPolicyConfig = {
 };
 
 export type UpdateUserRoleInput = {
+  actorSessionId?: string;
   actorUser: RoleActorUser;
   targetUserId: string;
   nextRole: UserRole;
@@ -100,6 +102,11 @@ export class AuthRoleAdminService {
       const next = await tx.user.update({
         where: { id: input.targetUserId },
         data: { role: input.nextRole },
+      });
+      await tx.authSession.updateMany({
+        where: { userId: input.targetUserId, revokedAt: null,
+          ...(input.targetUserId === input.actorUser.id && input.actorSessionId ? { id: { not: input.actorSessionId } } : {}) },
+        data: { revokedAt: this.now() }
       });
       await tx.roleAuditLog.create({
         data: {

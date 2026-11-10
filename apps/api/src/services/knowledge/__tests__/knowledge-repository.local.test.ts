@@ -48,6 +48,20 @@ describe.skipIf(!enabled)('Knowledge PostgreSQL state contract', () => {
     expect((await repository.get(question.id, question.ownerKey))?.result?.message).toBe('sources:1');
   });
 
+  it('reads one ready source by id across PDF pages', async () => {
+    const note = (text: string) => ({ id: randomUUID(), text, capturedAt: '2026-11-08T00:00:00.000Z', images: [] });
+    const organized = (text: string) => ({ title: text, summary: text, category: 'test', quotes: [text], photos: [] });
+    const pdf = input(); await repository.receive(pdf);
+    const pages = [note('PDF page 1'), note('PDF page 2')];
+    await db.knowledgeIntake.update({ where: { id: pdf.id }, data: { state: 'ready', sources: pages, organized: pages.map(page => organized(page.text)) } });
+    const pending = input(); await repository.receive(pending);
+    const hidden = note('pending note');
+    await db.knowledgeIntake.update({ where: { id: pending.id }, data: { sources: [hidden], organized: [organized(hidden.text)] } });
+    expect(await repository.readySource(pages[1]!.id)).toMatchObject({ source: { id: pages[1]!.id }, organized: { title: 'PDF page 2' } });
+    expect(await repository.readySource(hidden.id)).toBeNull();
+    expect(await repository.readySource(randomUUID())).toBeNull();
+  });
+
   it('scopes inputs to an actor and rejects changed idempotency payloads', async () => {
     const first = input();
     expect((await repository.receive(first)).id).toBe(first.id);

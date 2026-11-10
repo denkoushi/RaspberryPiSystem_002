@@ -16,6 +16,7 @@ export async function tryGetClientDevice(headers: FastifyRequest['headers']): Pr
 export async function buildAssemblyTraceabilityActor(request: FastifyRequest) {
   const clientDevice = await tryGetClientDevice(request.headers);
   return {
+    ip: request.ip,
     username: request.user?.username ?? null,
     clientDeviceId: clientDevice?.id ?? null,
     clientDeviceNameSnapshot: clientDevice?.name ?? null

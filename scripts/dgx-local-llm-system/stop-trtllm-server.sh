@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+WORKER_MARKER="${BLUE_REMOTE_WORKER_MARKER_PATH:-/srv/dgx/system-prod/state/blue-remote-worker.json}"
+if [[ "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-false}" == true || "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-0}" == 1 ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  MARKER_VERIFIED=false
+  if [[ -f "${WORKER_MARKER}" ]] && python3 -c 'import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get("business") is True else 1)' "${WORKER_MARKER}"; then
+    DGX_BUSINESS_GENERATION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["generation"])' "${WORKER_MARKER}")" \
+      python3 "${SCRIPT_DIR}/business_tensorfold.py" stop
+    rm -f -- "${WORKER_MARKER}"
+    exit 0
+  fi
+fi
+
 CONTAINER_NAME="${BLUE_CONTAINER_NAME:-${TRTLLM_CONTAINER_NAME:-system-prod-trtllm}}"
 MODE="${BLUE_SERVER_MODE:-${TRTLLM_SERVER_MODE:-container}}"
 PID_PATH="${BLUE_SERVER_PID_PATH:-${TRTLLM_SERVER_PID_PATH:-/srv/dgx/system-prod/logs/trtllm-server.pid}}"
@@ -84,5 +96,15 @@ PY
     echo "failed to stop remote worker at ${WORKER_TARGET}; retaining marker ${WORKER_MARKER}" >&2
     exit 1
   fi
+  if [[ "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-false}" == true || "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-0}" == 1 ]]; then
+    python3 "${SCRIPT_DIR}/resource_state.py" verify-stop "${WORKER_MARKER}" "${CONTAINER_NAME}"
+    MARKER_VERIFIED=true
+  fi
   rm -f -- "${WORKER_MARKER}"
+fi
+
+if [[ "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-false}" == true || "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-0}" == 1 ]]; then
+  if [[ "${MARKER_VERIFIED}" != true ]]; then
+    python3 "${SCRIPT_DIR}/resource_state.py" verify-empty "${CONTAINER_NAME}"
+  fi
 fi

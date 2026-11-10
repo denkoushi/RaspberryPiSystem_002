@@ -36,6 +36,7 @@ type Props = {
   proposalMarkers?: DrawingProposalMarker[];
   selectedProposalId?: string | null;
   onSelectProposal?: (id: string) => void;
+  onProposalMove?: (id: string, position: Pick<InspectionDrawingPoint, 'xRatio' | 'yRatio'>) => void;
   /** 未指定時は図面上への新規配置を無効化（閲覧専用） */
   onAddPoint?: (xRatio: number, yRatio: number) => void;
   /** 丸数字をドラッグして位置を変更する（未指定時は閲覧専用） */
@@ -59,14 +60,15 @@ type PendingPlacePointer = {
   maxMovementPx: number;
 };
 
-type PendingPointDrag = {
+type PendingMarkerDrag = {
   pointerId: number;
-  pointId: string;
+  kind: 'point' | 'proposal';
+  markerId: string;
   startClientX: number;
   startClientY: number;
   maxMovementPx: number;
   dragging: boolean;
-  markerElement: HTMLDivElement;
+  markerElement: HTMLElement;
   originalStyleLeft: string;
   originalStyleTop: string;
   pendingRatios: { xRatio: number; yRatio: number } | null;
@@ -82,6 +84,7 @@ export function InspectionDrawingCanvas({
   proposalMarkers,
   selectedProposalId,
   onSelectProposal,
+  onProposalMove,
   onAddPoint,
   onPointChange,
   onSetCalloutTip,
@@ -94,7 +97,8 @@ export function InspectionDrawingCanvas({
   const appliedFocusRequestIdRef = useRef<number | null>(null);
   const suppressScrollNotifyRef = useRef(false);
   const pendingPlaceRef = useRef<PendingPlacePointer | null>(null);
-  const pendingPointDragRef = useRef<PendingPointDrag | null>(null);
+  const [draggingProposalId, setDraggingProposalId] = useState<string | null>(null);
+  const pendingMarkerDragRef = useRef<PendingMarkerDrag | null>(null);
   const [naturalSize, setNaturalSize] = useState({ w: 0, h: 0 });
   const zoomedLayout = useZoomedCanvasLayout(viewportRef, naturalSize, zoom);
 
@@ -186,8 +190,8 @@ export function InspectionDrawingCanvas({
     }
   }, []);
 
-  const applyPointDragStyle = useCallback(
-    (drag: PendingPointDrag, ratios: { xRatio: number; yRatio: number }) => {
+  const applyMarkerDragStyle = useCallback(
+    (drag: PendingMarkerDrag, ratios: { xRatio: number; yRatio: number }) => {
       if (!zoomedLayout) return;
       drag.markerElement.style.left = `${zoomedLayout.image.offsetX + ratios.xRatio * zoomedLayout.image.width}px`;
       drag.markerElement.style.top = `${zoomedLayout.image.offsetY + ratios.yRatio * zoomedLayout.image.height}px`;
@@ -195,38 +199,39 @@ export function InspectionDrawingCanvas({
     [zoomedLayout]
   );
 
-  const cancelPointDragFrame = useCallback((drag: PendingPointDrag) => {
+  const cancelMarkerDragFrame = useCallback((drag: PendingMarkerDrag) => {
     if (drag.frameId === null) return;
     window.cancelAnimationFrame(drag.frameId);
     drag.frameId = null;
   }, []);
 
-  const flushPointDragFrame = useCallback(() => {
-    const drag = pendingPointDragRef.current;
+  const flushMarkerDragFrame = useCallback(() => {
+    const drag = pendingMarkerDragRef.current;
     if (!drag) return;
     drag.frameId = null;
     if (drag.pendingRatios) {
-      applyPointDragStyle(drag, drag.pendingRatios);
+      applyMarkerDragStyle(drag, drag.pendingRatios);
     }
-  }, [applyPointDragStyle]);
+  }, [applyMarkerDragStyle]);
 
-  const schedulePointDragFrame = useCallback(() => {
-    const drag = pendingPointDragRef.current;
+  const scheduleMarkerDragFrame = useCallback(() => {
+    const drag = pendingMarkerDragRef.current;
     if (!drag || drag.frameId !== null) return;
-    drag.frameId = window.requestAnimationFrame(flushPointDragFrame);
-  }, [flushPointDragFrame]);
+    drag.frameId = window.requestAnimationFrame(flushMarkerDragFrame);
+  }, [flushMarkerDragFrame]);
 
-  const restorePointDrag = useCallback(
+  const restoreMarkerDrag = useCallback(
     (pointerId: number, cancelled: boolean) => {
-      const drag = pendingPointDragRef.current;
+      const drag = pendingMarkerDragRef.current;
       if (!drag || drag.pointerId !== pointerId) return;
-      cancelPointDragFrame(drag);
+      cancelMarkerDragFrame(drag);
       drag.pendingRatios = null;
       if (cancelled) {
         drag.markerElement.style.left = drag.originalStyleLeft;
         drag.markerElement.style.top = drag.originalStyleTop;
       }
-      pendingPointDragRef.current = null;
+      if (drag.kind === 'proposal') setDraggingProposalId(null);
+      pendingMarkerDragRef.current = null;
       const viewport = viewportRef.current;
       if (viewport?.hasPointerCapture?.(pointerId)) {
         try {
@@ -236,7 +241,7 @@ export function InspectionDrawingCanvas({
         }
       }
     },
-    [cancelPointDragFrame]
+    [cancelMarkerDragFrame]
   );
 
   const ratiosAtClientClamped = useCallback(
@@ -270,24 +275,25 @@ export function InspectionDrawingCanvas({
 
   useEffect(() => {
     return () => {
-      const drag = pendingPointDragRef.current;
-      if (drag) cancelPointDragFrame(drag);
+      const drag = pendingMarkerDragRef.current;
+      if (drag) cancelMarkerDragFrame(drag);
     };
-  }, [cancelPointDragFrame]);
+  }, [cancelMarkerDragFrame]);
 
-  const handlePointPointerDown = (
+  const handleMarkerPointerDown = (
     e: React.PointerEvent<HTMLButtonElement>,
-    point: InspectionDrawingPoint
+    kind: PendingMarkerDrag['kind'],
+    markerId: string,
+    markerElement: HTMLElement | null
   ) => {
     e.stopPropagation();
-    onSelectPoint(point.id);
-    if (mode === 'test' || !onPointChange) return;
+    if (e.button !== 0 || mode === 'test' || !(kind === 'point' ? onPointChange : onProposalMove)) return;
     const viewport = viewportRef.current;
-    const markerElement = e.currentTarget.parentElement;
-    if (!viewport || !(markerElement instanceof HTMLDivElement)) return;
-    pendingPointDragRef.current = {
+    if (!viewport || !markerElement) return;
+    pendingMarkerDragRef.current = {
       pointerId: e.pointerId,
-      pointId: point.id,
+      kind,
+      markerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
       maxMovementPx: 0,
@@ -301,8 +307,8 @@ export function InspectionDrawingCanvas({
     viewport.setPointerCapture?.(e.pointerId);
   };
 
-  const handlePointPointerMove = (e: React.PointerEvent<HTMLDivElement>): boolean => {
-    const drag = pendingPointDragRef.current;
+  const handleMarkerPointerMove = (e: React.PointerEvent<HTMLDivElement>): boolean => {
+    const drag = pendingMarkerDragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return false;
     drag.maxMovementPx = Math.max(
       drag.maxMovementPx,
@@ -312,18 +318,19 @@ export function InspectionDrawingCanvas({
       return true;
     }
     drag.dragging = true;
+    if (drag.kind === 'proposal') setDraggingProposalId(drag.markerId);
     const ratios = ratiosAtClientClamped(e.clientX, e.clientY);
     if (ratios) {
       drag.pendingRatios = ratios;
-      schedulePointDragFrame();
+      scheduleMarkerDragFrame();
     }
     e.preventDefault();
     e.stopPropagation();
     return true;
   };
 
-  const handlePointPointerUp = (e: React.PointerEvent<HTMLDivElement>): boolean => {
-    const drag = pendingPointDragRef.current;
+  const handleMarkerPointerUp = (e: React.PointerEvent<HTMLDivElement>): boolean => {
+    const drag = pendingMarkerDragRef.current;
     if (!drag || drag.pointerId !== e.pointerId) return false;
     const shouldChange = drag.dragging;
     const ratios = shouldChange
@@ -331,24 +338,24 @@ export function InspectionDrawingCanvas({
       : null;
     if (ratios) {
       drag.pendingRatios = ratios;
-      cancelPointDragFrame(drag);
-      applyPointDragStyle(drag, ratios);
+      cancelMarkerDragFrame(drag);
+      applyMarkerDragStyle(drag, ratios);
     }
-    const pointId = drag.pointId;
-    restorePointDrag(e.pointerId, false);
+    const onMove = drag.kind === 'point' ? onPointChange : onProposalMove;
+    restoreMarkerDrag(e.pointerId, drag.kind === 'proposal');
     if (shouldChange && ratios) {
-      onPointChange?.(pointId, ratios);
+      onMove?.(drag.markerId, ratios);
       e.preventDefault();
       e.stopPropagation();
     }
     return true;
   };
 
-  const handlePointPointerCancel = (e: React.PointerEvent<HTMLDivElement>): boolean => {
-    if (!pendingPointDragRef.current || pendingPointDragRef.current.pointerId !== e.pointerId) {
+  const handleMarkerPointerCancel = (e: React.PointerEvent<HTMLDivElement>): boolean => {
+    if (!pendingMarkerDragRef.current || pendingMarkerDragRef.current.pointerId !== e.pointerId) {
       return false;
     }
-    restorePointDrag(e.pointerId, true);
+    restoreMarkerDrag(e.pointerId, true);
     e.preventDefault();
     e.stopPropagation();
     return true;
@@ -379,7 +386,7 @@ export function InspectionDrawingCanvas({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (handlePointPointerMove(e)) return;
+    if (handleMarkerPointerMove(e)) return;
     const pending = pendingPlaceRef.current;
     if (!pending || pending.pointerId !== e.pointerId) return;
     pending.maxMovementPx = Math.max(
@@ -407,7 +414,7 @@ export function InspectionDrawingCanvas({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (handlePointPointerUp(e)) return;
+    if (handleMarkerPointerUp(e)) return;
     handlePlacePointerUp(e);
   };
 
@@ -417,7 +424,7 @@ export function InspectionDrawingCanvas({
   };
 
   const handlePointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (handlePointPointerCancel(e)) return;
+    if (handleMarkerPointerCancel(e)) return;
     handlePlacePointerCancel(e);
   };
 
@@ -486,30 +493,47 @@ export function InspectionDrawingCanvas({
               layout={zoomedLayout}
             />
           ) : null}
-          {image ? proposalMarkers?.map((proposal) => (
-            <button
-              key={proposal.id}
-              type="button"
-              aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
-              aria-pressed={selectedProposalId === proposal.id}
-              className={clsx(
-                'absolute z-20 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
-                selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
-              )}
-              style={{
-                left: image.offsetX + proposal.markerXRatio * image.width,
-                top: image.offsetY + proposal.markerYRatio * image.height
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              onPointerUp={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                onSelectProposal?.(proposal.id);
-              }}
-            >
-              {proposal.markerNo}
-            </button>
-          )) : null}
+          {image ? proposalMarkers?.map((proposal) => {
+            const hasAnchor = proposal.anchorXRatio != null && proposal.anchorYRatio != null;
+            const anchorX = image.offsetX + (hasAnchor ? proposal.anchorXRatio! : proposal.markerXRatio) * image.width;
+            const anchorY = image.offsetY + (hasAnchor ? proposal.anchorYRatio! : proposal.markerYRatio) * image.height;
+            const insetX = Math.min(22, image.width / 2);
+            const insetY = Math.min(22, image.height / 2);
+            const left = Math.max(image.offsetX + insetX, Math.min(image.offsetX + image.width - insetX, anchorX + 34));
+            const top = Math.max(image.offsetY + insetY, Math.min(image.offsetY + image.height - insetY, anchorY - 34));
+            return (
+              <div key={proposal.id}>
+                <svg aria-hidden="true" className="pointer-events-none absolute inset-0" width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}>
+                  {draggingProposalId !== proposal.id ? (
+                    <line x1={anchorX} y1={anchorY} x2={left} y2={top} stroke="#d97706" strokeWidth={2} strokeDasharray="5 3" />
+                  ) : null}
+                </svg>
+                <div className="absolute z-20 -translate-x-1/2 -translate-y-1/2" style={{ left, top }}>
+                  <button
+                    type="button"
+                    aria-label={`AI案 ${proposal.markerNo} ${proposal.measurementLabel}`}
+                    aria-pressed={selectedProposalId === proposal.id}
+                    className={clsx(
+                      'flex h-11 w-11 items-center justify-center rounded-full border-[3px] border-dashed border-[#d97706] bg-amber-100 font-bold text-amber-900',
+                      mode !== 'test' && onProposalMove && 'touch-none cursor-move',
+                      selectedProposalId === proposal.id && 'ring-4 ring-blue-500'
+                    )}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      onSelectProposal?.(proposal.id);
+                      handleMarkerPointerDown(event, 'proposal', proposal.id, event.currentTarget.parentElement);
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (event.detail === 0) onSelectProposal?.(proposal.id);
+                    }}
+                  >
+                    {proposal.markerNo}
+                  </button>
+                </div>
+              </div>
+            );
+          }) : null}
           {image
             ? points.map((pt) => {
                 const status = resolveMeasurementPointInputStatus(pt);
@@ -533,7 +557,10 @@ export function InspectionDrawingCanvas({
                         inspectionDrawingMarkerButtonClass(status),
                         mode !== 'test' && onPointChange && 'touch-none cursor-move'
                       )}
-                      onPointerDown={(ev) => handlePointPointerDown(ev, pt)}
+                      onPointerDown={(ev) => {
+                        onSelectPoint(pt.id);
+                        handleMarkerPointerDown(ev, 'point', pt.id, ev.currentTarget.parentElement);
+                      }}
                     >
                       {pt.markerNo}
                     </button>

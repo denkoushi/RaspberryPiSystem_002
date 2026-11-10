@@ -1,3 +1,4 @@
+import { assertClientDeviceOperationScope, type ClientDeviceOperationActor } from '../clients/client-device-resolution.service.js';
 import type { AssemblyTorqueInputSource, Prisma } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
@@ -553,6 +554,7 @@ export class AssemblyWorkSessionService {
 
   async recordTorque(input: {
     sessionId: string;
+    actorDevice?: ClientDeviceOperationActor | null;
     value: number;
     inputSource: AssemblyTorqueInputSource;
     rawPayload?: unknown;
@@ -562,6 +564,7 @@ export class AssemblyWorkSessionService {
     }
     const now = new Date();
     const result = await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(input.actorDevice ?? null, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は入力できない状態です');
       if (!session.currentAreaId || !session.currentBoltId) {
         throw new ApiError(409, '現在のエリアは完了しています。次工程へ進むか作業完了してください。');
@@ -659,8 +662,9 @@ export class AssemblyWorkSessionService {
     };
   }
 
-  async advanceArea(sessionId: string): Promise<AssemblyWorkSessionDetail> {
+  async advanceArea(sessionId: string, actorDevice: ClientDeviceOperationActor | null = null): Promise<AssemblyWorkSessionDetail> {
     return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(actorDevice, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       if (!session.currentAreaId) throw sessionStateConflict('次の工程はありません。作業完了してください。');
       if (session.currentBoltId) throw sessionStateConflict('現在のエリアに未完了の締付箇所があります');
@@ -679,8 +683,9 @@ export class AssemblyWorkSessionService {
     });
   }
 
-  async restartArea(sessionId: string, params: { areaId?: string | null; reason?: string | null }): Promise<AssemblyWorkSessionDetail> {
+  async restartArea(sessionId: string, params: { areaId?: string | null; reason?: string | null }, actorDevice: ClientDeviceOperationActor | null = null): Promise<AssemblyWorkSessionDetail> {
     return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(actorDevice, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       const areaId = params.areaId?.trim() || session.currentAreaId;
       if (!areaId) throw new ApiError(400, 'やり直すエリアがありません');
@@ -705,11 +710,13 @@ export class AssemblyWorkSessionService {
 
   async recordCheck(input: {
     sessionId: string;
+    actorDevice?: ClientDeviceOperationActor | null;
     checkItemId: string;
     checked: boolean;
   }): Promise<{ record: AssemblyCheckRecordResult; checkSummary: AssemblyCheckSummary }> {
     const now = new Date();
     await runLockedAssemblyWorkSessionTransaction(input.sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(input.actorDevice ?? null, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は入力できない状態です');
 
       const checkItem = session.template.checkItems.find((item) => item.id === input.checkItemId);
@@ -752,8 +759,9 @@ export class AssemblyWorkSessionService {
     };
   }
 
-  async complete(sessionId: string): Promise<AssemblyWorkSessionDetail> {
+  async complete(sessionId: string, actorDevice: ClientDeviceOperationActor | null = null): Promise<AssemblyWorkSessionDetail> {
     return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(actorDevice, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       if (!allBoltsComplete(session)) throw sessionStateConflict('未完了の締付箇所があります');
       const checkSummary = buildCheckSummary(session);
@@ -773,8 +781,9 @@ export class AssemblyWorkSessionService {
     });
   }
 
-  async cancel(sessionId: string, reason?: string | null): Promise<AssemblyWorkSessionDetail> {
+  async cancel(sessionId: string, reason?: string | null, actorDevice: ClientDeviceOperationActor | null = null): Promise<AssemblyWorkSessionDetail> {
     return runLockedAssemblyWorkSessionTransaction(sessionId, async (tx, session) => {
+      assertClientDeviceOperationScope(actorDevice, session.clientDeviceId);
       if (session.status !== 'IN_PROGRESS') throw sessionStateConflict('この作業は進行中ではありません');
       return tx.assemblyWorkSession.update({
         where: { id: session.id },

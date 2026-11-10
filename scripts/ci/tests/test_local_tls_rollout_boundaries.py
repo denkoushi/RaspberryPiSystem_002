@@ -13,9 +13,7 @@ INVENTORY = (ANSIBLE / "inventory.yml").read_text()
 
 
 class LocalTlsRolloutBoundaryTest(unittest.TestCase):
-    def test_every_operational_step_is_normal_factory_only_and_approved(self):
-        for source in (TRUST, CERTIFICATE, VERIFY):
-            self.assertIn("'talkplaza' not in group_names", source)
+    def test_every_operational_step_requires_approval(self):
         self.assertIn("normal_factory_local_ca_trust_approved", TRUST)
         self.assertIn(
             "normal_factory_local_ca_certificate_activation_approved", CERTIFICATE
@@ -49,6 +47,18 @@ class LocalTlsRolloutBoundaryTest(unittest.TestCase):
     def test_insecure_clients_are_not_flipped_before_operational_evidence(self):
         self.assertIn('status_agent_tls_skip_verify: "1"', INVENTORY)
         self.assertIn('torque_agent_tls_verify_mode: "insecure"', INVENTORY)
+
+        import yaml
+        def check(group, inherited):
+            variables = {**inherited, **group.get("vars", {})}
+            for host, values in group.get("hosts", {}).items():
+                config = {**variables, **(values or {})}
+                enabled = str(config.get("client_server_cert_pin_enabled", False)).lower() in ("true", "1", "yes")
+                for key in ("haizen_agent_tls_verify_mode", "torque_agent_tls_verify_mode"):
+                    self.assertTrue(config.get(key) != "pinned" or enabled, host)
+            for child in group.get("children", {}).values():
+                check(child or {}, variables)
+        check(yaml.safe_load(INVENTORY)["all"], {})
 
 
 if __name__ == "__main__":

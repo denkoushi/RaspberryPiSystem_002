@@ -1,5 +1,9 @@
+import { normalizeSlipToken } from '@raspi-system/slip-match-core';
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
+import { scheduleSeibanQueryKey, useScheduleSeiban } from '../../../api/hooks/schedule-seibans';
 import { BarcodeScanModal, KIOSK_STANDARD_BARCODE_SCAN_SESSION } from '../../barcode-scan';
 import { MobileOfflineChip } from '../local-data/MobileOfflineChip';
 import { useMobileLocalData } from '../local-data/useMobileLocalData';
@@ -16,6 +20,7 @@ import { HaizenShelfPhotoList, HaizenShelfPhotoPicker } from './HaizenShelfPhoto
 import { HaizenSlipButton } from './HaizenSlipButton';
 import { createHaizenClientRecordId } from './offline/haizenOfflineQueueStore';
 import { useHaizenOfflineQueue } from './offline/useHaizenOfflineQueue';
+import { formatScheduleDate, scheduleDateColor, scheduleDetailPath } from './scheduleDisplay';
 import { useHaizenWorkflow } from './useHaizenWorkflow';
 
 import type { HaizenState } from './useHaizenWorkflow';
@@ -24,6 +29,7 @@ import type { useOrderPlacementBranches } from '../useOrderPlacementBranches';
 import type { useRegisteredShelves } from '../useRegisteredShelves';
 
 const menuTiles = [
+  { label: '日程', hint: 'エクセルの製番', path: '/kiosk/mobile-placement/schedule-seibans', icon: 'calendar', color: colors.teal },
   { label: 'パレット', hint: '加工機ごとの部品', path: '/kiosk/mobile-placement/pallet-viz', icon: 'pallet', color: colors.teal },
   { label: 'Zero2W 配膳', hint: '棚スキャナの記録', path: '/kiosk/mobile-placement/zero2w-status', icon: 'zero', color: colors.slip },
   { label: '棚マスタ', hint: '写真で棚を登録する', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
@@ -35,16 +41,33 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
   mp: HaizenState; shelves: ReturnType<typeof useRegisteredShelves>;
   sheet: HaizenHubSheet; setSheet: (sheet: HaizenHubSheet) => void;
   branches: ReturnType<typeof useOrderPlacementBranches>;
-  onNavigate: (path: string) => void; onShelfMaster: () => void; onPhoto: () => void;
+  onNavigate: (path: string) => void; onShelfMaster: () => void; onPhoto?: () => void;
 }) {
+  const [params] = useSearchParams();
+  const targetFseiban = params.get('scheduleFseiban') || undefined;
+  const targetProductNo = params.get('scheduleProductNo') || undefined;
+  const schedule = useScheduleSeiban(targetFseiban);
+  const queryClient = useQueryClient();
+  const targetPart = schedule.data?.parts.find((part) => part.productNo === targetProductNo);
   const [tab, setTab] = useState<'verify' | 'place'>(() => {
+    if (targetFseiban) return 'verify';
     try { return localStorage.getItem('haizen-tab') === 'place' ? 'place' : 'verify'; } catch { return 'verify'; }
   });
   const switchTab = (next: 'verify' | 'place') => {
     setTab(next);
     try { localStorage.setItem('haizen-tab', next); } catch { /* Storage may be disabled on the kiosk. */ }
   };
-  const flow = useHaizenWorkflow(mp, tab === 'verify');
+  const flow = useHaizenWorkflow(mp, tab === 'verify', targetPart?.state === 'verified' && schedule.data
+    ? { ...targetPart, fseiban: schedule.data.fseiban } : undefined);
+  const slipDetails = flow.details;
+  const targetNotice = flow.result === 'ok' && targetFseiban && slipDetails?.expected
+    ? ![targetFseiban, ...(schedule.data?.aliasFseibans ?? [])].includes(slipDetails.expected.fseiban) ? '別の製番'
+      : targetProductNo && normalizeSlipToken(mp.transferOrder) !== normalizeSlipToken(targetProductNo) ? '別の部品' : null
+    : null;
+  const scheduleShelfCounts: Record<string, number> = {};
+  for (const part of schedule.data?.parts ?? []) {
+    if (part.state === 'shelf' && part.shelfCodeRaw) scheduleShelfCounts[part.shelfCodeRaw] = (scheduleShelfCounts[part.shelfCodeRaw] ?? 0) + 1;
+  }
   const queue = useHaizenOfflineQueue();
   const localData = useMobileLocalData('verify');
   useShelfOfflineQueue();
@@ -133,7 +156,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     const moving = Boolean(selectedBranch);
     // Saved on the phone first; the send continues in the background so a weak link never holds the button.
     const clientRecordId = createHaizenClientRecordId();
-    if (tab === 'verify') void mp.linkLastVerifyRecord(clientRecordId).catch(() => console.warn('Verify record could not be linked'));
+    if (tab === 'verify' && !flow.resumed) void mp.linkLastVerifyRecord(clientRecordId).catch(() => console.warn('Verify record could not be linked'));
     const sending = queue.submit({
       clientRecordId, slipKind: tab === 'verify' || placeSlip?.kind === 'mo' ? 'manufacturing_order' : 'purchase_order',
       number: activeNumber, shelfCode: activeShelfCode, scannedAt: tab === 'verify' ? verifyScannedAt : scannedAt, branchNo: activeBranchNo
@@ -145,6 +168,12 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     });
     if (tab === 'verify') nextVerify();
     else { setPlaceSlip(null); setSelectedBranchNo(null); }
+    if (tab === 'verify' && targetFseiban) void sending.then((result) => {
+      if (result.status === 'needs_check') return;
+      void queryClient.invalidateQueries({ queryKey: scheduleSeibanQueryKey, refetchType: 'none' });
+      if (targetProductNo) onNavigate(scheduleDetailPath(targetFseiban));
+      else void schedule.refetch();
+    }, () => {});
     void sending.then((result) => setPlaceToast(result.status === 'sent' && result.response.action === 'stale'
       ? `${result.response.branchState.shelfCodeRaw}に新しい記録があります`
       : result.status === 'sent'
@@ -169,7 +198,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (actual) mp.resetActualSlipOcrFeedback();
   };
   const fields = [
-    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) mp.setTransferPart(''); mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
+    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) { mp.setTransferPart(''); clearActual(); } mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
     { label: '現品票 注文番号 / 製造order', value: mp.actualOrder, set: mp.setActualOrder, scan: 'actualOrder', actual: true },
     { label: '移動票 部品番号', value: mp.transferPart, set: mp.setTransferPart, scan: 'transferPart', actual: false },
     { label: '現品票 部品番号', value: mp.actualPart, set: mp.setActualPart, scan: 'actualPart', actual: true },
@@ -185,48 +214,45 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     (tab === 'place' || verifyShelfCode.trim()
       ? !activeNumber?.trim() || activeBranchNo === null || !activeShelfCode.trim() || sameShelf || (activeBranchNo === 0 ? hasNumbered : hasNone)
       : flow.result !== 'ok' && flow.result !== 'error');
-  const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (mp.slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
+  const resultTitle = flow.result === 'ok' ? '一致' : flow.result === 'ng' ? '不一致' : flow.result === 'not-found' ? (slipDetails?.reason === 'part_required' ? 'あと1つ' : '未登録') : '照合できませんでした';
   const resultColor = flow.result === 'ok' ? colors.ok : flow.result === 'ng' ? colors.ng : colors.shelf;
 
   return <div style={haizenPhoneStyle} className={`fixed inset-0 z-40 flex h-dvh flex-col ${hp.surface} [&_button:focus-visible]:outline [&_button:focus-visible]:outline-2 [&_button:focus-visible]:outline-offset-2 [&_button:focus-visible]:outline-[var(--hp-ink)]`}>
     <div className="relative mx-auto flex min-h-0 w-full max-w-[480px] flex-1 flex-col">
       <main className="relative flex min-h-0 flex-1 flex-col gap-2.5 px-3.5 pt-3.5">
         {tab === 'verify' ? <>
+          {targetFseiban && <section aria-label="照合の狙い" className="shrink-0 rounded-[14px] border border-[var(--hp-line)] bg-[var(--hp-panel)] px-3 py-2">
+            <div className="flex items-center justify-between gap-2 font-mono font-bold"><span>{targetFseiban}</span><time dateTime={schedule.data?.partsCompleteDate ?? undefined} style={{ color: scheduleDateColor(schedule.data?.partsCompleteDate ?? null) }}>{formatScheduleDate(schedule.data?.partsCompleteDate ?? null)}</time></div>
+            {targetProductNo ? <div className="text-sm">{targetPart?.fhincd} {targetPart?.fhinmei}</div>
+              : <div className={hp.muted}>{schedule.data ? schedule.data.counts.pending + schedule.data.counts.verified : '…'}</div>}
+          </section>}
+          {targetNotice && <p role="status" className="shrink-0 font-bold text-[var(--hp-shelf)]">{targetNotice}</p>}
           {localData.offline && <div className="flex shrink-0"><MobileOfflineChip {...localData} /></div>}
           {mp.actualSlipImageOcrBusy && <p role="status" className={hp.muted}>写真を読取中…</p>}
           {mp.actualSlipOcrFeedback.message && <p role="status" className={`text-sm ${hp.muted}`}>{mp.actualSlipOcrFeedback.message}</p>}
           {flow.pending ? <p role="status" aria-label="照合中" className={hp.muted}>照合中…</p> : flow.result === 'ok' ? <>
             <section role="status" aria-label="一致" style={{ color: resultColor, background: `color-mix(in srgb, ${resultColor} 10%, ${colors.bg})` }}
-              className="flex shrink-0 items-center gap-2.5 rounded-2xl border-2 border-current px-3 py-1.5">
+              className="flex shrink-0 items-center gap-2.5 h-12 rounded-[14px] border-2 border-current px-3">
               <span className="flex shrink-0 items-center gap-1.5 text-xl font-black tracking-widest">✓一致</span>
-              <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap font-mono text-[15px] font-bold text-[var(--hp-ink)]">
-                {mp.slipDetails?.expected?.fseiban} {mp.slipDetails?.expected?.fhincd}{' '}
-                <span className={`truncate font-sans text-[12px] ${hp.muted}`}>{mp.slipDetails?.expected?.partName}</span>
+              <div className="min-w-0 flex-1 truncate whitespace-nowrap font-mono text-[15px] font-bold text-[var(--hp-ink)]">
+                {slipDetails?.expected?.fseiban} {slipDetails?.expected?.fhincd}{' '}
+                <span className={`truncate font-sans text-[12px] ${hp.muted}`}>{slipDetails?.expected?.partName}</span>
               </div>
             </section>
-            {mp.slipDetails?.matchedBy === 'part_name' && <p className={`shrink-0 text-sm ${hp.muted}`}>素材 <span className="font-mono">{mp.slipDetails.actual?.partCode}</span> を品名で照合</p>}
-          </> : flow.result !== 'idle' && <section role="status" aria-label={resultTitle}
-            style={{ color: resultColor, background: `color-mix(in srgb, ${resultColor} 10%, ${colors.bg})` }} className="flex flex-col gap-2 rounded-2xl border-2 border-current p-4">
-            <div className={`flex items-center gap-2.5 font-black ${flow.result === 'error' ? 'text-2xl' : 'text-[34px] tracking-widest'}`}>
-              <span aria-hidden>{flow.result === 'ng' ? '×' : '?'}</span>{resultTitle}
-            </div>
-            {flow.result === 'ng' && <p className="text-base font-bold text-[var(--hp-ink)]">{mp.slipDetails?.reason === 'different_seiban'
-              ? `この注文は別の製番(${mp.slipDetails.actual?.fseiban ?? '不明'})の材料です`
-              : mp.slipDetails?.reason === 'different_part' && mp.slipDetails.legacyReason === 'TRANSFER_PART_MISMATCH' ? '移動票の部品番号が違います'
-              : mp.slipDetails?.reason === 'different_part' && mp.slipDetails.legacyReason === 'ACTUAL_PART_MISMATCH' ? '現品票の部品番号が違います'
-              : '部品が違います'}</p>}
-            {flow.result === 'not-found' && <>
-              <p className="text-base font-bold text-[var(--hp-ink)]">{mp.slipDetails?.reason === 'transfer_not_found' ? 'この製造orderが見つかりません' : mp.slipDetails?.reason === 'part_required' ? '部品番号も読んでください' : 'この注文番号はまだ届いていません'}</p>
-              <div className="flex gap-2"><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button><button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>
-            </>}
-            {flow.result === 'ng' && mp.slipDetails?.expected && <div className="flex flex-wrap items-baseline gap-x-2 font-mono text-[17px] font-bold text-[var(--hp-ink)]">
-              <span>{mp.slipDetails.expected.fseiban}</span><span>{mp.slipDetails.expected.fhincd}</span><span className={`font-sans text-[13px] ${hp.muted}`}>{mp.slipDetails.expected.partName}</span>
-            </div>}
-          </section>}
+            {slipDetails?.matchedBy === 'part_name' && <p className={`shrink-0 text-sm ${hp.muted}`}>素材 <span className="font-mono">{slipDetails.actual?.partCode}</span> を品名で照合</p>}
+          </> : flow.result !== 'idle' && <>
+            <section role="status" aria-label={resultTitle} style={{ color: resultColor, background: `color-mix(in srgb, ${resultColor} 10%, ${colors.bg})` }} className="flex h-12 shrink-0 items-center gap-2.5 rounded-[14px] border-2 border-current px-3">
+              <span aria-hidden className="shrink-0 text-xl font-black">{flow.result === 'ng' ? '×' : '?'}</span><span className="shrink-0 text-xl font-black">{resultTitle}</span>
+              <span className="min-w-0 truncate text-[15px] font-bold text-[var(--hp-ink)]">
+                {flow.result === 'ng' ? <><span className="font-mono">{slipDetails?.expected?.fseiban}</span>{' '}{slipDetails?.reason === 'different_seiban' ? '別の製番' : slipDetails?.legacyReason === 'TRANSFER_PART_MISMATCH' ? '移動票の部品番号が違います' : slipDetails?.legacyReason === 'ACTUAL_PART_MISMATCH' ? '現品票の部品番号が違います' : '部品が違います'}</> : flow.result === 'not-found' ? (slipDetails?.reason === 'transfer_not_found' ? 'この製造orderが見つかりません' : slipDetails?.reason === 'part_required' ? '部品番号も読んでください' : 'この注文番号はまだ届いていません') : null}
+              </span>
+            </section>
+            {flow.result === 'not-found' && <div className="flex shrink-0 gap-2">{onPhoto && <button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={onPhoto}>写真で製番</button>}<button type="button" className={`${hp.mini} !h-11 flex-1`} onClick={() => setSheet('inputs')}>部品番号</button></div>}
+          </>}
           <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
-            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
+            <HaizenShelfPhotoList key={`${mp.transferOrder}:${verifyBranchNo}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes} shelfCounts={targetFseiban ? scheduleShelfCounts : undefined}
               loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={verifyShelfCode} onSelect={setVerifyShelfCode}
-              disabled={flow.result !== 'ok' || verifyBranchNo === null} onExpand={() => setSheet('shelves')} />
+              disabled={flow.result !== 'ok' || verifyBranchNo === null} onScan={() => mp.setScanField('shelf')} onExpand={() => setSheet('shelves')} />
           </section>
         </> : <>
         {(queue.offline || queue.pending.length > 0 || queue.needsCheck.length > 0) && <div aria-label="送信状況" className="flex shrink-0 gap-1.5">
@@ -234,15 +260,10 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
           {queue.pending.length > 0 && <button type="button" className={`${hp.chip} !text-orange-400`} onClick={() => setSheet('pending')}>未送信 {queue.pending.length}</button>}
           {queue.needsCheck.length > 0 && <button type="button" className={`${hp.chip} !text-[var(--hp-ng)]`} onClick={() => { setConfirmDeleteId(null); setSheet('needs_check'); }}>要確認 {queue.needsCheck.length}</button>}
         </div>}
-        {hasPlaceSlip && <div className="flex items-center gap-2 rounded-xl border border-[var(--hp-line)] bg-[var(--hp-panel)] py-0.5 pl-2.5 pr-1">
-          <div className="flex min-w-0 flex-1 items-baseline gap-2"><p className={`shrink-0 whitespace-nowrap text-[13px] font-bold ${hp.muted}`}>{placeSlip?.kind === 'po' ? '現品票' : '移動票'}</p>
-            <p className="break-all font-mono text-2xl font-bold">{placeSlip?.number}</p></div>
-          <button type="button" aria-label="読み直す" className="h-8 w-8 shrink-0 rounded-lg border-0 bg-transparent text-lg text-[var(--hp-ink2)]" onClick={() => { setPlaceSlip(null); setSelectedBranchNo(null); }}>×</button>
-        </div>}
         <section aria-label="棚の写真" className="flex min-h-0 flex-1 flex-col pt-1">
           <HaizenShelfPhotoList key={`${placeSlip?.number}:${selectedBranchNo}:${branchSelectionVersion}:${previousShelfCodes.join()}`} compact shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
             loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={mp.shelfCode} onSelect={mp.selectShelf}
-            disabled={!hasPlaceSlip || selectedBranchNo === null} onExpand={() => setSheet('shelves')}>
+            disabled={!hasPlaceSlip || selectedBranchNo === null} onScan={() => mp.setScanField('shelf')} onExpand={() => setSheet('shelves')}>
             {hasPlaceSlip && branches.branchStatus === 'loading' && <p className={`text-[11px] ${hp.muted}`}>分配一覧を読み込み中…</p>}
           </HaizenShelfPhotoList>
         </section>
@@ -252,24 +273,24 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
         </div>}
       </main>
       {(tab === 'place' ? hasPlaceSlip : flow.result === 'ok') && <div className="shrink-0 px-3.5 pt-2">
-        <div role="group" aria-label="分配" className="grid grid-cols-[auto_repeat(5,minmax(0,1fr))] gap-1">
-          {[0, 1, 2, 3, 4, 5].map((branchNo) => <button key={branchNo} type="button" aria-pressed={activeBranchNo === branchNo}
+        <div role="group" aria-label="分配" className="flex h-14 gap-0.5 rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-[3px]">
+          {[0, 1, 2, 3, 4, 5].map((branchNo) => <button key={branchNo} type="button" aria-label={branchNo === 0 ? "分配なし" : `分配${branchNo}`} style={{ flex: branchNo === 0 ? 1.7 : 1 }} aria-pressed={activeBranchNo === branchNo}
             disabled={branchNo === 0 ? hasNumbered : hasNone}
-            className="inline-flex h-9 items-center justify-center whitespace-nowrap rounded-lg border border-[var(--hp-line)] bg-[var(--hp-panel)] px-1.5 text-[15px] font-extrabold leading-none aria-pressed:border-[var(--hp-shelf)] aria-pressed:bg-[color-mix(in_srgb,var(--hp-panel)_70%,var(--hp-shelf))] disabled:opacity-30"
+            className="min-w-0 whitespace-nowrap rounded-xl text-center font-mono text-xl font-black leading-none aria-pressed:bg-[var(--hp-shelf)] aria-pressed:text-[var(--hp-bg)] disabled:opacity-30 first:font-sans first:text-[17px]"
             onClick={() => { setActiveBranchNo(branchNo); setBranchSelectionVersion((value) => value + 1); }}>
-            分配{branchNo === 0 ? 'なし' : branchNo}
+            {branchNo === 0 ? '分配なし' : branchNo}
           </button>)}
         </div>
       </div>}
-      <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2 px-3.5 pt-2">
-        <HaizenSlipButton label="移動票" sub="製造オーダー番号" color={colors.slip}
+      <div className="grid shrink-0 h-[80px] grid-cols-3 gap-2 px-3.5 pt-2">
+        <HaizenSlipButton onClear={tab === "place" && placeSlip?.kind === "mo" ? () => { setPlaceSlip(null); setSelectedBranchNo(null); } : undefined} label="移動票" color={colors.slip}
           value={tab === 'verify' ? mp.transferOrder : placeSlip?.kind === 'mo' ? placeSlip.number : ''} onClick={() => mp.setScanField('transferOrder')} />
-        <HaizenSlipButton label="現品票" sub={tab === 'verify' && !mp.actualOrder && mp.actualFseiban ? '製番' : '注文番号'} color={colors.actual}
+        <HaizenSlipButton onClear={tab === "place" && placeSlip?.kind === "po" ? () => { setPlaceSlip(null); setSelectedBranchNo(null); } : undefined} label="現品票" color={colors.actual}
           value={tab === 'verify' ? mp.actualOrder || mp.actualFseiban : placeSlip?.kind === 'po' ? placeSlip.number : ''}
           disabled={tab === 'verify' && !mp.transferOrder.trim()}
           onClick={() => { if (tab === 'verify') { clearActual(); mp.setScanField('actualOrder'); } else mp.setScanField('placePurchaseOrder'); }} />
         <button type="button" disabled={disabled} style={{ background: cfg.color }}
-          className="whitespace-nowrap rounded-2xl px-2.5 text-lg font-black leading-[1.15] text-[var(--hp-bg)] disabled:opacity-30" onClick={cfg.action}>
+          className="whitespace-nowrap rounded-2xl px-1 text-xl font-black leading-[1.15] text-[var(--hp-bg)] disabled:opacity-30" onClick={cfg.action}>
           {primaryLabel}
         </button>
       </div>
@@ -278,14 +299,14 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
         else onNavigate(next === 'purchase' ? '/kiosk/purchase-order-lookup' : '/kiosk/mobile-placement/part-search');
       }} />
     </div>
-    {sheet === 'shelves' && <HaizenShelfPhotoPicker shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
+    {sheet === 'shelves' && <HaizenShelfPhotoPicker shelfCounts={tab === 'verify' && targetFseiban ? scheduleShelfCounts : undefined} shelves={shelves.data?.shelves ?? []} previousShelfCodes={previousShelfCodes}
       loading={shelves.isLoading} error={shelves.isError} onRetry={() => void shelves.refetch()} selected={activeShelfCode}
       onSelect={(code) => { if (tab === 'verify') setVerifyShelfCode(code); else mp.selectShelf(code); setSheet(null); }} onClose={() => setSheet(null)}
       onScan={() => { setSheet(null); mp.setScanField('shelf'); }} onMaster={onShelfMaster} />}
     {(sheet === 'menu' || sheet === 'inputs') && <HaizenSheet title={sheet === 'menu' ? 'ほかの画面' : '部品番号・手入力'} onClose={() => setSheet(null)}>
       {sheet === 'menu' && <div className="grid grid-cols-2 gap-2">
         {menuTiles.map((tile, i) => <button key={tile.path} type="button" aria-label={tile.label} onClick={() => onNavigate(tile.path)}
-          className={`flex rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-bg)] px-3.5 py-3 text-left text-base font-black leading-tight ${i === menuTiles.length - 1 ? 'col-span-2 h-16 flex-row items-center gap-3.5' : 'h-[88px] flex-col items-start justify-between'}`}>
+          className={`flex rounded-2xl border border-[var(--hp-line)] bg-[var(--hp-bg)] px-3.5 py-3 text-left text-base font-black leading-tight ${menuTiles.length % 2 === 1 && i === menuTiles.length - 1 ? 'col-span-2 h-16 flex-row items-center gap-3.5' : 'h-[88px] flex-col items-start justify-between'}`}>
           <span style={{ color: tile.color }}><HaizenIcon name={tile.icon} /></span><span>{tile.label}<small className={`mt-0.5 block text-[11px] font-bold tracking-[.02em] ${hp.faint}`}>{tile.hint}</small></span>
         </button>)}
       </div>}

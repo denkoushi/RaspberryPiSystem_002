@@ -1,3 +1,6 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { validateBackupForRestore } from '../../services/backup/backup-restore-validation.js';
 import { BackupOperationType } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
@@ -12,6 +15,8 @@ import type { BackupKind } from '../../services/backup/backup-types.js';
 import { BackupHistoryService } from '../../services/backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 import { runPreRestoreBackup } from '../../services/backup/pre-restore-backup.service.js';
+
+const RESTORE_RATE_LIMIT = { max: 10, timeWindow: '1 minute' };
 
 const restoreRequestSchema = z.object({
   backupPath: z.string(),
@@ -29,6 +34,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
   // バックアップの復元
   app.post('/backup/restore', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',
@@ -64,7 +70,6 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
       })
       : new LocalStorageProvider();
 
-    const backupService = new BackupService(storageProvider);
     const historyService = new BackupHistoryService();
 
     // バックアップパスからtargetKindとtargetSourceを推測
@@ -82,6 +87,11 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
     });
 
     try {
+      // バックアップデータをダウンロードし、復元してよいものかを先に確かめる(事前バックアップより前)
+      const backupData = await validateBackupForRestore(await storageProvider.download(body.backupPath), {
+        backupPath: body.backupPath,
+      });
+
       const preBackup = body.preBackup ?? (targetKind === 'database');
       if (preBackup) {
         await runPreRestoreBackup({
@@ -97,8 +107,6 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
         });
       }
 
-      // バックアップデータをダウンロード
-      const backupData = await storageProvider.download(body.backupPath);
 
       // 設定ファイルを読み込む
       const config = await BackupConfigLoader.load();
@@ -128,9 +136,11 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
         });
       } else {
         // restoreメソッドが実装されていない場合は通常の処理を実行
-        const result = await backupService.restore(body.backupPath, {
-          destination: body.destination,
-        });
+        if (body.destination) {
+          await fs.mkdir(path.dirname(body.destination), { recursive: true });
+          await fs.writeFile(body.destination, backupData, { mode: 0o600 });
+        }
+        const result = { success: true, timestamp: new Date() };
 
         // リストア履歴を完了として更新
         await historyService.completeHistory(historyId, {
@@ -156,6 +166,7 @@ export async function registerBackupRestoreRoutes(app: FastifyInstance): Promise
   // リストアのドライラン（破壊的操作なし）
   app.post('/backup/restore/dry-run', {
     preHandler: [mustBeAdmin],
+    config: { rateLimit: RESTORE_RATE_LIMIT },
     schema: {
       body: {
         type: 'object',

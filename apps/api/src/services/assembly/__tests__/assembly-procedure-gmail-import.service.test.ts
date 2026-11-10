@@ -1,3 +1,4 @@
+import { defaultBackupConfig } from '../../backup/backup-config.js';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { GmailMessage, GmailMessagePart } from '../../backup/gmail-api-client.js';
@@ -30,7 +31,7 @@ function makeMessage(params: {
     snippet: '',
     internalDateMs: params.internalDateMs,
     payload: {
-      headers: [{ name: 'Subject', value: params.subject ?? 'DocumentASM' }],
+      headers: [{ name: 'From', value: 'sender@thkintechs.co.jp' }, { name: 'Authentication-Results', value: 'mx.google.com; spf=pass; dkim=pass; dmarc=pass' }, { name: 'Subject', value: params.subject ?? 'DocumentASM' }],
       parts:
         params.parts ??
         [
@@ -95,6 +96,7 @@ function createHarness(
   };
   const createMailGateway = vi.fn(async () => gateway);
   const service = new AssemblyProcedureGmailImportService({
+    loadConfig: async () => defaultBackupConfig,
     createMailGateway,
     draftWriter: writer,
     csvImportActivity: {
@@ -210,7 +212,7 @@ describe('AssemblyProcedureGmailImportService', () => {
 
     const result = await harness.service.ingest();
 
-    expect(harness.gateway.searchMessagesAll).toHaveBeenCalledWith(ASSEMBLY_PROCEDURE_GMAIL_QUERY);
+    expect(harness.gateway.searchMessagesAll).toHaveBeenCalledWith(`(${ASSEMBLY_PROCEDURE_GMAIL_QUERY}) -label:rps_sender_rejected`);
     expect(harness.writes.map((write) => write.gmailInternalDateMs)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10
     ]);

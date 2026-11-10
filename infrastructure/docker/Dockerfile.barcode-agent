@@ -3,12 +3,12 @@
 # have no linux/arm/v7 wheels, and compiling them under QEMU took 23-37 minutes
 # of every uncached Pi4 agent build. The target stage installs only what
 # poetry.lock names, and pip verifies each file against the lock's hashes.
-FROM --platform=$BUILDPLATFORM python:3.11-slim AS lock-export
+FROM --platform=$BUILDPLATFORM python:3.13-slim AS lock-export
 WORKDIR /export
 RUN pip install --no-cache-dir poetry==2.4.1 poetry-plugin-export==1.10.1
 COPY clients/barcode-agent/pyproject.toml clients/barcode-agent/poetry.lock ./
 RUN poetry export --only main --format requirements.txt --output requirements.txt
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 WORKDIR /build
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
@@ -21,14 +21,14 @@ COPY --from=lock-export /export/requirements.txt ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
     && python -m pip uninstall --yes pip setuptools wheel
 
-FROM python:3.11-slim AS runtime
+FROM python:3.13-slim AS runtime
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin:$PATH"
 RUN apt-get update \
     && apt-get install -y --only-upgrade --no-install-recommends \
-      gzip libpcre2-8-0 libsqlite3-0 perl-base \
+      gzip libpcre2-8-0 libsqlite3-0 perl-base zlib1g \
       libssl3t64 openssl openssl-provider-legacy \
     && for package in libssl3t64 openssl openssl-provider-legacy; do \
       version="$(dpkg-query -W -f='${Version}' "$package")"; \
@@ -40,6 +40,7 @@ RUN apt-get update \
       libpcre2-8-0:10.46-1~deb13u2 \
       libsqlite3-0:3.46.1-7+deb13u2 \
       perl-base:5.40.1-6+deb13u1 \
+      zlib1g:1:1.3.dfsg+really1.3.1-1+deb13u1 \
     ; do \
       package="${requirement%%:*}"; fixed_version="${requirement#*:}"; \
       version="$(dpkg-query -W -f='${Version}' "$package")"; \

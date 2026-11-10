@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
+import { useInventoryMachineOptionalDepartments, useInventoryLocations, useInventoryMutations } from '../../../../api/hooks';
 
 import { InventoryShelvesTab } from './InventoryShelvesTab';
 
 vi.mock('../../../../api/hooks', () => ({
+  useInventoryMachineOptionalDepartments: vi.fn(() => ({ data: [], isSuccess: true, isFetching: false })),
   useInventoryLocations: vi.fn(() => ({
     data: [{ id: 'shelf-1', area: '30041R_2MF-P', shelfNumber: 1, drawers: [] }, { id: 'shelf-2', area: '30041R_2MF-P', shelfNumber: 2, drawers: [] }],
   })),
@@ -21,9 +22,36 @@ describe('InventoryShelvesTab', () => {
   let mutations: Record<string, ReturnType<typeof mutation>>;
 
   beforeEach(() => {
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: [], isSuccess: true, isFetching: false } as never);
     vi.mocked(useInventoryLocations).mockReturnValue({ data: [{ id: 'shelf-1', area: '30041R_2MF-P', shelfNumber: 1, drawers: [] }, { id: 'shelf-2', area: '30041R_2MF-P', shelfNumber: 2, drawers: [] }] } as never);
-    mutations = { createShelf: mutation(), createDrawer: mutation(), renameArea: mutation(), deleteShelf: mutation(), deleteDrawer: mutation() };
+    mutations = { setDepartmentMachineRequired: mutation(), createShelf: mutation(), createDrawer: mutation(), renameArea: mutation(), deleteShelf: mutation(), deleteDrawer: mutation() };
     vi.mocked(useInventoryMutations).mockReturnValue(mutations as never);
+  });
+
+  it('groups areas by department and toggles the machine requirement', async () => {
+    vi.mocked(useInventoryLocations).mockReturnValue({ data: [
+      { id: 'a', area: '生産技術課 北', shelfNumber: 1, drawers: [] },
+      { id: 'b', area: '生産技術課 南', shelfNumber: 1, drawers: [] },
+      { id: 'c', area: '機械課', shelfNumber: 1, drawers: [] },
+    ] } as never);
+    vi.mocked(useInventoryMachineOptionalDepartments).mockReturnValue({ data: ['生産技術課'], isSuccess: true, isFetching: false } as never);
+    const { rerender } = render(<InventoryShelvesTab accessPassword="2520" />);
+    const optional = within(screen.getByRole('region', { name: '生産技術課' }));
+    fireEvent.click(optional.getByRole('button', { name: /北/ }));
+    expect(optional.getByRole('button', { name: /北/ })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(optional.getByRole('button', { name: /南/ }));
+    expect(optional.getByRole('button', { name: /南/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(optional.getByRole('button', { name: '加工機選ぶ' })).toHaveAttribute('aria-pressed', 'false');
+    const required = within(screen.getByRole('region', { name: '機械課' }));
+    expect(required.getByRole('button', { name: /機械課/ })).toBeInTheDocument();
+    expect(required.getByRole('button', { name: '加工機選ぶ' })).toHaveAttribute('aria-pressed', 'true');
+    await act(async () => { fireEvent.click(optional.getByRole('button', { name: '加工機選ぶ' })); });
+    expect(mutations.setDepartmentMachineRequired.mutateAsync).toHaveBeenCalledWith({ department: '生産技術課', machineRequired: true });
+    await act(async () => { fireEvent.click(required.getByRole('button', { name: '加工機選ぶ' })); });
+    expect(mutations.setDepartmentMachineRequired.mutateAsync).toHaveBeenCalledWith({ department: '機械課', machineRequired: false });
+    mutations.setDepartmentMachineRequired.isPending = true;
+    rerender(<InventoryShelvesTab accessPassword="2520" />);
+    expect(optional.getByRole('button', { name: '加工機選ぶ' })).toBeDisabled();
   });
 
   it('renames an area to machine + direction, defaulting to 北', async () => {

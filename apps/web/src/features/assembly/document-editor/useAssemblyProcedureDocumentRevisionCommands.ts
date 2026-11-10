@@ -12,7 +12,7 @@ import {
 } from '../../../api/client';
 import { kioskPinErrorResult, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
-import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
   canDiscardAssemblyProcedureDocumentRevision,
@@ -375,7 +375,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     session.setBusy(true);
     session.setMessage(null);
     try {
-      await deleteAssemblyProcedureDocument(session.document.id, session.holderToken);
+      await deleteAssemblyProcedureDocument(session.document.id, readProcedureEditorAccess()?.pin ?? '', session.holderToken);
       session.recovery.clear();
       session.onNavigateAfterDelete?.();
     } catch (error: unknown) {

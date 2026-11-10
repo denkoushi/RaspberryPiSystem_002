@@ -5,9 +5,6 @@ import { enrichProductionScheduleRowsWithCustomerName } from '../production-sche
 import {
   fetchLeaderboardScheduleRowsWithSeibanAwarePriority,
 } from '../leaderboard/leaderboard-row-selection.service.js';
-import {
-  expandLeaderboardParentRowsForResponse,
-} from '../leaderboard/leaderboard-split-expansion.service.js';
 import { resolveLeaderboardMaterializedBaseWhere } from '../row-resolver/index.js';
 import {
   countProductionScheduleDashboardVisibleLeaderboardUnits,
@@ -105,6 +102,7 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
 
   if (isLeaderboardProfile) {
     const leaderboardRowsPromise = fetchLeaderboardScheduleRowsWithSeibanAwarePriority({
+      dueSource: params.dueSource,
       leaderboardMaterializedBaseWhere: leaderboardMaterializedBaseWhere!,
       queryWhere,
       expansionWhere: leaderboardExpansionWhere,
@@ -115,19 +113,10 @@ export async function listProductionScheduleRows(params: ProductionScheduleListP
       completionFilter: params.completionFilter,
       processChangeResidualMode: params.processChangeResidualMode,
       processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
-    }).then(async (rawRows) =>
-      expandLeaderboardParentRowsForResponse({
-        rows: rawRows.map(
-          (r): ProductionScheduleRow => ({
-            ...r,
-            actualPerPieceMinutes: null,
-            customerName: null
-          })
-        ),
-        locationKey,
-        hasDueDateOnly
-      })
-    );
+    }).then((rawRows) => rawRows.map((row): ProductionScheduleRow => ({
+      ...row, actualPerPieceMinutes: null, customerName: null
+    })));
+
 
     const [totalBig, leaderboardRows] = await Promise.all([totalPromise, leaderboardRowsPromise]);
 

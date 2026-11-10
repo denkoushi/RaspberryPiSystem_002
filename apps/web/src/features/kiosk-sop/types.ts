@@ -6,7 +6,7 @@ export type KioskSopSheetDescriptor = Readonly<{
 export type KioskSopManual = Readonly<{
   id: string;
   title: string;
-  sourceHtml: string;
+  loadSourceHtml: () => Promise<string>;
   sheets: readonly KioskSopSheetDescriptor[];
 }>;
 

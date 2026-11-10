@@ -25,6 +25,8 @@ function normalizeLeaderboardRowDecoration(
     return { ...DEFAULT_LEADERBOARD_ROW_DECORATION };
   }
   return {
+    ...(typeof raw.arrived === 'boolean' ? { arrived: raw.arrived } : {}),
+    ...(raw.specialDue !== undefined ? { specialDue: raw.specialDue } : {}),
     resolvedMachineName: raw.resolvedMachineName ?? null,
     customerName: raw.customerName ?? null,
     hasSelfInspectionDrawing: raw.hasSelfInspectionDrawing === true,
@@ -48,6 +50,8 @@ export type PersistedLeaderboardBoardCacheRecord = {
     rowDecorationsById: Record<
       string,
       {
+        arrived?: boolean;
+        specialDue?: LeaderboardRowDecoration['specialDue'];
         resolvedMachineName: string | null;
         customerName: string | null;
         hasSelfInspectionDrawing: boolean;

@@ -8,9 +8,9 @@
 
 - name: Force mozc-jp as initial IBus engine on login
   ansible.builtin.copy:
-    dest: "/home/{{ ansible_user }}/.config/autostart/ibus-engine.desktop"
-    owner: "{{ ansible_user }}"
-    group: "{{ ansible_user }}"
+    dest: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/autostart/ibus-engine.desktop"
+    owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+    group: "{{ kiosk_gui_user | default(ansible_user) }}"
     mode: "0644"
     content: |
       [Desktop Entry]
@@ -79,7 +79,7 @@
   args:
     executable: /bin/bash
   become: yes
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   changed_when: "'changed:ibus-settings' in ibus_settings_result.stdout"
   register: ibus_settings_result
   when: terminal_release_mode | default('full') == 'full'
@@ -99,6 +99,6 @@
     test "$(gsettings get org.freedesktop.ibus.panel show)" = {{ (ibus_panel_show | string) | quote }}
   args:
     executable: /bin/bash
-  become_user: "{{ ansible_user }}"
+  become_user: "{{ kiosk_gui_user | default(ansible_user) }}"
   changed_when: false
   when: terminal_release_mode | default('full') == 'release-only'

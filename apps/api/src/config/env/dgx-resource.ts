@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 export const dgxResourceEnvShape = {
+  BUSINESS_DEEPSEEK_SWITCH_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
   /**
    * DGXリソース管理UI: オプション。GET で JSON を返すメトリクス集約URL（Pi5 から到達可能な場所に置く）。
    * 例: { "gpuUtilPct": 64, "unifiedMemoryUsedGiB": 92, "unifiedMemoryTotalGiB": 128, "freeMemoryGiB": 36 }

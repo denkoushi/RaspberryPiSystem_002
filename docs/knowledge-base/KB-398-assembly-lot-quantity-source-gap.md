@@ -75,7 +75,7 @@ ORDER BY "workDate" DESC;
 ### 1. ロット数手入力フォールバック
 
 - [`KioskAssemblyHomePage.tsx`](../../apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx): `manualLotQtyDraft` / `autoLotQty` / `expectedLotQuantity = autoLotQty ?? manual`
-- [`AssemblyStartPane.tsx`](../../apps/web/src/features/assembly/AssemblyStartPane.tsx): 「ロット数（手入力）」欄＋案内文言「生産実績からロット数を取得できませんでした。順番ボード等で数量を確認し、ロット数を手入力してください。」
+- `AssemblyStartPane.tsx`（2026-07-08 当時。現在は削除済みで、手入力欄は [`AssemblyLotRegisterRail.tsx`](../../apps/web/src/features/assembly/AssemblyLotRegisterRail.tsx)）: 「ロット数（手入力）」欄＋案内文言「生産実績からロット数を取得できませんでした。順番ボード等で数量を確認し、ロット数を手入力してください。」
 - 自動取得できた場合は従来どおり自動値のみ使用（手入力欄非表示）
 
 ### 2. 取得中表示
@@ -137,7 +137,7 @@ ORDER BY "workDate" DESC;
 - [ADR-20260707: Assembly procedure order scoped to assembly library documents](../decisions/ADR-20260707-assembly-procedure-order-library-scope.md)
 - [`apps/api/src/services/assembly/assembly-seiban-lot-quantity.service.ts`](../../apps/api/src/services/assembly/assembly-seiban-lot-quantity.service.ts)
 - [`apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx`](../../apps/web/src/pages/kiosk/KioskAssemblyHomePage.tsx)
-- [`apps/web/src/features/assembly/AssemblyStartPane.tsx`](../../apps/web/src/features/assembly/AssemblyStartPane.tsx)
+- [`apps/web/src/features/assembly/AssemblyLotRegisterRail.tsx`](../../apps/web/src/features/assembly/AssemblyLotRegisterRail.tsx)（ロット数の手入力欄。旧 `AssemblyStartPane.tsx` は削除済み）
 - [KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）](./KB-297-kiosk-due-management-workflow.md) — `ProductionScheduleOrderSupplement.plannedQuantity` の補助反映
 - Fix commit: `63427ad7`（branch `fix/assembly-lot-quantity-manual-fallback`）
 - Main merge: `6401d6a3`

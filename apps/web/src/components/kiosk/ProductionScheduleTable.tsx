@@ -11,7 +11,7 @@ type ProcessingTypeOption = {
   enabled: boolean;
 };
 
-type IconComponent = (props: { className?: string }) => JSX.Element;
+type IconComponent = (props: { className?: string }) => React.JSX.Element;
 
 type ProductionScheduleTableProps = {
   tableColumns: TableColumnDefinition[];

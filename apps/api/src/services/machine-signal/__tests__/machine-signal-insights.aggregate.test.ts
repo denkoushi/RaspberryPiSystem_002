@@ -18,6 +18,7 @@ const HOUR = 3_600;
 
 const sensor = (overrides: Partial<MachineSignalSensorDto> = {}): MachineSignalSensorDto => ({
   signalNo: 1,
+  resourceCd: null,
   sourceMachineName: 'HCN4000',
   displayName: null,
   site: null,

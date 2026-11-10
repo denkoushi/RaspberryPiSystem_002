@@ -1,3 +1,6 @@
+import { lockSessakuPieceSourceRows } from '../sessaku-pieces/piece-sync.js';
+vi.mock('../sessaku-pieces/piece-sync.js', () => ({ lockSessakuPieceSourceRows: vi.fn().mockResolvedValue([]), assertSessakuPieceWinnerTargets: vi.fn().mockResolvedValue(undefined), synchronizeSessakuPieceSources: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceSet: vi.fn().mockResolvedValue(null) }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -11,7 +14,9 @@ import {
 } from '../order-supplement-sync.pipeline.js';
 
 type PrismaMock = {
+  productionScheduleSessakuPieceSet: { findMany: ReturnType<typeof vi.fn> };
   csvDashboardRow: {
+    findUniqueOrThrow: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
     deleteMany: ReturnType<typeof vi.fn>;
   };
@@ -37,7 +42,9 @@ type PrismaMock = {
 
 const { prismaMock } = vi.hoisted(() => {
   const mock: PrismaMock = {
+    productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     csvDashboardRow: {
+      findUniqueOrThrow: vi.fn().mockResolvedValue({ rowData: {} }),
       findMany: vi.fn(),
       deleteMany: vi.fn(),
     },
@@ -71,6 +78,8 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('order-supplement-sync.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(lockSessakuPieceSourceRows).mockResolvedValue([]);
+    prismaMock.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
     prismaMock.$transaction.mockImplementation(async (fn: (tx: PrismaMock) => Promise<unknown>, _opts?: unknown) =>
       fn(prismaMock)
     );
@@ -613,8 +622,12 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
   });
 
-  it('既存行ありで CSV の plannedQuantity が0以下のとき既存数量を維持し split を削除しない', async () => {
-    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
+  it.each(['none', 'empty-cutting', 'cutting', 'empty-later'] as const)('CSV 0 は片がある部品か後工程setだけに保存する (set=%s)', async (kind) => {
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '503', fkojun: '200' };
+    vi.mocked(lockSessakuPieceSourceRows).mockResolvedValue([key]);
+    const active = kind === 'cutting' || kind === 'empty-later';
+    prismaMock.productionScheduleSessakuPieceSet.findMany.mockResolvedValue(kind === 'none' ? [] : [{ ...key, id: 'cutting-set', fsigencd: '1', fkojun: '1', sourcePieceSetId: kind === 'empty-later' ? 'source-set' : null, pieces: kind === 'cutting' ? [{ id: 'cutting-piece' }] : [] }]);
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([{ id: 'winner-1', rowData: { FSEIBAN: 'S', FHINCD: 'P', FSIGENCD: '503', FKOJUN: '200' } }] as never).mockResolvedValueOnce([
       {
         id: 'src-invalid-quantity',
         rowData: {
@@ -653,15 +666,17 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
       where: { id: 'existing-1' },
       data: expect.objectContaining({
-        plannedQuantity: 5,
+        plannedQuantity: active ? 0 : 5,
       }),
     });
+    expect(lockSessakuPieceSourceRows).toHaveBeenCalled();
+    expect(prisma.productionScheduleSessakuPieceSet.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [{ fseiban: 'S', fhincd: 'P' }] } }));
     expect(prisma.productionScheduleOrderSplitAssignment.deleteMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
     expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
   });
 
-  it('plannedQuantity 変更時は既存 split 数量を新しい合計へ再配分する', async () => {
+  it('plannedQuantity 変更時は親数量を更新し旧片を読み書きしない', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {
         id: 'src-1',
@@ -704,17 +719,12 @@ describe('order-supplement-sync.service', () => {
     const service = new ProductionScheduleOrderSupplementSyncService();
     await service.syncFromSupplementDashboard();
 
-    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'split-1' },
-      data: { splitQuantity: 4 },
-    });
-    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'split-2' },
-      data: { splitQuantity: 6 },
-    });
+    expect(prisma.productionScheduleOrderSplit.findMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('winner行が変わっても旧親にsplitがある場合は旧親の補助行を保持して再配分する', async () => {
+  it('旧片が残っていても補助行は新しい winner に追従する', async () => {
     vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValue([
       {
         id: 'src-1',
@@ -760,25 +770,13 @@ describe('order-supplement-sync.service', () => {
     expect(prisma.productionScheduleOrderSupplement.update).toHaveBeenCalledWith({
       where: { id: 'existing-1' },
       data: expect.objectContaining({
-        csvDashboardRowId: 'winner-old',
+        csvDashboardRowId: 'winner-new',
         plannedQuantity: 10,
       }),
     });
-    expect(prisma.productionScheduleOrderSplit.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          parentCsvDashboardRowId: 'winner-old',
-        }),
-      })
-    );
-    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(1, {
-      where: { id: 'split-1' },
-      data: { splitQuantity: 4 },
-    });
-    expect(prisma.productionScheduleOrderSplit.update).toHaveBeenNthCalledWith(2, {
-      where: { id: 'split-2' },
-      data: { splitQuantity: 6 },
-    });
+    expect(prisma.productionScheduleOrderSplit.findMany).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.update).not.toHaveBeenCalled();
+    expect(prisma.productionScheduleOrderSplit.deleteMany).not.toHaveBeenCalled();
   });
 
   it('補助3キーが既存行と一致しないが同一 winner 行を指すとき、createMany せず update でキーと値を揃える', async () => {

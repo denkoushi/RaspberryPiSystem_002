@@ -1,3 +1,4 @@
+import { filterActivePlacements } from './placement-completion.service.js';
 import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { gzip } from 'node:zlib';
@@ -44,7 +45,7 @@ async function readMobileDataVersions(): Promise<ServerMobileDataVersions> {
   return { purchase: version([purchase]), purchaseEnrichment: version([schedule, dates, machines, progress, externalCompletion]),
     legacyPurchase: version([purchase, schedule, dates, machines, progress, externalCompletion]), schedule: version([schedule]),
     placements: version([{ _count: placements[0].count,
-      _max: { updatedAt: placements[0].updatedAt, createdAt: placements[0].createdAt }, checksum: placements[0].checksum }, schedule, machines]) };
+      _max: { updatedAt: placements[0].updatedAt, createdAt: placements[0].createdAt }, checksum: placements[0].checksum }, schedule, machines, progress, externalCompletion, dates]) };
 }
 
 let cachedVersions: { value: ServerMobileDataVersions; expiresAt: number } | undefined;
@@ -123,9 +124,9 @@ async function buildMobileData(kind: MobileDataset) {
   if (kind === 'purchaseEnrichment') return buildMobilePurchaseEnrichment();
   if (kind === 'placements') {
     // Full snapshots by version: branch deletes have no tombstones, so a since-diff would retain deleted rows.
-    const rows = await prisma.orderPlacementBranchState.findMany({ orderBy: { id: 'asc' }, select: {
-      id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true, updatedAt: true, scheduleSnapshot: true
-    } });
+    const rows = await filterActivePlacements(await prisma.orderPlacementBranchState.findMany({ orderBy: { id: 'asc' }, select: {
+      id: true, slipKind: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true, updatedAt: true, scheduleSnapshot: true
+    } }));
     const field = (snapshot: unknown, key: string): string => {
       if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return '';
       const value = (snapshot as Record<string, unknown>)[key];

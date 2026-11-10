@@ -1,3 +1,4 @@
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 
 type RowNoteUpsertInput = {
@@ -21,8 +22,8 @@ type PartProcessingTypeUpsertInput = {
 };
 
 export const sharedScheduleFieldsRepository = {
-  findRowNoteByRowId(csvDashboardRowId: string) {
-    return prisma.productionScheduleRowNote.findUnique({
+  findRowNoteByRowId(csvDashboardRowId: string, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleRowNote.findUnique({
       where: { csvDashboardRowId }
     });
   },
@@ -41,14 +42,14 @@ export const sharedScheduleFieldsRepository = {
     });
   },
 
-  deleteRowNoteByRowId(csvDashboardRowId: string) {
-    return prisma.productionScheduleRowNote.deleteMany({
+  deleteRowNoteByRowId(csvDashboardRowId: string, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleRowNote.deleteMany({
       where: { csvDashboardRowId }
     });
   },
 
-  upsertRowNote(input: RowNoteUpsertInput) {
-    return prisma.productionScheduleRowNote.upsert({
+  upsertRowNote(input: RowNoteUpsertInput, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleRowNote.upsert({
       where: { csvDashboardRowId: input.csvDashboardRowId },
       create: {
         csvDashboardId: input.csvDashboardId,
@@ -65,8 +66,8 @@ export const sharedScheduleFieldsRepository = {
     });
   },
 
-  findSeibanDueDate(csvDashboardId: string, fseiban: string) {
-    return prisma.productionScheduleSeibanDueDate.findUnique({
+  findSeibanDueDate(csvDashboardId: string, fseiban: string, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleSeibanDueDate.findUnique({
       where: {
         csvDashboardId_fseiban: {
           csvDashboardId,
@@ -77,8 +78,8 @@ export const sharedScheduleFieldsRepository = {
     });
   },
 
-  deleteSeibanDueDate(csvDashboardId: string, fseiban: string) {
-    return prisma.productionScheduleSeibanDueDate.deleteMany({
+  deleteSeibanDueDate(csvDashboardId: string, fseiban: string, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleSeibanDueDate.deleteMany({
       where: {
         csvDashboardId,
         fseiban
@@ -86,8 +87,8 @@ export const sharedScheduleFieldsRepository = {
     });
   },
 
-  upsertSeibanDueDate(input: SeibanDueDateUpsertInput) {
-    return prisma.productionScheduleSeibanDueDate.upsert({
+  upsertSeibanDueDate(input: SeibanDueDateUpsertInput, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleSeibanDueDate.upsert({
       where: {
         csvDashboardId_fseiban: {
           csvDashboardId: input.csvDashboardId,

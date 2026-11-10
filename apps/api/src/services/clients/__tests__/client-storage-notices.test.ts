@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
-  clientDevice: { update: vi.fn(), findFirst: vi.fn() },
+  clientDevice: { update: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn() },
   clientStatus: { upsert: vi.fn() },
   clientLog: { createMany: vi.fn() },
   alert: { findFirst: vi.fn(), create: vi.fn() },
@@ -25,6 +25,7 @@ beforeEach(() => {
   vi.setSystemTime(startedAt);
   vi.stubEnv('CLIENT_HEARTBEAT_CLIENT_ID_PATTERN', '');
   db.clientDevice.update.mockResolvedValue({ id: 'device-1' });
+  db.clientDevice.findUnique.mockResolvedValue({ id: 'device-1', statusClientId: 'raspi4-sessaku-01-kiosk1' });
   db.clientStatus.upsert.mockResolvedValue({ id: 'status-1' });
   db.clientDevice.findFirst.mockResolvedValue({ location: '第2工場 - Sessaku-01' });
   db.alert.findFirst.mockResolvedValue({ id: 'existing-alert' });

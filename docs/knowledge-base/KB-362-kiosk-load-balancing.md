@@ -3,9 +3,186 @@ title: KB-362 キオスク負荷調整（山崩し支援）画面
 tags: [kiosk, production-schedule, load-balancing, machine-monthly-load]
 audience: [開発者, 運用者]
 last-verified: 2026-07-07
+status: historical
+superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 ---
 
 # KB-362: キオスク負荷調整（山崩し支援）画面
+
+> **履歴（2026-11）**: 2026-09-30 以降、負荷調整は1画面（`GET /kiosk/production-schedule/load-balancing/workspace`）に統合され、3タブと旧 API（overview / suggestions / outsourcing-* / machine-monthly-load / start-date-leveling）は削除されました。本書の3タブ・旧 API・2026-05 の UI 調整の節は履歴です。現行仕様の正本は [ガイド §現行画面](../guides/kiosk-production-schedule-load-balancing.md#現行画面2026-09-30--1画面タブなし) です。生産システムとの突合は [KB-437（負荷調整×生産システム突合）](./KB-437-load-balancing-production-system-reconciliation.md) を正本とします。
+
+## Vendor-aware Outsourcing (2026-11-07 · local implementation)
+
+業者の加工条件・月別受入上限を満たす外注試算へ変更。⚙から登録端末の `x-client-key` で設定する。
+site設定が存在すれば空一覧も含めshared全体を置換し、業者IDで改名・並び替えを維持する。
+業者設定は能力・移管ルール同様にsourceキャッシュ外で毎回読み、結果キャッシュの設定キーへ含める。
+
+通常月は表示範囲内の日割り配分だけ、遅れはJST今日の月に全量を業者使用として計上し、全配分月で上限を確認する。
+1件の加工上限は行総工数と比較。条件内AND/条件間OR、資源CD空集合は全資源、条件0件は不可。
+業者条件の品番・品名比較だけNFKC・trim・連続空白の集約・大文字化で半角カナも一致させる。資源CDはtrim・NFKC・大文字化し、既存のnormalizeComparisonTextは変更しない。NULL上限と0上限を区別する。
+部品ごとはFSEIBAN+FHINCD（********のみProductNo追加）の適格・未操作・機種内の工程を一括外注/取消する。
+
+自動選定は全表示月の超過0.5分超（能力NULL・遅れ除外、能力0は対象）を超過順で処理する。
+社内移管を先に試し、全配分月で元分÷efficiencyRatioが余力内の場合だけ移す（手動も同じ）。
+残りは設定された納期余裕昇順/総工数降順/業者順位昇順で外注し、同点はrowId/業者IDで決定する。
+移管・外注とも未配分や機種外へ操作を付けず、毎回最終操作集合から負荷/業者使用を再集計する。
+未解消分は「出し先なし」に条件/上限理由を表示。右に業者別一覧、左下にセル明細、上部に全体操作を置く。
+名指しは⚙の全画面設定で機種・製番・部品を安定業者IDに結び付ける。自動選定の第0段として超過に関係なく処理し、部品>製番>機種、業者順位→納期→rowId順。加工条件と部品単位化は無視し、月上限不足は「上限」で後段から除外する。未配分・機種外・操作済みには操作を付けない。名指し後は最終操作集合から負荷と使用を再集計する。
+保存・画面・計算の正本は [ExecPlan の名指し節](../plans/load-balancing-outsource-vendors-execplan.md#named-outsourcing-2026-11-07)。
+
+日別APIは維持し、画面は承認済みモックに合わせ日別グラフを表示しない。
+
+判定規則は[現行ガイド](../guides/kiosk-production-schedule-load-balancing.md)、設計判断・検証結果は
+[ExecPlan](../plans/load-balancing-outsource-vendors-execplan.md) を参照。migration追加のみで本番未反映。
+
+## Due Source Contract (2026-11-05)
+
+現行1画面の納期選択は既定 Excel、ヘッダーの **SCAW** で切り替える。
+一覧・日別 API の `dueSource: excel | scaw` は共通ボード納期 SQL を使い、期間判定・遅れ判定・並び順も同じ納期を参照する。
+分割納期は指定せず `NULL::date` のままとする。Excel 更新を含む世代トークンは維持し、サーバー元データキャッシュと Web query key は納期ソース別に分ける。
+
+選択は `kiosk-load-balancing-scaw-mode` の localStorage（`schemaVersion: 1`）へ保存する。
+通常キオスクは端末ローカル、Mac 代理表示はサイト・対象端末ごとに保存する。
+試算の状態キーにもソースを含め、異なるソースの試算を混在させない。SQL の本番呼び出し元は負荷調整ワークスペース・日別取得のみ。
+
+## Workspace Performance (2026-11-06 · local implementation)
+
+### Measurement
+
+Pi5 の提供ログは miss 3.7–4.0 s、hit 内部 215–235 ms / HTTP 約510 ms。
+以下は本番再測定ではなく、Mac / Node 24.3.0 の合成データによる計算時間。
+16,000行、60資源、6か月＋late、1–3配分/行、2,000製番、日本語の部品名・機種名を使用した。
+機種名は製番単位で同一、late 行は late だけへ配分する。
+5回 warmup 後25回の中央値。同じプロセスで HEAD の関数コピーと変更後の関数を比較した。
+
+| 処理 | Before | After |
+|---|---:|---:|
+| JSON本文（UTF-8 bytes） | 6,836,273 | 6,836,273 |
+| JSON.parse（同一本文） | 15.270 ms | 15.270 ms |
+| computeWorkspaceSummary 1回 | 6.530 ms | 1.707 ms |
+| ページの machines 導出 | 8.336 ms | 0.684 ms |
+| 試算バー集計 | 3.359 ms | 0.001 ms |
+| セル行の抽出・ソート | 1.681 ms | 1.531 ms |
+| 初回の主要計算合計 | 27.944 ms | 4.762 ms |
+| parse＋主要計算（各中央値の和） | 43.214 ms | 20.032 ms |
+| React Queryの深い比較（parseを除く） | 16.526 ms | 0.001 ms |
+| JSON.stringify / 保存済みシリアライズ | 15.068 ms | <0.001 ms |
+
+主要計算は summary、machines、試算バー、資源の並べ替え・初期セル選択、セル行の抽出・表示機種名を含む。
+React DOM の描画、ネットワーク、ブラウザーのレイアウト、日別取得後のチャートは含まない。
+深い比較は既存データがある再取得の費用であり、新規 query の初回費用には足さない。
+Pi4 での実測ではないため、この比率を画面全体の速度向上率として扱わない。
+一時ベンチは未追跡の `apps/web/.perf-load-balancing/` にある（4ファイル、作業後に削除可能）。
+
+### Changes And Cache Contract
+
+- 初回の行列構築を4回から1回へ削減。ページが summary を View に渡し、操作なしなら baseMatrix を共有する。
+  操作変更時も baseMatrix を作り直さない。操作のない行では配分オブジェクトのコピーを作らない。
+- 機種名は異なる生文字列ごとに1回だけ正規化し、ヘッダー・絞り込み・セル明細で同じ Map を使う。
+  試算バーの全行索引3回/毎renderを廃止し、操作時だけ1回作る。試算状態切替中の空配列も安定化した。
+- workspace query の `structuralSharing: false` で大きな応答の深い比較を省く。
+- winner ID 確定後、工程行と機種名を並列に取得する。
+  機種名は全 winner 製番を GROUP BY し、MH/SH の名前だけを MIN の対象にする。
+  MH/SH のない製番も補完→未登録の順を保ち、従来の raw 製番キー照合も維持する。
+- ソースの fresh TTL は固定30分、LRU最大16基本キー。世代・日付変更やTTL切れのときは最大6時間の前回sourceを即時返却し、裏で再検証する。
+  key は site / device scope / range / JST today / dueSource を区別する。
+  既存ボード世代に加え、機種名補完の対象sourceの COUNT / MAX(updatedAt) を並列取得して世代へ含める。
+  基本キーは today だけを除き、保持は各基本キー1件。同一key・世代の処理は共有し、後から保存された新しい世代を古い処理で上書きしない。
+  裏の失敗は既存loggerへ記録して古いsourceを保持し、次のリクエストまたはwarmer周期で再試行する。
+  warmerは直近3時間に利用された最大16基本キーを60秒間隔で順次確認し、世代・JST today変更やTTL切れを更新する。
+  タイマーはunrefし、テスト環境では明示開始するまで動かない。性能ログに cacheState（fresh / stale / miss）を追加し cacheHit も残す。
+  winnerRowIdsは独自モジュール内で世代トークン1件を保持し、同一世代の同時取得を共有する（順位ボードのキャッシュは使わない）。
+- 能力・月次能力・分類・カレンダー・移管ルールは毎回読み、値の fingerprint が同じ場合だけ組み立て結果を再利用する。
+  保存済みソースを weak key とする結果キャッシュと、結果を weak key とする JSON キャッシュを使用する。
+  保持はソースキャッシュの寿命に従う。大きな応答と文字列を保持する分、メモリとDB/CPU削減の交換になる。
+  Fastify の application/json と通常の圧縮・response hook 経路は維持する。
+
+### Expected Server Effect And SQL Review
+
+| フェーズ | 期待する効果（本番未検証） |
+|---|---|
+| generation | 約70–90 msは残る。補完世代の小さな集約は並列、追加費用はDBで確認が必要 |
+| winnerRowIds | miss時の約640–740 msは不変。5分を超えても同世代なら再実行しない |
+| queryRows | miss時の約1,750–1,990 msは不変。納期ソースごとの期間判定は維持 |
+| machineNames | 従来の後続890–1,100 msをqueryRowsに重ねる。全winner集約の時間とDB競合は要実測 |
+| assemble | sourceと設定が同じhitでは約140 msの行処理を省略し、設定照合だけにする |
+| serialize/compress | hitのstringifyを省略。圧縮、転送、クライアントparseの費用は残る |
+
+機種名取得が工程行取得より短ければ、cold missは概ね0.9–1.1 s短縮が期待できる。
+hit内部は従来215–235 msから、世代読取＋設定読取・照合の時間へ近づく。
+HTTPの約280 ms差分は圧縮も含むため、全量を削減できるとは見積もらない。
+month / SCAW・Excelの未保存keyは依然missだが並列取得の恩恵を受け、保存済みkeyへ戻る場合は再利用する。
+
+DBがないため `EXPLAIN (ANALYZE, BUFFERS)` は未実施。次を確認する。
+
+- winner の WindowAgg / Sort の実行行数、sort spill、既存の winner lookup expression index の利用。
+  現行partitionには未採番製番のProductNo分離CASEがあり、旧lookup indexの列だけで全順序を満たすとは限らない。
+  そのCASEを含む複合expression indexは候補だが、実行計画を見てから判断する。schema/migrationは変更していない。
+- 工程行では ID membership の選択性、行数見積もり、各LEFT JOINのloops / buffers、最終ORDER BYのspill。
+  Progress / ExternalCompletion はrow ID主キー、note / supplement / fkmailはrow ID unique、
+  納期・処理種別テーブルはdashboard＋製番（＋処理種別）等のunique indexが既にある。
+- 有効納期CASEはSELECT / WHERE / ORDER BYに繰り返される。
+  ただし共有SQLはLATERAL＋OFFSET 0でauthority subqueryの展開重複を防いでいる。
+  Excel-backed行でのLATERAL / SubPlanの実際のloops、SCAW時の未使用JOIN除去を確認する。
+  欠損日・遅れ・交差を含むOR条件なので、単純な日付index追加だけで改善すると仮定しない。
+- 機種名は1回の集約＋不足製番への一括補完であり、アプリ側N+1はない。
+  全winner集約へ広げた行数、HashAggregateメモリ、補完queryのIN件数、並列実行時のCPU/IOを比較する。
+
+### Rejected Options
+
+- 製番別機種名dictionary案は本文6,049,799 bytes（11.5%減）、parse 14.348 ms。
+  今回のparse差は約0.92 msで、契約変更の費用に見合う明確な追加効果が小さいため採用しなかった。
+  per-rowデータと応答形式を維持し、未使用フィールド削除も行わない。
+- 両納期を一度に取得する共通ソースは、dueSourceで期間内対象が異なるため採用しない。
+  window policy / board-due SQLの意味、他ボード、DB schema、シナリオ仕様は変更しない。
+- 圧縮済み本文キャッシュ、索引追加、SQLの並び替え変更は、DB/実機の追加根拠なしに導入しない。
+
+### Validation
+
+- API: load-balancing全サービステスト＋route＋machine-name resolver（15ファイル、最終計67テスト）を対象に実行。
+  routeの追加assertionでserializerのContent-Type欠落を検出し、application/json明示後の2 routeテスト＋3 serviceテストが通過。
+  resolverの境界追加後も12テスト通過。他の成功済みテストは再実行していない。
+- Web: loadBalancing、ページ、queryKeysは146テスト通過。追加2テストを含むscenario/formatの11テストも通過（最終対象148テスト）。
+- `pnpm --filter @raspi-system/api exec prisma generate`: offlineで生成成功、DB接続なし。
+- `pnpm --filter @raspi-system/api exec tsc --noEmit`: 既存tsconfigのrootDir=srcとprisma/scripts等のinclude不整合（TS6059）で失敗。
+  `--rootDir .` は既定4GB heapでOOM。8GB heapで完走したが549件の既存型診断で失敗した。
+  変更した本番コード・新規テストの診断はなく、変更したrouteテストの診断はHEADにもあるerror: unknownの行。
+  全体型検査は未達として扱い、無関係な型エラーを修正しない。
+- `NODE_OPTIONS=--max-old-space-size=8192 pnpm --filter @raspi-system/api exec tsc --noEmit -p tsconfig.build.json`: 成功。
+  リポジトリ既存の本番用設定で型検査を確認したが、上記の全体型検査失敗を代替成功とは扱わない。
+- `pnpm --filter @raspi-system/web exec tsc --noEmit`: 成功（最終テスト追加後も確認）。
+- `pnpm --filter @raspi-system/api lint`: 成功。最後に変更したAPI 4ファイルへのfocused eslintも成功。
+- `pnpm --filter @raspi-system/web lint`: import順の1件を修正後、全src成功。
+- `pnpm --filter @raspi-system/api exec vitest run src/services/production-schedule/load-balancing/__tests__ src/routes/kiosk/production-schedule/__tests__/load-balancing.route.test.ts src/services/production-schedule/__tests__/seiban-machine-display-names.service.test.ts`: 上記API対象。
+- `pnpm --filter @raspi-system/web exec vitest run src/features/kiosk/loadBalancing src/pages/kiosk/ProductionScheduleLoadBalancingPage.test.tsx src/api/queryKeys`: 上記Web対象。
+  追加・修正後は変更したテストファイルだけをfocusedで再実行した。
+- `pnpm --filter @raspi-system/web exec vitest run --config .perf-load-balancing/vitest.config.ts`: 一時ベンチ成功。
+  初期の並列検証中のベンチは5秒timeoutになり、ベンチだけ30秒枠へ変更して測定を完了した。
+- `git diff --check`: 成功。既存WIPなしで開始し、変更は本作業のみ。
+- DB integration / EXPLAIN / Pi実機 / browser計測 / deployは未実施。commit / pushも未実施。
+
+### Changed Files
+
+API（`apps/api/src/`）:
+
+- `services/production-schedule/load-balancing/load-balancing-workspace.service.ts`
+- `services/production-schedule/load-balancing/load-balancing-workspace-source-cache.ts`
+- `services/production-schedule/load-balancing/load-balancing-workspace-result-cache.ts`（新規）
+- `services/production-schedule/seiban-machine-display-names.service.ts`
+- `routes/kiosk/production-schedule/load-balancing.ts`
+- 上記に対応するsource-cache / result-cache / workspace.service / machine-display-names / routeの5テストファイル。
+
+Web（`apps/web/src/`）:
+
+- `pages/kiosk/ProductionScheduleLoadBalancingPage.tsx`
+- `features/kiosk/loadBalancing/LoadBalancingWorkspace.tsx`
+- `features/kiosk/loadBalancing/LoadBalancingCellDetail.tsx`
+- `features/kiosk/loadBalancing/loadBalancingFormat.ts`
+- `features/kiosk/loadBalancing/loadBalancingScenario.ts`
+- `api/hooks/production-schedule/load-balancing.ts`
+- `features/kiosk/loadBalancing/__tests__/loadBalancingFormat.test.ts`（新規）と `loadBalancingScenario.test.ts`。
+
+本KBと、一時ベンチの4ファイル（未追跡、通常のテスト対象外）も作業対象。
 
 ## Context
 
@@ -43,9 +220,9 @@ last-verified: 2026-07-07
 
 **重要**: タブごとに「月」「負荷の載せ方」が異なる。混同すると集計が合わない。
 
-**生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-363](./KB-363-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
+**生産システムとの関係**: 生産の積み上げグラフは **`FSIGENSHOYOYMD`（資源所要量）** 軸。キオスクは **着手日・納期** 軸。**数値一致は要件にしない**（2026-05-27 突合）。→ [KB-437](./KB-437-load-balancing-production-system-reconciliation.md) / [ADR-20260527](../decisions/ADR-20260527-load-balancing-aggregation-axis-start-date.md)
 
-2026-07-07 より、資源CD俯瞰・機種別月次タブに非一致注記（`LoadBalancingProductionSystemNote`、`data-testid="load-balancing-production-system-note"`）を常時表示する（KB-363 未実施タスクの UI 明示に対応）。
+2026-07-07 より、資源CD俯瞰・機種別月次タブに非一致注記（`LoadBalancingProductionSystemNote`、`data-testid="load-balancing-production-system-note"`）を常時表示する（KB-437 未実施タスクの UI 明示に対応）。
 
 ## APIレイテンシ改善（2026-07-07 · winner 実体化）
 
@@ -76,7 +253,7 @@ last-verified: 2026-07-07
 | `outsourcing-plan`（POST） | — | 2.6s |
 | `suggestions`（POST） | — | 1.6s |
 
-## 機種別月次負荷 — 仕様（実装正本）
+## 機種別月次負荷 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -111,7 +288,7 @@ last-verified: 2026-07-07
 | Web タブ | `LoadBalancingMachineMonthlyTab.tsx` |
 | ページシェル | `ProductionScheduleLoadBalancingPage.tsx`（タブ + Mac 代理） |
 
-## 着手日・平準化 — 仕様（実装正本）
+## 着手日・平準化 — 仕様（旧画面・履歴）
 
 ### 集計対象
 
@@ -130,7 +307,7 @@ last-verified: 2026-07-07
 
 - `GET/PUT /production-schedule-settings/load-balancing/work-calendars`
 
-## 資源CD俯瞰・外注候補シミュ — 仕様（実装正本）
+## 資源CD俯瞰・外注候補シミュ — 仕様（旧画面・履歴）
 
 ### 用語
 
@@ -514,7 +691,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 資源CD | `dy: +10` · 表示名 `dy: +28`（**同一原点**）· **実機 NG（CD/表示名重なり）** |
 | 下余白 | **96** |
 
-**→ 現行契約は [§現行 d0263cce](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--d0263cce)**
+**→ 現行契約は [§現行 da995573](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--da995573)**
 
 ## Production deploy（実績 2026-05-28 · 棒グラフX軸表示名を軸下へ · Pi5 のみ · 初版・CD 重なりあり）
 
@@ -589,7 +766,7 @@ ssh denkon5sd02@100.106.158.2 \
 | 表示名 | **`rotationDeg: +90`** · `dy: 12` |
 | 下余白 | **76** |
 
-**→ 現行契約は [§現行 cb339bfa](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--cb339bfa)**
+**→ 現行契約は [§現行 da995573](#棒グラフ-x-軸レイアウト契約2026-05-28--現行--da995573)**
 
 ## Production deploy（実績 2026-05-28 · 棒グラフX軸縦書き · Pi5 のみ · 初版・実機 NG）
 
@@ -1270,7 +1447,7 @@ curl -sk -X POST "${BASE}/api/kiosk/production-schedule/load-balancing/outsourci
 ## References
 
 - [ADR-20260527: 外注上限の単一正本](../decisions/ADR-20260527-load-balancing-outsourcing-limits.md)
-- [KB-363: 生産システム突合（2026-05-27）](./KB-363-load-balancing-production-system-reconciliation.md)
+- [KB-437: 生産システム突合（2026-05-27）](./KB-437-load-balancing-production-system-reconciliation.md)
 - [運用ガイド: kiosk-production-schedule-load-balancing.md](../guides/kiosk-production-schedule-load-balancing.md)
 - [deployment.md §集計修正 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-aggregation-fix-2026-05-27)
 - [deployment.md §表示維持 2026-05-27](../archive/deployments/2026-05.md#kiosk-load-balancing-auto-plan-reset-fix-2026-05-27)

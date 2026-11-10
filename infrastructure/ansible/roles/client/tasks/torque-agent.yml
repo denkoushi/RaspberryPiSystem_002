@@ -237,4 +237,6 @@
       {{
         torque_agent_runtime_recreate_needed | default(true) | bool
         or torque_agent_env_result.changed | default(false) | bool
+        or ((client_server_cert_pin_enabled | default(false) | bool)
+            and (client_server_cert_pin_copy_result.changed | default(false) | bool))
       }}

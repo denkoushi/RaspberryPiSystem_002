@@ -1,3 +1,4 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 
@@ -50,6 +51,7 @@ vi.mock('../../production-schedule/production-schedule-lookup.service.js', () =>
 describe('haizen-placement.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([]);
     vi.mocked(prisma.clientDevice.findMany).mockResolvedValue([]);
     vi.mocked(prisma.$transaction).mockImplementation(async (fn) => fn(prisma));
   });
@@ -370,6 +372,17 @@ describe('haizen-placement.service', () => {
     expect(result.current?.fseiban).toBe('FS1');
   });
 
+  it('applies the current-placement limit after completion filtering', async () => {
+    const row = { shelfCodeRaw: 'A', clientDeviceId: 'dev', distributionNumber: null,
+      csvDashboardRowId: null, scheduleSnapshot: null, updatedAt: new Date() };
+    vi.mocked(prisma.haizenCurrentPlacement.findMany).mockResolvedValue([
+      { ...row, id: 'done', manufacturingOrderBarcodeRaw: 'done' },
+      { ...row, id: 'active', manufacturingOrderBarcodeRaw: 'active' },
+    ] as never);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue([{ productNo: 'done' }]);
+    expect((await listHaizenCurrentPlacements({ limit: 1 })).rows.map(row => row.id)).toEqual(['active']);
+  });
+
   it('listHaizenCurrentPlacements は棚で絞り込む', async () => {
     const updatedAt = new Date('2025-05-03T12:00:00.000Z');
     vi.mocked(prisma.haizenCurrentPlacement.findMany).mockResolvedValue([
@@ -389,8 +402,7 @@ describe('haizen-placement.service', () => {
     expect(rows).toHaveLength(1);
     expect(prisma.haizenCurrentPlacement.findMany).toHaveBeenCalledWith({
       where: { shelfCodeRaw: '西-北-01' },
-      orderBy: { updatedAt: 'desc' },
-      take: 10
+      orderBy: { updatedAt: 'desc' }
     });
   });
 });

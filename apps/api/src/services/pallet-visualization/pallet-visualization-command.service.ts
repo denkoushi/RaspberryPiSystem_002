@@ -1,3 +1,4 @@
+import { runPalletEvent, type PalletEventInput } from './pallet-event.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
@@ -18,31 +19,91 @@ async function assertPalletNoForMachine(machineCd: string, palletNo: number): Pr
   }
 }
 
-export async function commandAddPalletItem(input: {
+export async function commandAddPalletItem(input: PalletEventInput & {
   clientDeviceId: string;
   machineCd: string;
   palletNo: number;
   manufacturingOrderBarcodeRaw: string;
 }): Promise<{ id: string }> {
-  const machineCd = await assertMachineCdRegistered(input.machineCd);
-  await assertPalletNoForMachine(machineCd, input.palletNo);
-  const resolved = await resolveScheduleSnapshotForPalletItem(machineCd, input.manufacturingOrderBarcodeRaw);
-  const orderStored = input.manufacturingOrderBarcodeRaw.trim();
+  return runPalletEvent(input, 'SET_ITEM', async (event) => {
+    const machineCd = await assertMachineCdRegistered(input.machineCd);
+    await assertPalletNoForMachine(machineCd, input.palletNo);
+    const resolved = await resolveScheduleSnapshotForPalletItem(machineCd, input.manufacturingOrderBarcodeRaw);
+    const orderStored = input.manufacturingOrderBarcodeRaw.trim();
 
-  try {
-    return await prisma.$transaction(async (tx) => {
-      await acquirePalletCommandLock(tx, machineCd, input.palletNo);
-      const agg = await tx.machinePalletItem.aggregate({
-        where: { resourceCd: machineCd, palletNo: input.palletNo },
-        _max: { displayOrder: true },
+    try {
+      return await prisma.$transaction(async (tx) => {
+        await acquirePalletCommandLock(tx, machineCd, input.palletNo);
+        const agg = await tx.machinePalletItem.aggregate({
+          where: { resourceCd: machineCd, palletNo: input.palletNo },
+          _max: { displayOrder: true },
+        });
+        const displayOrder = (agg._max.displayOrder ?? 0) + 1;
+
+        const created = await tx.machinePalletItem.create({
+          data: {
+            resourceCd: machineCd,
+            palletNo: input.palletNo,
+            displayOrder,
+            fhincd: resolved.fhincd,
+            fhinmei: resolved.fhinmei,
+            fseiban: resolved.fseiban,
+            machineName: resolved.machineName,
+            csvDashboardRowId: resolved.csvDashboardRowId,
+            scheduleSnapshot: resolved.scheduleSnapshot,
+          },
+        });
+
+        await tx.machinePalletEvent.create({
+          data: {
+            clientDeviceId: input.clientDeviceId,
+            ...event,
+            actionType: 'SET_ITEM',
+            resourceCd: machineCd,
+            palletNo: input.palletNo,
+            affectedItemId: created.id,
+            manufacturingOrderBarcodeRaw: orderStored,
+            scheduleSnapshot: resolved.scheduleSnapshot as Prisma.InputJsonValue,
+          },
+        });
+
+        return { id: created.id };
       });
-      const displayOrder = (agg._max.displayOrder ?? 0) + 1;
+    } catch (error) {
+      mapPalletOrderConflict(error);
+    }
+  });
+}
 
-      const created = await tx.machinePalletItem.create({
+export async function commandReplacePalletItem(input: PalletEventInput & {
+  clientDeviceId: string;
+  itemId: string;
+  manufacturingOrderBarcodeRaw: string;
+}): Promise<{ id: string }> {
+  return runPalletEvent(input, 'REPLACE_ITEM', async (event) => {
+    const orderStored = input.manufacturingOrderBarcodeRaw.trim();
+    const initial = await prisma.machinePalletItem.findUnique({ where: { id: input.itemId } });
+    if (!initial) {
+      throw new ApiError(404, 'パレットアイテムが見つかりません', undefined, 'PALLET_ITEM_NOT_FOUND');
+    }
+    const machineCd = normalizeCd(initial.resourceCd);
+    const resolved = await resolveScheduleSnapshotForPalletItem(machineCd, input.manufacturingOrderBarcodeRaw);
+
+    return prisma.$transaction(async (tx) => {
+      await acquirePalletCommandLock(tx, machineCd, initial.palletNo);
+      const existing = await tx.machinePalletItem.findUnique({
+        where: { id: input.itemId },
+      });
+      if (!existing) {
+        throw new ApiError(404, 'パレットアイテムが見つかりません', undefined, 'PALLET_ITEM_NOT_FOUND');
+      }
+      if (normalizeCd(existing.resourceCd) !== machineCd || existing.palletNo !== initial.palletNo) {
+        throw new ApiError(409, 'パレットアイテムの配置が変更されました', undefined, 'PALLET_ORDER_CONFLICT');
+      }
+
+      const updated = await tx.machinePalletItem.update({
+        where: { id: existing.id },
         data: {
-          resourceCd: machineCd,
-          palletNo: input.palletNo,
-          displayOrder,
           fhincd: resolved.fhincd,
           fhinmei: resolved.fhinmei,
           fseiban: resolved.fseiban,
@@ -55,72 +116,18 @@ export async function commandAddPalletItem(input: {
       await tx.machinePalletEvent.create({
         data: {
           clientDeviceId: input.clientDeviceId,
-          actionType: 'SET_ITEM',
+          ...event,
+          actionType: 'REPLACE_ITEM',
           resourceCd: machineCd,
-          palletNo: input.palletNo,
-          affectedItemId: created.id,
+          palletNo: existing.palletNo,
+          affectedItemId: updated.id,
           manufacturingOrderBarcodeRaw: orderStored,
           scheduleSnapshot: resolved.scheduleSnapshot as Prisma.InputJsonValue,
         },
       });
 
-      return { id: created.id };
+      return { id: updated.id };
     });
-  } catch (error) {
-    mapPalletOrderConflict(error);
-  }
-}
-
-export async function commandReplacePalletItem(input: {
-  clientDeviceId: string;
-  itemId: string;
-  manufacturingOrderBarcodeRaw: string;
-}): Promise<{ id: string }> {
-  const orderStored = input.manufacturingOrderBarcodeRaw.trim();
-  const initial = await prisma.machinePalletItem.findUnique({ where: { id: input.itemId } });
-  if (!initial) {
-    throw new ApiError(404, 'パレットアイテムが見つかりません', undefined, 'PALLET_ITEM_NOT_FOUND');
-  }
-  const machineCd = normalizeCd(initial.resourceCd);
-  const resolved = await resolveScheduleSnapshotForPalletItem(machineCd, input.manufacturingOrderBarcodeRaw);
-
-  return prisma.$transaction(async (tx) => {
-    await acquirePalletCommandLock(tx, machineCd, initial.palletNo);
-    const existing = await tx.machinePalletItem.findUnique({
-      where: { id: input.itemId },
-    });
-    if (!existing) {
-      throw new ApiError(404, 'パレットアイテムが見つかりません', undefined, 'PALLET_ITEM_NOT_FOUND');
-    }
-    if (normalizeCd(existing.resourceCd) !== machineCd || existing.palletNo !== initial.palletNo) {
-      throw new ApiError(409, 'パレットアイテムの配置が変更されました', undefined, 'PALLET_ORDER_CONFLICT');
-    }
-
-    const updated = await tx.machinePalletItem.update({
-      where: { id: existing.id },
-      data: {
-        fhincd: resolved.fhincd,
-        fhinmei: resolved.fhinmei,
-        fseiban: resolved.fseiban,
-        machineName: resolved.machineName,
-        csvDashboardRowId: resolved.csvDashboardRowId,
-        scheduleSnapshot: resolved.scheduleSnapshot,
-      },
-    });
-
-    await tx.machinePalletEvent.create({
-      data: {
-        clientDeviceId: input.clientDeviceId,
-        actionType: 'REPLACE_ITEM',
-        resourceCd: machineCd,
-        palletNo: existing.palletNo,
-        affectedItemId: updated.id,
-        manufacturingOrderBarcodeRaw: orderStored,
-        scheduleSnapshot: resolved.scheduleSnapshot as Prisma.InputJsonValue,
-      },
-    });
-
-    return { id: updated.id };
   });
 }
 

@@ -1,3 +1,4 @@
+import { signKioskAccessToken } from '../../lib/auth.js';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -785,7 +786,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${session.id}/record-torque`,
       headers: { ...headers, 'Content-Type': 'application/json' },
-      payload: { value: 20, source: 'mock' }
+      payload: { value: 20, source: 'manual' }
     });
     expect(secondOk.statusCode).toBe(200);
     expect(secondOk.json().outcome.areaCompleted).toBe(true);
@@ -912,11 +913,24 @@ describe('assembly torque management API', () => {
       calloutTipYRatio: 0.88
     });
 
+    for (const revision of [
+      { name: '改版名' },
+      { areas: payload.areas }
+    ]) {
+      const denied = await app.inject({
+        method: 'POST',
+        url: `/api/assembly/templates/${template.id}/revise`,
+        headers,
+        payload: revision
+      });
+      expect(denied.statusCode).toBe(403);
+    }
+
     const revised = await app.inject({
       method: 'POST',
       url: `/api/assembly/templates/${template.id}/revise`,
       headers,
-      payload: { name: '矢視コピー確認' }
+      payload: { name: '矢視コピー確認', accessPassword: '2520' }
     });
     expect(revised.statusCode).toBe(200);
     const revisedTemplate = revised.json().template;
@@ -1079,7 +1093,8 @@ describe('assembly torque management API', () => {
     const inUseDelete = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${documentAId}`,
-      headers
+      headers,
+      payload: { accessPassword: '2520' }
     });
     expect(inUseDelete.statusCode).toBe(409);
 
@@ -1117,7 +1132,8 @@ describe('assembly torque management API', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${unusedDocumentId}`,
-      headers
+      headers,
+      payload: { accessPassword: '2520' }
     });
     expect(deleted.statusCode).toBe(204);
 
@@ -1134,6 +1150,51 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(imageAfterDelete.statusCode).toBe(404);
+  });
+
+  it('requires the operation password for template retirement, procedure unpublication and deletion', async () => {
+    const client = await createTestClientDevice();
+    const headers = { 'x-client-key': client.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, headers, 'Operation manual');
+    const created = await app.inject({
+      method: 'POST', url: '/api/assembly/templates', headers,
+      payload: buildTemplatePayload(document.id)
+    });
+    expect(created.statusCode).toBe(200);
+    const templateId = created.json().template.id as string;
+    const unusedDocument = await prisma.assemblyProcedureDocument.create({
+      data: {
+        name: 'Unused operation manual', imageRelativePath: document.imageRelativePath,
+        status: 'PUBLISHED', publishedAt: new Date()
+      }
+    });
+    for (const payload of [undefined, {}, { accessPassword: '' }, { accessPassword: '0000' }]) {
+      const retired = await app.inject({ method: 'DELETE', url: `/api/assembly/templates/${templateId}`, headers, payload });
+      expect(retired.statusCode).toBe(403);
+      expect(await prisma.assemblyTemplate.findUniqueOrThrow({ where: { id: templateId } })).toMatchObject({ isActive: true });
+      const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
+      expect(unpublished.statusCode).toBe(403);
+      const deleted = await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload });
+      expect(deleted.statusCode).toBe(403);
+      expect(await prisma.assemblyProcedureDocument.findUniqueOrThrow({ where: { id: unusedDocument.id } })).toMatchObject({
+        status: 'PUBLISHED', publishedAt: expect.any(Date)
+      });
+    }
+    const payload = { accessPassword: '2520' };
+    expect((await app.inject({ method: 'DELETE', url: `/api/assembly/templates/${templateId}`, headers, payload })).statusCode).toBe(204);
+    expect(await prisma.assemblyTemplate.findUniqueOrThrow({ where: { id: templateId } })).toMatchObject({ isActive: false });
+    const unpublished = await app.inject({ method: 'POST', url: `/api/assembly/procedure-documents/${unusedDocument.id}/unpublish`, headers, payload });
+    expect(unpublished.statusCode).toBe(200);
+    expect(unpublished.json().document).toMatchObject({ status: 'draft', publishedAt: null });
+    expect((await app.inject({ method: 'DELETE', url: `/api/assembly/procedure-documents/${unusedDocument.id}`, headers, payload })).statusCode).toBe(204);
+    expect(await prisma.assemblyProcedureDocument.findUnique({ where: { id: unusedDocument.id } })).toBeNull();
+    for (const [method, url] of [
+      ['DELETE', `/api/assembly/templates/${randomUUID()}`],
+      ['POST', `/api/assembly/procedure-documents/${randomUUID()}/unpublish`],
+      ['DELETE', `/api/assembly/procedure-documents/${randomUUID()}`]
+    ] as const) {
+      expect((await app.inject({ method, url, headers, payload })).statusCode).toBe(404);
+    }
   });
 
   it('returns complete, pane-scoped, case-insensitive library filter options', async () => {
@@ -1179,7 +1240,8 @@ describe('assembly torque management API', () => {
     const retired = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/templates/${inactiveTemplate.json().template.id}`,
-      headers: { 'x-client-key': client.apiKey }
+      headers: { 'x-client-key': client.apiKey },
+      payload: { accessPassword: '2520' }
     });
     expect(retired.statusCode).toBe(204);
     await prisma.assemblyProcedureDocument.update({
@@ -1542,6 +1604,7 @@ describe('assembly torque management API', () => {
   it('registers an assembly lot, starts serial work lazily, and updates lot completion counts', async () => {
     const client = await createTestClientDevice();
     const approver = await createTestEmployee({ displayName: '承認者' });
+    const lotOperator = await createTestEmployee({ displayName: 'ロット作業者' });
     const headers = { 'x-client-key': client.apiKey, 'Content-Type': 'application/json' };
 
     const upload = buildMultipartProcedure('ロット 手順書');
@@ -1655,7 +1718,7 @@ describe('assembly torque management API', () => {
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
       payload: {
-        operatorNfcTagUid: approver.nfcTagUid,
+        operatorNfcTagUid: lotOperator.nfcTagUid,
         requestId: startRequestId
       }
     });
@@ -1674,7 +1737,7 @@ describe('assembly torque management API', () => {
       url: `/api/assembly/lots/${lot.id}/serials/${firstSerial.id}/start`,
       headers,
       payload: {
-        operatorNfcTagUid: approver.nfcTagUid,
+        operatorNfcTagUid: lotOperator.nfcTagUid,
         requestId: startRequestId
       }
     });
@@ -1715,7 +1778,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${session.id}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approve.statusCode).toBe(200);
 
@@ -1867,6 +1930,63 @@ describe('assembly torque management API', () => {
       sourceState: 'not_started'
     });
     expect((await createAutoLot('AUTO-LOT', 1)).statusCode).toBe(409);
+  });
+
+  it('checks current operation scope per device across assembly session routes', async () => {
+    const owner = await createTestClientDevice();
+    const other = await createTestClientDevice();
+    const proxy = await createTestClientDevice();
+    await prisma.clientDevice.update({ where: { id: proxy.id }, data: { canProxyOtherDevices: true } });
+    const operator = await createTestEmployee();
+    const ownerHeaders = { 'x-client-key': owner.apiKey };
+    const document = await uploadPublishedProcedureDocument(app, ownerHeaders, 'Operation scope procedure');
+    const templateRes = await app.inject({ method: 'POST', url: '/api/assembly/templates', headers: ownerHeaders, payload: {
+      ...buildTemplatePayload(document.id, { modelCode: 'SCOPE', procedurePattern: 'SCOPE' }),
+      checkItems: [{ markerNo: 1, label: 'Check', required: false, xRatio: 0.5, yRatio: 0.5, sortOrder: 0, assemblyProcedureDocumentId: document.id, pageIndex: 0 }]
+    } });
+    expect(templateRes.statusCode, templateRes.body).toBe(200);
+    const template = templateRes.json().template;
+    const admin = await createTestUser('ADMIN');
+    const manager = await createTestUser('MANAGER');
+    for (const operation of ['record-torque', 'complete', 'advance-area', 'restart-area', 'record-check', 'cancel']) {
+      for (const actor of ['owner', 'proxy', 'admin', 'manager']) {
+        const start = await app.inject({ method: 'POST', url: '/api/assembly/work-sessions', headers: ownerHeaders, payload: {
+          templateId: template.id, productNo: 'SCOPE', workId: randomUUID(), targetUnit: 'Scope', torqueWrenchId: 'CEM20N3X10D-BTLA',
+          operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID()
+        } });
+        expect(start.statusCode).toBe(200);
+        const session = start.json().session;
+        if (operation === 'complete' || operation === 'advance-area') {
+          await prisma.assemblyTorqueRecord.create({ data: {
+            sessionId: session.id, templateBoltId: template.areas[0].bolts[0].id, attempt: 1,
+            inputSource: 'MANUAL', value: 10, judgement: 'OK', accepted: true
+          } });
+          await prisma.assemblyWorkSession.update({ where: { id: session.id }, data: { currentBoltId: null } });
+        }
+        const payload = operation === 'record-torque' ? { value: 10, source: 'manual' }
+          : operation === 'record-check' ? { checkItemId: template.checkItems[0].id, checked: true } : {};
+        const url = `/api/assembly/work-sessions/${session.id}/${operation}`;
+        const refused = await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload });
+        expect(refused.statusCode).toBe(403);
+        expect(refused.json().errorCode).toBe('CLIENT_DEVICE_SCOPE_MISMATCH');
+        const headers = actor === 'owner' ? ownerHeaders : actor === 'proxy' ? { 'x-client-key': proxy.apiKey }
+          : { ...createAuthHeader(actor === 'admin' ? admin.token : manager.token), 'x-client-key': other.apiKey };
+        const allowed = await app.inject({ method: 'POST', url, headers, payload });
+        expect(allowed.statusCode).toBe(200);
+      }
+    }
+    const start = await app.inject({ method: 'POST', url: '/api/assembly/work-sessions', headers: ownerHeaders, payload: {
+      templateId: template.id, productNo: 'SCOPE', workId: randomUUID(), targetUnit: 'Scope', torqueWrenchId: 'CEM20N3X10D-BTLA',
+      operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID()
+    } });
+    expect(start.statusCode).toBe(200);
+    const sessionId = start.json().session.id;
+    const resumed = await app.inject({ method: 'POST', url: `/api/assembly/work-sessions/${sessionId}/operator-access`,
+      headers: { 'x-client-key': other.apiKey }, payload: { operatorNfcTagUid: operator.nfcTagUid, requestId: randomUUID() } });
+    expect(resumed.statusCode).toBe(200);
+    const url = `/api/assembly/work-sessions/${sessionId}/restart-area`;
+    expect((await app.inject({ method: 'POST', url, headers: ownerHeaders, payload: {} })).statusCode).toBe(403);
+    expect((await app.inject({ method: 'POST', url, headers: { 'x-client-key': other.apiKey }, payload: {} })).statusCode).toBe(200);
   });
 
   it('requires ACTIVE NFC for start/resume, records idempotent access history, and cancels WIP on invalidation', async () => {
@@ -2305,7 +2425,7 @@ describe('assembly torque management API', () => {
         method: 'POST',
         url: `/api/assembly/work-sessions/${approvalRace.sessionId}/record-approval/approve`,
         headers,
-        payload: { approverEmployeeTagUid: approver.nfcTagUid }
+        payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
       }),
       invalidate(approvalRace.serial.workUnitId, '完了承認との競合')
     ]);
@@ -2412,7 +2532,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${approved.session.id}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approval.statusCode).toBe(200);
     const invalidation = await invalidate(approved.workUnit.id, '承認済み誤登録');
@@ -2582,7 +2702,8 @@ describe('assembly torque management API', () => {
     const unpublishReferenced = await app.inject({
       method: 'POST',
       url: `/api/assembly/procedure-documents/${secondary.id}/unpublish`,
-      headers: { 'x-client-key': client.apiKey }
+      headers: { 'x-client-key': client.apiKey },
+      payload: { accessPassword: '2520' }
     });
     expect(unpublishReferenced.statusCode).toBe(409);
 
@@ -2688,7 +2809,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/templates/${v1.id}/revise`,
       headers,
-      payload: { name: 'ステップ v2' }
+      payload: { name: 'ステップ v2', accessPassword: '2520' }
     });
     expect(revised.statusCode).toBe(200);
     expect(revised.json().template.procedureSequence.steps).toHaveLength(3);
@@ -2877,13 +2998,13 @@ describe('assembly torque management API', () => {
         method: 'POST',
         url: `/api/assembly/templates/${v1Id}/revise`,
         headers,
-        payload: { name: '競合 v2-A' }
+        payload: { name: '競合 v2-A', accessPassword: '2520' }
       }),
       app.inject({
         method: 'POST',
         url: `/api/assembly/templates/${v1Id}/revise`,
         headers,
-        payload: { name: '競合 v2-B' }
+        payload: { name: '競合 v2-B', accessPassword: '2520' }
       })
     ]);
     expect([firstRevision.statusCode, staleRevision.statusCode].sort()).toEqual([200, 409]);
@@ -3179,7 +3300,8 @@ describe('assembly torque management API', () => {
     const deleted = await app.inject({
       method: 'DELETE',
       url: `/api/assembly/procedure-documents/${procedureDocumentId}`,
-      headers: { 'x-client-key': client.apiKey }
+      headers: { 'x-client-key': client.apiKey },
+      payload: { accessPassword: '2520' }
     });
     expect(deleted.statusCode).toBe(409);
     expect(deleted.json()).toMatchObject({
@@ -3258,7 +3380,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(approve.statusCode).toBe(200);
     expect(approve.json().session.approval).toMatchObject({
@@ -3270,7 +3392,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: approver.nfcTagUid }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: approver.nfcTagUid }
     });
     expect(duplicateApprove.statusCode).toBe(409);
 
@@ -3287,6 +3409,24 @@ describe('assembly torque management API', () => {
       headers
     });
     expect(detail.json().session.approval?.approverEmployeeNameSnapshot).toBe(approver.displayName);
+
+    const viewer = await createTestUser('VIEWER');
+    for (const readHeaders of [createAuthHeader(viewer.token), { 'x-client-key': client.apiKey }]) {
+      for (const url of [
+        '/api/assembly/work-sessions/summary?status=completed&productNo=ASM-APPROVAL-001',
+        `/api/assembly/work-sessions/${sessionId}`
+      ]) {
+        const response = await app.inject({ method: 'GET', url, headers: readHeaders });
+        expect(response.statusCode).toBe(200);
+        const body = response.json();
+        const approval = body.session?.approval ?? body.sessions[0].approval;
+        expect(approval.approverEmployeeNameSnapshot).toBe(approver.displayName);
+        expect(approval).not.toHaveProperty('approverNfcTagUidSnapshot');
+        expect(response.body).not.toContain(approver.nfcTagUid!);
+      }
+    }
+    const savedApproval = await prisma.assemblyWorkSessionApproval.findUnique({ where: { sessionId } });
+    expect(savedApproval?.approverNfcTagUidSnapshot).toBe(approver.nfcTagUid);
   });
 
   it('rejects assembly record approval for non-completed sessions and unknown NFC tags', async () => {
@@ -3331,7 +3471,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG' }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: 'UNKNOWN-TAG' }
     });
     expect(inProgressApprove.statusCode).toBe(409);
 
@@ -3354,7 +3494,7 @@ describe('assembly torque management API', () => {
       method: 'POST',
       url: `/api/assembly/work-sessions/${sessionId}/record-approval/approve`,
       headers,
-      payload: { approverEmployeeTagUid: 'UNKNOWN-TAG-404' }
+      payload: { accessToken: signKioskAccessToken('assembly-record-approval', client.id), approverEmployeeTagUid: 'UNKNOWN-TAG-404' }
     });
     expect(unknownTagApprove.statusCode).toBe(404);
   });
@@ -3379,7 +3519,7 @@ describe('assembly torque management API', () => {
       payload: { password: '2520' }
     });
     expect(ok.statusCode).toBe(200);
-    expect(ok.json()).toEqual({ success: true });
+    expect(ok.json()).toEqual({ success: true, token: expect.any(String) });
   });
 
   describe('assembly unified workflow phase 2 API', () => {
@@ -3415,14 +3555,16 @@ describe('assembly torque management API', () => {
       const unpublishInUse = await app.inject({
         method: 'POST',
         url: `/api/assembly/procedure-documents/${publishedDoc.id}/unpublish`,
-        headers: { 'x-client-key': client.apiKey }
+        headers: { 'x-client-key': client.apiKey },
+        payload: { accessPassword: '2520' }
       });
       expect(unpublishInUse.statusCode).toBe(409);
 
       const unpublishUnused = await app.inject({
         method: 'POST',
         url: `/api/assembly/procedure-documents/${draftDocumentId}/unpublish`,
-        headers: { 'x-client-key': client.apiKey }
+        headers: { 'x-client-key': client.apiKey },
+        payload: { accessPassword: '2520' }
       });
       expect(unpublishUnused.statusCode).toBe(200);
       expect(unpublishUnused.json().document.status).toBe('draft');

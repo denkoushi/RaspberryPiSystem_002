@@ -5,6 +5,8 @@ import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
   getDay: vi.fn(),
+  getResourceUptime: vi.fn(),
+  findClient: vi.fn(),
   getWorsening: vi.fn(),
   getRange: vi.fn(),
   listDates: vi.fn(),
@@ -22,8 +24,12 @@ const mocks = vi.hoisted(() => ({
   hasGmailCredentials: vi.fn(),
 }));
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { clientDevice: { findUnique: mocks.findClient } } }));
+
 vi.mock('../../../services/machine-signal/machine-signal-insights.service.js', () => ({
   getMachineSignalDay: mocks.getDay,
+  getMachineSignalResourceUptime: mocks.getResourceUptime,
   getMachineSignalWorsening: mocks.getWorsening,
   getMachineSignalRange: mocks.getRange,
   listMachineSignalReportDates: mocks.listDates,
@@ -77,14 +83,16 @@ const SENSOR_BODY = {
   categoryOverrides: { '122': 'STOP' },
 };
 
-async function createApp(options: { manageAllowed?: boolean } = {}) {
+async function createApp(options: { manageAllowed?: boolean; viewAllowed?: boolean } = {}) {
   const app = Fastify();
   await app.register(multipart);
   app.setErrorHandler((error, _request, reply) => {
     const status = error instanceof ZodError ? 400 : ((error as { statusCode?: number }).statusCode ?? 500);
     void reply.code(status).send({ message: error.message });
   });
-  const allowView = vi.fn(async () => undefined);
+  const allowView = vi.fn(async () => {
+    if (options.viewAllowed === false) throw Object.assign(new Error('unauthorized'), { statusCode: 401 });
+  });
   const canManage = vi.fn(async () => {
     if (options.manageAllowed === false) throw Object.assign(new Error('forbidden'), { statusCode: 403 });
   });
@@ -333,5 +341,57 @@ describe('machine signal routes', () => {
 
     expect(response.statusCode).toBe(200);
     expect(mocks.runOnce).toHaveBeenCalledWith({ config, allowWait: true });
+  });
+});
+
+describe('resource uptime route', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it.each([['', 30], ['?days=1', 1], ['?days=92', 92]] as const)('uses allowView and validates days %s', async (query, days) => {
+    const result = { endDate: '2026-11-05', days, resources: [
+      { resourceCd: '305', signalNo: 1, medianRunSeconds: 3600, runningDays: 10, windowDays: days * 2 },
+    ] };
+    mocks.getResourceUptime.mockResolvedValue(result);
+    const { app, allowView, canManage } = await createApp({ manageAllowed: false });
+    const response = await app.inject({ method: 'GET', url: `/machine-signal/resource-uptime${query}` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(result);
+    expect(mocks.getResourceUptime).toHaveBeenCalledWith({ days });
+    expect(allowView).toHaveBeenCalledOnce();
+    expect(canManage).not.toHaveBeenCalled();
+    await app.close();
+  });
+  it.each(['0', '93', '-1', '1.5', 'abc', ''])('rejects invalid days=%s', async (days) => {
+    const { app } = await createApp();
+    expect((await app.inject({ method: 'GET', url: `/machine-signal/resource-uptime?days=${days}` })).statusCode).toBe(400);
+    expect(mocks.getResourceUptime).not.toHaveBeenCalled();
+    await app.close();
+  });
+  it('rejects unauthorized viewers before calling the service', async () => {
+    const { app } = await createApp({ viewAllowed: false });
+    expect((await app.inject({ method: 'GET', url: '/machine-signal/resource-uptime' })).statusCode).toBe(401);
+    expect(mocks.getResourceUptime).not.toHaveBeenCalled();
+    await app.close();
+  });
+  it('accepts a resource code in sensor edits', async () => {
+    const { app } = await createApp();
+    const input = { ...SENSOR_BODY, resourceCd: '０２１' };
+    expect((await app.inject({ method: 'PUT', url: '/machine-signal/sensors/8', payload: input })).statusCode).toBe(200);
+    expect(mocks.updateSensor).toHaveBeenCalledWith(8, input);
+    await app.close();
+  });
+});
+
+describe('resource uptime kiosk client key', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it.each([['valid-key', 200], ['invalid-key', 403], [undefined, 401]] as const)('checks key %s', async (key, status) => {
+    mocks.findClient.mockImplementation(async ({ where }) => where.apiKey === 'valid-key' ? { id: 'kiosk' } : null);
+    mocks.getResourceUptime.mockResolvedValue({ endDate: null, days: 30, resources: [] });
+    const app = Fastify();
+    registerMachineSignalRoutes(app);
+    const response = await app.inject({ method: 'GET', url: '/machine-signal/resource-uptime', headers: key ? { 'x-client-key': key } : {} });
+    expect(response.statusCode).toBe(status);
+    if (status === 200) expect(mocks.getResourceUptime).toHaveBeenCalledWith({ days: 30 });
+    else expect(mocks.getResourceUptime).not.toHaveBeenCalled();
+    await app.close();
   });
 });

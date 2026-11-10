@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 export const inspectionDrawingEnvShape = {
+  INSPECTION_DRAWING_SIBLING_CANDIDATE_LIMIT: z.coerce.number().int().min(1).max(30).default(12),
   INSPECTION_DRAWING_SIBLING_VISION_ENABLED: z
+    .preprocess((v) => typeof v === 'string' ? v.trim().toLowerCase() : v, z.enum(['true', 'false']).default('true'))
+    .transform((v) => v === 'true'),
+  INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED: z
     .preprocess((v) => typeof v === 'string' ? v.trim().toLowerCase() : v, z.enum(['true', 'false']).default('true'))
     .transform((v) => v === 'true'),
   INSPECTION_DRAWING_TRANSFER_JEV_ENABLED: z

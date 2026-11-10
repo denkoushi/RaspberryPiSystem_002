@@ -33,7 +33,7 @@ function whenOf(schedule: SignageSchedule): QuickWhen {
 export function PlaylistPanel({
   items,
   schedules,
-  clientKey,
+  clientDeviceId,
   clientName,
   switchSeconds,
   justAddedId,
@@ -42,7 +42,7 @@ export function PlaylistPanel({
 }: {
   items: PlaylistItem[];
   schedules: SignageSchedule[];
-  clientKey: string | null;
+  clientDeviceId: string | null;
   clientName: string | null;
   switchSeconds: number;
   justAddedId: string | null;
@@ -88,8 +88,8 @@ export function PlaylistPanel({
   };
 
   const handleRemove = async (schedule: SignageSchedule) => {
-    if (!clientKey) return;
-    const plan = planRemoveFromScreen(schedule, clientKey);
+    if (!clientDeviceId) return;
+    const plan = planRemoveFromScreen(schedule, clientDeviceId);
     const ok = await confirm({
       title: `「${schedule.name}」を外しますか？`,
       description:
@@ -103,7 +103,7 @@ export function PlaylistPanel({
     setError(null);
     try {
       if (plan.action === 'delete') await remove.mutateAsync(schedule.id);
-      else await update.mutateAsync({ id: schedule.id, payload: { targetClientKeys: plan.targetClientKeys } });
+      else await update.mutateAsync({ id: schedule.id, payload: { targetClientDeviceIds: plan.targetClientDeviceIds } });
     } catch (err) {
       setError(getApiErrorMessage(err, '外せませんでした'));
     }

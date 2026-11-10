@@ -18,6 +18,7 @@ class ValidateRequiredResultsTests(unittest.TestCase):
             [
                 JobResult("api", "true", "success"),
                 JobResult("web", "false", "skipped"),
+                JobResult("web-coverage", "false", "skipped"),
             ],
         )
         self.assertEqual(errors, [])
@@ -31,6 +32,15 @@ class ValidateRequiredResultsTests(unittest.TestCase):
         ):
             with self.subTest(job=job):
                 self.assertTrue(validation_errors("success", [job]))
+
+    def test_web_coverage_must_pass_when_web_is_selected(self) -> None:
+        for result in ("success", "failure", "cancelled", "skipped"):
+            with self.subTest(result=result):
+                errors = validation_errors("success", [
+                    JobResult("web", "true", "success"),
+                    JobResult("web-coverage", "true", result),
+                ])
+                self.assertEqual(bool(errors), result != "success")
 
     def test_classifier_failure_is_rejected(self) -> None:
         self.assertEqual(

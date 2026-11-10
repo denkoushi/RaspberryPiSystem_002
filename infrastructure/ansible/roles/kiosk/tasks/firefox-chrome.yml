@@ -4,7 +4,7 @@
 
 - name: Compute absolute path for kiosk Firefox profile directory
   ansible.builtin.set_fact:
-    kiosk_firefox_profile_abs: "/home/{{ ansible_user }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
+    kiosk_firefox_profile_abs: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.mozilla/firefox/{{ kiosk_firefox_profile_dirname | default('kiosk-system') }}"
 
 - name: Deploy Firefox kiosk profile and chrome minimization assets
   when: kiosk_firefox_minimize_chrome_enabled | default(true) | bool
@@ -13,8 +13,8 @@
       ansible.builtin.file:
         path: "{{ kiosk_firefox_profile_abs }}"
         state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+        group: "{{ kiosk_gui_user | default(ansible_user) }}"
         mode: '0700'
       when: terminal_release_mode | default('full') == 'full'
 
@@ -22,8 +22,8 @@
       ansible.builtin.file:
         path: "{{ kiosk_firefox_profile_abs }}/chrome"
         state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+        group: "{{ kiosk_gui_user | default(ansible_user) }}"
         mode: '0700'
       when: terminal_release_mode | default('full') == 'full'
 
@@ -42,8 +42,8 @@
       ansible.builtin.file:
         path: "{{ kiosk_firefox_profile_abs }}/sessionstore-backups"
         state: directory
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+        group: "{{ kiosk_gui_user | default(ansible_user) }}"
         mode: '0700'
       when: terminal_release_mode | default('full') == 'full'
 
@@ -87,8 +87,8 @@
       ansible.builtin.template:
         src: firefox-userChrome.css.j2
         dest: "{{ kiosk_firefox_profile_abs }}/chrome/userChrome.css"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+        group: "{{ kiosk_gui_user | default(ansible_user) }}"
         mode: '0644'
       register: kiosk_ff_chrome_userchrome
 
@@ -96,8 +96,8 @@
       ansible.builtin.template:
         src: firefox-user.js.j2
         dest: "{{ kiosk_firefox_profile_abs }}/user.js"
-        owner: "{{ ansible_user }}"
-        group: "{{ ansible_user }}"
+        owner: "{{ kiosk_gui_user | default(ansible_user) }}"
+        group: "{{ kiosk_gui_user | default(ansible_user) }}"
         mode: '0600'
       register: kiosk_ff_chrome_userjs
 

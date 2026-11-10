@@ -41,7 +41,7 @@ function item(itemId: string, resourceCd: string): GrindingPlanningBoardItem {
     alternateRank: null,
     plannedQuantity: 1,
     requiredMinutes: 5,
-    requiredMinutesKnown: true,
+    lslhSurface: false, requiredMinutesKnown: true,
     isCompleted: false,
     progress: { completed: 0, total: 1, quantityKnown: false }
   };

@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useMatch, useNavigate, useSearchParams } from 'react-router-dom';
 
 import {
-  borrowRiggingGear,
   getResolvedClientKey,
   getRiggingGearByTagUid,
   postClientLogs
@@ -11,11 +10,14 @@ import {
 import { useKioskConfig } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
+import { isRetryableLoanError } from '../../features/kiosk/loan/offline/loanOutboxRunner';
+import { useLoanOfflineQueue } from '../../features/kiosk/loan/offline/useLoanOfflineQueue';
 import { useNfcStream } from '../../hooks/useNfcStream';
 
 import type { RiggingGear } from '../../api/types';
 
 export function KioskRiggingBorrowPage() {
+  const { message: outboxMessage, submit } = useLoanOfflineQueue();
   const isActiveRoute = useMatch('/kiosk/rigging/borrow');
   const nfcEvent = useNfcStream(Boolean(isActiveRoute));
   const navigate = useNavigate();
@@ -39,11 +41,8 @@ export function KioskRiggingBorrowPage() {
   const [riggingGearError, setRiggingGearError] = useState<string | null>(null);
 
   // NFCイベント処理は同一イベントを二重処理しないことが重要なため、最新state参照はrefで行う
-  const riggingGearRef = useRef<RiggingGear | null>(null);
+  const lookupRetryableRef = useRef(false);
   const riggingGearErrorRef = useRef<string | null>(null);
-  useEffect(() => {
-    riggingGearRef.current = riggingGear;
-  }, [riggingGear]);
   useEffect(() => {
     riggingGearErrorRef.current = riggingGearError;
   }, [riggingGearError]);
@@ -64,10 +63,12 @@ export function KioskRiggingBorrowPage() {
     getRiggingGearByTagUid(tagUid)
       .then((gear) => {
         if (cancelled) return;
+        lookupRetryableRef.current = false;
         setRiggingGear(gear);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
+        lookupRetryableRef.current = isRetryableLoanError(err);
         const status = axios.isAxiosError(err) ? err.response?.status : undefined;
         const apiMessage =
           axios.isAxiosError(err) && err.response?.data && typeof err.response.data === 'object'
@@ -131,29 +132,18 @@ export function KioskRiggingBorrowPage() {
           setError(null);
           setMessage(null);
 
-          // すでに取得済みの吊具情報があれば再利用し、不要なAPI二重呼び出しを避ける
-          const latestGear = riggingGearRef.current;
-          const latestGearError = riggingGearErrorRef.current;
-          const gear =
-            latestGear ??
-            (latestGearError
-              ? null
-              : await getRiggingGearByTagUid(riggingTagUid));
-          if (!gear) {
-            // 表示用の取得で404を掴んでいる場合は、送信時は従来の短い文言に揃える
-            if (latestGearError === 'タグ未登録（吊具）') {
-              throw new Error('吊具が登録されていません');
-            }
-            throw new Error(latestGearError || '吊具が登録されていません');
+          // Display lookups must not block durable capture during an outage.
+          if (riggingGearErrorRef.current && !lookupRetryableRef.current) {
+            throw new Error(riggingGearErrorRef.current === 'タグ未登録（吊具）'
+              ? '吊具が登録されていません' : riggingGearErrorRef.current);
           }
-
-          const loan = await borrowRiggingGear({
+          const loan = await submit({ route: 'riggingBorrow', body: {
             riggingTagUid,
             employeeTagUid: nfcEvent.uid,
             clientId: resolvedClientId
-          });
+          } }, nfcEvent.timestamp);
 
-          setMessage(`持出登録完了: Loan ID = ${loan.id}`);
+          setMessage(loan ? `持出登録完了: Loan ID = ${loan.id}` : null);
           setRiggingTagUid('');
           setEmployeeTagUid('');
           // 計測機器と同じく成功時は戻り先へ自動遷移
@@ -192,7 +182,7 @@ export function KioskRiggingBorrowPage() {
       }
     })();
     // success表示中でも新しいイベントは処理するので依存配列なし
-  }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey, navigate, returnPath]);
+  }, [nfcEvent, riggingTagUid, employeeTagUid, resolvedClientId, resolvedClientKey, navigate, returnPath, submit]);
 
   return (
     <div className="mx-auto flex w-full max-w-screen-2xl flex-col gap-4">
@@ -295,7 +285,7 @@ export function KioskRiggingBorrowPage() {
                   )}
                 </div>
               </div>
-              {message && <div className="rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg">{message}</div>}
+              {(outboxMessage || message) && <div className="rounded-md border-2 border-emerald-700 bg-emerald-600 p-3 text-sm font-semibold text-white shadow-lg" role="status">{outboxMessage || message}</div>}
               {error && <div className="rounded-md border-2 border-red-700 bg-red-600 p-3 text-sm font-semibold text-white shadow-lg">{error}</div>}
               {isSubmitting && <div className="text-sm font-semibold text-slate-700">送信中…</div>}
             </div>

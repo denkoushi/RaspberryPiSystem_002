@@ -5,18 +5,32 @@ import {
   type GrindingPlanningBoardResourceDailyHours
 } from '@raspi-system/shared-types';
 
+import type { Prisma } from '@prisma/client';
+import { z } from 'zod';
+
 import { ApiError } from '../../lib/errors.js';
 import { prisma } from '../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
+import { defaultUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
+
+export const resourceCdSchema = z.string().trim().min(1).max(20);
+export const resourceCapacityBodySchema = z.object({
+  resourceCd: resourceCdSchema,
+  dailyHours: z.union([z.literal(8), z.literal(10), z.literal(24)]).optional(),
+  runsThroughBreaks: z.boolean().optional(),
+  unitSplitEnabled: z.boolean().nullable().optional()
+}).refine((body) => body.dailyHours !== undefined || body.runsThroughBreaks !== undefined || body.unitSplitEnabled !== undefined,
+  { message: '稼働時間、休憩設定または1台ずつ設定を指定してください' });
 
 export async function getGrindingPlanningBoardResourceCapacity(params: {
   siteKey: string;
-}): Promise<GrindingPlanningBoardResourceCapacityResponse> {
-  const rows = await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.findMany({
+}, client: Pick<Prisma.TransactionClient, 'productionScheduleGrindingPlanningBoardResourceCapacity'> = prisma): Promise<GrindingPlanningBoardResourceCapacityResponse> {
+  const rows = await client.productionScheduleGrindingPlanningBoardResourceCapacity.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey },
-    select: { resourceCd: true, dailyHours: true, runsThroughBreaks: true }
+    select: { resourceCd: true, dailyHours: true, runsThroughBreaks: true, unitSplitEnabled: true }
   });
   return {
+    unitSplitEnabledByResource: { '021': true, '022': true, ...Object.fromEntries(rows.map((row) => [row.resourceCd, row.unitSplitEnabled ?? defaultUnitSplitEnabled(row.resourceCd)])) },
     dailyHoursByResource: Object.fromEntries(rows.filter((row) =>
       row.dailyHours !== GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS
       && GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.includes(row.dailyHours as GrindingPlanningBoardResourceDailyHours)
@@ -30,28 +44,24 @@ export async function updateGrindingPlanningBoardResourceCapacity(params: {
   resourceCd: string;
   dailyHours?: GrindingPlanningBoardResourceDailyHours;
   runsThroughBreaks?: boolean;
+  unitSplitEnabled?: boolean | null;
 }): Promise<GrindingPlanningBoardResourceCapacityResponse> {
-  const resourceCd = params.resourceCd.trim();
-  if (!resourceCd || resourceCd.length > 20) {
-    throw new ApiError(400, '資源コードは1〜20文字で指定してください');
-  }
-  if (params.dailyHours !== undefined && !GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.includes(params.dailyHours)) {
-    throw new ApiError(400, '日次稼働時間は8、10、24のいずれかで指定してください');
-  }
-  if ((params.dailyHours === undefined && params.runsThroughBreaks === undefined)
-    || (params.runsThroughBreaks !== undefined && typeof params.runsThroughBreaks !== 'boolean')) {
-    throw new ApiError(400, '稼働時間または休憩設定を指定してください');
-  }
+  const parsed = resourceCapacityBodySchema.safeParse(params);
+  if (!parsed.success) throw new ApiError(400, '資源設定が不正です');
+  const resourceCd = parsed.data.resourceCd;
+  const unitSplitEnabled = params.unitSplitEnabled === defaultUnitSplitEnabled(resourceCd) ? null : params.unitSplitEnabled;
   const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, resourceCd };
   await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.upsert({
     where: { csvDashboardId_siteKey_resourceCd: key },
     create: { ...key, dailyHours: params.dailyHours ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS,
-      runsThroughBreaks: params.runsThroughBreaks ?? false },
+      runsThroughBreaks: params.runsThroughBreaks ?? false, unitSplitEnabled: unitSplitEnabled ?? null },
     update: { ...(params.dailyHours !== undefined ? { dailyHours: params.dailyHours } : {}),
-      ...(params.runsThroughBreaks !== undefined ? { runsThroughBreaks: params.runsThroughBreaks } : {}) }
+      ...(params.runsThroughBreaks !== undefined ? { runsThroughBreaks: params.runsThroughBreaks } : {}),
+      ...(unitSplitEnabled !== undefined ? { unitSplitEnabled } : {}) }
   });
   await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.deleteMany({
-    where: { ...key, dailyHours: GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS, runsThroughBreaks: false }
+    where: { ...key, dailyHours: GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS, runsThroughBreaks: false,
+      OR: [{ unitSplitEnabled: null }, { unitSplitEnabled: defaultUnitSplitEnabled(resourceCd) }] }
   });
   return getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey });
 }

@@ -1,3 +1,4 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -82,8 +83,9 @@ describe('registerMobilePlacementShelf', () => {
 describe('deleteMobilePlacementShelf', () => {
   const tx = {
     mobilePlacementShelf: { findUnique: vi.fn(), delete: vi.fn() },
-    orderPlacementBranchState: { count: vi.fn() },
-    haizenCurrentPlacement: { count: vi.fn() },
+    orderPlacementBranchState: { findMany: vi.fn() },
+    haizenCurrentPlacement: { findMany: vi.fn() },
+    $queryRaw: vi.fn(),
     clientDevice: { updateMany: vi.fn() },
     mobilePlacementLayoutEntity: { updateMany: vi.fn() }
   };
@@ -91,8 +93,9 @@ describe('deleteMobilePlacementShelf', () => {
     vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
       callback(tx as unknown as Prisma.TransactionClient));
     tx.mobilePlacementShelf.findUnique.mockResolvedValue({ id: 'shelf-id' });
-    tx.orderPlacementBranchState.count.mockResolvedValue(0);
-    tx.haizenCurrentPlacement.count.mockResolvedValue(0);
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([]);
+    tx.haizenCurrentPlacement.findMany.mockResolvedValue([]);
+    tx.$queryRaw.mockResolvedValue([]);
   });
   const expectNoWrites = () => {
     expect(tx.clientDevice.updateMany).not.toHaveBeenCalled();
@@ -115,15 +118,24 @@ describe('deleteMobilePlacementShelf', () => {
   });
 
   it.each([[2, 0], [0, 3], [2, 3]])('rejects %i branches and %i placements without writes', async (branches, placements) => {
-    tx.orderPlacementBranchState.count.mockResolvedValue(branches);
-    tx.haizenCurrentPlacement.count.mockResolvedValue(placements);
+    tx.orderPlacementBranchState.findMany.mockResolvedValue(Array.from({ length: branches }, () => ({ manufacturingOrderBarcodeRaw: 'active', scheduleSnapshot: null })));
+    tx.haizenCurrentPlacement.findMany.mockResolvedValue(Array.from({ length: placements }, () => ({ manufacturingOrderBarcodeRaw: 'active', scheduleSnapshot: null })));
     await expect(deleteMobilePlacementShelf('A-3')).rejects.toMatchObject({
       statusCode: 409, code: 'SHELF_DELETE_HAS_ITEMS',
       message: `品物が ${branches + placements}件 置いてあるので消せません。先に「棚を動かす」で移してください`
     });
-    expect(tx.orderPlacementBranchState.count).toHaveBeenCalledWith({ where: { shelfCodeRaw: 'A-3' } });
-    expect(tx.haizenCurrentPlacement.count).toHaveBeenCalledWith({ where: { shelfCodeRaw: 'A-3' } });
+    expect(tx.orderPlacementBranchState.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shelfCodeRaw: 'A-3' } }));
+    expect(tx.haizenCurrentPlacement.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shelfCodeRaw: 'A-3' } }));
     expectNoWrites();
+  });
+
+  it('allows deletion with completed leftovers in both sources', async () => {
+    const leftover = { manufacturingOrderBarcodeRaw: 'done', scheduleSnapshot: null };
+    tx.orderPlacementBranchState.findMany.mockResolvedValue([leftover]);
+    tx.haizenCurrentPlacement.findMany.mockResolvedValue([leftover]);
+    tx.$queryRaw.mockResolvedValue([{ productNo: 'done' }]);
+    await expect(deleteMobilePlacementShelf('A-3')).resolves.toEqual({ shelfCodeRaw: 'A-3' });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
   });
 
   it.each(['A-3', '西-北-01'])('clears only the selected shelf references and deletes %s in one transaction', async (code) => {

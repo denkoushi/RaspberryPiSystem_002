@@ -11,14 +11,38 @@ update-frequency: high
 # トラブルシューティングナレッジベース - CI/CD関連
 
 **カテゴリ**: CI/CD関連  
-**件数**: 19件
+**件数**: 22件
 **索引**: [index.md](./index.md)
 
 ---
 
+### Web CI shards / ESLint external cycle traversal (2026-11-04)
+
+- `web` は 3 shard の coverage + blob を出力し、Web build は shard 1 だけで実行する。blob artifact の保持は 1 日。
+- `web-coverage` は 3 blob が揃うことを確認し、`apps/web` で Vitest の既定 `vite.config.ts` を読み、coverage を統合して既存閾値（statements 61 / branches 58 / functions 55 / lines 63）を適用する。`COVERAGE_ENFORCE_THRESHOLDS=false` は shard 専用で、ローカルの既定は閾値有効。
+- `ci-required` は同じ `WEB_SELECTED` で `web` と `web-coverage` の両方を検証し、未選択なら両方の skip を要求する。
+- Web / API ESLint の `import/no-cycle` は `ignoreExternal: true` で外部 package の探索を省く。workspace package の bare import 経由の循環も対象外になるため、`packages/` から `apps/` への逆依存を作らない。今回の検索では逆参照なし。Web / API 内の一時 2-file cycle（拡張子なし import）は新旧設定とも 2 件検出し、fixture は削除済み。API の `.js` 付き specifier の循環は新旧設定とも検出されない（既存の制約）。
+- 検証: CI 構造・集約・関連 release の 58 tests と YAML parse が成功。ローカルで 3 shard（各 226 files、約 60s）と `--merge-reports` による統合（678 files / 5,949 tests、閾値有効）が成功。
+- lint 時間（単独実行）: Web 87s → 61s、API 72s → 49s。
+
+### API Vitest worker DB / storage isolation (2026-11-04)
+
+- `api` の各 shard は `API_TEST_DB_PER_WORKER=1` と CLI の `--fileParallelism=true --maxWorkers=4` を併用する。既定のローカル実行は直列のまま。
+- `apps/api/src/test/setup-env.ts` が import 前に DB 名だけへ `_w<poolId>` を付与する。URL の認証情報、host、port、query は維持する。保存先・設定ファイルと固定 fixture パスも同じ opt-in で分離する。
+- インストール済み Vitest 4.1.11 は既定で `forks` / `isolate: true`。`Pool.setMaxWorkers` が ID を `1..maxWorkers` で作成し、`getWorkerId` / `freeWorkerId` で再利用する。増加し続ける `VITEST_WORKER_ID` は使用しない。
+- migrate deploy 直後、API / test 接続が始まる前に `bash scripts/ci/prepare-api-test-databases.sh <container> 4` を実行する。`postgres` DB から残存 migration 接続を終了し、`borrow_return_w1..w4` を drop / template copy する。専用の使い捨てテストコンテナだけに使う。
+- scratch 分離対象: `FILE_STORAGE_ROOT`、`PHOTO_STORAGE_DIR`、`PDF_STORAGE_DIR`、`CSV_DASHBOARD_STORAGE_DIR`、`SIGNAGE_RENDER_DIR`、`PDF_PAGES_DIR`、`ALERTS_DIR`、`BACKUP_STORAGE_DIR`、`BACKUP_CONFIG_PATH`。
+- テストによる上書き対象: Gmail procedure import / draft import の固定 `/tmp`、deploy-status の `test-config`、imports-schedule の `.test-config`。これらも worker suffix を付ける。
+- その他の書込みは `mkdtemp`、固有の timestamp / random 名、worker 分離された storage 配下、または mock。Hermes guide の repo 内 fixture も `mkdtemp`。canvas preview の明示出力は単一ファイルのみが使用し、CI は未設定。HTTP listen は `0` による動的ポート。固定 `/tmp` の PDF パス等は DB metadata / mock 引数で、実際の共有書込みではない。
+- advisory lock は PostgreSQL の DB ごとの名前空間。scheduler の session lock も同様。`vector` / `pg_trgm` は DB ごとの extension で template に含まれる。LISTEN / NOTIFY、role 変更、cluster 設定変更は検出されなかった。
+- `TEST_DATABASE_URL` を別途要求する既存の opt-in suite は CI で未設定のまま。due-scope の既存 exact URL guard も変更しない。worker 分離は通常の `DATABASE_URL` が対象であり、別途指定した共有 `TEST_DATABASE_URL` の並列利用を保証しない。
+- ローカル手順は `setup-env.ts` 冒頭を参照。base DB の接続 URL を渡す。別の同時 Vitest 実行と同じ DB / scratch prefix を共有しない。
+- 検証: 専用 Postgres（port 55432）で migrate、4 worker DB を作成し、full suite を `--maxWorkers=4` で実行して成功（2 回実行。945 passed / 19 skipped、約 271–322s）。`tsc --noEmit -p tsconfig.json` の TS6059 5件は既存。
+
+<a id="kb-451-route-integration-shared-fixture-postgres-test-local"></a>
 <a id="kb-396-route-integration-shared-fixture-postgres-test-local"></a>
 
-### [KB-396] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
+### [KB-451] route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失
 
 **発生日・反映**: 2026-07-05（main `d669dc53`、CI `28723350855` success、deploy `20260705-102444-13837` success）
 
@@ -45,9 +69,10 @@ update-frequency: high
 
 ---
 
+<a id="kb-450-import-replaceexisting-full-suite-flake"></a>
 <a id="kb-395-import-replaceexisting-full-suite-flake"></a>
 
-### [KB-395] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
+### [KB-450] API import `replaceExisting=true` 統合テストが full suite でだけ flake する
 
 **発生日・反映**: 2026-07-05（main `d5c26eb1`、CI `28720917749` success）
 
@@ -85,6 +110,8 @@ update-frequency: high
 
 ### [KB-358] `api-db-and-infra` の Wait for PostgreSQL が flake する（`borrow_return` 等）
 
+> **旧ジョブ名**（現行: `api-db-and-infra` は [ci.yml](../../.github/workflows/ci.yml) にない。`Wait for PostgreSQL` は `api` / `db-infra` / `e2e-smoke` / `e2e-tests` の各ジョブにある）
+
 **発生日・反映**: 2026-04-27（PR [#203](https://github.com/denkoushi/RaspberryPiSystem_002/pull/203) 向け CI・run 例 `24990946449`）
 
 **事象**:
@@ -108,6 +135,8 @@ update-frequency: high
 
 **発生日・反映**: 2026-04-27（Mac から `update-all-clients.sh` 実行時）
 
+> **現行**: `scripts/update-all-clients.sh` は `python3 scripts/deploy/standard-ansible-release.py` を exec するラッパーになった。`python3` が解決できない場合はデプロイ自体が起動せず即失敗する（以下は 2026-04 時点の旧シェル実装の記録）。
+
 **事象**:
 - 標準出力に **`./scripts/update-all-clients.sh: line 904: …/pyenv/shims/python3: No such file or directory`** のような行が出る
 - **リモートの Ansible デプロイ自体は exit 0** で完走し得る（**ローカル側**のパイプ処理で `python3` を解決できない）
@@ -121,12 +150,14 @@ update-frequency: high
 - デプロイ結果の正本は Pi5 の **`logs/deploy/ansible-update-*.exit`** / **`PLAY RECAP`** で確認する
 
 **関連**:
-- [deployment.md §2026-04-27](../archive/deployments/legacy-operator-guide-through-2026-07.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
+- [deployment.md §2026-04-27](../archive/deployments/2026-04.md#補足2026-04-27-pr-203-マージ後の-pi5-正規追従mainruntime_stop_policy--dgx-ドキュメント同梱)
 - `scripts/update-all-clients.sh`（`python3` パイプ箇所）
 
 ---
 
 ### [KB-353] GitHub Actions のジョブ分割と composite action による CI 高速化（2026-04-18）
+
+> **旧ジョブ名**（現行: `lint-build-unit` / `api-db-and-infra` / `security-docker` / `docker-build` は [ci.yml](../../.github/workflows/ci.yml) にない。主なジョブは `workspace-quality` / `api` / `api-coverage` / `web` / `db-infra` / `docker-security` / `e2e-smoke` / `e2e-tests`。pnpm audit は `scripts/ci/run-pnpm-bulk-audit.mjs`）
 
 **発生日・反映**: 2026-04-18（ブランチ `feat/ci-speed-quality-improvement`・コミット `5f4ac44d` 前後）
 
@@ -476,7 +507,8 @@ update-frequency: high
 
 ---
 
-### [KB-026] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
+<a id="kb-026-jinja2テンプレートでのbash構文エスケープとset--euo-pipefail環境での早期終了問題"></a>
+### [KB-439] Jinja2テンプレートでのbash構文エスケープと`set -euo pipefail`環境での早期終了問題
 
 **EXEC_PLAN.md参照**: Phase 10 (リアルタイム監視強化)
 
@@ -828,3 +860,27 @@ update-frequency: high
 - `pip` の競合警告が出てもビルドが通る場合は、**実際に入った Pillow バージョン**（`pip show pillow`）と Trivy 結果をセットで見る
 
 **関連**: [deployment.md](../guides/deployment.md)、[EXEC_PLAN.md](../../EXEC_PLAN.md) Progress（キオスク計測機器持出レイアウト・2026-04-14）
+
+---
+
+### [KB-436] kiosk-sop の firefox E2E が取説の「次へ」の後で止まり 120 秒で失敗する
+
+**発生日**: 2026-11-02
+
+**事象**:
+- `kiosk-sop` ジョブの `e2e/inspection-drawing-sop-popup.spec.ts`「全取説カードの引出線はカード端と丸数字外周を結ぶ」（firefox）が、ときどき `Test timeout of 120000ms exceeded.` で失敗する。やり直すと通る
+- トレースでは「次の手順」クリック直後の `expect(sheet).toBeVisible()`（5 秒上限）が返らず、80 秒以上 OPEN のまま。失敗時の画面写真ではアプリは次のシートを正しく表示している
+- 原因: `KioskSopDialog` が同じ `<iframe sandbox>` の `srcDoc`（約 1.4MB）を差し替えてシートを切り替えていた。この再ナビゲーションを Firefox の自動操作が見失い、frame locator が戻らなくなる。1 テストで 9 回差し替えるため、負荷が高い CI（chromium と並列）で起きやすい
+- 再現: `linux/amd64` の kiosk-sop イメージで `--project=firefox --grep "全取説カード" --repeat-each=4` を実行すると 12 回中 3 回停止
+
+**有効だった対策**:
+- ✅ `iframe` に `key={sheet.id}` を付け、シートごとに新しい iframe を作る（利用者から見た動きは同じ）。同条件 24 回で停止 0、両ブラウザ全 36 件合格
+- ✅ 診断を残す: `playwright.kiosk-sop.config.ts` を `trace: 'retain-on-failure'`、`actionTimeout: 15_000` にし、`run-kiosk-sop-artifact-contract.sh` の `--output` を diagnostics フォルダへ向けて、既存のアーティファクトに画面写真・`error-context.md`・`trace.zip` が入るようにした
+
+- ✅ 2026-11-03: 本番キオスクは全台 Chromium のため、`playwright.kiosk-sop.config.ts` から firefox の project を外した
+
+**再発防止**:
+- 取説の iframe を同じ要素のまま `srcDoc` で切り替える形に戻さない
+- kiosk-sop の失敗は、アーティファクトの `playwright-test-results/**/trace.zip` で最後に OPEN のままの呼び出しを見る
+
+**関連**: [KioskSopDialog.tsx](../../apps/web/src/features/kiosk-sop/KioskSopDialog.tsx)、[playwright.kiosk-sop.config.ts](../../playwright.kiosk-sop.config.ts)

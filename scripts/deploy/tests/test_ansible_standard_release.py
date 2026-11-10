@@ -88,6 +88,297 @@ def release_main_body(source):
 
 
 class StandardReleaseAnsibleTests(unittest.TestCase):
+    def test_gateway_recreate_flag_validation_and_forwarding(self) -> None:
+        for value in ("", "true", "false", "TRUE", "1", "yes", " true"):
+            with self.subTest(value=value), mock.patch.dict(os.environ, {"PI5_GATEWAY_RECREATE": value}, clear=True):
+                if value in {"", "true", "false"}:
+                    self.assertEqual(STANDARD_RELEASE["gateway_recreate_environment"](), {"PI5_GATEWAY_RECREATE": value})
+                else:
+                    with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "PI5_GATEWAY_RECREATE"):
+                        STANDARD_RELEASE["gateway_recreate_environment"]()
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(STANDARD_RELEASE["gateway_recreate_environment"](), {"PI5_GATEWAY_RECREATE": ""})
+        args = SimpleNamespace(detach=False, limit="raspberrypi5", branch="test", full_fleet=False,
+                               torque_cutover=False, first_install=False, skip_kiosk_notice=False,
+                               hermes_search_trial_maintenance=None)
+        for value in ("", "false", "true"):
+            command = STANDARD_RELEASE["systemd_argv"](
+                args, "a" * 40, "test-run", "infrastructure/ansible/inventory.yml", ("pi5",), "pi",
+                hermes_environment={"PI5_GATEWAY_RECREATE": value})
+            self.assertIn("--setenv=PI5_GATEWAY_RECREATE=" + value, command)
+        with self.assertRaisesRegex(STANDARD_RELEASE["UsageError"], "PI5_GATEWAY_RECREATE"):
+            STANDARD_RELEASE["systemd_argv"](
+                args, "a" * 40, "test-run", "infrastructure/ansible/inventory.yml", ("pi5",), "pi",
+                hermes_environment={"PI5_GATEWAY_RECREATE": "yes"})
+
+    def test_pi5_image_sha_is_separate_from_checkout_identity(self):
+        role = ANSIBLE / "roles/release_pi5"
+        defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+        self.assertEqual(defaults["release_pi5_image_sha"], "{{ release_sha }}")
+        prepare = (role / "tasks/prepare.yml").read_text()
+        self.assertIn("release_sha is match", prepare)
+        for component in ("api", "web"):
+            self.assertIn(f"release_pi5_image_sha in release_pi5_{component}_image", prepare)
+        retention = (role / "tasks/retention-state.yml").read_text()
+        self.assertNotIn("== release_sha", retention)
+        self.assertEqual(retention.count('releaseSha: "{{ release_pi5_image_sha }}"'), 2)
+        self.assertIn("release_pi5_image_sha in release_pi5_answer_cache_image", (role / "tasks/business-hermes-answer-cache.yml").read_text())
+
+    def test_gateway_recreate_main_forwards_and_records_request(self) -> None:
+        main = STANDARD_RELEASE["main"]
+        for value in ("", "false", "true"):
+            for preview in (False, True):
+                with self.subTest(value=value, preview=preview):
+                    launcher = mock.Mock(return_value=["mock-systemd-run"])
+                    replacements = {
+                        "inventory_path": mock.Mock(return_value=(Path("inventory.yml"), "inventory.yml")),
+                        "resolve_sha": mock.Mock(return_value="a" * 40),
+                        "resolve_release_artifact_sha": mock.Mock(return_value=("a" * 40, None)),
+                        "inventory_document": mock.Mock(return_value={}),
+                        "selected_profiles": mock.Mock(return_value=(("pi5", ("raspberrypi5",)),)),
+                        "server_release_root": mock.Mock(return_value=Path("/opt/release")),
+                        "hermes_trial_maintenance_configuration": mock.Mock(return_value={}),
+                        "hermes_trial_configuration": mock.Mock(return_value=(None, {})),
+                        "answer_cache_configuration": mock.Mock(return_value=(None, {})),
+                        "release_set_artifacts": mock.Mock(return_value=SimpleNamespace(agent_services=())),
+                        "plan": mock.Mock(return_value={}),
+                        "unpublished_plan_images": mock.Mock(return_value=[]),
+                        "server_connection": mock.Mock(return_value=("server", "pi", 22)),
+                        "systemd_argv": launcher,
+                        "run": mock.Mock(return_value=SimpleNamespace(returncode=0, stdout="", stderr="")),
+                    }
+                    with mock.patch.dict(os.environ, {"PI5_GATEWAY_RECREATE": value}, clear=True), \
+                         mock.patch.dict(main.__globals__, replacements), mock.patch("builtins.print") as output:
+                        argv = ["test", "inventory.yml", "--limit", "raspberrypi5"]
+                        if preview:
+                            argv.append("--print-plan")
+                        self.assertEqual(main(argv), 0)
+                    document = json.loads(output.call_args_list[0].args[0])
+                    self.assertEqual(document["pi5GatewayRecreate"], {"requested": value == "true"})
+                    if not preview:
+                        self.assertEqual(launcher.call_args.kwargs["hermes_environment"]["PI5_GATEWAY_RECREATE"], value)
+
+    def test_gateway_recreate_is_opt_in_after_commit_and_cleanup(self) -> None:
+        root = ANSIBLE / "roles/release_pi5/tasks"
+        main = release_main_body((root / "main.yml").read_text())
+        lifecycle = main[0]
+        self.assertEqual(lifecycle["block"][-1]["ansible.builtin.import_tasks"], "commit.yml")
+        self.assertEqual(lifecycle["always"][-1]["ansible.builtin.import_tasks"], "cleanup.yml")
+        recreate = main[1]
+        self.assertEqual(recreate["ansible.builtin.import_tasks"], "gateway-recreate.yml")
+        self.assertEqual(recreate["when"], "lookup('ansible.builtin.env', 'PI5_GATEWAY_RECREATE') == 'true'")
+        for value in ("", "false", "true"):
+            expression = Environment().compile_expression(recreate["when"])
+            self.assertEqual(expression(lookup=lambda *_: value), value == "true")
+        self.assertNotIn("release_pi5_gateway_id", (root / "cleanup.yml").read_text())
+        for task in main[2:]:
+            self.assertNotIn("release_pi5_gateway_id", str(task))
+            if "ansible.builtin.import_tasks" in task:
+                self.assertNotIn("release_pi5_gateway_id", (root / task["ansible.builtin.import_tasks"]).read_text())
+
+    def test_gateway_recreate_comparison_rejects_configuration_drift(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/gateway-recreate.yml").read_text())[0]["block"]
+        task = next(task for task in tasks if task["name"].startswith("Compare the planned gateway"))
+        code = task["ansible.builtin.command"]["argv"][2]
+        service = {"image": "caddy:fixture", "user": "1000:1000",
+                   "volumes": [{"type": "bind", "source": "/logs", "target": "/var/log/caddy"},
+                               {"type": "bind", "source": "/certs", "target": "/srv/certs", "read_only": True},
+                               {"type": "bind", "source": "/config", "target": "/srv/bluegreen", "read_only": True},
+                               {"type": "tmpfs", "target": "/tmp"}],
+                   "ports": [{"published": str(port), "target": port} for port in (80, 443)],
+                   "networks": {"pi5": {}, "business-hermes": {}}}
+        planned = {"services": {"gateway": service}, "networks": {
+            name: {"name": "fixture_" + name} for name in service["networks"]}}
+        running = {"Config": {"Image": "caddy:fixture", "User": "1000:1000"},
+                   "Mounts": [{"Type": "bind", "Source": "/config", "Destination": "/srv/bluegreen", "RW": False},
+                              {"Type": "bind", "Source": "/logs", "Destination": "/var/log/caddy", "RW": True},
+                              {"Type": "bind", "Source": "/certs", "Destination": "/srv/certs", "RW": False},
+                              {"Type": "tmpfs", "Destination": "/tmp"}],
+                   "HostConfig": {"PortBindings": {f"{port}/tcp": [{"HostPort": str(port), "HostIp": ""}]
+                                                   for port in (80, 443)}, "LogConfig": {"Type": "old"}},
+                   "NetworkSettings": {"Networks": {"fixture_pi5": {}, "fixture_business-hermes": {}}}}
+        compose = ["docker", "compose", "--env-file", "/fixture-env"]
+
+        web = {"Config": {"Image": "caddy:fixture"}, "Image": "sha256:web", "State": {"Running": True}}
+
+        def check(current, committed=None, image_id="sha256:web"):
+            with mock.patch.object(sys, "argv", ["-c", json.dumps(compose), "fixture-id", "web-id"]), mock.patch.object(
+                subprocess, "check_output", side_effect=[json.dumps(planned), json.dumps([current]),
+                                                 json.dumps([committed or web]), json.dumps([{"Id": image_id}])]
+            ) as command:
+                exec(compile(code, "gateway-comparison", "exec"), {})
+            self.assertEqual(command.call_args_list, [
+                mock.call(compose + ["config", "--format", "json", "gateway"], text=True),
+                mock.call(["docker", "inspect", "fixture-id"], text=True),
+                mock.call(["docker", "inspect", "web-id"], text=True),
+                mock.call(["docker", "image", "inspect", "caddy:fixture"], text=True)])
+
+        check(running)  # Ordering, default read_only, tmpfs and logging do not cause drift.
+        legacy = json.loads(json.dumps(running))
+        legacy["Config"].update(User="", Image="old:web")
+        legacy["Mounts"][0]["RW"] = True
+        check(legacy)
+        for mutate_web, image_id, label in (
+            ({"Config": {"Image": "other:web"}}, "sha256:web", "committed web image"),
+            ({"Image": "sha256:other"}, "sha256:web", "committed web image ID"),
+            ({"State": {"Running": False}}, "sha256:web", "committed web running"),
+        ):
+            committed = dict(web, **mutate_web)
+            with self.assertRaisesRegex(SystemExit, label):
+                check(running, committed, image_id)
+        changes = (
+            ("bind mounts", lambda r: r["Mounts"][0].update(Source="/different-config")),
+            ("bind mounts", lambda r: r["Mounts"][1].update(Source="/different-logs")),
+            ("bind mounts", lambda r: r["Mounts"][0].update(Destination="/different-target")),
+            ("bind mounts", lambda r: r["Mounts"][2].update(RW=True)),
+            ("bind mounts", lambda r: r["Mounts"][2].update(Source="/other-certs")),
+            ("bind mounts", lambda r: r["Mounts"][1].update(RW=False)),
+            ("published ports", lambda r: r["HostConfig"]["PortBindings"]["80/tcp"][0].update(HostPort="8080")),
+            ("published ports", lambda r: r["HostConfig"]["PortBindings"]["443/tcp"][0].update(HostIp="127.0.0.1")),
+            ("user", lambda r: r["Config"].update(User="0:0")),
+            ("networks", lambda r: r["NetworkSettings"]["Networks"].pop("fixture_business-hermes")),
+        )
+        for label, mutate in changes:
+            with self.subTest(difference=label):
+                current = json.loads(json.dumps(running))
+                mutate(current)
+                with self.assertRaises(SystemExit) as failure:
+                    check(current)
+                self.assertIn("Gateway was NOT recreated", str(failure.exception))
+                self.assertIn(label + ": planned=", str(failure.exception))
+        current = json.loads(json.dumps(running))
+        current["Config"].update(User="0:0", Image="caddy:other")
+        with self.assertRaises(SystemExit) as failure:
+            check(current)
+        self.assertIn("user: planned=", str(failure.exception))
+        self.assertNotIn("image: planned=", str(failure.exception))
+
+    def test_gateway_recreate_uses_committed_web_and_preflights_hardened_image(self) -> None:
+        tasks = yaml.safe_load((ANSIBLE / "roles/release_pi5/tasks/gateway-recreate.yml").read_text())[0]["block"]
+        inspect = next(t for t in tasks if t.get("register") == "release_pi5_gateway_web_identity")
+        self.assertEqual(inspect["ansible.builtin.command"]["argv"][-1], "{{ release_pi5_web_id }}")
+        immutable = next(t for t in tasks if t["name"] == "Require an immutable committed running web image")
+        pattern = immutable["ansible.builtin.assert"]["that"][0].split("match('")[1].split("')")[0]
+        reference = "registry/web:release@sha256:" + "a" * 64
+        self.assertRegex(reference + "|sha256:" + "b" * 64 + "|true", pattern)
+        for invalid in ("web:tag|sha256:" + "b" * 64 + "|true", reference + "|sha256:" + "b" * 64 + "|false"):
+            self.assertIsNone(re.match(pattern, invalid))
+        select = next(t for t in tasks if t["name"].startswith("Select the committed web image"))
+        self.assertIn("combine({'PI5_GATEWAY_IMAGE': release_pi5_gateway_web_identity.stdout.split('|')[0]})",
+                      select["ansible.builtin.set_fact"]["release_pi5_gateway_compose_environment"])
+        preflight = next(t for t in tasks if t["name"].startswith("Check host permissions"))
+        recreate = next(t for t in tasks if "--force-recreate" in str(t.get("ansible.builtin.command", {})))
+        self.assertLess(tasks.index(preflight), tasks.index(recreate) - 1)
+        code = preflight["ansible.builtin.command"]["argv"][2]
+        service = {"image": reference, "user": "1000:1000", "tmpfs": ["/tmp:rw", "/config:rw", "/data:rw"],
+                   "volumes": [{"type": "bind", "source": source, "target": target} for source, target in
+                               (("/fixture/config", "/srv/bluegreen"), ("/fixture/certs", "/srv/certs"),
+                                ("/fixture/logs", "/var/log/caddy"))]}
+        with mock.patch.object(sys, "argv", ["-c", json.dumps(service)]), mock.patch.object(subprocess, "check_call") as call:
+            exec(compile(code, "gateway-preflight", "exec"), {})
+        permissions, validate = [c.args[0] for c in call.call_args_list]
+        self.assertEqual(permissions[3:], ["1000", "1000", "/fixture/certs", "/fixture/logs"])
+        # Exercise the permission script without accessing real certs or changing our UID.
+        for access_results, is_file, is_dir, succeeds in (
+            ([True, True, True], True, True, True),
+            ([False], True, True, False),
+            ([True, False], True, True, False),
+            ([True, True, False], True, True, False),
+            ([], False, True, False),
+            ([True, True], True, False, False),
+        ):
+            with mock.patch.object(sys, "argv", ["-c"] + permissions[3:]), \
+                    mock.patch.object(os, "setgroups", create=True) as groups, \
+                    mock.patch.object(os, "setgid") as gid, mock.patch.object(os, "setuid") as uid, \
+                    mock.patch.object(os.path, "isfile", return_value=is_file), \
+                    mock.patch.object(os.path, "isdir", return_value=is_dir), \
+                    mock.patch.object(os, "access", side_effect=access_results) as access:
+                if succeeds:
+                    exec(permissions[2], {})
+                    self.assertEqual(access.call_args_list, [
+                        mock.call("/fixture/certs/cert.pem", os.R_OK),
+                        mock.call("/fixture/certs/key.pem", os.R_OK),
+                        mock.call("/fixture/logs", os.R_OK | os.W_OK | os.X_OK)])
+                else:
+                    with self.assertRaisesRegex(SystemExit, "Gateway was NOT recreated"):
+                        exec(permissions[2], {})
+                groups.assert_called_once_with([])
+                gid.assert_called_once_with(1000)
+                uid.assert_called_once_with(1000)
+        self.assertEqual(validate[:15], ["docker", "run", "--rm", "--pull", "never", "--network", "none",
+                                       "--user", "1000:1000", "--read-only", "--cap-drop", "ALL",
+                                       "--security-opt", "no-new-privileges:true", "--tmpfs"])
+        for tmpfs in service["tmpfs"]:
+            self.assertIn(tmpfs, validate)
+        for mount in ("type=bind,src=/fixture/config,dst=/srv/bluegreen,readonly",
+                      "type=bind,src=/fixture/certs,dst=/srv/certs,readonly"):
+            self.assertIn(mount, validate)
+        self.assertEqual(validate[-5:], [reference, "caddy", "validate", "--config", "/srv/bluegreen/Caddyfile"])
+        for failure_at in (0, 1):
+            with mock.patch.object(sys, "argv", ["-c", json.dumps(service)]), mock.patch.object(
+                subprocess, "check_call", side_effect=([None] * failure_at + [subprocess.CalledProcessError(1, "fixture")])
+            ) as call:
+                with self.assertRaises(subprocess.CalledProcessError):
+                    exec(compile(code, "gateway-preflight", "exec"), {})
+                self.assertEqual(call.call_count, failure_at + 1)
+        user = next(t for t in tasks if t.get("register") == "release_pi5_recreated_gateway_user")
+        self.assertIn(".Config.User", str(user))
+        assertions = next(t["ansible.builtin.assert"]["that"] for t in tasks
+                          if t["name"].startswith("Require the recreated gateway running"))
+        self.assertIn("release_pi5_recreated_gateway_user.stdout | trim == (release_pi5_gateway_plan.stdout | from_json).user", assertions)
+        self.assertIn(
+            "(release_pi5_recreated_gateway_networks.stdout | from_json | list | sort) == (release_pi5_gateway_plan.stdout | from_json).resolved_networks",
+            assertions)
+
+    def test_gateway_recreate_validates_then_replaces_and_checks(self) -> None:
+        root = ANSIBLE / "roles/release_pi5/tasks"
+        text = (root / "gateway-recreate.yml").read_text()
+        tasks = yaml.safe_load(text)[0]["block"]
+        self.assertEqual(tasks[1]["ansible.builtin.command"]["argv"][-4:],
+                         ["caddy", "validate", "--config", "/srv/bluegreen/Caddyfile"])
+        compare = next(task for task in tasks if task["name"].startswith("Compare the planned gateway"))
+        recreate = next(task for task in tasks if "--force-recreate" in str(task.get("ansible.builtin.command", {})))
+        index = tasks.index(recreate)
+        self.assertLess(1, tasks.index(compare))
+        self.assertLess(tasks.index(compare), index)
+        self.assertFalse(compare["changed_when"])
+        self.assertEqual(compare["environment"], "{{ release_pi5_gateway_compose_environment }}")
+        self.assertFalse(tasks[0]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
+        self.assertTrue(tasks[index - 1]["ansible.builtin.set_fact"]["release_pi5_gateway_recreate_started"])
+        message = yaml.safe_load(text)[0]["rescue"][0]["ansible.builtin.fail"]["msg"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        for started, expected in ((False, "Gateway was NOT recreated."),
+                                  (True, "Gateway recreation was attempted; the gateway may have been recreated.")):
+            rendered = environment.from_string(message).render(
+                release_pi5_gateway_recreate_started=started,
+                ansible_failed_task={"name": "fixture"},
+                ansible_failed_result={"msg": "non-zero return code", "stderr": "fixture differences"})
+            self.assertIn(expected, rendered)
+            self.assertIn("fixture differences", rendered)
+        self.assertIn("'--no-deps'", recreate["ansible.builtin.command"]["argv"])
+        self.assertIn("'--pull', 'never'", recreate["ansible.builtin.command"]["argv"])
+        self.assertEqual(recreate["environment"], compare["environment"])
+        self.assertIn("['ps', '-a', '-q', 'gateway']", tasks[index + 1]["ansible.builtin.command"]["argv"])
+        self.assertIn("release_pi5_gateway_id", tasks[index + 3]["ansible.builtin.set_fact"])
+        self.assertIn(".State.Running", text)
+        self.assertNotIn(".State.Health", text)
+        self.assertIn(".HostConfig.LogConfig", text)
+        for required in ("json-file", "max-size", "10m", "max-file", "'3'", ").resolved_networks", "'_business-hermes'"):
+            self.assertIn(required, text)
+        self.assertNotRegex(text, r"network[ ,]+connect")
+        health = yaml.safe_load((root / "health-sample.yml").read_text())[0]["ansible.builtin.uri"]
+        self.assertEqual(tasks[-1]["ansible.builtin.uri"], health)
+        start = yaml.safe_load((root / "business-hermes-chat-start.yml").read_text())
+        connect = next(task for task in start if task.get("register") == "release_pi5_chat_gateway_connect")
+        expression = connect["when"].replace(" | from_json", "")
+        self.assertFalse(Environment().compile_expression(expression)(
+            release_pi5_compose_project="bluegreen",
+            release_pi5_chat_gateway_networks={"stdout": {"bluegreen_pi5": {}, "bluegreen_business-hermes": {}}}))
+        rollback = yaml.safe_load((root / "business-hermes-chat-rollback.yml").read_text())
+        disconnect = next(task for task in rollback if task["name"] == "Undo only this release gateway bridge attachment")
+        self.assertEqual(disconnect["when"], "release_pi5_chat_gateway_connected | default(false) | bool")
+
     def test_kiosk_network_configuration_runs_after_normal_switch_boundary(self) -> None:
         root = ANSIBLE / "roles/release_kiosk/tasks"
         main = release_main_body((root / "main.yml").read_text())[0]["block"]
@@ -372,6 +663,11 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("procedure_material_split_suggestion_enabled | default(false)", bindings["PROCEDURE_MATERIAL_SPLIT_SUGGESTION_ENABLED"])
         self.assertIn("inspection_drawing_transfer_jev_enabled | default(false)", bindings["INSPECTION_DRAWING_TRANSFER_JEV_ENABLED"])
         self.assertIn("inspection_drawing_reference_placement_enabled | default(false)", bindings["INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED"])
+        self.assertIn("inspection_drawing_semantic_placement_enabled | default(true)", bindings["INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED"])
+        # The business GLM/DeepSeek switch flag reaches the API the same way, off unless the inventory sets it
+        self.assertIn("api_business_deepseek_switch_enabled | default(false)", bindings["BUSINESS_DEEPSEEK_SWITCH_ENABLED"])
+        # The sessaku piece creation gate reaches the API the same way, off unless the inventory sets it
+        self.assertIn("api_sessaku_pieces_create_enabled | default(false)", bindings["SESSAKU_PIECES_CREATE_ENABLED"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
@@ -811,6 +1107,38 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
             self.assertNotIn("--ignore-certificate-errors-spki-list", unpinned)
             self.assertNotIn("--user-data-dir", unpinned)
 
+    def test_pi4_image_pull_time_is_reported_per_host(self) -> None:
+        import yaml
+        from jinja2 import Environment
+
+        prepare = yaml.safe_load(
+            (ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text(encoding="utf-8")
+        )
+        names = [task.get("name") for task in prepare]
+        pull_index = names.index("Pull enabled Pi4 images while the normal kiosk remains active")
+        self.assertEqual(names[pull_index + 1], "Report Pi4 image pull time")
+        report = prepare[pull_index + 1]
+        self.assertNotIn("when", report)
+        message = report["ansible.builtin.debug"]["msg"]
+        render = Environment().from_string(message).render
+        line = render(
+            inventory_hostname="raspi4-example",
+            release_kiosk_pull={
+                "results": [
+                    {"item": "nfc-agent", "start": "2026-11-05 10:00:00.1", "end": "2026-11-05 10:01:00.1", "delta": "0:01:00.000000", "attempts": 2, "changed": True},
+                    {"item": "barcode-agent", "start": "2026-11-05 10:01:00.2", "end": "2026-11-05 10:01:05.2", "delta": "0:00:05.000000", "changed": False},
+                ]
+            },
+        )
+        self.assertIn("pull-timing host=raspi4-example", line)
+        self.assertIn("first_start=2026-11-05 10:00:00.1", line)
+        self.assertIn("last_end=2026-11-05 10:01:05.2", line)
+        self.assertIn("nfc-agent=0:01:00.000000/attempts=2/changed=True", line)
+        self.assertIn("barcode-agent=0:00:05.000000/attempts=1/changed=False", line)
+        empty = render(inventory_hostname="raspi4-example", release_kiosk_pull={"results": [], "skipped": True})
+        self.assertIn("first_start=na", empty)
+        self.assertIn("last_end=na", empty)
+
     def test_pi4_image_pull_retries_and_cleanup_targets_the_candidate(self) -> None:
         import yaml
 
@@ -1173,7 +1501,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertLess(names.index("Apply the validated kiosk labwc configuration"), names.index("Reconfigure labwc for the kiosk user"))
         self.assertLess(names.index("Reconfigure labwc for the kiosk user"), names.index("Restart the kiosk browser to apply the exact release SHA"))
         self.assertEqual(sum(task.get("ansible.builtin.systemd", {}).get("name") == "kiosk-browser.service" for task in switch_list), 1)
-        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ ansible_user }}")
+        self.assertEqual(switch["Reconfigure labwc for the kiosk user"]["become_user"], "{{ kiosk_gui_user | default(ansible_user) }}")
         stop = rollback["Stop the candidate hotcorner before restoring files"]["ansible.builtin.systemd"]
         self.assertEqual((stop["state"], stop["enabled"]), ("stopped", False))
         restore = rollback["Restore backed-up Pi4 release files"]["ansible.builtin.copy"]
@@ -1202,7 +1530,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         # release source on stdin under the kiosk user's Wayland environment.
         reconfigure = rollback["Reconfigure the restored labwc session"]
         self.assertEqual(reconfigure["ansible.builtin.command"]["argv"], ["/usr/bin/python3", "-", "--reconfigure"])
-        self.assertEqual(reconfigure["become_user"], "{{ ansible_user }}")
+        self.assertEqual(reconfigure["become_user"], "{{ release_kiosk_previous_gui_owner.stdout | default(kiosk_gui_user | default(ansible_user), true) }}")
 
     def test_pi4_rollback_image_capture_uses_unique_compose_labels(self) -> None:
         prepare_tasks = yaml.safe_load(
@@ -1396,7 +1724,12 @@ esac
 
     def test_top_level_route_is_explicit_and_serial(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
-        self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 3)
+        self.assertEqual(PLAYBOOK.count("  serial: 1\n"), 2)
+        pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
+        self.assertEqual(
+            pi4["serial"],
+            "{{ [1] if (release_torque_cutover | default(false) | bool) else [1, 5, '25%', '100%'] }}",
+        )
         self.assertLess(PLAYBOOK.index("role: release_pi5"), PLAYBOOK.index("role: release_kiosk"))
         self.assertLess(
             PLAYBOOK.index("role: release_kiosk"),
@@ -1417,6 +1750,8 @@ esac
                 "server",
                 "kiosk",
                 "kiosk",
+                pi4["hosts"],
+                "kiosk",
                 "signage",
             ],
         )
@@ -1425,12 +1760,14 @@ esac
         self.assertEqual(plays[3]["connection"], "local")
         self.assertEqual(plays[6]["connection"], "local")
         self.assertEqual(plays[7]["connection"], "local")
-        self.assertIn("torque-cutover", plays[9]["tags"])
+        self.assertIn("torque-cutover", plays[11]["tags"])
 
     def test_torque_cutover_is_quiesce_pi5_stage_then_resume(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         self.assertEqual(
-            [play["name"] for play in plays[:10]],
+            [play["name"] for play in plays if play["name"] not in (
+                "Prepare every selected normal Pi4 before switching waves",
+                "Require every normal Pi4 candidate before switching any kiosk")][:10],
             [
                 "Stage Pi5 release images before torque ownership is quiesced",
                 "Stage every selected torque kiosk while current services remain unchanged",
@@ -1440,7 +1777,7 @@ esac
                 "Aggregate QUIESCED and restore all reachable kiosks on shared failure",
                 "Finalize QUIESCED before changing the control plane",
                 "Prepare and switch the Pi5 control plane",
-                "Update Pi4 kiosks one target at a time",
+                "Update Pi4 kiosks in canary waves",
                 "Aggregate all selected torque candidates before ownership resumes",
             ],
         )
@@ -1468,7 +1805,7 @@ esac
         self.assertIn("release_torque_all_agents_ready", quiesce)
         self.assertIn("release_torque_all_browsers_ready", quiesce)
         self.assertGreaterEqual(quiesce.count("default(false)"), 6)
-        self.assertTrue(plays[9]["ignore_unreachable"])
+        self.assertTrue(plays[11]["ignore_unreachable"])
         self.assertIn("selfOwnedToken", quiesce)
         self.assertIn("torque-bluetooth-guard.service", quiesce)
         self.assertNotIn("nfc-agent", quiesce)
@@ -1648,10 +1985,471 @@ esac
         self.assertIn("AGGREGATE=False host=kiosk-c", output)
         self.assertNotIn('"msg": "BROWSER_START_MUST_NOT_APPEAR"', output)
 
+    def test_pi4_preparation_barrier_and_canary_with_local_mock(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        prepare, aggregate, wave = plays[8:11]
+        self.assertEqual(prepare["strategy"], "free")
+        self.assertIn("release_pi4_canary_host", wave["hosts"])
+        earlier = wave["pre_tasks"][1]["vars"]["release_pi4_earlier_failures"]
+        self.assertNotIn("hostvars", earlier)
+        environment = Environment()
+        environment.filters["difference"] = lambda left, right: [item for item in left if item not in right]
+        render = environment.from_string(earlier).render
+        # Hosts failed before this play (no wave facts) still stop the wave.
+        self.assertEqual(
+            render(ansible_play_hosts_all=["canary", "a", "b"], ansible_play_hosts=["canary"], ansible_play_batch=["canary"]).strip(),
+            "['a', 'b']",
+        )
+        self.assertEqual(
+            render(ansible_play_hosts_all=["canary", "a"], ansible_play_hosts=["canary", "a"], ansible_play_batch=["canary"]).strip(),
+            "[]",
+        )
+        self.assertEqual(wave["strategy"], "linear")
+        default_canary = re.search(r"release_pi4_canary_host \| default\('([^']+)'\)", wave["hosts"]).group(1)
+        inventory = yaml.safe_load((ANSIBLE / "inventory.yml").read_text(encoding="utf-8"))
+        self.assertIn(default_canary, inventory["all"]["children"]["clients"]["children"]["kiosk"]["hosts"])
+
+        # Keep the real play boundaries, facts, rescue/always, aggregation and
+        # gates; replace only remote mutation tasks with local observations.
+        def mocked(tasks):
+            result = []
+            for original in tasks:
+                task = dict(original)
+                for key in ("block", "rescue", "always"):
+                    if key in task:
+                        task[key] = mocked(task[key])
+                if "ansible.builtin.import_tasks" in task or "ansible.builtin.import_role" in task:
+                    task.pop("ansible.builtin.import_tasks", None)
+                    task.pop("ansible.builtin.import_role", None)
+                    task["block"] = [
+                        {"mock_unreachable": {},
+                         "when": "inventory_hostname == failing and failure_kind == 'marker_unreachable'"},
+                        {"ansible.builtin.debug": {"msg": "GUARD {{ inventory_hostname }}"}},
+                    ] if "Clear the release marker after preparation" == task.get("name") else [
+                        {"ansible.builtin.debug": {"msg": "GUARD {{ inventory_hostname }}"}}]
+                role = task.pop("ansible.builtin.include_role", None)
+                if role:
+                    if role["tasks_from"] == "prepare":
+                        task["block"] = [
+                            {"mock_unreachable": {}, "when": "inventory_hostname == failing and failure_kind == 'unreachable'"},
+                            {"ansible.builtin.fail": {"msg": "mock preparation failure"},
+                             "when": "inventory_hostname == failing and failure_kind == 'failed'"},
+                            {"ansible.builtin.debug": {"msg": "PREPARED {{ inventory_hostname }}"}},
+                        ]
+                    else:
+                        self.assertEqual(role["tasks_from"], "cleanup")
+                        task["block"] = [
+                            {"ansible.builtin.debug": {"msg": "CLEAN {{ inventory_hostname }}"}},
+                            {"ansible.builtin.fail": {"msg": "mock cleanup failure"},
+                             "when": "failure_kind == 'cleanup_failed'"},
+                        ]
+                if task.get("name") == "Clear the release marker after stopped wave cleanup":
+                    task["block"].append(
+                        {"ansible.builtin.fail": {"msg": "mock marker cleanup failure"},
+                         "when": "failure_kind == 'end_failed'"})
+                result.append(task)
+            return result
+
+        simulated = [
+            {**prepare, "become": False, "tasks": mocked(prepare["tasks"])},
+            {**aggregate, "become": False, "tasks": mocked(aggregate["tasks"])},
+            {key: wave[key] for key in ("hosts", "strategy", "serial", "max_fail_percentage", "order")},
+            {"hosts": "signage", "gather_facts": False,
+             "pre_tasks": [plays[-1]["pre_tasks"][0]],
+             "tasks": [{"ansible.builtin.debug": {"msg": "PI3 SWITCH"}}]},
+        ]
+        simulated[2].update(gather_facts=False, pre_tasks=mocked(wave["pre_tasks"][:2]),
+                            tasks=[{"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                                   {"block": [{"ansible.builtin.fail": {"msg": "mock switch failure"},
+                                               "when": "inventory_hostname == failing and failure_kind in ['switch_failed', 'cleanup_failed', 'end_failed']"}],
+                                    "rescue": [{"ansible.builtin.fail": {"msg": "mock rescued switch failure"}}],
+                                    "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}]}],
+                            post_tasks=[wave["post_tasks"][-1]])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "action_plugins").mkdir()
+            (root / "action_plugins/mock_unreachable.py").write_text(
+                "from ansible.plugins.action import ActionBase\n"
+                "class ActionModule(ActionBase):\n"
+                "    def run(self, tmp=None, task_vars=None):\n"
+                "        return dict(unreachable=True, msg='mock unreachable')\n")
+            (root / "inventory.yml").write_text(yaml.safe_dump({"all": {"children": {
+                "kiosk": {"hosts": {name: {"ansible_connection": "local"} for name in
+                    ["kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-02", "kiosk-03",
+                     "kiosk-04", "kiosk-05", "kiosk-06", "kiosk-07"]}},
+                "signage": {"hosts": {"signage-01": {"ansible_connection": "local"}}},
+            }}}, sort_keys=False))
+            (root / "playbook.yml").write_text(yaml.safe_dump(simulated, sort_keys=False))
+            cases = [(False, "none", "failed", None),
+                     (False, "kiosk-02", "failed", None),
+                     (False, "kiosk-02", "unreachable", None),
+                     (False, "kiosk-02", "marker_unreachable", None),
+                     (False, "kiosk-02", "switch_failed", None),
+                     (False, "kiosk-02", "cleanup_failed", None),
+                     (False, "kiosk-02", "end_failed", None),
+                     (True, "none", "failed", None),
+                     (False, "none", "failed", "kiosk-01,kiosk-02")]
+            for torque, failing, kind, limit in cases:
+                with self.subTest(torque=torque, failing=failing, kind=kind, limit=limit):
+                    command = ["ansible-playbook", "-i", str(root / "inventory.yml"),
+                               str(root / "playbook.yml"), "-e", json.dumps({
+                                   "release_torque_cutover": torque, "failing": failing, "failure_kind": kind})]
+                    if limit:
+                        command += ["--limit", limit]
+                    run = subprocess.run(command, capture_output=True, text=True)
+                    output = run.stdout + run.stderr
+                    switches = re.findall(r'"msg": "SWITCH ([^"]+)"', output)
+                    if kind in ("switch_failed", "cleanup_failed", "end_failed"):
+                        self.assertNotEqual(run.returncode, 0, output)
+                        self.assertEqual(switches, ["raspi4-kensaku-stonebase01"] +
+                                         [f"kiosk-{index:02d}" for index in range(1, 6)], output)
+                        for host in ("kiosk-06", "kiosk-07"):
+                            self.assertIn(f'"msg": "CLEAN {host}"', output)
+                        self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable", output)
+                        self.assertNotIn('"msg": "PI3 SWITCH"', output)
+                    elif failing != "none":
+                        self.assertNotEqual(run.returncode, 0, output)
+                        self.assertEqual(switches, [], output)
+                        self.assertNotIn('"msg": "PI3 SWITCH"', output)
+                        for host in ("kiosk-01", "raspi4-kensaku-stonebase01", "kiosk-03"):
+                            self.assertIn(f'"msg": "CLEAN {host}"', output)
+                        self.assertIn("normal Pi4 preparation failed or was unreachable", output)
+                    else:
+                        self.assertEqual(run.returncode, 0, output)
+                        self.assertEqual(switches[0], "kiosk-01" if torque or limit else "raspi4-kensaku-stonebase01")
+                        prepared = re.findall(r'"msg": "PREPARED ([^"]+)"', output)
+                        self.assertEqual(len(prepared), 0 if torque else (2 if limit else 8))
+                        if prepared:
+                            self.assertLess(output.rindex('"msg": "PREPARED '), output.index('"msg": "SWITCH '))
+
+    def test_pi4_role_reuses_only_successful_normal_preparation(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_kiosk/tasks/main.yml").read_text())[0]
+        condition = main["block"][0]["when"]
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        evaluate = environment.compile_expression(condition)
+        self.assertTrue(evaluate())  # Other callers / first-install retain preparation.
+        self.assertFalse(evaluate(release_pi4_prepared_this_run=True))
+        self.assertTrue(evaluate(release_pi4_prepared_this_run=False))
+        self.assertTrue(evaluate(release_torque_cutover=True, release_pi4_prepared_this_run=True))
+        self.assertFalse(evaluate(release_torque_cutover=True, release_kiosk_prepared=True))
+        source = role_text("release_kiosk")
+        self.assertNotIn("run_once:", source)
+        self.assertNotIn("ansible_play_hosts", source)
+        self.assertNotIn("ansible_play_batch", source)
+
+    def test_skipped_wave_preparation_keeps_registers_from_the_prepare_play(self) -> None:
+        main = release_main_body((ANSIBLE / "roles/release_kiosk/tasks/main.yml").read_text())[0]
+        reuse = dict(main["block"][0])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            tasks = root / "roles/release_kiosk/tasks"
+            tasks.mkdir(parents=True)
+            (tasks / "prepare.yml").write_text(textwrap.dedent("""\
+                - name: Register a value later used by switch
+                  ansible.builtin.command: echo 1000
+                  register: release_kiosk_user_gid
+                  changed_when: false
+                """), encoding="utf-8")
+            switch = {"name": "Use the prepared register", "ansible.builtin.debug": {"msg": "GID={{ release_kiosk_user_gid.stdout }}"}}
+            (tasks / "main.yml").write_text(yaml.safe_dump([reuse, switch]), encoding="utf-8")
+            (root / "inventory.yml").write_text("kiosk:\n  hosts:\n    kiosk-a:\n      ansible_connection: local\n", encoding="utf-8")
+            playbook = root / "playbook.yml"
+            playbook.write_text(textwrap.dedent("""\
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  tasks:
+                    - ansible.builtin.include_role:
+                        name: release_kiosk
+                        tasks_from: prepare
+                    - ansible.builtin.set_fact:
+                        release_pi4_prepared_this_run: true
+                - hosts: kiosk
+                  gather_facts: false
+                  tags: [pi4]
+                  roles:
+                    - role: release_kiosk
+                """), encoding="utf-8")
+            result = subprocess.run(
+                ["ansible-playbook", "-i", str(root / "inventory.yml"), str(playbook), "--tags", "pi4"],
+                capture_output=True,
+                text=True,
+                check=False,
+                env={**os.environ, "ANSIBLE_ROLES_PATH": str(root / "roles")},
+            )
+
+        # A skipped import_tasks re-registers every inner result as skipped (no stdout).
+        output = result.stdout + result.stderr
+        self.assertEqual(result.returncode, 0, output)
+        self.assertIn('"msg": "GID=1000"', output)
+
+    def test_pi4_unrescued_first_wave_failure_cold_cleanup(self) -> None:
+        prepare_tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/prepare.yml").read_text())
+        manifest = next(task for task in prepare_tasks if task["name"] == "Persist this run's prepared Pi4 cleanup manifest")
+        switch_tasks = yaml.safe_load((ANSIBLE / "roles/release_kiosk/tasks/switch.yml").read_text())
+        marker = switch_tasks[0]
+        self.assertIn("switch-attempted", marker["ansible.builtin.copy"]["dest"])
+        pi4 = next(play for play in yaml.safe_load(PLAYBOOK) if play.get("roles") == [{"role": "release_kiosk"}])
+        cleanup = yaml.safe_load((ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml").read_text())[0]
+        # Keep all cleanup actions; replace only the OS updater guards, as in the wave mock.
+        block = next(task for task in cleanup["tasks"] if "block" in task)
+        self.assertIn("os-security-update-release-end.yml", block["always"][0]["ansible.builtin.import_tasks"])
+        for tasks in (block["block"], block["always"]):
+            for task in tasks:
+                if "ansible.builtin.import_tasks" in task:
+                    task.pop("ansible.builtin.import_tasks")
+                    task["ansible.builtin.debug"] = {"msg": "GUARD {{ inventory_hostname }}"}
+        for task in (manifest, marker):
+            task["ansible.builtin.copy"].pop("owner")
+            task["ansible.builtin.copy"].pop("group")
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            run_id = "cold-wave-001"
+            run_root = root / "runs"
+            images = root / "images"
+            images.mkdir()
+            (root / "bin").mkdir()
+            docker = root / "bin/docker"
+            docker.write_text(
+                f"#!{sys.executable}\n"
+                "import pathlib, sys\n"
+                "assert sys.argv[1:3] == ['image', 'rm'] and len(sys.argv) == 4\n"
+                f"image = pathlib.Path({str(images)!r}) / sys.argv[3].replace(':', '_')\n"
+                "image.unlink()\n"
+            )
+            docker.chmod(0o755)
+            hosts = [f"kiosk-{index:02d}" for index in range(1, 8)]
+            (root / "inventory.yml").write_text(yaml.safe_dump({"all": {"children": {
+                "kiosk": {"hosts": {host: {"ansible_connection": "local", "ansible_python_interpreter": sys.executable}
+                                     for host in hosts + ["no-data"]}}
+            }}}))
+            for host in hosts:
+                run_dir = run_root / run_id / host
+                run_dir.mkdir(parents=True)
+                (root / f"{host}.backup").write_text("backup")
+                for ref in (f"rollback:{host}", f"candidate:{host}", f"existing:{host}", f"failed:{host}"):
+                    (images / ref.replace(":", "_")).touch()
+            variables = {
+                "release_run_id": run_id,
+                "release_kiosk_run_root": str(run_root),
+                "release_kiosk_run_dir": "{{ release_kiosk_run_root }}/{{ release_run_id }}/{{ inventory_hostname }}",
+                "release_kiosk_candidate_images": {"new": "candidate:{{ inventory_hostname }}", "existing": "existing:{{ inventory_hostname }}", "failed": "failed:{{ inventory_hostname }}"},
+                "release_kiosk_pull": {"results": [{"item": "new", "rc": 0, "changed": True}, {"item": "existing", "rc": 0, "changed": False}, {"item": "failed", "rc": 1, "changed": True}]},
+                "release_kiosk_captured_services": ["old"],
+                "release_kiosk_rollback_images": {"old": "rollback:{{ inventory_hostname }}"},
+                "release_kiosk_install": {"results": [{"changed": True, "backup_file": str(root / "{{ inventory_hostname }}.backup")}, {"changed": False, "backup_file": str(root / "untouched.backup")}]},
+            }
+            (root / "untouched.backup").touch()
+            simulated = [
+                {"hosts": "kiosk:!no-data", "gather_facts": False, "become": False, "vars": variables, "tasks": [manifest]},
+                {"hosts": "kiosk", "gather_facts": False, "become": False, "vars": variables,
+                 **{key: pi4[key] for key in ("strategy", "serial", "max_fail_percentage", "order")},
+                 "tasks": [marker, {"ansible.builtin.fail": {"msg": "unrescued first wave failure"}}]},
+            ]
+            (root / "wave.yml").write_text(yaml.safe_dump(simulated))
+            failed = subprocess.run(["ansible-playbook", "-i", str(root / "inventory.yml"), str(root / "wave.yml")], capture_output=True, text=True)
+            self.assertNotEqual(failed.returncode, 0, failed.stdout + failed.stderr)
+            self.assertIn("unrescued first wave failure", failed.stdout)
+            for host in hosts:
+                self.assertTrue((run_root / run_id / host / "prepared.json").exists())
+                self.assertEqual((run_root / run_id / host / "switch-attempted").exists(), host == hosts[0])
+            cleanup.update(become=False, vars=variables, environment={"PATH": f"{root / 'bin'}:{os.environ['PATH']}"})
+            (root / "cleanup.yml").write_text(yaml.safe_dump([cleanup]))
+            cleaned = subprocess.run(["ansible-playbook", "-i", str(root / "inventory.yml"), str(root / "cleanup.yml")], capture_output=True, text=True)
+            self.assertEqual(cleaned.returncode, 0, cleaned.stdout + cleaned.stderr)
+            self.assertIn("kiosk-01: skipped-switched", cleaned.stdout)
+            self.assertIn("no-data: no-data", cleaned.stdout)
+            for host in hosts:
+                preserved = host == hosts[0]
+                self.assertEqual((run_root / run_id / host).exists(), preserved)
+                self.assertEqual((root / f"{host}.backup").exists(), preserved)
+                for kind in ("rollback", "candidate"):
+                    self.assertEqual((images / f"{kind}_{host}").exists(), preserved)
+                for kind in ("existing", "failed"):
+                    self.assertTrue((images / f"{kind}_{host}").exists())
+            self.assertTrue((root / "untouched.backup").exists())
+
+    def test_entry_pi4_failure_cleanup_preserves_result_and_scope(self) -> None:
+        build = STANDARD_RELEASE["pi4_failure_cleanup_argv"]
+        execute = STANDARD_RELEASE["execute_ansible_with_cleanup"]
+        inventory, limit, run_id = "inventory.yml", "kiosk-a:kiosk-b", "cold-wave-001"
+        for profiles, torque, returncode, cleanup_outcome in (
+            (("pi4",), False, 2, subprocess.CompletedProcess([], 0)),
+            (("pi5", "pi4"), False, 7, subprocess.CalledProcessError(3, "cleanup")),
+            (("pi4",), False, 2, subprocess.TimeoutExpired("cleanup", 2400)),
+            (("pi4",), False, 0, None),
+            (("pi5", "pi4"), True, 2, None),
+            (("pi3",), False, 2, None),
+        ):
+            with self.subTest(profiles=profiles, torque=torque, returncode=returncode, cleanup=cleanup_outcome):
+                command = STANDARD_RELEASE["ansible_argv"](inventory, limit, profiles, {"release_run_id": run_id}, torque_cutover=torque)
+                cleanup_command = build(inventory, limit, profiles, run_id, torque_cutover=torque)
+                outcomes = [subprocess.CompletedProcess(command, returncode)]
+                if cleanup_outcome is not None:
+                    outcomes.append(cleanup_outcome)
+                outcomes.append(subprocess.CompletedProcess([], 0))
+                with mock.patch("subprocess.run", side_effect=outcomes) as run, mock.patch("sys.stderr") as errors:
+                    self.assertEqual(execute(command, run_id, failure_cleanup_command=cleanup_command), returncode)
+                self.assertEqual(run.call_count, 3 if cleanup_outcome is not None else 2)
+                self.assertEqual(run.call_args_list[-1].args[0][-3:], ["remove-run", "--run-id", run_id])
+                if cleanup_outcome is not None:
+                    call = run.call_args_list[1]
+                    argv = call.args[0]
+                    self.assertEqual(argv[argv.index("-i") + 1], inventory)
+                    self.assertEqual(argv[argv.index("--limit") + 1], limit)
+                    self.assertEqual(json.loads(argv[argv.index("--extra-vars") + 1]), {"release_run_id": run_id})
+                    self.assertEqual(argv[3], str(ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml"))
+                    self.assertEqual(call.kwargs["env"], run.call_args_list[0].kwargs["env"])
+                    self.assertGreater(call.kwargs["timeout"], 0)
+                    if isinstance(cleanup_outcome, Exception):
+                        self.assertIn("WARNING", "".join(str(call) for call in errors.write.call_args_list))
+                elif returncode != 0:
+                    self.assertIsNone(cleanup_command)
+        self.assertNotIn("--limit", build(inventory, "", ("pi4",), run_id))
+
+    def test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure(self) -> None:
+        plays = yaml.safe_load(PLAYBOOK)
+        pi4 = next(play for play in plays if play.get("roles") == [{"role": "release_kiosk"}])
+        pi3 = next(play for play in plays if play.get("roles") == [{"role": "release_signage"}])
+        started, gate = pi4["pre_tasks"][:2]
+        finished = pi4["post_tasks"][-1]
+        pi3_gate = pi3["pre_tasks"][0]
+        self.assertEqual(started["name"], "Mark this kiosk as started for the Pi3 gate")
+        self.assertEqual(gate["name"], "Stop before this wave when a kiosk in an earlier wave failed")
+        self.assertEqual(finished["name"], "Mark this kiosk as finished for the Pi3 gate")
+        self.assertEqual(pi3_gate["name"], "Stop before Pi3 when a Pi4 kiosk started but did not finish")
+
+        def mocked(tasks):
+            result = []
+            for original in tasks:
+                task = dict(original)
+                for key in ("block", "rescue", "always"):
+                    if key in task:
+                        task[key] = mocked(task[key])
+                if "ansible.builtin.import_tasks" in task:
+                    task.pop("ansible.builtin.import_tasks")
+                    task["ansible.builtin.debug"] = {"msg": "GUARD {{ inventory_hostname }}"}
+                if "ansible.builtin.include_role" in task:
+                    role = task.pop("ansible.builtin.include_role")
+                    self.assertEqual(role, {"name": "release_kiosk", "tasks_from": "cleanup"})
+                    task["ansible.builtin.debug"] = {"msg": "CLEAN {{ inventory_hostname }}"}
+                result.append(task)
+            return result
+
+        def simulated(failing: str) -> list[dict[str, object]]:
+            return [
+                {
+                    "hosts": "kiosk",
+                    "gather_facts": False,
+                    "strategy": pi4["strategy"],
+                    "serial": pi4["serial"],
+                    "max_fail_percentage": pi4["max_fail_percentage"],
+                    "order": "inventory",
+                    "pre_tasks": mocked([started, gate]),
+                    "tasks": [
+                        {
+                            "block": [
+                                {"ansible.builtin.debug": {"msg": "SWITCH {{ inventory_hostname }}"}},
+                                {
+                                    "block": [
+                                        {
+                                            "ansible.builtin.fail": {"msg": "simulated health failure"},
+                                            "when": f"inventory_hostname == '{failing}'",
+                                        },
+                                        {"ansible.builtin.debug": {"msg": "HEALTHY {{ inventory_hostname }}"}},
+                                    ],
+                                    "rescue": [
+                                        {"ansible.builtin.fail": {"msg": "rolled back {{ inventory_hostname }}"}},
+                                    ],
+                                },
+                            ],
+                            "rescue": [{"ansible.builtin.fail": {"msg": "preserve the Pi4 failure"}}],
+                            "always": [{"ansible.builtin.debug": {"msg": "CLEAR {{ inventory_hostname }}"}}],
+                        }
+                    ],
+                    "post_tasks": [finished],
+                },
+                {
+                    "hosts": "signage",
+                    "gather_facts": False,
+                    "serial": pi3["serial"],
+                    "pre_tasks": [pi3_gate],
+                    "tasks": [{"ansible.builtin.debug": {"msg": "PI3 SWITCH {{ inventory_hostname }}"}}],
+                },
+            ]
+
+        hosts = "".join(
+            f"        kiosk-{index:02d}:\n          ansible_connection: local\n"
+            for index in range(1, 13)
+        )
+
+        def run(torque_cutover: bool, failing: str) -> tuple[int, str]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "inventory.yml").write_text(
+                    "all:\n  children:\n    kiosk:\n      hosts:\n"
+                    + hosts
+                    + "    signage:\n      hosts:\n        signage-01:\n          ansible_connection: local\n",
+                    encoding="utf-8",
+                )
+                (root / "playbook.yml").write_text(yaml.safe_dump(simulated(failing)), encoding="utf-8")
+                result = subprocess.run(
+                    [
+                        "ansible-playbook",
+                        "-i",
+                        str(root / "inventory.yml"),
+                        str(root / "playbook.yml"),
+                        "-e",
+                        json.dumps({"release_torque_cutover": torque_cutover}),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+            return result.returncode, result.stdout + result.stderr
+
+        returncode, output = run(False, "kiosk-03")
+        self.assertNotEqual(returncode, 0)
+        # Wave 1 is kiosk-01; wave 2 (kiosk-02..06) finishes every lifecycle, including the failed host.
+        for index in range(1, 7):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        for index in range(7, 10):
+            self.assertIn(f'"msg": "CLEAN kiosk-{index:02d}"', output)
+        for index in range(7, 13):
+            self.assertNotIn(f'"msg": "SWITCH kiosk-{index:02d}"', output)
+        self.assertIn("Not started: an earlier Pi4 wave failed or was unreachable on kiosk-03.", output)
+        self.assertNotIn("kiosk-10", output)
+        self.assertNotIn("PI3 SWITCH", output)
+
+        # A failure in the last wave (kiosk-10..12) has no next Pi4 wave to stop, so Pi3 stops instead.
+        returncode, output = run(False, "kiosk-12")
+        self.assertNotEqual(returncode, 0)
+        for index in range(1, 13):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        self.assertIn("Not started: Pi4 did not finish on kiosk-12.", output)
+        self.assertNotIn("PI3 SWITCH", output)
+
+        # Pi3 still runs after every kiosk finished.
+        returncode, output = run(False, "none")
+        self.assertEqual(returncode, 0, output)
+        self.assertIn('"msg": "PI3 SWITCH signage-01"', output)
+
+        # Torque cutover keeps one kiosk per batch, as before the waves.
+        returncode, output = run(True, "kiosk-03")
+        self.assertNotEqual(returncode, 0)
+        for index in range(1, 4):
+            self.assertIn(f'"msg": "CLEAR kiosk-{index:02d}"', output)
+        self.assertEqual(output.count("PLAY [kiosk]"), 3)
+        self.assertNotIn("kiosk-04", output)
+        self.assertNotIn("Not started", output)
+        self.assertNotIn("PI3 SWITCH", output)
+
     def test_pi4_notice_contract_and_policy_constants(self) -> None:
         role = ANSIBLE / 'roles/release_kiosk'
         main = release_main_body((role / 'tasks/main.yml').read_text())[0]
-        imports = [task.get('ansible.builtin.import_tasks') for task in main['block']]
+        imports = [task.get('ansible.builtin.import_tasks', task.get('ansible.builtin.include_tasks')) for task in main['block']]
         notice_index = imports.index('notice.yml')
         self.assertGreater(notice_index, imports.index('prepare.yml'))
         self.assertLess(notice_index, next(i for i, task in enumerate(main['block']) if 'block' in task))
@@ -1688,8 +2486,9 @@ esac
             with self.subTest(role=role):
                 self.assertEqual(len(main), 1)
                 outer = main[0]
+                prepare_key = "include_tasks" if role == "release_kiosk" else "import_tasks"
                 self.assertEqual(
-                    outer["block"][0]["ansible.builtin.import_tasks"],
+                    outer["block"][0][f"ansible.builtin.{prepare_key}"],
                     "prepare.yml",
                 )
                 if role == "release_kiosk":
@@ -3286,6 +4085,8 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
                 expected_environment = (
                     "{{ release_pi5_compose_environment | default({}) }}"
                     if path_name == "cleanup.yml"
+                    else "{{ release_pi5_gateway_compose_environment }}"
+                    if path_name == "gateway-recreate.yml"
                     else "{{ release_pi5_compose_environment }}"
                 )
                 self.assertEqual(
@@ -3306,6 +4107,44 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
         self.assertIn("'api-' + release_pi5_slot", argv)
         self.assertIn("'web-' + release_pi5_slot", argv)
         self.assertEqual(start["when"], "release_pi5_route == 'fresh'")
+
+    def test_pi5_hermes_image_guard_allows_only_approved_predecessor_transitions(self) -> None:
+        defaults = yaml.safe_load((ANSIBLE / "roles/release_pi5/defaults/main.yml").read_text())
+        approved = defaults["release_pi5_business_hermes_replaceable_images"]
+        self.assertEqual(approved, [
+            "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+        ])
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters["bool"] = bool
+        current = environment.from_string(defaults["release_pi5_business_hermes_image"]).render()
+        prepare = yaml.safe_load(self.task_text("prepare"))
+        guard = next(task for task in prepare if task["name"] ==
+                     "Refuse to replace an independent business Hermes image during API/Web rollback window")
+        decision = next(task for task in prepare if task["name"] ==
+                        "Decide whether Business Hermes requires an approved image transition")
+        allowed = environment.compile_expression(guard["ansible.builtin.assert"]["that"][0])
+        transition = environment.from_string(decision["ansible.builtin.set_fact"][
+            "release_pi5_business_hermes_image_transition_required"])
+        for container_id, image, expected_allowed, expected_transition in (
+            ("", "", True, False),
+            ("existing", current, True, False),
+            ("existing", approved[0], True, True),
+            ("existing", "nousresearch/hermes-agent:unapproved@sha256:" + "a" * 64, False, False),
+            ("existing", defaults["release_pi5_business_hermes_egress_replaceable_images"][0], False, False),
+        ):
+            with self.subTest(container_id=container_id, image=image):
+                variables = {
+                    "release_pi5_business_hermes_existing_id": container_id,
+                    "release_pi5_business_hermes_existing_image": image,
+                    "release_pi5_business_hermes_image": current,
+                    "release_pi5_business_hermes_replaceable_images": approved,
+                }
+                self.assertEqual(allowed(**variables), expected_allowed)
+                self.assertEqual(transition.render(**variables), str(expected_transition))
+        names = [task["name"] for task in prepare]
+        self.assertLess(names.index(guard["name"]), names.index(decision["name"]))
+        self.assertLess(names.index(decision["name"]), names.index(
+            "Mark the independent business Hermes startup boundary"))
 
     def test_pi5_egress_image_guard_allows_only_approved_predecessor_transitions(self) -> None:
         defaults = yaml.safe_load((ANSIBLE / "roles/release_pi5/defaults/main.yml").read_text())
@@ -3927,10 +4766,108 @@ class Pi5CanonicalStandardRouteTests(unittest.TestCase):
 class ConsultationRuntimeReleaseTests(unittest.TestCase):
     """Execute the real Ansible start/rescue tasks against a stateful Docker double."""
 
-    def test_consultation_image_guard_limits_predecessors_to_egress(self) -> None:
+    def test_guide_approved_image_replacement_and_failed_candidate_restoration(self) -> None:
+        role = ANSIBLE / "roles/release_pi5"
+        defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
+        previous = defaults["release_pi5_business_hermes_replaceable_images"][0]
+        current = Environment().from_string(defaults["release_pi5_business_hermes_image"]).render()
+        prepare = yaml.safe_load((role / "tasks/prepare.yml").read_text())
+        startup = [task for task in prepare if task["name"] in (
+            "Refuse to replace an independent business Hermes image during API/Web rollback window",
+            "Decide whether Business Hermes requires an approved image transition",
+            "Mark the independent business Hermes startup boundary",
+            "Start the independent business Hermes runtime before candidate traffic",
+        )]
+        cleanup = yaml.safe_load((role / "tasks/cleanup.yml").read_text())[1:5]
+        docker_script = r'''#!/usr/bin/env python3
+import json, os, sys
+from pathlib import Path
+p = Path(os.environ['HERMES_DOCKER_STATE'])
+s = json.loads(p.read_text())
+a = sys.argv[1:]
+s['events'].append(a)
+code = 0
+if a[0] == 'compose' and 'up' in a:
+    s['image'] = os.environ['BUSINESS_HERMES_IMAGE']
+    s['images'].append(s['image'])
+    s['running'] = True
+    if s.get('fail_start'):
+        s['fail_start'] = False
+        code = 1
+elif a[0] == 'ps':
+    print('abcdef123456')
+elif a[0] == 'inspect':
+    running = str(s['running']).lower()
+    print(s['image'] + '|' + running + '|healthy' if 'Config.Image' in a[2] else running)
+elif a[0] == 'stop':
+    s['running'] = False
+else:
+    code = 2
+p.write_text(json.dumps(s))
+sys.exit(code)
+'''
+        for running, failure in ((True, None), (True, "startup"), (True, "health"),
+                                 (False, "startup"), (False, "health")):
+            with self.subTest(running=running, failure=failure), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                executable = root / "docker"
+                executable.write_text(docker_script)
+                executable.chmod(0o755)
+                state = root / "state.json"
+                state.write_text(json.dumps({"image": previous, "running": running,
+                                             "images": [], "events": [], "fail_start": failure == "startup"}))
+                compose_environment = {"HERMES_DOCKER_STATE": str(state), "BUSINESS_HERMES_IMAGE": current}
+                candidate = startup + ([{"ansible.builtin.fail": {"msg": "Simulate candidate health failure"}}]
+                                       if failure == "health" else [])
+                playbook = root / "check.yml"
+                playbook.write_text(yaml.safe_dump([{
+                    "hosts": "localhost", "connection": "local", "gather_facts": False,
+                    "vars": {
+                        "release_pi5_route": "fresh",
+                        "release_pi5_business_hermes_enabled": True,
+                        "release_pi5_business_hermes_existing_id": "abcdef123456",
+                        "release_pi5_business_hermes_existing_image": previous,
+                        "release_pi5_business_hermes_existing_running": running,
+                        "release_pi5_business_hermes_image": current,
+                        "release_pi5_business_hermes_replaceable_images": [previous],
+                        "release_pi5_compose_argv": [str(executable), "compose"],
+                        "release_pi5_compose_environment": compose_environment,
+                        "release_pi5_rollback_compose_environment": compose_environment,
+                        "release_pi5_compose_project": "bluegreen",
+                        "release_pi5_compose_wait_seconds": 10,
+                    },
+                    "environment": {"HERMES_DOCKER_STATE": str(state)},
+                    "tasks": [{"block": candidate, "rescue": [{"block": [
+                        {"ansible.builtin.import_tasks": str(role / "tasks/rollback.yml")}
+                    ], "rescue": [{"ansible.builtin.assert": {"that": [
+                        "ansible_failed_task.name == 'Preserve the original Pi5 candidate failure after rollback'",
+                        "release_pi5_business_hermes_image_transition_rolled_back | bool",
+                        "not (release_pi5_business_hermes_image_restore_failed | default(false) | bool)",
+                    ]}}]}], "always": cleanup if failure else []}],
+                }], sort_keys=False))
+                (root / "ansible.cfg").write_text("[defaults]\nretry_files_enabled = False\n")
+                env = dict(os.environ, ANSIBLE_CONFIG=str(root / "ansible.cfg"), ANSIBLE_NOCOLOR="1",
+                           PATH=str(root) + os.pathsep + os.environ["PATH"])
+                result = subprocess.run(["ansible-playbook", "-i", "localhost,", str(playbook)],
+                                        env=env, capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stdout[-5000:] + result.stderr[-1000:])
+                actual = json.loads(state.read_text())
+                self.assertEqual(actual["images"], [current, previous] if failure else [current])
+                self.assertEqual(actual["image"], previous if failure else current)
+                self.assertEqual(actual["running"], running if failure else True)
+                up = [event for event in actual["events"] if "up" in event]
+                for event in up:
+                    self.assertEqual(event[-1], "business-hermes")
+                    self.assertIn("--force-recreate", event)
+                    self.assertIn("--no-deps", event)
+                    self.assertIn("--wait", event)
+                self.assertFalse(any("rm" in event or "--volumes" in event for event in actual["events"]))
+
+    def test_consultation_image_guard_allows_only_service_approved_predecessors(self) -> None:
         role = ANSIBLE / "roles/release_pi5"
         defaults = yaml.safe_load((role / "defaults/main.yml").read_text())
         approved = defaults["release_pi5_business_hermes_egress_replaceable_images"]
+        hermes_approved = defaults["release_pi5_business_hermes_replaceable_images"]
         prepare = yaml.safe_load((role / "tasks/business-hermes-chat-prepare.yml").read_text())
         guard = next(task for task in prepare if task["name"] ==
                      "Preserve the fixed image boundary for existing consultation containers")
@@ -3942,6 +4879,7 @@ class ConsultationRuntimeReleaseTests(unittest.TestCase):
                 ("", "", True),
                 ("existing", current, True),
                 ("existing", approved[0], service == "business-hermes-chat-egress"),
+                ("existing", hermes_approved[0], service == "business-hermes-chat"),
                 ("existing", "unapproved-image", False),
             ):
                 with self.subTest(service=service, image=image):
@@ -3950,12 +4888,16 @@ class ConsultationRuntimeReleaseTests(unittest.TestCase):
                         business_hermes_chat_image="hermes-current",
                         business_hermes_chat_egress_image="egress-current",
                         release_pi5_business_hermes_egress_replaceable_images=approved,
+                        release_pi5_business_hermes_replaceable_images=hermes_approved,
                     ), expected)
         binding = next(task for task in prepare if task["name"] ==
                        "Bind consultation Compose paths and persistent candidate environment")
         self.assertIn("'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': business_hermes_chat_egress_image", str(binding))
+        self.assertIn("'BUSINESS_HERMES_CHAT_IMAGE': business_hermes_chat_image", str(binding))
         rollback = yaml.safe_load((role / "tasks/business-hermes-chat-rollback.yml").read_text())
         names = [task["name"] for task in rollback]
+        self.assertLess(names.index("Bind the captured consultation Hermes image for rollback"),
+                        names.index("Restore existing consultation containers after profile restoration"))
         self.assertLess(names.index("Bind the captured consultation egress image for rollback"),
                         names.index("Restore existing consultation containers after profile restoration"))
 
@@ -3980,6 +4922,8 @@ elif a[0] == 'compose':
         s['services'][service] = True
         if service == 'business-hermes-chat-egress':
             s['egress_images'].append(os.environ['BUSINESS_HERMES_CHAT_EGRESS_IMAGE'])
+        if service == 'business-hermes-chat':
+            s['hermes_images'].append(os.environ['BUSINESS_HERMES_CHAT_IMAGE'])
         if service == 'business-hermes-chat' and s.get('fail_start'):
             s['fail_start'] = False
             code = 1
@@ -3990,6 +4934,9 @@ elif a[0] == 'compose':
 p.write_text(json.dumps(s))
 sys.exit(code)
 '''
+        defaults = yaml.safe_load((ANSIBLE / 'roles/release_pi5/defaults/main.yml').read_text())
+        previous_hermes = defaults['release_pi5_business_hermes_replaceable_images'][0]
+        current_hermes = Environment().from_string(defaults['release_pi5_business_hermes_image']).render()
         for existing, fail_start, trial_enabled in [(False, False, False), (False, True, False), (True, False, False), (True, False, True), (True, True, True)]:
             with self.subTest(existing=existing, fail_start=fail_start, trial_enabled=trial_enabled), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -3998,9 +4945,9 @@ sys.exit(code)
                 executable.chmod(0o755)
                 initial = {'business-hermes-chat-egress': True, 'business-hermes-chat': False} if existing else {}
                 state = root / 'state.json'
-                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'egress_images': [], 'fail_start': fail_start}))
+                state.write_text(json.dumps({'services': initial, 'network': existing, 'events': [], 'egress_images': [], 'hermes_images': [], 'fail_start': fail_start}))
                 before = [{'service': service, 'id': 'existing' if existing else '', 'running': running,
-                           'image': 'previous-egress' if service == 'business-hermes-chat-egress' else 'hermes-current'}
+                           'image': 'previous-egress' if service == 'business-hermes-chat-egress' else previous_hermes}
                           for service, running in [('business-hermes-chat-egress', existing), ('business-hermes-chat', False)]]
                 task_root = ANSIBLE / 'roles/release_pi5/tasks'
                 playbook = root / 'check.yml'
@@ -4008,7 +4955,8 @@ sys.exit(code)
                     'hosts': 'localhost', 'connection': 'local', 'gather_facts': False,
                     'vars': {'release_pi5_compose_argv': [str(executable), 'compose'],
                              'release_pi5_compose_environment': {'CHAT_DOCKER_STATE': str(state),
-                                                                 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': 'new-egress'},
+                                                                 'BUSINESS_HERMES_CHAT_EGRESS_IMAGE': 'new-egress',
+                                                                 'BUSINESS_HERMES_CHAT_IMAGE': current_hermes},
                              'release_pi5_compose_project': 'bluegreen', 'release_pi5_compose_wait_seconds': 10,
                              'release_pi5_gateway_id': 'gateway-fixture', 'release_pi5_chat_before': before,
                              'release_pi5_chat_gateway_connected': False,
@@ -4035,6 +4983,7 @@ sys.exit(code)
                 self.assertEqual(actual['services'], initial)
                 self.assertEqual(actual['network'], existing)
                 self.assertEqual(actual['egress_images'], ['new-egress', 'previous-egress'] if existing else ['new-egress'])
+                self.assertEqual(actual['hermes_images'], [current_hermes, previous_hermes] if existing else [current_hermes])
                 if not existing:
                     connect = next(event for event in actual['events'] if event[:2] == ['network', 'connect'])
                     self.assertEqual(connect[2:4], ['--alias', 'gateway'])

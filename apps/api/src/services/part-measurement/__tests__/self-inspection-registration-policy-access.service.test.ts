@@ -19,11 +19,12 @@ describe('SelfInspectionRegistrationPolicyAccessService', () => {
   it('reuses the shared password verifier for valid kiosk mutations', async () => {
     verifyDueManagementAccessPassword.mockResolvedValue({ success: true });
 
-    await service.requireAccessPassword('2520');
+    await service.requireAccessPassword('2520', { clientDeviceId: 'device-a', ip: '192.0.2.1' });
 
     expect(verifyDueManagementAccessPassword).toHaveBeenCalledWith({
       location: 'shared',
-      password: '2520'
+      password: '2520',
+      clientDeviceId: 'device-a', ip: '192.0.2.1'
     });
   });
 

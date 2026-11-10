@@ -1,0 +1,324 @@
+# 端末100台規模に向けた不足点と改善計画(効き目の大きい順)
+
+
+本書は `.agent/PLANS.md` に従う実行計画である。Progress、Surprises & Discoveries、Decision Log、Outcomes & Retrospective を作業に合わせて更新する。2026-11-01 に調査と計画を行い、2026-11-02 に M7 step 1 の Compose ログ上限をローカル実装した。本番反映は未実施。
+
+
+## Purpose / Big Picture
+
+
+工場の Raspberry Pi システムは、Pi5 1台を中心サーバーにし、Pi4 キオスク 8台、Pi3 サイネージ 1台(標準インベントリ `infrastructure/ansible/inventory.yml` の数)と、別のインベントリで管理する Zero 系の小さな端末で動いている。ユーザーは端末を Pi4・Pi3・Zero 2W 合わせて最大100台ほどに増やし、10年安定して動かしたいと考えている。台数が10倍になると、今は手作業や1台ずつで回っている部分が、時間・故障・見落としの面で耐えられなくなる。
+
+本書は、100台規模の端末群で広く使われている定番のやり方7点と今の作りを照らし合わせ、足りない所を効き目の大きい順に並べた計画である。各項目に、今の状態(根拠のファイルと行)、足りない所、推奨案、手間、効き目、危険を書く。手間は次の3段階で表す。小は PR 1本・1〜3日、中は PR 2〜4本・1〜2週、大は機材の追加か本番データの扱いを伴い3週以上。
+
+完了の姿は、各項目が「実装済み(main の SHA と本番反映の run ID 付き)」か「理由つきで見送り」のどちらかになっている状態である。
+
+効き目の大きい順の結論を先に書く。1番は中心サーバーの止まりへの備えで、予備の業務用 Pi5 を置いて PostgreSQL 18 の複製を流し、手動で切り替える(手間は大)。Pi5 が止まると100台すべてが止まり、今の復旧は前日23時の DB 写しからの作り直しだからである。2番は全台の監視で、Pi5 の外にも見張りを置き、台帳にある端末と実際に報告してくる端末を突き合わせ、閾値をそろえ、通知をフローティングチャットへ寄せる(手間は小〜中)。今は Pi5 自体が止まると誰も知らせない。3番はサーバー停止中の記録の保護で、NFC がブラウザへ渡した時点で記録を消している点、バーコードが RAM に50件しか持たない点、配膳端末(haizen)が再送しない点を直す(手間は中)。業務の記録が気づかれずに消えるのはここだけである。4番は更新の並列化、5番は端末の使い捨て化、6番は SD カードの保護、7番は非力な機種の役割の明文化である。
+
+
+## Progress
+
+
+- [x] (2026-11-01) 7点の現状をリポジトリから調査した(Codex `gpt-6.1-sol` / `medium` の読み取り専用調査と、主な根拠行の手元での確認)。本番機には接続していない。
+- [x] (2026-11-01) 本書を書いた。
+- [x] M0: 本番の読み取り専用の実測(DR タイマーの有効状態と最新スナップショットの日時、直近の標準更新の1台あたり所要時間、Pi3 と Zero 2W の常時メモリ)。親セッション経由でユーザーの許可を得てから行う。
+  - [x] (2026-11-05) ユーザーの許可を得て、Pi5 と Pi3 を読み取りだけで計測した。結果は Surprises & Discoveries に記録した。
+  - (2026-11-05) Zero 2W の常時メモリは本番の計測対象外とした。zero2w-tanaban01 は試作段階で本番運用の許可が出ていない端末のため。zero2w-* の試作端末は、今後の計画・計測・台帳の突き合わせ・見張りでも本番として扱わない。
+- [ ] M1: 中心サーバーの復旧訓練で今の復旧時間を測り、許容停止時間をユーザーと決める。
+  - [x] (2026-11-02) Step 1: 復旧訓練の手順と記録表 [Pi5 復旧訓練 Runbook](../runbooks/pi5-restore-drill.md) を作成した。切り替えはしない訓練。
+  - [ ] Step 2: 予備の Pi5 か SSD で訓練を1回行い、時間を記録する(実機。ユーザーの作業)。
+  - [ ] Step 3: 測った時間を見て、許容停止時間と許容損失をユーザーが決める。
+- [ ] M2: 予備の業務用 Pi5 と PostgreSQL 18 の複製、手動切り替えの手順書。
+- [x] (2026-11-05) M3: Pi5 の外の見張り、台帳との突き合わせ、閾値の統一、通知先の整理(1つ目の Runbook は [こちら](../runbooks/mac-pi5-watchdog.md))。
+  - [x] (2026-11-03) 1つ目: Pi5 の外の見張りを運用者の Mac に置いた(#2469、[Runbook](../runbooks/mac-pi5-watchdog.md))。
+  - [x] (2026-11-05) 2つ目: 台帳との突き合わせ。管理画面に登録された端末のうち、報告用の識別(`statusClientId`)を持つものを「いるはずの端末」とし、登録から10分たっても一度も報告しない端末も途絶として通知する。いるはずの端末は7日の無連絡で見張りから外さない。`scripts/register-clients.sh` が登録時にインベントリの `status_agent_client_id` を送る。`zero2w-*` は今までどおり対象外。廃止した端末は管理画面の端末一覧から削除する。
+  - [x] (2026-11-03) 3つ目: 管理画面の端末一覧とダッシュボードのオフライン判定を通知と同じ10分にそろえた(#2507)。キオスクの呼び出し先一覧(`apps/api/src/routes/kiosk/call-targets.ts`)は12時間のまま残す。10分にすると短い途絶で呼び出し先から消えるため、別に判断する。
+  - [x] (2026-11-05) 4つ目: 通知先の整理。ユーザーの決定(2026-10-13、通知はフローティングチャットへ集め、Slack を新しい通知先にしない。今ある Slack への送信は消さない)に従った。報告が途絶えた端末は、すでにシステムのお知らせ(`apps/api/src/services/kiosk-inquiry/system-notice-evaluator.ts`)で15分の無連絡からフローティングチャットに出て、報告が戻れば閉じる。2つ目で足した「登録から一度も報告しない端末」は Slack にしか届いていなかったので、同じお知らせに「端末から一度も連絡がありません。」として出し、初めて報告すると閉じるようにした。Slack への途絶・復帰の送信(10分)はそのまま残す。対象は同じ判定(`zero2w-*` を除く)。
+- [ ] M4: NFC・バーコード・配膳端末の記録を、サーバーが受け取るまで端末に残す。
+  - [x] (2026-11-02) 1段目: キオスク在庫画面の数量タグでの払出・補充を、サーバーが応答しないときはブラウザの送信待ち(IndexedDB)に残し、2xx で消す。詳細は [在庫画面の計画](kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02)。main c5a33775、Pi5 反映 run 20261102-150818-a2a90d。2026-11-02 にユーザーが kensaku-stonebase01 の在庫画面で NFC の払出がいつもどおり反映されることを確かめた。
+  - [x] (2026-11-04) 貸出(工具・測定機器・吊具)。2026-11-02 にユーザーが案1に決めた: サーバーが止まっている間はキオスクに残し、戻ったら自動で登録する。画面に「未送信 N 件」を出す。読み取った時刻を一緒に送り、サーバーはその時刻の順に処理する。重複は eventKey で落とす。#2513、main 8d0411f7、Pi5 反映 run 20261103-225005-cd4ad5。ユーザーがキオスクで貸出・返却がいつもどおり登録されることを確かめた。
+  - [x] (2026-11-04) バーコード(パレット可視化への追加・置換)。サーバーが受け付けるまでブラウザに残し、API は eventKey で重複を落とす。詳細は [パレットの計画](2026-11-04-kiosk-pallet-offline-queue.md)。#2517、main 7016618c、Pi5 反映 run 20261104-011303-8a890f。ユーザーがキオスクのパレット画面で追加と上書がいつもどおり反映されることを確かめた。
+- [x] (2026-11-05) M5: 更新の取得を並列化し、切り替えを段階の波にする。Pi5 のイメージの中継キャッシュは測った結果、置かない。
+  - [x] (2026-11-02) Step 1: Pi4 の play を `serial: [1, 5, "25%", "100%"]` の波にし、前の波で失敗した端末があれば次の波の先頭で止め、最後の波で失敗したときは Pi3 の play の先頭で止める確認を入れた。トルク切り替えは `serial: 1` のまま。手元の12台の模擬でだけ確かめた。
+  - [x] (2026-11-04) Step 2: 通常経路の全選択 Pi4 を `strategy: free` で先に prepare し、全台成功後だけ切り替えの波へ進む。波は linear として `max_fail_percentage: 0` を有効に保ち、指定試験端末 `raspi4-kensaku-stonebase01` を対象内なら先頭にする。失敗・到達不能時の回収と停止、Pi3 ゲート、トルク経路の維持をローカル模擬で検証した。実fleetでの保守画面待ち時間・全体時間は未測定。
+  - [x] (2026-11-05) Step 2 の残り: 切り替えの波で失敗すると playbook がその場で止まり、後続波の端末に準備データが残っていた。prepare で `prepared.json`(このrunで新規取得した候補、戻し用タグ、backup)を、切り替え開始時に `switch-attempted` を run ディレクトリへ書く。Ansible が非ゼロで終わったら入口スクリプトが同じ inventory・limit・run ID で `release-pi4-failure-cleanup.yml` を1回流し、`switch-attempted` のない端末だけ回収する。切り替えを始めた端末は復旧用に残す。トルク経路は対象外。ローカル模擬で検証、実fleetでは未実施。
+  - [x] (2026-11-05) Step 3: Pi5 にイメージの中継キャッシュ（pull-through cache）を置くかを、取得時間を測って決める。試験環境の複数台で波と停止を確認し、全体の時間を記録する。初回の計測では基準に当たらず、中継キャッシュは置かない(下の記録)。
+    - (2026-11-05) ユーザー決定により、中継キャッシュは先に置かず取得時間を測る。Pi4 の準備で端末ごとの `pull-timing` 行をデプロイのログに出すようにした。測り方と導入を提案する基準は Decision Log。複数台の試験は試験用 Pi4 を増やさず、次の通常デプロイの第1波で代え、波の順と停止の動きをここに記録する。
+    - (2026-11-05) 初回の計測。run 20261105-042237-4f1b4d(main ce78c9bf、全台、failed=0)。Pi4 8台すべてが新しいイメージを取得し(changed=True)、`attempts` はすべて1。端末ごとの取得時間(`last_end − first_start`)は raspberrypi4 11秒、raspi4-robodrill01 12秒、raspi4-fjv60-80 12秒、raspi4-sessaku-01 16秒、raspi4-kensaku-stonebase01 51秒(nfc・barcode・torque の3つ)、raspi4-kensaku-02 14秒、raspi4-assembly-01 12秒(nfc・torque)、raspi4-assembly-02 9秒。最も遅い端末は51秒で、基準の10分を大きく下回り、再試行もないので中継キャッシュは提案しない。Pi4 の準備の play 全体は 13:29:12〜13:42:36 の約13分で、取得より他の準備の手順が長い。
+    - (2026-11-05) 第1波の記録。同じ run で、波の順は 第1波 raspi4-kensaku-stonebase01(13:42:39〜13:48:40)、第2波 raspberrypi4・raspi4-robodrill01・raspi4-fjv60-80・raspi4-sessaku-01・raspi4-assembly-01(〜13:55:14)、第3波 raspi4-kensaku-02・raspi4-assembly-02(〜14:15:49)。失敗がなかったので各波の先頭の「前の波の失敗で止まる」確認はすべて飛ばされ、そのまま進んだ。第3波だけ、元のファイル所有者の記録と配置の手順が各約3分かかり(他の波は約40秒)、波全体で約20分になった。止まる動きは、直前の run 20261105-013816-5a9d90 で、準備の段階で stonebase01 に届かず、どの Pi4 も切り替えずに止まったこと(後片付けは全台 ok、波の確認の式の不具合は #2552 で修正)で確かめた。
+- [ ] M6: 端末の共通イメージと初回起動の登録、予備機への差し替え手順。
+  - [x] (2026-11-02) Step 1: 現行の手順による [Pi4 予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) を作成した。旧識別の隔離と未整備の手順を明記した。
+  - [ ] Step 2: rpi-image-gen で共通 OS イメージを作る。(2026-11-05) 設定と layer を `infrastructure/image/rpi-image-gen/` に置いた(Pi4・trixie、共通ユーザー `kiosk`、Desktop 自動ログイン、Docker、Tailscale)。status-agent とアプリは入れず、`--first-install` で Ansible が入れる。arm64 ホストでの実ビルドと実機起動は未実施。
+  - [ ] Step 3: 初回起動の登録を整える。(2026-11-05) 初回起動スクリプト `pi4-first-boot.py` を作った。boot パーティションの `pi4-bootstrap.json` からホスト名と一回限りの Tailscale 鍵を読み、ホスト名を設定して `tag:kiosk` で参加し、参加を確かめてから鍵のファイルを消す。偽コマンドの単体テスト11件は合格。端末の登録(`register-clients.sh`)と初回導入は今までどおり手動で、手順は [予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) に書いた。実機での確認は未実施。
+  - [ ] Step 4: 実機で差し替え訓練を行い、30分以内か測る。機材の持ち主の作業(2026-11-05 ユーザー決定)。共通イメージの書き込み、起動確認(鍵のファイルが消える、Tailscale に参加する、Pi5 から SSH できる、自動ログインで画面が出る)、`--first-install` での導入、差し替えの所要時間の記録を行う。手順は [予備機差し替え Runbook](../runbooks/pi4-spare-swap.md) の「共通イメージから新しい端末を用意する(試行前)」。
+- [ ] M7: 端末側の Docker ログの上限と、SD カード保護の試行。
+  - [x] (2026-11-02) Step 1: Pi5 phase3・migration、kiosk template、client Compose に json-file 10m × 3 の上限を実装。状態を持つ `business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache` は追加再作成を避けるため除外。
+  - [ ] 本番適用と `docker inspect` 確認（gateway は標準更新で再作成しないため別途適用が必要）、高耐久 SD・USB SSD・読み取り専用ルートの試行。
+    - (2026-11-05) Pi5 の `docker inspect`(読み取りだけ)。api・web・2つの egress は json-file 10m × 3 が効いている。gateway(2026-07-12 作成)と `docker-db-1`(2026-10-30 作成)は作り直されておらず、上限なしのまま。ログは gateway 11MB、db 876KB で、Pi5 のディスクは 11% 使用のため急ぎではない。状態を持つ Hermes の3つは設計どおり上限なし。gateway と db への適用は、作り直しで止まる時間が出るので、別に日を決めて行う。Pi4 の確認は今回できていない。
+    - (2026-11-05) gateway は #2565(merge `4595b1d1`)の後、任意再作成 run `20261105-110808-40099e` で作り直した(Result=success、failed=0、rescued=0、Pi5 だけ、フラグはその実行だけ)。`docker inspect` で、image が `raspisys-web:4595b1d1…@sha256:8d183e3c…`、User `1000:1000`、読み取り専用ルート、json-file 10m × 3、ネットワーク `docker_default` と `bluegreen_business-hermes`、Running を確認した。`/api/system/health` は 200。`docker-db-1` は作り直さず、上限なし・未適用のまま。
+- [x] M8: 2026-11-02 機種ごとの役割と資源の表を `docs/runbooks/device-model-roles.md` に残した。
+
+
+## Surprises & Discoveries
+
+- Observation: M7 gateway の任意再作成 run `20261105-085755-ac74f4` は、稼働中の user が空(root)、bluegreen bind が rw である差を検知し、再作成前に停止した。2026-07-12 の旧 web イメージ `raspi-system-web:0daaf114…` は setcap 付き Caddy で、commit `de6030e9` の強化設定との組み合わせに起動リスクがある。任意再作成だけ commit 後の稼働 web の digest 参照を使い、旧 user/bluegreen rw の差だけ許容するようローカル修正した。ホスト権限と新イメージでの隔離 validate を再作成前に、User を再作成後に確認する。#2565 で修正し、run `20261105-110808-40099e` で本番の再作成に成功した(作り直し後のネットワーク確認が外部名 `docker_default` を見ていなかった問題も同 PR で修正)。`docker-db-1` は作り直さず、上限なし・未適用のまま。
+  Evidence: `release_pi5/tasks/gateway-recreate.yml` と標準 release の静的テスト。通常 run の gateway discovery は変更しない。
+
+- Observation: M0 の実測(2026-11-05、読み取りだけ)。Pi5 の Google Drive の写しのタイマー `raspi-google-drive-dr.timer` は enabled で、直近は 2026-11-04 23:00〜23:05 JST に Result=success(snapshot `bbf99283…`、約2.7GB)。次回は 2026-11-05 23:00。Pi5 のメモリは total 8062MB・available 3476MB だが、swap 2047MB をほぼ使い切っている(2046MB)。Pi3(raspberrypi3)は total 416MB・available 128MB、swap 415MB 中 207MB を使用。Zero W(zero1w-camera01)は Tailscale で offline のため測れなかった。Zero 2W(zero2w-tanaban01)は試作端末で本番運用の許可が出ていないため、本番の計測対象に含めない。
+  Evidence: Pi5 で `systemctl list-timers`・`systemctl show`・`journalctl -u raspi-google-drive-dr.service`・`free -m`、Pi5 経由で Pi3 の `free -m`、Pi5 の `tailscale status`。
+
+- Observation: M5 Step 2 の実fleetの所要時間(run 20261104-055000-ab89cd、merge 309f9183、全11台 failed=0)。run 全体は約1時間8分。Pi4 7台の並列準備は約16分(14:56:33〜15:12:56)、canary の raspi4-kensaku-stonebase01 の切り替えは約6分(15:12:57〜15:19:03)、残り6台の切り替えは2つの波で約31分(15:19:03〜15:49:54)。1台あたりの切り替えは約5分。最初の run 20261104-045519-54c9a7 は、role の `import_tasks: prepare.yml` が準備済み端末でスキップされ register を上書きしたため切り替えで止まり、#2531 で `include_tasks` に直した。
+  Evidence: 進捗追跡セッションが読んだ run のログと recap。
+
+- Observation: run 20261105-013816-5a9d90(#2546、b0949237)で、10:45 に raspi4-kensaku-stonebase01 への SSH が時間切れになり Pi4 の準備が通らなかった。どの Pi4 も切り替えず、入口スクリプトの回収は全台 ok。ただし準備の段階で届かなくなった stonebase01 だけが切り替えの波の play に入り、最初の波の確認(`release_pi4_earlier_failures`)が、前の play で落ちた端末の `release_pi4_wave_hosts` を読もうとして `HostVarsVars has no attribute` で落ちた。前の play で落ちた端末はこの値を持たない。今の波の端末を名前(`ansible_play_batch`)で除く式に直し、前の play で落ちた端末も「前の波の失敗」として止まるようにした。ローカルの ansible-playbook で、直す前の失敗と直した後の止まり方を再現した。
+  Evidence: 進捗追跡セッションの報告、`deploy-release-standard.yml` の波の確認、ローカルの3台模擬。
+
+- Observation: M5 Step 2 の検証はローカル模擬のみ。到達不能端末のデータは回収できず、prepare 全台成功後に切り替えの波で停止した場合は未着手の後続端末に事前取得した候補・run データが残り得る。実fleetでの時間と復旧時の残存データ確認は未実施。
+  Evidence: `release_kiosk` の always cleanup は、その role に進んだ端末だけで実行される。今回追加した全台 cleanup は共有 prepare の失敗時を対象とする。
+
+- Observation: M5 Step 2 のローカル検証は、標準 release テスト97件（57.6秒）、最終変更後のprepare境界・role再利用テスト2件（5.2秒）、証明書契約6件、deploy safety契約、syntax-check、`git diff --check` が成功した。
+  Evidence: 秘密情報を参照しない一時 `ANSIBLE_CONFIG=/tmp/m5-ansible.cfg`（roles_path はこのworktree、local_tmp/remote_tmp は /tmp）を用いた。実行コマンドは `ANSIBLE_CONFIG=/tmp/m5-ansible.cfg ANSIBLE_LOCAL_TEMP=/tmp/m5-ansible-local ANSIBLE_REMOTE_TEMP=/tmp/m5-ansible-remote python3 scripts/deploy/tests/test_ansible_standard_release.py`、`ANSIBLE_CONFIG=/tmp/m5-ansible.cfg python3 scripts/deploy/tests/test_distrusted_intermediates.py`、`bash scripts/deploy/tests/test-deploy-safety-contracts.sh`、`ANSIBLE_CONFIG=/tmp/m5-ansible.cfg ansible-playbook -i 'localhost,' infrastructure/ansible/playbooks/deploy-release-standard.yml --syntax-check`。syntax-check は最小inventoryのため server/kiosk/signage 不在の警告のみ。実機接続は行っていない。
+
+
+
+- Observation: Pi4 の更新役割の失敗は rescue で戻したあと失敗として終わるため、`serial` を段階の指定にすると `max_fail_percentage: 0` が次の波を止めない。`serial: 1` では「波の全台が失敗」の扱いで止まっていたので、今まで表に出ていなかった。
+  Evidence: block/rescue/always の中で1台を失敗させた12台の模擬で、`serial: [1, 5, "25%", "100%"]` と `max_fail_percentage: 0` のまま kiosk-07〜12 も更新された(Ansible core 2.19.4)。`scripts/deploy/tests/test_ansible_standard_release.py` の `test_pi4_waves_stop_before_the_next_wave_after_a_rescued_failure` に残した。
+
+- Observation: NFC の端末側の記録は、中心サーバーが受け取ったときではなく、同じ端末のブラウザへ渡せた時点で消える。サーバーが止まっていてもブラウザが開いていれば消え、業務の処理が失敗しても再送されない。
+  Evidence: `clients/nfc-agent/nfc_agent/main.py:123-129` で `queue_store.enqueue` の直後に `event_manager.broadcast` が成功すると `queue_store.delete([event_id])` を呼ぶ。
+
+- Observation: 監視の「途絶」の基準が2つあり、食い違っている。通知は10分無連絡で出るが、管理画面の端末一覧は12時間無連絡で初めてオフライン扱いにする。
+  Evidence: `apps/api/src/services/clients/client-heartbeat-alert-policy.ts:11` の `DEFAULT_STALE_MINUTES = 10` と、`apps/api/src/services/clients/client-telemetry.service.ts:27` の `staleThresholdMs = 1000 * 60 * 60 * 12`。
+  Resolution: (2026-11-02) 管理画面の端末一覧とダッシュボードも、通知と同じ `loadHeartbeatAlertConfig().staleAfterMs`(既定10分、`CLIENT_HEARTBEAT_STALE_MINUTES`)で判定するようにし、画面の「12時間」の表記を外した。
+
+- Observation: 途絶の見張りは「一度でも報告してきた端末」だけを見ている。台帳に載っていても一度も報告しない端末と、7日以上黙った端末は見張りから外れる。
+  Evidence: `apps/api/src/services/clients/client-heartbeat-monitor.ts:74-78` が `clientStatus` の `lastSeen` が `forgetAfterMs` 以内の行から対象を作る。
+
+- Observation: 端末群は今2つに分かれている。Pi5・Pi4・Pi3 は標準インベントリと標準更新、Zero 系は `infrastructure/ansible/inventory-zero-edge.yml` と専用 playbook(`infrastructure/ansible/playbooks/zero-edge.yml`)で別に更新する。100台にするとき、台帳・更新・監視のどれも2系統を前提に考える必要がある。
+
+- Observation: 更新時間の実測は古いものしかない。カナリア1台を含む更新が Docker build の省略で 6分34秒から 3分11秒に縮んだ記録(`docs/knowledge-base/infrastructure/ansible-deployment-performance.md:114,131`)と、2026-07-20 の端末適用 241,853 ms の記録(`docs/plans/deploy-speed-phase-b-execplan.md:70`)がある。8月以降の今の標準経路での1台あたりの時間は未測定である。
+
+
+## Decision Log
+
+- Decision: M5 Step 2 A: 通常更新は全選択 Pi4 の prepare を独立した free play で先行させ、成功した端末の非永続 fact で role 内の再取得を省略する。初回導入は既存 role の経路を維持する。
+  Rationale: 取得中は表示を維持し、切り替えの波へ取得時間を持ち込まない。OS 更新除外マーカーとホスト事前設定は prepare にも適用する。トルクの PREPARED 経路は変更しない。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 B: free play 完了後、選択全台の成功 fact を linear play で集約する。失敗・到達不能があれば、到達可能な端末で既存 cleanup を実行して全台の切り替えを停止する。
+  Rationale: rescue だけでは他端末への切り替えを防げない。到達不能端末も集約に戻し、成功 fact がない場合は失敗とする。prepare 開始時点から Pi3 ゲートの未完了対象に含める。到達不能が続く端末の回収は実行できないため、復旧後の確認が必要。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 C: 通常波もトルク波も linear とし、prepare play だけ free を使う。serial と max_fail_percentage は維持し、forks は5のままにする。
+  Rationale: free は max_fail_percentage をサポートしないため、通常波は linear で未救済の失敗による停止を維持する。role の rescue/always を経た失敗は、失敗端末が記録した batch を見て同じ波を除外する明示ゲートで検出し、後続波の準備データを回収してから停止する。回収・マーカー解除が失敗しても always で停止し、切り替えない。
+  Date/Author: 2026-11-04 / Codex
+
+- Decision: M5 Step 2 D: 通常波の hosts パターンで `release_pi4_canary_host`（既定 `raspi4-kensaku-stonebase01`）を kiosk 群より先に指定する。
+  Rationale: Ansible はパターンの順序を保って重複を除き、その後 --limit を適用する。対象にあれば第1波に入り、不在なら残りの inventory 順になる。inventory 自体を並べ替えず、トルク経路は従来の kiosk パターンを維持する。
+  Date/Author: 2026-11-04 / Codex
+
+
+
+- Decision: M5 step 1 は Pi4 の play の先頭に「前の波で失敗した端末があれば止める」確認を置き、`max_fail_percentage: 0` は残す。
+  Rationale: 失敗した波の他の端末は、それぞれの更新と後片付け(画面のお知らせの解除、run のデータの削除)を最後まで終える。次の波の端末は何も変えずに失敗扱いで止まる。最後の波で失敗したときは次の波が無いため、各端末に「始めた」「終えた」の印を付け、Pi3 の play の先頭で「始めたが終えていない」端末があれば止める。これで Pi3 の play へも進まないので、今の「1台失敗したら止まる」と同じ広がり方になる。止まった端末は記録上は失敗になるが、メッセージは「Not started」で未着手と分かる。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: M4 では、端末の部品(nfc-agent、barcode-agent)が持つ生の読み取りを後で流し直すのではなく、画面が組み立てた業務の要求(送り先の API、本文、冪等キー)をブラウザの送信待ちに残して再送する。
+  Rationale: 同じタグでも、どの業務になるかは開いている画面と途中の状態(工具→社員の順など)で決まる。生の読み取りを復旧後に流すと、そのとき開いている別の画面で別の業務として登録されるおそれがある。ブラウザ側(`apps/web/src/hooks/useNfcStream.ts`)も、画面を開く前の読み取りは捨てる作りで、これは正しい。業務の要求ならサーバーの冪等キーで重複を捨てられる。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: 配膳端末の古い部品(`clients/haizen-agent`)には送信待ちを足さない。
+  Rationale: `docs/plans/zero-edge-placement-execplan.md` で新しい `clients/zero-edge-agent` に置き換えて削除することが決まっており、新しい部品は SQLite の送信待ちと再送を既に持つ。古い部品は本番で使われていない。
+  Date/Author: 2026-11-02 / Claude
+
+- Decision: M7 step 1 は各 Compose の共通 logging anchor で json-file の `max-size: "10m"`・`max-file: "3"` を指定し、`daemon.json` は追加しない。
+  Rationale: Docker daemon の再起動による全コンテナ停止を避け、journald は現状維持する。通常は同一設定で稼働を続ける状態付き Hermes 3サービスは、ログ設定だけで再作成されないよう除外する。API/Web は非稼働スロット、kiosk は有効なエージェントだけに適用され、永続ボリュームは維持される。
+  Date/Author: 2026-11-02 / Codex
+
+- Decision: 更新の骨格は今の「Pi5 から Ansible で順に送る方式」のまま残し、A/B 区画(Mender、RAUC、SWUpdate)や端末が自分で取りに行く方式(ansible-pull など)には移らない。
+  Rationale: `docs/decisions/ADR-20260810-risk-based-deploy-impact-contract.md:83` で RAUC などの外部の配布基盤は既に採らないと決めている。今の方式は事前確認(`--print-plan`)、対象の明示(`--limit` か `--full-fleet`)、1台ずつの健全確認と戻しを持ち、段階的に広げる運用と合っている。100台で困るのは方式ではなく所要時間なので、並列化とキャッシュで解く。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: 中心サーバーの切り替えは手動にし、自動の切り替え(Patroni、repmgr、keepalived など)は入れない。
+  Rationale: 2台構成で自動切り替えをすると、ネットワークが一時的に切れただけで両方が自分を主だと思う「二重の主」が起き、記録が分かれて戻せなくなる。工場の規模では、通知を受けた人が手順書どおりに予備機を主に上げる方が安全で、数分〜十数分で戻せる。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: 予備のサーバーは業務専用の新しい Pi5 にする。個人用の Pi5 は使わない。
+  Rationale: 個人用 Pi5 と業務の Pi は情報を行き来させない決まりがある。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: 新しく作る端末群の通知はフローティングチャットへ寄せ、Slack を新しく使う案は出さない。
+  Rationale: 通知はフローティングチャットへ集める方針がある。今の途絶通知は `apps/api/src/services/clients/client-heartbeat-monitor.ts:57` で Slack 経路(`AlertChannel.SLACK`)に積んでいるので、移すかどうかは M3 で決める。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: Pi4 の読み取り専用ルート(overlayfs)は今は勧めない。端末側の Docker ログの上限を先に入れ、overlayfs は Pi3 と Zero から試す。
+  Rationale: Pi4 は 2026-10-22 に無線が止まった件の原因を追えなかった反省から、journald をわざと SD に残す設定にした(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml:1-8`)。読み取り専用にするとこの記録が電源断で消え、決めた方針と衝突する。`docs/plans/stability-improvement-plan.md:335` でも、監視とログ削減を先に安定させてから検討するとしている。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: 端末がサーバー停止中に記録をためる仕組みは、スマホの圏外対応で承認済みの4段の計画(端末側を主に参照し、裏でサーバーから更新する考え方)の上に積む。新しい仕組みを別に作らない。
+  Rationale: 既に配膳と照合と購買で端末側を主にする計画があり、同じ考え方をキオスクの NFC とバーコードにも広げるのが一貫している。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: Pi5 の外の見張り役は運用者の Mac に置く（2026-11-01、ユーザー決定）。
+  Rationale: Pi5 停止時は Mac 自身へ通知し、復旧時は停止時間を Mac とフローティングChatへ残す。運用と限界は [Runbook](../runbooks/mac-pi5-watchdog.md) を正本とする。
+  Date/Author: 2026-11-01 / Claude
+
+- Decision: 「いるはずの端末」の台帳は、インベントリから Pi5 の環境変数を作らず、管理画面の端末登録(`ClientDevice.statusClientId`)を使う。
+  Rationale: Zero 系の端末は別のインベントリ(Pi5 の git 管理外)にあり、Pi5 の更新時には見えない。環境変数にすると台帳の更新に Pi5 の再デプロイが要る。端末登録は既に報告してきた端末の識別を持っているので、欠けているのは「登録したが一度も報告しない端末」だけで、登録時に識別を入れれば足りる。
+  Date/Author: 2026-11-05 / Claude
+
+- Decision: M5 Step 3 の中継キャッシュは今は置かない。先に、通常デプロイでの Pi4 ごとのイメージ取得時間を測る(2026-11-05 ユーザーが案2に決定)。
+  Rationale: Step 2 で取得は既に並列になっており、全11台の run で Pi4 7台の準備は約16分だった。中継キャッシュは Pi5 に新しい口を増やし、全 Pi4 のイメージ参照を書き換える必要がある(Docker の `registry-mirrors` は docker.io にしか効かない)。効くと分かってから入れる。
+  測り方: Pi4 の準備で、端末ごとに `pull-timing host=… first_start=… last_end=… <サービス>=<所要>/attempts=<回数>/changed=<新規取得か>` の1行をデプロイのログに出す。次の通常デプロイから、各 Pi4 の `last_end − first_start` と、`attempts` が2以上のサービスの数を記録する。`changed=False`(新しいイメージがなかった)の端末は数えない。
+  判断の基準: 次のどれかに当たったときだけ、中継キャッシュの導入を提案する。(1) 新しいイメージを取った Pi4 のうち、最も遅い端末の取得時間が10分を超える。(2) 取得の再試行(`attempts` が2以上)が、続けて2回の通常デプロイで起きる。(3) Pi4 を10台以上足したときに測り直し、最も遅い端末の取得時間が台数を足す前の2倍を超える。どれにも当たらなければ置かない。
+  Date/Author: 2026-11-05 / Claude
+
+- Decision: M5 Step 3 の複数台の試験は、試験用 Pi4 を増やさず、本番の次の通常デプロイの第1波(指定試験端末1台)で代える(2026-11-05 ユーザー決定)。
+  Rationale: 第1波は1台だけで、失敗すれば後の波へ進まず止まる。試験用の機材を増やさずに、本番と同じ経路で波の順と停止の動きを確かめられる。その run の波の順、各波の端末、止まったかどうかと止まった場所を計画書に記録する。
+  Date/Author: 2026-11-05 / Claude
+
+- Decision: M6 Step 2〜3(イメージの設定、初回起動のスクリプト、手順書)は Claude が作る。イメージの書き込み、実機での起動確認、予備機への差し替え訓練(30分以内か測る)は、機材の持ち主の作業とする(2026-11-05 ユーザー決定)。
+  Rationale: 設定とスクリプトはリポジトリ内で作れて単体テストで確かめられるが、起動確認と訓練には実機が要る。
+  Date/Author: 2026-11-05 / Claude
+
+
+## Outcomes & Retrospective
+
+
+2026-11-02 時点で M7 step 1 の Compose ログ上限をローカル実装済み（状態付き Hermes 3サービスは除外）。本番反映・実測と、SD/SSD・読み取り専用ルートの試行は未実施である。
+
+
+## Context and Orientation
+
+
+中心サーバーは Pi5 1台で、API(Node)、web、PostgreSQL 18 を Docker で動かす。DB は `infrastructure/docker/docker-compose.server.yml:4-37` の1つのコンテナ(`pgvector/pgvector:pg18`、データは `db-data-pg18` ボリューム)だけである。API と web は同じ Pi5 の中に青と緑の2つの枠があり(`infrastructure/docker/docker-compose.phase3.yml`)、更新時は Caddy の向き先を切り替える(`infrastructure/ansible/roles/release_pi5/tasks/switch.yml`)。これは同じ機械の中の入れ替えで、機械そのものの故障には効かない。
+
+Pi4 キオスクは Chromium で画面を出し、NFC・バーコード・トルクレンチの部品(`clients/nfc-agent`、`clients/barcode-agent`、`clients/torque-agent`)を Docker で動かす。端末の状態は `clients/status-agent` が約1分ごとに中心へ送る。Pi3 はサイネージ(静止画を `feh` で出す軽い作り)、Zero 系は Python のサービスとして直接動く(`clients/zero-edge-agent`、`clients/watch-cam-agent`)。
+
+標準の更新は `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml` で、中身は `scripts/deploy/standard-ansible-release.py` が `infrastructure/ansible/playbooks/deploy-release-standard.yml` を流す。順番は Pi5、Pi4、Pi3 で、どの段も `serial: 1`(1台ずつ)である(同 playbook の 198、219、267 行)。
+
+本書で使う言葉を定義する。「複製(ストリーミング複製)」は、主の DB の変更を予備の DB へ途切れなく流し続け、予備がいつでも主の代わりになれるようにする PostgreSQL の標準機能である。「WAL」は PostgreSQL が変更を書き留める記録で、これを保管しておくと、夜の写しの後の任意の時点まで戻せる。「許容停止時間(RTO)」は止まってから戻るまでに許せる時間、「許容損失(RPO)」は失ってよい直近の記録の長さである。「共通イメージ」は全端末に同じものを書き込む OS の元型で、端末ごとの違いは設定だけにする。「overlayfs」は SD カードを読み取り専用にし、書き込みを RAM に逃がして再起動で捨てる仕組みである。
+
+
+## Plan of Work
+
+
+以下、効き目の大きい順に7項目を書く。各項目は独立した PR の束として実装でき、上の項目が済まなくても下の項目に着手できる。ただし M0 の実測は全項目の前提なので最初に行う。
+
+
+### 1番 中心サーバーの冗長化(照合項目1)
+
+
+今の状態。中心サーバーは1台で、DB の複製、WAL の保管、予備機、切り替えはどれもリポジトリに無い。災害用の写しは Google Drive への暗号化した restic で、毎日23時に `pg_dump -Fc` の DB 写し、ソースと Git の束、設定と業務ファイルを送る(`infrastructure/ansible/templates/raspi-google-drive-dr.timer.j2:6`、`scripts/google_drive_dr/snapshot_builder.py:237-252`、`docs/runbooks/google-drive-disaster-recovery.md:31-40`)。保持は日7・週5・月12である。日々の写しは `scripts/server/backup.sh` が別に取り、30日残す。復旧は、新しい OS を用意し、標準の設定を入れ、DB を戻し、確かめてから手で向き先を変える手順で(同 runbook 100-108 行)、手元の Docker で試した記録はあるが、本番の作り直しにかかる時間は測っていない。許容停止時間も許容損失も決めた記録が無い。
+
+足りない所。Pi5 が壊れると100台すべてが止まり、戻るまでの時間は OS の用意から DB の復元までの手作業の長さで決まる。失う記録は最大で前日23時以降の1日分になる。100台になると、止まったときの影響が10倍になるのに、この2つの数字は今と変わらない。
+
+推奨案。まず M1 として、予備の SD か SSD で本番の写しから作り直す訓練を1回行い、今の復旧時間を測る。その数字を見て、ユーザーに許容停止時間と許容損失を決めてもらう。次に M2 として、業務専用の Pi5 をもう1台置き、PostgreSQL 18 のストリーミング複製で常に追いかけさせる。API と web のイメージも予備機に先に取っておく。主が止まったら、通知を受けた人が手順書どおりに予備を主へ上げ(`pg_ctl promote` 相当)、Caddy の向き先と端末が見るサーバーの名前(Tailscale の名前か固定アドレス)を切り替える。あわせて WAL を予備機と外部へ保管し、夜の写しの後の時点にも戻せるようにする。今の Google Drive の写しは、建物ごと失ったときの最後の守りとしてそのまま残す。複製は誤って消したデータもそのまま予備へ流すので、写しの代わりにはならない。
+
+手間は大(予備の Pi5 と SSD の購入、複製の設定、切り替え手順書と訓練で3週ほど)。効き目は最大で、復旧時間を数時間から十数分へ、失う記録を最大1日分から数秒〜数分へ縮める見込みである(訓練で確かめる)。危険は、切り替えを誤ると主が2つになって記録が分かれることと、複製の遅れに気づかないことである。前者は自動切り替えを入れず手順を1つにすることで、後者は M3 の監視で複製の遅れを見張ることで抑える。DB の版上げのときは予備機も同じ版にそろえる手順が増える。
+
+
+### 2番 全台の監視(照合項目6)
+
+
+今の状態。各端末の `status-agent` が約1分ごとに CPU、メモリ、ディスク、温度、SD の健康状態を送る(`clients/status-agent/status-agent.py:257-297`、`clients/status-agent/status-agent.timer:5-8`)。中心の API が60秒ごとに途絶を調べ、10分無連絡で1件の警告を出し、戻れば知らせる(`apps/api/src/services/clients/client-heartbeat-monitor.ts`)。警告は Slack 経路に積まれる(同 57 行)。更新中の端末は警告から外す。管理画面 `/admin/clients` に端末一覧と状態の色があり(`apps/web/src/pages/admin/ClientsPage.tsx`)、ここでは12時間無連絡でオフラインになる。API には Prometheus 形式の数値の出口(`apps/api/src/routes/system/metrics.ts`)があるが、集める側は動いていない。
+
+足りない所。見張りが Pi5 の中にあるので、Pi5 か DB が止まると誰も知らせない。一番大事な故障を検知できない。また、一度も報告していない端末と7日以上黙った端末は見張りから外れ、端末の名前が `raspi`、`raspberrypi`、`zero-edge-` で始まらないものも外れる(`apps/api/src/services/clients/client-heartbeat-alert-policy.ts:11-20`)。通知(10分)と画面(12時間)の基準がずれている。100台になると、画面を目で見て気づくことは期待できない。
+
+推奨案。M3 として次の4つを行う。1つ目に、Pi5 の外に見張り役を1つ置き、Pi5 の API の健康確認と DB の応答、(M2 の後は)複製の遅れを数分ごとに確かめ、停止中は運用者の Mac 自身へ知らせ、復旧時は停止時間を Mac とフローティングチャットへ残す。置き場所は Decision Log の決定に従う。2つ目に、「いるはずの端末」の台帳(標準インベントリと Zero 系のインベントリの両方、または管理画面の端末登録)と実際に報告してくる端末を突き合わせ、一度も来ない端末も途絶として扱う。3つ目に、画面のオフラインの基準を通知と同じ10分にそろえる。4つ目に、端末の途絶の通知先をフローティングチャットへ寄せるかどうかをユーザーに確かめる。Prometheus や Grafana などの監視基盤は、この4つで足りない場合にだけ検討する。
+
+手間は小〜中(見張り役の小さなスクリプトと Mac の LaunchAgent、API の突き合わせと画面の基準変更で PR 2〜3本、1週ほど)。効き目は大きい。1番の予備機を置いても、止まったことに気づけなければ使えないので、1番と組で効く。危険は、誤報が多いと通知が無視されるようになることである。夜間の計画停止や更新中は今の仕組みと同じく外し、最初の2週は通知の件数を数えて基準を調整する。
+
+
+### 3番 サーバー停止中の端末の動き(照合項目5)
+
+
+今の状態。部品ごとに差が大きい。トルクレンチは、測定値を SQLite に保存してから送り、サーバーが受け取った(2xx)ときだけ消し、失敗は最大30秒間隔で再送する(`clients/torque-agent/torque_agent/ingestor.py:119-128`、`clients/torque-agent/torque_agent/api_client.py:81-88`)。Zero 系の部品も SQLite に保存して古い順に再送し、7日を過ぎたものは捨てる(`clients/zero-edge-agent/zero_edge_agent/queue.py:8`)。一方 NFC は、上の Surprises に書いたとおり、ブラウザへ渡せた時点で端末の記録を消す。バーコードは RAM に最後の50件を持つだけで、再起動で消える(`clients/barcode-agent/barcode_agent/main.py:151`)。配膳端末(`clients/haizen-agent`)は読み取りごとに1回だけ API を呼び、失敗はログに残すだけで再送しない。監視カメラ(`clients/watch-cam-agent`)は失敗した画像を捨てる設計で、これは監視画像なので許容できる。キオスクの画面は、スマホの配膳・削除・棚マスタに IndexedDB の送信待ちがあるが(`apps/web/src/features/mobile-placement/haizen/offline/haizenOfflineQueueStore.ts`)、Pi4 キオスクの一般の画面は、サーバーの状態が分かるまで開かない作りである(`apps/web/src/layouts/KioskLayout.tsx:236-245`)。
+
+足りない所。サーバーが止まっている間の NFC の読み取りと、配膳端末の読み取りは、業務として記録されずに消え、作業者も気づかない。100台になると、サーバーの再起動や更新の数十秒の間に誰かが読み取っている確率が上がる。
+
+推奨案。M4 として、記録を消すのは「中心サーバーが受け取ったと返したとき」に統一する。NFC は、ブラウザが API の処理を終えてから「受け取った」を部品へ返す形にするか、トルクと同じく部品が直接 API へ送る形にする(どちらにするかは M4 の着手時に、画面の操作の流れを見て決める)。バーコードは NFC と同じ SQLite の送信待ちを持たせる。配膳端末は Zero 系の部品と同じ送信待ちと再送を持たせるか、新しい Zero 系の部品へ置き換えて古い部品を廃止する(置き換えの計画は `docs/plans/zero-edge-placement-execplan.md` に既にある)。どの送信待ちにも件数の上限を設け、たまっている件数を `status-agent` で中心へ送り、画面にも「未送信 N 件」を出す。キオスクの一般の画面を圏外でも使えるようにすることは、スマホの4段の計画の後に、画面ごとに必要性を見て決める。
+
+手間は中(部品3つの変更とテスト、画面側の確認で PR 3本ほど、2週ほど)。効き目は大きい。業務の記録が黙って消える箇所はここだけである。危険は二重登録である。再送すると同じ読み取りが2回届くことがあるので、トルクと同じく1件ごとの識別子(`eventKey`)をサーバー側で重複として捨てる作りを必ず一緒に入れる。貸出のように時刻の順番が意味を持つ業務は、遅れて届いた記録の扱いを決めてから入れる。
+
+
+### 4番 更新の方式(照合項目4)
+
+
+今の状態。上の Context のとおり、Pi5 から Ansible で1台ずつ送る。各端末は自分でイメージを ghcr.io から取り、取り終えてから切り替える(`infrastructure/ansible/roles/release_kiosk/tasks/prepare.yml:253`)ので、端末での組み立ては無い。対象は `--print-plan` で確かめ、`--limit` か `--full-fleet` を付けないと動かない。カナリア用のグループ `kiosk_canary` と `signage_canary` がある(`infrastructure/ansible/inventory.yml:602-608`)。端末が自分で取りに行く仕組みや A/B 区画の仕組みは無い。
+
+100台の見積もり。1台ずつなので、全体の時間は「台数 × 1台あたりの時間」でほぼ決まる。古い実測の1台あたり3分強〜6分半を使うと、Pi4 100台で約5〜11時間、作業者への事前通知(1台あたり約125秒、`docs/guides/deployment.md:143`)を付けるとさらに約3.5時間増える。今の標準経路での実測が無いので、M0 で測り直してからこの数字を直す。加えて、100台がそれぞれ ghcr.io からイメージを取ると、工場のインターネット回線に同じイメージを100回流すことになる。携帯回線の端末は既に約15KB/sで時間切れを起こしている(`docs/runbooks/pi4-sd-card-backup.md:24`)。
+
+足りない所。夜の保守時間の中に全台の更新が収まらなくなる。回線の細い端末が全体を止める。
+
+推奨案。M5 として、更新を「取得」と「切り替え」の2つに分ける。取得は全対象で同時に(たとえば10〜20台ずつ並列に)先に済ませ、切り替えは今の健全確認と戻しを保ったまま、カナリア1台、次に5台、次に約25%、残り、の波で進める。Ansible の `serial` は `[1, 5, "25%", "100%"]` のような段階の指定ができ、`max_fail_percentage: 0` と組めば、どこかの波で1台でも失敗すれば次の波へ進まない。波の間には数分の様子見と、M3 の監視で全台が生きていることの確認を挟む。あわせて Pi5 にイメージの中継キャッシュ(Docker の registry をプルスルーで動かすもの)を置き、端末は Pi5 から取るようにして、インターネット回線に流れる量を1回分にする。A/B 区画と端末が自分で取りに行く方式は、Decision Log のとおり採らない。OS 自体の更新は、今の週1の自動更新(`docs/knowledge-base/KB-438-os-security-weekly-update.md`)のまま進める。
+
+手間は中(playbook の分割と波の指定、中継キャッシュ、トルクの切り替えの特別な流れとの両立の確認で PR 3〜4本、2週ほど)。効き目は中〜大で、見積もりでは全台の更新が1時間前後になる(M0 と試行で確かめる)。危険は、同時に切り替える台数が増えると、悪い版が一度に多くの現場へ届くことである。波の最初を1台と5台に小さく保ち、失敗率0%で止めることで、今と同じ広がり方にする。トルクの切り替えの特別な流れ(`deploy-release-standard.yml:48-191`)は全台をそろえて動かす前提なので、この流れには波を入れない。
+
+
+### 5番 端末の使い捨て化(照合項目2)
+
+
+今の状態。端末には残すべき状態がある。NFC とトルクの送信待ちの SQLite(Docker ボリューム `nfc-agent-data`、`torque-agent-data`)、Zero 系の送信待ち、監視の状態、ブラウザの IndexedDB、端末ごとの設定、Tailscale の識別、端末の鍵である。新しい Pi4 は、OS の書き込み、ネットワーク、SSH、Docker、Tailscale、自動ログイン、インベントリと鍵の登録、API への登録、機器の接続、初回の導入(`docs/guides/deployment.md:66-89` の `--first-install`)、確認の順で、手作業が10〜12段ほどある(数えた見積もりで、測ってはいない)。トルクレンチの Bluetooth 接続は自動化の外である。SD カードが壊れたときは、Pi5 が週1で取っている丸ごとの写しから新しいカードへ戻す5段の手順がある(`docs/runbooks/pi4-sd-card-backup.md:41-56`)が、実機での訓練はまだ済んでいない。共通イメージを作る仕組み(rpi-image-gen、pi-gen など)と、別の予備機へ識別を移す手順は無い。
+
+足りない所。100台あると、年に数台は SD や本体が壊れる。今は1台の用意に作業者が付きっきりで時間がかかり、所要時間も測っていない。写しは動いている端末から取るので、SQLite の中身が途中の状態で写ることがある(`scripts/pi4_sd_backup/plan.py:41-47`)。
+
+推奨案。M6 として、全端末共通の OS イメージを rpi-image-gen(Raspberry Pi 公式のイメージ作成ツール)で作り、Docker、自動ログイン、初回起動でホスト名設定と Tailscale 参加を行うスクリプトまで入れておく。status-agent は共通イメージへ入れない（既設の status-agent は first-install preflight が拒否する）。標準の `--first-install` で Ansible が導入する。端末ごとの違いは、初回起動時に読むホスト名と登録用の一回限りの鍵だけにし、その後は今の標準の `--first-install` で揃える。予備機を数台用意しておき、壊れた端末の名前と鍵を予備機へ移す手順(中心で古い鍵を無効にし、新しい鍵を発行する)を runbook にする。3番の対策で送信待ちが空になる時間が短くなれば、端末から失って困るものはほとんど無くなる。目標は、予備機の差し替えが30分以内、新しい端末の用意が機器の接続を除いて30分以内で、M6 の訓練で測る。今の SD の丸ごとの写しは、共通イメージの運用が定着するまで残す。
+
+手間は中〜大(イメージ作成の仕組み、初回登録、鍵の入れ替え手順と訓練で3週ほど)。効き目は中で、台数が増えるほど効く。危険は、古い端末と予備機が同じ名前と鍵で同時に動くことで、今の runbook でも禁じている(`docs/runbooks/pi4-sd-card-backup.md:55,60`)。鍵を中心で入れ替えて古い方を使えなくすることで防ぐ。
+
+
+### 6番 SD カードの保護(照合項目3)
+
+
+今の状態。Pi4 と Pi5 の journald は SD に残し、200MB を上限にしている(`infrastructure/ansible/roles/release_kiosk/tasks/host-journald.yml`)。監視カメラは RAM だけに残す(`infrastructure/ansible/playbooks/watch-cam.yml:75-85`)。Pi3 のサイネージ画像は RAM 上の `/run/signage` に置く。Docker のログの上限は、従来は Pi5 の古い構成ファイル(`docker-compose.server.yml`)の api と web にだけあったが、今の Pi5 の青緑の構成と端末の構成には 2026-11-02 に 10m × 3 の上限を実装した（除外と適用待ちは Progress 参照）。Docker 全体の既定の上限(`/etc/docker/daemon.json`)も無い。読み取り専用のルート、log2ram、端末の SSD 起動はどれも無い。Pi5 は SSD から起動している。`status-agent` が SD の書き込み量と健康を見ている。
+
+足りない所。端末の Docker のログに上限が無いので、部品が大量にログを出すと SD を埋め、摩耗も進む。100台あると、年に数枚の SD の故障は避けられない。
+
+推奨案。M7 として、まず全端末と Pi5 の Docker に既定のログ上限(たとえば1ファイル10MB・3世代)を入れる。これは小さな変更で、すぐ効く。次に、SD を産業用の高耐久品に統一する。Pi4 の USB SSD 起動は、キオスクの置き場所で配線と電源が許すかを見て、壊れやすい端末から選んで試す。読み取り専用のルートは、Decision Log のとおり Pi3 のサイネージと Zero 系から試し、Pi4 は journald を残す方針と両立できる形(ログだけを別の書き込み先に分けるなど)が見つかってから検討する。
+
+手間は小(ログ上限は PR 1本、1日)〜中(SSD 起動と読み取り専用の試行で1〜2週)。効き目は中。危険は、ログ上限で古いログが早く消え、障害の調べに足りなくなることである。journald は今の200MBを保ち、Docker のログだけを絞る。読み取り専用のルートは、設定の変更が再起動で消えるので、更新の手順(4番)と一緒に設計しないと更新が効かなくなる。
+
+
+### 7番 非力な機種の役割(照合項目7)
+
+
+今の状態。Pi3 では Docker も Chromium も動かしていない。Docker の操作は Pi5 側で行い、Pi3 には検証済みの tar を送り、`feh` で静止画を出す(`infrastructure/ansible/roles/release_signage/tasks/prepare.yml:50-123`、`infrastructure/ansible/roles/signage/templates/signage-lite.service.j2`)。Pi3 の標準の役割から NFC・バーコード・トルクの部品は外している。過去の記録では、Pi3 で実際に使えるメモリは約416MBで、サイネージに約295MB使っていた(`docs/knowledge-base/infrastructure/signage.md:946-948`)。Zero 系はどれも Python のサービスを直接動かし、Docker も Chromium も使わない。監視カメラは使えるメモリを64MBに抑えている(`clients/watch-cam-agent/watch-cam-agent.service`)。
+
+足りない所。今の作りは既に軽い方向で正しいが、機種ごとに何を載せてよいかの決まりが一か所に書かれていない。古い手順書には Pi3 で Chromium を使う記述が残っている(`docs/guides/signage-client-setup.md:101,135`)。100台に増やすとき、誰かが Pi3 にキオスクを、Zero 2W に Docker を載せようとする危険がある。
+
+推奨案。M8 として、機種ごとの役割の表を runbook に書く。Pi4 はキオスク(Chromium)と Docker の部品、Pi3 はサイネージ(`feh`)と軽い Python の部品だけで Docker と Chromium は使わない、Zero 2W は読み取りの部品1つを Python で直接動かし Docker と Chromium は使わない、とする。M0 で測った各機種の常時と更新中のメモリを表に添える。NFC やバーコードを Pi3 や Zero 2W で使いたくなったら、Docker の部品ではなく Zero 系の部品と同じ作り(Python を直接、SQLite の送信待ち)にする。古い手順書の Chromium の記述は直すか、古い記録と明記する。
+
+手間は小(文書1本、1〜2日)。効き目は小〜中で、間違った機種選びの予防になる。危険はほぼ無い。
+
+
+## Concrete Steps
+
+
+M0 の実測は本番機への読み取りだけの接続になるため、進行役のセッションを通じてユーザーの許可を得てから行う。測るのは次の4つで、いずれも状態を変えないコマンドで確かめる。Pi5 で Google Drive の写しのタイマーが有効か(`systemctl is-enabled` と `systemctl list-timers` で該当のタイマーを見る)。最新の写しの日時(`docs/runbooks/google-drive-disaster-recovery.md` の確認手順に従う)。直近の標準更新の run で、Pi4 1台あたりにかかった時間(`docs/guides/deployment.md` にある `--status` の結果と recap から読む)。Pi3 と Zero 2W の常時のメモリ(`free -m`)。結果は本書の Surprises & Discoveries に追記し、4番の見積もりを直す。
+
+M1 以降は、各項目の着手が決まったときに、その項目だけの詳しい手順を本書に追記するか、項目ごとの ExecPlan を `docs/plans/` に作る。1つの PR には1つの項目の1段だけを入れる。
+
+
+## Validation and Acceptance
+
+
+各項目の受け入れは次の振る舞いで確かめる。1番は、訓練で主の Pi5 の電源を切ってから、手順書どおりに予備を主にして、キオスクで貸出の画面が開き、切る直前の記録が残っていることを確かめ、かかった時間を記録する。2番は、見張り役から見て Pi5 の API を止めた(訓練用の環境で)ときに、数分以内に Mac へ通知が届き、戻すと停止時間が Mac とフローティングチャットへ届くこと。台帳にあるが電源を入れていない端末が途絶として出ること。3番は、試験環境で API を止めた状態で NFC とバーコードを読み、API を戻すと、記録が1回だけ登録されること。4番は、試験環境の複数台で、取得が並列に済み、切り替えが波ごとに進み、波の途中で1台を失敗させると次の波へ進まないこと。全体の時間を記録する。5番は、予備機への差し替え訓練の所要時間が30分以内であること。6番は、端末で `docker inspect` してログの上限が付いていること。7番は、runbook に機種ごとの表と測ったメモリがあること。
+
+
+## Idempotence and Recovery
+
+
+本書の作成自体は文書の追加だけで、何度読み直しても状態は変わらない。M0 の実測は読み取りだけで、繰り返しても安全である。M1 以降の各段は、それぞれの PR の中で戻し方を書く。特に1番の複製は主の DB の設定を変えるので、入れる前に今の Google Drive の写しが当日分まで取れていることを確かめ、予備機の設定を外せば元の1台構成に戻れる形で入れる。
+
+
+## Artifacts and Notes
+
+
+調査に使った Codex の実行は、モデル `gpt-6.1-sol`、推論 `medium`、読み取り専用(`-s read-only`)である。本番機には接続していない。調査の範囲はこのリポジトリだけで、外部の設定、秘密情報、非公開のインベントリは読んでいない。
+
+
+## Interfaces and Dependencies
+
+
+M7 step 1 以外は計画段階である。各項目で使う予定の外部のものは次のとおりで、未着手の項目は着手時に採否を決める。PostgreSQL 18 の標準のストリーミング複製と WAL の保管(1番)、Ansible の `serial` の段階指定と `max_fail_percentage`(4番)、Docker の registry のプルスルーのキャッシュ(4番)、rpi-image-gen(5番)、Compose の `logging` 設定(6番、step 1 はローカル実装済み)。

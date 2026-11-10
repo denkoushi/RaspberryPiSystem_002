@@ -18,8 +18,8 @@ class DependencyExceptionTests(unittest.TestCase):
         root = Path(directory)
         (root / "security").mkdir()
         (root / ".trivyignore").write_text("# reason\nCVE-2099-0001\n", encoding="utf-8")
-        (root / "package.json").write_text(
-            json.dumps({"pnpm": {"overrides": {"example": "1.0.1"}}}), encoding="utf-8"
+        (root / "pnpm-workspace.yaml").write_text(
+            "packages:\n  - apps/*\n\noverrides:\n  example: 1.0.1\n", encoding="utf-8"
         )
         overrides = []
         if include_override:

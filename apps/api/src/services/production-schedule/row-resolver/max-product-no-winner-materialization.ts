@@ -90,14 +90,29 @@ export function buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProduc
 export async function buildProductionScheduleLeaderboardMaterializedBaseWhere(
   prisma: PrismaClientLike
 ): Promise<Prisma.Sql> {
+  return (await buildProductionScheduleLeaderboardMaterializedWinners(prisma)).baseWhere;
+}
+
+export type LeaderboardMaterializedWinners = {
+  baseWhere: Prisma.Sql;
+  winnerRowIds: ReadonlySet<string>;
+};
+
+/** Keep membership and SQL from the very same winner query. */
+export async function buildProductionScheduleLeaderboardMaterializedWinners(
+  prisma: PrismaClientLike
+): Promise<LeaderboardMaterializedWinners> {
   const winnerRowIds = await fetchMaxProductNoWinnerRowIdsForDashboard({
     prisma,
     csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
   });
-  return buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
-    PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    winnerRowIds
-  );
+  return {
+    baseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+      PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      winnerRowIds
+    ),
+    winnerRowIds: new Set(winnerRowIds)
+  };
 }
 
 /**

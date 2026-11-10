@@ -1,7 +1,8 @@
 import { ApiError } from '../../lib/errors.js';
 import {
   SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-  verifyDueManagementAccessPassword
+  verifyDueManagementAccessPassword,
+  type AccessPasswordCaller
 } from '../production-schedule/production-schedule-settings.service.js';
 import { TorqueWrenchMasterService } from '../torque-wrenches/torque-wrench-master.service.js';
 import {
@@ -13,6 +14,7 @@ import type { TorqueTrainingSettingsAuditContext } from './torque-training-setti
 export type TorqueTrainingKioskSettingsClient = {
   id: string;
   name: string;
+  ip?: string;
 };
 
 /**
@@ -25,9 +27,11 @@ export class TorqueTrainingKioskSettingsService {
     private readonly wrenchService = new TorqueWrenchMasterService()
   ) {}
 
-  async requireAccessPassword(password: string | undefined): Promise<void> {
+  async requireAccessPassword(password: string | undefined, caller: AccessPasswordCaller = {}): Promise<void> {
     const result = await verifyDueManagementAccessPassword({
       location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
+      clientDeviceId: caller.clientDeviceId,
+      ip: caller.ip,
       password: password ?? ''
     });
     if (!result.success) {
@@ -35,8 +39,8 @@ export class TorqueTrainingKioskSettingsService {
     }
   }
 
-  async snapshot(accessPassword: string | undefined) {
-    await this.requireAccessPassword(accessPassword);
+  async snapshot(accessPassword: string | undefined, caller: AccessPasswordCaller = {}) {
+    await this.requireAccessPassword(accessPassword, caller);
     const [programs, results, capabilityGroups, wrenchProfiles] = await Promise.all([
       this.trainingService.listPrograms(true),
       this.trainingService.listAdminResults(),
@@ -51,7 +55,7 @@ export class TorqueTrainingKioskSettingsService {
     client: TorqueTrainingKioskSettingsClient,
     input: TrainingProgramInput
   ) {
-    await this.requireAccessPassword(accessPassword);
+    await this.requireAccessPassword(accessPassword, { clientDeviceId: client.id, ip: client.ip });
     return this.trainingService.createProgram(input, this.auditContext(client));
   }
 
@@ -61,7 +65,7 @@ export class TorqueTrainingKioskSettingsService {
     programId: string,
     input: Omit<TrainingProgramInput, 'code'>
   ) {
-    await this.requireAccessPassword(accessPassword);
+    await this.requireAccessPassword(accessPassword, { clientDeviceId: client.id, ip: client.ip });
     return this.trainingService.reviseProgram(programId, input, this.auditContext(client));
   }
 
@@ -71,7 +75,7 @@ export class TorqueTrainingKioskSettingsService {
     programId: string,
     reason: string
   ) {
-    await this.requireAccessPassword(accessPassword);
+    await this.requireAccessPassword(accessPassword, { clientDeviceId: client.id, ip: client.ip });
     return this.trainingService.deactivateProgram(programId, reason, this.auditContext(client));
   }
 
@@ -81,7 +85,7 @@ export class TorqueTrainingKioskSettingsService {
     sessionId: string,
     reason: string
   ) {
-    await this.requireAccessPassword(accessPassword);
+    await this.requireAccessPassword(accessPassword, { clientDeviceId: client.id, ip: client.ip });
     // The admin actor fields remain explicit so the legacy JWT route keeps its
     // existing audit meaning. Kiosk PIN actions are recorded by the separate
     // terminal audit row and do not invent a user identity.

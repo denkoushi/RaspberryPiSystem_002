@@ -801,6 +801,39 @@ describe('torque training API concurrency boundary', () => {
     expect((await prisma.torqueTrainingProgramVersion.findMany({ where: { programId: program.id }, orderBy: { version: 'asc' }, select: { version: true, capabilityGroupId: true } })).map((row) => row.version)).toEqual([1, 2, 3]);
   });
 
+  it('shares the operation password attempt limit across settings programs and assembly verification', async () => {
+    await configureTestDueManagementAccessPassword();
+    const client = await createTestClientDevice(`attempt-limit-${randomUUID()}`);
+    const headers = { 'x-client-key': client.apiKey };
+    for (let index = 0; index < 6; index += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/torque-training/settings/programs/${randomUUID()}/deactivate`,
+        headers,
+        payload: { accessPassword: '0000', reason: '設定確認' }
+      });
+      expect(response.statusCode).toBe(403);
+    }
+    for (let index = 0; index < 4; index += 1) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/kiosk/assembly/templates/verify-access-password',
+        headers,
+        payload: { password: '0000' }
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ success: false });
+    }
+    for (const request of [
+      { url: `/api/torque-training/settings/programs/${randomUUID()}/deactivate`, payload: { accessPassword: '2520', reason: '設定確認' } },
+      { url: '/api/kiosk/assembly/templates/verify-access-password', payload: { password: '2520' } }
+    ]) {
+      const response = await app.inject({ method: 'POST', headers, ...request });
+      expect(response.statusCode).toBe(429);
+      expect(response.json().errorCode).toBe('ACCESS_PASSWORD_RATE_LIMITED');
+    }
+  });
+
   it('protects kiosk settings with the shared PIN and records a successful change on the terminal', async () => {
     await configureTestDueManagementAccessPassword('2520');
     const { client, profile, version } = await fixture();

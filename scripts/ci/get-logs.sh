@@ -4,7 +4,8 @@ set -e
 # GitHub Actionsのログを取得するスクリプト
 # 使用方法: ./scripts/ci/get-logs.sh [job-name] [--errors-only]
 
-REPO="denkoushi/RaspberryPiSystem_002"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO="$(cd "$ROOT" && python3 -c 'from scripts.deploy.release_artifact_contract import SOURCE_REPOSITORY; print(SOURCE_REPOSITORY)')"
 OUTPUT_DIR="${HOME}/Downloads/gh-actions-logs"
 ERRORS_ONLY=false
 

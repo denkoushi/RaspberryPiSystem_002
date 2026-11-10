@@ -72,6 +72,9 @@ function planKey(plan) {
 }
 
 export function comparePlannerVersions({ questions, baselineRows, candidateRows, labels }) {
+  questions = questions.filter(row => row.kind !== 'follow_up');
+  baselineRows = baselineRows.filter(row => row.kind !== 'follow_up');
+  candidateRows = candidateRows.filter(row => row.kind !== 'follow_up');
   const cases = (rows) => rows.map((row) => ({ id: rowId(row), shown: row.live.shown, filterCheck: row.filterCheck, followUpCheck: row.followUpCheck }));
   const baseline = new Map(baselineRows.map((row) => [rowId(row), row]));
   const candidate = new Map(candidateRows.map((row) => [rowId(row), row]));

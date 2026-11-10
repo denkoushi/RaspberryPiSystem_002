@@ -17,9 +17,9 @@ export async function registerKioskAssemblyTraceabilityAuthRoute(
     '/kiosk/assembly/traceability/verify-access-password',
     { config: { rateLimit } },
     async (request) => {
-      await deps.requireClientDevice(request.headers['x-client-key']);
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
       const body = bodySchema.parse(request.body);
-      return service.verifyAccessPassword(body.password);
+      return service.verifyAccessPassword(body.password, { clientDeviceId: clientDevice.id, ip: request.ip });
     }
   );
 }

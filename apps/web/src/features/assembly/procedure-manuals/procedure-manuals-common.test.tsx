@@ -102,7 +102,7 @@ describe('common mode in the shared screens', () => {
     const row = await screen.findByRole('row', { name: 'マイクロメータ_使い方' });
     fireEvent.click(within(row).getByRole('button', { name: '削除' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '下書きを削除' })).getByRole('button', { name: '削除' }));
-    await waitFor(() => expect(api.deleteDocument).toHaveBeenCalledWith('micrometer'));
+    await waitFor(() => expect(api.deleteDocument).toHaveBeenCalledWith('micrometer', 'test-pin'));
     expect(api.replace).toHaveBeenCalledWith('マイクロメータ', 'tools', { modelCode: 'マイクロメータ', assignments: [] });
   });
 

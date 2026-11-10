@@ -1,3 +1,4 @@
+import { buildAssemblyTraceabilityActor } from './shared.js';
 import { DomainHttpError } from '../../lib/errors.js';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { z } from 'zod';
@@ -64,13 +65,6 @@ export function registerAssemblyCandidateRoutes(app: FastifyInstance, {
     return { items };
   });
 
-  app.post('/assembly/operators/resolve-nfc', { preHandler: allowView }, async (request) => {
-    const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
-    const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
-    if (!resolved) throw new DomainHttpError(404, '社員タグが見つかりません');
-    return resolved;
-  });
-
   app.get('/assembly/library/filter-options', { preHandler: allowView }, async (request) => {
     const query = z
       .object({
@@ -94,6 +88,13 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
   allowWriteKiosk: preHandlerHookHandler;
   templateService: AssemblyTemplateService;
 }): void {
+  app.post('/assembly/operators/resolve-nfc', { preHandler: allowWriteKiosk }, async (request) => {
+    const body = z.object({ uid: z.string().trim().min(1).max(200) }).parse(request.body);
+    const resolved = await resolveAssemblyOperatorNfcUid(body.uid);
+    if (!resolved) throw new DomainHttpError(404, '社員タグが見つかりません');
+    return resolved;
+  });
+
   app.get('/assembly/templates', { preHandler: allowView }, async (request) => {
     const q = z
       .object({
@@ -135,6 +136,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
     const body = templateBodySchema.parse(request.body);
     const template = await templateService.create({
       ...body,
+      ...await buildAssemblyTraceabilityActor(request),
       areas: body.areas as AssemblyTemplateAreaInput[],
       checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
     });
@@ -146,6 +148,7 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
     const body = templateReviseBodySchema.parse(request.body);
     const template = await templateService.revise(params.id, {
       ...body,
+      ...await buildAssemblyTraceabilityActor(request),
       areas: body.areas as AssemblyTemplateAreaInput[] | undefined,
       checkItems: body.checkItems as AssemblyTemplateCheckItemInput[] | undefined
     });
@@ -154,7 +157,8 @@ export function registerAssemblyTemplateRoutes(app: FastifyInstance, {
 
   app.delete('/assembly/templates/:id', { preHandler: allowWriteKiosk }, async (request, reply) => {
     const params = idParamSchema.parse(request.params);
-    const result = await templateService.retire(params.id);
+    const body = z.object({ accessPassword: z.string().max(128).default('') }).parse(request.body ?? {});
+    const result = await templateService.retire(params.id, body.accessPassword, await buildAssemblyTraceabilityActor(request));
     if (result === 'not_found') throw new DomainHttpError(404, 'テンプレートが見つかりません');
     return reply.status(204).send();
   });

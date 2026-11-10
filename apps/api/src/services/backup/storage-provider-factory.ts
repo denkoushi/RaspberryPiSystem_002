@@ -2,7 +2,6 @@ import type { StorageProvider } from './storage/storage-provider.interface.js';
 import { LocalStorageProvider } from './storage/local-storage.provider.js';
 import { DropboxStorageProvider } from './storage/dropbox-storage.provider.js';
 import { EncryptedStorageProvider } from './storage/encrypted-storage.provider.js';
-import { loadBackupEncryptionKey } from './storage/backup-encryption.js';
 import { DropboxOAuthService } from './dropbox-oauth.service.js';
 import { GmailStorageProvider } from './storage/gmail-storage.provider.js';
 import { GmailOAuthService } from './gmail-oauth.service.js';
@@ -30,6 +29,7 @@ export interface StorageProviderOptions {
   onTokenUpdate?: (token: string) => Promise<void>;
   // Gmail rate limit gate用（manual実行などで待機を許容するか）
   gmailAllowWait?: boolean;
+  gmailIngestSenderPolicy?: BackupConfig['gmailIngestSenderPolicy'];
 }
 
 type StorageProviderCreateOptions = {
@@ -83,13 +83,7 @@ export class StorageProviderFactory {
           oauthService,
           onTokenUpdate: options.onTokenUpdate
         });
-        // 外部ストレージへは暗号化して送る。鍵が未配置の環境だけ従来どおり平文になる。
-        const encryptionKey = loadBackupEncryptionKey();
-        if (!encryptionKey) {
-          logger?.warn('[StorageProviderFactory] BACKUP_ENCRYPTION_KEY is not set; Dropbox backups are stored unencrypted');
-          return dropbox;
-        }
-        return new EncryptedStorageProvider(dropbox, encryptionKey);
+        return new EncryptedStorageProvider(dropbox);
       }
     ],
     [
@@ -120,6 +114,7 @@ export class StorageProviderFactory {
           fromEmail: options.fromEmail,
           oauthService,
           onTokenUpdate: options.onTokenUpdate,
+          gmailIngestSenderPolicy: options.gmailIngestSenderPolicy,
           allowWait: options.gmailAllowWait
         });
       }
@@ -168,6 +163,7 @@ export class StorageProviderFactory {
     };
 
     // local/dropbox/gmail共通
+    providerOptions.gmailIngestSenderPolicy = config.gmailIngestSenderPolicy;
     providerOptions.basePath = config.storage.options?.basePath as string | undefined;
     providerOptions.gmailAllowWait = gmailAllowWait;
 
@@ -372,6 +368,7 @@ export class StorageProviderFactory {
     };
 
     // basePathは全体設定から取得（対象ごとの設定は将来の拡張用）
+    providerOptions.gmailIngestSenderPolicy = config.gmailIngestSenderPolicy;
     providerOptions.basePath = config.storage.options?.basePath as string | undefined;
 
     if (provider === 'gmail') {

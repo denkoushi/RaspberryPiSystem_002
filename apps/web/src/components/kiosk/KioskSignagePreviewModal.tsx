@@ -148,7 +148,7 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
     const next = value.length > 0 ? value : null;
     try {
       setError(null);
-      await selectionMutation.mutateAsync({ signagePreviewTargetClientDeviceId: next });
+      await selectionMutation.mutateAsync({ signagePreviewTargetDeviceId: next });
     } catch (err) {
       const message = err instanceof Error ? err.message : '設定の保存に失敗しました';
       setError(message);
@@ -235,11 +235,6 @@ export function KioskSignagePreviewModal({ isOpen, onClose, kioskClientKey }: Ki
         {!isOptionsLoading && candidates.length === 0 && (
           <div className="rounded-md border-2 border-amber-300 bg-amber-50 p-4 text-amber-950">
             <p className="font-semibold">サイネージ用の端末が見つかりません</p>
-            <p className="mt-1 text-sm">
-              apiKey に &quot;signage&quot; を含む端末を登録してください。未登録の間は、このキオスクのAPIキー（
-              <span className="font-mono">{kioskClientKey.slice(0, 12)}…</span>
-              ）向けのキャッシュを参照します。
-            </p>
           </div>
         )}
 

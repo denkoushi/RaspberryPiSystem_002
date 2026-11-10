@@ -1,3 +1,4 @@
+import { assertMachineNfcUidAvailable } from '../../../lib/nfc-uid-availability.js';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
 import pkg from '@prisma/client';
@@ -174,6 +175,7 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
         const tagUid = row.rfidTagUid?.trim() || null;
 
         try {
+          if (tagUid) await assertMachineNfcUidAvailable(tagUid, tx);
           const existing = await tx.measuringInstrument.findUnique({
             where: { managementNumber: row.managementNumber }
           });
@@ -185,11 +187,14 @@ export class MeasuringInstrumentCsvImporter implements CsvImporter {
                 where: { rfidTagUid: tagUid }
               });
               if (existingTag && existingTag.measuringInstrumentId !== existing.id) {
-                const errorMessage = `rfidTagUid="${tagUid}"は既に他の計測機器（managementNumber: ${existing.managementNumber}）で使用されています。`;
+                const tagOwner = await tx.measuringInstrument.findUnique({
+                  where: { id: existingTag.measuringInstrumentId }
+                });
+                const errorMessage = `rfidTagUid="${tagUid}"は既に他の計測機器（managementNumber: ${tagOwner?.managementNumber || '不明'}）で使用されています。`;
                 logger?.error({
                   rfidTagUid: tagUid,
                   currentManagementNumber: row.managementNumber,
-                  existingManagementNumber: existing.managementNumber
+                  existingManagementNumber: tagOwner?.managementNumber
                 }, '[MeasuringInstrumentCsvImporter] rfidTagUidの重複エラー');
                 throw new ApiError(400, errorMessage);
               }

@@ -138,7 +138,7 @@ update-frequency: medium
   - 計測機器の状態、点検状況などを表示
   - 校正期限アラート（期限切れ/間近/正常）をバッジで表示
 - **検証**: サイネージで計測機器情報が正常に表示されることを確認
-- **実装状況**: ✅ サイネージAPIに計測機器データ追加、InstrumentCardコンポーネント実装完了。校正期限アラート（期限切れ=赤、期限間近=黄、正常=緑）を実装。実機検証準備完了（[実機検証手順](../guides/measuring-instruments-verification.md)）。
+- **実装状況**: ✅ サイネージAPIに計測機器データ追加、InstrumentCardコンポーネント実装完了。校正期限アラート（期限切れ=赤、期限間近=黄、正常=緑）を実装。実機検証準備完了（[実機検証手順](../archive/guides/measuring-instruments-verification.md)）。
 
 ### FR-MI-012: キオスク専用画面（将来）
 

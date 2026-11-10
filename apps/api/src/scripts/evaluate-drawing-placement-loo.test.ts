@@ -1,8 +1,10 @@
+import sharp from 'sharp';
+
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   findMany: vi.fn(), disconnect: vi.fn(), complete: vi.fn(), select: vi.fn(), delay: vi.fn(),
-  settings: vi.fn()
+  settings: vi.fn(), readDrawing: vi.fn()
 }));
 vi.mock('../lib/prisma.js', () => ({ prisma: {
   partMeasurementVisualTemplate: { findMany: mocks.findMany }, $disconnect: mocks.disconnect
@@ -12,7 +14,7 @@ vi.mock('../services/part-measurement/inspection-drawing-measurement-label-setti
   InspectionDrawingMeasurementLabelSettingsService: class { listSettings = mocks.settings; }
 }));
 vi.mock('../services/part-measurement/part-measurement-drawing-sibling-selection.js', () => ({
-  drawingSiblingSelectionDeps: {}, selectDrawingSiblings: mocks.select
+  drawingSiblingSelectionDeps: { readDrawing: mocks.readDrawing, candidateLimit: () => 8, enabled: () => true }, selectDrawingSiblings: mocks.select
 }));
 vi.mock('../services/part-measurement/part-measurement-drawing-ocr.service.js', () => ({ getPartMeasurementDrawingOcrService: vi.fn() }));
 vi.mock('../services/part-measurement/part-measurement-drawing-dimension-map.service.js', () => ({ getPartMeasurementDrawingDimensionMapService: vi.fn() }));
@@ -46,9 +48,10 @@ beforeEach(async () => {
     }] }]
   })));
   mocks.findMany.mockResolvedValue(visuals);
+  mocks.readDrawing.mockResolvedValue({ buffer: await sharp({ create: { width: 16, height: 16, channels: 3, background: 'white' } }).png().toBuffer() });
   mocks.settings.mockResolvedValue([{ label: '幅', toleranceKind: 'dimension' }]);
   mocks.complete.mockResolvedValue({ rawText: '{"items":[{"i":0,"use":"nominal","label":"幅"}]}', model: 'fake' });
-  mocks.select.mockResolvedValue({ status: 'MATCHED', method: 'name', siblings: [{ visualTemplateId: 'cross-machine', confidence: 1 }] });
+  mocks.select.mockResolvedValue({ status: 'MATCHED', method: 'dgx-vision', siblings: [{ visualTemplateId: 'cross-machine', confidence: 1 }] });
   process.argv = ['node', 'evaluate', '--process', 'cutting', '--visual-template-id', 'target'];
 });
 afterEach(() => {
@@ -92,8 +95,15 @@ it('records a safe error row after three deferred retries', async () => {
 });
 
 it('keeps transfer as the default and reports nominal-only matches', async () => {
-  process.argv.push('--vision', 'none');
-  expect(await evaluate()).toMatchObject({ errorRows: 0, proposalCount: 1, matched: 1, nominalMatched: 1, countsByMethod: { name: 1 } });
+  expect(await evaluate()).toMatchObject({ errorRows: 0, proposalCount: 1, matched: 1, nominalMatched: 1, countsByMethod: { 'dgx-vision': 1 } });
   expect(mocks.complete).not.toHaveBeenCalled();
   expect(mocks.settings).not.toHaveBeenCalled();
+});
+
+it('reports no proposals when sibling inference is disabled', async () => {
+  process.argv.push('--vision', 'none');
+  mocks.select.mockResolvedValue({ status: 'NO_MATCH', method: 'dgx-vision', siblings: [], lastError: null });
+  expect(await evaluate()).toMatchObject({ errorRows: 0, proposalCount: 0, countsByMethod: { none: 1 } });
+  expect(mocks.select.mock.calls[0][3].enabled()).toBe(false);
+  expect(mocks.readDrawing).not.toHaveBeenCalled();
 });

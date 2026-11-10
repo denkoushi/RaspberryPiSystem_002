@@ -320,6 +320,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     const m = new Map<
       string,
       {
+        arrived?: boolean;
+        specialDue?: ProductionScheduleRow['specialDue'];
         resolvedMachineName: string | null;
         customerName: string | null;
         hasSelfInspectionDrawing: boolean;
@@ -332,6 +334,8 @@ export function useLeaderboardPhasedScheduleWithAutoAppend(options: {
     >();
     for (const d of decorationsQuery.data?.rowDecorations ?? []) {
       m.set(d.id, {
+        ...(d.arrived !== undefined ? { arrived: d.arrived } : {}),
+        ...(d.specialDue !== undefined ? { specialDue: d.specialDue } : {}),
         resolvedMachineName: d.resolvedMachineName ?? null,
         customerName: d.customerName ?? null,
         hasSelfInspectionDrawing: d.hasSelfInspectionDrawing,

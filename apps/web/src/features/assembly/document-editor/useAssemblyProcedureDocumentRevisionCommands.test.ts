@@ -20,6 +20,8 @@ vi.mock('../../../api/client', () => ({
   discardAssemblyProcedureDocumentRevision: vi.fn()
 }));
 
+import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
@@ -69,14 +71,14 @@ function makeSession(
 }
 
 describe('useAssemblyProcedureDocumentRevisionCommands', () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => { vi.resetAllMocks(); clearProcedureEditorAccess(); saveProcedureEditorAccess('2520'); });
 
   it('deletes an unused DRAFT with the lease token and returns to manuals only on success', async () => {
     apiMocks.remove.mockResolvedValue(undefined);
     const session = makeSession({ holderToken: 'lease-token' });
     const hook = renderHook(() => useAssemblyProcedureDocumentRevisionCommands(session));
     await act(async () => { await hook.result.current.deleteDocument(); });
-    expect(apiMocks.remove).toHaveBeenCalledExactlyOnceWith('document-1', 'lease-token');
+    expect(apiMocks.remove).toHaveBeenCalledExactlyOnceWith('document-1', '2520', 'lease-token');
     expect(session.recovery.clear).toHaveBeenCalledOnce();
     expect(session.onNavigateAfterDelete).toHaveBeenCalledOnce();
   });

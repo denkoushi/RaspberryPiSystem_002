@@ -3,7 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   groupStaleCandidatesForRelease,
   releaseOrderAssignmentAtLocation,
-  releaseSplitOrderAssignmentAtLocation,
   type StaleOrderAssignmentCandidate,
 } from '../order-assignment-release.repository.js';
 import { reconcileStaleProductionScheduleOrderAssignments } from '../order-assignment-reconciliation.service.js';
@@ -67,22 +66,22 @@ describe('groupStaleCandidatesForRelease', () => {
 });
 
 describe('release with Prisma 7 nested transactions', () => {
-  it.each(['parent', 'split'] as const)('does not recursively start transactions for %s assignments', async (kind) => {
+  it('does not recursively start transactions for parent assignments', async () => {
     const nestedTransaction = vi.fn(() => { throw new Error('unexpected nested transaction'); });
     const model = { findUnique: vi.fn().mockResolvedValue(null) };
+    const legacyModel = { findUnique: vi.fn().mockResolvedValue({ orderNumber: 2 }) };
     const executor = {
       productionScheduleOrderAssignment: model,
-      productionScheduleOrderSplitAssignment: model,
+      productionScheduleOrderSplitAssignment: legacyModel,
       $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) =>
         work({ ...executor, $transaction: nestedTransaction })
       )
     };
-    const result = kind === 'parent'
-      ? await releaseOrderAssignmentAtLocation(executor as never, { csvDashboardRowId: 'row', location: 'L1' })
-      : await releaseSplitOrderAssignmentAtLocation(executor as never, { splitId: 'split', location: 'L1' });
+    const result = await releaseOrderAssignmentAtLocation(executor as never, { csvDashboardRowId: 'row', location: 'L1' });
     expect(result).toEqual({ released: false, resourceCd: null, orderNumber: null, shiftCount: 0 });
     expect(executor.$transaction).toHaveBeenCalledTimes(1);
     expect(nestedTransaction).not.toHaveBeenCalled();
     expect(model.findUnique).toHaveBeenCalledTimes(1);
+    expect(legacyModel.findUnique).not.toHaveBeenCalled();
   });
 });

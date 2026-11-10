@@ -1,13 +1,13 @@
 import { prisma } from '../../lib/prisma.js';
 import { ApiError } from '../../lib/errors.js';
-
-const staleThresholdMs = 1000 * 60 * 60 * 12; // 12 hours
+import { loadHeartbeatAlertConfig } from './client-heartbeat-alert-policy.js';
 
 export async function getClientAlertsDashboard(requestId: string) {
   const statuses = await prisma.clientStatus.findMany({
     orderBy: { hostname: 'asc' }
   });
 
+  const staleThresholdMs = loadHeartbeatAlertConfig().staleAfterMs;
   const now = Date.now();
   const staleClients = statuses.filter((status) => {
     const lastSeen = status.lastSeen ?? status.updatedAt;

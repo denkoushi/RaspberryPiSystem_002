@@ -1,7 +1,14 @@
+import { isUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
+import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
+import { compareProcessOrder } from './process-order.js';
+import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
+import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
 import { createHash } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
 import type {
+  GrindingPlanningBoardResourceMinutesResponse,
+  GrindingPlanningBoardResourceCapacityResponse,
   GrindingPlanningBoardCategory,
   GrindingPlanningBoardItem,
   GrindingPlanningBoardLoad,
@@ -13,7 +20,6 @@ import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
   isUnassignedProductionSeiban,
 } from './row-resolver/constants.js';
-import { applySplitQuantityToProductionScheduleRowDisplayFields } from './order-split/split-display-required-minutes.js';
 
 export type GrindingPlanningBoardRowData = Prisma.JsonValue | Record<string, unknown>;
 
@@ -24,6 +30,9 @@ export type GrindingPlanningBoardProjectionRow = {
 };
 
 export type GrindingPlanningBoardProjectionRowDetail = {
+  manualUpdatedAt?: Date | null;
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
   updatedAt: Date | null;
   rowNotes: ReadonlyArray<{ dueDate: Date | null }>;
   orderSupplements: ReadonlyArray<{
@@ -32,12 +41,6 @@ export type GrindingPlanningBoardProjectionRowDetail = {
   }>;
   productionScheduleProgress: { isCompleted: boolean; updatedAt: Date } | null;
   productionScheduleExternalCompletion: { isExternallyCompleted: boolean; updatedAt: Date } | null;
-  orderSplits: ReadonlyArray<{
-    id: string;
-    splitQuantity: number;
-    dueDate: Date | null;
-    updatedAt: Date;
-  }>;
 };
 
 export type GrindingPlanningBoardProjectionRank = {
@@ -47,7 +50,6 @@ export type GrindingPlanningBoardProjectionRank = {
 
 export type GrindingPlanningBoardProjectionRanks = {
   rows: ReadonlyMap<string, GrindingPlanningBoardProjectionRank>;
-  splits: ReadonlyMap<string, GrindingPlanningBoardProjectionRank>;
 };
 
 export type GrindingPlanningBoardProjectionOverride = {
@@ -84,14 +86,17 @@ export type GrindingPlanningBoardProgressProjection = {
 };
 
 export type GrindingPlanningBoardProjectionInput = {
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  resourceCapacity?: GrindingPlanningBoardResourceCapacityResponse;
+  includePieces?: boolean;
+  pieceSets?: ReadonlyMap<string, SessakuPieceSet>;
+  dueSource?: BoardDueSource;
   rows: readonly GrindingPlanningBoardProjectionRow[];
   details: ReadonlyMap<string, GrindingPlanningBoardProjectionRowDetail>;
   ranks: GrindingPlanningBoardProjectionRanks;
   overrides: ReadonlyMap<string, GrindingPlanningBoardProjectionOverride>;
   /** All logical source process rows, before category/completion filtering. */
   progressRows?: readonly GrindingPlanningBoardProgressRow[];
-  /** Backend passes false when the order-split feature is disabled. */
-  splitEnabled?: boolean;
   category: GrindingPlanningBoardCategory;
   view?: GrindingPlanningBoardView;
   allocation?: 'original' | 'alternate';
@@ -111,8 +116,6 @@ export type GrindingPlanningBoardProjectionResult = {
   unknownRequiredMinutesCount: number;
   progress: GrindingPlanningBoardProgressProjection;
 };
-
-const SPLIT_PREFIX = 'split:';
 
 function rowValue(data: GrindingPlanningBoardRowData, key: string): string {
   const value = asRowData(data)[key];
@@ -137,22 +140,6 @@ export function resolveGrindingPlanningBoardParentDueDate(params: {
   if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
   if (params.override?.dueDateCleared === true) return ymd(params.plannedEndDate);
   return ymd(params.originalParentDueDate);
-}
-
-export function resolveGrindingPlanningBoardItemDueDate(params: {
-  splitDueDate: Date | null;
-  originalParentDueDate: Date | null;
-  plannedEndDate: Date | null;
-  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
-  parentOverride?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
-}): string | null {
-  if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
-  if (params.splitDueDate != null) return ymd(params.splitDueDate);
-  return resolveGrindingPlanningBoardParentDueDate({
-    originalParentDueDate: params.originalParentDueDate,
-    plannedEndDate: params.plannedEndDate,
-    override: params.parentOverride
-  });
 }
 
 function parseRequiredMinutes(data: GrindingPlanningBoardRowData): number | null {
@@ -248,12 +235,6 @@ function compareNullableRank(a: number | null, b: number | null): number {
   return (a ?? Number.MAX_SAFE_INTEGER) - (b ?? Number.MAX_SAFE_INTEGER);
 }
 
-function compareProcessOrder(a: string, b: string): number {
-  const left = Number(a);
-  const right = Number(b);
-  if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
-  return a.localeCompare(b);
-}
 
 function compareText(a: string, b: string): number {
   return a.localeCompare(b, 'ja');
@@ -270,6 +251,11 @@ function compareResourceProcessOrder(a: string, b: string): number {
   const right = Number(b);
   if (Number.isFinite(left) && Number.isFinite(right) && left !== right) return left - right;
   return a.localeCompare(b, 'ja');
+}
+
+function comparePiecePosition(left: GrindingPlanningBoardItem, right: GrindingPlanningBoardItem): number {
+  return left.parentItemId != null && left.parentItemId === right.parentItemId
+    ? (left.piecePosition ?? 0) - (right.piecePosition ?? 0) : 0;
 }
 
 export function sortGrindingPlanningBoardProjectionItems(
@@ -317,12 +303,12 @@ export function sortGrindingPlanningBoardProjectionItems(
         compareText(left.productNo, right.productNo) ||
         compareResourceProcessOrder(left.processOrder, right.processOrder) ||
         compareText(left.fhincd, right.fhincd) ||
-        compareText(left.itemId, right.itemId)
+        comparePiecePosition(left, right) || compareText(left.itemId, right.itemId)
       );
     }
     const process = compareProcessOrder(left.processOrder, right.processOrder);
     if (process !== 0) return process;
-    return left.itemId.localeCompare(right.itemId);
+    return comparePiecePosition(left, right) || left.itemId.localeCompare(right.itemId);
   });
 }
 
@@ -357,7 +343,9 @@ function buildLoad(items: readonly GrindingPlanningBoardItem[]): {
     return created;
   };
 
-  for (const item of items) {
+  const orderedItems = [...items].sort((left, right) => left.sourceRowId < right.sourceRowId ? -1 : left.sourceRowId > right.sourceRowId ? 1
+    : (left.pieceId ?? '') < (right.pieceId ?? '') ? -1 : (left.pieceId ?? '') > (right.pieceId ?? '') ? 1 : 0);
+  for (const item of orderedItems) {
     if (item.isCompleted) continue;
     const originalResource = item.originalResourceCd;
     const alternateResource = item.effectiveResourceCd;
@@ -439,116 +427,154 @@ function buildItems(
     const completionSource = detail.productionScheduleExternalCompletion?.isExternallyCompleted
       ? 'import' : detail.productionScheduleProgress?.isCompleted ? 'manual' : null;
     const rowItemId = buildGrindingPlanningBoardRowItemId(data);
-    const parentOverride = params.overrides.get(rowItemId);
-    const splits = params.splitEnabled === false
-      ? [null]
-      : detail.orderSplits.length > 0
-        ? detail.orderSplits
-        : [null];
+    const itemId = rowItemId;
+    const override = params.overrides.get(itemId);
+    const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
 
-    for (const split of splits) {
-      const itemId = split == null ? rowItemId : `${SPLIT_PREFIX}${split.id}`;
-      const override = params.overrides.get(itemId);
-      const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? originalResourceCd);
-
-      const displayFields = split == null
-        ? { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined }
-        : applySplitQuantityToProductionScheduleRowDisplayFields(
-            {
-              plannedQuantity: sourceQuantity,
-              machineRequiredMinutes: sourceMinutes ?? undefined,
-              laborRequiredMinutes: undefined,
-              rowData: data as Prisma.JsonValue
-            },
-            split.splitQuantity
-          );
-      const requiredMinutes = displayFields.machineRequiredMinutes ?? null;
-      const requiredMinutesKnown = requiredMinutes != null;
-      const originalParentDueDate = detail.rowNotes[0]?.dueDate ?? detail.orderSupplements[0]?.plannedEndDate ?? null;
-      const originalDueDate = ymd(split?.dueDate) ?? ymd(originalParentDueDate);
-      const effectiveDueDate = resolveGrindingPlanningBoardItemDueDate({
-        splitDueDate: split?.dueDate ?? null,
-        originalParentDueDate,
-        plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
-        override,
-        parentOverride
-      });
-      const rankRow = split == null ? params.ranks.rows.get(row.id) : params.ranks.splits.get(split.id);
-      const originalRank =
-        rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
-          ? rankRow.orderNumber
-          : null;
-      const itemProgress = progressForItem(
-        {
-          fseiban,
-          productNo: rowValue(data, 'ProductNo'),
-          fhincd: rowValue(data, 'FHINCD'),
-          isCompleted: rowCompleted
-        },
-        progress
-      );
-      const revisionInput = {
-        rowId: row.id,
-        rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
-        detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
-        logicalKey: buildGrindingPlanningBoardLogicalKey(data),
-        splitId: split?.id ?? null,
-        splitUpdatedAt: split?.updatedAt.toISOString() ?? null,
-        splitQuantity: split?.splitQuantity ?? null,
-        originalResourceCd,
-        originalDueDate,
-        sourceMinutes,
-        rowCompleted,
-        completionSource,
-        sourceQuantity,
-        overrideVersion: override?.version ?? 0,
-        overrideResourceCd: override?.overrideResourceCd ?? null,
-        overrideDueDate: ymd(override?.overrideDueDate),
-        dueDateCleared: override?.dueDateCleared ?? null,
-        inheritedParentOverrideVersion: parentOverride?.version ?? 0,
-        inheritedParentOverrideDueDate: ymd(parentOverride?.overrideDueDate),
-        inheritedParentOverrideDueDateCleared: parentOverride?.dueDateCleared ?? null,
-        effectiveDueDate,
-        alternateRank: override?.alternateRank ?? null,
-        orderPinned: override?.orderPinned ?? false,
-        specialDueKind: override?.specialDueKind ?? null,
-        specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
-        originalRank
-      };
-      items.push({
-        itemId,
-        kind: split == null ? 'row' : 'split',
-        itemRevision: createItemRevision(revisionInput),
-        version: override?.version ?? 0,
-        sourceRowId: row.id,
+    const displayFields = { plannedQuantity: sourceQuantity, machineRequiredMinutes: sourceMinutes ?? undefined };
+    const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: sourceMinutes, originalKnown: sourceMinutes != null,
+      quantity: sourceQuantity, effectiveResourceCd, fhincd: rowValue(data, 'FHINCD') }, params.resourceMinutes);
+    const parentDue = resolveBoardDueDate({
+      source: params.dueSource ?? 'excel', itemOverride: null,
+      manualDueDate: ymd(detail.rowNotes[0]?.dueDate), manualUpdatedAt: detail.manualUpdatedAt ?? null,
+      excelDueDate: ymd(detail.excelDueDate), excelChangedAt: detail.excelChangedAt ?? null,
+      scawPlannedEndDate: ymd(detail.orderSupplements[0]?.plannedEndDate)
+    });
+    const originalParentDueDate = parentDue ? new Date(`${parentDue}T00:00:00.000Z`) : null;
+    const originalDueDate = ymd(originalParentDueDate);
+    const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
+      originalParentDueDate,
+      plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
+      override
+    });
+    const rankRow = params.ranks.rows.get(row.id);
+    const originalRank =
+      rankRow != null && normalizeResourceCd(rankRow.resourceCd) === originalResourceCd
+        ? rankRow.orderNumber
+        : null;
+    const itemProgress = progressForItem(
+      {
         fseiban,
-        fhincd: rowValue(data, 'FHINCD'),
-        fhinmei: rowValue(data, 'FHINMEI') || null,
-        machineName: params.machineNameBySeiban?.get(fseiban) ?? null,
         productNo: rowValue(data, 'ProductNo'),
-        processOrder: rowValue(data, 'FKOJUN'),
-        originalResourceCd,
-        effectiveResourceCd,
-        originalDueDate,
-        effectiveDueDate,
-        originalRank,
-        alternateRank: override?.alternateRank ?? null,
-        orderPinned: override?.orderPinned ?? false,
-        specialDue: specialDueForOverride(override),
-        plannedQuantity: displayFields.plannedQuantity ?? null,
-        requiredMinutes,
-        requiredMinutesKnown,
-        isCompleted: rowCompleted,
-        completionSource,
-        progress: {
-          completed: itemProgress.completed,
-          total: itemProgress.total,
-          quantityKnown: false
-        }
-      });
-    }
+        fhincd: rowValue(data, 'FHINCD'),
+        isCompleted: rowCompleted
+      },
+      progress
+    );
+    const pieceSet = params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(data)));
+    const revisionInput = {
+      ...(pieceSet ? { pieceSetVersion: pieceSet.version, quantityWarning: pieceSet.pieces.length ? pieceSet.quantityWarning : null } : {}),
+      rowId: row.id,
+      rowUpdatedAt: row.updatedAt?.toISOString() ?? null,
+      detailUpdatedAt: detail.updatedAt?.toISOString() ?? null,
+      logicalKey: buildGrindingPlanningBoardLogicalKey(data),
+      originalResourceCd,
+      originalDueDate,
+      sourceMinutes,
+      rowCompleted,
+      completionSource,
+      sourceQuantity,
+      overrideVersion: override?.version ?? 0,
+      overrideResourceCd: override?.overrideResourceCd ?? null,
+      overrideDueDate: ymd(override?.overrideDueDate),
+      dueDateCleared: override?.dueDateCleared ?? null,
+      effectiveDueDate,
+      alternateRank: override?.alternateRank ?? null,
+      orderPinned: override?.orderPinned ?? false,
+      specialDueKind: override?.specialDueKind ?? null,
+      specialDueExpiresAt: override?.specialDueExpiresAt?.toISOString() ?? null,
+      originalRank
+    };
+    items.push({
+      itemId,
+      kind: 'row',
+      ...(pieceSet ? { isLaterProcess: Boolean(pieceSet.sourcePieceSetId), pieceSetVersion: pieceSet.version, quantityWarning: (pieceSet.pieces.length ? pieceSet.quantityWarning : null) as GrindingPlanningBoardItem['quantityWarning'] } : {}),
+      itemRevision: createItemRevision(revisionInput),
+      version: override?.version ?? 0,
+      sourceRowId: row.id,
+      fseiban,
+      fhincd: rowValue(data, 'FHINCD'),
+      fhinmei: rowValue(data, 'FHINMEI') || null,
+      machineName: params.machineNameBySeiban?.get(fseiban) ?? null,
+      productNo: rowValue(data, 'ProductNo'),
+      processOrder: rowValue(data, 'FKOJUN'),
+      originalResourceCd,
+      effectiveResourceCd,
+      originalDueDate,
+      effectiveDueDate,
+      originalRank,
+      alternateRank: override?.alternateRank ?? null,
+      orderPinned: override?.orderPinned ?? false,
+      specialDue: specialDueForOverride(override),
+      plannedQuantity: displayFields.plannedQuantity ?? null,
+      ...resolvedMinutes,
+      isCompleted: rowCompleted,
+      lslhSurface: false,
+      completionSource,
+      progress: {
+        completed: itemProgress.completed,
+        total: itemProgress.total,
+        quantityKnown: false
+      }
+    });
   }
   return items;
+}
+
+function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, parents: GrindingPlanningBoardItem[]): GrindingPlanningBoardItem[] {
+  const rowsById = new Map(params.rows.map((row) => [row.id, row]));
+  const minutesByPart = new Map(params.resourceMinutes?.values.map((value) => [JSON.stringify([value.resourceCd, value.fhincd]), value]));
+  return parents.flatMap((parent) => {
+    const row = rowsById.get(parent.sourceRowId);
+    const set = row && params.pieceSets?.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)));
+    if (!set?.pieces.length) return [parent];
+    const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
+    return set.pieces.map((piece): GrindingPlanningBoardItem => {
+      const itemId = `piece:${piece.id}`;
+      const inherited = params.overrides.get(parent.itemId);
+      const own = params.overrides.get(itemId);
+      const override = own ?? inherited;
+      const total = parent.plannedQuantity ?? (set.sourcePieceSetId || piece.sourcePieceId ? set.plannedQuantity : null);
+      const minutes = total != null && total > 0 && set.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && parent.originalRequiredMinutes != null && parent.originalRequiredMinutes > 0
+        ? parent.originalRequiredMinutes * piece.quantity / total : null;
+      const resolvedMinutes = resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
+        quantity: piece.quantity, effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        fhincd: parent.fhincd }, params.resourceMinutes);
+      const effectiveResourceCd = normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd);
+      const partMinutes = minutesByPart.get(JSON.stringify([effectiveResourceCd, parent.fhincd.trim()]));
+      const ops = partMinutes?.ops ?? [];
+      const opNos = new Set(ops.map((op) => op.opNo));
+      const unitFields = isUnitSplitEnabled(effectiveResourceCd, params.resourceCapacity) ? {
+        unitRequiredMinutes: resolvedMinutes.requiredMinutesSource === 'own' && partMinutes
+          ? partMinutes.perUnitMinutes * piece.quantity : resolvedMinutes.originalRequiredMinutes,
+        setupMinutes: resolvedMinutes.requiredMinutesSource === 'own' ? partMinutes?.setupMinutes ?? 0 : 0,
+        ops,
+        completedOpNos: (piece.opCompletions ?? []).map((completion) => completion.opNo).filter((opNo) => opNos.has(opNo)).sort((a, b) => a - b)
+      } : {};
+      const isCompleted = external || piece.isCompleted;
+      const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
+        originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
+        plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null,
+        override
+      });
+      return {
+        ...parent, itemId, kind: 'piece', parentItemId: parent.itemId, pieceId: piece.id,
+        ...(piece.sourcePieceId ? { sourcePieceId: piece.sourcePieceId } : {}),
+        piecePosition: piece.position, pieceSetVersion: set.version, quantity: piece.quantity,
+        parentPlannedQuantity: total, plannedQuantity: piece.quantity,
+        quantityWarning: set.quantityWarning as GrindingPlanningBoardItem['quantityWarning'],
+        manualIsCompleted: piece.isCompleted, isCompleted,
+        completionSource: external ? 'import' : piece.isCompleted ? 'manual' : null,
+        effectiveResourceCd: normalizeResourceCd(override?.overrideResourceCd ?? parent.originalResourceCd),
+        effectiveDueDate, alternateRank: override?.alternateRank ?? null,
+        orderPinned: override?.orderPinned ?? false, specialDue: specialDueForOverride(override),
+        version: own?.version ?? 0, ...resolvedMinutes, ...unitFields,
+        itemRevision: createItemRevision({ parentRevision: parent.itemRevision, pieceId: piece.id, position: piece.position,
+          pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
+          quantityWarning: set.quantityWarning, external, inherited, own })
+      };
+    });
+  });
 }
 
 export function projectGrindingPlanningBoard(
@@ -556,7 +582,9 @@ export function projectGrindingPlanningBoard(
 ): GrindingPlanningBoardProjectionResult {
   const progressRows = params.progressRows ?? buildProgressRowsFromSource(params.rows, params.details);
   const progress = buildProgressProjection(progressRows);
-  const allItems = buildItems(params, progress);
+  const parents = buildItems(params, progress);
+  const pieces = expandSessakuPieces(params, parents);
+  const allItems = params.includePieces ? pieces : parents;
   const sortedAllItems = sortGrindingPlanningBoardProjectionItems(
     allItems,
     params.seibanOrder,
@@ -566,7 +594,7 @@ export function projectGrindingPlanningBoard(
   const items = params.selectedFseibans
     ? sortedAllItems.filter((item) => params.selectedFseibans?.has(item.fseiban))
     : sortedAllItems;
-  const loadResult = buildLoad(sortedAllItems);
+  const loadResult = buildLoad(pieces);
   return {
     items,
     allItems: sortedAllItems,

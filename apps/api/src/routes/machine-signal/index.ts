@@ -12,6 +12,7 @@ import {
 } from '../../services/machine-signal/machine-signal-gmail-ingestion.service.js';
 import {
   getMachineSignalDay,
+  getMachineSignalResourceUptime,
   getMachineSignalWorsening,
   getMachineSignalRange,
   listMachineSignalReportDates,
@@ -75,7 +76,10 @@ const settingsBodySchema = z.object({
   }),
 });
 
+const resourceUptimeQuerySchema = z.object({ days: z.coerce.number().int().min(1).max(92).default(30) });
+
 const sensorBodySchema = z.object({
+  resourceCd: z.string().trim().max(40).nullable().optional(),
   displayName: z.string().trim().max(200).nullable(),
   site: z.string().trim().max(80).nullable(),
   kind: z.enum(MACHINE_SIGNAL_SENSOR_KINDS),
@@ -124,6 +128,10 @@ function buildDefaultDeps(): MachineSignalRouteDeps {
 
 export function registerMachineSignalRoutes(app: FastifyInstance, deps: MachineSignalRouteDeps = buildDefaultDeps()): void {
   const { allowView, canManage } = deps;
+
+  app.get(`${BASE}/resource-uptime`, { preHandler: allowView }, async (request) =>
+    getMachineSignalResourceUptime(resourceUptimeQuerySchema.parse(request.query))
+  );
 
   app.get(`${BASE}/day`, { preHandler: allowView }, async (request) =>
     getMachineSignalDay(dayQuerySchema.parse(request.query))

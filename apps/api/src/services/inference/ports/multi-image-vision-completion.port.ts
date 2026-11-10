@@ -1,6 +1,7 @@
 import type { VisionCompletionInput } from './vision-completion.port.js';
 
 export type MultiImageVisionCompletionInput = Omit<VisionCompletionInput, 'imageBytes' | 'mimeType'> & {
+  stream?: boolean;
   images: Array<{ imageBytes: Buffer; mimeType: 'image/jpeg'; label: string }>;
 };
 export interface MultiImageVisionCompletionPort {

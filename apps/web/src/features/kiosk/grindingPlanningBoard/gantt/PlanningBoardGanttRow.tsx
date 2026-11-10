@@ -1,14 +1,23 @@
 import clsx from 'clsx';
-import { memo, useCallback, useEffect, useRef } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
+import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
+import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
+import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
+import {
+  estimateLateStarLabelHeight,
+  PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
+} from './planningBoardLateStars';
+import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
+import type { GanttWindow } from './usePlanningBoardGanttWindow';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { PointerEvent } from 'react';
 
@@ -20,8 +29,10 @@ export const GANTT_IMPORT_HATCH = 'repeating-linear-gradient(135deg, #475569 0 6
 export const GANTT_HATCH = 'repeating-linear-gradient(135deg, #fb7185 0 4px, #9f1239 4px 8px)';
 
 type InteractionProps = {
+  pieceDisabled?: boolean;
+  showPieceQuantity?: boolean;
   onCompleteToggle?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
-  completionPendingRowIds?: ReadonlySet<string>;
+  completionPendingItemIds?: ReadonlySet<string>;
   completionTargetId?: string | null;
   onCompletionTarget?: (itemId: string) => void;
   onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
@@ -33,6 +44,7 @@ type InteractionProps = {
 };
 type BarProps = InteractionProps & {
   bar: GanttBar;
+  onHeldItem: (itemId: string | null) => void;
   start: number;
   dayWidth: number;
   today: string;
@@ -43,7 +55,7 @@ type BarProps = InteractionProps & {
 type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: number; frame: number | null; element: HTMLButtonElement };
 
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
-  bar, start, dayWidth, today, selected, sibling, dimmed, disabled, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingRowIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
+  bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
@@ -52,12 +64,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     const drag = pending.current;
     if (!drag) return;
     pending.current = null;
+    onHeldItem(null);
     if (drag.frame != null) cancelAnimationFrame(drag.frame);
     drag.element.style.transform = '';
     drag.element.style.zIndex = '';
     if (tip.current) tip.current.hidden = true;
     if (drag.element.hasPointerCapture?.(drag.pointerId)) drag.element.releasePointerCapture(drag.pointerId);
-  }, []);
+  }, [onHeldItem]);
   useEffect(() => {
     window.addEventListener('blur', clear);
     return () => { window.removeEventListener('blur', clear); clear(); };
@@ -94,10 +107,11 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       aria-pressed={selected}
       disabled={disabled}
       title={`工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
-      className="absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300"
+      className={clsx("absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300", bar.item.quantityWarning && "outline outline-2 -outline-offset-2 outline-red-500")}
       style={{ left: (bar.end! - start) * dayWidth - Math.max(44, width), width: Math.max(44, width), zIndex: selected ? 4 : 2 }}
       onPointerDown={(event) => {
         if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted) return;
+        onHeldItem(bar.item.itemId);
         suppressClick.current = false;
         pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, delta: 0, frame: null, element: event.currentTarget };
         event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -124,23 +138,28 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
-        focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed && 'opacity-30'
-      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined }}>
+        focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
         {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && bar.item.kind === 'row' && <PlanningBoardCompletionButton
-      item={bar.item} onToggle={onCompleteToggle} className="absolute top-0 z-10"
-      style={{ left: (bar.end! - start) * dayWidth - 28 }}
-      disabled={disabled || completionPendingRowIds?.has(bar.item.sourceRowId)} />}
+    {onCompleteToggle && completionTargetId === bar.item.itemId && <div
+      className="absolute top-0 z-10 flex w-max items-start"
+      style={{ left: Math.max(0, (bar.end! - start) * dayWidth), transform: `translateX(max(-100%, ${-Math.max(0, (bar.end! - start) * dayWidth)}px))` }}>
+      {showPieceQuantity && <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selected} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
+      <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
+        disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />
+    </div>}
     </>
   );
 });
 
 export type PlanningBoardGanttRowProps = InteractionProps & {
   row: GanttRow;
+  window?: GanttWindow;
+  registerRow?: (key: string, element: HTMLDivElement | null) => void;
   start: number;
   dayWidth: number;
   width: number;
@@ -148,12 +167,24 @@ export type PlanningBoardGanttRowProps = InteractionProps & {
   selectedItemIds: ReadonlySet<string>;
   selectedParts: ReadonlySet<string>;
   resourceView: boolean;
+  onToggleSeiban?: PlanningBoardToggleSeiban;
 };
 
 export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
-  row, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, ...interaction
+  row, window = null, registerRow, start, dayWidth, width, today, selectedItemIds, selectedParts, resourceView, onToggleSeiban, ...interaction
 }: PlanningBoardGanttRowProps) {
+  const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
+  const [heldItemId, setHeldItemId] = useState<string | null>(null);
+  const visibleBars = row.bars.filter((bar) => {
+    const rect = ganttBarGeometry(bar, start, dayWidth, false);
+    return rect && (!window || heldItemId === bar.item.itemId || rect.left <= window.right && rect.left + rect.width >= window.left);
+  });
+  const visibleIds = new Set(visibleBars.map((bar) => bar.item.itemId));
   const chipsByPart = usePlanningBoardProcessChips();
+  const lateStars = usePlanningBoardLateStars(row.bars, dateToDay(today));
+  // px-2 on both sides; reserve space for the optional warning and missing-due labels.
+  const labelWidth = GANTT_LABEL_WIDTH - 16 - (row.flagged ? 16 : 0) - (row.bars.some((bar) => bar.due == null) ? 52 : 0);
+  const estimatedHeight = Math.max(GANTT_ROW_HEIGHT, estimateLateStarLabelHeight(lateStars.groups, labelWidth, Boolean(onToggleSeiban)));
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
   for (const bar of row.bars) {
@@ -162,22 +193,29 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
     if (!last || bar.end > last.end!) lastBarByPart.set(bar.partKey, bar);
   }
   return (
-    <div data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
-      style={{ height: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${GANTT_ROW_HEIGHT}px` }}>
+    <div ref={rowRef} data-gantt-flagged={row.flagged || undefined} className="flex border-b border-slate-800/70"
+      style={{ minHeight: GANTT_ROW_HEIGHT, contain: 'layout style', contentVisibility: 'auto', containIntrinsicSize: `auto ${estimatedHeight}px` }}>
       <div className={clsx('sticky left-0 z-20 flex shrink-0 items-center gap-1 border-r border-slate-700 bg-slate-900 px-2 text-xs', row.flagged && 'border-l-2 border-l-rose-400')}
         style={{ width: GANTT_LABEL_WIDTH }}>
         {row.flagged && <span className="text-rose-300" aria-label="工程の重なり">⚠</span>}
-        <span className="min-w-0 flex-1 truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small></span>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate font-semibold">{row.label}<small className="block truncate font-mono text-[10px] text-slate-400">{row.detail}</small></span>
+          <PlanningBoardLateStarDates groups={lateStars.groups} focusedSeiban={interaction.focusedSeiban} onToggleSeiban={onToggleSeiban} />
+        </div>
         {row.bars.some((bar) => bar.due == null) && <span className="text-slate-400">納期なし</span>}
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>
+        <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
         {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-7 h-px bg-slate-500" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
-        {row.bars.filter((bar) => bar.end != null).map((bar) => (
-          <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} start={start} dayWidth={dayWidth} today={today}
+        {visibleBars.map((bar) => (
+          <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} onHeldItem={setHeldItemId} start={start} dayWidth={dayWidth} today={today}
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
         ))}
-        {[...lastBarByPart.values()].map((bar) => {
+        {visibleBars.filter((bar) => lateStars.itemIds.has(bar.item.itemId)).map((bar) => (
+          <PlanningBoardLateStar key={`late:${bar.item.itemId}`} left={(bar.end! - start) * dayWidth - (bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth))} top={26} />
+        ))}
+        {[...lastBarByPart.values()].filter((bar) => visibleIds.has(bar.item.itemId)).map((bar) => {
           const chips = chipsByPart.get(bar.partKey);
           return chips && chips.length > 0 ? (
             <div key={`chips:${bar.partKey}`} className="pointer-events-none absolute top-9 z-[3] w-max -translate-x-full"

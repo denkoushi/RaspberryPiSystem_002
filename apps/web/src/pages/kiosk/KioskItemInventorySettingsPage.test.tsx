@@ -136,7 +136,8 @@ describe('KioskItemInventorySettingsPage', () => {
       renderPage();
       press('パスワードのテンキー', '0000');
       expect(await screen.findByRole('alert')).toBeInTheDocument();
-      act(() => vi.advanceTimersByTime(4000));
+      await act(async () => {});
+      await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();

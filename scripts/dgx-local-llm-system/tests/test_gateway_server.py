@@ -180,6 +180,23 @@ class GlmThinkingDefaultsTests(unittest.TestCase):
 
 
 class GatewayServerTests(unittest.TestCase):
+    def test_metrics_timeouts_skip_fallback_queries(self):
+        module = load_module()
+        timeout = module.subprocess.TimeoutExpired('metrics', 10)
+        for preceding, count in (([], 1), ([Mock(returncode=1)], 2),
+                ([Mock(returncode=0, stdout='44, 32768, 131072'),
+                  Mock(returncode=0, stdout='MemTotal: 134217728')], 3),
+                ([Mock(returncode=0, stdout='44, 32768, 131072'),
+                  Mock(returncode=0, stdout='MemTotal: 134217728'), Mock(returncode=1)], 4)):
+            with self.subTest(count=count), patch.object(module.subprocess, 'run', side_effect=[*preceding, timeout]) as run:
+                self.assertEqual(module.collect_gpu_metrics(), (False, None))
+                self.assertEqual(run.call_count, count)
+                self.assertTrue(all(call.kwargs['timeout'] == 10 for call in run.call_args_list))
+        with patch.object(module.subprocess, 'run', side_effect=timeout) as run:
+            self.assertFalse(module.is_container_running('container'))
+            run.assert_called_once()
+            self.assertEqual(run.call_args.kwargs['timeout'], 10)
+
     def test_collect_gpu_metrics_includes_detail_fields(self):
         module = load_module()
 
@@ -190,7 +207,7 @@ class GatewayServerTests(unittest.TestCase):
 
         calls: list[str] = []
 
-        def run_impl(args, capture_output: bool, text: bool, check: bool):
+        def run_impl(args, capture_output: bool, text: bool, check: bool, timeout=10):
             command = args[-1]
             calls.append(command)
             if "--query-gpu=" in command:
@@ -247,7 +264,7 @@ class GatewayServerTests(unittest.TestCase):
 
         calls: list[str] = []
 
-        def run_impl(args, capture_output: bool, text: bool, check: bool):
+        def run_impl(args, capture_output: bool, text: bool, check: bool, timeout=10):
             command = args[-1]
             calls.append(command)
             if "temperature.gpu" in command:
@@ -974,7 +991,6 @@ class PrivateComfyWorkerTests(unittest.TestCase):
         self.module.run_local_command = self.local
         self.module.run_worker_command = self.worker
         self.module.write_gateway_resource_state_best_effort = Mock(return_value=None)
-        self.module.emit_agent_debug_log = Mock()
 
     def request(self, action, config=None):
         config = config or replace(self.config, private_comfy_worker_ssh_target="user@spark2.example")
@@ -1120,3 +1136,458 @@ class PrivateComfyWorkerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BusinessRoutingContractTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        self.state = self.root / 'active.json'
+        Path(str(self.state) + '.lock').touch()  # Created by control-server init.
+        self.value = {'modelProfileId': 'business_deepseek_v41_flash_tp2', 'backend': 'blue',
+            'displayNameJa': 'DeepSeek', 'servedAlias': 'system-prod-primary', 'stateUpdatedAt': '2026-11-02T00:00:00Z',
+            'selectedBusinessProfileId': 'business_deepseek_v41_flash_tp2', 'selectionRevision': 3,
+            'businessTransition': 'ready', 'businessGeneration': 'generation-3'}
+        self.state.write_text(json.dumps(self.value))
+        self.config = replace(self.module.load_config_from_env(), active_model_state_path=str(self.state),
+            llm_shared_tokens=frozenset({'client-key'}), runtime_control_token='control-key',
+            blue_backend_base_url='http://untrusted.invalid', model_registry_root=str(self.root / 'registry'))
+        self.flag = patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
+            'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false',
+            'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': 'business-only-key'})
+        self.flag.start()
+        self.addCleanup(self.flag.stop)
+        self.calls = []
+        self.runtime = {'modelProfileId': self.module.DEEPSEEK_PROFILE, 'selectionRevision': 3,
+            'generation': 'generation-3', 'prepared': True, 'failureReason': None, 'apiListenerClosed': False,
+            'launcherStopped': False, 'watchdogStopped': False,
+            'ranks': [{'rank': r, 'generation': 'generation-3', 'running': True, 'gpuReleased': False} for r in (0, 1)],
+            'privateSharingEvidence': {'generation': 'generation-3', 'weightsRevision': '878f5689-ablit-0bdc2036',
+                'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking', 'promptCacheGiB': 0,
+                'learn': False, 'logDriver': 'none', 'requestResponseLogging': False, 'persistsConversations': False}}
+        def proxy(method, url, body, headers):
+            self.calls.append((method, url, body, headers))
+            if url.endswith('/v1/models'):
+                return 200, b'{"data":[{"id":"system-prod-primary"},{"id":"private-model"}]}', 'application/json'
+            if url.endswith('/system/resource-state'):
+                return 200, json.dumps({'ok': True, 'businessRuntime': self.runtime}).encode(), 'application/json'
+            return 200, b'{"model":"upstream-internal-name","choices":[]}', 'application/json'
+        self.handler = self.module.make_handler(self.config, proxy)
+
+    def request(self, method='POST', path='/v1/chat/completions', payload=None, token='client-key', runtime_token=None,
+                shared=None, extra_headers=''):
+        data = json.dumps(payload or {'model': 'system-prod-primary', 'messages': [{'role': 'user', 'content': 'hello'}]}).encode() if method == 'POST' else b''
+        headers = f'{method} {path} HTTP/1.0\r\nAuthorization: Bearer {token}\r\nContent-Length: {len(data)}\r\n'
+        if runtime_token:
+            headers += f'X-Runtime-Control-Token: {runtime_token}\r\n'
+        if shared is not None:
+            headers += f'X-Private-Shared-Runtime: {shared}\r\n'
+        headers += extra_headers
+        request = headers.encode() + b'\r\n' + data
+        output = io.BytesIO()
+        class Connection:
+            def makefile(self, *args): return io.BytesIO(request)
+            def sendall(self, data): output.write(data)
+        self.handler(Connection(), ('127.0.0.1', 0), object())
+        head, body = output.getvalue().split(b'\r\n\r\n', 1)
+        return int(head.split()[1]), body
+
+    def test_deepseek_json_object_adds_system_instruction_without_mutating_input(self):
+        for content in ('Original system', [{'type': 'text', 'text': 'Original system'}], None):
+            with self.subTest(content=content):
+                payload = {'messages': [{'role': 'system', 'content': content}],
+                    'response_format': {'type': 'json_object'}}
+                original = json.dumps(payload)
+                prepared, enabled = self.module.deepseek_json_request(payload)
+                self.assertTrue(enabled)
+                self.assertEqual(json.dumps(payload), original)
+                self.assertNotIn('response_format', prepared)
+                self.assertIn('exactly one JSON object', str(prepared['messages'][0]['content']))
+                self.assertEqual(self.request(payload=payload)[0], 200)
+                sent = json.loads(self.calls[-1][2])
+                self.assertNotIn('response_format', sent)
+                self.assertIn('no code fences', str(sent['messages'][0]['content']))
+                if isinstance(content, str):
+                    self.assertTrue(sent['messages'][0]['content'].startswith(content + '\n\n'))
+                elif isinstance(content, list):
+                    self.assertEqual(sent['messages'][0]['content'][:-1], content)
+                else:
+                    self.assertEqual(sent['messages'][1], payload['messages'][0])
+
+    def test_deepseek_json_schema_removes_guided_fields_and_adds_schema(self):
+        schema = {'type': 'object', 'properties': {'名前': {'type': 'string'}}}
+        for fields in ({'guided_json': schema}, {'guided_json': json.dumps(schema)},
+                       {'response_format': {'type': 'json_schema', 'json_schema': {'schema': schema}}}):
+            with self.subTest(fields=fields):
+                payload = {'messages': [{'role': 'user', 'content': 'hello'}],
+                    'guided_regex': '.*', 'guided_custom': True, **fields}
+                self.assertEqual(self.request(payload=payload)[0], 200)
+                sent = json.loads(self.calls[-1][2])
+                self.assertFalse(any(key.startswith('guided_') for key in sent))
+                self.assertNotIn('response_format', sent)
+                self.assertIn(json.dumps(schema, ensure_ascii=False), sent['messages'][0]['content'])
+                self.assertEqual(sent['messages'][1:], payload['messages'])
+
+    def test_deepseek_json_response_extracts_objects_and_keeps_alias(self):
+        obj = {'名前': 'value'}
+        encoded = json.dumps(obj, ensure_ascii=False)
+        contents = [encoded, '<think>reasoning\nmore</think>\n```json\n' + encoded + '\n```',
+            '```\n' + encoded + '\n```', 'prefix {broken} then ' + encoded + ' trailing',
+            '[' + encoded + ']', 'unextractable content', '[1, 2]', None]
+        raw = json.dumps({'model': 'internal', 'choices': [
+            {'message': {'content': content}} for content in contents]}).encode()
+        self.handler = self.module.make_handler(self.config, Mock(return_value=(200, raw, 'application/json')))
+        status, body = self.request(payload={'response_format': {'type': 'json_object'}})
+        self.assertEqual(status, 200)
+        result = json.loads(body)
+        self.assertEqual(result['model'], 'system-prod-primary')
+        for index, choice in enumerate(result['choices']):
+            if index < 5:
+                self.assertEqual(json.loads(choice['message']['content']), obj)
+            else:
+                self.assertEqual(choice['message']['content'], contents[index])
+
+    def test_deepseek_json_response_strips_incomplete_think_blocks(self):
+        encoded = json.dumps({'answer': 2})
+        unclosed = '<think>maybe answer {"draft": 1} then'
+        for content, expected in ((unclosed, unclosed),
+                ('reasoning</think>\n' + encoded, encoded),
+                ('maybe answer {"draft": 1} then</think>\n' + encoded, encoded)):
+            with self.subTest(content=content):
+                raw = json.dumps({'model': 'internal', 'choices': [{'message': {'content': content}}]}).encode()
+                result = json.loads(self.module.deepseek_json_response(raw))
+                self.assertEqual(result['choices'][0]['message']['content'], expected)
+
+    def test_deepseek_json_invalid_response_body_and_errors_are_unchanged(self):
+        for status, raw in ((200, b'{broken'), (200, b'\xff'), (400, b'upstream error')):
+            with self.subTest(status=status, raw=raw):
+                self.assertEqual(self.module.deepseek_json_response(raw), raw)
+                self.handler = self.module.make_handler(self.config, Mock(return_value=(status, raw, 'application/json')))
+                self.assertEqual(self.request(payload={'response_format': {'type': 'json_object'}}), (status, raw))
+
+    def test_deepseek_without_json_mode_preserves_existing_body_and_content(self):
+        raw = b'{"model":"internal","choices":[{"message":{"content":"```json\\n{}\\n```"}}]}'
+        for fields in ({}, {'response_format': {'type': 'text'}}):
+            with self.subTest(fields=fields):
+                payload = {'model': 'system-prod-primary', 'messages': [{'role': 'user', 'content': 'hello'}], **fields}
+                proxy = Mock(return_value=(200, raw, 'application/json'))
+                self.handler = self.module.make_handler(self.config, proxy)
+                status, body = self.request(payload=payload)
+                self.assertEqual(status, 200)
+                expected = {key: value for key, value in payload.items() if key != 'response_format'}
+                self.assertEqual(proxy.call_args.args[2], json.dumps(expected, ensure_ascii=False).encode())
+                self.assertEqual(body, self.module.business_response_alias(raw))
+                prepared, enabled = self.module.deepseek_json_request(payload)
+                self.assertFalse(enabled)
+                self.assertEqual(prepared, expected)
+
+    def test_json_mode_only_applies_to_deepseek_chat_completions(self):
+        payload = {'response_format': {'type': 'json_object'}, 'messages': []}
+        self.assertEqual(self.request(path='/v1/completions', payload=payload)[0], 200)
+        self.assertEqual(json.loads(self.calls[-1][2])['response_format'], payload['response_format'])
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE)
+        self.state.write_text(json.dumps(self.value))
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        expected = self.module.inject_blue_chat_completions_defaults('/v1/chat/completions',
+            json.dumps({**payload, 'model': 'system-prod-primary'}, ensure_ascii=False).encode(), 'blue', self.config)
+        self.assertEqual(self.calls[-1][2], expected)
+        self.assertEqual(json.loads(self.calls[-1][2])['response_format'], payload['response_format'])
+
+    def test_deepseek_json_stream_only_changes_request(self):
+        raw = b'data: {"model":"internal","choices":[{"delta":{"content":"```json"}}]}\n\ndata: [DONE]\n\n'
+        response = io.BytesIO(raw)
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        with patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
+            status, body = self.request(path='/v1/chat/completions/', payload={'stream': True,
+                'response_format': {'type': 'json_object'}, 'messages': []})
+        self.assertEqual(status, 200)
+        sent = json.loads(upstream.call_args.args[0].data)
+        self.assertNotIn('response_format', sent)
+        self.assertIn('exactly one JSON object', sent['messages'][0]['content'])
+        self.assertEqual(body, raw.replace(b'"model":"internal","choices":[{"delta":{"content":"```json"}}]',
+            b'"model": "system-prod-primary", "choices": [{"delta": {"content": "```json"}}]'))
+
+    def test_shared_header_rejects_stale_empty_duplicate_or_disabled_without_body_echo(self):
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            for shared in ('2:generation-3', '3:stale-generation', '', 'private-body-sentinel'):
+                for method in ('GET', 'POST'):
+                    with self.subTest(shared=shared, method=method):
+                        status, body = self.request(method, shared=shared,
+                            payload={'messages': [{'content': 'private-body-sentinel'}]})
+                        self.assertEqual((status, body), (409, b''))
+            self.assertEqual(self.request(shared='3:generation-3',
+                extra_headers='X-Private-Shared-Runtime: 3:generation-3\r\n'), (409, b''))
+        self.assertEqual(self.calls, [])
+        for flags in ({'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false'},
+                      {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true', 'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            with patch.dict(os.environ, flags):
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+        self.assertFalse(any(url.endswith('/v1/chat/completions') for _, url, _, _ in self.calls))
+
+    def test_matching_shared_header_passes_with_fixed_route_fresh_proof_and_no_body_logs(self):
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs:
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                self.assertEqual(self.request(method, path, shared='3:generation-3',
+                    payload={'messages': [{'role': 'user', 'content': 'private-body-sentinel'}]})[0], 200)
+                self.assertEqual(self.calls[-2][1], self.config.runtime_control_base_url + '/system/resource-state')
+                self.assertEqual(self.calls[-1][1], 'http://192.168.100.11:8889' + path)
+                self.assertNotIn('X-Private-Shared-Runtime', self.calls[-1][3])
+            self.assertEqual(logs.getvalue(), '')
+            self.assertFalse(hasattr(self.module, 'emit_agent_debug_log'))
+
+    def test_shared_status_attestation_publishes_only_complete_current_ready_proof(self):
+        def snapshot():
+            status, body = self.request('GET', '/system/resource-state', runtime_token='control-key')
+            self.assertEqual(status, 200)
+            runtime = json.loads(body)['businessRuntime']
+            self.assertNotIn('privateSharingEvidence', runtime)
+            return runtime
+        self.assertNotIn('privateSharing', snapshot())
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            proof = snapshot()['privateSharing']
+            self.assertEqual(proof, {**self.runtime['privateSharingEvidence'], 'selectionRevision': 3,
+                                    'generationFenced': True})
+            original = json.loads(json.dumps(self.runtime))
+            mutations = [lambda r: r.pop('privateSharingEvidence'),
+                lambda r: r['privateSharingEvidence'].pop('logDriver'),
+                lambda r: r['privateSharingEvidence'].update(logDriver='unknown'),
+                lambda r: r['privateSharingEvidence'].update(learn=0),
+                lambda r: r['privateSharingEvidence'].update(promptCacheGiB=False),
+                lambda r: r['privateSharingEvidence'].update(requestResponseLogging=True),
+                lambda r: r['privateSharingEvidence'].update(persistsConversations=True),
+                lambda r: r.update(generation='stale'), lambda r: r.update(selectionRevision=2),
+                lambda r: r.update(prepared=False), lambda r: r.update(apiListenerClosed=True),
+                lambda r: r.update(failureReason='business_control_restarted'),
+                lambda r: r['ranks'][1].update(running=False)]
+            for index, mutate in enumerate(mutations):
+                with self.subTest(mutation=index):
+                    self.runtime = json.loads(json.dumps(original))
+                    mutate(self.runtime)
+                    self.assertNotIn('privateSharing', snapshot())
+                    self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.runtime = original
+            for transition in ('loading', 'failed', 'idle'):
+                self.state.write_text(json.dumps({**self.value, 'businessTransition': transition}))
+                self.assertNotIn('privateSharing', snapshot())
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+
+    def test_no_shared_header_retains_business_behavior_even_without_proof(self):
+        self.runtime.pop('privateSharingEvidence')
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            self.assertEqual(self.request()[0], 200)
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(self.calls[0][1], 'http://192.168.100.11:8889/v1/chat/completions')
+
+    def test_shared_requests_refuse_glm_and_mutations_and_hold_generation_during_forward(self):
+        from active_model_state import business_state_lock
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}):
+            with business_state_lock(str(self.state)):
+                self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.assertEqual(self.request(path='/start', shared='3:generation-3'), (409, b''))
+            self.state.write_text(json.dumps({**self.value, 'modelProfileId': self.module.GLM_PROFILE,
+                'selectedBusinessProfileId': self.module.GLM_PROFILE}))
+            self.assertEqual(self.request(shared='3:generation-3'), (409, b''))
+            self.assertEqual(self.calls, [])
+            self.state.write_text(json.dumps(self.value))
+            def proxy(method, url, body, headers):
+                with self.assertRaises(BlockingIOError):
+                    with business_state_lock(str(self.state), blocking=False):
+                        pass
+                if url.endswith('/system/resource-state'):
+                    return 200, json.dumps({'businessRuntime': self.runtime}).encode(), 'application/json'
+                return 200, b'{"model":"system-prod-primary","choices":[]}', 'application/json'
+            self.handler = self.module.make_handler(self.config, proxy)
+            self.assertEqual(self.request(shared='3:generation-3')[0], 200)
+
+    def test_shared_stream_uses_matching_generation_and_does_not_log_output(self):
+        response = io.BytesIO()
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        response.read1 = Mock(side_effect=[b'data: {"model":"internal","choices":[{"delta":{"content":"private-output"}}]}\n\n', b''])
+        with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'true'}), \
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs, \
+                patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
+            status, body = self.request(payload={'stream': True}, shared='3:generation-3')
+        self.assertEqual(status, 200)
+        self.assertIn(b'private-output', body)
+        self.assertEqual(upstream.call_args.args[0].full_url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(logs.getvalue(), '')
+
+    def test_deepseek_fixed_route_credential_alias_and_no_glm_transform(self):
+        status, body = self.request()
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['model'], 'system-prod-primary')
+        method, url, body, headers = self.calls[-1]
+        self.assertEqual(url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(headers['Authorization'], 'Bearer business-only-key')
+        self.assertNotIn('client-key', str(headers))
+        self.assertNotIn('chat_template_kwargs', json.loads(body))
+        status, body = self.request('GET', '/v1/models')
+        self.assertEqual(status, 200)
+        self.assertEqual([m['id'] for m in json.loads(body)['data']], ['system-prod-primary'])
+
+    def test_glm_fixed_route_ignores_backend_url_env(self):
+        self.value.update(modelProfileId='business_glm53_flash_fp4_tp2', selectedBusinessProfileId='business_glm53_flash_fp4_tp2')
+        self.state.write_text(json.dumps(self.value))
+        self.assertEqual(self.request()[0], 200)
+        self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083/v1/chat/completions')
+        self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_legacy_glm_initial_state_routes_without_generation(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for generation in (None, ''):
+            if generation is not None:
+                self.value['businessGeneration'] = generation
+            self.state.write_text(json.dumps(self.value))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(generation=generation, path=path):
+                    self.assertEqual(self.request(method, path)[0], 200)
+                    self.assertEqual(self.calls[-1][1], 'http://127.0.0.1:38083' + path)
+                    self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_legacy_glm_initial_state_boundaries_fail_closed(self):
+        self.value.update(modelProfileId=self.module.GLM_PROFILE, selectedBusinessProfileId=self.module.GLM_PROFILE,
+            businessTransition='idle', selectionRevision=0)
+        self.value.pop('businessGeneration')
+        for changes in ({'selectionRevision': 1}, {'businessTransition': 'loading'},
+                        {'businessTransition': 'failed'}, {'backend': 'green'},
+                        {'servedAlias': 'other'}, {'businessGeneration': 'generation-1'},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE},
+                        {'modelProfileId': self.module.DEEPSEEK_PROFILE,
+                         'selectedBusinessProfileId': self.module.DEEPSEEK_PROFILE}):
+            self.state.write_text(json.dumps({**self.value, **changes}))
+            for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                with self.subTest(changes=changes, path=path):
+                    status, body = self.request(method, path)
+                    self.assertEqual(status, 503)
+                    self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+        self.assertEqual(self.calls, [])
+
+    def test_images_wrong_model_missing_key_and_unknown_private_or_transition_fail_closed(self):
+        self.assertEqual(self.request(payload={'messages': [{'content': [{'type': 'image_url', 'image_url': {'url': 'data:secret'}}]}]})[0], 400)
+        self.assertEqual(self.request(payload={'model': 'other'})[0], 400)
+        for changes in ({'businessTransition': 'loading'}, {'businessTransition': 'failed'},
+                        {'modelProfileId': 'private_deepseek_v41_flash_tp2'}, {'businessGeneration': ''}):
+            self.state.write_text(json.dumps({**self.value, **changes}))
+            self.assertEqual(self.request()[0], 503)
+            self.assertEqual(self.request('GET', '/v1/models')[0], 503)
+        self.state.write_text('{broken')
+        self.assertEqual(self.request()[0], 503)
+        self.state.write_text(json.dumps(self.value))
+        with patch.dict(os.environ, {'BUSINESS_DEEPSEEK_UPSTREAM_API_KEY': ''}):
+            self.assertEqual(self.request()[0], 503)
+        self.assertEqual(self.calls, [])
+
+    def test_sse_alias_auth_and_raw_deepseek_body(self):
+        chunks = [b'data: {"model":"internal","choices":[{"delta":{"content":"he',
+                  b'llo"}}]}\n\ndata: [DONE]\n\n', b'']
+        response = io.BytesIO()
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        response.read1 = Mock(side_effect=chunks)
+        with patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
+            status, body = self.request(payload={'model': 'system-prod-primary', 'stream': True, 'messages': []})
+        self.assertEqual(status, 200)
+        self.assertIn(b'"model": "system-prod-primary"', body)
+        self.assertIn(b'hello', body)
+        self.assertIn(b'data: [DONE]', body)
+        req = upstream.call_args.args[0]
+        self.assertEqual(req.full_url, 'http://192.168.100.11:8889/v1/chat/completions')
+        self.assertEqual(req.get_header('Authorization'), 'Bearer business-only-key')
+        self.assertNotIn('chat_template_kwargs', json.loads(req.data))
+        self.assertTrue(response.closed)
+
+    def test_sse_preserves_non_objects_keepalives_comments_and_split_lines(self):
+        raw = (b': keepalive\r\ndata: ping\ndata: [DONE]\n\ndata: [1,2]\n'
+               b'data: "text"\ndata: null\ndata: {broken}\ndata: \xff\n'
+               b'data: {"choices":[]}\ndata: {"model":"internal","choices":[]}\r\n'
+               b'data: final keepalive')
+        # Split every byte, including data:, UTF-8/non-JSON and CRLF boundaries.
+        for chunks in ([raw, b''], [bytes([c]) for c in raw] + [b'']):
+            response = io.BytesIO()
+            response.status = 200
+            response.headers = {'Content-Type': 'text/event-stream'}
+            response.read1 = Mock(side_effect=chunks)
+            with self.subTest(chunks=len(chunks)), patch.object(self.module, 'business_urlopen', return_value=response):
+                status, body = self.request(payload={'stream': True, 'messages': []})
+            self.assertEqual(status, 200)
+            self.assertEqual(body, raw.replace(b'data: {"model":"internal","choices":[]}',
+                b'data: {"model": "system-prod-primary", "choices": []}'))
+
+    def test_image_named_tool_schema_is_allowed_but_image_content_is_rejected(self):
+        payload = {'messages': [{'role': 'user', 'content': 'Describe the image property'}],
+            'tools': [{'type': 'function', 'function': {'name': 'image', 'parameters':
+                {'type': 'object', 'properties': {'image': {'type': 'string'},
+                    'input': {'type': 'image_url'}}}}}]}
+        self.assertEqual(self.request(payload=payload)[0], 200)
+        self.assertEqual(json.loads(self.calls[-1][2])['tools'], payload['tools'])
+        for kind in ('image_url', 'input_image', 'image'):
+            with self.subTest(kind=kind):
+                payload['messages'][0]['content'] = [{'type': kind, 'image_url': {'url': 'unused'}}]
+                self.assertEqual(self.request(payload=payload)[0], 400)
+
+    def test_gateway_shared_lock_requires_only_read_access(self):
+        original_open = Path.open
+        modes = []
+        def restricted_open(path, mode='r', *args, **kwargs):
+            if str(path).endswith('.lock'):
+                modes.append(mode)
+                if mode != 'r':
+                    raise PermissionError('gateway cannot write the lock')
+            return original_open(path, mode, *args, **kwargs)
+        with patch.object(Path, 'open', restricted_open):
+            self.assertEqual(self.request()[0], 200)
+        self.assertEqual(modes, ['r'])
+
+    def test_resource_status_requires_runtime_token_and_proxies_structured_control_status(self):
+        self.assertEqual(self.request('GET', '/system/resource-state')[0], 403)
+        self.assertEqual(self.request('GET', '/system/resource-state', runtime_token='control-key')[0], 200)
+        self.assertEqual(self.calls[-1][3], {'X-Runtime-Control-Token': 'control-key'})
+        self.assertEqual(self.calls[-1][1], self.config.runtime_control_base_url + '/system/resource-state')
+
+    def test_exclusive_lifecycle_lock_refuses_new_inference(self):
+        from active_model_state import business_state_lock
+        with business_state_lock(str(self.state)):
+            self.assertEqual(self.request()[0], 503)
+        self.assertEqual(self.calls, [])
+
+    def test_flag_off_keeps_normal_and_sse_response_bytes(self):
+        raw = b'data: {"model":"internal-name","choices":[]}\n\ndata: [DONE]\n\n'
+        response = io.BytesIO(raw)
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        with patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'false'}):
+            status, body = self.request()
+            self.assertEqual(status, 200)
+            self.assertEqual(body, b'{"model":"upstream-internal-name","choices":[]}')
+            self.assertEqual(self.calls[-1][3], {'Content-Type': 'application/json'})
+            with patch.object(self.module, 'business_urlopen', return_value=response):
+                status, body = self.request(payload={'stream': True})
+            self.assertEqual(status, 200)
+            self.assertEqual(body, raw)
+
+
+    def test_business_exception_logs_identity_without_request_or_credentials(self):
+        def fail(*args):
+            raise RuntimeError('request-body-secret business-only-key')
+        self.handler = self.module.make_handler(self.config, fail)
+        for shared, expected in ((None, 503), ('3:generation-3', 409)):
+            output = io.StringIO()
+            with patch('sys.stderr', output):
+                status, body = self.request(shared=shared, payload={'messages': [{'content': 'request-body-secret'}]})
+            self.assertEqual(status, expected)
+            line = next(line for line in output.getvalue().splitlines() if line.startswith('{'))
+            record = json.loads(line)
+            self.assertEqual(record['profileId'], self.value['selectedBusinessProfileId'])
+            self.assertEqual(record['generation'], 'generation-3')
+            self.assertEqual(record['exceptionType'], 'RuntimeError')
+            for secret in ('request-body-secret', 'business-only-key', 'client-key', 'control-key'):
+                self.assertNotIn(secret, output.getvalue())
+            if expected == 503:
+                self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')

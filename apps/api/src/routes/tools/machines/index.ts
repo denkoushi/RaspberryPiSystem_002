@@ -75,6 +75,18 @@ export async function registerMachineRoutes(app: FastifyInstance): Promise<void>
     return { machine };
   });
 
+  app.post('/machines/:id/nfc-tags', { preHandler: canEdit }, async (request) => {
+    const { id } = request.params as { id: string };
+    const { uid } = z.object({ uid: z.string().trim().min(4).max(256) }).parse(request.body);
+    return { tag: await service.addNfcTag(id, uid) };
+  });
+
+  app.delete('/machines/:id/nfc-tags/:tagId', { preHandler: canEdit }, async (request) => {
+    const { id, tagId } = request.params as { id: string; tagId: string };
+    await service.removeNfcTag(id, tagId);
+    return { success: true };
+  });
+
   app.delete('/machines/:id', { preHandler: canEdit, config: { rateLimit: false } }, async (request) => {
     const { id } = request.params as { id: string };
     await service.delete(id);

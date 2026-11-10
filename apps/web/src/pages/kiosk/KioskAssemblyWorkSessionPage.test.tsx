@@ -287,6 +287,7 @@ const expandedFallbackSequence: AssemblyProcedureSequenceDto = {
 // revision 更新で案内が破棄され、表示されるかが解決と応答の順序に依存するため先に待つ。
 async function findHermesButtonAfterProcedureSettles() {
   await screen.findByText(/手順 1\/2/, undefined, { timeout: 5000 });
+  await act(async () => {});
   return screen.getByRole('button', { name: 'Hermesに確認' });
 }
 
@@ -595,10 +596,13 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue([]);
     let healthAttempts = 0;
+    // 2秒ごとの定期確認が成功すると「通信断」は消える。復旧させる時点をテストが決め、
+    // 「通信断」を確かめる前に次の確認が成功して表示が消える競合をなくす。
+    let agentRecovered = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/health')) {
         healthAttempts += 1;
-        if (healthAttempts === 1) return Promise.reject(new TypeError('connection refused'));
+        if (!agentRecovered) return Promise.reject(new TypeError('connection refused'));
       }
       return Promise.resolve(jsonResponse(agentStatus()));
     });
@@ -607,6 +611,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     expect(await screen.findByText('通信断')).toBeInTheDocument();
+    agentRecovered = true;
     await waitFor(() => expect(screen.getByText('現物確認待ち')).toBeInTheDocument(), { timeout: 3500 });
     expect(screen.queryByText('torque-agentとの通信が切れました。接続状態を確認してください。')).not.toBeInTheDocument();
     expect(healthAttempts).toBeGreaterThanOrEqual(2);
@@ -727,10 +732,16 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
+    let acquireAttempted = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/lease/acquire')) {
+        acquireAttempted = true;
         return Promise.reject(new TypeError('connection refused'));
       }
+      // 使用開始の失敗後に2秒ごとの定期確認が成功すると、表示は「使用開始待ち」に戻る。
+      // 負荷が高いと失敗と次の確認が同じ描画にまとまり「通信断」が一度も出ないため、
+      // 失敗後は torque-agent が応答しない状態にして、失敗の表示だけを確かめる。
+      if (acquireAttempted) return new Promise(() => {});
       return Promise.resolve(jsonResponse(agentStatus()));
     });
     vi.stubGlobal('fetch', agentFetch);
@@ -751,12 +762,18 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
       owner: { clientDeviceName: 'StoneBase', clientDeviceLocation: '1F' },
       lastError: 'TORQUE_WRENCH_LEASE_HELD'
     });
+    const handoffWait = agentStatus({ state: 'handoff_wait', leaseOwned: true });
     let acquireAttempted = false;
+    let takenOver = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/lease/takeover')) {
-        return Promise.resolve(jsonResponse(agentStatus({ state: 'handoff_wait', leaseOwned: true })));
+        takenOver = true;
+        return Promise.resolve(jsonResponse(handoffWait));
       }
       if (String(url).endsWith('/lease/acquire')) acquireAttempted = true;
+      // 引継ぎ後の定期確認も引継ぎ待機中を返す。他端末の使用中を返し続けると、
+      // 2秒ごとの確認で「引継ぎ待機中」が消え、確認と競合する。
+      if (takenOver) return Promise.resolve(jsonResponse(handoffWait));
       return Promise.resolve(jsonResponse(acquireAttempted ? remoteOwner : agentStatus()));
     });
     vi.stubGlobal('fetch', agentFetch);
@@ -793,11 +810,12 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockGetAssemblyWorkSession.mockResolvedValue(requiredSession);
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
-    let heartbeatCount = 0;
+    // Bluetooth の準備完了はテストが決める。2秒ごとの定期確認の回数で切り替えると、
+    // 負荷が高いときに「Bluetooth接続待ち」を確かめる前に準備完了へ進んで競合する。
+    let bluetoothConnected = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/lease/release')) return Promise.resolve(jsonResponse(agentStatus()));
       if (String(url).endsWith('/health')) return Promise.resolve(jsonResponse(agentStatus()));
-      heartbeatCount += 1;
       return Promise.resolve(jsonResponse(agentStatus({
         state: 'owned_by_self',
         leaseOwned: true,
@@ -808,9 +826,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
           leaseId: 'lease-1',
           generation: 1
         },
-        ready: heartbeatCount > 1,
-        bluetoothPowered: heartbeatCount > 1,
-        hidExclusive: heartbeatCount > 1
+        ready: bluetoothConnected,
+        bluetoothPowered: bluetoothConnected,
+        hidExclusive: bluetoothConnected
       })));
     });
     vi.stubGlobal('fetch', agentFetch);
@@ -822,6 +840,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     expect(statusRegion).not.toHaveClass('h-14', 'overflow-y-auto');
     expect(statusRegion.closest('header')).not.toBeNull();
     expect(screen.getByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
+    bluetoothConnected = true;
     await waitFor(() => expect(screen.getAllByText('入力待機中').length).toBeGreaterThanOrEqual(1), { timeout: 3500 });
     expect(screen.queryByText('接続権を取得しました。Bluetooth接続を待っています。')).not.toBeInTheDocument();
     expect(screen.getByTestId('assembly-work-session-status')).toBe(statusRegion);
@@ -857,6 +876,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     mockListCompatibleTorqueWrenches.mockResolvedValue(compatibleTorqueWrenches);
     mockListCurrentTorqueWrenchConfirmations.mockResolvedValue(reusableTorqueConfirmation);
     let acquired = false;
+    // Pi 5 との通信断を返し始める時点はテストが決める。取得直後から返すと、
+    // 負荷が高いときに取得の表示と次の定期確認が同じ描画にまとまり、取得の表示が出ない。
+    let piCommunicationLost = false;
     const agentFetch = vi.fn().mockImplementation((url: string) => {
       if (String(url).endsWith('/health')) {
         return Promise.resolve(jsonResponse(agentStatus()));
@@ -866,10 +888,9 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
         return Promise.resolve(jsonResponse(agentStatus({ state: 'owned_by_self', leaseOwned: true })));
       }
       if (String(url).endsWith('/heartbeat') && acquired) {
-        return Promise.resolve(jsonResponse(agentStatus({
-          state: 'communication_lost',
-          lastError: 'LEASE_RENEW_FAILED'
-        })));
+        return Promise.resolve(jsonResponse(piCommunicationLost
+          ? agentStatus({ state: 'communication_lost', lastError: 'LEASE_RENEW_FAILED' })
+          : agentStatus({ state: 'owned_by_self', leaseOwned: true })));
       }
       return Promise.resolve(jsonResponse(agentStatus()));
     });
@@ -879,6 +900,7 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'このレンチを使用開始' }));
     expect(await screen.findByText('接続権を取得しました。Bluetooth接続を待っています。')).toBeInTheDocument();
+    piCommunicationLost = true;
     await waitFor(() => {
       expect(screen.getByText('Pi 5との通信が切れたため接続を停止しました。もう一度「このレンチを使用開始」を押してください。')).toBeInTheDocument();
     }, { timeout: 3500 });
@@ -895,7 +917,8 @@ describe('KioskAssemblyWorkSessionPage procedure sequence', () => {
     renderPage();
 
     await waitFor(() => expect(agentFetch).toHaveBeenCalled());
-    expect(screen.getByText('通信断')).toBeInTheDocument();
+    // fetch の失敗が画面に反映されるのは呼び出しの後なので、表示は待って確かめる。
+    expect(await screen.findByText('通信断')).toBeInTheDocument();
   });
 
   it('shows the BOLT target before connection and performs one idempotent confirm/acquire action', async () => {

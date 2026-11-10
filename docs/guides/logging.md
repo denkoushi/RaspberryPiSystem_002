@@ -33,7 +33,7 @@ export LOG_LEVEL=warn
 
 #### Docker Composeで設定
 
-`infrastructure/docker/docker-compose.server.yml`で設定します。
+開発・ローカルの`infrastructure/docker/docker-compose.server.yml`では次のように設定できます。Pi5本番のAPIは`docker-compose.phase3.yml`（project `bluegreen`）で動き、`api-blue`/`api-green`は`env_file`の先頭で`apps/api/.env.example`を読み込むため、`LOG_LEVEL=info`になります（後続のcompose環境ファイルに`LOG_LEVEL`は含まれない）。本番の変更はPRと標準デプロイ（[deployment.md](./deployment.md)）で行います。
 
 ```yaml
 services:
@@ -121,7 +121,7 @@ Docker環境では、ログローテーションが自動的に設定されて�
 
 ### 設定内容
 
-`infrastructure/docker/docker-compose.server.yml`で以下の設定が行われています。
+Pi5本番（`infrastructure/docker/docker-compose.phase3.yml`）では、共通の`x-default-logging`（`json-file`、`max-size: "10m"`、`max-file: "3"`、圧縮なし）を各serviceに適用しています（`business-hermes`、`business-hermes-chat`、`business-hermes-answer-cache`は除く）。DBを動かす`docker-compose.server.yml`の`db`には`logging`の指定がなく、Dockerの既定設定になります。下記は`docker-compose.server.yml`の旧来の`api`/`web`定義で、本番では使われていません。
 
 ```yaml
 services:
@@ -145,7 +145,7 @@ services:
 
 - **最大サイズ**: 10MB（1ファイルあたり）
 - **保持ファイル数**: 3ファイル（合計30MB）
-- **圧縮**: 有効（古いログファイルは自動的に圧縮される）
+- **圧縮**: 本番（phase3）は無効。`docker-compose.server.yml`の旧来定義だけが`compress: "true"`
 
 ### ログファイルの場所
 
@@ -158,23 +158,29 @@ Dockerのログファイルは以下の場所に保存されます。
 
 ## ログの確認方法
 
-### Docker Composeでログを確認
+### Dockerでログを確認
+
+Pi5 本番の API は `docker-compose.phase3.yml`（project `bluegreen`）の blue/green スロットで動く。`docker-compose.server.yml` の `api` サービスは本番では使われていないため、稼働中スロットのコンテナ（`bluegreen-api-blue-1` または `bluegreen-api-green-1`）のログを見る。
 
 ```bash
+# 稼働中のAPIコンテナ名を確認
+docker ps --format '{{.Names}}' | grep -E '^bluegreen-api-(blue|green)-1$'
+API=bluegreen-api-green-1  # 上で表示されたコンテナ名
+
 # APIコンテナのログを確認（最新50行）
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 50
+docker logs "$API" --tail 50
 
 # リアルタイムでログを確認（フォロー）
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api -f
+docker logs "$API" -f
 
 # 特定の時間範囲のログを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --since 1h
+docker logs "$API" --since 1h
 
 # エラーログのみをフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -i error
+docker logs "$API" --tail 100 2>&1 | grep -i error
 
 # 警告ログ以上をフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | grep -E '"level":(40|50)'
+docker logs "$API" --tail 100 2>&1 | grep -E '"level":(40|50)'
 ```
 
 ### ログの構造化出力
@@ -183,13 +189,13 @@ docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tai
 
 ```bash
 # JSON形式で整形して表示
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 10 | jq
+docker logs "$API" --tail 10 2>&1 | jq
 
 # 特定のフィールドのみを抽出
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | jq 'select(.level >= 40) | {time, level, errorCode, requestId, url}'
+docker logs "$API" --tail 100 2>&1 | jq 'select(.level >= 40) | {time, level, errorCode, requestId, url}'
 
 # エラーコードでフィルタリング
-docker compose -f infrastructure/docker/docker-compose.server.yml logs api --tail 100 | jq 'select(.errorCode == "VALIDATION_ERROR")'
+docker logs "$API" --tail 100 2>&1 | jq 'select(.errorCode == "VALIDATION_ERROR")'
 ```
 
 ## ログ出力のベストプラクティス
@@ -258,20 +264,18 @@ logger.error({
 
 **解決方法**:
 ```bash
-# ログレベルを確認
-docker compose -f infrastructure/docker/docker-compose.server.yml exec api env | grep LOG_LEVEL
-
-# ログレベルを下げる（debugに設定）
-docker compose -f infrastructure/docker/docker-compose.server.yml up -d --build api
-# .envファイルでLOG_LEVEL=debugを設定
+# ログレベルを確認（Pi5 の /opt/RaspberryPiSystem_002 で、稼働中スロット内で実行）
+scripts/server/run-in-active-api.sh env | grep LOG_LEVEL
 ```
+
+本番のログレベル変更は Pi5 上のファイル編集やコンテナの個別再作成ではなく、PR と標準デプロイ（[deployment.md](./deployment.md)）で行う。
 
 ### ログファイルが大きくなりすぎる
 
 **原因**: ログローテーションが設定されていない、または設定が不適切です。
 
 **解決方法**:
-- `docker-compose.server.yml`でログローテーション設定を確認
+- 本番は`docker-compose.phase3.yml`の`x-default-logging`を確認（稼働中containerの実設定は`docker inspect --format '{{json .HostConfig.LogConfig}}' <container>`）
 - `max-size`と`max-file`を適切に設定
 
 ### ログの検索が困難

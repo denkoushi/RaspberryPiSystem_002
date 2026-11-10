@@ -22,16 +22,16 @@ export function PurchaseOrderLookupPhoneView({ lookup }: { lookup: ReturnType<ty
   const currentResult = result?.purchaseOrderNo === orderNo && !loading && !error ? result : null;
   return <div style={haizenPhoneStyle} className={hp.screen}>
     <div className={hp.content}>
-      <section aria-label="注文番号" className="relative mx-3.5 mb-2.5 mt-3.5 shrink-0 rounded-[18px] border border-[var(--hp-line)] bg-[var(--hp-panel)] py-3.5 pl-5 pr-4 before:absolute before:bottom-4 before:left-0 before:top-4 before:w-1 before:rounded-r before:bg-[var(--hp-lime)]">
-        <div className="flex justify-between text-[13px] font-bold tracking-[.06em] text-[var(--hp-lime)]">注文番号<MobileOfflineChip {...localData} /><span className={hp.muted}>{currentResult ? `${currentResult.rows.length}件` : ''}</span></div>
-        <div aria-label={`注文番号 ${orderNo || '未入力'}`} className="mt-0.5 whitespace-nowrap font-mono text-[36px] font-bold leading-[1.2] tracking-[.04em] tabular-nums">
+      <section aria-label="注文番号" className="relative flex items-center justify-between gap-2 mx-3.5 mb-2.5 mt-3.5 shrink-0 rounded-[18px] border border-[var(--hp-line)] bg-[var(--hp-panel)] py-2.5 pl-5 pr-4 before:absolute before:bottom-4 before:left-0 before:top-4 before:w-1 before:rounded-r before:bg-[var(--hp-lime)]">
+        <div aria-label={`注文番号 ${orderNo || '未入力'}`} className="min-w-0 whitespace-nowrap font-mono text-[36px] font-bold leading-[1.2] tracking-[.04em] tabular-nums">
           {orderNo}<span aria-hidden className="text-[var(--hp-line)]">{'0'.repeat(Math.max(0, 10 - orderNo.length))}</span>
         </div>
+        <div className="flex shrink-0 items-center gap-2 text-base font-extrabold text-[var(--hp-ink2)]"><MobileOfflineChip {...localData} />{currentResult ? `${currentResult.rows.length}件` : ""}</div>
       </section>
       <section aria-label="照会結果" aria-live="polite" className={hp.list}>
         {loading ? <p className={hp.empty}>照会中…</p> : error ? <p role="alert" className={`${hp.empty} !text-[var(--hp-ng)]`}>{error}</p>
           : currentResult ? currentResult.rows.length === 0 && <p className={hp.empty}>データがありません</p>
-            : <div className={`${hp.empty} grid justify-items-center gap-2.5`}><HaizenIcon name="scan" className="h-11 w-11" />現品票のバーコードを読む</div>}
+            : <div className={`${hp.empty} grid justify-items-center`}><HaizenIcon name="scan" className="h-[72px] w-[72px] text-[var(--hp-line)]" /></div>}
         {currentResult?.rows.map((row, index) => {
           const vm = buildPurchaseOrderRowLines(row);
           return <dl key={`${row.seiban}-${row.purchasePartCodeNormalized}-${index}`} aria-label="照会結果1件"
@@ -46,15 +46,17 @@ export function PurchaseOrderLookupPhoneView({ lookup }: { lookup: ReturnType<ty
           </dl>;
         })}
       </section>
-      <button type="button" className={`mx-auto shrink-0 text-xs ${hp.muted}`} onClick={() => { setManualNo(orderNo); setManualOpen(true); }}>手入力</button>
       <HaizenBottomNav active="purchase" onSelect={(tab) => {
         if (tab === 'verify' || tab === 'place') {
           try { localStorage.setItem('haizen-tab', tab); } catch { /* Storage may be disabled on the kiosk. */ }
           navigate('/kiosk/mobile-placement', haizenTabNavigationOptions());
         } else if (tab === 'parts') navigate('/kiosk/mobile-placement/part-search', haizenTabNavigationOptions());
       }} onMenu={() => navigate('/kiosk/mobile-placement', haizenTabNavigationOptions({ openHaizenMenu: true }))}>
-        <button type="button" aria-label={result ? '次の注文番号を読む' : '注文番号を読む'} className="flex-1 rounded-2xl border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] p-1 leading-[1.15] text-[var(--hp-lime)]" onClick={() => lookup.setScanOpen(true)}>
-          <span className="block text-2xl font-black leading-[1.15]">注文番号</span><span className="text-[13px] font-bold">バーコードを読む</span>
+        <button type="button" aria-label={result ? '次の注文番号を読む' : '注文番号を読む'} className="flex h-16 min-w-0 flex-1 items-center justify-center gap-2 rounded-2xl border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] p-1 leading-[1.15] text-[var(--hp-lime)]" onClick={() => lookup.setScanOpen(true)}>
+          <HaizenIcon name="scan" /><span className="text-[22px] font-black">注文番号</span>
+        </button>
+        <button type="button" className="flex h-16 w-[92px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-2xl border-2 border-[var(--hp-line)] bg-[var(--hp-panel)] text-sm font-extrabold text-[var(--hp-ink2)]" onClick={() => { setManualNo(orderNo); setManualOpen(true); }}>
+          <svg aria-hidden viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6"><rect x="4" y="2" width="16" height="20" rx="3" /><path d="M8 6h8M8 10h1m3 0h1m3 0h1M8 14h1m3 0h1m3 0h1M8 18h1m3 0h1m3 0h1" /></svg>手入力
         </button>
       </HaizenBottomNav>
     </div>

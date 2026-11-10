@@ -20,7 +20,7 @@ const TOKEN_CLASS: Record<ReaderTone, string> = {
 };
 
 /** Concentric field lines around the reader, slowly breathing; still when motion is reduced. */
-function useFieldLines(canvasRef: React.RefObject<HTMLCanvasElement>, tone: ReaderTone) {
+function useFieldLines(canvasRef: React.RefObject<HTMLCanvasElement | null>, tone: ReaderTone) {
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');

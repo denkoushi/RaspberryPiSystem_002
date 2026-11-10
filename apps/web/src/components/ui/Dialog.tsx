@@ -19,7 +19,7 @@ type DialogProps = PropsWithChildren<{
   lockScroll?: boolean;
   trapFocus?: boolean;
   returnFocus?: boolean;
-  initialFocusRef?: RefObject<HTMLElement>;
+  initialFocusRef?: RefObject<HTMLElement | null>;
   size?: DialogSize;
   className?: string;
   overlayClassName?: string;

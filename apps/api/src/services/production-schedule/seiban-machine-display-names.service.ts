@@ -115,34 +115,35 @@ export async function resolveSeibanMachineDisplayNamesBatched(rawFseibans: strin
  * 進捗の集計はせず、機種名だけを 1 回のクエリで引く。
  */
 export async function resolveSeibanMachineDisplayNamesForWinnerRows(params: {
-  fseibans: string[];
+  /** 省略時は winner 集合の全製番を解決し、工程行クエリと並列に取得できる。 */
+  fseibans?: string[];
   winnerRowIds: readonly string[];
 }): Promise<{ machineNames: Record<string, string | null> }> {
-  const fseibans = normalizeSeibanMachineDisplayNameInputs(params.fseibans, null);
-  if (fseibans.length === 0) {
+  let fseibans = params.fseibans ? normalizeSeibanMachineDisplayNameInputs(params.fseibans, null) : null;
+  if (fseibans?.length === 0 || (fseibans === null && params.winnerRowIds.length === 0)) {
     return { machineNames: {} };
   }
 
   const rows = await prisma.$queryRaw<Array<{ fseiban: string | null; machineName: string | null }>>`
     SELECT
       ("CsvDashboardRow"."rowData"->>'FSEIBAN') AS "fseiban",
-      MIN(("CsvDashboardRow"."rowData"->>'FHINMEI')) AS "machineName"
+      MIN(CASE WHEN (
+        UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
+        OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
+      ) THEN NULLIF(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') END) AS "machineName"
     FROM "CsvDashboardRow"
     WHERE "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', params.winnerRowIds)}
-      AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ANY(${fseibans}::text[])
-      AND (
-        UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'MH%'
-        OR UPPER(COALESCE("CsvDashboardRow"."rowData"->>'FHINCD', '')) LIKE 'SH%'
-      )
-      AND NULLIF(("CsvDashboardRow"."rowData"->>'FHINMEI'), '') IS NOT NULL
+      ${fseibans ? Prisma.sql`AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ANY(${fseibans}::text[])` : Prisma.empty}
     GROUP BY ("CsvDashboardRow"."rowData"->>'FSEIBAN')
   `;
 
+  fseibans ??= normalizeSeibanMachineDisplayNameInputs(rows.map((row) => row.fseiban ?? ''), null);
   const machineNames: Record<string, string | null> = Object.fromEntries(fseibans.map((f) => [f, null]));
   for (const row of rows) {
     const key = row.fseiban?.trim() ?? '';
-    if (key.length > 0 && key in machineNames) machineNames[key] = row.machineName ?? null;
+    // Match the explicit-fseibans query: padded raw keys do not match normalized keys.
+    if (row.fseiban === key && key.length > 0 && key in machineNames) machineNames[key] = row.machineName ?? null;
   }
 
   const needSupplement = fseibans.filter((f) => isMissingSeibanMachineName(machineNames[f]));

@@ -40,6 +40,21 @@ export async function evaluateSystemNotices(now = new Date()): Promise<void> {
       logger.warn({ err, clientId: status.clientId }, '[SystemNotice] Evaluation failed');
     }
   }
+  // 登録済みで一度も報告しない端末。初めて報告すると上の stale が recovered で閉じる。
+  const reported = new Set((await prisma.clientStatus.findMany({ select: { clientId: true } })).map((status) => status.clientId));
+  const devices = await prisma.clientDevice.findMany({ where: { statusClientId: { not: null } }, select: { statusClientId: true, createdAt: true } });
+  for (const device of devices) {
+    const clientId = device.statusClientId;
+    if (!clientId || reported.has(clientId) || !isMonitoredClient(clientId, config)) continue;
+    if (now.getTime() - device.createdAt.getTime() < TERMINAL_STALE_MS) continue;
+    reported.add(clientId);
+    try {
+      await deliverSystemNotice({ key: `status:${clientId}:stale`, title: `${await terminalNoticeLabel(clientId)} 通信`,
+        body: '端末から一度も連絡がありません。', state: 'open' }, now);
+    } catch (err) {
+      logger.warn({ err, clientId }, '[SystemNotice] Evaluation failed');
+    }
+  }
   await resolveInactiveFileNotices(now);
 }
 

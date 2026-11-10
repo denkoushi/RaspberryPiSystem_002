@@ -48,8 +48,8 @@ export function formatWhen(schedule: Pick<SignageSchedule, 'dayOfWeek' | 'startT
  * 選んだ画面の「順番に映すもの」を作る（純関数）。
  * いま順番に映しているものをその順で先に、時間外のものを後ろに並べる。
  */
-export function buildPlaylist(schedules: SignageSchedule[], clientKey: string | null, rotation: SignageRotation | undefined): PlaylistItem[] {
-  const visible = schedules.filter((schedule) => schedule.enabled && scheduleTargetsClient(schedule, clientKey));
+export function buildPlaylist(schedules: SignageSchedule[], clientDeviceId: string | null, rotation: SignageRotation | undefined): PlaylistItem[] {
+  const visible = schedules.filter((schedule) => schedule.enabled && scheduleTargetsClient(schedule, clientDeviceId));
   const rotationIds = rotation && !rotation.isFallback ? rotation.scheduleIds : [];
   const onAirId = rotation?.scheduleIds[rotation.currentIndex] ?? null;
   const rank = (schedule: SignageSchedule) => {
@@ -67,7 +67,7 @@ export function buildPlaylist(schedules: SignageSchedule[], clientKey: string | 
       isAlways: isAlwaysSchedule(schedule),
       isOnAir: schedule.id === onAirId,
       isInRotation: rotationIds.includes(schedule.id),
-      targetsAllScreens: (schedule.targetClientKeys ?? []).length === 0,
+      targetsAllScreens: (schedule.targetClientDeviceIds ?? []).length === 0,
     }));
 }
 
@@ -113,7 +113,7 @@ function slotFor(content: QuickContent): { kind: string; config: SignageSlotConf
 }
 
 /** 「映す」で作る予定の中身（純関数）。全面表示 1 枠で、既定は全画面・いつも。 */
-export function buildQuickSchedulePayload(input: { name: string; content: QuickContent; targetClientKeys: string[]; when: QuickWhen }) {
+export function buildQuickSchedulePayload(input: { name: string; content: QuickContent; targetClientDeviceIds: string[]; when: QuickWhen }) {
   const slot = slotFor(input.content);
   const layoutConfig = { layout: 'FULL', slots: [{ position: 'FULL', ...slot }] } as SignageLayoutConfig;
   return {
@@ -121,7 +121,7 @@ export function buildQuickSchedulePayload(input: { name: string; content: QuickC
     contentType: input.content.type === 'pdf' ? ('PDF' as const) : ('TOOLS' as const),
     pdfId: input.content.type === 'pdf' ? input.content.pdfId : null,
     layoutConfig,
-    targetClientKeys: input.targetClientKeys,
+    targetClientDeviceIds: input.targetClientDeviceIds,
     dayOfWeek: input.when.always ? ALL_DAYS : [...input.when.dayOfWeek].sort((a, b) => a - b),
     startTime: input.when.always ? ALWAYS_START : input.when.startTime,
     endTime: input.when.always ? ALWAYS_END : input.when.endTime,
@@ -132,17 +132,17 @@ export function buildQuickSchedulePayload(input: { name: string; content: QuickC
 
 export type RemoveFromScreenPlan =
   | { action: 'delete'; affectsAllScreens: boolean }
-  | { action: 'update'; targetClientKeys: string[] };
+  | { action: 'update'; targetClientDeviceIds: string[] };
 
 /**
  * ある画面のリストから外すとき、予定をどう変えるか（純関数）。
  * ほかの画面にも出している予定は、その画面だけを対象から外す。全画面向けの予定は予定ごと消す。
  */
-export function planRemoveFromScreen(schedule: Pick<SignageSchedule, 'targetClientKeys'>, clientKey: string): RemoveFromScreenPlan {
-  const keys = schedule.targetClientKeys ?? [];
+export function planRemoveFromScreen(schedule: Pick<SignageSchedule, 'targetClientDeviceIds'>, clientDeviceId: string): RemoveFromScreenPlan {
+  const keys = schedule.targetClientDeviceIds ?? [];
   if (keys.length === 0) return { action: 'delete', affectsAllScreens: true };
-  const remaining = keys.filter((key) => key !== clientKey);
-  return remaining.length === 0 ? { action: 'delete', affectsAllScreens: false } : { action: 'update', targetClientKeys: remaining };
+  const remaining = keys.filter((key) => key !== clientDeviceId);
+  return remaining.length === 0 ? { action: 'delete', affectsAllScreens: false } : { action: 'update', targetClientDeviceIds: remaining };
 }
 
 /** 入力チェック（純関数）。問題がなければ null */

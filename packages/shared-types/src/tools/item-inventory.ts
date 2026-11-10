@@ -4,6 +4,8 @@ export type InventoryCompartment = {
   id: string;
   labelNumber: number;
   stockQuantity: number;
+  reorderPoint: number | null;
+  reorderedAt: string | null;
   area: string;
   shelfNumber: number;
   drawerNumber: number;
@@ -49,6 +51,9 @@ export type InventoryDashboard = {
   pricedItemCount: number;
   itemCount: number;
   machines: string[];
+  machineUsage: Array<{
+    machineId: string | null; name: string; issued: number; weekly: number[]; itemIssued: Record<string, number>;
+  }>;
   cost: { total: number; previousTotal: number; byMonth: Array<{ month: string; amount: number }> };
 };
 export type InventoryVariantField = 'maker' | 'toolName' | 'model' | 'toolSize' | 'workMaterial' | 'usage';

@@ -39,7 +39,7 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     row.plannedEndDate != null && String(row.plannedEndDate).trim().length > 0
       ? String(row.plannedEndDate).trim()
       : null;
-  const displayDue = resolveDisplayDueDate(dueDate, plannedEnd);
+  const displayDue = row.boardDueDate !== undefined ? row.boardDueDate : resolveDisplayDueDate(dueDate, plannedEnd);
 
   const plannedQuantity =
     typeof row.plannedQuantity === 'number' && Number.isFinite(row.plannedQuantity)
@@ -57,11 +57,6 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
 
   return {
     id: row.id,
-    sourceRowId: row.sourceRowId ?? row.id,
-    splitId: row.splitId ?? null,
-    splitNo: row.splitNo ?? null,
-    splitQuantity: row.splitQuantity ?? null,
-    isSplit: row.isSplit === true,
     seibanJoinKey:
       typeof row.seibanJoinKey === 'string' && row.seibanJoinKey.trim().length > 0
         ? row.seibanJoinKey.trim()
@@ -85,6 +80,8 @@ export function normalizeLeaderBoardRow(row: ProductionScheduleRow): LeaderBoard
     /** 既定は機械所要量のみ（slot の `+人` で上書き） */
     requiredMinutes: machineRequiredMinutes,
     isCompleted: isRowCompleted(data),
+    arrived: row.arrived,
+    specialDue: row.specialDue,
     note,
     hasSelfInspectionDrawing: Boolean((row as ProductionScheduleRow & { hasSelfInspectionDrawing?: boolean }).hasSelfInspectionDrawing),
     selfInspectionTemplateId:

@@ -22,7 +22,6 @@ describe('productionBuildConfig', () => {
       leaderboardTerminalCacheEnabled: true,
       leaderboardTerminalCachePhase2Swr: true,
       manualOrderDeviceScopeV2Enabled: true,
-      productionScheduleOrderSplitEnabled: false,
       sopPopupEnabled: true,
       targetLocationSelectorEnabled: true,
       wsBaseUrl: '/ws'

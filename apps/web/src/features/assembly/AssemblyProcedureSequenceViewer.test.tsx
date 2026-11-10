@@ -62,7 +62,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
   it('renders assembly procedure images via protected image fetch', () => {
     render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} />);
     expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith('/api/storage/assembly-procedure-images/mh-ax.png');
-    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:sequence-image');
+    expect(screen.getByRole('presentation')).toHaveAttribute('src', 'blob:sequence-image');
   });
 
   it.each(['assembly_procedure_document', 'kiosk_document'] as const)('starts document B on its first page (%s), and defaults to A without a start', documentType => {
@@ -101,7 +101,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
     };
     render(<AssemblyProcedureSequenceViewer sequence={pdfSequence} />);
     expect(mockUseProtectedImageBlobUrl).toHaveBeenCalledWith(null);
-    expect(screen.getByRole('img').getAttribute('src')).toContain('/api/storage/pdf-pages/doc/page-1.png');
+    expect(screen.getByRole('presentation').getAttribute('src')).toContain('/api/storage/pdf-pages/doc/page-1.png');
   });
 
   it('navigates explicit crop steps with instructions, minimap, and crop-local marker coordinates', async () => {
@@ -266,7 +266,7 @@ describe('AssemblyProcedureSequenceViewer', () => {
     const onStep = vi.fn();
     render(<AssemblyProcedureSequenceViewer sequence={assemblySequence} layout="manuals" showCurrentMarkerButton={false} onCurrentStepChange={onStep} />);
     const canvas = screen.getByTestId('assembly-work-step-canvas');
-    const image = within(canvas).getByRole('img');
+    const image = within(canvas).getByRole('presentation');
     Object.defineProperties(image, { naturalWidth: { value: width }, naturalHeight: { value: height } });
     fireEvent.load(image);
     expect(screen.queryByTestId('assembly-procedure-sequence-toolbar')).not.toBeInTheDocument();
@@ -278,20 +278,20 @@ describe('AssemblyProcedureSequenceViewer', () => {
     expect(screen.getByTestId('procedure-page-viewport')).toHaveAttribute('data-fit-mode', mode === 'width' ? 'contain' : 'width');
     if (mode === 'contain') {
       expect(screen.getByTestId('procedure-page-viewport')).toHaveClass('overflow-y-auto');
-      expect(within(canvas).getByRole('img')).toHaveClass('h-auto');
+      expect(within(canvas).getByRole('presentation')).toHaveClass('h-auto');
     }
   });
   it('resets width scrolling and determines the next page default independently', () => {
     const sequence = { ...assemblySequence, documents: [{ ...baseDocument, pageUrls: [...baseDocument.pageUrls, '/api/storage/assembly-procedure-images/landscape.png'] }] };
     render(<AssemblyProcedureSequenceViewer sequence={sequence} layout="manuals" />);
-    const first = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    const first = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('presentation');
     Object.defineProperties(first, { naturalWidth: { value: 700 }, naturalHeight: { value: 1000 } });
     fireEvent.load(first);
     fireEvent.click(screen.getByRole('button', { name: '幅いっぱい' }));
     screen.getByTestId('procedure-page-viewport').scrollTop = 300;
     fireEvent.click(screen.getByRole('button', { name: '次手順' }));
     expect(screen.getByTestId('procedure-page-viewport').scrollTop).toBe(0);
-    const second = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('img');
+    const second = within(screen.getByTestId('assembly-work-step-canvas')).getByRole('presentation');
     Object.defineProperties(second, { naturalWidth: { value: 1000 }, naturalHeight: { value: 700 } });
     fireEvent.load(second);
     expect(screen.getByRole('button', { name: '幅いっぱい' })).toHaveAttribute('aria-pressed', 'true');

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import {
+  type GrindingPlanningBoardSpecialDue,
   type MaterialArrivalBasis,
   type MaterialArrivalStatus,
   type ProductionScheduleResourceCategory
@@ -21,6 +22,8 @@ export type ProductionScheduleSelfInspectionStatus =
 
 export type ProductionScheduleRow = {
   id: string;
+  arrived?: boolean;
+  specialDue?: GrindingPlanningBoardSpecialDue | null;
   /** 生産日程一覧と progress-overview を製番単位で突合するための専用キー。 */
   seibanJoinKey: string | null;
   occurredAt: Date;
@@ -33,6 +36,11 @@ export type ProductionScheduleRow = {
   note: string | null;
   processingType: string | null;
   dueDate: Date | null;
+  /** Resolved board due; the original manual dueDate remains unchanged. */
+  boardDueDate?: Date | null;
+  manualUpdatedAt?: Date | null;
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
   plannedQuantity: number | null;
   plannedStartDate: Date | null;
   plannedEndDate: Date | null;
@@ -51,16 +59,10 @@ export type ProductionScheduleRow = {
   machineRequiredMinutes?: number;
   /** 順位ボード: 同一 ProductNo + FKOJUN の FSIGENCD=10 人工数（分）。 */
   laborRequiredMinutes?: number;
-  /** display item 契約: 親 CsvDashboardRow.id（未分割・分割共通） */
-  sourceRowId?: string;
-  /** 分割片 ID。未分割時は null */
-  splitId?: string | null;
-  splitNo?: number | null;
-  splitQuantity?: number | null;
-  isSplit?: boolean;
 };
 
 export type ProductionScheduleListParams = {
+  dueSource?: 'excel' | 'scaw';
   page: number;
   pageSize: number;
   queryText: string;

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import { mobilePlacementQueryKeys } from '../../features/mobile-placement/mobilePlacementQueryKeys';
-import { buildClientDevicesByApiKey } from '../../lib/signageTargetClientDevices';
+import { buildClientDevicesById } from '../../lib/signageTargetClientDevices';
 import {
   getClients,
   getClientLogs,
@@ -25,15 +25,15 @@ export function useClients() {
   });
 }
 
-/** サイネージスケジュール編集: 端末一覧 + apiKey インデックス（一覧要約用） */
+/** Schedule editor device list and ID index. */
 
 export function useSignageScheduleEditorClients() {
   const query = useClients();
-  const clientsByApiKey = useMemo(
-    () => buildClientDevicesByApiKey(query.data ?? []),
+  const clientsById = useMemo(
+    () => buildClientDevicesById(query.data ?? []),
     [query.data]
   );
-  return { ...query, clientsByApiKey };
+  return { ...query, clientsById };
 }
 
 export function useClientMutations() {
@@ -50,8 +50,11 @@ export function useClientMutations() {
         kioskInitialRoute?: string | null;
         haizenEdgeEnabled?: boolean;
         shelfLayoutEditEnabled?: boolean;
+        procedureBoardEnabled?: boolean;
         siteKey?: string | null;
         canProxyOtherDevices?: boolean;
+        isSignage?: boolean;
+        signagePreviewTargetDeviceId?: string | null;
       };
     }) => updateClient(id, payload),
     onSuccess: () => {

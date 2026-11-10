@@ -1,22 +1,26 @@
+import { getLoadBalancingOutsourceSettings, saveLoadBalancingOutsourceSettings, outsourceSettingsSchema } from '../../../services/production-schedule/load-balancing/load-balancing-outsource-settings.service.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
 import { ApiError } from '../../../lib/errors.js';
+import { serializeLoadBalancingWorkspace } from '../../../services/production-schedule/load-balancing/load-balancing-workspace-result-cache.js';
 import { upsertLoadBalancingCapacityBaseItem } from '../../../services/production-schedule/load-balancing/load-balancing-settings.service.js';
 import {
   getProductionScheduleLoadBalancingWorkspace,
   getProductionScheduleLoadBalancingWorkspaceDay
 } from '../../../services/production-schedule/load-balancing/load-balancing-workspace.service.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
-import { toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
+import { productionScheduleQuerySchema, toLegacyLocationKeyFromDeviceScope, type KioskRouteDeps } from './shared.js';
 
 const workspaceQuerySchema = z.object({
+  dueSource: productionScheduleQuerySchema.shape.dueSource,
   fromMonth: z.string().regex(/^\d{4}-\d{2}$/),
   toMonth: z.string().regex(/^\d{4}-\d{2}$/),
   targetDeviceScopeKey: z.string().min(1).max(200).optional()
 });
 
 const workspaceDayQuerySchema = z.object({
+  dueSource: productionScheduleQuerySchema.shape.dueSource,
   month: z.string().regex(/^\d{4}-\d{2}$/),
   resourceCd: z.string().trim().min(1).max(20),
   fromMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
@@ -45,7 +49,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: false } }, async (request) => {
+  app.get('/kiosk/production-schedule/load-balancing/workspace', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const actorDeviceScopeKey = locationScopeContext.deviceScopeKey;
@@ -58,12 +62,15 @@ export async function registerProductionScheduleLoadBalancingRoutes(
     });
 
     try {
-      return await getProductionScheduleLoadBalancingWorkspace({
+      const result = await getProductionScheduleLoadBalancingWorkspace({
+        dueSource: query.dueSource,
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         fromMonth: query.fromMonth,
         toMonth: query.toMonth
       });
+      reply.type('application/json').serializer(serializeLoadBalancingWorkspace);
+      return result;
     } catch (error) {
       throw toWorkspaceApiError(error);
     }
@@ -83,6 +90,7 @@ export async function registerProductionScheduleLoadBalancingRoutes(
 
     try {
       return await getProductionScheduleLoadBalancingWorkspaceDay({
+        dueSource: query.dueSource,
         siteKeyInput: resolvedSiteKey,
         deviceScopeKey: query.targetDeviceScopeKey?.trim() || actorDeviceScopeKey,
         month: query.month,
@@ -94,6 +102,23 @@ export async function registerProductionScheduleLoadBalancingRoutes(
       throw toWorkspaceApiError(error);
     }
   });
+
+  for (const method of ['GET', 'PUT'] as const) {
+    app.route({ method, url: '/kiosk/production-schedule/load-balancing/outsource-settings', config: { rateLimit: false }, handler: async (request) => {
+      const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+      const context = deps.resolveLocationScopeContext(clientDevice);
+      const scope = z.object({ targetDeviceScopeKey: z.string().min(1).max(200).optional() }).parse(
+        method === 'GET' ? request.query : request.body
+      );
+      const siteKey = await resolveProductionScheduleAssignmentLocationKey({
+        actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(context.deviceScopeKey),
+        actorCanProxyOtherDevices: context.canProxyOtherDevices,
+        targetDeviceScopeKey: scope.targetDeviceScopeKey
+      });
+      return method === 'GET' ? getLoadBalancingOutsourceSettings(siteKey)
+        : saveLoadBalancingOutsourceSettings(siteKey, outsourceSettingsSchema.parse(request.body));
+    } });
+  }
 
   app.put('/kiosk/production-schedule/load-balancing/capacity-base', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);

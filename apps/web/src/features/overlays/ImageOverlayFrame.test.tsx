@@ -77,7 +77,7 @@ describe('ImageOverlayFrame', () => {
 
     mocks.protectedImage.blobUrl = 'blob:first';
     view.rerender(<ImageOverlayFrame imageUrl="/images/first.png" protectedImage />);
-    const image = screen.getByRole('img');
+    const image = screen.getByRole('presentation');
     setNaturalSize(image, 1600, 900);
 
     expect(frameSize()).toEqual({ width: expect.closeTo(1018.6667, 2), height: expect.closeTo(573, 2) });
@@ -87,12 +87,12 @@ describe('ImageOverlayFrame', () => {
     const view = render(
       <ImageOverlayFrame imageUrl="/images/first.png" protectedImage={false} />
     );
-    setNaturalSize(screen.getByRole('img'), 1600, 900);
+    setNaturalSize(screen.getByRole('presentation'), 1600, 900);
     expect(frameSize()).toEqual({ width: expect.closeTo(1018.6667, 2), height: expect.closeTo(573, 2) });
 
     viewportSize = { width: 800, height: 400 };
     view.rerender(<ImageOverlayFrame imageUrl="/images/second.png" protectedImage={false} />);
-    const nextImage = screen.getByRole('img');
+    const nextImage = screen.getByRole('presentation');
     const resetFrame = screen.getByTestId('image-overlay-frame').firstElementChild;
     expect(resetFrame).toHaveStyle({ width: '100%', height: '100%' });
     setNaturalSize(nextImage, 800, 1200);

@@ -12,8 +12,8 @@ const requestSchema = z.object({
 });
 
 function tokenMatches(provided: string | undefined): boolean {
-  const expected = env.DEPLOY_CONTROL_TOKEN ?? env.JWT_ACCESS_SECRET;
-  if (!provided) return false;
+  const expected = env.DEPLOY_CONTROL_TOKEN;
+  if (!expected || !provided) return false;
   const providedBytes = Buffer.from(provided);
   const expectedBytes = Buffer.from(expected);
   if (providedBytes.length !== expectedBytes.length) return false;

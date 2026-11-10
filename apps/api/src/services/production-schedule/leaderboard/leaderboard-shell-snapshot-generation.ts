@@ -6,11 +6,9 @@ import { fetchFkojunstStatusMailGenerationRevision } from '../fkojunst-status-ma
 
 type SnapshotMainAndAuxGenerationRow = {
   rowsRevision: bigint | null;
+  excelDueUpdatedAt?: Date | null;
+  excelDueCount?: bigint;
   orderAssignmentUpdatedAt: Date | null;
-  orderSplitCount: bigint;
-  orderSplitUpdatedAt: Date | null;
-  orderSplitAssignmentCount: bigint;
-  orderSplitAssignmentUpdatedAt: Date | null;
   globalRowRankUpdatedAt: Date | null;
   rowNoteUpdatedAt: Date | null;
   progressCount: bigint;
@@ -44,24 +42,16 @@ export type LeaderboardShellSnapshotGenerationTokenDetails = {
 async function readMainAndAuxGenerationRow(): Promise<SnapshotMainAndAuxGenerationRow[]> {
   return prisma.$queryRaw<SnapshotMainAndAuxGenerationRow[]>(Prisma.sql`
     SELECT
+      (SELECT MAX("updatedAt") FROM "ProductionScheduleDScheduleMinutes"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "excelDueUpdatedAt",
+      (SELECT COUNT(*)::bigint FROM "ProductionScheduleDScheduleMinutes"
+       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "excelDueCount",
       (SELECT "revision"
        FROM "CsvDashboardRawRevision"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "rowsRevision",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleOrderAssignment"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderAssignmentUpdatedAt",
-      (SELECT COUNT(*)::bigint
-       FROM "ProductionScheduleOrderSplit"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitCount",
-      (SELECT MAX("updatedAt")
-       FROM "ProductionScheduleOrderSplit"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitUpdatedAt",
-      (SELECT COUNT(*)::bigint
-       FROM "ProductionScheduleOrderSplitAssignment"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitAssignmentCount",
-      (SELECT MAX("updatedAt")
-       FROM "ProductionScheduleOrderSplitAssignment"
-       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "orderSplitAssignmentUpdatedAt",
       (SELECT MAX("updatedAt")
        FROM "ProductionScheduleGlobalRowRank"
        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "globalRowRankUpdatedAt",
@@ -118,13 +108,14 @@ function buildLeaderboardShellSnapshotGenerationToken(params: {
     );
   }
   return JSON.stringify({
+    payloadVersion: 2,
     rowsRevision: String(row.rowsRevision),
+    ...(row.excelDueUpdatedAt || row.excelDueCount ? {
+      excelDueUpdatedAt: normalizeDate(row.excelDueUpdatedAt),
+      excelDueCount: String(row.excelDueCount ?? 0n)
+    } : {}),
     fkojunstStatusMailRowsRevision,
     orderAssignmentUpdatedAt: normalizeDate(row?.orderAssignmentUpdatedAt),
-    orderSplitCount: String(row?.orderSplitCount ?? 0n),
-    orderSplitUpdatedAt: normalizeDate(row?.orderSplitUpdatedAt),
-    orderSplitAssignmentCount: String(row?.orderSplitAssignmentCount ?? 0n),
-    orderSplitAssignmentUpdatedAt: normalizeDate(row?.orderSplitAssignmentUpdatedAt),
     globalRowRankUpdatedAt: normalizeDate(row?.globalRowRankUpdatedAt),
     rowNoteUpdatedAt: normalizeDate(row?.rowNoteUpdatedAt),
     progressCount: String(row?.progressCount ?? 0n),

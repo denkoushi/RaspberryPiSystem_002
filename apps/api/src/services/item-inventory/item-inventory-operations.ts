@@ -1,3 +1,5 @@
+import { resolveMachineFactory } from '../tools/machine-factory.js';
+import { getSendaiResourceCds } from '../production-schedule/resource-master.service.js';
 import { aggregateInventoryDashboard, dashboardPeriod } from './inventory-dashboard.js';
 import { Prisma, PrismaClient, InventoryImportPayloadStatus, InventoryNfcTagKind } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
@@ -14,7 +16,13 @@ export async function resolveTag(db: PrismaClient, uid: string) {
       compartment: { include: COMPARTMENT_LOOKUP_INCLUDE },
     },
   });
-  if (!tag) return null;
+  if (!tag) {
+    const machineTag = await db.machineNfcTag.findUnique({ where: { uid: uid.trim() }, include: { machine: true } });
+    if (!machineTag) return null;
+    if (resolveMachineFactory(machineTag.machine.resourceCd, await getSendaiResourceCds()) !== 'MISHIMA') return null;
+    const { id, name, shortName } = machineTag.machine;
+    return { kind: 'MACHINE' as const, machine: { id, name, shortName } };
+  }
   return {
     id: tag.id,
     uid: tag.uid,
@@ -245,7 +253,7 @@ export async function dashboard(db: PrismaClient, weeks: number, machine?: strin
     }),
     db.inventoryTransaction.findMany({
       where: { action: 'ISSUE', createdAt: { gte: period.previousStart, lte: period.end }, inventoryItem: { deletedAt: null } },
-      select: { inventoryItemId: true, delta: true, createdAt: true, reversedBy: { select: { id: true } },
+      select: { inventoryItemId: true, delta: true, createdAt: true, machineId: true, machine: { select: { name: true, shortName: true } }, reversedBy: { select: { id: true } },
         compartment: { select: { drawer: { select: { shelf: { select: { area: true } } } } } } },
     }),
   ]);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ device: vi.fn(), deliver: vi.fn(), expire: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { clientDevice: { findFirst: mocks.device } } }));
 vi.mock('../system-notice.service.js', async (original) => ({ ...await original<object>(), deliverSystemNotice: mocks.deliver, resolveInactiveFileNotices: mocks.expire }));
-import { deliverFileAlertNotice, deliverTelemetryNotice, expireFileAlertNotice } from '../system-notice-sources.js';
+import { deliverDScheduleMinutesNotice, deliverFileAlertNotice, deliverTelemetryNotice, expireFileAlertNotice } from '../system-notice-sources.js';
 import { FILE_NOTICE_EXPIRY_MS } from '../system-notice.service.js';
 const now = new Date('2026-10-13T00:00:00Z');
 afterEach(() => { vi.unstubAllEnvs(); });
@@ -97,6 +97,17 @@ describe('alert notice bridges', () => {
     await deliverFileAlertNotice('rkhunter-warning', timestamp, now);
     expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ key: 'file:rkhunter-warning' }), timestamp);
   });
+  it('shows Mac recovery downtime and permits a second outage within 24 hours', async () => {
+    const message = '業務用Pi5が戻りました（止まっていた時間: 0時間5分0秒）。';
+    await deliverFileAlertNotice('pi5-watchdog-recovered', now, now, message);
+    expect(mocks.deliver).toHaveBeenCalledExactlyOnceWith({
+      key: 'file:pi5-watchdog-recovered', title: '業務用Pi5の復旧', body: message, state: 'open', repeatMs: 1
+    }, now);
+  });
+  it('uses Japanese fallback text for a recovery without a message', async () => {
+    await deliverFileAlertNotice('pi5-watchdog-recovered', now, now);
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ body: '業務用Pi5が戻りました。' }), now);
+  });
   it('checks the previous file occurrence at event time before storage', async () => {
     await expireFileAlertNotice('rkhunter-warning', now);
     expect(mocks.expire).toHaveBeenCalledWith(now, 'rkhunter-warning');
@@ -107,5 +118,39 @@ describe('alert notice bridges', () => {
     mocks.deliver.mockRejectedValue(new Error('unavailable'));
     await expect(deliverFileAlertNotice('rkhunter-warning', now, now)).resolves.toBeUndefined();
     await expect(deliverTelemetryNotice('raspi4-stone', { level: 'WARN', message: '', context: { category: 'storage_health', signal: 'io' } })).resolves.toBeUndefined();
+  });
+});
+
+
+describe('minutes notices by kind', () => {
+  it('distinguishes both kinds in the same email while preserving the D company notice key', async () => {
+    const warnings = [{ code: 'UNREADABLE_DATE', seiban: 'BA1SB203', cell: 'F4', rawText: '完' }];
+    await deliverDScheduleMinutesNotice('same-mail', warnings);
+    await deliverDScheduleMinutesNotice('same-mail', warnings, 'INTERNAL');
+    expect(mocks.deliver).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      key: 'd-schedule-minutes:same-mail', title: 'D社日程会議議事録の確認',
+      body: expect.stringContaining('D社日程会議議事録の取込で確認が必要な箇所が1件あります。'), once: true
+    }));
+    expect(mocks.deliver).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      key: 'd-schedule-minutes:same-mail:INTERNAL', title: '日程会議議事録の確認',
+      body: expect.stringContaining('日程会議議事録の取込で確認が必要な箇所が1件あります。'), once: true
+    }));
+  });
+
+  it('leaves production numbers outside the schedule out of the internal notice only', async () => {
+    const outside = { code: 'NOT_IN_SCHEDULE', seiban: 'BA1SB999', cell: null, rawText: null };
+    const unreadable = { code: 'UNREADABLE_DATE', seiban: 'BA1SB998', cell: 'F5', rawText: '11/6？' };
+    await deliverDScheduleMinutesNotice('internal-only-outside', [outside], 'INTERNAL');
+    expect(mocks.deliver).not.toHaveBeenCalled();
+    await deliverDScheduleMinutesNotice('internal-mixed', [outside, unreadable], 'INTERNAL');
+    expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ body: expect.stringContaining('確認が必要な箇所が1件あります。') }));
+    expect(mocks.deliver.mock.calls[0][0].body).not.toContain('BA1SB999');
+    await deliverDScheduleMinutesNotice('d-company-outside', [outside]);
+    expect(mocks.deliver).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not emit an internal notice for a workbook with no warnings', async () => {
+    await deliverDScheduleMinutesNotice('same-mail', [], 'INTERNAL');
+    expect(mocks.deliver).not.toHaveBeenCalled();
   });
 });

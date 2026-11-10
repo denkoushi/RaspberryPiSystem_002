@@ -1,3 +1,4 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { gunzipSync } from 'node:zlib';
 
 import { enrichLocalPurchaseRows, packPurchase, unpackBasePurchase, unpackPlacement, unpackPurchase } from '@raspi-system/slip-match-core';
@@ -35,7 +36,7 @@ beforeEach(async () => {
   [mocks.purchase, mocks.schedule, mocks.dates, mocks.machines, mocks.progress, mocks.externalCompletion].forEach((fn) => fn.mockResolvedValue(stamp()));
   mocks.findMany.mockResolvedValue([row]); mocks.names.mockResolvedValue({ MD1: 'マスタ' }); mocks.normalized.mockResolvedValue({});
   mocks.machineNames.mockResolvedValue({ FS1: '機種' });
-  mocks.queryRaw.mockResolvedValue([{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', productNo: '1', completed: false, plannedStartDate: new Date('2026-11-01') }]);
+  mocks.queryRaw.mockImplementation(async (query: TemplateStringsArray | { strings: string[] }) => Array.isArray(query) && query.join('').includes('HAVING') ? [] : [{ seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名', productNo: '1', completed: false, plannedStartDate: new Date('2026-11-01') }]);
   mocks.allSchedule.mockResolvedValue([{ rowId: 'r', fseiban: 'FS1', productNo: 'T1', fhincd: 'MD1', fhinmei: '品名', fsigencd: 'M', fkojun: 1 }]);
   mocks.known.mockResolvedValue(['FS1', 'FS_WITH_NO_PART']);
   mocks.supplements.mockResolvedValue([{ fseiban: 'SUPPLEMENT_ONLY' }]);
@@ -51,7 +52,7 @@ describe('mobile data versions and snapshots', () => {
     for (const [source, changed] of [
       [mocks.purchase, ['purchase', 'legacyPurchase']],
       [mocks.schedule, ['schedule', 'purchaseEnrichment', 'placements', 'legacyPurchase']],
-      [mocks.dates, ['purchaseEnrichment', 'legacyPurchase']],
+      [mocks.dates, ['purchaseEnrichment', 'placements', 'legacyPurchase']],
       [mocks.machines, ['purchaseEnrichment', 'placements', 'legacyPurchase']]
     ] as const) {
       for (const value of [stamp('2026-10-28T00:00:00Z'), stamp(undefined, 0)]) {
@@ -64,7 +65,7 @@ describe('mobile data versions and snapshots', () => {
       source.mockResolvedValue(stamp());
     }
   });
-  it.each(['progress', 'externalCompletion'] as const)('invalidates only purchase display data for %s changes', async (source) => {
+  it.each(['progress', 'externalCompletion'] as const)('invalidates purchase display and placement data for %s changes', async (source) => {
     const first = await getMobileDataVersions();
     for (const changed of [stamp('2026-10-28T00:00:00Z'), stamp(undefined, 2),
       { ...stamp(), _max: { ...stamp()._max, createdAt: new Date('2026-10-29') } }]) {
@@ -74,10 +75,17 @@ describe('mobile data versions and snapshots', () => {
       expect(next.legacyPurchase.version).not.toBe(first.legacyPurchase.version);
       expect(next.purchase).toEqual(first.purchase);
       expect(next.schedule).toEqual(first.schedule);
-      expect(next.placements).toEqual(first.placements);
+      expect(next.placements.version).not.toBe(first.placements.version);
     }
     expect(mocks[source]).toHaveBeenCalledWith({ _count: true, _max: { updatedAt: true, createdAt: true },
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
+  });
+  it.each(['manufacturing_order', 'purchase_order'])('omits completed %s placements from snapshots', async slipKind => {
+    mocks.placements.mockResolvedValue([{ id: 'done', slipKind, manufacturingOrderBarcodeRaw: '001', branchNo: 1,
+      shelfCodeRaw: 'A', updatedAt: new Date(), scheduleSnapshot: { FSEIBAN: 'FS1', FHINCD: 'MD1', FHINMEI: '品名' } }]);
+    mocks.queryRaw.mockResolvedValue([{ productNo: '001', seiban: 'FS1', fhincd: 'MD1', fhinmei: '品名',
+      completed: true, plannedStartDate: new Date('2026-11-01') }]);
+    expect((await createMobileDataCache()('placements')).rowCount).toBe(0);
   });
   it('invalidates placements on insert, update, delete and same-count replacement without changing other datasets', async () => {
     const first = await getMobileDataVersions();

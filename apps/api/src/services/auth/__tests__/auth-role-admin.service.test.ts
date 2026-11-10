@@ -7,6 +7,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {} }));
 describe('AuthRoleAdminService', () => {
   it('対象ユーザーが存在しない場合は404を返す', async () => {
     const tx = {
+      authSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
       user: {
         findUnique: vi.fn()
           .mockResolvedValueOnce({ id: 'admin-1', role: UserRole.ADMIN })
@@ -38,6 +39,7 @@ describe('AuthRoleAdminService', () => {
 
   it('ロール変更なしの場合は更新・通知を行わない', async () => {
     const tx = {
+      authSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
       user: {
         findUnique: vi.fn()
           .mockResolvedValueOnce({ id: 'admin-1', role: UserRole.ADMIN })
@@ -91,6 +93,7 @@ describe('AuthRoleAdminService', () => {
     const actor = actorRole === null ? null : { id: 'admin-1', role: actorRole };
     const target = { id: 'user-1', username: 'target', role: UserRole.MANAGER, mfaEnabled: false };
     const tx = {
+      authSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
       user: {
         findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
           where.id === 'admin-1' ? actor : target
@@ -127,6 +130,7 @@ describe('AuthRoleAdminService', () => {
 
   it('昇格時は監査ログ作成後に理由付き通知を送る', async () => {
     const tx = {
+      authSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
       user: {
         findUnique: vi.fn()
           .mockResolvedValueOnce({ id: 'admin-1', role: UserRole.ADMIN })
@@ -170,6 +174,7 @@ describe('AuthRoleAdminService', () => {
     });
 
     expect(result.user.role).toBe(UserRole.ADMIN);
+    expect(tx.authSession.updateMany).toHaveBeenCalledWith({ where: { userId: 'user-1', revokedAt: null }, data: { revokedAt: expect.any(Date) } });
     expect(tx.user.findUnique).toHaveBeenNthCalledWith(1, { where: { id: 'admin-1' } });
     expect(tx.user.findUnique).toHaveBeenNthCalledWith(2, { where: { id: 'user-1' } });
     expect(tx.user.update).toHaveBeenCalledWith({ where: { id: 'user-1' }, data: { role: UserRole.ADMIN } });
@@ -193,6 +198,7 @@ describe('AuthRoleAdminService', () => {
 
   it('ADMIN以外への変更では昇格集中カウントを行わない', async () => {
     const tx = {
+      authSession: { updateMany: vi.fn(async () => ({ count: 1 })) },
       user: {
         findUnique: vi.fn(async () => ({ id: 'user-2', username: 'target', role: UserRole.ADMIN, mfaEnabled: false })),
         update: vi.fn(async () => ({

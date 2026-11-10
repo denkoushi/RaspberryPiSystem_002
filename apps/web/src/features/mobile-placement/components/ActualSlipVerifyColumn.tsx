@@ -28,8 +28,6 @@ export type ActualSlipVerifyColumnProps = {
     onChange: (v: string) => void;
     onScan: () => void;
   };
-  onImageOcr: () => void;
-  imageOcrBusy: boolean;
   ocrFeedback: ActualSlipOcrFeedback;
 };
 
@@ -103,16 +101,6 @@ export function ActualSlipVerifyColumn(props: ActualSlipVerifyColumnProps) {
               ariaLabel="現品票 注文番号（バーコード）"
             />
           </div>
-          <Button
-            type="button"
-            variant="ghostOnDark"
-            className="h-10 shrink-0 px-2 text-[11px] !text-white"
-            disabled={props.imageOcrBusy}
-            onClick={props.onImageOcr}
-            aria-label="現品票を撮影してOCR"
-          >
-            {props.imageOcrBusy ? '…' : '画像OCR'}
-          </Button>
         </div>
         <label className="flex flex-col gap-0.5 text-[11px] font-semibold text-purple-200/90">
           製番（任意・OCRまたは手入力）

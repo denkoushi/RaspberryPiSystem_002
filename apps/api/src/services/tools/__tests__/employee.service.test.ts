@@ -7,6 +7,7 @@ import { prisma } from '../../../lib/prisma.js';
 // Prismaのモック
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    machineNfcTag: { findUnique: vi.fn() },
     employee: {
       findMany: vi.fn(),
       findUnique: vi.fn(),

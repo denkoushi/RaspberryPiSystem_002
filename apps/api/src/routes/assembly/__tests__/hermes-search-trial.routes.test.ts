@@ -1,13 +1,17 @@
 import Fastify from 'fastify';
 import jwt from 'jsonwebtoken';
 import pino from 'pino';
-import {describe,it,expect,vi} from 'vitest';
+import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {env} from '../../../config/env.js';
 import {ApiError} from '../../../lib/errors.js';
 import {registerHermesSearchTrialRoutes} from '../hermes-search-trial.js';
 import {prisma} from '../../../lib/prisma.js';
 
 describe('Hermes search trial authorization',()=>{
+  beforeEach(() => {
+    vi.spyOn(prisma.authSession, 'findUnique').mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role: 'VIEWER', status: 'ACTIVE', mfaEnabled: false } }) as never);
+  });
+  afterEach(() => { vi.restoreAllMocks(); });
   it('uses the existing reader boundary, preserves original text and keeps failure separate from no match',async()=>{
     const app=Fastify();
     app.setErrorHandler((error,_request,reply)=>reply.code(error instanceof ApiError?error.statusCode:400).send({code:'REJECTED'}));
@@ -19,7 +23,7 @@ describe('Hermes search trial authorization',()=>{
     const url='/assembly/hermes-search-trial/answer';
     expect((await app.inject({method:'POST',url,payload:{question:'処置は？'}})).statusCode).toBe(401);
     expect(answer).not.toHaveBeenCalled();
-    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const token=jwt.sign({ tokenType: 'access', sessionId: 'reader',sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
     const request={method:'POST' as const,url,headers:{authorization:`Bearer ${token}`},payload:{question:'処置は？'}};
     const response=await app.inject(request);
     expect(response.statusCode).toBe(200);
@@ -69,7 +73,7 @@ describe('Hermes search trial authorization',()=>{
     const answer=vi.fn().mockResolvedValue({status:'clarification',answer:confirmationPending.question,recordIds:[],elapsedMs:1,confirmationPending});
     const service={isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()};
     await registerHermesSearchTrialRoutes(app,service as never);
-    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const token=jwt.sign({ tokenType: 'access', sessionId: 'reader',sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
     const sessionId='00000000-0000-4000-8000-000000000002';
     const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'架空対象の記録を確認したい',sessionId}});
     expect(response.statusCode).toBe(200);
@@ -88,7 +92,7 @@ describe('Hermes search trial authorization',()=>{
     ));
     const service={isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()};
     await registerHermesSearchTrialRoutes(app,service as never);
-    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const token=jwt.sign({ tokenType: 'access', sessionId: 'reader',sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
     const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'質問の原文'}});
     expect(response.statusCode).toBe(503);
     expect(response.json()).toEqual({code:'HERMES_SEARCH_UNAVAILABLE',message:'検索に失敗しました。該当なしとは判断していません。'});
@@ -107,7 +111,7 @@ describe('Hermes search trial authorization',()=>{
     const answer=vi.fn().mockResolvedValue({status:'completed',answer:'処置:\n再製作。',recordIds:['synthetic'],elapsedMs:2,receipt});
     const append=vi.fn().mockResolvedValue(undefined);
     await registerHermesSearchTrialRoutes(app,{isEnabled:()=>true,scope:async()=>({enabled:true}),answer,close:vi.fn()} as never,{append});
-    const token=jwt.sign({sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
+    const token=jwt.sign({ tokenType: 'access', sessionId: 'reader',sub:'reader',username:'reader',role:'VIEWER'},env.JWT_ACCESS_SECRET);
     const response=await app.inject({method:'POST',url:'/assembly/hermes-search-trial/answer',headers:{authorization:`Bearer ${token}`},payload:{question:'溶接の不適合'}});
     expect(response.statusCode).toBe(200);
     expect(response.json()).not.toHaveProperty('receipt');
@@ -124,7 +128,7 @@ describe('Hermes search trial authorization',()=>{
     app.setErrorHandler((_error, _request, reply) => reply.code(400).send({ code: 'REJECTED' }));
     const answer = vi.fn().mockResolvedValue({ status: 'completed', answer: 'A', recordIds: [], elapsedMs: 1 });
     await registerHermesSearchTrialRoutes(app, { isEnabled: () => true, scope: async () => ({ enabled: true }), answer, close: vi.fn() } as never);
-    const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
+    const token = jwt.sign({ tokenType: 'access', sessionId: 'reader', sub: 'reader', username: 'reader', role: 'VIEWER' }, env.JWT_ACCESS_SECRET);
     const request = { method: 'POST' as const, url: '/assembly/hermes-search-trial/answer', headers: { authorization: `Bearer ${token}` } };
     for (const kind of ['partNumber', 'drawingNumber', 'nonconformityNo', 'procedureId']) {
       const pageContext = { path: '/'.repeat(200), entity: { kind, value: 'P'.repeat(200) } };
@@ -158,7 +162,8 @@ describe('Hermes search trial authorization',()=>{
     const url = '/assembly/hermes-search-trial/answer';
     try {
       for (const role of ['VIEWER', 'MANAGER', 'ADMIN']) {
-        const token = jwt.sign({ sub: 'reader', username: 'reader', role }, env.JWT_ACCESS_SECRET);
+        vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+        const token = jwt.sign({ tokenType: 'access', sessionId: 'reader', sub: 'reader', username: 'reader', role }, env.JWT_ACCESS_SECRET);
         const headers = { authorization: `Bearer ${token}` };
         expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
         expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: role.toLowerCase() } });
@@ -167,7 +172,8 @@ describe('Hermes search trial authorization',()=>{
       const headers = { 'x-client-key': 'synthetic-kiosk' };
       expect((await app.inject({ method: 'POST', url, headers, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
-      const token = jwt.sign({ sub: 'reader', username: 'reader', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
+      vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'reader', username: 'reader', role: 'ADMIN', status: 'ACTIVE', mfaEnabled: false } }) as never);
+      const token = jwt.sign({ tokenType: 'access', sessionId: 'reader', sub: 'reader', username: 'reader', role: 'ADMIN' }, env.JWT_ACCESS_SECRET);
       expect((await app.inject({ method: 'POST', url, headers: { ...headers, authorization: `Bearer ${token}` }, payload: { question: 'q' } })).statusCode).toBe(200);
       expect(answer).toHaveBeenLastCalledWith('q', undefined, undefined, { principal: { kind: 'kiosk' } });
       expect((await app.inject({ method: 'GET', url: '/assembly/hermes-search-trial/scope', headers })).json()).toEqual({ enabled: true, memory });

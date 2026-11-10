@@ -1,4 +1,4 @@
-import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX as REGISTERED_SEIBAN_MAX, extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
@@ -8,7 +8,6 @@ import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister
 
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
 
-const REGISTERED_SEIBAN_MAX = 50;
 const UNSET_MACHINE_NAME = '未設定';
 const LETTER_KEYS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const LIST_ICON_CLASS = 'grid h-11 w-11 place-items-center text-base text-slate-400 hover:bg-slate-800 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-emerald-300 disabled:opacity-25 disabled:hover:bg-transparent';
@@ -39,7 +38,6 @@ export type PlanningBoardSeibanDrawerProps = {
   onClose: () => void;
   onRegister: (fseiban: string) => Promise<boolean>;
   onRegisterMany: (fseibans: readonly string[]) => Promise<boolean>;
-  onRemove: (fseiban: string) => void;
   onToggle: (fseiban: string) => void;
   onOpenDueDetail: (fseiban: string) => void;
   dueDetailTargetFseiban?: string | null;
@@ -64,7 +62,6 @@ export function PlanningBoardSeibanDrawer({
   onClose,
   onRegister,
   onRegisterMany,
-  onRemove,
   onToggle,
   onOpenDueDetail,
   dueDetailTargetFseiban,
@@ -349,7 +346,7 @@ export function PlanningBoardSeibanDrawer({
                   </button>
                 </div>
                 {selectedWouldExceedLimit ? (
-                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限50件を超えるため登録できません。選択を減らしてください。</p>
+                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限{REGISTERED_SEIBAN_MAX}件を超えるため登録できません。選択を減らしてください。</p>
                 ) : null}
               </div>
             ) : null}
@@ -389,7 +386,7 @@ export function PlanningBoardSeibanDrawer({
                 return (
                   <li
                     key={fseiban}
-                    className={`grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2.75rem_2.75rem_2.75rem] items-center border-t border-slate-800 first:border-t-0 ${
+                    className={`grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2.75rem_2.75rem] items-center border-t border-slate-800 first:border-t-0 ${
                       selected ? 'bg-emerald-950 shadow-[inset_3px_0_0_#34d399]' : 'bg-slate-900'
                     }`}
                   >
@@ -431,17 +428,6 @@ export function PlanningBoardSeibanDrawer({
                       onClick={() => onMove(fseiban, 'down')}
                     >
                       ↓
-                    </button>
-                    <button
-                      type="button"
-                      className={`${LIST_ICON_CLASS} hover:!text-rose-300`}
-                      aria-label={`製番${fseiban}の登録を解除`}
-                      disabled={orderDisabled}
-                      onClick={() => onRemove(fseiban)}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[18px] w-[18px] fill-none stroke-current stroke-2 [stroke-linecap:round] [stroke-linejoin:round]">
-                        <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" />
-                      </svg>
                     </button>
                   </li>
                 );

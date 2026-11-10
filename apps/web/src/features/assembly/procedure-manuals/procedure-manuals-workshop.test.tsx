@@ -380,7 +380,8 @@ describe('procedure-manuals workshop', () => {
     const view = show();
     const first = await screen.findByRole('row', { name: '公開手順' });
     const second = screen.getByRole('row', { name: '画面外手順' });
-    expect(observers).toHaveLength(2);
+    // 行の描画で findBy は解決するが、IntersectionObserver はその後の effect で作られる。
+    await waitFor(() => expect(observers).toHaveLength(2));
     expect(options).toEqual([{ rootMargin: '200px' }, { rootMargin: '200px' }]);
     expect(observers[0].observe).toHaveBeenCalledWith(within(first).getAllByRole('cell')[0].firstChild);
     act(() => observers.forEach(observer => observer.notify(false)));
@@ -667,6 +668,7 @@ describe('procedure-manuals workshop', () => {
     expect(within(dialog).queryByRole('textbox')).not.toBeInTheDocument();
     expect(mocks.verify).not.toHaveBeenCalled();
     expect(within(dialog).getByRole('button', { name: '閉じる' })).toBeInTheDocument();
+    await waitFor(() => expect(dialog).toHaveFocus());
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(dialog).not.toBeInTheDocument();
   });
@@ -743,7 +745,7 @@ describe('procedure-manuals workshop', () => {
     for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveClass('min-h-12');
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: '削除' }));
-    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1'));
+    await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith('draft1', '2520'));
     expect(mocks.replace).toHaveBeenCalledExactlyOnceWith('DFD1', 'assembly', { modelCode: 'DFD1', assignments: [
       { assemblyProcedureDocumentId: 'root', kioskDocumentId: null, sortOrder: 0, label: null },
       { assemblyProcedureDocumentId: null, kioskDocumentId: 'pdf', sortOrder: 1, label: 'PDF' }

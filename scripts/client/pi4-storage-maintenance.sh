@@ -30,7 +30,16 @@ DPKG_QUERY_BIN="${PI4_STORAGE_DPKG_QUERY_BIN:-dpkg-query}"
 PGREP_BIN="${PI4_STORAGE_PGREP_BIN:-pgrep}"
 NOW_EPOCH="${PI4_STORAGE_NOW_EPOCH:-$(date +%s)}"
 
-RELEASE_REPOSITORY_PATTERN='^ghcr\.io/denkoushi/raspisys-[a-z0-9-]+$'
+GITHUB_OWNER='denkoushi'
+HISTORICAL_GITHUB_OWNERS=()
+RELEASE_OWNERS="${GITHUB_OWNER}"
+if [ "${#HISTORICAL_GITHUB_OWNERS[@]}" -gt 0 ]; then
+  for owner in "${HISTORICAL_GITHUB_OWNERS[@]}"; do
+    RELEASE_OWNERS+="|${owner}"
+  done
+  RELEASE_OWNERS="(${RELEASE_OWNERS})"
+fi
+RELEASE_REPOSITORY_PATTERN="^ghcr\\.io/${RELEASE_OWNERS}/raspisys-[a-z0-9-]+$"
 ROLLBACK_REPOSITORY_PATTERN='^(raspi-standard-rollback|raspi-rollback/.+)$'
 LEGACY_LOCAL_BUILD_PATTERN='^docker-[a-z0-9-]+$'
 

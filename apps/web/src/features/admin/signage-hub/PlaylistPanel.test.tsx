@@ -24,7 +24,7 @@ const schedule = (partial: Partial<SignageSchedule>): SignageSchedule => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [0, 1, 2, 3, 4, 5, 6],
   startTime: '00:00',
   endTime: '23:59',
@@ -41,7 +41,7 @@ function renderPanel(schedules: SignageSchedule[], onAdvanced = vi.fn()) {
     <PlaylistPanel
       items={items}
       schedules={schedules}
-      clientKey="key-a"
+      clientDeviceId="key-a"
       clientName="現場 Pi3"
       switchSeconds={30}
       justAddedId={null}
@@ -97,9 +97,9 @@ describe('PlaylistPanel', () => {
   });
 
   it('only drops this screen when the item is also shown elsewhere, and does nothing when cancelled', async () => {
-    renderPanel([schedule({ targetClientKeys: ['key-a', 'key-b'] })]);
+    renderPanel([schedule({ targetClientDeviceIds: ['key-a', 'key-b'] })]);
     fireEvent.click(screen.getByRole('button', { name: '自主検査KPI を外す' }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', payload: { targetClientKeys: ['key-b'] } }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ id: 's1', payload: { targetClientDeviceIds: ['key-b'] } }));
     expect(remove).not.toHaveBeenCalled();
 
     vi.clearAllMocks();

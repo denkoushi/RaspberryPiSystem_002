@@ -1,3 +1,5 @@
+import { acquireSessakuPieceBoardStateLocks, encodeSessakuPieceKey, findSessakuPieceWinner } from '../sessaku-pieces/piece-key.js';
+import { lockAllSessakuPieceSets, synchronizeSessakuPieceSources } from '../sessaku-pieces/piece-sync.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 
 import { buildFkojunstMailStatusCompletedScalarSql } from '../completion/fkojunst-mail-status-completion.policy.js';
@@ -6,7 +8,7 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 
 export type PrismaExecutor = Pick<PrismaClient, '$executeRaw'>;
 
-const winnersBaseSql = Prisma.sql`
+const winnersBaseSql = () => Prisma.sql`
   SELECT
     "cdr"."id" AS "id",
     ${buildFkojunstMailStatusCompletedScalarSql()} AS "mailStatusComplete"
@@ -22,10 +24,18 @@ const winnersBaseSql = Prisma.sql`
  * FKOJUNST_Status メール同期後: `fkmail` の **C/X** だけを外部完了に反映する。
  * 旧「メール dedupe キー消失」と生産日程CSV消滅完了は完了正本から外し、互換列は false に収束させる。
  */
-export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: PrismaExecutor): Promise<void> {
+export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: Prisma.TransactionClient, mailCriticalLocked = false): Promise<void> {
+  const sets = await lockAllSessakuPieceSets(executor, mailCriticalLocked);
+  if (sets.some((set) => set.pieces.length)) await acquireSessakuPieceBoardStateLocks(executor);
+  const previous = new Map<string, boolean>();
+  for (const set of sets) {
+    const winner = await findSessakuPieceWinner(executor, set);
+    const external = winner && await executor.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } });
+    previous.set(encodeSessakuPieceKey(set), external?.isExternallyCompleted === true);
+  }
   await executor.$executeRaw`
     WITH "winners" AS (
-      ${winnersBaseSql}
+      ${winnersBaseSql()}
     ),
     "computed" AS (
       SELECT
@@ -61,6 +71,13 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
       "isExternallyCompleted" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
       "updatedAt" = NOW()
   `;
+  const changed = new Set<string>();
+  for (const set of sets) {
+    const winner = await findSessakuPieceWinner(executor, set);
+    const external = winner && await executor.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } });
+    if (previous.get(encodeSessakuPieceKey(set)) !== (external?.isExternallyCompleted === true)) changed.add(encodeSessakuPieceKey(set));
+  }
+  await synchronizeSessakuPieceSources(executor, sets, changed);
 }
 
 /**
@@ -69,7 +86,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
  * 互換呼び出しが残っても、差分消失キーは完了に使わず、外部完了を FKOJUNST_Status C/X のみに収束させる。
  */
 export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSync(
-  executor: PrismaExecutor,
+  executor: Prisma.TransactionClient,
   disappearedScheduleKeys: readonly string[]
 ): Promise<void> {
   void disappearedScheduleKeys;
@@ -81,7 +98,7 @@ export async function replaceAllWinnerExternalCompletionStatesFromScheduleCsvSyn
  * 互換のためメール同期と同じ処理とする。
  */
 export async function replaceAllWinnerExternalCompletionStates(
-  executor: PrismaExecutor
+  executor: Prisma.TransactionClient
 ): Promise<void> {
   await replaceAllWinnerExternalCompletionStatesFromMailSync(executor);
 }

@@ -25,13 +25,22 @@ export type PlacementSourceItem = {
   calloutTipYRatio: number | null;
 };
 export type PlacementDimension = Pick<PartMeasurementDrawingDimension, 'text' | 'xRatio' | 'yRatio' | 'kind'>;
-export type PlacementCandidate = PlacementDimension & { distance: number; score?: number };
+export type PlacementCandidate = PlacementDimension & {
+  distance: number;
+  score?: number;
+  role?: string;
+  target?: string;
+  rejectionReason?: string;
+};
 export type PlacementReorder = (
   item: PlacementSourceItem,
   candidates: PlacementCandidate[]
 ) => Promise<PlacementCandidate[]>;
 export type PlacementTransferResult = {
   item: PlacementSourceItem;
+  nominalValue: number;
+  lowerLimit: number | null;
+  upperLimit: number | null;
   status: 'PROPOSED' | 'UNPLACED';
   dimension: PlacementDimension | null;
   markerXRatio: number | null;
@@ -117,7 +126,10 @@ export async function transferItems(input: {
     }
     const chosen = candidates[0];
     if (!chosen) {
-      results.push({ item, status: 'UNPLACED', dimension: null, markerXRatio: null, markerYRatio: null, candidates });
+      results.push({
+        item, nominalValue: item.nominalValue, lowerLimit: item.lowerLimit, upperLimit: item.upperLimit,
+        status: 'UNPLACED', dimension: null, markerXRatio: null, markerYRatio: null, candidates
+      });
       continue;
     }
     let offsetX = 0.02;
@@ -130,6 +142,9 @@ export async function transferItems(input: {
     const { text, xRatio, yRatio, kind } = chosen;
     results.push({
       item,
+      nominalValue: item.nominalValue,
+      lowerLimit: item.lowerLimit,
+      upperLimit: item.upperLimit,
       status: 'PROPOSED',
       dimension: { text, xRatio, yRatio, kind },
       markerXRatio: Math.min(0.99, Math.max(0.01, xRatio + offsetX)),
@@ -156,6 +171,7 @@ export function chooseSourceSibling(input: {
   target: { id: string; name: string };
   targetMap: DimensionMap;
   siblings: PlacementSibling[];
+  semantic?: boolean;
 }): { sibling: PlacementSibling; template: PlacementSibling['templates'][number] } | null {
   const ranked = input.siblings
     .filter((sibling) => sibling.id !== input.target.id && sibling.isActive)
@@ -165,8 +181,10 @@ export function chooseSourceSibling(input: {
         sibling,
         template,
         rank,
-        count: template.items.filter((item) => candidatesFor(input.targetMap, item).length > 0).length
+        count: input.semantic ? 0 : template.items.filter((item) => candidatesFor(input.targetMap, item).length > 0).length
       })))
-    .sort((a, b) => b.count - a.count || b.template.updatedAt.getTime() - a.template.updatedAt.getTime() || a.rank - b.rank);
+    .sort((a, b) => input.semantic
+      ? a.rank - b.rank || b.template.updatedAt.getTime() - a.template.updatedAt.getTime()
+      : b.count - a.count || b.template.updatedAt.getTime() - a.template.updatedAt.getTime() || a.rank - b.rank);
   return ranked[0] ? { sibling: ranked[0].sibling, template: ranked[0].template } : null;
 }

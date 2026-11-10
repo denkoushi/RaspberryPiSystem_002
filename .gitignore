@@ -98,6 +98,7 @@ playwright/.cache/
 
 # Test artifacts
 apps/api/.test-config/
+apps/api/.test-config_w*/
 
 # Tesseract.js 等がダウンロードする学習データ（ローカル検証用・リポジトリに含めない）
 apps/api/*.traineddata

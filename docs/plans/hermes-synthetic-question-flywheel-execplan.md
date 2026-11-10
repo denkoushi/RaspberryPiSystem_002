@@ -12,6 +12,7 @@ To see it working: after the night window, `retrieval/flywheel-report.mjs` on th
 
 ## Progress
 
+- [x] (2026-11-08) ④ code: synthetic follow-up questions (count / add / replace / drop), deterministic plan and answer checks, nightly budget and separate report; adoption unchanged; first night 2026-11-08: 6 of 8 ok, drop 0 of 2 (planner re-read 「部門」 in a drop utterance, fixed in #2664); second night 2026-11-09: 8 of 8 ok. ⑤ adoption rule proposed in the accuracy log (2026-11-10), not decided.
 - [x] (2026-10-28) Milestone 8, code: the planner's JEV question wording is versioned (`planner-jev.mjs`), the night compares the active version with one code-defined candidate on up to 30 of the night's questions, real follow-ups first, and writes the comparison to `planner-version.json` and the status without adopting (`flywheel-planner-version.mjs`, runner phase 6); the kiosk worker reads the file's active version at startup and corpus replace, with `HERMES_FLYWHEEL_PLANNER_VERSION_ENABLED=false` as the kill switch (this change). Adoption waits for conversation-shaped synthetic questions (Milestone 9).
 
 - [x] (2026-10-03) Research of established practice and owner decision to build the flywheel (see Context and Decision Log).

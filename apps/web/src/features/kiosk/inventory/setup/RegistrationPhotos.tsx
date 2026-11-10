@@ -1,4 +1,5 @@
 import { inventoryThumbnailUrl, type InventoryImport } from '../../../../api/client';
+import { ProtectedImage } from '../../../../components/common/ProtectedImage';
 import { ArrowLeftIcon, ArrowRightIcon, RotateRightIcon, TrashIcon } from '../InventoryIcons';
 import { invButtonSm, invButtonSmGhost, invPanel } from '../inventoryUi';
 
@@ -42,7 +43,7 @@ export function RegistrationPhotos({
           return (
             <figure key={photo.id} className="flex min-h-0 flex-col gap-2">
               <button type="button" className="block min-h-11 min-w-11 w-full flex-1" aria-label={`写真${index + 1}を拡大`} onClick={() => { setReadPhotoId(photo.id); setSelectedPhoto(photo.id); }}>
-                <img loading="lazy" decoding="async" src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line bg-inv-bg object-contain" />
+                <ProtectedImage loading="lazy" decoding="async" path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.filename} className="h-full w-full rounded-xl border border-inv-line bg-inv-bg object-contain" />
               </button>
               {confirmDeletePhotoId === photo.id ? (
                 <div className="flex items-center gap-1.5">

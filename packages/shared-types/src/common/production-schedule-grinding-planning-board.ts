@@ -1,6 +1,7 @@
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';
+export type GrindingPlanningBoardScheduleSource = 'general' | 'dCompany' | 'both';
 
 export interface GrindingPlanningBoardProcessChipsRequest {
   parts: Array<{ fseiban: string; productNo: string; fhincd: string }>;
@@ -86,7 +87,7 @@ export interface GrindingPlanningBoardSpecialDue {
   expiresAt: string;
 }
 
-export type GrindingPlanningBoardItemKind = 'row' | 'split';
+export type GrindingPlanningBoardItemKind = 'row' | 'piece';
 
 /**
  * 材料（鋳物・鋼材など）の入荷状況。購買CSV `FKOBAIST` 由来。
@@ -101,6 +102,20 @@ export interface GrindingPlanningBoardItem {
   itemRevision: string;
   version: number;
   sourceRowId: string;
+  parentItemId?: string;
+  pieceId?: string;
+  sourcePieceId?: string;
+  isLaterProcess?: boolean;
+  piecePosition?: number;
+  pieceSetVersion?: number;
+  quantity?: number;
+  parentPlannedQuantity?: number | null;
+  quantityWarning?: SessakuPieceQuantityWarning | null;
+  manualIsCompleted?: boolean;
+  unitRequiredMinutes?: number | null;
+  setupMinutes?: number;
+  ops?: GrindingPlanningBoardResourcePartOpMinutes[];
+  completedOpNos?: number[];
   fseiban: string;
   fhincd: string;
   fhinmei: string | null;
@@ -118,7 +133,15 @@ export interface GrindingPlanningBoardItem {
   plannedQuantity: number | null;
   requiredMinutes: number | null;
   requiredMinutesKnown: boolean;
+  originalRequiredMinutes: number | null;
+  ownRequiredMinutes: number | null;
+  requiredMinutesSource: GrindingPlanningBoardRequiredMinutesSource;
   isCompleted: boolean;
+  lslhSurface: boolean;
+  arrived?: boolean;
+  isFirstProcess?: boolean;
+  firstProcessState?: GrindingPlanningBoardFirstProcessState;
+  manualArrivalDate?: string | null;
   completionSource?: 'manual' | 'import' | null;
   progress: { completed: number; total: number; quantityKnown: boolean };
   /** 材料の購買行が無い部品は null / 省略 */
@@ -146,12 +169,15 @@ export interface GrindingPlanningBoardLoadResponse {
 }
 
 export interface GrindingPlanningBoardResponse {
+  pieceCapabilities?: { createEnabled: boolean; includePieces: boolean };
   siteKey: string;
   category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   sourceRevision: string;
   boardVersion: number;
   registeredFseibans: string[];
+  excelNonMachineFseibans?: string[];
+  uncheckedFseibans: string[];
   seibanOrder: string[];
   resources: string[];
   resourceCategories?: Record<string, 'grinding' | 'cutting'>;
@@ -210,6 +236,7 @@ export interface GrindingPlanningBoardRankResponse {
 export type GrindingPlanningBoardResourceOrderPlacement = 'before' | 'after';
 
 export interface GrindingPlanningBoardResourceOrderRequest {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   itemId: string;
   itemRevision: string;
@@ -221,6 +248,7 @@ export interface GrindingPlanningBoardResourceOrderRequest {
 }
 
 export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   resourceCd: string;
   items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
@@ -234,6 +262,16 @@ export interface GrindingPlanningBoardResourceOrderResponse {
 export interface GrindingPlanningBoardSeibanOrderRequest {
   sourceRevision: string;
   fseibans: string[];
+}
+
+export interface GrindingPlanningBoardSeibanChecksRequest {
+  sourceRevision: string;
+  uncheckedFseibans: string[];
+}
+
+export interface GrindingPlanningBoardSeibanChecksResponse {
+  sourceRevision: string;
+  uncheckedFseibans: string[];
 }
 
 /** 製番登録ペインに表示する、期間内の製番候補。 */
@@ -263,10 +301,99 @@ export const GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS: GrindingPlann
 export interface GrindingPlanningBoardResourceCapacityResponse {
   dailyHoursByResource: Record<string, GrindingPlanningBoardResourceDailyHours>;
   runsThroughBreaksResources: string[];
+  /** 021/022 and stored resources; absent 021/022 default to true, other absent resources to false. */
+  unitSplitEnabledByResource?: Record<string, boolean>;
 }
 
 export interface GrindingPlanningBoardResourceCapacityRequest {
   resourceCd: string;
   dailyHours?: GrindingPlanningBoardResourceDailyHours;
   runsThroughBreaks?: boolean;
+  unitSplitEnabled?: boolean | null;
 }
+
+export interface GrindingPlanningBoardArrivalRequest {
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+}
+
+export type GrindingPlanningBoardFirstProcessState = 'arrived' | 'excluded' | null;
+
+export interface GrindingPlanningBoardFirstProcessArrivalRequest extends GrindingPlanningBoardArrivalRequest {
+  state: GrindingPlanningBoardFirstProcessState;
+}
+
+export interface GrindingPlanningBoardFirstProcessArrivalResponse {
+  itemId: string;
+  firstProcessState: GrindingPlanningBoardFirstProcessState;
+}
+
+export interface GrindingPlanningBoardArrivalResponse {
+  itemId: string;
+  manualArrivalDate: string | null;
+}
+
+export type SessakuPieceQuantityWarning = 'COMPLETED_QUANTITY_EXCEEDS_PLAN' | 'INVALID_PLANNED_QUANTITY';
+export interface SessakuPiecesSplitRequest {
+  parentItemId: string;
+  targetPieceId?: string;
+  quantities: number[];
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export interface SessakuPiecesMergeRequest {
+  parentItemId: string;
+  pieceIds: string[];
+  expectedPieceSetVersion: number;
+  itemRevisions: Record<string, string>;
+}
+export interface SessakuPieceCompletionRequest {
+  intent: 'complete' | 'incomplete';
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export interface SessakuPiecesMutationResponse {
+  /** 変更前の ID（選択を外すためのもの） */
+  affectedItemIds?: string[];
+  parentItemId: string;
+  pieceSetVersion: number;
+  quantityWarning: SessakuPieceQuantityWarning | null;
+  pieces: GrindingPlanningBoardItem[];
+  parentIsCompleted: boolean;
+  sourceRowId: string;
+}
+
+export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
+export interface GrindingPlanningBoardResourceMinutesResponse {
+  ownSourceResourceCds: string[];
+  values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number; ops?: GrindingPlanningBoardResourcePartOpMinutes[] }>;
+  /** Updated row's operations read within the save transaction, in matching order. */
+  savedOpIds?: string[];
+  savedOpNos?: number[];
+}
+export interface GrindingPlanningBoardResourceMinutesSourceRequest {
+  resourceCd: string;
+  source: GrindingPlanningBoardRequiredMinutesSource;
+}
+export interface GrindingPlanningBoardResourcePartMinutesRequest {
+  resourceCd: string;
+  fhincd: string;
+  perUnitMinutes: number | null;
+  setupMinutes: number;
+  ops?: GrindingPlanningBoardResourcePartOpMinutes[];
+  expectedOpIds?: string[];
+}
+
+export interface GrindingPlanningBoardResourcePartOpMinutes {
+  id?: string;
+  setupMinutes?: number | null;
+  opNo: number;
+  minutes: number;
+}
+export interface SessakuPiecesAutoUnitSplitResponse {
+  splitCount: number;
+  skippedCount: number;
+  hasMore: boolean;
+}
+export type SessakuPieceOpCompletionRequest = SessakuPieceCompletionRequest;

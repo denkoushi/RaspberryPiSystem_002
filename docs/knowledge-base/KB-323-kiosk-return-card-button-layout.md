@@ -48,6 +48,11 @@
 - **変更**: [`kioskActiveLoanCardLayout.ts`](../../apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts) を追加し、`KioskActiveLoanCard` のサムネを **108×108px**、カード外寸 **`248px` 固定**、本文 **`text-end`**。一覧グリッドは **`[&>li]:min-w-0`**。
 - **デプロイ**: Web のみ・本番 **`raspberrypi5` のみ**（[`deployment.md`](../guides/deployment.md) 補足・代表 **`d1c6abe7`**・Detach **`20260429-163457-5210`**）。実機自動検証は `./scripts/deploy/verify-phase12-real.sh`（本記録では **PASS 43 / WARN 0 / FAIL 0**）。
 
+## 追補（2026-04-06: カードの面トークン）
+
+- `KioskActiveLoanCard` の面（グラデーション・影・sheen レイヤー）は、サイネージ貸出カードの chrome と共通の面トークンを使う。契約は `packages/shared-types/src/loan-card-visual-palette.ts`（`resolveKioskLoanCardSurfaceTokens` / `resolveLoanCardHtmlAppearance`）で、カードは `resolveKioskLoanCardSurfaceTokens(kind, isOverdue)` の `surface.sheen` を描画する。
+- API 側の `apps/api/src/services/signage/loan-grid/html/loan-card-palette.ts` は import 互換の再エクスポートだけを持つ。レイアウト定数は `apps/web/src/components/kiosk/kioskActiveLoanCardLayout.ts` に分けている。
+
 ## References
 
 - マージ: [PR #72](https://github.com/denkoushi/RaspberryPiSystem_002/pull/72)

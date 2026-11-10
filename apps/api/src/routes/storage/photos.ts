@@ -2,20 +2,16 @@ import { sendStorageReadError } from './shared.js';
 import { createDeviceReadRateLimit } from '../../lib/device-read-rate-limit.js';
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { PhotoStorage } from '../../lib/photo-storage.js';
-import { authorizeRoles } from '../../lib/auth.js';
-import { findClientDeviceByApiKey } from '../../services/clients/client-device-auth.service.js';
+import { requireDeviceKeyOrViewer } from '../../lib/device-or-viewer.js';
 import { ApiError } from '../../lib/errors.js';
 
 /**
  * 写真配信ルート
  * 
  * 元画像をAPI経由で配信する（認証必要）。
- * サムネイルはCaddyで静的ファイル配信されるため、このAPIでは元画像のみを扱う。
  * JWTトークンまたはclient-keyで認証可能。
  */
 export function registerPhotoStorageRoutes(app: FastifyInstance): void {
-  // 認証が必要（JWTトークンまたはAPIキー）
-  const canView = authorizeRoles('ADMIN', 'MANAGER', 'VIEWER');
 
   /**
    * GET /api/storage/photos/*
@@ -24,17 +20,7 @@ export function registerPhotoStorageRoutes(app: FastifyInstance): void {
    * パス例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg
    */
   app.get('/storage/photos/*', { config: { rateLimit: createDeviceReadRateLimit() } }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const headerKey = request.headers['x-client-key'];
-    if (headerKey) {
-      // client-key が提供されている場合は優先的に検証し、無効な場合はJWTにフォールバック
-      const apiKey = Array.isArray(headerKey) ? headerKey[0] : headerKey;
-      const client = await findClientDeviceByApiKey(apiKey);
-      if (!client) {
-        await canView(request, reply);
-      }
-    } else {
-      await canView(request, reply);
-    }
+    await requireDeviceKeyOrViewer(request, reply);
     // Fastifyのワイルドカードパスは request.url から抽出する
     const urlPath = request.url.replace('/api/storage/photos/', '');
     

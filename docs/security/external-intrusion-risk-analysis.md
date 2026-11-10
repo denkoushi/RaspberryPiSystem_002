@@ -48,7 +48,7 @@
 **確認事項**:
 
 1. **デフォルトパスワードの使用**:
-   - 管理ユーザー: `admin/admin1234`（シードデータ）
+   - 管理ユーザー: `admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）（シードデータ）
    - PostgreSQL: `postgres/postgres`（デフォルト値、環境変数で変更可能）
    - JWTシークレット: `dev-access-secret-change-me`（デフォルト値、環境変数で変更可能）
 
@@ -150,7 +150,7 @@
 - MFAにより、パスワード突破後もTOTPコードが必要
 
 **推奨対策**: 
-- デフォルトパスワード（`admin/admin1234`）を強力なパスワードに変更
+- デフォルトパスワード（`admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更））を強力なパスワードに変更
 - MFAを有効化（推奨）
 
 ### シナリオ3: API経由の認証回避
@@ -220,7 +220,7 @@
 
 **注意が必要な点**:
 1. **デフォルトパスワードの使用**（本番環境では変更推奨）
-   - 管理ユーザー: `admin/admin1234`
+   - 管理ユーザー: `admin` / 初期パスワード（`apps/api/prisma/seed.js` の値。初回ログイン後に変更）
    - PostgreSQL: `postgres/postgres`
    - JWTシークレット: `dev-access-secret-change-me`
 2. **CSRF対策の未実施**（中優先度、JWT認証によりリスクは低減）

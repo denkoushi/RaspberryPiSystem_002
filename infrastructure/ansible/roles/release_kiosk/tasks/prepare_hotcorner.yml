@@ -1,13 +1,13 @@
 ---
 - name: Read the kiosk user's runtime UID
   ansible.builtin.command:
-    argv: [id, -u, '{{ ansible_user }}']
+    argv: [id, -u, '{{ kiosk_gui_user | default(ansible_user) }}']
   register: release_kiosk_user_uid
   changed_when: false
 
 - name: Read the kiosk user's primary group
   ansible.builtin.command:
-    argv: [id, -g, '{{ ansible_user }}']
+    argv: [id, -g, '{{ kiosk_gui_user | default(ansible_user) }}']
   register: release_kiosk_user_gid
   changed_when: false
 
@@ -19,7 +19,7 @@
     release_kiosk_hotcorner_previous: "{{ ansible_facts.services.get('kiosk-hotcorner.service', {}) }}"
     release_kiosk_hotcorner_start_attempted: false
     release_kiosk_labwc_edit_attempted: false
-    release_kiosk_labwc_dir: "/home/{{ ansible_user }}/.config/labwc"
+    release_kiosk_labwc_dir: "{{ kiosk_gui_home | default('/home/' ~ ansible_user) }}/.config/labwc"
 
 - name: Capture the original labwc directory metadata
   ansible.builtin.stat:

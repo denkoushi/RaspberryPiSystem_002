@@ -53,7 +53,7 @@ async function waitForServer(url, timeoutMs = 60000) {
 }
 
 async function captureScreens(definition, targetRoot, resolveAdapter) {
-  const server = spawn('corepack', ['pnpm', '--filter', '@raspi-system/web', 'dev', '--host', '127.0.0.1', '--port', '4173'], { cwd: repoRoot, env: { ...process.env, VITE_KIOSK_SOP_POPUP_ENABLED: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  const server = spawn('pnpm', ['--filter', '@raspi-system/web', 'dev', '--host', '127.0.0.1', '--port', '4173'], { cwd: repoRoot, env: { ...process.env, VITE_KIOSK_SOP_POPUP_ENABLED: 'true' }, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
   let serverLog = '';
   server.stdout.on('data', (chunk) => { serverLog += chunk; });
   server.stderr.on('data', (chunk) => { serverLog += chunk; });

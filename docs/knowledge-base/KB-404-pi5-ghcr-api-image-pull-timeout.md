@@ -1,13 +1,12 @@
 ---
 id: KB-404
 title: Pi5 GHCR API image pull timeout without layer progress evidence
-status: mitigated
+status: historical
 scope: signed ARM64 artifact acquisition on the production Pi5
 date: 2026-07-30
 source_of_truth: true
 related_code:
   - scripts/deploy/docker_pull_progress.py
-  - scripts/deploy/pi5_artifact_promoter.py
 related_docs:
   - ../plans/artifact-pull-progress-diagnostics-execplan.md
   - ../plans/api-image-runtime-boundary-execplan.md
@@ -17,11 +16,11 @@ related_docs:
   - ../decisions/ADR-20260728-attested-arm64-release-artifact-promotion.md
   - ../decisions/ADR-20260730-bounded-api-runtime-artifact.md
 validation: focused progress/promoter tests, isolated loopback Docker registry, and full deployment contracts
-open_items:
-  - verify one separately approved production API pull completes as promoted
 ---
 
 # KB-404: Pi5 GHCR API image pull timeout
+
+> **過去の記録**（現行: `scripts/deploy/pi5_artifact_promoter.py` は標準 Ansible 経路への移行で削除済み。以下の「The promoter now …」は当時の動作。`docker_pull_progress.py` は現在テストと `scripts/ci/validate-artifact-pull-progress-docker.sh` からだけ使われる。現行の標準経路は [deployment.md](../guides/deployment.md) を参照）
 
 ## Incident
 

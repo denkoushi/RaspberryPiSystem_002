@@ -1,3 +1,4 @@
+import { GmailSenderVerificationSession } from '../gmail/gmail-sender-verification-session.js';
 import { logger } from '../../lib/logger.js';
 import type { BackupConfig } from '../backup/backup-config.js';
 import type { GmailMessage } from '../backup/gmail-api-client.js';
@@ -187,9 +188,12 @@ export class WorkInstructionGmailIngestionService {
     }
     this.running = true;
     const summary = emptySummary();
+    const senderSession = GmailSenderVerificationSession.forRun(options.config);
     try {
-      const gmail = await this.gmailFactory(options.config, { allowWait: options.allowWait });
+      if (senderSession.disabled) return summary;
+      const gmail = senderSession.wrap(await this.gmailFactory(options.config, { allowWait: options.allowWait }));
       if (options.messageId) {
+        if (!(await senderSession.filterMessageIds(gmail, [options.messageId])).length) { summary.skipped++; return summary; }
         summary.selected = 1;
         const result = await this.processMessage(gmail, options.messageId, true, undefined, options.config);
         this.addResult(summary, result);
@@ -215,6 +219,7 @@ export class WorkInstructionGmailIngestionService {
         // Sequential processing keeps Gmail request order deterministic while
         // the shared FIFO gate still arbitrates with other importers.
         // eslint-disable-next-line no-await-in-loop
+        if (!(await senderSession.filterMessageIds(gmail, [id])).length) { summary.skipped++; continue; }
         const result = await this.processMessage(
           gmail,
           id,
@@ -227,6 +232,7 @@ export class WorkInstructionGmailIngestionService {
       return summary;
     } finally {
       this.running = false;
+      await senderSession.notify();
     }
   }
 

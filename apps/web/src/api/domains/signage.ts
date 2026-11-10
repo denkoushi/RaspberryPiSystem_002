@@ -92,8 +92,8 @@ export interface SignageSchedule {
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId: string | null;
   layoutConfig: SignageLayoutConfig | null;
-  /** 空=全端末。値がある場合は列挙された client の apiKey（x-client-key）のみ */
-  targetClientKeys?: string[];
+  /** 空=全端末。値がある場合は列挙された端末 ID のみ */
+  targetClientDeviceIds?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -192,7 +192,7 @@ export async function createSignageSchedule(payload: {
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfig | null;
   /** 省略または空=全端末 */
-  targetClientKeys?: string[];
+  targetClientDeviceIds?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -208,7 +208,7 @@ export async function updateSignageSchedule(id: string, payload: Partial<{
   contentType: 'TOOLS' | 'PDF' | 'SPLIT';
   pdfId?: string | null;
   layoutConfig?: SignageLayoutConfig | null;
-  targetClientKeys?: string[];
+  targetClientDeviceIds?: string[];
   dayOfWeek: number[];
   startTime: string;
   endTime: string;
@@ -289,13 +289,6 @@ export async function renderSignageCanvasPreview(spec: SignageCanvasPreviewSpec)
     responseType: 'blob',
   });
   return data;
-}
-
-/** 可視化ダッシュボードのレンダリング画像URL（Web /signage 表示用） */
-export function getSignageVisualizationImageUrl(dashboardId: string): string {
-  const base = readProductionBuildConfig().apiBaseUrl;
-  const normalized = base.replace(/\/$/, '');
-  return `${normalized}/signage/visualization-image/${dashboardId}`;
 }
 
 /**
@@ -436,7 +429,7 @@ export interface SignageManagementOverview {
   /** 同じ時間に複数の予定があるとき、1 件を映す秒数 */
   scheduleSwitchIntervalSeconds: number;
   clients: Array<{
-    apiKey: string;
+    clientDeviceId: string;
     lastFetchedAt: string | null;
     rotation: SignageRotation;
   }>;

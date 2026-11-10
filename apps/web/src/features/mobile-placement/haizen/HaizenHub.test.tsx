@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getOrderPlacementBranches, getMobilePlacementShelfMachines, moveOrderPlacementBranch, registerOrderPlacement, verifyMobilePlacementSlipMatch } from '../../../api/client';
 import { api } from '../../../api/http';
 import { resetMobileConnectivityForTests, mobileRequest, MOBILE_REQUEST_TIMEOUT_MS, canUseMobileNetwork } from '../connectivity';
+import { isHaizenNativeAvailable } from '../haizenNative';
 import { mobileLocalDataStore } from '../local-data/mobileLocalDataStore';
 import { saveOrderBranches } from '../orderPlacementBranchesCache';
 import { saveScanFrame } from '../scan-frames/saveScanFrame';
@@ -22,16 +23,18 @@ import { HaizenHub } from './HaizenHub';
 import { haizenOfflineQueueStore } from './offline/haizenOfflineQueueStore';
 
 import type { HaizenHubSheet } from './HaizenHub';
+import type { ScheduleSeibanDetail } from '../../../api/domains/schedule-seibans';
 import type { ScanFrameCapture } from '../../barcode-scan/scanFrameCapture';
 
 vi.mock('../../../api/http', () => ({ api: { get: vi.fn(), post: vi.fn(), put: vi.fn() } }));
 
-const mocks = vi.hoisted(() => ({ scanValue: 'SCANNED', realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
+const mocks = vi.hoisted(() => ({ schedule: undefined as ScheduleSeibanDetail | undefined, scheduleRefetch: vi.fn(), scanValue: 'SCANNED', realBranches: false, branchError: false, branchLoading: false, branchFetching: false, refetch: vi.fn(), branches: [] as { id: string; branchNo: number; shelfCodeRaw: string }[] }));
+vi.mock('../../../api/hooks/schedule-seibans', () => ({ scheduleSeibanQueryKey: ['mobile-placement', 'schedule-seibans'], useScheduleSeiban: () => ({ data: mocks.schedule, refetch: mocks.scheduleRefetch }) }));
 vi.mock('../local-data/mobileLocalDataSync', () => ({ syncMobileLocalData: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   getOrderPlacementBranches: vi.fn(), getMobilePlacementShelfMachines: vi.fn(),
   moveOrderPlacementBranch: vi.fn(), registerOrderPlacement: vi.fn(),
-  verifyMobilePlacementSlipMatch: vi.fn(), parseActualSlipImage: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
+  verifyMobilePlacementSlipMatch: vi.fn(), snapFseibanTokens: vi.fn(), getMobilePlacementShelfPhoto: vi.fn()
 }));
 vi.mock('../scan-frames/saveScanFrame', () => ({ saveScanFrame: vi.fn(() => 'frame-id'), onScanIdle: vi.fn() }));
 vi.mock('../../barcode-scan', () => ({
@@ -60,12 +63,12 @@ function Harness() {
   const navigate = useNavigate();
   return <>
     <button onClick={() => setSheet('inputs')}>open inputs</button>
-    <HaizenHub mp={mp} sheet={sheet} setSheet={setSheet} shelves={shelves} branches={branches} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={() => { mp.setActualOrder(''); mp.setActualFseiban('FS-PHOTO'); }} />
+    <HaizenHub mp={mp} sheet={sheet} setSheet={setSheet} shelves={shelves} branches={branches} onNavigate={navigate} onShelfMaster={() => navigate('/kiosk/mobile-placement/shelf-master')} onPhoto={isHaizenNativeAvailable() ? () => { void mp.scanActualSlipNative(); } : undefined} />
   </>;
 }
-function mount() {
+function mount(entry = '/kiosk/mobile-placement') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<QueryClientProvider client={client}><MobileSyncProvider><MemoryRouter initialEntries={['/kiosk/mobile-placement']}><Routes>
+  return render(<QueryClientProvider client={client}><MobileSyncProvider><MemoryRouter initialEntries={[entry]}><Routes>
     <Route path="/kiosk/mobile-placement" element={<Harness />} />
     <Route path="*" element={<div>sub-screen</div>} />
   </Routes></MemoryRouter></MobileSyncProvider></QueryClientProvider>);
@@ -91,7 +94,9 @@ async function chooseShelf(branchNo = 1) {
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  delete window.HaizenNative;
   localStorage.clear();
+  mocks.schedule = undefined;
   mocks.scanValue = 'SCANNED';
   mocks.realBranches = false; mocks.branches = []; mocks.branchError = false; mocks.branchLoading = false; mocks.branchFetching = false;
   vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
@@ -205,7 +210,7 @@ describe('Haizen hub', () => {
     expect(stubs?.closest('main')).toBeNull();
     expect(within(screen.getByRole('tablist', { name: '作業' })).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['照合', '配膳', '購買', '部品']);
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
-    expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(3);
+    expect(within(screen.getByRole('dialog')).getAllByRole('button')).toHaveLength(4);
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
@@ -221,7 +226,7 @@ describe('Haizen hub', () => {
     expect(within(screen.getByRole('contentinfo')).getAllByRole('button')).toHaveLength(1);
     const slipButton = screen.getByRole('button', { name: '移動票を読む' });
     expect(slipButton.closest('main')).toBeNull();
-    expect(slipButton.parentElement?.nextElementSibling).toBe(screen.getByRole('contentinfo'));
+    expect(slipButton.parentElement?.parentElement?.nextElementSibling).toBe(screen.getByRole('contentinfo'));
     const list = within(screen.getByRole('region', { name: '棚の写真' }));
     expect(screen.queryByRole('button', { name: '棚を読む' })).not.toBeInTheDocument();
     expect(screen.queryByText('先に票を読む')).not.toBeInTheDocument();
@@ -273,7 +278,7 @@ describe('Haizen hub', () => {
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toBeDisabled();
     typeSlips();
     const result = await screen.findByRole('status', { name: '一致' });
-    expect(result).toHaveClass('shrink-0', 'items-center', 'py-1.5');
+    expect(result).toHaveClass('shrink-0', 'items-center', 'h-12');
     expect(result).toHaveTextContent('FS1 PART1 ブラケット');
     expect(screen.getByRole('group', { name: '分配' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '次を照合' })).toBeEnabled();
@@ -289,7 +294,7 @@ describe('Haizen hub', () => {
     expect(registerOrderPlacement).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: '閉じる', exact: true }));
     const primary = screen.getByRole('button', { name: 'ここに置く' });
-    expect(primary.parentElement).toBe(screen.getByRole('button', { name: '移動票を読む' }).parentElement);
+    expect(primary.parentElement).toBe(screen.getByRole('button', { name: '移動票を読む' }).parentElement?.parentElement);
     fireEvent.click(primary);
     // The slips clear while the send is still waiting on the network.
     expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
@@ -359,6 +364,13 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     fireEvent.change(screen.getByLabelText(field === 'transfer' ? '移動票 製造order' : '現品票 注文番号 / 製造order'), { target: { value: 'NEW' } });
     fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    if (field === 'transfer') {
+      expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '次を照合' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+      fireEvent.change(screen.getByLabelText('現品票 注文番号 / 製造order'), { target: { value: '4501238876' } });
+      fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    }
     await screen.findByRole('status', { name: '一致' });
     expect(screen.getByRole('button', { name: '分配1', exact: true })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toHaveAttribute('aria-pressed', 'false');
@@ -388,12 +400,16 @@ describe('Haizen hub', () => {
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
   });
-  it.each(['manual', 'scan'] as const)('clears a stale transfer part after a new order via %s', async (method) => {
+  it.each(['manual', 'scan'] as const)('clears stale transfer and actual slips after a new order via %s', async (method) => {
     mount(); typeSlips();
     await screen.findByRole('status', { name: '一致' });
     fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
     await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferPartBarcodeRaw: 'STALE' })));
+    fireEvent.change(screen.getByLabelText('現品票 部品番号'), { target: { value: 'ACTUAL' } });
+    fireEvent.change(screen.getByLabelText('現品票 製番'), { target: { value: 'FS1' } });
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ actualPartBarcodeRaw: 'ACTUAL', actualFseibanRaw: 'FS1' })));
+    const verifyCalls = vi.mocked(verifyMobilePlacementSlipMatch).mock.calls.length;
     if (method === 'manual') {
       fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0004099556' } });
     } else {
@@ -403,7 +419,11 @@ describe('Haizen hub', () => {
       fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     }
     expect(screen.getByLabelText('移動票 部品番号')).toHaveValue('');
-    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferOrderBarcodeRaw: '0004099556', transferPartBarcodeRaw: '' })));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue('0004099556');
+    expect(screen.getByLabelText('現品票 注文番号 / 製造order')).toHaveValue('');
+    expect(screen.getByLabelText('現品票 部品番号')).toHaveValue('');
+    expect(screen.getByLabelText('現品票 製番')).toHaveValue('');
+    expect(verifyMobilePlacementSlipMatch).toHaveBeenCalledTimes(verifyCalls);
   });
 
   it.each([
@@ -515,27 +535,36 @@ describe('Haizen hub', () => {
     expect(registerOrderPlacement).not.toHaveBeenCalled();
   });
   it.each([
-    ['different_seiban', '不一致', 'この注文は別の製番(FS2)の材料です'],
+    ['different_seiban', '不一致', '別の製番'],
     ['different_part', '不一致', '部品が違います'],
     ['order_not_found', '未登録', 'この注文番号はまだ届いていません'],
     ['transfer_not_found', '未登録', 'この製造orderが見つかりません']
-  ] as const)('renders %s', async (reason, title, message) => {
+  ] as const)('renders %s; ネイティブなしでは写真で製番を出さず部品番号を残す', async (reason, title, message) => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: false, reason, actual: { fseiban: 'FS2' } });
     mount(); typeSlips();
     await screen.findByRole('status', { name: title });
-    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.getByRole('status', { name: title })).toHaveTextContent(message);
     if (title === '未登録') {
-      expect(screen.getByRole('button', { name: '写真で製番' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: '写真で製番' })).not.toBeInTheDocument();
       fireEvent.click(screen.getByRole('button', { name: '部品番号' }));
       expect(screen.getByLabelText('現品票 部品番号')).toBeInTheDocument();
     }
   });
-  it('rechecks a photo fseiban fallback after an unknown order', async () => {
+  it('ネイティブありでは写真で製番を表示し、押すと scanActualSlipNative を呼ぶ', async () => {
+    window.HaizenNative = { isAvailable: () => true, scanFseiban: vi.fn() };
+    const scan = vi.spyOn(await import('../haizenNative'), 'scanFseibanNative').mockResolvedValue({ status: 'cancelled' });
+    const stateModule = await import('../useMobilePlacementPageState');
+    const original = stateModule.useMobilePlacementPageState;
+    const scanActualSlipNative = vi.fn();
+    vi.spyOn(stateModule, 'useMobilePlacementPageState').mockImplementation(() => {
+      const mp = original();
+      return { ...mp, scanActualSlipNative: (...args) => { scanActualSlipNative(); return mp.scanActualSlipNative(...args); } };
+    });
     vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValueOnce({ ok: false, reason: 'order_not_found' });
     mount(); typeSlips();
     fireEvent.click(await screen.findByRole('button', { name: '写真で製番' }));
-    await screen.findByRole('status', { name: '一致' });
-    expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ actualOrderBarcodeRaw: '', actualFseibanRaw: 'FS-PHOTO' }));
+    expect(scanActualSlipNative).toHaveBeenCalledOnce();
+    expect(scan).toHaveBeenCalledOnce();
   });
   it('HTTP 400 failures are errors, with a serialized retry', async () => {
     vi.mocked(verifyMobilePlacementSlipMatch).mockRejectedValueOnce({ isAxiosError: true, response: { status: 400 } });
@@ -572,11 +601,11 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('tab', { name: '配膳' }));
     const mo = screen.getByRole('button', { name: '移動票を読む' });
     const po = screen.getByRole('button', { name: '現品票を読む' });
-    expect(mo.parentElement).toBe(po.parentElement);
+    expect(mo.parentElement?.parentElement).toBe(po.parentElement?.parentElement);
     const primary = screen.getByRole('button', { name: 'ここに置く' });
     expect(primary).toBeDisabled();
-    expect(mo.parentElement).toBe(primary.parentElement);
-    expect(po.parentElement).toHaveClass('grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]');
+    expect(mo.parentElement?.parentElement).toBe(primary.parentElement);
+    expect(po.parentElement?.parentElement).toHaveClass('grid-cols-3');
     expect(mo.querySelector('svg')).toBeNull();
     expect(po.querySelector('svg')).toBeNull();
     fireEvent.click(po);
@@ -636,7 +665,8 @@ describe('Haizen hub', () => {
   it('shows six compact stamp buttons above the primary action and requires stamp then shelf', async () => {
     mount(); typePlaceSlip();
     const group = screen.getByRole('group', { name: '分配' });
-    expect(within(group).getAllByRole('button').map(button => button.textContent)).toEqual(['分配なし', '分配1', '分配2', '分配3', '分配4', '分配5']);
+    expect(within(group).getAllByRole('button').map(button => button.textContent)).toEqual(['分配なし', '1', '2', '3', '4', '5']);
+    expect(within(group).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['分配なし', '分配1', '分配2', '分配3', '分配4', '分配5']);
     expect(group.closest('main')).toBeNull();
     expect(group.parentElement?.nextElementSibling).toBe(screen.getByRole('button', { name: 'ここに置く' }).parentElement);
     expect(screen.queryByText(/新規/)).not.toBeInTheDocument();
@@ -818,7 +848,7 @@ describe('Haizen scan frame wiring', () => {
     const capture = vi.mocked(saveScanFrame).mock.calls[0][0];
     fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '大きい画面で選ぶ' }));
-    fireEvent.click(screen.getByRole('button', { name: 'QR', exact: true }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '棚を選ぶ' })).getByRole('button', { name: 'QR', exact: true }));
     mocks.scanValue = 'A-03';
     fireEvent.click(screen.getByText('scan'));
     expect(screen.getByRole('button', { name: 'ここに置く' })).toBeEnabled();
@@ -883,5 +913,85 @@ describe('Haizen scan frame wiring', () => {
     fireEvent.click(screen.getByText('timeout'));
     typePlaceSlip('mo', 'MANUAL');
     expect(vi.mocked(saveScanFrame).mock.calls[0][1]).toMatchObject({ kind: 'scan-frame', manualValue: 'MANUAL' });
+  });
+});
+
+
+describe('Haizen schedule target', () => {
+  function scheduleTarget(state: 'pending' | 'verified' = 'pending') {
+    mocks.schedule = {
+      fseiban: 'FS1', aliasFseibans: ['FS1A'], partsCompleteDate: '2026-11-06', sendOutDate: null,
+      outsourceMarks: [], memo: null, machineName: null,
+      counts: { shelf: 2, pending: state === 'pending' ? 1 : 0, verified: state === 'verified' ? 1 : 0, done: 0 },
+      parts: [
+        { productNo: '0002178005', fhincd: 'PART1', fhinmei: 'ブラケット', state },
+        { productNo: 's1', fhincd: 'P2', fhinmei: '軸', state: 'shelf', shelfCodeRaw: 'A-04' },
+        { productNo: 's2', fhincd: 'P3', fhinmei: '蓋', state: 'shelf', shelfCodeRaw: 'A-04' }
+      ]
+    };
+  }
+  it('opens the schedule tile', () => {
+    mount();
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの画面' }));
+    expect(screen.getByText('エクセルの製番')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '日程', exact: true }));
+    expect(screen.getByText('sub-screen')).toBeInTheDocument();
+  });
+  it('keeps a part target above normal scans and returns after placement', async () => {
+    scheduleTarget();
+    localStorage.setItem('haizen-tab', 'place');
+    mount('/kiosk/mobile-placement?scheduleFseiban=FS1&scheduleProductNo=0002178005');
+    expect(screen.getByRole('tab', { name: '照合' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('region', { name: '照合の狙い' })).toHaveTextContent('PART1 ブラケット');
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+    typeSlips();
+    await screen.findByRole('status', { name: '一致' });
+    const shelfButtons = screen.getAllByRole('button', { name: /^棚 / });
+    expect(shelfButtons[0]).toHaveAccessibleName('棚 研削 南');
+    expect(within(shelfButtons[0]).getByLabelText('この製番 2件')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '棚 50013_540AP 北' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    await screen.findByText('sub-screen');
+  });
+  it('stays on verification for a seiban target, clears scans and refreshes the remaining count', async () => {
+    scheduleTarget();
+    mount('/kiosk/mobile-placement?scheduleFseiban=FS1');
+    typeSlips(); await screen.findByRole('status', { name: '一致' });
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '棚 50013_540AP 北' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    await waitFor(() => expect(mocks.scheduleRefetch).toHaveBeenCalled());
+    expect(screen.queryByText('sub-screen')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '移動票を読む' })).not.toHaveTextContent('0002178005');
+  });
+  it.each([['OTHER', '0002178005', '別の製番'], ['FS1', 'different', '別の部品']])('shows a target notice separately from match (%s)', async (fseiban, targetProductNo, notice) => {
+    scheduleTarget();
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', expected: { fseiban, fhincd: 'PART1' } });
+    mount(`/kiosk/mobile-placement?scheduleFseiban=FS1&scheduleProductNo=${targetProductNo}`);
+    typeSlips(); await screen.findByRole('status', { name: '一致' });
+    expect(screen.getByText(notice)).toHaveAttribute('role', 'status');
+    expect((await verifyRecordStore.list())[0]).toMatchObject({ outcome: 'match' });
+  });
+  it('accepts an alias of the target seiban', async () => {
+    scheduleTarget();
+    vi.mocked(verifyMobilePlacementSlipMatch).mockResolvedValue({ ok: true, reason: 'match', expected: { fseiban: 'FS1A', fhincd: 'PART1' } });
+    mount('/kiosk/mobile-placement?scheduleFseiban=FS1');
+    typeSlips(); await screen.findByRole('status', { name: '一致' });
+    expect(screen.queryByText('別の製番')).not.toBeInTheDocument();
+  });
+  it('resumes a previously verified part with only a fresh transfer scan', async () => {
+    scheduleTarget('verified');
+    mount('/kiosk/mobile-placement?scheduleFseiban=FS1&scheduleProductNo=0002178005');
+    mocks.scanValue = '0002178005';
+    fireEvent.click(screen.getByRole('button', { name: '移動票を読む' }));
+    fireEvent.click(screen.getByText('scan'));
+    await screen.findByRole('status', { name: '一致' });
+    expect(verifyMobilePlacementSlipMatch).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '現品票を読む' })).not.toHaveTextContent('0002178005');
+    fireEvent.click(screen.getByRole('button', { name: '分配1', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '棚 50013_540AP 北' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ここに置く' }));
+    await screen.findByText('sub-screen');
   });
 });

@@ -112,6 +112,7 @@ export class GmailApiClient {
   private readonly gate: GmailRequestGateService;
   private readonly allowWait: boolean;
   private readonly requestTimeoutMs: number;
+  private readonly addedLabelIds = new Map<string, string>();
   private static readonly DEFAULT_PDF_FILENAME = 'document.pdf';
   private static readonly DEFAULT_HTML_FILENAME = 'document.html';
   private static readonly DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -364,7 +365,7 @@ export class GmailApiClient {
         { err: error, messageId },
         '[GmailApiClient] Failed to get message'
       );
-      throw new Error(`Failed to get message: ${error instanceof Error ? error.message : String(error)}`);
+      throw wrapGmailOperationError('Failed to get message', error);
     }
   }
 
@@ -470,6 +471,29 @@ export class GmailApiClient {
         '[GmailApiClient] Failed to mark message as read'
       );
       throw wrapGmailOperationError('Failed to mark message as read', error);
+    }
+  }
+
+  async addLabelToMessage(messageId: string, labelName: string): Promise<void> {
+    try {
+      const labelId = this.addedLabelIds.get(labelName) ?? await this.ensureLabel(labelName);
+      this.addedLabelIds.set(labelName, labelId);
+      await this.gateExecute('gmail.users.messages.modify(addLabel)', async () =>
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (this.gmail.users.messages.modify as any)(
+          { userId: 'me', id: messageId, requestBody: { addLabelIds: [labelId] } },
+          this.requestOptions()
+        )
+      );
+    } catch (error) {
+      const source = error as { status?: unknown; code?: unknown; response?: { status?: unknown } } | null;
+      if (source?.status === 404 || source?.code === 404 || source?.response?.status === 404) {
+        this.addedLabelIds.delete(labelName);
+      }
+      if (error instanceof GmailRateLimitedDeferredError) {
+        throw error;
+      }
+      throw wrapGmailOperationError('Failed to add label to message', error);
     }
   }
 

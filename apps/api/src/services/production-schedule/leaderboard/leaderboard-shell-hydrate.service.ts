@@ -1,3 +1,4 @@
+import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL, buildBoardDueDateSql } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -82,20 +83,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
         'plannedQuantity', "supplement"."plannedQuantity",
         'plannedEndDate', "supplement"."plannedEndDate",
         'isCompleted', COALESCE("p"."isCompleted", FALSE),
-        'isExternallyCompleted', COALESCE("ext"."isExternallyCompleted", FALSE),
-        'splits', COALESCE((
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'id', "split"."id",
-              'splitQuantity', "split"."splitQuantity",
-              'dueDate', "split"."dueDate",
-              'updatedAt', "split"."updatedAt"
-            ) ORDER BY "split"."splitNo"
-          )
-          FROM "ProductionScheduleOrderSplit" AS "split"
-          WHERE "split"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-            AND "split"."parentCsvDashboardRowId" = "CsvDashboardRow"."id"
-        ), '[]'::jsonb)
+        'isExternallyCompleted', COALESCE("ext"."isExternallyCompleted", FALSE)
       ) AS "planningDetail"`
     : Prisma.empty;
 
@@ -156,6 +144,10 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
       ${noteSelect},
       ${processingTypeSelect},
       "n"."dueDate" AS "dueDate",
+      ${BOARD_MANUAL_UPDATED_AT_SQL} AS "manualUpdatedAt",
+      "excel_due"."partsCompleteDate" AS "excelDueDate",
+      "excel_due"."excelChangedAt" AS "excelChangedAt",
+      ${buildBoardDueDateSql()} AS "boardDueDate",
       "supplement"."plannedQuantity" AS "plannedQuantity",
       "supplement"."plannedStartDate" AS "plannedStartDate",
       "supplement"."plannedEndDate" AS "plannedEndDate"
@@ -173,6 +165,7 @@ async function fetchLeaderboardScheduleHydratedRowsSingleBatch(params: {
     LEFT JOIN "ProductionScheduleOrderSupplement" AS "supplement"
       ON "supplement"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "supplement"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ${BOARD_DUE_JOINS_SQL}
     ${planningOptionalJoins}
     ${rankJoins.orderAssignmentJoin}
     ${rankJoins.globalRankJoin}

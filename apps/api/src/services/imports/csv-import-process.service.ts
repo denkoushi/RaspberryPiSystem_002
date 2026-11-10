@@ -27,6 +27,9 @@ export async function processCsvImportFromTargets(
     if (target.type === 'itemInventoryGmail') {
       throw new ApiError(400, 'itemInventoryGmail target must be executed by the inventory intake service');
     }
+    if (target.type === 'dScheduleMinutesGmail') {
+      throw new ApiError(400, 'dScheduleMinutesGmail target must be executed by the D schedule minutes intake service');
+    }
     if (target.type === 'procedureMaterialGmail') {
       throw new ApiError(400, 'procedureMaterialGmail target must be executed by the material intake service');
     }
@@ -78,7 +81,7 @@ export async function processCsvImportFromTargets(
   try {
     // 各タイプを順次インポート（トランザクションは各インポータ内で処理）
     for (const target of targets) {
-      if (target.type === 'itemInventoryGmail' || target.type === 'machineSignalGmail' || target.type === 'procedureMaterialGmail') {
+      if (target.type === 'itemInventoryGmail' || target.type === 'machineSignalGmail' || target.type === 'procedureMaterialGmail' || target.type === 'dScheduleMinutesGmail') {
         continue;
       }
       const rows = parsedData.get(target.type);

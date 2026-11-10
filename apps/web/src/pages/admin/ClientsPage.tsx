@@ -18,6 +18,9 @@ import {
 } from '../../api/hooks';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { useAuth } from '../../contexts/AuthContext';
+
+import { ClientApiKey } from './ClientApiKey';
 
 import type { ClientDevice, ClientLogLevel, ClientStatusEntry } from '../../api/client';
 
@@ -31,6 +34,8 @@ type ClientForm = {
   siteKey: string;
   proxy: boolean;
   haizenEdge: boolean;
+  isSignage: boolean;
+  procedureBoard: boolean;
 };
 
 /** 台帳（ClientDevice）と稼働状況（ClientStatusEntry）を1行にまとめたもの。台帳にない報告は device が null */
@@ -45,7 +50,9 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   mode: '旧設定',
   siteKey: '拠点',
   proxy: '代理操作',
-  haizenEdge: 'Zero2W配膳'
+  haizenEdge: 'Zero2W配膳',
+  isSignage: 'サイネージ',
+  procedureBoard: '手順づくり'
 };
 const FORM_FIELDS = Object.keys(FORM_FIELD_LABELS) as Array<keyof ClientForm>;
 
@@ -60,7 +67,9 @@ function formFromDevice(device: ClientDevice): ClientForm {
     mode: device.defaultMode ?? 'TAG',
     siteKey: device.siteKey ?? '',
     proxy: Boolean(device.canProxyOtherDevices),
-    haizenEdge: Boolean(device.haizenEdgeEnabled)
+    haizenEdge: Boolean(device.haizenEdgeEnabled),
+    isSignage: device.isSignage === true,
+    procedureBoard: device.procedureBoardEnabled === true
   };
 }
 
@@ -158,21 +167,24 @@ function Switch({
   label,
   ariaLabel,
   checked,
-  onChange
+  onChange,
+  disabled = false
 }: {
   label: string;
   ariaLabel: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-center justify-between gap-3 border-t border-slate-300 py-2 first:border-t-0">
+    <label className={clsx('flex items-center justify-between gap-3 border-t border-slate-300 py-2 first:border-t-0', disabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
       <span className="text-sm font-semibold text-slate-900">{label}</span>
       <input
         type="checkbox"
         role="switch"
         aria-label={ariaLabel}
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.checked)}
         className="peer sr-only"
       />
@@ -190,6 +202,8 @@ export function ClientsPage() {
   const sitesQuery = useSites();
   const createSiteMutation = useCreateSite();
   const { update } = useClientMutations();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'ADMIN';
 
   const [tab, setTab] = useState<LeftTab>('devices');
   const [rowFilter, setRowFilter] = useState<RowFilter>('all');
@@ -199,7 +213,6 @@ export function ClientsPage() {
   const [drafts, setDrafts] = useState<Record<string, ClientForm>>({});
   const [editError, setEditError] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [logClientFilter, setLogClientFilter] = useState<string>('all');
   const [logLevelFilter, setLogLevelFilter] = useState<'ALL' | ClientLogLevel>('ALL');
@@ -319,6 +332,8 @@ export function ClientsPage() {
           defaultMode: form.mode,
           kioskInitialRoute: form.initialRoute || null,
           haizenEdgeEnabled: form.haizenEdge,
+          isSignage: form.isSignage,
+          procedureBoardEnabled: form.procedureBoard,
           siteKey: form.siteKey || null,
           canProxyOtherDevices: form.proxy
         }
@@ -327,15 +342,6 @@ export function ClientsPage() {
       setSavedId(selectedDevice.id);
     } catch {
       setEditError('保存に失敗しました。時間をおいて再試行してください。');
-    }
-  };
-
-  const handleCopyApiKey = async (device: ClientDevice) => {
-    try {
-      await navigator.clipboard.writeText(device.apiKey);
-      setCopiedId(device.id);
-    } catch {
-      setCopiedId(null);
     }
   };
 
@@ -607,7 +613,8 @@ export function ClientsPage() {
                               {(
                                 [
                                   [row.device?.canProxyOtherDevices, '代理', '代理操作'],
-                                  [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳']
+                                  [row.device?.haizenEdgeEnabled, '配膳', 'Zero2W配膳'],
+                                  [row.device?.procedureBoardEnabled === true, '手順', '手順づくり']
                                 ] as const
                               ).map(([enabled, short, title]) =>
                                 enabled ? (
@@ -747,7 +754,7 @@ export function ClientsPage() {
                       !status ? 'bg-slate-500' : status.stale ? 'bg-red-600' : 'bg-emerald-600'
                     )}
                   >
-                    {!status ? '未報告' : status.stale ? '12時間超オフライン' : 'オンライン'}
+                    {!status ? '未報告' : status.stale ? 'オフライン' : 'オンライン'}
                   </span>
                 </div>
                 <p className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-slate-700">
@@ -851,6 +858,7 @@ export function ClientsPage() {
                         label="代理操作"
                         ariaLabel="他端末の代理操作を許可"
                         checked={form.proxy}
+                        disabled={!isAdmin}
                         onChange={(proxy) => patchForm({ proxy })}
                       />
                       <Switch
@@ -859,24 +867,21 @@ export function ClientsPage() {
                         checked={form.haizenEdge}
                         onChange={(haizenEdge) => patchForm({ haizenEdge })}
                       />
+                      <Switch
+                        label="サイネージ"
+                        ariaLabel="サイネージを許可"
+                        checked={form.isSignage}
+                        onChange={(isSignage) => patchForm({ isSignage })}
+                      />
+                      <Switch
+                        label="手順づくり"
+                        ariaLabel="手順づくりを許可"
+                        checked={form.procedureBoard}
+                        onChange={(procedureBoard) => patchForm({ procedureBoard })}
+                      />
                     </div>
 
-                    <div className="space-y-1">
-                      <p className="text-xs font-bold text-slate-700">APIキー</p>
-                      <div className="flex items-center gap-2">
-                        <code className="min-w-0 flex-1 truncate rounded-md bg-slate-100 px-2 py-1.5 font-mono text-xs font-semibold">
-                          {selectedDevice.apiKey}
-                        </code>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          onClick={() => handleCopyApiKey(selectedDevice)}
-                          className="shrink-0 border-2 border-slate-300 px-3 py-1 text-xs"
-                        >
-                          {copiedId === selectedDevice.id ? 'コピー済み' : 'コピー'}
-                        </Button>
-                      </div>
-                    </div>
+                    {isAdmin ? <ClientApiKey key={selectedDevice.id} id={selectedDevice.id} /> : null}
                   </>
                 ) : (
                   <p className="text-sm font-semibold text-slate-700">台帳にない端末です（稼働状況のみ）。</p>

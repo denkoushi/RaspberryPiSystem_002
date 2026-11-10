@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import ssl
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -41,7 +42,7 @@ class AgentConfig:
     browser_origins: tuple[str, ...] = ()
     heartbeat_ttl_seconds: float = 8.0
     local_port: int = 7073
-    tls_verify: bool = True
+    tls_verify: bool | ssl.SSLContext = True
     synthetic_fixture_enabled: bool = False
     connection_lease_enabled: bool = True
     lease_renew_interval_seconds: float = 2.0
@@ -77,8 +78,8 @@ class AgentConfig:
                 raise ValueError("TORQUE_HID_DEVICES_JSON serialNumber must be a non-empty string when provided")
             devices.append(HidDeviceConfig(path=path, parser_profile=str(row["parserProfile"]), serial_number=serial_number.strip() if isinstance(serial_number, str) else None))
         tls_verify_mode = os.environ.get("TORQUE_TLS_VERIFY_MODE", "system").strip().lower()
-        if tls_verify_mode not in {"system", "insecure"}:
-            raise ValueError("TORQUE_TLS_VERIFY_MODE must be either system or insecure")
+        if tls_verify_mode not in {"system", "insecure", "pinned"}:
+            raise ValueError("TORQUE_TLS_VERIFY_MODE must be system, insecure, or pinned")
         lease_renew_interval_seconds = float(os.environ.get("TORQUE_LEASE_RENEW_INTERVAL_SECONDS", "2"))
         guard_intent_ttl_seconds = float(os.environ.get("TORQUE_GUARD_INTENT_TTL_SECONDS", "3"))
         if lease_renew_interval_seconds <= 0:
@@ -93,7 +94,7 @@ class AgentConfig:
             browser_origins=browser_origins,
             heartbeat_ttl_seconds=float(os.environ.get("TORQUE_HEARTBEAT_TTL_SECONDS", "8")),
             local_port=int(os.environ.get("TORQUE_LOCAL_PORT", "7073")),
-            tls_verify=tls_verify_mode == "system",
+            tls_verify=build_tls_context(tls_verify_mode, os.environ.get("TORQUE_TLS_CA_FILE")),
             synthetic_fixture_enabled=os.environ.get("TORQUE_ENABLE_SYNTHETIC_FIXTURE", "false").lower() == "true",
             connection_lease_enabled=os.environ.get("TORQUE_CONNECTION_LEASE_ENABLED", "true").lower() == "true",
             lease_renew_interval_seconds=lease_renew_interval_seconds,
@@ -103,3 +104,17 @@ class AgentConfig:
             ),
             boot_id_path=Path(os.environ.get("TORQUE_BOOT_ID_PATH", "/proc/sys/kernel/random/boot_id")),
         )
+
+
+def build_tls_context(mode: str, ca_file: str | None = None) -> bool | ssl.SSLContext:
+    if mode != "pinned":
+        return mode == "system"
+    if not ca_file:
+        raise ValueError("TORQUE_TLS_CA_FILE is required for pinned mode")
+    ctx = ssl.create_default_context(cafile=ca_file)
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    # The pinned self-signed leaf has no X.509 extensions. Trust is the pin
+    # itself; Python 3.13's strict CA-extension requirements do not apply.
+    ctx.verify_flags &= ~getattr(ssl, "VERIFY_X509_STRICT", 0)
+    return ctx

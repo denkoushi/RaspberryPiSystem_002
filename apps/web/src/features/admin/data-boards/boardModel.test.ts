@@ -10,7 +10,7 @@ const schedule = (partial: Partial<SignageSchedule>): SignageSchedule => ({
   contentType: 'TOOLS',
   pdfId: null,
   layoutConfig: null,
-  targetClientKeys: [],
+  targetClientDeviceIds: [],
   dayOfWeek: [1, 2, 3, 4, 5],
   startTime: '07:30',
   endTime: '09:00',

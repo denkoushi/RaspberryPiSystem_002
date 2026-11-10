@@ -1,3 +1,4 @@
+import { filterActivePlacements } from '../../mobile-placement/placement-completion.service.js';
 import { prisma } from '../../../lib/prisma.js';
 import { parseStructuredShelfCode } from '../../mobile-placement/mobile-placement-registered-shelves.service.js';
 import { fetchSeibanProgressRows } from '../../production-schedule/seiban-progress.service.js';
@@ -36,9 +37,9 @@ export async function buildMobilePlacementPartsShelfGridViewModel(
 ): Promise<PartsShelfGridViewModel> {
   const cap = Number.isFinite(maxItemsPerZone) && maxItemsPerZone > 0 ? Math.min(200, Math.floor(maxItemsPerZone)) : DEFAULT_MAX_ITEMS_PER_ZONE;
 
-  const states = await prisma.orderPlacementBranchState.findMany({
+  const states = await filterActivePlacements(await prisma.orderPlacementBranchState.findMany({
     orderBy: [{ updatedAt: 'desc' }],
-  });
+  }));
 
   const csvIds = [...new Set(states.map((s) => s.csvDashboardRowId).filter((id): id is string => id != null && id.length > 0))];
 

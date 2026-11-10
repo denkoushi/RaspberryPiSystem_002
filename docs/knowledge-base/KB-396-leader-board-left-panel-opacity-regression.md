@@ -17,7 +17,7 @@ category: knowledge-base
 | scope | キオスク順位ボード（`/kiosk/production-schedule/leader-order-board`）マウスオーバー左ペイン（`LeaderBoardLeftToolStack`）の背景不透明性 |
 | date | 2026-07-07 |
 | source_of_truth | this file |
-| related_code | `apps/web/src/features/production-schedule/leader-order-board/LeaderBoardLeftToolStack.tsx`, `apps/web/src/features/kiosk/kioskTheme.ts` |
+| related_code | `apps/web/src/features/kiosk/leaderOrderBoard/LeaderBoardLeftToolStack.tsx`, `apps/web/src/features/kiosk/kioskTheme.ts` |
 
 ## Context
 

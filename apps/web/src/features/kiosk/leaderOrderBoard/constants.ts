@@ -87,6 +87,15 @@ export function persistedLeaderBoardGanttModeStorageKey(siteKey: string, deviceS
   return core.length > 0 ? `${LEADER_BOARD_GANTT_MODE_PREFIX}:${core}` : LEADER_BOARD_GANTT_MODE_PREFIX;
 }
 
+const LEADER_BOARD_SCAW_MODE_PREFIX = 'kiosk-leader-order-board-scaw-mode';
+
+export function persistedLeaderBoardScawModeStorageKey(siteKey: string, deviceScopeKey: string): string {
+  const s = siteKey.trim();
+  const d = deviceScopeKey.trim();
+  const core = s.length > 0 && d.length > 0 ? `${s}\0${d}` : s.length > 0 ? s : d.length > 0 ? d : '';
+  return core.length > 0 ? `${LEADER_BOARD_SCAW_MODE_PREFIX}:${core}` : LEADER_BOARD_SCAW_MODE_PREFIX;
+}
+
 /** スロットごとのガント基準時間（8H/10H）— 端末ローカルのみ */
 export const LEADER_BOARD_CAPACITY_MODE_SCHEMA_VERSION = 1;
 const LEADER_BOARD_CAPACITY_MODE_PREFIX = 'kiosk-leader-order-board-capacity-mode';

@@ -16,7 +16,7 @@ const DEFAULT_CLIENT_ID_PATTERN = '^(raspi|raspberrypi|zero-edge-)';
 export interface HeartbeatAlertConfig {
   enabled: boolean;
   staleAfterMs: number;
-  /** これより長く無連絡の端末は撤去済みとみなし、通知も復帰判定もしない。 */
+  /** 台帳にない端末は、これより長く無連絡なら通知も復帰判定もしない。 */
   forgetAfterMs: number;
   clientIdPattern: RegExp;
 }
@@ -85,6 +85,12 @@ export function staleAlertMessage(status: HeartbeatStatus, now: Date): string {
     `（最終受信 ${formatJst(status.lastSeen)}、${minutes}分経過）。` +
     '電源・ネットワーク・SDカードを確認してください（意図した電源オフなら対応不要）。'
   );
+}
+
+export function neverReportedAlertMessage(status: HeartbeatStatus, now: Date): string {
+  const minutes = Math.floor((now.getTime() - status.lastSeen.getTime()) / 60_000);
+  return `端末が登録後一度も定期連絡を送っていません: ${status.clientId}` +
+    `（登録 ${formatJst(status.lastSeen)}、${minutes}分経過）。電源・ネットワーク・SDカードを確認してください。`;
 }
 
 export function recoveredAlertMessage(clientId: string, silentSince: Date, now: Date): string {

@@ -138,6 +138,8 @@ the consultation behavior policy in ADR-20260907 (purpose understanding,
 case continuity, learning); that workflow may later call this retrieval
 capability as one of its tools.
 
+The Decision 7 rule that the per-question query embedding must not depend on DGX is superseded, only for the query-time embedding allowance, by [ADR-20260924](./ADR-20260924-hermes-retrieval-hybrid-enrichment.md). The planner remains JEV.
+
 ## Local Notes JA
 
 - 要件（オーナー 2026-09-23）: 不適合以外の異なるデータも将来対象、横断取得、5秒以内、スケーラブル。

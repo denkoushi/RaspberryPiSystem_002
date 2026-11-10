@@ -1,0 +1,114 @@
+---
+- name: Clean prepared Pi4 kiosks that never attempted this release switch
+  hosts: kiosk
+  gather_facts: false
+  become: true
+  ignore_unreachable: true
+  vars:
+    release_kiosk_run_dir: "{{ release_kiosk_run_root | default('/var/lib/raspi-release/standard') }}/{{ release_run_id }}/{{ inventory_hostname }}"
+  tasks:
+    - name: Validate the Pi4 cleanup run identity
+      ansible.builtin.assert:
+        that:
+          - release_run_id is match('^[A-Za-z0-9][A-Za-z0-9_-]{2,79}$')
+
+    - name: Inspect this Pi4 run directory
+      ansible.builtin.stat:
+        path: "{{ release_kiosk_run_dir }}"
+      register: release_pi4_cleanup_run
+
+    - name: Inspect this Pi4 prepared manifest
+      ansible.builtin.stat:
+        path: "{{ release_kiosk_run_dir }}/prepared.json"
+      register: release_pi4_cleanup_prepared
+      when: release_pi4_cleanup_run.stat.isdir | default(false)
+
+    - name: Inspect the persistent Pi4 switch boundary
+      ansible.builtin.stat:
+        path: "{{ release_kiosk_run_dir }}/switch-attempted"
+      register: release_pi4_cleanup_switched
+      when: release_pi4_cleanup_run.stat.isdir | default(false)
+
+    - name: Classify this Pi4 cleanup target
+      ansible.builtin.set_fact:
+        release_pi4_cleanup_status: >-
+          {{ 'unreachable' if (release_pi4_cleanup_run.unreachable | default(false)
+             or release_pi4_cleanup_prepared.unreachable | default(false)
+             or release_pi4_cleanup_switched.unreachable | default(false))
+             else 'skipped-switched' if release_pi4_cleanup_switched.stat.exists | default(false)
+             else 'pending' if (release_pi4_cleanup_run.stat.isdir | default(false)
+               and release_pi4_cleanup_prepared.stat.exists | default(false))
+             else 'no-data' }}
+
+    - name: Clean only this run's prepared unswitched data
+      when: release_pi4_cleanup_status == 'pending'
+      block:
+        - name: Mark the release while cleaning a failed release
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-start.yml"
+
+        - name: Read this Pi4 cleanup manifest
+          ansible.builtin.slurp:
+            src: "{{ release_kiosk_run_dir }}/prepared.json"
+          register: release_pi4_cleanup_manifest
+
+        - name: Decode this Pi4 cleanup manifest
+          ansible.builtin.set_fact:
+            release_pi4_cleanup_data: "{{ release_pi4_cleanup_manifest.content | b64decode | from_json }}"
+
+        - name: Remove only the listed Pi4 rollback tags and newly pulled candidates
+          ansible.builtin.command:
+            argv: [docker, image, rm, "{{ item }}"]
+          loop: "{{ release_pi4_cleanup_data.rollback_images + release_pi4_cleanup_data.candidate_images }}"
+          register: release_pi4_cleanup_images
+          changed_when: release_pi4_cleanup_images.rc == 0
+          failed_when: >-
+            release_pi4_cleanup_images.rc != 0
+            and not (release_pi4_cleanup_images.stderr | default('')
+              is search('(?i)no such image|image is being used|is using its referenced image|image is referenced|is in use'))
+
+        - name: Require reachable image cleanup before discarding the manifest
+          ansible.builtin.assert:
+            that:
+              - not (release_pi4_cleanup_images.unreachable | default(false))
+
+        - name: Remove only the listed Pi4 file backups
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ release_pi4_cleanup_data.backup_files }}"
+          register: release_pi4_cleanup_backups
+
+        - name: Require reachable backup cleanup before discarding the manifest
+          ansible.builtin.assert:
+            that:
+              - not (release_pi4_cleanup_backups.unreachable | default(false))
+
+        - name: Remove this Pi4 run directory after cleanup
+          ansible.builtin.file:
+            path: "{{ release_kiosk_run_dir }}"
+            state: absent
+          register: release_pi4_cleanup_removed
+
+        - name: Record this Pi4 cleanup outcome
+          ansible.builtin.set_fact:
+            release_pi4_cleanup_status: "{{ 'unreachable' if release_pi4_cleanup_removed.unreachable | default(false) else 'cleaned' }}"
+      always:
+        - name: Clear the release marker after cold Pi4 cleanup
+          ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/os-security-update-release-end.yml"
+        - name: Record unreachable Pi4 cleanup operations
+          ansible.builtin.set_fact:
+            release_pi4_cleanup_status: unreachable
+          when: >-
+            os_security_update_release_lock.unreachable | default(false)
+            or release_pi4_cleanup_manifest.unreachable | default(false)
+            or release_pi4_cleanup_images.unreachable | default(false)
+            or release_pi4_cleanup_backups.unreachable | default(false)
+            or release_pi4_cleanup_removed.unreachable | default(false)
+        - name: Summarize attempted Pi4 failure cleanup
+          ansible.builtin.debug:
+            msg: "{{ inventory_hostname }}: {{ release_pi4_cleanup_status if release_pi4_cleanup_status != 'pending' else 'cleanup-failed' }}"
+
+    - name: Summarize skipped Pi4 failure cleanup
+      ansible.builtin.debug:
+        msg: "{{ inventory_hostname }}: {{ release_pi4_cleanup_status }}"
+      when: release_pi4_cleanup_status != 'cleaned' and release_pi4_cleanup_status != 'pending'

@@ -13,18 +13,21 @@ update-frequency: medium
 # トラブルシューティングナレッジベース - Ansible/デプロイ関連
 
 **カテゴリ**: インフラ関連 > Ansible/デプロイ関連  
-**件数**: 51件  
+**件数**: 62件  
 **索引**: [index.md](../index.md)
 
 **注意**: KB-201は[api.md](../api.md#kb-201-生産スケジュールcsvダッシュボードの差分ロジック改善とバリデーション追加)にあります。本エントリはKB-203です。
 
 Ansibleとデプロイメントに関するトラブルシューティング情報
 
+> **注意（2026-11 点検・追補）**: 本ファイルの KB は各記録日時点の旧デプロイ経路（bash 版 `update-all-clients.sh`、JSON ロック、`deploy.yml` / `update-clients.yml` / `deploy-staged.yml`）を前提とした履歴です。手順の正本は [deployment.md](../../guides/deployment.md)、[quick-start-deployment.md](../../guides/quick-start-deployment.md)、[deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md) です。新しい KB は本ファイルに追記せず、個別ファイルで作成します。
+
 ---
 
+<a id="kb-448-pi5-self-ssh-preflight-and-orphan-lock"></a>
 <a id="kb-366-pi5-self-ssh-preflight-and-orphan-lock"></a>
 
-### [KB-366] `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る
+### [KB-448] `update-all-clients.sh` の Pi5 preflight が self-SSH で失敗し orphan lock が残る
 
 **記録日**: 2026-05-03  
 **Status**: ✅ 復旧済み・Pi5 本番デプロイ / 実機検証済み
@@ -48,7 +51,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - Pi5 の **`~/.ssh/authorized_keys`** をバックアップし、**`~/.ssh/id_ed25519.pub`** を追記。
 - 権限を **`~/.ssh 700`**、**`authorized_keys 600`** に再設定。
 - orphan lock は **実行中プロセス・deploy artifact 不在**を確認したうえで、バックアップを取ってから削除。
-- **恒久（再発防止）**: **server** ロール [`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) が上記 **`authorized_keys` 冪等管理**を行う。`update-all-clients.sh` は **preflight 前**に **self-SSH チェック**を行い、**preflight 失敗時はリモート bootstrap lock を EXIT トラップで返却**する。次回ロック取得時は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180s）** で **status artifact 無しの bootstrap lock** を掃除し得る。
+- **恒久（再発防止）**: **server** ロール [`ssh-loopback-authorized.yml`](../../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml) が上記 **`authorized_keys` 冪等管理**を行う。`update-all-clients.sh` は **preflight 前**に **self-SSH チェック**を行い、**preflight 失敗時はリモート bootstrap lock を EXIT トラップで返却**する。次回ロック取得時は **`REMOTE_BOOTSTRAP_ORPHAN_SECONDS`（既定 180s）** で **status artifact 無しの bootstrap lock** を掃除し得る。
 
 **Verification（2026-05-03 本番・当初障害復旧時）**:
 - self-SSH: `ssh -o BatchMode=yes denkon5sd02@100.106.158.2 "echo SELF_OK"` → **成功**
@@ -66,11 +69,11 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - lock を手で消す前に、**`runPid` が無い / 対応する deploy artifact が無い / `ps -ef` に `ansible-playbook` や `ansible … -m ping` が無い**ことを確認する。
 
 **Prevention**:
-- 本番での再発防止は **Ansible server ロール**（[`ssh-loopback-authorized.yml`](../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）と **`update-all-clients.sh` の self-SSH 事前チェック／lock EXIT 解放／orphan bootstrap 掃除**に任せる。
+- 本番での再発防止は **Ansible server ロール**（[`ssh-loopback-authorized.yml`](../../../infrastructure/ansible/roles/server/tasks/ssh-loopback-authorized.yml)）と **`update-all-clients.sh` の self-SSH 事前チェック／lock EXIT 解放／orphan bootstrap 掃除**に任せる。
 - ローカル作業ツリーが dirty だと fail-fast で止まるため、**commit するか stash**してから再試行する（[KB-315](#kb-315-pi4-fjv-third-kiosk) と同系）。
 
 **References**:
-- `scripts/update-all-clients.sh`（`check_pi5_loopback_ssh_preflight` / `run_preflight_remotely` / `acquire_remote_lock` / EXIT trap）
+- `scripts/update-all-clients.sh`（`check_pi5_loopback_ssh_preflight` / `run_preflight_remotely` / `acquire_remote_lock` / EXIT trap）（当時。現行の `update-all-clients.sh` は `scripts/deploy/standard-ansible-release.py` の wrapper で、これらの関数・変数は廃止。排他は Pi5 の `logs/deploy/fleet-release-state.lock` に対する flock）
 - [deployment.md](../../guides/deployment.md)
 - [KB-365](../KB-365-dgx-resource-phase3-workload-orchestration.md)
 
@@ -108,14 +111,14 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **運用**:
 - **API/ストレージのみ**のため **Pi5 のみ**（`--limit raspberrypi5`）で足りる。キオスク Pi4 はサーバー経由で画像取得。
-- 標準手順: [deployment.md](../../guides/deployment.md) の `export RASPI_SERVER_HOST=...` と `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`。
+- 標準手順: [deployment.md](../../guides/deployment.md) の `export RASPI_SERVER_HOST=...` と `./scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach --follow`（当時。現行は `--follow` と `RASPI_SERVER_HOST` を使わず、`--print-plan` で確認後に `scripts/update-all-clients.sh <branch> infrastructure/ansible/inventory.yml --limit raspberrypi5 --detach` を実行し、`--status <runId>` で確認する）。
 
 **Verification（2026-04-14 本番）**:
 - **Detach Run ID**（ログ接頭辞 `ansible-update-`）: `20260414-163839-30558`（`raspberrypi5`・`PLAY RECAP` **`failed=0` / `unreachable=0`**・`Summary success check: true`）。
 - **実機（自動）**: `./scripts/deploy/verify-phase12-real.sh` → **PASS 43 / WARN 0 / FAIL 0**（約 25s）。
 
 **Troubleshooting**:
-- `prisma migrate deploy` が **`service "api" is not running`** のときは、まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を確認し、**bind mount 先ディレクトリ未作成**や **`Created` で止まったコンテナ**を疑う（[deployment.md](../../guides/deployment.md)「新しい bind mount」知見）。
+- `prisma migrate deploy` が **`service "api" is not running`** のときは、まず Pi5 で `docker compose -f infrastructure/docker/docker-compose.server.yml ps -a` を確認し、**bind mount 先ディレクトリ未作成**や **`Created` で止まったコンテナ**を疑う（[旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md)「新しい bind mount」知見）。
 - コンテナ内だけに残っていたファイルが **既に失われている**場合、救出は効かない。必要なら **再アップロード**。
 
 **References**:
@@ -154,13 +157,14 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **References**:
 - 実装: `apps/api/src/services/inference/config/local-llm-env-alignment.ts`、`inference-providers-json.schema.ts`、`infrastructure/ansible/playbooks/manage-app-configs.yml`
-- デプロイ記録: [deployment.md](../../guides/deployment.md) 冒頭（2026-04-26 補足）
+- デプロイ記録: 旧 deployment.md 冒頭の 2026-04-26 補足（現在は削除済み。本 KB の Verification を参照）
 
 ---
 
+<a id="kb-446-docs-placement-policy-by-host-role"></a>
 <a id="kb-319-docs-placement-policy-by-host-role"></a>
 
-### [KB-319] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
+### [KB-446] `docs/` 配置ポリシー整理（Pi5保持 / Pi4・Pi3削除）
 
 **記録日**: 2026-03-28  
 **Status**: ✅ 方針確定・Ansible 反映済み・本番実機検証済み（2026-03-28）
@@ -174,7 +178,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 - **Pi4（`kiosk`）/Pi3（`signage`）**: `docs/` は削除する（実行専用端末）。
 
 **Implementation**:
-- `infrastructure/ansible/roles/common/tasks/main.yml` の `docs` 削除タスクに `when: "'server' not in group_names"` を追加し、`server` ホストのみ削除対象から除外した。
+- `infrastructure/ansible/roles/common/tasks/main.yml` の `docs` 削除タスクに `when: "'server' not in group_names"` を追加し、`server` ホストのみ削除対象から除外した。（現行: `roles/common/tasks/` に `docs` 削除タスクは存在しない。以下の Verification / Troubleshooting は当時の記録）
 
 **Operational notes**:
 - クライアント端末で `docs/...` 参照が必要な場合は、Pi5 上の同パスまたは GitHub リポジトリを参照する。
@@ -187,7 +191,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Troubleshooting**:
 - Pi5 で `docs/` が無い、または `git status` が `docs` 大量削除: `inventory` で `raspberrypi5` が `server` グループに入っているか、`roles/common` の `when: "'server' not in group_names"` が効いているかを確認。手で `docs` を消した場合は `git checkout -- docs` 等で復元。
-- クライアントで現場から `less docs/...` したい: **Pi5 上の同パス**または GitHub の `docs/` を参照（[deployment.md](../../guides/deployment.md) の「`docs/` 配置ポリシー」）。
+- クライアントで現場から `less docs/...` したい: **Pi5 上の同パス**または GitHub の `docs/` を参照（[旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md#docs-配置ポリシーホスト別) の「`docs/` 配置ポリシー」）。
 
 **References**:
 - `infrastructure/ansible/roles/common/tasks/main.yml`
@@ -228,7 +232,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
 
 **Fix / 運用手順（要約）**:
 - **SSH 鍵**: Pi5 が LAN で届かないときは、[client-initial-setup.md](../../guides/client-initial-setup.md) のとおり **届く経路で `authorized_keys` に Pi5 の `id_ed25519.pub` を追記** → Tailscale → Pi5 から `ssh user@100.x`。
-- **Ansible**: Pi5 上で次のどちらか。
+- **Ansible**: Pi5 上で次のどちらか（当時の手順。`deploy-staged.yml` は削除済みで、現行の新規Pi4初回導入は [deployment.md](../../guides/deployment.md#空のpi4キオスクへの初回導入) の `--print-plan` 確認後に `scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit <host> --first-install` を使う）。
   - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible && ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-fjv60-80`
   - またはリポジトリ整合後に従来の `update-all-clients.sh` + `--limit raspi4-fjv60-80`（**ローカルはコミット済み**で実行）。
 - **Pi5 の作業ツリー**: 運用で一時的に `scp` 等でファイルを直置きした場合は、`main` 取り込み後に **`git checkout main && git pull --ff-only`** で揃えるか、変更を捨ててから pull（詳細は運用者判断）。
@@ -279,7 +283,7 @@ Ansibleとデプロイメントに関するトラブルシューティング情�
   - `sudo systemctl enable --now docker`
 - その後、Pi5 で
   - `cd /opt/RaspberryPiSystem_002/infrastructure/ansible`
-  - `ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-kensaku-stonebase01`
+  - `ANSIBLE_CONFIG="$PWD/ansible.cfg" ANSIBLE_REPO_VERSION=main ansible-playbook playbooks/deploy-staged.yml --limit raspi4-kensaku-stonebase01`（当時。現行は [deployment.md](../../guides/deployment.md#空のpi4キオスクへの初回導入) の `--first-install` を使う）
 - 実機確認:
   - `GET /api/system/deploy-status`（StoneBase client key）で `"isMaintenance": false`
   - `kiosk-browser.service` / `status-agent.timer` が `active`
@@ -560,7 +564,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
   2. **polkit設定ファイルのAnsible管理化**: `infrastructure/ansible/templates/polkit-50-pcscd-allow-all.rules.j2`を作成し、`update-clients.yml`に統合
   3. **バックアップ機能の実装**: `scripts/ansible-backup-configs.sh`を作成し、設定ファイルのバックアップを自動化
   4. **ロールバック機能の実装**: `infrastructure/ansible/playbooks/rollback.yml`を作成し、設定ファイルの自動復旧を可能に
-  5. **ドキュメント化**: `docs/plans/ansible-hardening-stabilization-plan.md`と`docs/guides/ansible-managed-files.md`を作成し、管理方針を明確化
+  5. **ドキュメント化**: `docs/plans/ansible-hardening-stabilization-plan.md`（削除済み）と`docs/guides/ansible-managed-files.md`を作成し、管理方針を明確化
 
 **学んだこと**: 
 - **`git clean`のリスク**: `.gitignore`に含まれていないファイルは削除されるため、保護が必要なディレクトリは明示的に除外する必要がある
@@ -576,7 +580,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 - `infrastructure/ansible/playbooks/manage-system-configs.yml`（システム設定ファイル管理プレイブック）
 - `infrastructure/ansible/playbooks/rollback.yml`（ロールバックプレイブック）
 - `scripts/ansible-backup-configs.sh`（設定ファイルバックアップスクリプト）
-- `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画）
+- `docs/plans/ansible-hardening-stabilization-plan.md`（Ansible堅牢化・安定化計画。削除済み）
 - `docs/guides/ansible-managed-files.md`（Ansibleで管理すべき設定ファイル一覧）
 
 ---
@@ -631,7 +635,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 - `infrastructure/ansible/templates/nfc-agent.env.j2`（NFCエージェント環境変数テンプレート）
 - `infrastructure/ansible/templates/docker.env.j2`（Docker Compose環境変数テンプレート）
 - `infrastructure/ansible/inventory.yml`（環境変数の変数定義）
-- `docs/plans/ansible-config-files-management-plan.md`（実装計画）
+- `docs/plans/ansible-config-files-management-plan.md`（実装計画。削除済み。管理方針の現行正本は [ansible-managed-files.md](../../guides/ansible-managed-files.md)）
 
 ---
 
@@ -684,7 +688,7 @@ WHERE id = '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01';
 
 ### [KB-069] IPアドレス管理の変数化（Ansible group_vars/all.yml）
 
-**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../plans/security-hardening-execplan.md)
+**EXEC_PLAN.md参照**: Phase 1 IPアドレス管理の変数化と運用モード可視化（2025-12-04）、[security-hardening-execplan.md](../../plans/security-hardening-execplan.md)
 
 **事象**: 
 - IPアドレスが複数の設定ファイルに直接記述されている
@@ -1625,78 +1629,7 @@ cat ~/.status-agent.conf
 
 ### [KB-159] トークプラザ工場へのマルチサイト対応実装（inventory分離・プレフィックス命名規則）
 
-**実装日**: 2026-01-14
-
-**事象**: 
-- トークプラザ工場（別拠点）に同一システムを導入する必要があった
-- 既存の第2工場と設定が混在しないようにする必要があった
-- 将来のデータベース統合時にクライアントIDやAPIキーのコンフリクトを回避する必要があった
-
-**要因**: 
-- **inventoryの一元管理**: 既存の`inventory.yml`は第2工場専用で、新拠点の設定を追加すると混在する
-- **クライアントIDの名前空間**: クライアントIDが重複すると、将来のDB統合時にコンフリクトが発生する
-- **外部連携の分離**: Slack/Dropbox/Gmailの資格情報を拠点ごとに分離する必要がある
-- **デプロイの安全性**: 誤って別拠点にデプロイするリスクを防ぐ必要がある
-
-**実装内容**:
-1. **inventoryファイルの分離**:
-   - `infrastructure/ansible/inventory-talkplaza.yml`を作成（トークプラザ工場専用）
-   - 第2工場は`inventory.yml`のまま維持
-   - 各inventoryでホスト名とクライアントIDにプレフィックスを付与（`talkplaza-`）
-
-2. **group_varsの分離**:
-   - `infrastructure/ansible/group_vars/talkplaza.yml`を作成
-   - DNS運用前提でホスト名を定義（`pi5.talkplaza.local`など）
-   - `network_mode: "local"`を設定（拠点間接続なし）
-
-3. **host_varsの分離**:
-   - `infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml`
-   - `infrastructure/ansible/host_vars/talkplaza-pi4/vault.yml`
-   - `infrastructure/ansible/host_vars/talkplaza-signage01/vault.yml`
-   - 各ホストのシークレットを`talkplaza-`プレフィックスで管理
-
-4. **プレフィックス命名規則**:
-   - クライアントID: `talkplaza-pi5-server`, `talkplaza-pi4-kiosk01`, `talkplaza-signage01`
-   - APIキー: `client-key-talkplaza-pi5-server`など
-   - ホスト名: `pi5.talkplaza.local`, `pi4.talkplaza.local`, `signage01.talkplaza.local`
-
-5. **デプロイスクリプトの改善**:
-   - `scripts/update-all-clients.sh`でinventory引数を必須化（誤デプロイ防止）
-   - デプロイ前にinventoryパスを表示し、確認プロンプトを追加
-
-**学んだこと**:
-- **inventory分離の重要性**: 各拠点の設定を完全に分離することで、設定の混在を防止できる
-- **プレフィックス命名規則**: クライアントIDやAPIキーにプレフィックスを付与することで、将来のDB統合時のコンフリクトを回避できる
-- **デプロイの安全性**: inventory引数を必須化することで、誤デプロイのリスクを大幅に削減できる
-- **スケーラビリティ**: 新拠点の追加は設定ファイルの追加のみで対応可能（コード変更不要）
-
-**解決状況**: ✅ **実装完了**（2026-01-14）
-
-**関連ファイル**:
-- `infrastructure/ansible/inventory-talkplaza.yml`（トークプラザ工場用inventory）
-- `infrastructure/ansible/group_vars/talkplaza.yml`（トークプラザ工場用group_vars）
-- `infrastructure/ansible/host_vars/talkplaza-*/vault.yml`（各ホストのシークレット）
-- `scripts/update-all-clients.sh`（デプロイスクリプト）
-- `docs/guides/talkplaza-rollout.md`（トークプラザ工場導入ガイド）
-
-**確認コマンド**:
-```bash
-# トークプラザ工場へのデプロイ
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory-talkplaza.yml
-
-# 第2工場へのデプロイ
-./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml
-```
-
-**再発防止策**:
-- **inventory引数の必須化**: デプロイスクリプトでinventory引数を必須にし、誤デプロイを防止
-- **プレフィックス命名規則**: すべてのクライアントIDとAPIキーにプレフィックスを付与
-- **設定の完全分離**: 各拠点の設定を完全に分離し、混在を防止
-
-**注意事項**:
-- 第1工場への導入時も同様の手順で対応可能
-- 将来のDB統合時は、コード体系の非重複運用とCSVフォーマットの統一が必要
-- データモデルに「site」属性は追加しない（名前で判別する運用）
+**廃止決定（2026-10-30）**: トークプラザを別拠点・別サーバー・別DBとして構築する計画は、専用実機が作られず、サーバー Pi5 1台運用に決まったため廃止した。専用の構成・スクリプト・導入手順を削除し、トークプラザの Pi4 は `raspi4-assembly-02` として `infrastructure/ansible/inventory.yml` で管理する。
 
 ---
 
@@ -1772,7 +1705,7 @@ cat ~/.status-agent.conf
    - 実行前に確認メッセージを表示
 
 3. **usage関数の改善**:
-   - 使用例を追加（第2工場とトークプラザ工場の例）
+   - 使用例を追加（現行は標準inventoryのみ）
    - エラーメッセージにusageを表示
 
 **学んだこと**:
@@ -2322,9 +2255,8 @@ Slack通知を4系統（deploy/ops/security/support）に分類する機能を�
 # Pi5にSSH接続
 ssh denkon5sd02@<Pi5のIP>
 
-# rootに変更されたファイルの権限を修正
+# リポジトリへ移動
 cd /opt/RaspberryPiSystem_002
-sudo chown denkon5sd02:denkon5sd02 infrastructure/ansible/host_vars/talkplaza-pi5/vault.yml
 
 # リポジトリを最新化
 git stash  # ローカル変更がある場合
@@ -3039,7 +2971,8 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
-### [KB-217] デプロイプロセスのコード変更検知とDocker再ビルド確実化
+<a id="kb-217-デプロイプロセスのコード変更検知とdocker再ビルド確実化"></a>
+### [KB-445] デプロイプロセスのコード変更検知とDocker再ビルド確実化
 
 **発生日**: 2026-01-31  
 **Status**: ✅ 解決済み（2026-01-31）
@@ -3141,7 +3074,8 @@ ensure_local_repo_ready_for_deploy() {
 
 ---
 
-### [KB-218] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
+<a id="kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない"></a>
+### [KB-440] Docker build時のtsbuildinfo問題（インクリメンタルビルドでdistが生成されない）
 
 **発生日**: 2026-01-31  
 **Status**: ✅ 解決済み（2026-01-31）
@@ -3432,18 +3366,20 @@ sudo apt-get update 2>&1 | grep -E '(ヒット|取得|エラー|W:)'
 
 ---
 
-### [KB-222] デプロイ時のinventory混同問題: inventory-talkplaza.ymlとinventory.ymlの混同
+<a id="kb-222-デプロイ時のinventory混同問題inventory&#45;talkplazaymlとinventoryymlの混同"></a>
+
+### [KB-222] デプロイ時のinventory混同問題: 旧別拠点用と標準inventoryの混同
 
 **発生日**: 2026-02-01  
 **Status**: ✅ 解決済み（2026-02-01）
 
 **事象**:
-- デプロイ実行時に`inventory-talkplaza.yml`（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
+- デプロイ実行時に旧別拠点用inventory（トークプラザ工場用）と`inventory.yml`（第2工場用）を混同
 - DNS名（`pi5.talkplaza.local`）でデプロイを試みたが、Mac側で名前解決できず失敗
 - `sudo: a password is required`エラーが発生し、デプロイが中断
 
 **症状**:
-1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って`inventory-talkplaza.yml`を使用
+1. **inventory混同**: 第2工場のPi5にデプロイすべきところで、誤って旧別拠点用inventoryを使用
 2. **DNS名前解決失敗**: `pi5.talkplaza.local`がMac側で名前解決できず、SSH接続失敗
 3. **デプロイ中断**: デプロイスクリプトの事前チェックでSSH接続失敗により中断
 
@@ -3453,8 +3389,8 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 ```
 
 **根本原因**:
-- **inventoryの混同**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用の論理ホスト名」として定義されているが、実機が存在しない可能性がある（KB-159参照）
-- **DNS名の使用**: `group_vars/talkplaza.yml`でDNS運用前提（`pi5.talkplaza.local`）が設定されているが、Mac側では名前解決できない
+- **inventoryの混同**: 実機のない旧別拠点用inventoryを選択した（廃止決定はKB-159参照）
+- **DNS名の使用**: 旧別拠点用変数はDNS運用前提（`pi5.talkplaza.local`）だったが、Mac側では名前解決できなかった
 - **標準手順の未遵守**: `docs/guides/deployment.md`の標準手順（Tailscale IP経由）を遵守せず、DNS名を使用した
 
 **有効だった対策**:
@@ -3466,13 +3402,11 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 - **inventoryの確認**: デプロイ前に必ず対象inventoryを確認し、標準手順を遵守する
 - **Tailscale IPの使用**: DNS名ではなく、Tailscale IPを使用してSSH接続する（標準手順）
 - **デプロイ後の確認**: デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
-- **inventory-talkplaza.ymlの用途**: `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であり、第2工場のPi5には使用しない
 
 **再発防止**:
 - デプロイ前に必ず対象inventoryを確認し、標準手順（`docs/guides/deployment.md`）を遵守する
 - DNS名ではなく、Tailscale IPを使用してSSH接続する
 - デプロイ後、コード変更があった場合はWebコンテナを明示的に再ビルドする
-- `inventory-talkplaza.yml`は「トークプラザ工場（別拠点）用」であることを明確に理解する
 
 **実機検証結果（2026-02-01）**:
 - ✅ Tailscale IP経由でSSH接続成功
@@ -3483,7 +3417,6 @@ ssh: Could not resolve hostname pi5.talkplaza.local: nodename nor servname provi
 **関連ファイル**:
 - `scripts/update-all-clients.sh`: デプロイスクリプト
 - `infrastructure/ansible/inventory.yml`: 第2工場用inventory
-- `infrastructure/ansible/inventory-talkplaza.yml`: トークプラザ工場用inventory（別拠点）
 - `docs/guides/deployment.md`: デプロイ標準手順
 
 **復旧手順（参考）**:
@@ -3497,8 +3430,8 @@ ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -
 ```
 
 **参考情報**:
-- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ工場へのマルチサイト対応実装
-- [docs/guides/deployment.md](../guides/deployment.md): デプロイ標準手順
+- [KB-159](./ansible-deployment.md#kb-159-トークプラザ工場へのマルチサイト対応実装inventory分離プレフィックス命名規則): トークプラザ別拠点構成の廃止
+- [docs/guides/deployment.md](../../guides/deployment.md): デプロイ標準手順
 - 通常、Node.jsをインストールする際に追加される（`curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -`）
 - この問題はNodeSource側の対応待ちであり、システムのNode.jsは既にインストール済みで動作しているため、緊急の対応は不要
 
@@ -3631,7 +3564,7 @@ docker compose -f infrastructure/docker/docker-compose.server.yml exec -T api pn
 
 **関連KB**:
 - [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デタッチモードの実装
-- [KB-220](./ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題sha1が2026-02-01以降拒否される): デプロイ時のトラブルシューティング
+- [KB-220](./ansible-deployment.md#kb-220-nodesourceリポジトリのgpg署名キー問題-sha1が2026-02-01以降拒否される): デプロイ時のトラブルシューティング
 
 **再発防止**:
 - デプロイ実行前に変更内容を確認し、必要なデバイスのみをデプロイする
@@ -3697,7 +3630,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-211](../api.md#kb-211-生産スケジュール検索登録製番の削除追加が巻き戻る競合問題cas導入): 競合制御の実装（ETag/If-Match）
-- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+- [KB-440](./ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
 
 **再発防止**:
 - コード更新時は必ずDockerコンテナが再ビルドされることを確認する
@@ -3762,7 +3695,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-200](./ansible-deployment.md#kb-200-デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能): デプロイ標準手順のfail-fastチェック追加とデタッチ実行ログ追尾機能
-- [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上はdetach-follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
+- [KB-226](./ansible-deployment.md#kb-226-デプロイ方針の見直しpi5pi4以上は--detach---follow必須): デプロイ方針の見直し（Pi5+Pi4以上は`--detach --follow`必須）
 
 **解決状況**: ✅ **解決済み**（2026-02-06）
 
@@ -3821,7 +3754,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **関連KB**:
 - [KB-234](./ansible-deployment-performance.md#kb-234-ansibleデプロイが遅い段階展開重複タスク計測欠如の整理と暫定対策): デプロイ性能の調査と暫定対策
-- [KB-218](./ansible-deployment.md#kb-218-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
+- [KB-440](./ansible-deployment.md#kb-440-docker-build時のtsbuildinfo問題インクリメンタルビルドでdistが生成されない): Docker build時の問題
 
 **解決状況**: ✅ **解決済み**（2026-02-07）
 
@@ -3931,7 +3864,7 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 
 **References**:
 - [power-function-solid-refactor-execplan.md](../../plans/power-function-solid-refactor-execplan.md)
-- [KB-investigation-kiosk-schedule-regression-20260301.md](../KB-investigation-kiosk-schedule-regression-20260301.md)
+- [KB-investigation-kiosk-schedule-regression-20260301.md](../../archive/knowledge-base/KB-investigation-kiosk-schedule-regression-20260301.md)
 - [KB-237](./ansible-deployment.md#kb-237-pi4キオスクの再起動シャットダウンボタンが機能しない問題)
 - [KB-288](../KB-288-power-actions-bind-mount-deleted-inode.md): 電源操作・連打防止不具合（power-actions バインドマウントの削除済み inode 参照）
 
@@ -4077,10 +4010,10 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 **JWT秘密鍵の用途と運用上の注意点**:
 - **用途**: 管理コンソール（`/admin`）やキオスク（`/kiosk`）のログイン認証で使用される「アクセストークン」（15分有効）と「リフレッシュトークン」（7日間有効）の署名に使用されます。トークンは改ざんできないよう秘密鍵で署名され、弱い値だと推測されやすくセキュリティリスクになります
 - **運用上の注意点**: デプロイ後は必ずヘルスチェックでAPIが正常起動していることを確認してください。JWT秘密鍵を変更した場合、既存のログインセッションは無効になりますが、通常は変更不要です（デプロイ時に自動で維持されます）。バックアップ対象に含まれているため、万が一失われた場合も復旧可能です
-- **詳細**: [デプロイメントガイド](../guides/deployment.md#本番セキュリティ設定2026-02-13追加) の「JWT秘密鍵の用途と仕組み」「運用上の注意点」セクションを参照してください
+- **詳細**: [旧デプロイ運用ガイド（アーカイブ）](../../archive/deployments/legacy-operator-guide-through-2026-07.md#本番セキュリティ設定2026-02-13追加) の「JWT秘密鍵の用途と仕組み」「運用上の注意点」セクションを参照してください
 
 **関連ファイル**:
-- `docs/guides/deployment.md`（JWT秘密鍵の注意点）
+- `docs/archive/deployments/legacy-operator-guide-through-2026-07.md`（JWT秘密鍵の注意点。旧ガイドのアーカイブ）
 - `infrastructure/docker/docker-compose.server.yml`（`env_file` の優先順位）
 - `infrastructure/ansible/templates/api.env.j2`
 - `infrastructure/ansible/templates/docker.env.j2`
@@ -4240,8 +4173,8 @@ ansible-playbook ... -e "force_docker_rebuild=${FORCE_DOCKER_REBUILD}"
 - 両端末とも `failed=0`、`unreachable=0`、exit 0 で完了
 
 **Prevention**:
-- **直列化適用済み（2026-03-09、2026-07-16強化）**: `deploy-staged.yml` の全playとregistry向け共通playbookはliteral `serial: 1` を宣言する。CIがregistryの全terminal playbookでこれを検証し、inventory変数で並列度を緩められないため、Pi4を含む端末は常時1台ずつの直列実行となる
-- `server:kiosk` でハングした場合の復旧手順を Runbook に追加（[deploy-status-recovery.md](../runbooks/deploy-status-recovery.md)）
+- **直列化適用済み（2026-03-09、2026-07-16強化）**: `deploy-staged.yml` の全playとregistry向け共通playbookはliteral `serial: 1` を宣言する。CIがregistryの全terminal playbookでこれを検証し、inventory変数で並列度を緩められないため、Pi4を含む端末は常時1台ずつの直列実行となる（当時。現行は `deploy-staged.yml` が削除済みで、`deploy-release-standard.yml` の Pi4 play が `serial: [1, 5, "25%", "100%"]` の波で更新し、`--torque-cutover` 時のみ1台ずつ。[deployment.md](../../guides/deployment.md)）
+- `server:kiosk` でハングした場合の復旧手順を Runbook に追加（当時。現行の復旧は [deploy-status-recovery.md](../../runbooks/deploy-status-recovery.md#2-失敗後の再実行) を正本とする）
 - ハングが続く場合は、Pi4 を単体で `--limit raspberrypi4` / `--limit raspi4-robodrill01` により再デプロイする運用を推奨
 - 将来の検討: Ansible の `ansible_command_timeout` や SSH 接続の並列化設定の見直し
 

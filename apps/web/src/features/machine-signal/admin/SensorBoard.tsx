@@ -77,7 +77,7 @@ export function SensorBoard({
   onToggle: (signalNo: number) => void;
   onPickTodo: () => void;
   onClear: () => void;
-  pickTodoRef: React.RefObject<HTMLButtonElement>;
+  pickTodoRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   const todoCount = sensors.filter((sensor) => !sensor.site).length;
   const filters = [

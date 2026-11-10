@@ -94,6 +94,13 @@
   register: clamav_kiosk_script_deployed
   when: clamav_kiosk_enabled | default(false)
 
+# An early manual setup left a second copy in cron.d, which ran the scan twice at once
+- name: Remove legacy kiosk ClamAV cron.d entry
+  ansible.builtin.file:
+    path: /etc/cron.d/clamav-kiosk-scan
+    state: absent
+  when: terminal_release_mode | default('full') == 'full'
+
 - name: Schedule kiosk ClamAV scan
   ansible.builtin.cron:
     name: "Weekly ClamAV scan (kiosk)"

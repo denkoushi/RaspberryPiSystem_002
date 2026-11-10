@@ -12,8 +12,20 @@ import datetime as _datetime
 import hashlib
 import json
 import re
+import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from scripts.deploy.release_artifact_contract import (
+    GITHUB_OWNER,
+    HISTORICAL_GITHUB_OWNERS,
+    RELEASE_SET_REPOSITORY,
+)
 
 
 RETENTION_SCHEMA_VERSION = 1
@@ -22,26 +34,26 @@ PLAN_KIND = "pi5-docker-image-retention-plan"
 SUMMARY_KIND = "pi5-docker-image-retention-summary"
 MINIMUM_AGE_SECONDS = 24 * 60 * 60
 
-# Keep this list literal and reviewable.  In particular, do not derive it from
-# the retention file, Docker labels, an environment variable, or Compose.
+# Derive the allowlist only from the committed owner contract, never runtime state.
 API_REPOSITORIES = frozenset(
     {
-        "ghcr.io/denkoushi/raspisys-api",
+        *(f"ghcr.io/{owner}/raspisys-api" for owner in (GITHUB_OWNER, *HISTORICAL_GITHUB_OWNERS)),
         "raspi-system-api",
         "docker-api",
     }
 )
 WEB_REPOSITORIES = frozenset(
     {
-        "ghcr.io/denkoushi/raspisys-web",
+        *(f"ghcr.io/{owner}/raspisys-web" for owner in (GITHUB_OWNER, *HISTORICAL_GITHUB_OWNERS)),
         "raspi-system-web",
         "docker-web",
     }
 )
-RELEASE_SET_REPOSITORY = "ghcr.io/denkoushi/raspisys-release-set"
-ALLOWED_REPOSITORIES = frozenset(
-    {*API_REPOSITORIES, *WEB_REPOSITORIES, RELEASE_SET_REPOSITORY}
+RELEASE_SET_REPOSITORIES = frozenset(
+    f"ghcr.io/{owner}/raspisys-release-set"
+    for owner in (GITHUB_OWNER, *HISTORICAL_GITHUB_OWNERS)
 )
+ALLOWED_REPOSITORIES = API_REPOSITORIES | WEB_REPOSITORIES | RELEASE_SET_REPOSITORIES
 RELEASE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{12,64}$")

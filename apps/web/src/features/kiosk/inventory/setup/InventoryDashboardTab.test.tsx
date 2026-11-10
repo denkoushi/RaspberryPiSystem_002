@@ -14,6 +14,7 @@ vi.mock('../../../../api/client', async importOriginal => ({
 }));
 const data: InventoryDashboard = {
   weeks: [{ weekStart: '2026-10-05', issued: 2 }, { weekStart: '2026-10-12', issued: 4 }], totalIssued: 6, previousTotalIssued: 3,
+  machineUsage: [{ machineId: 'm1', name: '立形MC 1号', issued: 2, weekly: [0, 2], itemIssued: { '1': 2 } }, { machineId: null, name: '加工機なし', issued: 4, weekly: [2, 2], itemIssued: { '2': 4 } }],
   items: [
     { id: '1', name: 'ドリルA', labelNumbers: [12], toolName: 'ドリル', maker: 'OSG', unit: '本', unitPrice: null, stock: 2, issued: 2, weekly: [0, 2] },
     { id: '2', name: 'ドリルB', labelNumbers: [13], toolName: 'ﾄﾞﾘﾙ', maker: 'osg', unit: '本', unitPrice: null, stock: 5, issued: 4, weekly: [2, 2] },
@@ -40,7 +41,7 @@ describe('InventoryDashboardTab', () => {
     mount();
     expect(await screen.findByRole('region', { name: '持出', exact: true })).toHaveTextContent('6 本');
     expect(screen.getByText('前の12週より +100%')).toBeInTheDocument();
-    expect(screen.getByText('1 種類')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '使った種類' })).toHaveTextContent('1 種類');
     expect(screen.getByText('入力のままだと 2種類')).toBeInTheDocument();
     expect(screen.getByText('▲ 残り2本以下')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: '週ごとの持出グラフ' })).toBeInTheDocument();
@@ -53,7 +54,7 @@ describe('InventoryDashboardTab', () => {
     mount(); await screen.findByRole('region', { name: '持出', exact: true });
     fireEvent.click(screen.getByRole('button', { name: '4週' }));
     await waitFor(() => expect(getInventoryDashboard).toHaveBeenLastCalledWith(4, undefined, '2520'));
-    fireEvent.change(screen.getByLabelText('場所'), { target: { value: 'A' } });
+    fireEvent.change(screen.getByLabelText('棚の場所'), { target: { value: 'A' } });
     await waitFor(() => expect(getInventoryDashboard).toHaveBeenLastCalledWith(4, 'A', '2520'));
     await screen.findByRole('button', { name: 'メーカー' });
     fireEvent.click(screen.getByRole('button', { name: 'メーカー' }));
@@ -62,6 +63,7 @@ describe('InventoryDashboardTab', () => {
   });
   it.each([true, false])('calls merge/dismiss APIs and invalidates dependent queries (merge=%s)', async merge => {
     const { invalidate } = mount();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     fireEvent.click(await screen.findByRole('button', { name: merge ? 'OSG にまとめる' : '別のもの' }));
     if (merge) await waitFor(() => expect(mergeInventoryValueVariants).toHaveBeenCalledWith({ field: 'maker', to: 'OSG', from: ['オーエスジー'] }, '2520'));
     else await waitFor(() => expect(dismissInventoryValueVariants).toHaveBeenCalledWith({ field: 'maker', values: ['OSG', 'オーエスジー'] }, '2520'));
@@ -71,7 +73,7 @@ describe('InventoryDashboardTab', () => {
   it('shows monthly cost after price entry and navigates to editing', async () => {
     vi.mocked(getInventoryDashboard).mockResolvedValue({ ...data, pricedItemCount: 1, cost: { total: 1200, previousTotal: 600, byMonth: [{ month: '2026-10', amount: 1200 }] } });
     const { onEditItems } = mount();
-    expect(await screen.findByText('¥1,200')).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: '金額', exact: true })).toHaveTextContent('¥1,200');
     expect(screen.getByRole('img', { name: '月ごとの金額グラフ' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '単価を入れる' }));
     expect(onEditItems).toHaveBeenCalledOnce();
@@ -80,15 +82,70 @@ describe('InventoryDashboardTab', () => {
     vi.mocked(getInventoryValueVariants).mockResolvedValue({ groups: [], autoMergedValueCount: 0 });
     mount();
     expect(screen.getAllByText('読み込み中…').length).toBeGreaterThan(0);
-    expect(await screen.findByText('確認するものはありません')).toBeInTheDocument();
+    await screen.findByRole('region', { name: '持出', exact: true });
+    expect(screen.queryByRole('button', { name: /表記ゆれ/ })).not.toBeInTheDocument();
     const chart = screen.getByRole('img', { name: '週ごとの持出グラフ' });
     const hit = within(chart).getByText('10/12 の週 4 本', { exact: false }).parentElement!;
     fireEvent.mouseEnter(hit);
     expect(screen.getByRole('tooltip')).toHaveTextContent('10/12 の週 4 本');
   });
+  it('toggles machine selection, overlays weekly bars, prioritizes tools and resets on filter changes', async () => {
+    mount();
+    const card = await screen.findByRole('region', { name: '加工機別の持出' });
+    expect(within(card).getByText('1台')).toBeInTheDocument();
+    const machine = within(card).getByRole('button', { name: /立形MC 1号/ });
+    expect(machine).toHaveAttribute('aria-pressed', 'false');
+    expect(machine.querySelector('polyline')?.getAttribute('points')?.split(' ')).toHaveLength(12);
+    fireEvent.click(machine);
+    expect(machine).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByLabelText('持出の凡例')).toHaveTextContent('全体立形MC 1号');
+    const tools = within(screen.getByRole('region', { name: 'よく使う工具' }));
+    expect(tools.getAllByRole('row')[1]).toHaveTextContent('ドリルA');
+    expect(tools.getAllByRole('row')[2]).toHaveClass('opacity-[.35]');
+    expect(screen.getByRole('img', { name: '週ごとの持出グラフ' }).querySelectorAll('.fill-inv-violet, .fill-inv-violet-dark')).toHaveLength(2);
+    fireEvent.click(machine);
+    expect(machine).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.queryByLabelText('持出の凡例')).not.toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: /加工機なし/ }));
+    expect(screen.getByLabelText('持出の凡例')).toHaveTextContent('加工機なし');
+    fireEvent.click(screen.getByRole('button', { name: '4週' }));
+    await screen.findByRole('region', { name: '加工機別の持出' });
+    expect(screen.queryByLabelText('持出の凡例')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /立形MC 1号/ }));
+    fireEvent.change(screen.getByLabelText('棚の場所'), { target: { value: 'A' } });
+    await screen.findByRole('region', { name: '加工機別の持出' });
+    expect(screen.queryByLabelText('持出の凡例')).not.toBeInTheDocument();
+  });
+  it('opens and closes the variants panel using close, scrim and Escape', async () => {
+    mount();
+    const button = await screen.findByRole('button', { name: /表記ゆれ/ });
+    expect(screen.getByRole('combobox', { name: '棚の場所' })).toHaveDisplayValue('すべての棚');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(button);
+    expect(screen.getByRole('dialog', { name: '表記ゆれ' })).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(button);
+    fireEvent.mouseDown(screen.getByRole('dialog'));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(button);
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+  it('closes the panel when the last non-auto group is resolved', async () => {
+    vi.mocked(getInventoryValueVariants).mockResolvedValueOnce({ groups: [{ field: 'maker', to: 'OSG', from: [{ value: 'オーエスジー', count: 2 }], auto: false }], autoMergedValueCount: 3 })
+      .mockResolvedValue({ groups: [{ field: 'maker', to: 'OSG', from: [], auto: true }], autoMergedValueCount: 4 });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'OSG にまとめる' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.queryByRole('button', { name: /表記ゆれ/ })).not.toBeInTheDocument();
+  });
   it('shows fetch errors and merge errors near the panel', async () => {
     vi.mocked(mergeInventoryValueVariants).mockRejectedValue(new Error('保存できません'));
     mount();
+    fireEvent.click(await screen.findByRole('button', { name: /表記ゆれ/ }));
     fireEvent.click(await screen.findByRole('button', { name: 'OSG にまとめる' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('保存できません');
   });

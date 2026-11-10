@@ -7,7 +7,7 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { procedureVideoTime, type ProcedureVideoCommentDto, type ProcedureVideoSummaryDto, type ProcedureVideoRange } from './procedure-video-types';
 
 export function ProcedureVideoPlayer({ video, videoRef, comments: suppliedComments, range, controls = true, fitFrame = false, onPlaybackChange, onTimeUpdate }: {
-  video: Pick<ProcedureVideoSummaryDto, 'id' | 'title' | 'durationSeconds' | 'status'>; range?: ProcedureVideoRange; controls?: boolean; fitFrame?: boolean; onPlaybackChange?: (playing: boolean) => void; onTimeUpdate?: (player: HTMLVideoElement) => void; videoRef?: RefObject<HTMLVideoElement>; comments?: ProcedureVideoCommentDto[];
+  video: Pick<ProcedureVideoSummaryDto, 'id' | 'title' | 'durationSeconds' | 'status'>; range?: ProcedureVideoRange; controls?: boolean; fitFrame?: boolean; onPlaybackChange?: (playing: boolean) => void; onTimeUpdate?: (player: HTMLVideoElement) => void; videoRef?: RefObject<HTMLVideoElement | null>; comments?: ProcedureVideoCommentDto[];
 }) {
   const ownRef = useRef<HTMLVideoElement>(null);
   const ref = videoRef ?? ownRef;

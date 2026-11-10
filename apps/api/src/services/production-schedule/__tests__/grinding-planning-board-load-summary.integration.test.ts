@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import type { GrindingPlanningBoardProjectionOverride, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection.js';
 import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
+import { readSessakuPieceSets } from '../sessaku-pieces/piece-key.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners } from '../row-resolver/max-product-no-winner-materialization.js';
 
@@ -172,6 +173,8 @@ async function createFixture(): Promise<{
 
 async function cleanupFixture(fixture: { siteKey: string; rowIds: string[]; splitIds: string[] }): Promise<void> {
   await db().productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: fixture.siteKey } });
   if (fixture.splitIds.length > 0) {
     await db().productionScheduleOrderSplitAssignment.deleteMany({ where: { splitId: { in: fixture.splitIds } } });
     await db().productionScheduleOrderSplit.deleteMany({ where: { id: { in: fixture.splitIds } } });
@@ -237,6 +240,80 @@ describeIntegration('grinding planning board lightweight load summary integratio
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it.each([
+    { name: 'row match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'masked order product match', fseiban: '********', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'masked order product mismatch', fseiban: '********', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'NULL order retains the product residual', fseiban: null, productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'NULL order and NULL product retain the product residual', fseiban: null, productNo: null, overrideProductNo: '', split: false, resources: ['G-02'], movedCount: 0 },
+    { name: 'empty order matches without a product', fseiban: '', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
+    { name: 'split match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02'], movedCount: 0 },
+    { name: 'two matching row overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02', 'G-02'], movedCount: 2 },
+    { name: 'two matching split overrides', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: ['G-02', 'G-02'], movedCount: 0 },
+    { name: 'NULL resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null], movedCount: 0 },
+    { name: 'NULL split resource falls back to original', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: true, resources: [null], movedCount: 0 },
+    { name: 'NULL resource preserves duplicate matches', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: [null, 'G-02'], movedCount: 1 }
+  ])('preserves override join semantics: $name', async (spec) => {
+    const siteKey = `it-${randomUUID().slice(0, 8)}`;
+    const rowData = {
+      FSEIBAN: spec.fseiban, ProductNo: spec.productNo,
+      FHINCD: 'PART', FSIGENCD: 'G-01', FKOJUN: '1', FSIGENSHOYORYO: '10'
+    };
+    const created = await db().csvDashboardRow.create({
+      data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
+        dataHash: randomUUID(), rowData },
+      select: { id: true }
+    });
+    const fixture = { siteKey, rowIds: [created.id], splitIds: [] as string[] };
+    fixtures.push(fixture);
+    if (spec.split) {
+      await db().productionScheduleOrderSupplement.create({
+        data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: created.id,
+          sourceCsvDashboardId: siteKey, productNo: 'P1', resourceCd: 'G-01', processOrder: '1', plannedQuantity: 1 }
+      });
+      const split = await db().productionScheduleOrderSplit.create({
+        data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, parentCsvDashboardRowId: created.id,
+          splitNo: 1, splitQuantity: 1 },
+        select: { id: true }
+      });
+      fixture.splitIds.push(split.id);
+    }
+    const rowItemKey = buildGrindingPlanningBoardRowItemId({ ...rowData, ProductNo: spec.overrideProductNo });
+    const splitItemKey = `split:${fixture.splitIds[0] ?? 'unmatched'}`;
+    // Supply duplicate bindings at the reader boundary: persisted item keys are unique.
+    // Both kinds are present to catch accidental cross-kind matches; the aggregate SQL runs in Postgres.
+    const overrideRows = [
+      ...spec.resources.map((overrideResourceCd) => ({
+        itemKey: spec.split ? splitItemKey : rowItemKey, overrideResourceCd
+      })),
+      { itemKey: spec.split ? rowItemKey : splitItemKey, overrideResourceCd: spec.split ? null : 'G-99' }
+    ];
+    const client = {
+      async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
+        if ('sql' in query && !query.sql.includes('"effectiveItems"')) return overrideRows as T;
+        return db().$queryRaw<T>(query, ...values);
+      }
+    };
+    const summary = await summaryReader()({
+      client, siteKey, category: 'grinding',
+      leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${created.id}`,
+      isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
+    });
+    const itemCount = spec.split ? 1 : spec.resources.length;
+    expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
+      originalItemCount: itemCount, originalRequiredMinutes: 10 * itemCount,
+      alternateItemCount: itemCount - spec.movedCount, alternateRequiredMinutes: 10 * (itemCount - spec.movedCount)
+    });
+    if (spec.movedCount > 0) {
+      expect(summary.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
+        originalItemCount: 0, originalRequiredMinutes: 0,
+        alternateItemCount: spec.movedCount, alternateRequiredMinutes: 10 * spec.movedCount
+      });
+    }
+    expect(summary.load.map((entry) => entry.resourceCd)).toEqual(spec.movedCount > 0 ? ['G-01', 'G-02'] : ['G-01']);
+    expect(summary.unknownRequiredMinutesCount).toBe(0);
+  });
+
   it('counts separate unassigned orders and applies only the matching order override', async () => {
     const siteKey = `it-${randomUUID().slice(0, 8)}`;
     const base = { FSEIBAN: '********', FHINCD: 'MASKED-PART', FSIGENCD: 'G-01', FKOJUN: '230' };
@@ -253,7 +330,7 @@ describeIntegration('grinding planning board lightweight load summary integratio
       data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey,
         itemKey: buildGrindingPlanningBoardRowItemId(first.rowData), overrideResourceCd: 'G-02' }
     });
-    const params = { client: db(), siteKey, category: 'grinding' as const, splitEnabled: false,
+    const params = { client: db(), siteKey, category: 'grinding' as const,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) =>
         category === 'grinding' && resourceCd.startsWith('G-') };
     const aggregate = await summaryReader()({ ...params,
@@ -269,6 +346,52 @@ describeIntegration('grinding planning board lightweight load summary integratio
     expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
       alternateItemCount: 1, alternateRequiredMinutes: 10
     });
+  });
+
+  it('resolves stored own values identically in SQL, fallback and projection, including split setup and unknown CSV', async () => {
+    const fixture = await createFixture();
+    const rows = fixture.rows.filter((row) => /-PART-[DE]$/.test(row.data.FHINCD!));
+    const splitRow = rows.find((row) => row.splitQuantities.length > 0)!;
+    const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: splitRow.data.FSEIBAN!, fhincd: splitRow.data.FHINCD!,
+      fsigencd: splitRow.data.FSIGENCD!, fkojun: splitRow.data.FKOJUN!, plannedQuantity: 5,
+      pieces: { create: [2, 3].map((quantity, position) => ({ quantity, position })) }
+    } });
+    try {
+      const scope = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey };
+      await db().productionScheduleGrindingPlanningBoardResourceMinutesSource.create({ data: { ...scope, resourceCd: 'G-02', source: 'own' } });
+      for (const row of rows) {
+        await db().productionScheduleGrindingPlanningBoardResourcePartMinutes.create({ data: {
+          ...scope, resourceCd: 'G-02', fhincd: row.data.FHINCD!, perUnitMinutes: 10, setupMinutes: 30
+        } });
+        await db().productionScheduleGrindingPlanningBoardOverride.create({ data: {
+          ...scope, itemKey: buildGrindingPlanningBoardRowItemId(row.data), overrideResourceCd: 'G-02'
+        } });
+      }
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const, isResourceInCategory: () => true };
+      const ids = rows.map((row) => row.id);
+      const fallback = await summaryReader()({ ...params, winnerRowIds: ids });
+      const aggregate = await summaryReader()({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`
+        "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "CsvDashboardRow"."id" IN (${Prisma.join(ids)})` });
+      expect(aggregate).toEqual(fallback);
+      expect(aggregate.unknownRequiredMinutesCount).toBe(0);
+      expect(aggregate.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({ requiredMinutes: 190, unfinishedItemCount: 3 });
+      const { getGrindingPlanningBoardResourceMinutes } = await import('../grinding-planning-board-resource-minutes.service.js');
+      const input = projectionInput({ ...fixture, rows });
+      for (const row of rows) input.overrides.set(buildGrindingPlanningBoardRowItemId(row.data), {
+        overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1
+      });
+      const projection = projectGrindingPlanningBoard({ ...input, category: 'grinding', seibanOrder: [], ranks: { rows: new Map() },
+        includePieces: true, pieceSets: await readSessakuPieceSets(db(), input.rows),
+        resourceMinutes: await getGrindingPlanningBoardResourceMinutes({ siteKey: fixture.siteKey }) });
+      expect(projection.load).toEqual(aggregate.load);
+      const otherSite = await summaryReader()({ ...params, siteKey: `${fixture.siteKey}-other`, winnerRowIds: ids });
+      expect(otherSite.unknownRequiredMinutesCount).toBe(1);
+      expect(otherSite.load[0]?.requiredMinutes).toBe(100);
+    } finally {
+      await db().productionScheduleSessakuPieceSet.delete({ where: { id: pieceSet.id } });
+    }
   });
 
   it('reads minimal source columns, applies override/split/completion rules, and equals full projection load', async () => {
@@ -326,7 +449,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey: fixture.siteKey,
       category: 'grinding' as const,
-      splitEnabled: true,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const summary = await summaryReader()({
@@ -344,7 +466,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
 
     const summaryWithoutSplits = await summaryReader()({
       ...summaryParams,
-      splitEnabled: false,
       leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
         PRODUCTION_SCHEDULE_DASHBOARD_ID,
         fixture.rowIds
@@ -352,15 +473,13 @@ describeIntegration('grinding planning board lightweight load summary integratio
     });
     const fallbackSummaryWithoutSplits = await summaryReader()({
       ...summaryParams,
-      splitEnabled: false,
       winnerRowIds: fixture.rowIds
     });
     expect(summaryWithoutSplits).toEqual(fallbackSummaryWithoutSplits);
     const full = projectGrindingPlanningBoard({
       ...projectionInput(fixture),
-      ranks: { rows: new Map(), splits: new Map() },
+      ranks: { rows: new Map() },
       category: 'grinding',
-      splitEnabled: true,
       seibanOrder: fixture.rows.map((row) => String(row.data.FSEIBAN)),
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
@@ -368,18 +487,18 @@ describeIntegration('grinding planning board lightweight load summary integratio
     expect(summary.load).toEqual(full.load);
     expect(summary.unknownRequiredMinutesCount).toBe(full.unknownRequiredMinutesCount);
     expect(summary.load.find((entry) => entry.resourceCd === 'G-01')).toMatchObject({
-      originalItemCount: 10,
+      originalItemCount: 9,
       alternateItemCount: 6,
-      originalRequiredMinutes: 213,
-      alternateRequiredMinutes: 61
+      originalRequiredMinutes: 224,
+      alternateRequiredMinutes: 112
     });
     expect(summary.load.find((entry) => entry.resourceCd === 'G-02')).toMatchObject({
       originalItemCount: 1,
-      alternateItemCount: 4,
+      alternateItemCount: 3,
       originalRequiredMinutes: 40,
-      alternateRequiredMinutes: 192
+      alternateRequiredMinutes: 152
     });
-    expect(summary.unknownRequiredMinutesCount).toBe(4);
+    expect(summary.unknownRequiredMinutesCount).toBe(3);
   });
 
   it('keeps global load rows outside the registered winner ids', async () => {
@@ -406,7 +525,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey: fixture.siteKey,
       category: 'grinding',
-      splitEnabled: true,
       leaderboardMaterializedBaseWhere: Prisma.sql`
         "CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       `,
@@ -419,6 +537,109 @@ describeIntegration('grinding planning board lightweight load summary integratio
       originalRequiredMinutes: 7,
       alternateRequiredMinutes: 7
     });
+  });
+
+  it.each(['0', null])('matches SQL, TypeScript and projection for pieces of a %s-minute parent', async (minutes) => {
+    const fixture = await createFixture();
+    const row = fixture.rows.find((entry) => String(entry.data.FSEIBAN).endsWith('-D'))!;
+    row.data = { ...row.data, FSIGENSHOYORYO: minutes };
+    await db().csvDashboardRow.update({ where: { id: row.id }, data: { rowData: row.data } });
+    const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      plannedQuantity: 5, nextPosition: 3,
+      pieces: { create: [2, 3].map((quantity, index) => ({ quantity, position: index + 1 })) }
+    } });
+    try {
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const,
+        isResourceInCategory: (resourceCd: string) => resourceCd.startsWith('G-') };
+      const sql = await summaryReader()({ ...params,
+        leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+          PRODUCTION_SCHEDULE_DASHBOARD_ID, [row.id]) });
+      const enumeration = await summaryReader()({ ...params, winnerRowIds: [row.id] });
+      const input = projectionInput(fixture); input.rows = input.rows.filter((entry) => entry.id === row.id); input.overrides = new Map();
+      const projection = projectGrindingPlanningBoard({ ...input, includePieces: true,
+        pieceSets: await readSessakuPieceSets(db(), input.rows), ranks: { rows: new Map() },
+        category: 'grinding', seibanOrder: [row.data.FSEIBAN!], isResourceInCategory: params.isResourceInCategory });
+      expect(projection.items).toHaveLength(2);
+      for (const item of projection.items) expect(item).toMatchObject({ kind: 'piece', requiredMinutes: null, requiredMinutesKnown: false });
+      expect(sql).toEqual(enumeration);
+      expect(sql.load).toEqual(projection.load);
+      expect(sql.unknownRequiredMinutesCount).toBe(2);
+      expect(sql.load[0]).toMatchObject({ originalItemCount: 2, alternateItemCount: 2, requiredMinutes: null, unknownItemCount: 2 });
+    } finally {
+      await db().productionScheduleSessakuPieceSet.delete({ where: { id: pieceSet.id } });
+    }
+  });
+
+  it('sums three fractional sibling pieces in the same stable order in SQL and TypeScript', async () => {
+    const fixture = await createFixture();
+    const row = fixture.rows.find((entry) => String(entry.data.FSEIBAN).endsWith('-D'))!;
+    await db().csvDashboardRow.update({ where: { id: row.id }, data: { rowData: { ...row.data, FSIGENSHOYORYO: '1' } } });
+    await db().productionScheduleOrderSupplement.updateMany({ where: { csvDashboardRowId: row.id }, data: { plannedQuantity: 7 } });
+    const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
+    const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      plannedQuantity: 7, nextPosition: 4,
+      pieces: { create: [1, 2, 4].map((quantity, index) => ({ id: ids[index], quantity, position: index + 1 })).reverse() }
+    } });
+    try {
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const,
+        isResourceInCategory: (resourceCd: string) => resourceCd.startsWith('G-') };
+      const sql = await summaryReader()({ ...params,
+        leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+          PRODUCTION_SCHEDULE_DASHBOARD_ID, [row.id]) });
+      const typescript = await summaryReader()({ ...params, winnerRowIds: [row.id] });
+      expect(sql).toEqual(typescript);
+      expect(sql.load).toHaveLength(1);
+      expect(sql.load[0]).toMatchObject({ originalItemCount: 3, alternateItemCount: 3, requiredMinutes: 1 / 7 + 2 / 7 + 4 / 7 });
+    } finally {
+      await db().productionScheduleSessakuPieceSet.delete({ where: { id: pieceSet.id } });
+    }
+  });
+
+  it('matches SQL, row enumeration and projection for multiple rows of fractional pieces', async () => {
+    const fixture = await createFixture();
+    const rows = fixture.rows.filter((entry) => ['A', 'D'].some((suffix) => String(entry.data.FHINCD).endsWith(`-${suffix}`)))
+      .sort((left, right) => left.id < right.id ? 1 : -1);
+    const sets: string[] = [];
+    try {
+      for (const [rowIndex, row] of rows.entries()) {
+        row.data = { ...row.data, FSIGENSHOYORYO: rowIndex === 0 ? '1' : '10' };
+        row.plannedQuantity = 7;
+        await db().csvDashboardRow.update({ where: { id: row.id }, data: { rowData: row.data } });
+        await db().productionScheduleOrderSupplement.updateMany({ where: { csvDashboardRowId: row.id }, data: { plannedQuantity: 7 } });
+        // Reverse piece insertion and positions as well as the source-row request order.
+        const ids = [randomUUID(), randomUUID(), randomUUID()].sort();
+        const set = await db().productionScheduleSessakuPieceSet.create({ data: {
+          csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+          fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+          plannedQuantity: 7, nextPosition: 4,
+          pieces: { create: [1, 2, 4].map((quantity, index) => ({ id: ids[index], quantity, position: 3 - index })).reverse() }
+        } });
+        sets.push(set.id);
+      }
+      const rowIds = rows.map((row) => row.id);
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const,
+        isResourceInCategory: (resourceCd: string) => resourceCd.startsWith('G-') };
+      const sql = await summaryReader()({ ...params,
+        leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+          PRODUCTION_SCHEDULE_DASHBOARD_ID, rowIds) });
+      const enumeration = await summaryReader()({ ...params, winnerRowIds: rowIds });
+      const input = projectionInput(fixture);
+      input.rows = input.rows.filter((row) => rowIds.includes(row.id));
+      input.overrides = new Map();
+      const projection = projectGrindingPlanningBoard({ ...input, includePieces: true,
+        pieceSets: await readSessakuPieceSets(db(), input.rows), ranks: { rows: new Map() },
+        category: 'grinding', seibanOrder: rows.map((row) => String(row.data.FSEIBAN)),
+        isResourceInCategory: params.isResourceInCategory });
+      expect(sql).toEqual(enumeration);
+      expect(sql.load).toEqual(projection.load);
+      expect(sql.load[0]).toMatchObject({ originalItemCount: 6, alternateItemCount: 6 });
+    } finally {
+      await db().productionScheduleSessakuPieceSet.deleteMany({ where: { id: { in: sets } } });
+    }
   });
 
   it('keeps logical first-winner order while merging normalized resources and category-external overrides', async () => {
@@ -492,7 +713,6 @@ describeIntegration('grinding planning board lightweight load summary integratio
       client: db(),
       siteKey,
       category: 'grinding' as const,
-      splitEnabled: true,
       isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => category === 'grinding' && resourceCd.startsWith('G-')
     };
     const materializedWhere = buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(

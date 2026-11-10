@@ -43,7 +43,7 @@ export function QuickAddDialog({
   onDone,
   onAdvanced,
   clients,
-  defaultClientKey,
+  defaultClientDeviceId,
   visualizationDashboards,
   csvDashboards,
 }: {
@@ -53,7 +53,7 @@ export function QuickAddDialog({
   /** 左右分割や、追加の設定が要る種類を使うときの「詳しい設定」への入口 */
   onAdvanced: () => void;
   clients: ClientDevice[];
-  defaultClientKey: string | null;
+  defaultClientDeviceId: string | null;
   visualizationDashboards: VisualizationDashboard[];
   csvDashboards: CsvDashboard[];
 }) {
@@ -210,7 +210,7 @@ export function QuickAddDialog({
         content = board.content;
       }
       const schedule = await scheduleMutations.create.mutateAsync(
-        buildQuickSchedulePayload({ name, content, targetClientKeys: targets, when }),
+        buildQuickSchedulePayload({ name, content, targetClientDeviceIds: targets, when }),
       );
       onDone(schedule.id);
     } catch (err) {
@@ -220,8 +220,8 @@ export function QuickAddDialog({
     }
   };
 
-  const toggleTarget = (apiKey: string) =>
-    setTargets((previous) => (previous.includes(apiKey) ? previous.filter((key) => key !== apiKey) : [...previous, apiKey]));
+  const toggleTarget = (clientDeviceId: string) =>
+    setTargets((previous) => (previous.includes(clientDeviceId) ? previous.filter((key) => key !== clientDeviceId) : [...previous, clientDeviceId]));
 
   return (
     <Dialog isOpen={isOpen} onClose={onClose} title="何を映しますか？" size="full" className="signage-hub sh-dialog sh-quick" initialFocusRef={urlInputRef}>
@@ -368,12 +368,12 @@ export function QuickAddDialog({
                 全部
               </button>
               {clients.map((client) => (
-                <button key={client.id} type="button" className="sh-pill sh-pill-lg" aria-pressed={targets.includes(client.apiKey)} onClick={() => toggleTarget(client.apiKey)}>
+                <button key={client.id} type="button" className="sh-pill sh-pill-lg" aria-pressed={targets.includes(client.id)} onClick={() => toggleTarget(client.id)}>
                   {client.name}
                 </button>
               ))}
             </div>
-            {defaultClientKey && targets.length === 0 && clients.length > 1 && <span className="sh-hint">選ばなければ、すべての画面に映ります。</span>}
+            {defaultClientDeviceId && targets.length === 0 && clients.length > 1 && <span className="sh-hint">選ばなければ、すべての画面に映ります。</span>}
           </div>
           <div className="sh-fld">
             <span className="sh-flbl">いつ</span>

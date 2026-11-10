@@ -71,6 +71,7 @@ fi
 
 # Focused fixture: relevant PostgreSQL column types, uniqueness, identity/FK,
 # settings and the three historical actorClientKey fields from Prisma schema.
+# The retired split audit fixture proves old records are ignored and preserved.
 db <<'SQL'
 CREATE TABLE "ClientDevice" (id text PRIMARY KEY, name text NOT NULL, "apiKey" text NOT NULL UNIQUE,
   "signagePreviewTargetApiKey" text, "statusClientId" text, location text, "defaultMode" text);

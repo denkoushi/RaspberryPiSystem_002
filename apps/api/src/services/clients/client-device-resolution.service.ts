@@ -30,3 +30,13 @@ export async function resolveClientDeviceId(
 
   return undefined;
 }
+
+export type ClientDeviceOperationActor = { id: string; canProxyOtherDevices: boolean };
+
+export function assertClientDeviceOperationScope(
+  caller: ClientDeviceOperationActor | null,
+  ownerClientDeviceId: string | null | undefined
+): void {
+  if (!caller || ownerClientDeviceId == null || ownerClientDeviceId === caller.id || caller.canProxyOtherDevices) return;
+  throw new ApiError(403, '作業端末が一致しません', undefined, 'CLIENT_DEVICE_SCOPE_MISMATCH');
+}

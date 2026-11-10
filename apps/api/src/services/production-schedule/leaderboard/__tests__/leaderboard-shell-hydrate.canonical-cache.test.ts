@@ -20,7 +20,6 @@ import {
   putLeaderboardCanonicalRows
 } from '../leaderboard-canonical-row-cache.js';
 import type { LeaderboardScheduleRowSql } from '../leaderboard-schedule-row.types.js';
-import { resolveHydrateSourceRowIdsFromDisplayItemIds } from '../../order-split/production-schedule-order-split.service.js';
 
 const baseWhere = Prisma.sql`TRUE`;
 const canonicalScope = {
@@ -241,21 +240,12 @@ describe('leaderboard hydrate canonical cache flow', () => {
     expect(mocks.queryRaw).toHaveBeenCalledTimes(3);
   });
 
-  it('hydrates an expanded split display item through its parent and never caches split ids', async () => {
-    const splitId = '11111111-1111-4111-8111-111111111111';
-    mocks.splitFindMany.mockResolvedValue([{ parentCsvDashboardRowId: 'parent-1' }]);
+  it('hydrates and caches only parent ids without querying legacy records', async () => {
+    mocks.splitFindMany.mockResolvedValue([{ id: 'legacy', parentCsvDashboardRowId: 'parent-1' }]);
     mocks.queryRaw.mockResolvedValueOnce([row('parent-1')]);
-
-    const sourceRowIds = await resolveHydrateSourceRowIdsFromDisplayItemIds([`split:${splitId}`]);
-    expect(sourceRowIds).toEqual(['parent-1']);
-    await fetchRows({ rowIds: sourceRowIds, includeRank: false });
     await fetchRows({ rowIds: ['parent-1'], includeRank: false });
-
-    expect(getLeaderboardCanonicalRows({
-      key: { siteKey: 'site-a', generationToken: 'generation-1', rankContext: 'none' },
-      rowIds: [`split:${splitId}`],
-      coverage: 'identity'
-    }).missingIds).toEqual([`split:${splitId}`]);
+    await fetchRows({ rowIds: ['parent-1'], includeRank: false });
+    expect(mocks.splitFindMany).not.toHaveBeenCalled();
     expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,3 +1,4 @@
+import { assertSubjectPatternUnchanged } from './subject-pattern-policy.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authorizeRoles } from '../../lib/auth.js';
@@ -40,6 +41,7 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
   // POST /api/csv-dashboards - CSVダッシュボード作成
   app.post('/csv-dashboards', { preHandler: canManage }, async (request, reply) => {
     const body = csvDashboardCreateSchema.parse(request.body);
+    assertSubjectPatternUnchanged(request.user!.role, body.gmailSubjectPattern);
     const dashboard = await csvDashboardService.create(body);
     reply.code(201);
     return { dashboard };
@@ -49,6 +51,11 @@ export function registerCsvDashboardRoutes(app: FastifyInstance): void {
   app.put('/csv-dashboards/:id', { preHandler: canManage }, async (request) => {
     const params = csvDashboardParamsSchema.parse(request.params);
     const body = csvDashboardUpdateSchema.parse(request.body);
+    if (request.user!.role !== 'ADMIN' && body.gmailSubjectPattern !== undefined) {
+      const stored = await csvDashboardService.findById(params.id);
+      assertSubjectPatternUnchanged(request.user!.role, body.gmailSubjectPattern, stored.gmailSubjectPattern);
+      body.gmailSubjectPattern = undefined;
+    }
     const dashboard = await csvDashboardService.update(params.id, body);
     return { dashboard };
   });

@@ -1,12 +1,14 @@
 # KB-339: 配膳スマホ版 V1 — 現場バーコードの意味確定（調査ゲート）
 
+2026-11-02: `parse-actual-slip-image` と固定ROIのサーバ写真OCRを削除。写真読取はAndroid ML Kit → `snap-fseiban-tokens` のみで、通常ブラウザには写真読取ボタンを表示しない。以下の旧写真OCR・ファイル入力の記述は当時の履歴。現行契約は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。
+
 最終更新: 2026-04-25（**V27 パレット可視化 部品カード UI**）・2026-04-24（**V26 購買照会バーコード即時確定**）・2026-04-24（**V25 パレット可視化・カード単体スクロール**）・2026-04-24（**V24 追記・Android 実機フィードバック**）・2026-04-23（**V24 バーコード readerOptions／一次元コア**）・2026-04-20（**V23**）・2026-04-18（**V22**）・2026-04-13（**V21**・V20・V18 追記）
 
 ## FSEIBAN OCR snap（2026-10-15）
 
 印字製番の誤読で日程の完全一致照合が失敗するため、既存OCR抽出後に日程の有効製番へ重み付き距離で補正する。近接候補を区別できない場合は作業者が候補ボタンで選択する。移動票の製番は補正のヒントに使わない（実在する別製番へ寄せて取り違えを見逃さないため）。自動補正は類似文字の置換2文字までに限る。取得失敗時は既存抽出値へフォールバックする。
 
-契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementparse-actual-slip-image) を参照。ローカル実装のみで、本番反映は未実施。
+契約・閾値・キャッシュの詳細は [API仕様](../api/mobile-placement.md#post-apimobile-placementsnap-fseiban-tokens) を参照。ローカル実装のみで、本番反映は未実施。
 
 ## V27（2026-04-25）キオスク／配膳 パレット可視化 部品カード UI（`PalletVizItemCard`） {#v27-pallet-viz-item-card-ui-2026-04-25}
 
@@ -376,7 +378,7 @@
 ## References
 
 - 実装（工具配置）: `apps/api/src/services/mobile-placement/mobile-placement.service.ts`
-- 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/actual-slip-image-ocr.service.ts`・`apps/api/src/services/mobile-placement/genpyo-slip/`
+- 実装（現品票画像 OCR・V12）: `apps/api/src/services/mobile-placement/genpyo-slip/`（`actual-slip-image-ocr.service.ts` と固定ROIのサーバ写真OCRは 2026-11-02 #2481 で削除）
 - 実装（棚番登録 UI・V13）: `apps/web/src/features/mobile-placement/components/shelf-register/`
 - 実装（部品配膳・照合）: `apps/api/src/services/mobile-placement/mobile-placement-slip-match.ts` ほか
 - 実装（分配枝・V14）: `apps/api/src/services/mobile-placement/order-placement-branch.service.ts`・`apps/api/src/services/mobile-placement/mobile-placement-order-placement.service.ts`・マイグレーション `20260412120000_order_placement_branch_state`
@@ -384,5 +386,5 @@
 - 実装（部品検索最終・V17）: 同上 + `part-search-normalize.ts`（SQL 用 `escapeForIlike` のみ）・キオスク `part-search/*`（`partSearchPalettePruner.ts` 等）・**CI/Docker**（`part-search-core` ビルド）
 - 実装（部品検索 V19・機種名 AND）: `part-search-machine-name-fseibans.service.ts`・`part-search.service.ts`（`machineName`）・`part-search-core`（正規化・ILIKE バリアント）
 - 実装（部品検索 V20・促音 comparable・機種名のみ suggest）: `part-search-field-comparable-sql.ts`・`part-search.service.ts`・`part-search-core`（`PART_SEARCH_SOKUON_COMPARABLE_REPLACEMENTS`）・`useMobilePlacementPartSearch.ts` / `apps/web/src/api/client.ts`
-- 実装（部品検索 V21・UI モジュール化）: `apps/web/src/features/mobile-placement/part-search/PartSearchHeaderToolbar.tsx`・`PartSearchQueryInputs.tsx`・`PartSearchResultsSection.tsx`・`partSearchUiTokens.ts`・`useMobilePlacementPartSearch.ts`・`KioskMobileShelfRegisterPage.smoke.test.tsx`
+- 実装（部品検索 V21・UI モジュール化）: `apps/web/src/features/mobile-placement/part-search/PartSearchHeaderToolbar.tsx`・`PartSearchQueryInputs.tsx`・`PartSearchResultsSection.tsx`・`partSearchUiTokens.ts`・`useMobilePlacementPartSearch.ts`・`KioskMobileShelfRegisterPage.smoke.test.tsx`（V21 当時の構成。現行は `apps/web/src/pages/kiosk/MobilePlacementPartSearchPage.tsx` と `apps/web/src/features/mobile-placement/part-search/onehand/`）
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)

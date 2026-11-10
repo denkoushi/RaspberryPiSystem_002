@@ -7,6 +7,7 @@ import {
   KioskResourceProcessChips,
   type KioskResourceProgressProcessChip
 } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { DScheduleMinutesChips, useDScheduleMinutesExtras } from '../productionSchedule/DScheduleMinutesContext';
 import { formatDueDate } from '../productionSchedule/formatDueDate';
 import { isManualDueDateSet } from '../productionSchedule/plannedDueDisplay';
 
@@ -35,8 +36,6 @@ export type LeaderOrderResourceRowProps = {
   onOpenNote?: (row: LeaderBoardRow) => void;
   notePending?: boolean;
   onOpenInspectionWorkflow?: (row: LeaderBoardRow) => void;
-  onOpenSplitModal?: (row: LeaderBoardRow) => void;
-  splitFeatureEnabled?: boolean;
   footerResourceChips?: readonly KioskResourceProgressProcessChip[];
 };
 
@@ -59,12 +58,13 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
   onOpenNote,
   notePending,
   onOpenInspectionWorkflow,
-  onOpenSplitModal,
-  splitFeatureEnabled = false,
   footerResourceChips = []
 }: LeaderOrderResourceRowProps) {
+  const { extras, dueSource } = useDScheduleMinutesExtras(row.seibanJoinKey || row.fseiban);
+  const memo = dueSource === 'excel' ? extras?.memo : null;
+  const hasExtras = extras && ((dueSource === 'excel' && extras.outsourceMarks.length > 0) || extras.surfaceSendOutDates.length > 0);
   const isSignage = variant === 'signage';
-  const manual = isManualDueDateSet(row.dueDate);
+  const manual = isManualDueDateSet(row.dueDate) && row.displayDue?.slice(0, 10) === row.dueDate?.slice(0, 10);
   const dueLabel = formatDueDate(row.displayDue) || '—';
   const pres = presentLeaderOrderRow(row);
   const clusterTokens: LeaderOrderRowClusterToken[] = [
@@ -82,7 +82,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
     }
   ];
   const hasClusterTail = clusterTokens.length > 0;
-  const hasCustomer = pres.customerLine.length > 0;
+  const hasCustomer = pres.customerLine.length > 0 || Boolean(memo);
   const hasClusterCustomerRow = hasClusterTail || hasCustomer;
   const hasPart = pres.partNameLine.length > 0;
   const hasFseiban = pres.fseibanLine.length > 0;
@@ -91,7 +91,6 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
     hasRight ? 'min-w-0 max-w-[50%] flex-[0_0_50%]' : 'min-w-0 flex-1';
   const hasNote = Boolean(row.note && row.note.trim().length > 0);
   const canOpenSelfInspectionWorkflow =
-    !row.isSplit &&
     row.hasSelfInspectionDrawing &&
     (Boolean(row.selfInspectionEntryPath?.trim()) || Boolean(row.selfInspectionTemplateId?.trim()));
   const selfInspectionStatusClass =
@@ -117,7 +116,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
       style={rowMinHeightPx != null ? { minHeight: rowMinHeightPx } : undefined}
     >
       <div className="mb-0.5 flex flex-wrap items-center gap-1.5">
-        {isSignage || row.isSplit ? null : (
+        {isSignage ? null : (
           <button
             type="button"
             className={clsx(
@@ -130,7 +129,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             disabled={completePending}
             onClick={(e) => {
               e.stopPropagation();
-              onCompleteRow(row.sourceRowId, row.isCompleted ? 'incomplete' : 'complete');
+              onCompleteRow(row.id, row.isCompleted ? 'incomplete' : 'complete');
             }}
           >
             ✓
@@ -166,7 +165,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             {dueLabel}
           </button>
         )}
-        {isSignage || !onOpenNote || row.isSplit ? null : (
+        {isSignage || !onOpenNote ? null : (
           <button
             type="button"
             disabled={notePending}
@@ -203,22 +202,8 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             検
           </button>
         )}
-        {isSignage || !splitFeatureEnabled || !onOpenSplitModal ? null : (
-          <button
-            type="button"
-            disabled={row.isCompleted}
-            title={row.isSplit ? '分割編集' : '指示数を分割'}
-            aria-label={row.isSplit ? '分割編集' : '指示数を分割'}
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenSplitModal(row);
-            }}
-            className="shrink-0 rounded border border-violet-300/50 px-1.5 py-0.5 text-xs text-violet-100 hover:bg-violet-500/20 disabled:opacity-50"
-          >
-            分割
-          </button>
-        )}
       </div>
+      {hasExtras && <div className="mt-0.5 flex flex-wrap justify-end gap-1.5 text-[13px]"><DScheduleMinutesChips extras={extras} dueSource={dueSource} large /></div>}
       {hasClusterCustomerRow ? (
         <div className="flex w-full items-baseline gap-1.5">
           {hasClusterTail ? (
@@ -227,7 +212,7 @@ export const LeaderOrderResourceRow = memo(function LeaderOrderResourceRow({
             </div>
           ) : null}
           {hasCustomer ? (
-            <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{pres.customerLine}</div>
+            <div className="min-w-0 flex-1 truncate text-[11px] text-white/70">{pres.customerLine}{memo && <span className="ml-2 text-amber-200/80">{memo}</span>}</div>
           ) : null}
         </div>
       ) : null}

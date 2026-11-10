@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -151,18 +152,48 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
     )
 
 
-def load_model_profiles(registry_root: str) -> list[ModelProfile]:
+def _load_model_profiles(registry_root: str) -> tuple[list[ModelProfile], dict[str, str]]:
     root = Path(registry_root)
     if not root.exists():
-        return []
+        return [], {}
+    from active_model_state import business_switch_enabled, DEEPSEEK_PROFILE
     profiles: list[ModelProfile] = []
+    errors: dict[str, str] = {}
+    seen: set[str] = set()
     for manifest in sorted(root.glob("*/manifest.json")):
-        profiles.append(load_model_profile_manifest(manifest))
-    return profiles
+        if manifest.parent.name == DEEPSEEK_PROFILE and not business_switch_enabled():
+            continue
+        profile_id = manifest.parent.name
+        try:
+            body = json.loads(manifest.read_text(encoding="utf-8"))
+            if isinstance(body, dict):
+                profile_id = _string(body.get("modelProfileId")) or _string(body.get("id")) or profile_id
+            profile = load_model_profile_manifest(manifest)
+        except (OSError, ValueError, TypeError, AttributeError):
+            # Never emit manifest contents or exception messages: they may hold secrets.
+            print("model profile manifest invalid: " + manifest.parent.name + "/manifest.json", file=sys.stderr)
+            errors[profile_id] = "invalid model profile manifest"
+            seen.add(profile_id)
+            continue
+        if profile.id in seen:
+            errors[profile.id] = "ambiguous model profile id"
+            print("model profile manifest ambiguous: " + manifest.parent.name + "/manifest.json", file=sys.stderr)
+        seen.add(profile.id)
+        if profile.id == DEEPSEEK_PROFILE and not business_switch_enabled():
+            continue
+        profiles.append(profile)
+    return [profile for profile in profiles if profile.id not in errors], errors
+
+
+def load_model_profiles(registry_root: str) -> list[ModelProfile]:
+    return _load_model_profiles(registry_root)[0]
 
 
 def find_model_profile(registry_root: str, profile_id: str) -> ModelProfile:
-    for profile in load_model_profiles(registry_root):
+    profiles, errors = _load_model_profiles(registry_root)
+    if profile_id in errors:
+        raise UnavailableModelProfileError(errors[profile_id] + ": " + profile_id)
+    for profile in profiles:
         if profile.id == profile_id:
             return profile
     raise UnknownModelProfileError(f"unknown modelProfileId: {profile_id}")

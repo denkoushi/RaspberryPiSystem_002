@@ -741,7 +741,7 @@ describe('procedure-manuals', () => {
     fireEvent.click(await screen.findByRole('button', { name: '組立' }));
     expect(await screen.findByTestId('sequence-viewer')).toHaveTextContent('表示手順');
     expect(screen.getByTestId('sequence-viewer')).toHaveAttribute('data-layout', 'manuals');
-    expect(screen.getByRole('region', { name: '承認・動画' })).toBeInTheDocument();
+    expect(await screen.findByRole('region', { name: '承認・動画' })).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: '工程で絞り込み' })).queryByRole('region', { name: '承認・動画' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('region', { name: '機種一覧' })).queryByText('検査資料: 公開版なし')).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();

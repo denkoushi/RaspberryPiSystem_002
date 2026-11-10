@@ -2,10 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
 import { prisma } from '../../lib/prisma.js';
-import {
-  SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION,
-  upsertDueManagementAccessPassword
-} from '../../services/production-schedule/production-schedule-settings.service.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { createTestClientDevice, createTestEmployee, createTestItem } from './helpers.js';
 
 process.env.DATABASE_URL ??= 'postgresql://postgres:postgres@localhost:5432/borrow_return';
@@ -27,11 +24,11 @@ describe('kiosk tag desk', () => {
 
   beforeAll(async () => {
     app = await buildServer();
-    await upsertDueManagementAccessPassword({ location: SHARED_DUE_MANAGEMENT_PASSWORD_LOCATION, password: PIN });
     clientKey = (await createTestClientDevice()).apiKey;
   });
 
   beforeEach(async () => {
+    await configureTestDueManagementAccessPassword(PIN);
     run = `${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
     await prisma.measuringInstrumentTag.deleteMany({ where: { rfidTagUid: { startsWith: TAG_PREFIX } } });
     await prisma.riggingGearTag.deleteMany({ where: { rfidTagUid: { startsWith: TAG_PREFIX } } });

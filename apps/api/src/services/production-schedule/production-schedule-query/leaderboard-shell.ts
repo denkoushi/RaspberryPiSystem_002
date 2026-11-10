@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
+import { resolveBoardDueFields } from '../d-schedule-minutes/resolve-board-due-fields.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
 } from '../constants.js';
@@ -9,7 +10,6 @@ import {
   resolveLeaderboardMaterializedBaseWhere,
 } from '../row-resolver/index.js';
 import {
-  buildLeaderboardShellListWhereSql,
   fetchLeaderboardShellMergedPrefixRows,
   fetchLeaderboardShellRowsContinuationChunk
 } from '../leaderboard/leaderboard-row-selection.service.js';
@@ -22,21 +22,7 @@ import {
   sliceLeaderboardSnapshotIdsByCursor,
   sliceLeaderboardSnapshotIdsByExcludePrefix
 } from '../leaderboard/leaderboard-shell-continue.slice.js';
-import { resolveLeaderboardShellDisplayItemPrefix } from '../leaderboard/leaderboard-shell-display-item-prefix.service.js';
-import {
-  expandLeaderboardParentRowIdsForSnapshot,
-  expandLeaderboardParentRowsForResponse,
-  fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds,
-  fetchPartiallyReturnedDisplayItemsForLegacyContinue,
-  resolveFullyExcludedParentRowIdsForLegacyContinue,
-  resolvePartiallyReturnedParentRowIdsForLegacyContinue,
-  resolveParentRowIdsExcludedFromLeaderboardContinuation
-} from '../leaderboard/leaderboard-split-expansion.service.js';
-import { isProductionScheduleOrderSplitEnabled } from '../order-split/production-schedule-order-split-feature.js';
-import {
-  filterProductionScheduleDisplayRowsByDueDate,
-  sortExpandedProductionScheduleRowsByManualOrder
-} from '../order-split/production-schedule-order-split.service.js';
+import { fetchLeaderboardScheduleHydratedRowsOrderedByIds } from '../leaderboard/leaderboard-shell-hydrate.service.js';
 import {
   countProductionScheduleDashboardVisibleLeaderboardUnits,
 } from '../production-schedule-list-count.service.js';
@@ -107,15 +93,8 @@ export async function listLeaderboardShellProductionScheduleRows(
   // safe to share when the selection completed in the same generation.
   const generationBeforeSelection = await resolveLeaderboardShellSnapshotGenerationToken(options.generationToken);
 
-  const leaderboardShellListWhere = buildLeaderboardShellListWhereSql({
-    leaderboardMaterializedBaseWhere,
-    queryWhere,
-    completionFilter: params.completionFilter,
-    processChangeResidualMode: params.processChangeResidualMode,
-    processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
-  });
-
   const { mergedPrefix: mergedPrefixInitial, mergeFullyCompleted } = await fetchLeaderboardShellMergedPrefixRows({
+    dueSource: params.dueSource,
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
@@ -130,23 +109,14 @@ export async function listLeaderboardShellProductionScheduleRows(
   const generationAfterSelection = await resolveLeaderboardShellSnapshotGenerationToken();
   const selectionStable = generationBeforeSelection === generationAfterSelection;
 
-  const { mergedPrefix, expandedDisplayItems: expandedDisplayItemsRaw } = await resolveLeaderboardShellDisplayItemPrefix({
-    mergedPrefixInitial,
-    mergeFullyCompletedInitial: mergeFullyCompleted,
-    pageSize,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    leaderboardMaterializedBaseWhere,
-    leaderboardShellListWhere,
-    canonicalSourceGenerationToken: selectionStable ? generationBeforeSelection : undefined,
-    canonicalSourceSiteKey: params.siteKey ?? locationKey
-  });
-  const expandedDisplayItems = filterProductionScheduleDisplayRowsByDueDate(
-    expandedDisplayItemsRaw,
-    params.hasDueDateOnly
-  );
+  const mergedPrefix = mergedPrefixInitial;
+  const parentRows: ProductionScheduleRow[] = mergedPrefix.map((row) => ({
+    ...row,
+    actualPerPieceMinutes: null,
+    customerName: null
+  }));
 
-  const orderedRowIds = expandedDisplayItems.map((row) => row.id);
+  const orderedRowIds = parentRows.map((row) => row.id);
   const generationAfterDisplay = await resolveLeaderboardShellSnapshotGenerationToken();
   const generationStable = selectionStable && generationBeforeSelection === generationAfterDisplay;
   const generationToken = generationStable ? generationBeforeSelection : generationAfterDisplay;
@@ -169,6 +139,10 @@ export async function listLeaderboardShellProductionScheduleRows(
         note: row.note,
         processingType: row.processingType,
         dueDate: row.dueDate,
+        boardDueDate: row.boardDueDate,
+        manualUpdatedAt: row.manualUpdatedAt,
+        excelDueDate: row.excelDueDate,
+        excelChangedAt: row.excelChangedAt,
         plannedQuantity: row.plannedQuantity,
         plannedStartDate: row.plannedStartDate,
         plannedEndDate: row.plannedEndDate
@@ -188,6 +162,10 @@ export async function listLeaderboardShellProductionScheduleRows(
         note: row.note,
         processingType: row.processingType,
         dueDate: row.dueDate,
+        boardDueDate: row.boardDueDate,
+        manualUpdatedAt: row.manualUpdatedAt,
+        excelDueDate: row.excelDueDate,
+        excelChangedAt: row.excelChangedAt,
         plannedQuantity: row.plannedQuantity,
         plannedStartDate: row.plannedStartDate,
         plannedEndDate: row.plannedEndDate
@@ -197,6 +175,7 @@ export async function listLeaderboardShellProductionScheduleRows(
   }
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    dueSource: params.dueSource,
     locationKey,
     siteKey: params.siteKey,
     queryText: params.queryText,
@@ -220,9 +199,9 @@ export async function listLeaderboardShellProductionScheduleRows(
     siteKey: params.siteKey
   });
 
-  const rows = expandedDisplayItems.slice(0, pageSize);
+  const rows = parentRows.slice(0, pageSize);
   const nextCursor = rows.length;
-  const hasMore = nextCursor < expandedDisplayItems.length || !mergeFullyCompleted;
+  const hasMore = nextCursor < parentRows.length || !mergeFullyCompleted;
 
   return { page, pageSize, rows, snapshotId, nextCursor, hasMore };
 }
@@ -267,6 +246,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   }
 
   const filterFingerprint = buildLeaderboardShellFilterFingerprint({
+    dueSource: params.dueSource,
     locationKey,
     siteKey: params.siteKey,
     queryText: params.queryText,
@@ -312,10 +292,9 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       const materializeNextSnapshotChunk = async () => {
         const live = options.snapshotStore.get(snapshotId);
         if (!live?.partialOrdering) return;
-        const excludeParentRowIds = await resolveParentRowIdsExcludedFromLeaderboardContinuation(
-          live.orderedRowIds
-        );
+        const excludeParentRowIds = live.orderedRowIds;
         const { rows: chunkRows, mergeFullyCompleted } = await fetchLeaderboardShellRowsContinuationChunk({
+          dueSource: params.dueSource,
           leaderboardMaterializedBaseWhere,
           queryWhere,
           expansionWhere: leaderboardExpansionWhere,
@@ -328,16 +307,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
           processChangeResidualMode: params.processChangeResidualMode,
           processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
         });
-        const appendedDisplayIds = await expandLeaderboardParentRowIdsForSnapshot({
-          parentRows: chunkRows.map((r): ProductionScheduleRow => ({
-            ...r,
-            actualPerPieceMinutes: null,
-            customerName: null
-          })),
-          locationKey,
-          hasDueDateOnly: params.hasDueDateOnly
-        });
-        options.snapshotStore.appendSnapshotOrderingChunk(snapshotId, appendedDisplayIds, mergeFullyCompleted);
+        const appendedRowIds = chunkRows.map((row) => row.id);
+        options.snapshotStore.appendSnapshotOrderingChunk(snapshotId, appendedRowIds, mergeFullyCompleted);
       };
 
       const useCursor = params.cursor !== undefined;
@@ -415,8 +386,8 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
         return { page, pageSize: appliedChunk, rows: [], snapshotId, nextCursor, hasMore };
       }
 
-      const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByDisplayItemIds({
-        orderedDisplayItemIds: sliceIds,
+      const leaderboardRows = await fetchLeaderboardScheduleHydratedRowsOrderedByIds({
+        orderedRowIds: sliceIds,
         locationKey,
         siteScopedGlobalRankLocation,
         leaderboardMaterializedBaseWhere,
@@ -425,7 +396,7 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
       });
 
       const rows: ProductionScheduleRow[] = leaderboardRows.map((r) => ({
-        ...r,
+        ...resolveBoardDueFields(r, params.dueSource),
         actualPerPieceMinutes: null,
         customerName: null
       }));
@@ -444,36 +415,14 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
 
   const seibanExpansion = shouldExpandLeaderboardSeibanAcrossResources(params.resourceCds);
 
-  const excludeDisplayItemIds = excludeRowIds;
-  const excludeDisplayItemIdSet = new Set(
-    excludeDisplayItemIds.map((id) => id.trim()).filter((id) => id.length > 0)
-  );
-
-  const fullyExcludedParentRowIds = await resolveFullyExcludedParentRowIdsForLegacyContinue({
-    excludeDisplayItemIds,
-    locationKey
-  });
-
-  const partialRowsRaw = await fetchPartiallyReturnedDisplayItemsForLegacyContinue({
-    excludeDisplayItemIds,
-    locationKey,
-    siteScopedGlobalRankLocation,
-    leaderboardMaterializedBaseWhere
-  });
-  const partialRows = filterProductionScheduleDisplayRowsByDueDate(partialRowsRaw, params.hasDueDateOnly);
-
-  const partiallyExcludedParentRowIds = await resolvePartiallyReturnedParentRowIdsForLegacyContinue({
-    excludeDisplayItemIds,
-    locationKey
-  });
-
   const leaderboardResult = await fetchLeaderboardShellRowsContinuationChunk({
+    dueSource: params.dueSource,
     leaderboardMaterializedBaseWhere,
     queryWhere,
     expansionWhere: leaderboardExpansionWhere,
     locationKey,
     siteScopedGlobalRankLocation,
-    excludeRowIds: [...fullyExcludedParentRowIds, ...partiallyExcludedParentRowIds],
+    excludeRowIds,
     chunkSize: appliedChunk,
     seibanExpansion,
     completionFilter: params.completionFilter,
@@ -481,45 +430,11 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
     processChangeResidualStrongEvidenceKeys: params.processChangeResidualStrongEvidenceKeys
   });
 
-  const newExpandedRows: ProductionScheduleRow[] = await expandLeaderboardParentRowsForResponse({
-    rows: leaderboardResult.rows.map((r) => ({
-      ...r,
-      actualPerPieceMinutes: null,
-      customerName: null
-    })),
-    locationKey,
-    hasDueDateOnly: params.hasDueDateOnly
-  });
-
-  const filteredNewRows = newExpandedRows.filter((row) => !excludeDisplayItemIdSet.has(row.id));
-
-  const candidateRows: ProductionScheduleRow[] = [];
-  const combinedSeen = new Set<string>(excludeDisplayItemIdSet);
-  for (const row of partialRows) {
-    if (combinedSeen.has(row.id)) continue;
-    combinedSeen.add(row.id);
-    candidateRows.push(row);
-  }
-  for (const row of filteredNewRows) {
-    if (combinedSeen.has(row.id)) continue;
-    combinedSeen.add(row.id);
-    candidateRows.push(row);
-  }
-
-  const parentSequenceBySourceRowId = new Map<string, number>();
-  let parentSequence = 0;
-  for (const row of candidateRows) {
-    const sourceRowId = row.sourceRowId ?? row.id;
-    if (!parentSequenceBySourceRowId.has(sourceRowId)) {
-      parentSequenceBySourceRowId.set(sourceRowId, parentSequence);
-      parentSequence += 1;
-    }
-  }
-
-  const combinedRows = isProductionScheduleOrderSplitEnabled()
-    ? sortExpandedProductionScheduleRowsByManualOrder(candidateRows, parentSequenceBySourceRowId)
-    : candidateRows;
-  const rows = combinedRows.slice(0, appliedChunk);
+  const rows: ProductionScheduleRow[] = leaderboardResult.rows.slice(0, appliedChunk).map((row) => ({
+    ...row,
+    actualPerPieceMinutes: null,
+    customerName: null
+  }));
 
   return { page, pageSize: appliedChunk, rows };
 }

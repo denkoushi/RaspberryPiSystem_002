@@ -1,3 +1,4 @@
+import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 
 import type { FeedbackKind } from './planningBoardPageModel';
@@ -21,24 +22,18 @@ type Options = {
   boardQuery: ReturnType<typeof useKioskGrindingPlanningBoardProgressive>;
   setRankConflict: Dispatch<SetStateAction<boolean>>;
   acceptRefreshedState: () => void;
-  activeFseibans: ReadonlySet<string>;
-  openFseibans: ReadonlySet<string>;
-  setActiveFseibans: Dispatch<SetStateAction<ReadonlySet<string>>>;
   setOpenFseibans: Dispatch<SetStateAction<ReadonlySet<string>>>;
-  setDueDetailTargetFseiban: Dispatch<SetStateAction<string | null>>;
-  setDueDetailFseiban: Dispatch<SetStateAction<string | null>>;
 };
 
 export function createPlanningBoardSeibanActions({
   data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
   registeredFseibans, updateOrder, setOrderConflict, notify, boardQuery, setRankConflict,
-  acceptRefreshedState, activeFseibans, openFseibans, setActiveFseibans, setOpenFseibans,
-  setDueDetailTargetFseiban, setDueDetailFseiban
+  acceptRefreshedState, setOpenFseibans
 }: Options) {
   const persistOrder = (nextOrder: string[], onAccepted?: () => void, onRejected?: () => void): Promise<boolean> => {
     if (!data || !scopeReady || writeBlocked || allocation === 'original') return Promise.resolve(false);
-    if (nextOrder.length > 50) {
-      setOrderRegistrationError('登録上限50件を超えるため保存できません。選択を減らしてください。');
+    if (nextOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
+      setOrderRegistrationError(`登録上限${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件を超えるため保存できません。選択を減らしてください。`);
       return Promise.resolve(false);
     }
     setOrderRegistrationError(null);
@@ -47,7 +42,7 @@ export function createPlanningBoardSeibanActions({
         apply: (display) => ({ ...display, order: nextOrder }),
         save: async (context) => {
           const result = await updateOrder.mutateAsync({ sourceRevision: context.sourceRevision, fseibans: nextOrder });
-          return { sourceRevision: result.sourceRevision, order: result.seibanOrder };
+          return { sourceRevision: result.sourceRevision, order: result.seibanOrder, uncheckedFseibans: result.uncheckedFseibans };
         },
         onSaved: () => resolve(true),
         onFailed: (error) => {
@@ -70,27 +65,12 @@ export function createPlanningBoardSeibanActions({
     acceptRefreshedState();
     notify('最新状態を取得しました。', 'success');
   };
-  const removeSeiban = (fseiban: string) => {
-    const wasActive = activeFseibans.has(fseiban);
-    const wasOpen = openFseibans.has(fseiban);
-    void persistOrder(registeredFseibans.filter((value) => value !== fseiban), () => {
-      setActiveFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
-      setOpenFseibans((current) => new Set([...current].filter((value) => value !== fseiban)));
-      setDueDetailTargetFseiban((current) => current === fseiban ? null : current);
-      setDueDetailFseiban((current) => current === fseiban ? null : current);
-    }, () => {
-      if (wasActive) setActiveFseibans((current) => new Set([...current, fseiban]));
-      if (wasOpen) setOpenFseibans((current) => new Set([...current, fseiban]));
-    });
-  };
   const addSeibans = async (fseibans: readonly string[]): Promise<boolean> => {
     const additions = [...new Set(fseibans.map((value) => value.trim()).filter(Boolean))].filter((value) => !registeredFseibans.includes(value));
     if (!additions.length) return true;
     return persistOrder([...additions, ...registeredFseibans], () => {
-      setActiveFseibans((current) => new Set([...additions, ...current]));
       setOpenFseibans((current) => new Set([...additions, ...current]));
     }, () => {
-      setActiveFseibans((current) => new Set([...current].filter((value) => !additions.includes(value))));
       setOpenFseibans((current) => new Set([...current].filter((value) => !additions.includes(value))));
     });
   };
@@ -105,5 +85,5 @@ export function createPlanningBoardSeibanActions({
     void persistOrder(next);
   };
 
-  return { refreshAfterOrderConflict, removeSeiban, addSeibans, addSeiban, moveSeiban };
+  return { refreshAfterOrderConflict, addSeibans, addSeiban, moveSeiban };
 }

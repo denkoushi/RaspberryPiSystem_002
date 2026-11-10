@@ -19,8 +19,6 @@ export type MobilePlacementVerifySectionProps = {
   onScanTransferPart: () => void;
   onScanActualOrder: () => void;
   onScanActualPart: () => void;
-  onPickActualSlipImage: () => void;
-  actualSlipImageOcrBusy: boolean;
   actualSlipOcrFeedback: ActualSlipOcrFeedback;
   slipVerifying: boolean;
   slipResult: 'idle' | 'ok' | 'ng';

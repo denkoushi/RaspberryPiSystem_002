@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -13,13 +13,15 @@ describe('BackupService with LocalStorageProvider', () => {
   let backupService: BackupService;
 
   beforeEach(async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', Buffer.alloc(32, 7).toString('base64'));
     workDir = tmpDir();
-    process.env.BACKUP_STORAGE_DIR = workDir;
+    vi.stubEnv('BACKUP_STORAGE_DIR', workDir);
     backupService = new BackupService(new LocalStorageProvider());
     await fs.mkdir(workDir, { recursive: true });
   });
 
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await fs.rm(workDir, { recursive: true, force: true }).catch(() => {});
   });
 
@@ -39,6 +41,15 @@ describe('BackupService with LocalStorageProvider', () => {
 
     const restoredContent = await fs.readFile(restoredPath, 'utf-8');
     expect(restoredContent).toBe('hello-backup');
+  });
+
+  it('fails before producing backup data when the encryption key is missing', async () => {
+    vi.stubEnv('BACKUP_ENCRYPTION_KEY', '');
+    const createBackup = vi.fn(async () => Buffer.from('data'));
+    const result = await backupService.backup({ info: { type: 'file', source: 'x' }, createBackup } as never);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/BACKUP_ENCRYPTION_KEY/);
+    expect(createBackup).not.toHaveBeenCalled();
   });
 
   it('should list and delete backups', async () => {

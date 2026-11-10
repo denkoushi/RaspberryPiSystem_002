@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import {
   getMachineSignalAdminOverview,
   getMachineSignalDay,
+  getMachineSignalResourceUptime,
   getMachineSignalImportRuns,
   getMachineSignalRange,
   getMachineSignalReportDates,
@@ -138,4 +139,15 @@ export function useRunMachineSignalGmailImport() {
 export function useInvalidateMachineSignal() {
   const queryClient = useQueryClient();
   return () => queryClient.invalidateQueries({ queryKey: machineSignalQueryKeys.rootAll });
+}
+
+export function useMachineSignalResourceUptime(enabled = true, days = 30) {
+  return useQuery({
+    queryKey: machineSignalQueryKeys.resourceUptime(days),
+    queryFn: () => getMachineSignalResourceUptime(days),
+    enabled,
+    staleTime: HISTORY_STALE_MS,
+    refetchInterval: HISTORY_STALE_MS,
+    refetchOnWindowFocus: false
+  });
 }

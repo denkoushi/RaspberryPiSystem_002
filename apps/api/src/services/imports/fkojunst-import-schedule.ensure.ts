@@ -11,6 +11,8 @@ import { ensureItemInventoryGmailCsvImportSchedule } from './item-inventory-impo
 import { ensureProcedureMaterialGmailCsvImportSchedule } from './procedure-material-import-schedule.policy.js';
 import { ensureMachineSignalGmailCsvImportSchedule } from './machine-signal-import-schedule.policy.js';
 
+import { buildDefaultDScheduleMinutesImportSchedule, D_SCHEDULE_MINUTES_SCHEDULE_ID } from './system-csv-import-schedule-builtin-rows.js';
+
 export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig): {
   config: BackupConfig;
   repaired: boolean;
@@ -25,8 +27,10 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
   const itemInventoryEnsured = ensureItemInventoryGmailCsvImportSchedule(scawStfutekigoEnsured.config);
   const machineSignalEnsured = ensureMachineSignalGmailCsvImportSchedule(itemInventoryEnsured.config);
   const procedureMaterialEnsured = ensureProcedureMaterialGmailCsvImportSchedule(machineSignalEnsured.config);
+  const schedules = procedureMaterialEnsured.config.csvImports ?? [];
+  const addedMinutes = !schedules.some((row) => row.id === D_SCHEDULE_MINUTES_SCHEDULE_ID || row.targets?.some((target) => target.type === 'dScheduleMinutesGmail'));
   return {
-    config: procedureMaterialEnsured.config,
+    config: addedMinutes ? { ...procedureMaterialEnsured.config, csvImports: [...schedules, buildDefaultDScheduleMinutesImportSchedule()] } : procedureMaterialEnsured.config,
     repaired:
       fkojunstEnsured.repaired ||
       fkojunstStatusMailEnsured.repaired ||
@@ -37,7 +41,7 @@ export function ensureProductionScheduleCsvImportSchedules(config: BackupConfig)
       scawStfutekigoEnsured.repaired ||
       itemInventoryEnsured.repaired ||
       machineSignalEnsured.repaired ||
-      procedureMaterialEnsured.repaired,
+      procedureMaterialEnsured.repaired || addedMinutes,
   };
 }
 

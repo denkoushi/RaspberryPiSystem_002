@@ -4,7 +4,6 @@ import {
   resolveLeaderboardRowSeibanJoinKeyForFooter
 } from './leaderboard-part-footer-chip-key.js';
 import { normalizeLeaderboardDisplayRowIdScope } from './leaderboard-display-row-scope.js';
-import { parseDisplayItemId } from '../order-split/leaderboard-display-item-id.js';
 
 export type LeaderboardFooterPartTriple = {
   seibanJoinKey: string;
@@ -44,49 +43,10 @@ export function collectLeaderboardFooterPartKeysFromRows(
   return { uniquePartKeysInOrder, tripleByPartKey };
 }
 
-/**
- * DISTINCT ON 優先に使う親行 ID 集合。display item ID（`split:{uuid}` 含む）を
- * `CsvDashboardRow.id` へ解決して SQL winner 選定と揃える。
- */
+/** DISTINCT ON 優先に使う親行 ID 集合。 */
 export function resolveLeaderboardFooterPreferredRowIds(params: {
-  rows: ReadonlyArray<{ id: string; sourceRowId?: string }>;
+  rows: ReadonlyArray<{ id: string }>;
   preferredDisplayRowIds?: readonly string[] | undefined;
 }): string[] {
-  const { rows, preferredDisplayRowIds } = params;
-
-  const displayItemIdToParentRowId = new Map<string, string>();
-  for (const row of rows) {
-    const displayId = row.id.trim();
-    if (!displayId.length) continue;
-    const parentRowId = row.sourceRowId?.trim() || displayId;
-    displayItemIdToParentRowId.set(displayId, parentRowId);
-  }
-
-  const base =
-    preferredDisplayRowIds !== undefined
-      ? preferredDisplayRowIds
-      : rows.map((r) => r.id.trim()).filter((id) => id.length > 0);
-
-  const normalizedDisplayIds = normalizeLeaderboardDisplayRowIdScope(base);
-  const parentRowIds: string[] = [];
-  const seenParentRowIds = new Set<string>();
-
-  for (const displayId of normalizedDisplayIds) {
-    const mappedParentRowId = displayItemIdToParentRowId.get(displayId);
-    if (mappedParentRowId) {
-      if (!seenParentRowIds.has(mappedParentRowId)) {
-        seenParentRowIds.add(mappedParentRowId);
-        parentRowIds.push(mappedParentRowId);
-      }
-      continue;
-    }
-
-    const parsed = parseDisplayItemId(displayId);
-    if (parsed?.kind === 'row' && !seenParentRowIds.has(parsed.sourceRowId)) {
-      seenParentRowIds.add(parsed.sourceRowId);
-      parentRowIds.push(parsed.sourceRowId);
-    }
-  }
-
-  return parentRowIds;
+  return normalizeLeaderboardDisplayRowIdScope(params.preferredDisplayRowIds ?? params.rows.map((row) => row.id));
 }

@@ -1,6 +1,7 @@
 import { ApiError } from '../../lib/errors.js';
 
 export const ASSEMBLY_PROCEDURE_GMAIL_SUBJECT = 'DocumentASM';
+export const D_SCHEDULE_MINUTES_GMAIL_SUBJECT = 'D社日程会議議事録';
 /** 設備稼働ログ（信号灯センサーの日報CSV）のメール件名。専用の取り込みが全添付を読む。 */
 export const MACHINE_SIGNAL_GMAIL_SUBJECT = 'AirGridFlexSignal';
 export const GMAIL_SUBJECT_PATTERN_RESERVED_CODE = 'GMAIL_SUBJECT_PATTERN_RESERVED';
@@ -22,6 +23,7 @@ export const PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT = 'ProcedureMaterial';
 export const PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS = ['[Procedure-material]'] as const;
 
 const RESERVED_GMAIL_SUBJECTS = [
+  { subject: D_SCHEDULE_MINUTES_GMAIL_SUBJECT, owner: 'D社日程会議議事録' },
   { subject: PROCEDURE_MATERIAL_APP_GMAIL_SUBJECT, owner: '要領書の素材（アプリ）' },
   { subject: PROCEDURE_MATERIAL_GMAIL_SUBJECT_TOKENS[0], owner: '要領書の素材' },
   { subject: ASSEMBLY_PROCEDURE_GMAIL_SUBJECT, owner: '組立手順書' },

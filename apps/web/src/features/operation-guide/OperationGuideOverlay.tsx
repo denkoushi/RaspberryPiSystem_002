@@ -10,7 +10,7 @@ import { placeGuideCard } from './placement';
 import { useGuideTarget } from './useGuideTarget';
 
 export function OperationGuideOverlay({ guide, index, iconRef, onBack, onNext, onEnd, onQuestion, onChoose }: {
-  guide: OperationGuide; index: number; iconRef: RefObject<HTMLElement>;
+  guide: OperationGuide; index: number; iconRef: RefObject<HTMLElement | null>;
   onBack: () => void; onNext: () => void; onEnd: () => void; onQuestion: () => void; onChoose: (id: OperationGuide['id']) => void;
 }) {
   const location = useLocation();

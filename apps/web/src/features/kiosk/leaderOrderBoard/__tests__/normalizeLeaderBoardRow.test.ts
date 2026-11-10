@@ -14,6 +14,12 @@ const mkRow = (rowData: Record<string, unknown>): ProductionScheduleRow => ({
 });
 
 describe('normalizeLeaderBoardRow', () => {
+  it('uses resolved board due dates and preserves manual dates for their amber style', () => {
+    const source = { ...mkRow({ FSIGENCD: '305' }), dueDate: '2026-11-20', plannedEndDate: '2026-11-30' };
+    expect(normalizeLeaderBoardRow({ ...source, boardDueDate: '2026-11-10' })).toMatchObject({ displayDue: '2026-11-10', dueDate: '2026-11-20' });
+    expect(normalizeLeaderBoardRow(source)?.displayDue).toBe('2026-11-20');
+    expect(normalizeLeaderBoardRow({ ...source, boardDueDate: null })?.displayDue).toBeNull();
+  });
   it('maps FSIGENSHOYORYO to machineRequiredMinutes and requiredMinutes', () => {
     const row = normalizeLeaderBoardRow(
       mkRow({

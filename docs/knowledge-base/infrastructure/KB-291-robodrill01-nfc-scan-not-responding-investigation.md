@@ -1,9 +1,9 @@
 ---
-title: KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告
+title: "KB-291: ロボドリル01（raspi4-robodrill01）NFCスキャンが反応しない調査報告"
 tags: [NFC, Pi4, ロボドリル01, raspi4-robodrill01, 機能調査]
 audience: [開発者, 運用者]
 last-verified: 2026-03-05
-related: [../hardware-nfc.md, ../../troubleshooting/nfc-reader-issues.md, ../../guides/client-initial-setup.md]
+related: [./hardware-nfc.md, ../../troubleshooting/nfc-reader-issues.md, ../../guides/client-initial-setup.md]
 category: knowledge-base
 update-frequency: medium
 ---
@@ -39,7 +39,7 @@ update-frequency: medium
 ```yaml
 nfc_agent_api_base_url: "{{ api_base_url }}"
 nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
-nfc_agent_client_secret: "client-key-raspi4-robodrill01-kiosk1"
+nfc_agent_client_secret: "<redacted>"
 ```
 
 ### 1.2 NFCエージェント .env のデプロイ
@@ -124,6 +124,8 @@ NFCが動作する場合の経路:
 
 ### デプロイ・検証手順（RoboDrill01先行）
 
+> 2026-03-05 時点の記録。`--foreground` と `RASPI_SERVER_HOST` は現行の `scripts/update-all-clients.sh` にはない。現行の手順は [deployment.md](../../guides/deployment.md)（`--print-plan` で確認した後、exact `--limit` で実行）を参照。Pi4 の初回導入では `setup-nfc-agent.sh` を使わない（[client-initial-setup.md](../../guides/client-initial-setup.md)）。
+
 ```bash
 # Pi5で実行（RASPI_SERVER_HOST を設定済み前提）
 RASPI_SERVER_HOST=100.106.158.2 ./scripts/update-all-clients.sh main infrastructure/ansible/inventory.yml --limit "server:raspi4-robodrill01" --foreground
@@ -172,4 +174,4 @@ sudo scripts/client/setup-nfc-agent.sh
 - [hardware-nfc.md](./hardware-nfc.md)（本KBの要約）
 - [NFCリーダーのトラブルシューティング](../../troubleshooting/nfc-reader-issues.md)
 - [client-initial-setup.md](../../guides/client-initial-setup.md)
-- [auto-startup-status.md](../../guides/auto-startup-status.md)（Pi4 nfc-agent: 開発中は手動起動と記載）
+- [auto-startup-status.md](../../archive/guides/auto-startup-status.md)（Pi4 nfc-agent: 開発中は手動起動と記載）

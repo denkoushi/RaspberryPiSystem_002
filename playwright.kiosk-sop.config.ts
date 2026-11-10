@@ -13,12 +13,15 @@ export default defineConfig({
   reporter: 'line',
   use: {
     baseURL: externalBaseURL ?? localBaseURL,
-    trace: 'on-first-retry',
-    screenshot: 'only-on-failure'
+    // retries is 0, so keep the trace of the failing run itself; a stalled action
+    // fails on its own instead of silently consuming the whole test timeout.
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    actionTimeout: 15_000
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } }
+    // Every production kiosk runs Chromium; Firefox is not a target any more.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } }
   ],
   webServer: externalBaseURL ? undefined : {
     command: 'pnpm --filter @raspi-system/web dev --host 127.0.0.1 --port 4173',

@@ -107,8 +107,13 @@ describe('PurchaseOrderLookupPage', () => {
   it('submits manual input through the same lookup handler and handles empty results', async () => {
     vi.mocked(getKioskPurchaseOrderLookup).mockResolvedValue({ purchaseOrderNo: data.purchaseOrderNo, rows: [] });
     mount();
-    fireEvent.click(screen.getByRole('button', { name: '手入力' }));
+    const manual = screen.getByRole('button', { name: '手入力' });
+    expect(manual).toHaveClass('h-16', 'w-[92px]');
+    expect(screen.getByRole('contentinfo')).toContainElement(manual);
+    expect(screen.queryByText('現品票のバーコードを読む')).not.toBeInTheDocument();
+    fireEvent.click(manual);
     const dialog = screen.getByRole('dialog', { name: '注文番号を入力' });
+    expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: '照会' })).toBeDisabled();
     fireEvent.change(within(dialog).getByRole('textbox', { name: '注文番号10桁' }), { target: { value: data.purchaseOrderNo } });
     fireEvent.click(within(dialog).getByRole('button', { name: '照会' }));

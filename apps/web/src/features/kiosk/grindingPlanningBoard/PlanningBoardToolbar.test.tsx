@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardToolbar } from './PlanningBoardToolbar';
@@ -8,10 +9,32 @@ import type { PlanningBoardToolbarProps } from './PlanningBoardToolbar';
 const props = (): PlanningBoardToolbarProps => ({
   ganttEnabled: true, onToggleGantt: vi.fn(), ganttMode: 'forward', onGanttModeChange: vi.fn(), lateCount: 2, onNextLate: vi.fn(),
   onProposeOrder: vi.fn(), onSortDue: vi.fn(), onUndoOrder: vi.fn(), canUndoOrder: true,
-  categories: { grinding: true, cutting: false }, view: 'resource', status: 'incomplete', allocation: 'alternate', selectedCount: 0, registeredCount: 3,
-  onOpenDrawer: vi.fn(), onCategoriesChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
+  category: 'grinding', view: 'resource', status: 'incomplete', allocation: 'alternate', selectedCount: 0, registeredCount: 3,
+  onOpenDrawer: vi.fn(), onCategoryChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it.each([false, true])('places SCAW after the Gantt group, toggles and hides it during comparison (gantt=%s)', (ganttEnabled) => {
+    const onToggleScawMode = vi.fn();
+    const values = { ...props(), ganttEnabled, onToggleScawMode };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const button = screen.getByRole('button', { name: 'SCAW' });
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+    expect(button.previousElementSibling).toContainElement(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(button);
+    expect(onToggleScawMode).toHaveBeenCalledOnce();
+    rerender(<PlanningBoardToolbar {...values} scawEnabled />);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    const metrics = { lateCount: 2, waitMinutes: 120 };
+    rerender(<PlanningBoardToolbar {...values} orderPreview={{ before: metrics, after: metrics }} />);
+    expect(screen.queryByRole('button', { name: 'SCAW' })).not.toBeInTheDocument();
+  });
+  it('reserves the same toolbar height across Gantt and focus controls', () => {
+    const values = props();
+    const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
+    expect(container.firstElementChild).toHaveClass('h-[66px]');
+    rerender(<PlanningBoardToolbar {...values} ganttEnabled={false} focusedSeiban="26-1041" />);
+    expect(container.firstElementChild).toHaveClass('h-[66px]');
+  });
   it.each([false, true])('keeps the icon-only scan control outside the Gantt group with gantt=%s', (ganttEnabled) => {
     render(<PlanningBoardToolbar {...props()} ganttEnabled={ganttEnabled} onOrderScan={() => null} />);
     const scan = screen.getByRole('button', { name: '移動票で製番を探す' });
@@ -20,7 +43,7 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(scan.querySelector('svg')).toBeInTheDocument();
     const gantt = screen.getByRole('button', { name: 'ガント', exact: true });
     expect(gantt.parentElement).not.toContainElement(scan);
-    if (ganttEnabled) expect(scan.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
+    if (ganttEnabled) expect(scan.previousElementSibling?.previousElementSibling?.lastElementChild).toBe(screen.getByRole('button', { name: '製番ごとに色分け' }));
   });
   it.each([false, true])('shows the large-screen toggle at the far right with gantt=%s', (ganttEnabled) => {
     const onToggleLargeScreen = vi.fn();
@@ -82,27 +105,62 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     expect(toggle).toHaveClass('bg-sky-400');
   });
-  it('toggles categories independently and keeps at least one pressed', () => {
-    const values = props();
-    const { rerender } = render(<PlanningBoardToolbar {...values} />);
-    fireEvent.click(screen.getByRole('button', { name: '研削' }));
-    expect(values.onCategoriesChange).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: true, cutting: true });
-    rerender(<PlanningBoardToolbar {...values} categories={{ grinding: true, cutting: true }} />);
-    expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
-    fireEvent.click(screen.getByRole('button', { name: '研削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: false, cutting: true });
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).toHaveBeenLastCalledWith({ grinding: true, cutting: false });
-    vi.mocked(values.onCategoriesChange).mockClear();
-    rerender(<PlanningBoardToolbar {...values} categories={{ grinding: false, cutting: true }} />);
-    fireEvent.click(screen.getByRole('button', { name: '切削' }));
-    expect(values.onCategoriesChange).not.toHaveBeenCalled();
+  it.each([
+    ['工程', '研削', '切削・研削', 'onCategoryChange', [['cutting', '切削'], ['grinding', '研削'], ['all', '両方']]],
+    ['区分', '一般・D社', '一般・D社', 'onScheduleSourceChange', [['general', '一般'], ['dCompany', 'D社'], ['both', '両方']]]
+  ] as const)('selects %s through a portal and respects scopeDisabled', (label, initial, combined, callback, options) => {
+    const values = { ...props(), onScheduleSourceChange: vi.fn() };
+    const { container, rerender } = render(<PlanningBoardToolbar {...values} />);
+    const trigger = screen.getByRole('button', { name: label, exact: true });
+    expect(trigger).toHaveTextContent(initial);
+    expect(trigger).toHaveClass('min-h-11', 'bg-slate-100');
+    expect(trigger.parentElement?.previousElementSibling).toBe(label === '区分'
+      ? screen.getByRole('button', { name: '製番登録ペインを開く' })
+      : screen.getByRole('button', { name: '区分' }).parentElement);
+    for (const [value, optionLabel] of options) {
+      fireEvent.click(trigger);
+      const panel = screen.getByRole('group', { name: label });
+      expect(container).not.toContainElement(panel);
+      expect(panel).toHaveAttribute('data-planning-board-popover');
+      expect(within(panel).getAllByRole('button').map((button) => button.textContent)).toEqual(options.map((option) => option[1]));
+      expect(within(panel).getByRole('button', { pressed: true })).toHaveFocus();
+      expect(within(panel).getByRole('button', { pressed: true })).toHaveClass('bg-slate-100', 'text-slate-950');
+      fireEvent.click(within(panel).getByRole('button', { name: optionLabel, exact: true }));
+      expect(values[callback]).toHaveBeenLastCalledWith(value);
+      expect(screen.queryByRole('group', { name: label })).not.toBeInTheDocument();
+      expect(trigger).toHaveFocus();
+      rerender(<PlanningBoardToolbar {...values} {...(label === '工程' ? { category: value as 'cutting' | 'all' | 'grinding' } : { scheduleSource: value as 'general' | 'dCompany' | 'both' })} />);
+    }
+    rerender(<PlanningBoardToolbar {...values} category="all" scheduleSource="both" />);
+    expect(trigger).toHaveTextContent(combined);
     rerender(<PlanningBoardToolbar {...values} scopeDisabled />);
-    expect(screen.getByRole('button', { name: '研削' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: '切削' })).toBeDisabled();
+    expect(trigger).toBeDisabled();
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('group', { name: label })).not.toBeInTheDocument();
+  });
+  it.each(['工程', '区分'])('closes %s on outside click, Escape, resize and ancestor scroll', (label) => {
+    render(<PlanningBoardToolbar {...props()} />);
+    const trigger = screen.getByRole('button', { name: label, exact: true });
+    for (const close of [() => fireEvent.pointerDown(document.body), () => fireEvent.keyDown(document, { key: 'Escape' }),
+      () => fireEvent.resize(window), () => fireEvent.scroll(document)]) {
+      fireEvent.click(trigger);
+      const panel = screen.getByRole('group', { name: label });
+      fireEvent.pointerDown(within(panel).getAllByRole('button')[0]!);
+      fireEvent.scroll(panel);
+      expect(trigger).toHaveAttribute('aria-expanded', 'true');
+      close();
+      expect(trigger).toHaveAttribute('aria-expanded', 'false');
+      expect(trigger).toHaveFocus();
+    }
+  });
+  it('keeps dropdowns open on sibling Gantt scroll and closes on anchor ancestor scroll', () => {
+    const { container } = render(<div><PlanningBoardToolbar {...props()} /><div data-testid="gantt-scroll" /></div>);
+    const trigger = screen.getByRole('button', { name: '区分', exact: true });
+    fireEvent.click(trigger);
+    fireEvent.scroll(screen.getByTestId('gantt-scroll'));
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.scroll(container.firstElementChild!);
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
   });
   it('toggles mode and navigates late work', () => {
     const values = props();
@@ -164,5 +222,48 @@ describe('PlanningBoardToolbar forward controls', () => {
     render(<PlanningBoardToolbar {...props()} canUndoOrder={false} feedback={<span>保存中</span>} />);
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
     expect(screen.getByText('保存中').parentElement).toHaveClass('min-w-0', 'flex-1');
+  });
+});
+
+function SingleResourceToolbar() {
+  const [resource, setResource] = useState<string | null>(null);
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return <PlanningBoardToolbar {...props()} singleResourceCd={resource} singleResourceLanes={['305', '306']}
+    singleResourceNameMap={{ '305': ['NC旋盤'], '306': ['研削盤'] }} singleResourcePickerAnchor={anchor}
+    onOpenSingleResourcePicker={setAnchor} onCloseSingleResourcePicker={() => setAnchor(null)}
+    onSingleResourceChange={(next) => { setResource(next); setAnchor(null); }} />;
+}
+describe('single resource toolbar', () => {
+  it('opens a portaled picker inside the Gantt group, chooses a machine and exits with ✕', () => {
+    render(<SingleResourceToolbar />);
+    const button = screen.getByRole('button', { name: '1台', exact: true });
+    expect(button.parentElement).toContainElement(screen.getByRole('button', { name: 'ガント', exact: true }));
+    fireEvent.click(button);
+    const picker = screen.getByRole('group', { name: '1台の資源CD' });
+    expect(picker.parentElement).toBe(document.body);
+    expect(within(picker).getByRole('button', { name: '305 NC旋盤' })).toHaveFocus();
+    fireEvent.click(within(picker).getByRole('button', { name: '306 研削盤' }));
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
+    expect(button).toHaveTextContent('306 ✕');
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1台');
+    expect(button).toHaveAttribute('aria-pressed', 'false');
+  });
+  it('closes on outside click and Escape, returns focus, and makes scale/picker mutually exclusive', () => {
+    render(<SingleResourceToolbar />);
+    const button = screen.getByRole('button', { name: '1台', exact: true });
+    fireEvent.click(button);
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(button);
+    fireEvent.pointerDown(document.body);
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
+    fireEvent.click(button);
+    expect(screen.queryByRole('group', { name: '他の幅' })).toBeNull();
+    expect(screen.getByRole('group', { name: '1台の資源CD' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '他の幅' }));
+    expect(screen.queryByRole('group', { name: '1台の資源CD' })).toBeNull();
   });
 });

@@ -23,7 +23,7 @@ const item = {
   category: null, area: null, note: null, photos: [], deletedAt: null,
 };
 const compartment = {
-  id: 'compartment-1', labelNumber: 42, stockQuantity: 7,
+  id: 'compartment-1', labelNumber: 42, stockQuantity: 7, reorderPoint: 7, reorderedAt: new Date('2026-11-04T00:00:00Z'),
   inventoryItem: item,
   drawer: { drawerNumber: 3, shelf: { area: '現場', shelfNumber: 2 } },
   itemTag: { id: 'tag-1', uid: 'item-uid', kind: 'ITEM', quantity: null },
@@ -54,7 +54,7 @@ describe('inventory compartment label lookup', () => {
     const tagResponse = await request('/item-inventory/tags/resolve?uid=item-uid');
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(tagResponse.json());
-    expect(response.json().tag.compartment).toMatchObject({ labelNumber: 42, item: { id: item.id, name: item.name } });
+    expect(response.json().tag.compartment).toMatchObject({ labelNumber: 42, reorderPoint: 7, reorderedAt: '2026-11-04T00:00:00.000Z', item: { id: item.id, name: item.name } });
     expect(db.inventoryCompartment.findUnique).toHaveBeenCalledWith({
       where: { labelNumber: 42 },
       include: expect.objectContaining({ inventoryItem: { include: { photos: { orderBy: [{ photoIndex: 'asc' }, { createdAt: 'asc' }] } } } }),

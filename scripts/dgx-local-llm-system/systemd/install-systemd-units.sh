@@ -17,8 +17,8 @@ if [[ ! -d "${SYSTEM_PROD_DIR}" ]]; then
   exit 1
 fi
 
-RUN_USER="${DGX_LLM_RUN_USER:-$(stat -f '%Su' "${SYSTEM_PROD_DIR}")}"
-RUN_GROUP="${DGX_LLM_RUN_GROUP:-$(stat -f '%Sg' "${SYSTEM_PROD_DIR}")}"
+RUN_USER="${DGX_LLM_RUN_USER:-$(stat -c '%U' "${SYSTEM_PROD_DIR}")}"
+RUN_GROUP="${DGX_LLM_RUN_GROUP:-$(stat -c '%G' "${SYSTEM_PROD_DIR}")}"
 
 if ! id "${RUN_USER}" >/dev/null 2>&1; then
   echo "run user not found: ${RUN_USER}" >&2
@@ -32,6 +32,13 @@ for u in "${UNITS[@]}"; do
     "${SCRIPT_DIR}/${u}" > "/etc/systemd/system/${u}"
   chmod 0644 "/etc/systemd/system/${u}"
 done
+
+LOGROTATE_DEST="/etc/logrotate.d/dgx-llm-system-prod"
+sed \
+  -e "s/__DGX_LLM_USER__/${RUN_USER}/g" \
+  -e "s/__DGX_LLM_GROUP__/${RUN_GROUP}/g" \
+  "${SCRIPT_DIR}/dgx-llm-logs.logrotate" > "${LOGROTATE_DEST}"
+chmod 0644 "${LOGROTATE_DEST}"
 
 systemctl daemon-reload
 systemctl enable dgx-llm-embedding.service dgx-llm-control.service dgx-llm-gateway.service

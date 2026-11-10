@@ -19,11 +19,12 @@ describe('TorqueTrainingKioskSettingsService access boundary', () => {
   it('uses the shared operation-password verifier for every kiosk request', async () => {
     verifyDueManagementAccessPassword.mockResolvedValue({ success: true });
 
-    await service.requireAccessPassword('2520');
+    await service.requireAccessPassword('2520', { clientDeviceId: 'device-a', ip: '192.0.2.1' });
 
     expect(verifyDueManagementAccessPassword).toHaveBeenCalledWith({
       location: 'shared',
-      password: '2520'
+      password: '2520',
+      clientDeviceId: 'device-a', ip: '192.0.2.1'
     });
   });
 

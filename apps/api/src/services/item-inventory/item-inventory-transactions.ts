@@ -1,8 +1,43 @@
+import { assertMishimaMachine } from './item-inventory-machines.js';
 import { Prisma, PrismaClient, InventoryNfcTagKind, InventoryTransactionAction } from '@prisma/client';
 import { ApiError } from '../../lib/errors.js';
 import { TRANSACTION_INCLUDE, positiveInteger, nonNegativeInteger, assertNfcUidAvailable, runSerializable } from './item-inventory.helpers.js';
 import { InventoryInsufficientStockError, InventoryConflictError } from './item-inventory.errors.js';
 import type { InventoryActor } from './item-inventory.errors.js';
+
+/** Re-evaluate on every stock or threshold change, inside the same locked transaction. */
+export function reorderStateAfterChange(stockQuantity: number, reorderPoint: number | null | undefined) {
+  return reorderPoint == null || stockQuantity > reorderPoint ? { reorderedAt: null } : {};
+}
+
+export async function setReorderPoint(db: PrismaClient, compartmentId: string, reorderPoint: number | null) {
+  if (reorderPoint !== null) {
+    nonNegativeInteger(reorderPoint, '発注点');
+    if (reorderPoint > 2147483647) throw new ApiError(400, '発注点が大きすぎます');
+  }
+  return runSerializable(db, async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${compartmentId} FOR UPDATE`);
+    const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId } });
+    if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
+    return tx.inventoryCompartment.update({ where: { id: compartmentId }, data: {
+      reorderPoint, ...reorderStateAfterChange(compartment.stockQuantity, reorderPoint),
+    } });
+  });
+}
+
+export async function setOrdered(db: PrismaClient, compartmentId: string, ordered: boolean) {
+  return runSerializable(db, async (tx) => {
+    await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${compartmentId} FOR UPDATE`);
+    const compartment = await tx.inventoryCompartment.findUnique({ where: { id: compartmentId } });
+    if (!compartment) throw new ApiError(404, '在庫区画が見つかりません');
+    if (ordered && (compartment.reorderPoint == null || compartment.stockQuantity > compartment.reorderPoint)) {
+      throw new ApiError(400, '在庫が発注点以下のときだけ発注済みにできます');
+    }
+    return tx.inventoryCompartment.update({ where: { id: compartmentId }, data: {
+      reorderedAt: ordered ? compartment.reorderedAt ?? new Date() : null,
+    } });
+  });
+}
 
 export async function bindCompartment(db: PrismaClient, input: {
   itemId: string;
@@ -57,6 +92,7 @@ export async function processTransaction(db: PrismaClient, input: {
   quantityTagUid: string;
   restockTagUid?: string;
   restock: boolean;
+  machineId?: string;
   idempotencyKey?: string;
   actor?: InventoryActor;
 }) {
@@ -87,6 +123,7 @@ export async function processTouchTransaction(db: PrismaClient, input: {
   quantity: number;
   restock?: boolean;
   expectedBeforeQuantity?: number;
+  machineId?: string;
   idempotencyKey?: string;
   actor?: InventoryActor;
 }) {
@@ -102,7 +139,7 @@ export async function processTouchTransaction(db: PrismaClient, input: {
 
 export async function processStockTransaction(
   db: PrismaClient,
-  input: { restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
+  input: { machineId?: string; restock?: boolean; expectedCompartmentId?: string; expectedBeforeQuantity?: number; idempotencyKey?: string; actor?: InventoryActor },
   resolveMovement: (tx: Prisma.TransactionClient) => Promise<{
     compartmentId: string;
     quantity: number;
@@ -117,6 +154,7 @@ export async function processStockTransaction(
         const prior = await tx.inventoryTransaction.findFirst({ where: { clientId: input.actor.clientId, idempotencyKey: input.idempotencyKey }, include: TRANSACTION_INCLUDE });
         if (prior) return { transaction: prior, replayed: true };
       }
+      if (input.machineId) await assertMishimaMachine(tx, input.machineId);
       const movement = await resolveMovement(tx);
       await tx.$queryRaw(Prisma.sql`SELECT "id" FROM "InventoryCompartment" WHERE "id" = ${movement.compartmentId} FOR UPDATE`);
       if (input.expectedCompartmentId !== undefined && input.expectedCompartmentId !== movement.compartmentId) {
@@ -134,7 +172,7 @@ export async function processStockTransaction(
       const createdAt = new Date();
       const updated = await tx.inventoryCompartment.update({
         where: { id: compartment.id },
-        data: { stockQuantity: afterQuantity, ...(input.restock ? {} : { lastIssuedAt: createdAt }) },
+        data: { stockQuantity: afterQuantity, ...reorderStateAfterChange(afterQuantity, compartment.reorderPoint), ...(input.restock ? {} : { lastIssuedAt: createdAt }) },
       });
       const transaction = await tx.inventoryTransaction.create({
         include: TRANSACTION_INCLUDE,
@@ -144,6 +182,7 @@ export async function processStockTransaction(
           compartmentId: compartment.id,
           clientId: input.actor?.clientId ?? null,
           performedByUserId: input.actor?.performedByUserId ?? null,
+          machineId: input.machineId ?? null,
           quantityTagId: movement.quantityTagId ?? null,
           idempotencyKey: input.idempotencyKey ?? null,
           delta,
@@ -188,7 +227,7 @@ export async function cancelTransaction(db: PrismaClient, id: string, actor: Inv
       : undefined;
     await tx.inventoryCompartment.update({
       where: { id: compartment.id },
-      data: { stockQuantity: afterQuantity, ...(lastIssue === undefined ? {} : { lastIssuedAt: lastIssue?.createdAt ?? null }) },
+      data: { stockQuantity: afterQuantity, ...reorderStateAfterChange(afterQuantity, compartment.reorderPoint), ...(lastIssue === undefined ? {} : { lastIssuedAt: lastIssue?.createdAt ?? null }) },
     });
     return tx.inventoryTransaction.create({
       include: TRANSACTION_INCLUDE,
@@ -198,6 +237,7 @@ export async function cancelTransaction(db: PrismaClient, id: string, actor: Inv
         compartmentId: original.compartmentId,
         clientId: actor.clientId ?? null,
         performedByUserId: actor.performedByUserId ?? null,
+        machineId: original.machineId,
         reversalOfId: original.id,
         delta: -original.delta,
         beforeQuantity: compartment.stockQuantity,
@@ -226,7 +266,7 @@ export async function correctStock(
       throw new InventoryConflictError('在庫が変わりました。もう一度数えてください');
     }
     const delta = desiredQuantity - compartment.stockQuantity;
-    await tx.inventoryCompartment.update({ where: { id: compartmentId }, data: { stockQuantity: desiredQuantity } });
+    await tx.inventoryCompartment.update({ where: { id: compartmentId }, data: { stockQuantity: desiredQuantity, ...reorderStateAfterChange(desiredQuantity, compartment.reorderPoint) } });
     return tx.inventoryTransaction.create({
       data: {
         action: InventoryTransactionAction.CORRECTION,
@@ -275,12 +315,19 @@ export async function replaceItemTag(db: PrismaClient, compartmentId: string, ui
       where: { uid: cleanUid },
       include: { compartment: { include: { inventoryItem: true, drawer: { include: { shelf: true } } } } },
     });
-    if (existing && existing.compartmentId !== compartmentId) {
+    // 解放済みのアイテムタグ（区画なし）は、bindCompartment と同じく再利用できる。
+    const isReleasedItemTag = existing?.kind === InventoryNfcTagKind.ITEM && !existing.compartmentId;
+    if (existing && existing.compartmentId !== compartmentId && !isReleasedItemTag) {
       const used = existing.compartment;
       throw new ApiError(409, 'このUIDは既に使用されています', used ? { usedBy: {
         itemName: used.inventoryItem.name, area: used.drawer.shelf.area,
         shelfNumber: used.drawer.shelf.shelfNumber, drawerNumber: used.drawer.drawerNumber,
       } } : undefined);
+    }
+    if (isReleasedItemTag) {
+      // 同じ解放済みタグを2台が同時に付け直しても、先に取った区画からタグを奪わない。
+      const claimed = await tx.inventoryNfcTag.updateMany({ where: { id: existing.id, compartmentId: null }, data: { compartmentId } });
+      if (claimed.count === 0) throw new ApiError(409, 'このUIDは既に使用されています');
     }
     if (compartment.itemTag && compartment.itemTag.uid !== cleanUid) {
       await tx.inventoryNfcTag.update({ where: { id: compartment.itemTag.id }, data: { compartmentId: null } });

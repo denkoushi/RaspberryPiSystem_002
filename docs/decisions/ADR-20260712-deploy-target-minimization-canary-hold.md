@@ -10,7 +10,7 @@ superseded_by: ../plans/deployment-foundation-refactor-execplan.md
 
 このADRの旧マーカー、任意の対象最小化、旧run制御は、8段階のデプロイ基盤リファクタリングで置換された。
 
-現行判断は次のとおり。
+2026-07-16 の置換時点の判断は次のとおり（その後 2026-08-08 の標準Ansible routeで、対象最小化・fleet state による判断・canary hold・`--approve` は廃止された。現行は [deployment guide](../guides/deployment.md) を参照）。
 
 - 対象最小化は標準動作で、`verified` の同一SHAだけを除外する。
 - `unknown` hostは必ず対象に含める。

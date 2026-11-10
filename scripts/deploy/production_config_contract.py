@@ -171,13 +171,6 @@ PRODUCTION_WEB_SETTINGS = (
         "Manual-order terminal scope rollback switch.",
     ),
     _image(
-        "VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED",
-        ValueKind.BOOLEAN,
-        "false",
-        "web_kiosk_production_schedule_order_split_enabled",
-        "Production-order splitting remains explicitly disabled.",
-    ),
-    _image(
         "VITE_KIOSK_SOP_POPUP_ENABLED",
         ValueKind.BOOLEAN,
         "true",

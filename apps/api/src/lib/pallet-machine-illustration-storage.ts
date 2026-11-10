@@ -1,3 +1,4 @@
+import { validateImageBuffer } from './validated-image.js';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
@@ -37,6 +38,7 @@ export class PalletMachineIllustrationStorage {
       throw new Error(`画像サイズが大きすぎます（最大 ${MAX_BYTES} バイト）`);
     }
     const ext = this.assertMime(mimetype);
+    await validateImageBuffer(buffer, mimetype);
     const id = randomUUID();
     const filename = `${id}${ext}`;
     await getFileStorageRuntime().store.write({

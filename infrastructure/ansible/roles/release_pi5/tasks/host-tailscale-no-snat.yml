@@ -1,0 +1,17 @@
+---
+# Tailscale masquerades forwarded tailnet traffic by default. The gateway
+# container receives tailnet clients through Docker's DNAT, so every client
+# would reach Caddy as the bridge gateway (172.18.0.1) and /admin would deny
+# them. The Pi5 advertises no subnet routes, so turning SNAT off only restores
+# the real 100.x source address. Undo: `tailscale set --snat-subnet-routes=true`.
+- name: Read the Pi5 Tailscale preferences
+  ansible.builtin.command:
+    argv: [tailscale, debug, prefs]
+  register: release_pi5_tailscale_prefs
+  changed_when: false
+
+- name: Keep the real tailnet client address on traffic forwarded to the gateway
+  ansible.builtin.command:
+    argv: [tailscale, set, --snat-subnet-routes=false]
+  changed_when: true
+  when: not (((release_pi5_tailscale_prefs.stdout | trim or '{}') | from_json).get('NoSNAT', false) | bool)

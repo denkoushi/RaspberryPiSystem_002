@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
   buildMaterializedMaxProductNoWinnerInCondition,
+  buildProductionScheduleLeaderboardMaterializedBaseWhere,
+  buildProductionScheduleLeaderboardMaterializedWinners,
   fetchMaxProductNoWinnerRowIdsForDashboard
 } from '../row-resolver/max-product-no-winner-materialization.js';
 
@@ -16,6 +18,15 @@ function syntheticWinnerIds(count: number): string[] {
 }
 
 describe('fetchMaxProductNoWinnerRowIdsForDashboard (unit)', () => {
+  it.each([[], ['winner-z', 'winner-a']].map((ids) => ({ ids })))('keeps SQL membership identical when also exposing winner IDs: $ids', async ({ ids }) => {
+    const queryRaw = vi.fn().mockResolvedValue(ids.map((id) => ({ id })));
+    const prisma = { $queryRaw: queryRaw as never };
+    const winners = await buildProductionScheduleLeaderboardMaterializedWinners(prisma);
+    expect([...winners.winnerRowIds]).toEqual(ids);
+    expect(winners.baseWhere).toEqual(await buildProductionScheduleLeaderboardMaterializedBaseWhere(prisma));
+    expect(winners.baseWhere.values.filter(Array.isArray)).toEqual(ids.length ? [ids] : []);
+  });
+
   it('maps prisma rows into id strings', async () => {
     const queryRaw = vi.fn().mockResolvedValue([{ id: 'x' }, { id: 'y' }]);
 

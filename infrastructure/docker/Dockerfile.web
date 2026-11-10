@@ -6,7 +6,7 @@ COPY patches ./patches
 COPY apps/web/package.json apps/web/
 COPY packages ./packages
 RUN --mount=type=cache,id=raspi-pnpm-store,target=/pnpm/store,sharing=locked \
-  corepack enable \
+  npm install -g "$(node -p "require('./package.json').packageManager")" \
   && npm_config_fetch_retries=5 \
     npm_config_fetch_retry_factor=1 \
     npm_config_fetch_retry_mintimeout=2000 \
@@ -50,8 +50,6 @@ ARG VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=true
 ENV VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED=${VITE_KIOSK_DUE_MGMT_LAYOUT_V2_ENABLED}
 ARG VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED=true
 ENV VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED=${VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED}
-ARG VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=false
-ENV VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED=${VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED}
 ARG VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=false
 ENV VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED=${VITE_KIOSK_LEADERBOARD_DEFER_RESIDUAL_SUMMARY_ENABLED}
 ARG VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED=true
@@ -100,9 +98,9 @@ replace go.opentelemetry.io/otel/sdk => go.opentelemetry.io/otel/sdk v1.43.0
 replace go.opentelemetry.io/otel/trace => go.opentelemetry.io/otel/trace v1.43.0
 replace go.opentelemetry.io/otel/metric => go.opentelemetry.io/otel/metric v1.43.0
 
-replace golang.org/x/net => golang.org/x/net v0.60.0
-replace golang.org/x/crypto => golang.org/x/crypto v0.55.0
-replace golang.org/x/text => golang.org/x/text v0.41.0
+replace golang.org/x/net => golang.org/x/net v0.62.0
+replace golang.org/x/crypto => golang.org/x/crypto v0.58.0
+replace golang.org/x/text => golang.org/x/text v0.43.0
 
 replace github.com/go-jose/go-jose/v3 => github.com/go-jose/go-jose/v3 v3.0.5
 replace github.com/go-jose/go-jose/v4 => github.com/go-jose/go-jose/v4 v4.1.6

@@ -1,14 +1,16 @@
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { invalidateMobileDataVersions } from '../mobile-local-data.service.js';
-import { deleteOrderPlacementBranch } from '../order-placement-branch.service.js';
+import { deleteOrderPlacementBranch, listOrderPlacementBranches } from '../order-placement-branch.service.js';
 
 vi.mock('../mobile-local-data.service.js', () => ({ invalidateMobileDataVersions: vi.fn() }));
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  orderPlacementBranchState: { delete: vi.fn() },
+  orderPlacementBranchState: { delete: vi.fn(), findMany: vi.fn() },
+  $queryRaw: vi.fn(),
   orderPlacementEvent: { delete: vi.fn(), deleteMany: vi.fn(), update: vi.fn(), create: vi.fn() }
 } }));
 
@@ -35,4 +37,16 @@ describe('deleteOrderPlacementBranch', () => {
     vi.mocked(prisma.orderPlacementBranchState.delete).mockRejectedValue(error);
     await expect(deleteOrderPlacementBranch('branch')).rejects.toBe(error);
   });
+});
+
+it('lists active branches while retaining the stored completed branch', async () => {
+  const common = { manufacturingOrderBarcodeRaw: '001', branchNo: 1, shelfCodeRaw: 'A', csvDashboardRowId: null, updatedAt: new Date() };
+  const rows = [
+    { ...common, id: 'order', slipKind: 'manufacturing_order', scheduleSnapshot: null },
+    { ...common, id: 'purchase', slipKind: 'purchase_order', scheduleSnapshot: null },
+  ];
+  vi.mocked(prisma.orderPlacementBranchState.findMany).mockResolvedValue(rows as never);
+  vi.mocked(prisma.$queryRaw).mockResolvedValue([{ productNo: '001' }]);
+  expect((await listOrderPlacementBranches('001')).map(row => row.id)).toEqual(['purchase']);
+  expect(prisma.orderPlacementBranchState.delete).not.toHaveBeenCalled();
 });

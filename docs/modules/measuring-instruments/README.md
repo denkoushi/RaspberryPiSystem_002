@@ -211,8 +211,8 @@ apps/api/src/
 **実機検証**: TS100以外の機能は実機検証済み
 
 **ナレッジベース**: 
-- [KB-090](../../knowledge-base/api.md#kb-090-キオスクから計測機器一覧を取得できない問題client-key認証追加)
-- [KB-091](../../knowledge-base/frontend.md#kb-091-キオスク持出フローの改善選択-or-タグuid点検項目なしでも送信)
+- KB-090（本文欠落。[索引](../../knowledge-base/index.md) に題名のみ）
+- KB-091 キオスク持出フローの改善（本文欠落）
 - [KB-092](../../knowledge-base/infrastructure/miscellaneous.md#kb-092-pi4キオスクのgpuクラッシュ問題)
 - [KB-093](../../knowledge-base/infrastructure/miscellaneous.md#kb-093-計測機器apiの401エラー期限切れjwtとx-client-keyの競合)
 - [KB-094](../../knowledge-base/api.md#kb-094-サイネージ左ペインで計測機器と工具を視覚的に識別できない)

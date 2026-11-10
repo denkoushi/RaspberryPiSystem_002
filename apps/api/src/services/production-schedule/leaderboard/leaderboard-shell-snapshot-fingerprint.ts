@@ -5,6 +5,7 @@ import type { ProductionScheduleCompletionFilter } from '../production-schedule-
  * 正規化してソート順を固定し、JSON 一本化で比較する。
  */
 export function buildLeaderboardShellFilterFingerprint(input: {
+  dueSource?: 'excel' | 'scaw';
   locationKey: string;
   siteKey?: string;
   queryText: string;
@@ -19,6 +20,7 @@ export function buildLeaderboardShellFilterFingerprint(input: {
   completionFilter?: ProductionScheduleCompletionFilter;
 }): string {
   const normalized = {
+    dueSource: input.dueSource ?? 'excel',
     locationKey: input.locationKey.trim(),
     siteKey: (input.siteKey ?? '').trim(),
     queryText: input.queryText.trim(),

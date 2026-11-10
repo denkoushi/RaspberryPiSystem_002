@@ -6,6 +6,7 @@ import type {
   ProductionScheduleCompletionFilter
 } from './schedule';
 import type { SelfInspectionStatus } from '../../../features/part-measurement/types';
+import type { GrindingPlanningBoardSpecialDue } from '@raspi-system/shared-types';
 
 export type ProductionScheduleLeaderboardShellResponse = Pick<ProductionScheduleListResponse, 'page' | 'pageSize' | 'rows'> & {
   /** shell 応答で付与。continue で送信し軽量経路となる。 */
@@ -21,6 +22,8 @@ export type ProductionScheduleLeaderboardTotalResponse = { total: number };
 export type ProductionScheduleLeaderboardDecorationsResponse = {
   rowDecorations: Array<{
     id: string;
+    arrived?: boolean;
+    specialDue?: GrindingPlanningBoardSpecialDue | null;
     resolvedMachineName: string | null;
     customerName: string | null;
     hasSelfInspectionDrawing: boolean;
@@ -36,6 +39,7 @@ export type ProductionScheduleLeaderboardDecorationsResponse = {
 };
 
 export type KioskProductionScheduleLeaderboardPhasedQueryParams = {
+  dueSource?: 'excel' | 'scaw';
   productNo?: string;
   q?: string;
   productNos?: string;

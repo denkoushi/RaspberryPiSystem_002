@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * MFA 30日記憶オプションのスモークテスト。
+ * MFA 7日記憶オプションのスモークテスト。
  * API呼び出しはPlaywrightのrouteでモックし、バックエンド依存を排除。
  */
-test.describe('MFA remember-me (30日記憶) smoke', () => {
+test.describe('MFA remember-me (7日記憶) smoke', () => {
   test('remember-meにチェックするとlocalStorageにexpiresAtが保存される', async ({ page }) => {
     // ログインAPIをモックして即座に成功レスポンスを返す
     await page.route('**/api/auth/login', async (route) => {
@@ -29,10 +29,10 @@ test.describe('MFA remember-me (30日記憶) smoke', () => {
     const passwordInput = page.getByLabel(/パスワード/i);
     await usernameInput.fill('admin');
     await passwordInput.fill('mock-password');
-    await page.getByLabel(/30日間この端末でサインイン状態を維持する/i).check();
+    await page.getByLabel(/7日間この端末でサインイン状態を維持する/i).check();
     await page.getByRole('button', { name: /ログイン/i }).click();
 
-    // localStorageに30日記憶のexpiresAtが保存されることを確認
+    // localStorageに7日記憶のexpiresAtが保存されることを確認
     await expect.poll(() => page.evaluate(() => localStorage.getItem('factory-auth'))).not.toBeNull();
     const authData = await page.evaluate(() => JSON.parse(localStorage.getItem('factory-auth')!));
     expect(authData).not.toBeNull();

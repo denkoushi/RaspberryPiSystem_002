@@ -1,5 +1,6 @@
+import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -8,10 +9,12 @@ import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from '../row-resolver/constan
 import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buildGrindingPlanningBoardRowItemId, type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow, type GrindingPlanningBoardProjectionRow, type GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection.js';
 
 
+// SQL BTRIM characters matching ECMAScript String.trim(), used by board keys/definitions.
+export const STRING_TRIM_CHARACTERS = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff';
+
 export const DEFAULT_PAGE_SIZE = 160;
 export const MAX_PAGE_SIZE = 640;
 export const MAX_ALTERNATE_RANK = 2_147_483_647;
-export const SPLIT_PREFIX = 'split:';
 export type ReusablePlanningPayload = {
   siteKey: string;
   generationToken: string;
@@ -20,11 +23,14 @@ export type ReusablePlanningPayload = {
   expiresAtMs: number;
   lastUsedAtMs: number;
   request: {
+    scheduleSource?: GrindingPlanningBoardScheduleSource;
+    dueSource?: 'excel' | 'scaw';
     category: GrindingPlanningBoardCategory;
     view: GrindingPlanningBoardView;
     requestedFseibans?: string[];
     completionFilter: 'all' | 'complete' | 'incomplete';
     includeLoad: boolean;
+    includePieces?: boolean;
   };
 };
 
@@ -40,19 +46,12 @@ export type RankRow = {
   siteKey: string;
   location: string;
 };
-export type SplitRankRow = {
-  splitId: string;
-  resourceCd: string;
-  orderNumber: number;
-  updatedAt: Date;
-  siteKey: string;
-  location: string;
-};
 export type PlanningState = {
   id: string;
   version: number;
   updatedAt?: Date | null;
   seibanOrder: Prisma.JsonValue;
+  uncheckedFseibans?: Prisma.JsonValue;
 };
 export type PlanningSnapshotGenerationDetails = {
   generationToken: string;
@@ -61,19 +60,17 @@ export type PlanningSnapshotGenerationDetails = {
   boardUpdatedAt: string;
 };
 export type CurrentProjection = {
+  resourceMinutes: GrindingPlanningBoardResourceMinutesResponse;
   state: PlanningState;
   byItemId: Map<string, GrindingPlanningBoardItem>;
   overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;
   rows: WinnerRow[];
   details: Map<string, RowDetail>;
   ranks: GrindingPlanningBoardProjectionRanks;
+  pieceSets?: Map<string, SessakuPieceSet>;
   progressRows: GrindingPlanningBoardProgressRow[];
-  splitEnabled: boolean;
   policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>;
-  sourceRowIds: Map<string, string>;
   masterResourceCds: Set<string>;
-  parentEffectiveDueBySourceRow: Map<string, string | null>;
-  splitOriginalDueByItemId: Map<string, string | null>;
 };
 
 export function asRowData(value: unknown): RowData {
@@ -188,6 +185,7 @@ export type PlanningSource = {
   generationToken: string;
   rows: WinnerRow[];
   details: Map<string, RowDetail>;
+  pieceSets?: Map<string, SessakuPieceSet>;
   progressRows: GrindingPlanningBoardProgressRow[];
 };
 
@@ -215,3 +213,7 @@ export type AppliedOverrides = {
   current: CurrentProjection;
   overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>;
 };
+
+export function planningBoardArrivalDate(now = new Date()): string {
+  return new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}

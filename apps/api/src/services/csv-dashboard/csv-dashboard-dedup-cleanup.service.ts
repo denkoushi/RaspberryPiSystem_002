@@ -60,7 +60,7 @@ const toSqlDirection = (direction: WinnerOrderSpec['direction']): Prisma.Sql => 
  * - winner順序は呼び出し側から注入（既存ProductionSchedule互換を維持）
  */
 export class CsvDashboardDedupCleanupService {
-  async deleteDuplicateLosersForKeys(params: CleanupDuplicateLosersParams): Promise<{ deletedCount: number }> {
+  async deleteDuplicateLosersForKeys(params: CleanupDuplicateLosersParams, executor: Pick<Prisma.TransactionClient, '$executeRaw'> = prisma): Promise<{ deletedCount: number }> {
     const keyColumns = params.keyColumns.filter((v) => v.trim().length > 0);
     const normalizedKeys = this.normalizeKeys(params.keys, keyColumns);
     if (keyColumns.length === 0 || normalizedKeys.length === 0) {
@@ -95,7 +95,7 @@ export class CsvDashboardDedupCleanupService {
         );
 
         const keyColumnsSql = Prisma.join(keyColumns.map((column) => Prisma.raw(`"${column}"`)), ', ');
-        const affected = await prisma.$executeRaw<number>(Prisma.sql`
+        const affected = await executor.$executeRaw<number>(Prisma.sql`
           WITH keys(${keyColumnsSql}) AS (
             VALUES ${valuesSql}
           ),

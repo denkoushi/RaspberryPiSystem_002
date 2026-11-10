@@ -1,4 +1,10 @@
 all:
+  vars:
+    ansible_ssh_common_args: >-
+      -o UserKnownHostsFile={{ (inventory_dir ~ '/known_hosts') | quote }}
+      -o GlobalKnownHostsFile=/dev/null
+      -o HostKeyAlias={{ inventory_hostname }}
+      -o StrictHostKeyChecking=yes
   children:
     server:
       hosts:
@@ -56,7 +62,7 @@ all:
           business_hermes_dgx_token: "{{ vault_api_local_llm_shared_token | default('') }}"
           business_hermes_api_key: "{{ vault_business_hermes_api_key | default('') }}"
           business_hermes_openai_api_key: "{{ vault_business_hermes_openai_api_key | default('') }}"
-          business_hermes_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_image: "nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d"
           business_hermes_egress_image: "node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53"
           business_hermes_runtime_env_file: "/etc/raspi-business-hermes/runtime.env"
           business_hermes_model: "{{ inference_photo_label_model if (business_hermes_provider | default('dgx')) == 'dgx' else (vault_business_hermes_model | default('')) }}"
@@ -93,7 +99,7 @@ all:
           # follows the canonical active slot instead of pinning api-blue/api-green.
           business_hermes_chat_mcp_url: "{{ vault_business_hermes_chat_mcp_url | default('https://gateway/api/internal/business-hermes/mcp') }}"
           business_hermes_chat_dgx_base_url: "{{ private_pi5_dgx_base_url | default('http://100.118.82.72:38081') }}"
-          business_hermes_chat_image: "nousresearch/hermes-agent:latest@sha256:23d7fdefc42ef4f874938835dcc9543468b45c3fe082415095ab48056c56c32a"
+          business_hermes_chat_image: "nousresearch/hermes-agent:v0.22.5@sha256:9c5561579f3ffdf333401797094ac3a743738d6c25d40f4331c7bf77b694238d"
           business_hermes_chat_egress_image: "node:24-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53"
           business_hermes_chat_runtime_env_file: "/etc/raspi-business-hermes-chat/runtime.env"
           business_hermes_chat_config_file: "/etc/raspi-business-hermes-chat/config.yaml"
@@ -125,8 +131,11 @@ all:
           api_local_llm_runtime_warm_window_timezone: "Asia/Tokyo"
           api_local_llm_runtime_warm_window_start_hour: "7"
           api_local_llm_runtime_warm_window_end_hour: "23"
+          # 製番ボード: 切削の指示数を片に分ける操作（新規分割・再分割）を許可する
+          api_sessaku_pieces_create_enabled: "true"
           # DGXリソース管理（未設定時は監視/起停を自動有効化しない）
           api_dgx_resource_metrics_url: "{{ vault_api_dgx_resource_metrics_url | default('') }}"
+          api_business_deepseek_switch_enabled: "{{ vault_api_business_deepseek_switch_enabled | default(false) }}"
           api_dgx_resource_embedding_health_url: "{{ vault_api_dgx_resource_embedding_health_url | default('') }}"
           api_dgx_resource_spark_host_status_url: "{{ vault_api_dgx_resource_spark_host_status_url | default('') }}"
           api_dgx_resource_probe_timeout_ms: "{{ vault_api_dgx_resource_probe_timeout_ms | default('10000') }}"
@@ -181,8 +190,6 @@ all:
           part_measurement_drawing_ocr_rapidocr_weak_score: "0.12"
           # 実績基準時間: actor locationに特徴量が無い場合はshared-global-rankへフォールバック
           actual_hours_shared_fallback_enabled: "true"
-          # 順位ボードの生産指示分割（Step 1 pilotまではfalse。API/Webで値を揃える）
-          kiosk_production_schedule_order_split_enabled: "false"
           # Docker Compose環境変数はgroup_vars/all.ymlで定義済み
           # status-agent設定
           status_agent_client_id: raspberrypi5-server
@@ -248,6 +255,8 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
               ansible_user: tools04
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               # IBus 単一オーナー化は robodrill 先行で段階導入する
@@ -285,6 +294,8 @@ all:
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
               ansible_user: raspi4-fjv60-80
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -320,6 +331,8 @@ all:
               # NOTE: Pi5 から LAN 直が無い場合は新 Pi4 で Tailscale 参加後、group_vars/all.yml の tailscale_network に 100.x を追加
               ansible_host: "{{ current_network.raspi4_kensaku_stonebase01_ip | default(local_network.raspi4_kensaku_stonebase01_ip) }}"
               ansible_user: raspi4-kensaku-stonebase01
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -389,6 +402,8 @@ all:
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
               ansible_user: raspi4-sessaku-01
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え2回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -424,6 +439,8 @@ all:
               # NOTE: Tailscale IP 登録前は local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_assembly_01_ip | default(local_network.raspi4_assembly_01_ip) }}"
               ansible_user: raspi4-assembly-01
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え3回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -482,6 +499,8 @@ all:
               # Kensaku-02 キオスク（Pi4 7台目）
               ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
               ansible_user: raspi4-kensaku-02
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -513,10 +532,11 @@ all:
               nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
               nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
             raspi4-assembly-02:
-              os_security_update_mode: apply
               # Assembly-02 キオスク（Pi4 8台目）
               ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
               ansible_user: raspi4-assembly-02
+              # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え3回目)
+              kiosk_unprivileged_session_enabled: true
               kiosk_browser_engine: "chromium"
               kiosk_browser_mode: "app-like"
               ibus_owner_mode: "single-owner"
@@ -592,7 +612,8 @@ all:
                 - /usr/bin/systemctl stop status-agent.timer
                 - /usr/bin/systemctl restart status-agent.timer
       vars:
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+        kiosk_server_cert_spki_sha256: "r/YEhqMVoGQ+qmTUCn2lUq+a0XWS1IgGBbpunlszobE="
+        client_server_cert_sha256: "9a104cdf9ef4c95cf55aab988e508388fe99e09fd3b02957793600adbbcbcce3"
         ansible_python_interpreter: /usr/bin/python3
         status_agent_api_base_url: "{{ api_base_url }}"
         status_agent_tls_skip_verify: "1"

@@ -10,7 +10,7 @@
       - >-
         ('torque-agent' not in release_kiosk_agent_services)
         or (release_torque_cutover | default(false) | bool
-          and release_kiosk_torque_image is match('^ghcr\\.io/denkoushi/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
+          and release_kiosk_torque_image is match('^ghcr\\.io/' ~ (raspisys_github_owner | regex_escape) ~ '/raspisys-torque-agent@sha256:[0-9a-f]{64}$'))
         or (not (release_torque_cutover | default(false) | bool)
           and release_sha in release_kiosk_torque_image)
       - >-
@@ -20,6 +20,10 @@
     fail_msg: >-
       Pi4 release requires an exact SHA, safe run ID, immutable OCI images,
       the supported torque protocol when selected, and an inventory host in the kiosk group.
+
+- name: Prepare the client server certificate pin before configuring agents
+  ansible.builtin.import_role:
+    name: client_server_cert_pin
 
 - name: Select agents enabled for this Pi4
   ansible.builtin.set_fact:
@@ -54,6 +58,10 @@
 - name: Prove this Pi4 is empty before first-install mutation
   ansible.builtin.import_tasks: first_install_preflight.yml
   when: release_kiosk_first_install | bool
+
+- name: Prepare the optional GUI account before release staging
+  ansible.builtin.import_tasks: "{{ playbook_dir }}/../tasks/kiosk-gui-user.yml"
+  when: manage_kiosk_browser | default(false) | bool
 
 - name: Reuse kiosk role browser executable resolution for release staging
   ansible.builtin.include_role:
@@ -161,6 +169,14 @@
     - "{{ release_kiosk_run_dir }}"
     - "{{ release_kiosk_stage_dir }}"
 
+- name: Prepare the reversible GUI session transaction
+  ansible.builtin.import_tasks: prepare_gui_session.yml
+  environment:
+    LC_ALL: C.UTF-8
+    LANG: C.UTF-8
+    LANGUAGE: ''
+  when: manage_kiosk_browser | default(false) | bool
+
 - name: Provision the empty Pi4 runtime
   ansible.builtin.import_tasks: first_install.yml
   when: release_kiosk_first_install | bool
@@ -267,6 +283,18 @@
   changed_when: >-
     'Downloaded newer image' in release_kiosk_pull.stdout
     or 'Pull complete' in release_kiosk_pull.stdout
+
+# One log line per Pi4 so a normal deploy measures pull time (fleet-100 M5 Step 3).
+# delta is the last attempt only; attempts shows whether retries happened.
+- name: Report Pi4 image pull time
+  ansible.builtin.debug:
+    msg: >-
+      pull-timing host={{ inventory_hostname }}
+      first_start={{ (release_kiosk_pull.results | default([]) | first | default({})).start | default('na') }}
+      last_end={{ (release_kiosk_pull.results | default([]) | last | default({})).end | default('na') }}
+      {% for result in release_kiosk_pull.results | default([]) %}
+      {{ result.item }}={{ result.delta | default('na') }}/attempts={{ result.attempts | default(1) }}/changed={{ result.changed | default(false) }}
+      {% endfor %}
 
 - name: Inspect exact local Pi4 candidate identities
   ansible.builtin.command:
@@ -401,7 +429,11 @@
 
 - name: Stage the Pi4 storage maintenance script
   ansible.builtin.copy:
-    src: "{{ playbook_dir }}/../../../scripts/client/pi4-storage-maintenance.sh"
+    content: >-
+      {{ lookup('file', playbook_dir ~ '/../../../scripts/client/pi4-storage-maintenance.sh')
+         | regex_replace('(?m)^GITHUB_OWNER=.*$', 'GITHUB_OWNER=' ~ (raspisys_github_owner | quote))
+         | regex_replace('(?m)^HISTORICAL_GITHUB_OWNERS=.*$',
+                         'HISTORICAL_GITHUB_OWNERS=(' ~ (raspisys_historical_github_owners | map('quote') | join(' ')) ~ ')') }}
     dest: "{{ release_kiosk_stage_dir }}/pi4-storage-maintenance.sh"
     owner: root
     group: root
@@ -429,7 +461,7 @@
     mode: '0755'
   vars:
     kiosk_release_sha: "{{ release_sha }}"
-  when: release_kiosk_services | length > 0
+  when: release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool)
 
 - name: Stage the kiosk browser unit
   ansible.builtin.template:
@@ -438,7 +470,7 @@
     owner: root
     group: root
     mode: '0644'
-  when: release_kiosk_services | length > 0
+  when: release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool)
 
 - name: Stage NFC agent environment
   ansible.builtin.template:
@@ -497,7 +529,7 @@
         + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-launch.sh', 'dest': '/usr/local/bin/kiosk-launch.sh', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-browser.service', 'dest': '/etc/systemd/system/kiosk-browser.service', 'mode': '0644'},
-        ] if release_kiosk_services | length > 0 else [])
+        ] if release_kiosk_services | length > 0 or (release_kiosk_gui_session_files_required | default(false) | bool) else [])
         + ([
           {'src': release_kiosk_stage_dir ~ '/kiosk-hotcorner.py', 'dest': '/usr/local/bin/kiosk-hotcorner.py', 'mode': '0755'},
           {'src': release_kiosk_stage_dir ~ '/kiosk-labwc-config.py', 'dest': '/usr/local/bin/kiosk-labwc-config.py', 'mode': '0755'},
@@ -509,6 +541,26 @@
         + ([{'src': release_kiosk_stage_dir ~ '/barcode-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/barcode-agent/.env', 'mode': '0600'}] if 'barcode-agent' in release_kiosk_services else [])
         + ([{'src': release_kiosk_stage_dir ~ '/torque-agent.env', 'dest': release_kiosk_project_dir ~ '/clients/torque-agent/.env', 'mode': '0600'}] if 'torque-agent' in release_kiosk_services else [])
       }}
+
+- name: Persist this run's prepared Pi4 cleanup manifest
+  ansible.builtin.copy:
+    dest: "{{ release_kiosk_run_dir }}/prepared.json"
+    content: >-
+      {{ {
+        'candidate_images': release_kiosk_pull.results | default([])
+          | selectattr('rc', 'defined') | selectattr('rc', 'equalto', 0)
+          | selectattr('changed', 'equalto', true) | map(attribute='item')
+          | map('extract', release_kiosk_candidate_images) | list,
+        'rollback_images': release_kiosk_captured_services | default([])
+          | map('extract', release_kiosk_rollback_images) | list,
+        'backup_files': release_kiosk_install.results | default([])
+          | selectattr('changed', 'equalto', true)
+          | selectattr('backup_file', 'defined') | map(attribute='backup_file') | list
+      } | to_json }}
+    owner: root
+    group: root
+    mode: '0600'
+  when: not (release_torque_cutover | default(false) | bool)
 
 - name: Seal this run's prepared kiosk identity
   ansible.builtin.set_fact:

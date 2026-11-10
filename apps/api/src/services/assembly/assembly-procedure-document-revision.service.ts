@@ -135,8 +135,8 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async createRevision(sourceId: string, accessPassword: string | undefined): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(accessPassword);
+  async createRevision(sourceId: string, accessPassword: string | undefined, caller: AssemblyProcedureEditActor = {}): Promise<AssemblyProcedureDocumentRevisionRecord> {
+    await this.accessService.requireAccessPassword(accessPassword, caller);
     return runAssemblyTransaction(async (tx) => {
       const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
         SELECT d."id", d."status", d."isActive", r."revisionRootId", r."revisionNumber",
@@ -254,7 +254,7 @@ export class AssemblyProcedureDocumentRevisionService {
   }
 
   async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string; afterPageIndex?: number }) {
-    await this.accessService.requireAccessPassword(params.accessPassword);
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -327,7 +327,7 @@ export class AssemblyProcedureDocumentRevisionService {
     appliedCaptionElementIds?: string[];
     accessPassword?: string;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword);
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
     }
@@ -469,7 +469,7 @@ export class AssemblyProcedureDocumentRevisionService {
     accessPassword?: string;
     expectedEditVersion?: number;
   }): Promise<AssemblyProcedureDocumentRevisionRecord> {
-    await this.accessService.requireAccessPassword(params.accessPassword);
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
     let discardedPagePaths: string[] = [];
     let discardedAssetIds: string[] = [];
     const result = await runAssemblyTransaction(async (tx) => {

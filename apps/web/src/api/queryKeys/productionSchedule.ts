@@ -64,19 +64,20 @@ export const productionScheduleQueryKeys = {
   manualOrderResourceAssignments: (siteKey?: string) =>
     ['kiosk-production-schedule-manual-order-resource-assignments', siteKey] as const,
   grindingPlanningBoardAll: ['kiosk-grinding-planning-board'] as const,
-  grindingPlanningBoardProcessChips: (parts: Parameters<typeof getKioskGrindingPlanningBoardProcessChips>[0]['parts']) =>
-    ['kiosk-grinding-planning-board', 'process-chips', parts] as const,
+  grindingPlanningBoardProcessChips: (parts: Parameters<typeof getKioskGrindingPlanningBoardProcessChips>[0]['parts'], scheduleSource?: Parameters<typeof getKioskGrindingPlanningBoardProcessChips>[1]) =>
+    ['kiosk-grinding-planning-board', 'process-chips', parts, ...(scheduleSource == null ? [] : [scheduleSource])] as const,
   grindingPlanningBoard: (params?: Parameters<typeof getKioskGrindingPlanningBoard>[0]) =>
     ['kiosk-grinding-planning-board', params] as const,
   grindingPlanningBoardLoadAll: ['kiosk-grinding-planning-board', 'load'] as const,
-  grindingPlanningBoardLoad: (category: Parameters<typeof getKioskGrindingPlanningBoardLoad>[0]) =>
-    ['kiosk-grinding-planning-board', 'load', category] as const,
+  grindingPlanningBoardLoad: (category: Parameters<typeof getKioskGrindingPlanningBoardLoad>[0], scheduleSource?: Parameters<typeof getKioskGrindingPlanningBoardLoad>[1]) =>
+    ['kiosk-grinding-planning-board', 'load', category, ...(scheduleSource == null ? [] : [scheduleSource])] as const,
   grindingPlanningBoardSnapshot: (params?: Parameters<typeof getKioskGrindingPlanningBoardSnapshot>[0]) =>
     ['kiosk-grinding-planning-board', 'snapshot', params] as const,
   grindingPlanningBoardSeibanCandidates: (params?: Parameters<typeof getKioskGrindingPlanningBoardSeibanCandidates>[0]) =>
     ['kiosk-grinding-planning-board', 'seiban-candidates', params] as const,
   grindingPlanningBoardDueDetail: (fseiban: string | null) =>
     ['kiosk-grinding-planning-board-due-detail', fseiban] as const,
+  planningBoardResourceMinutesAll: ['kiosk-planning-board-resource-minutes'] as const,
   planningBoardResourceCapacityAll: ['kiosk-planning-board-resource-capacity'] as const,
   leaderboardShellAll: ['kiosk-production-schedule', 'leaderboard-shell'] as const,
   leaderboardShell: (params?: Parameters<typeof getKioskProductionScheduleLeaderboardShell>[0]) =>
@@ -100,17 +101,15 @@ export const productionScheduleQueryKeys = {
   loadBalancingMonthlyCapacity: (location: string, yearMonth: string) =>
     ['production-schedule-load-balancing-monthly-capacity', location, yearMonth] as const,
   loadBalancingWorkspaceAll: ['kiosk-production-schedule-load-balancing-workspace'] as const,
-  loadBalancingWorkspace: (params: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspace>[0]) =>
-    ['kiosk-production-schedule-load-balancing-workspace', params] as const,
+  loadBalancingWorkspace: ({ dueSource, ...params }: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspace>[0]) =>
+    ['kiosk-production-schedule-load-balancing-workspace', { ...params, dueSource }] as const,
   loadBalancingWorkspaceDayAll: ['kiosk-production-schedule-load-balancing-workspace-day'] as const,
-  loadBalancingWorkspaceDay: (params: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspaceDay>[0]) =>
-    ['kiosk-production-schedule-load-balancing-workspace-day', params] as const,
+  loadBalancingWorkspaceDay: ({ dueSource, ...params }: Parameters<typeof getKioskProductionScheduleLoadBalancingWorkspaceDay>[0]) =>
+    ['kiosk-production-schedule-load-balancing-workspace-day', { ...params, dueSource }] as const,
   resourceCategorySettings: (location: string) => ['production-schedule-resource-category-settings', location] as const,
   dueManagementAccessPasswordSettings: (location: string) =>
     ['production-schedule-due-management-access-password-settings', location] as const,
   processingTypeOptions: (location: string) => ['production-schedule-processing-type-options', location] as const,
   resourceCodeMappings: (location: string) => ['production-schedule-resource-code-mappings', location] as const,
-  orderSplitPilotSettingsAll: ['production-schedule-order-split-pilot-settings'] as const,
-  orderSplitStatusAll: ['kiosk-production-schedule-order-split-status'] as const,
   dueManagementSeibanDetailAll: ['kiosk-production-schedule-due-management-seiban-detail'] as const,
 };

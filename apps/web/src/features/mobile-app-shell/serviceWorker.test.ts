@@ -295,6 +295,30 @@ describe('shipped mobile Service Worker', () => {
     expect(worker.self.skipWaiting).not.toHaveBeenCalled();
   });
 
+  it('saves a shell whose dependency graph includes a hashed .html asset served as text/html', async () => {
+    const worker = setup();
+    manifest.lazy = { file: 'assets/lazy.js', imports: ['vendor'], assets: ['assets/manual-abc.html'] } as typeof manifest.lazy;
+    try {
+      const originalFetch = worker.fetch.getMockImplementation()!;
+      worker.fetch.mockImplementation(async (input) => String(typeof input === 'string' ? input : input.url).includes('/assets/manual-')
+        ? new Response('<html>manual</html>', { headers: { 'content-type': 'text/html; charset=utf-8' } })
+        : originalFetch(input));
+      await worker.dispatch('install').done();
+      expect(await (await (await worker.caches.open(assetName)).match('/assets/manual-abc.html'))?.text()).toBe('<html>manual</html>');
+      expect(await (await (await worker.caches.open(shellName)).match('/index.html'))?.text()).toBe(html());
+    } finally {
+      manifest.lazy = { file: 'assets/lazy.js', imports: ['vendor'] };
+    }
+  });
+
+  it('still rejects an HTML fallback for a JavaScript asset', async () => {
+    const worker = setup();
+    const originalFetch = worker.fetch.getMockImplementation()!;
+    worker.fetch.mockImplementation(async (input) => String(typeof input === 'string' ? input : input.url).endsWith('lazy.js') ? htmlResponse('maintenance') : originalFetch(input));
+    await expect(worker.dispatch('install').done()).rejects.toThrow('asset unavailable');
+    expect(await (await worker.caches.open(shellName)).match('/index.html')).toBeUndefined();
+  });
+
   it('rejects mismatched HTML/manifest and does not cache a maintenance page', async () => {
     const worker = setup();
     const originalFetch = worker.fetch.getMockImplementation()!;

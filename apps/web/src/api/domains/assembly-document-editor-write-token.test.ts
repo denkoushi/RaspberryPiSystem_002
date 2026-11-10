@@ -34,7 +34,7 @@ const mutations = {
   imageRegion: () => createAssemblyProcedureImageRegion({ ...input, pageIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 1, heightRatio: 1 } }),
   videos: () => replaceProcedurePageVideos(input.id, 0, [], input.accessPassword, input.holderToken),
   rename: () => renameAssemblyProcedureDocument(input.id, '変更後', input.holderToken),
-  delete: () => deleteAssemblyProcedureDocument(input.id, input.holderToken)
+  delete: () => deleteAssemblyProcedureDocument(input.id, input.accessPassword, input.holderToken)
 };
 
 describe('document editor mutation tokens', () => {
@@ -47,6 +47,13 @@ describe('document editor mutation tokens', () => {
     // The strict API body schemas continue receiving only their declared fields.
     if (typeof call[1] === 'object' && !(call[1] instanceof FormData)) expect(call[1]).not.toHaveProperty('holderToken');
   });
+  it('sends the deletion password with the edit token', async () => {
+    await mutations.delete();
+    expect(mocks.delete).toHaveBeenCalledWith('/assembly/procedure-documents/document', {
+      data: { accessPassword: 'pw' }, headers: { 'x-procedure-edit-token': 'session-token' }
+    });
+  });
+
   it('sends optional caption ids in the overlay save body and omits them for old callers', async () => {
     await saveAssemblyProcedureDocumentOverlays({ ...input, elements: [], appliedCaptionElementIds: ['caption'] });
     expect(mocks.put).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ appliedCaptionElementIds: ['caption'] }), expect.any(Object));

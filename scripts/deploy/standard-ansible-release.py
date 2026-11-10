@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 from release_artifact_contract import (
+    GHCR_NAMESPACE,
+    SOURCE_REPOSITORY,
     PI4_AGENT_SERVICES,
     ReleaseSet,
     TORQUE_ADOPTION_PREDICATE_TYPE,
@@ -37,6 +39,9 @@ from controller_gh_verifier import resolve_attestation_verifier
 from rolling_release.safe_diagnostics import summarize_release_journal
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts/ci"))
+from classify_changes import classify_changes, parse_name_status_z, requires_complete_fleet_artifacts
+
 ANSIBLE = ROOT / "infrastructure/ansible"
 PLAYBOOK = ANSIBLE / "playbooks/deploy-release-standard.yml"
 REMOTE_ROOT = Path("/opt/RaspberryPiSystem_002")
@@ -156,6 +161,7 @@ def parser() -> Parser:
     value.add_argument("--hermes-search-trial-maintenance", choices=("on", "off"))
     value.add_argument("--status")
     value.add_argument("--execute-standard-route", action="store_true", help=argparse.SUPPRESS)
+    value.add_argument("--release-artifact-sha", help=argparse.SUPPRESS)
     value.add_argument("--sha", help=argparse.SUPPRESS)
     value.add_argument("--run-id", help=argparse.SUPPRESS)
     value.add_argument("--profiles", help=argparse.SUPPRESS)
@@ -188,6 +194,8 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
         raise UsageError("Hermes search trial maintenance cannot be combined with full-fleet or torque cutover")
     if args.print_plan and args.detach:
         raise UsageError("--print-plan cannot be combined with --detach")
+    if args.release_artifact_sha is not None and (not args.execute_standard_route or not FULL_SHA.fullmatch(args.release_artifact_sha)):
+        raise UsageError("--release-artifact-sha requires --execute-standard-route and a full 40-hex SHA")
     if args.status:
         if any((args.branch, args.limit, args.full_fleet, args.print_plan, args.detach, args.torque_cutover, args.first_install, args.skip_kiosk_notice, args.hermes_search_trial_maintenance, args.execute_standard_route)):
             raise UsageError("--status accepts only RUN_ID and optional --inventory")
@@ -213,6 +221,7 @@ def parse_arguments(argv: Sequence[str]) -> argparse.Namespace:
             raise UsageError("internal standard route profiles are malformed")
     elif args.sha or args.run_id or args.profiles:
         raise UsageError("internal standard route options are not public")
+    args.release_artifact_sha = args.release_artifact_sha or args.sha
     return args
 
 
@@ -228,6 +237,13 @@ def inventory_path(value: str) -> tuple[Path, str]:
     ):
         raise UsageError("inventory must be a regular YAML file in infrastructure/ansible")
     return resolved, resolved.relative_to(ROOT).as_posix()
+
+
+def gateway_recreate_environment() -> dict[str, str]:
+    value = os.environ.get("PI5_GATEWAY_RECREATE", "")
+    if value not in {"", "true", "false"}:
+        raise UsageError("PI5_GATEWAY_RECREATE must be true, false, or empty")
+    return {"PI5_GATEWAY_RECREATE": value}
 
 
 def ansible_environment() -> dict[str, str]:
@@ -511,6 +527,71 @@ def config_hash(sha: str, inventory: Path) -> str:
         return build_config_hash(parse_contract_json(contract.read_text(encoding="utf-8"), sha))
 
 
+def image_free_changes(artifact_sha: str, sha: str) -> list[str]:
+    diff = run(["git", "diff", "--name-status", "-z", artifact_sha, sha]).stdout
+    changes = parse_name_status_z(diff.encode("utf-8", "surrogateescape"))
+    result = classify_changes(changes)
+    paths = sorted({change.path for change in changes})
+    if any(result[key] for key in (
+        "releasePair", "dockerApi", "dockerWeb", "torqueComposition",
+        "pi4AgentServices", "failClosedReasons",
+    )) or any(requires_complete_fleet_artifacts(path) for path in paths):
+        raise RuntimeError(f"artifact candidate {artifact_sha} is not image-free: {', '.join(paths)}")
+    return paths
+
+
+def require_pi5_fallback(profiles: tuple[str, ...], *, torque_cutover: bool = False, first_install: bool = False) -> None:
+    if profiles != ("pi5",) or torque_cutover or first_install:
+        raise RuntimeError("release artifact fallback is Pi5-only; unavailable for Pi4/Pi3, torque cutover or first-install")
+
+
+def resolve_release_artifact_sha(
+    sha: str, inventory: Path, profiles: tuple[str, ...], *,
+    torque_cutover: bool = False, first_install: bool = False, cap: int = 20,
+) -> tuple[str, dict[str, Any] | None]:
+    def exists(candidate: str) -> bool:
+        suffix = "-torque-v2" if torque_cutover else ""
+        reference = f"{GHCR_NAMESPACE}/raspisys-release-set:{candidate}-{config_hash(candidate, inventory)}{suffix}"
+        result = run(["docker", "manifest", "inspect", reference], check=False)
+        if result.returncode == 0:
+            return True
+        if not re.search(r"manifest unknown|not found", result.stderr, re.IGNORECASE):
+            raise RuntimeError(f"cannot inspect release set for {candidate}: {result.stderr.strip()}")
+        return False
+
+    if exists(sha):
+        return sha, None
+    require_pi5_fallback(profiles, torque_cutover=torque_cutover, first_install=first_install)
+    candidates = run(["git", "rev-list", "--first-parent", f"--max-count={cap}", sha]).stdout.splitlines()
+    checked = 0
+    for candidate in candidates:
+        if candidate == sha:
+            continue
+        checked += 1
+        paths = image_free_changes(candidate, sha)
+        if exists(candidate):
+            return candidate, {
+                "reason": f"head {sha} has no signed release set; changes since {candidate} are image-free (docs only)",
+                "candidatesChecked": checked,
+                "changedPaths": paths,
+            }
+    raise RuntimeError(f"no ancestor release set found within first-parent cap {cap} for {sha} ({checked} candidates checked)")
+
+
+def verify_release_artifact_sha(args: argparse.Namespace, profiles: tuple[str, ...]) -> str:
+    artifact_sha = getattr(args, "release_artifact_sha", None) or args.sha
+    if not FULL_SHA.fullmatch(artifact_sha):
+        raise RuntimeError("release artifact SHA must be a full 40-hex SHA")
+    if artifact_sha != args.sha:
+        require_pi5_fallback(profiles, torque_cutover=bool(getattr(args, "torque_cutover", False)), first_install=bool(getattr(args, "first_install", False)))
+        if run(["git", "cat-file", "-e", f"{artifact_sha}^{{commit}}"], check=False).returncode:
+            run(["git", "fetch", "--no-tags", "origin", artifact_sha])
+        if run(["git", "merge-base", "--is-ancestor", artifact_sha, args.sha], check=False).returncode:
+            raise RuntimeError(f"release artifact {artifact_sha} is not an ancestor of {args.sha}")
+        image_free_changes(artifact_sha, args.sha)
+    return artifact_sha
+
+
 def image_plan(
     sha: str,
     profiles: tuple[str, ...],
@@ -518,11 +599,13 @@ def image_plan(
     *,
     torque_cutover: bool = False,
     agent_services: Sequence[str] | None = None,
+    release_artifact_sha: str | None = None,
 ) -> dict[str, Any]:
+    artifact_sha = release_artifact_sha or sha
     result: dict[str, Any] = {}
     if "pi5" in profiles:
         suffix = build_hash[:16]
-        result["pi5"] = [f"ghcr.io/denkoushi/raspisys-api:{sha}-{suffix}", f"ghcr.io/denkoushi/raspisys-web:{sha}-{suffix}"]
+        result["pi5"] = [f"{GHCR_NAMESPACE}/raspisys-api:{artifact_sha}-{suffix}", f"{GHCR_NAMESPACE}/raspisys-web:{artifact_sha}-{suffix}"]
     if "pi4" in profiles:
         selected_agents = tuple(
             ((TORQUE_CUTOVER_SERVICE,) if torque_cutover else PI4_AGENT_SERVICES)
@@ -537,11 +620,11 @@ def image_plan(
             result["pi4"] = [f"release-set-v2:{sha}:torque-agent"]
         else:
             result["pi4"] = [
-                f"ghcr.io/denkoushi/raspisys-{service.removesuffix('-agent')}-agent:{sha}"
+                f"{GHCR_NAMESPACE}/raspisys-{service.removesuffix('-agent')}-agent:{sha}"
                 for service in selected_agents
             ]
     if "pi3" in profiles:
-        result["pi3"] = [f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"]
+        result["pi3"] = [f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{sha}"]
     return result
 
 
@@ -560,6 +643,22 @@ def ansible_argv(
         command.extend(["--limit", limit])
     if listing:
         command.append(listing)
+    return command
+
+
+def pi4_failure_cleanup_argv(
+    inventory: str, limit: str, profiles: tuple[str, ...], run_id: str,
+    *, torque_cutover: bool = False,
+) -> list[str] | None:
+    if torque_cutover or "pi4" not in profiles:
+        return None
+    command = [
+        "ansible-playbook", "-i", inventory,
+        str(ANSIBLE / "playbooks/release-pi4-failure-cleanup.yml"),
+        "--extra-vars", json.dumps({"release_run_id": run_id}),
+    ]
+    if limit:
+        command.extend(["--limit", limit])
     return command
 
 
@@ -599,13 +698,15 @@ def plan(
 ) -> dict[str, Any]:
     profiles = tuple(item[0] for item in selection)
     torque_cutover = bool(getattr(args, "torque_cutover", False))
-    build_hash = config_hash(sha, inventory) if "pi5" in profiles else ""
+    artifact_sha = getattr(args, "release_artifact_sha", None) or sha
+    build_hash = config_hash(artifact_sha, inventory) if "pi5" in profiles else ""
     images = image_plan(
         sha,
         profiles,
         build_hash,
         torque_cutover=torque_cutover,
         agent_services=agent_services,
+        release_artifact_sha=artifact_sha,
     )
     selected_agents = tuple(
         ((TORQUE_CUTOVER_SERVICE,) if torque_cutover else PI4_AGENT_SERVICES)
@@ -613,7 +714,7 @@ def plan(
         else agent_services
     )
     pi4_hosts = list(dict(selection).get("pi4", ()))
-    variables = {"release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(selected_agents)}
+    variables = {"release_pi5_image_sha": artifact_sha, "release_sha": sha, "release_run_id": "plan-preview", "release_pi5_api_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[0], "release_pi5_web_image": images.get("pi5", [f"unused:{sha}", f"unused-web:{sha}"])[1], "release_signage_artifact_sha256": "0" * 64, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(selected_agents)}
     if getattr(args, "first_install", False):
         variables["release_kiosk_first_install"] = True
     if getattr(args, "hermes_search_trial_maintenance", None):
@@ -622,14 +723,16 @@ def plan(
         variables.update(
             {
                 "release_kiosk_torque_image": (
-                    f"ghcr.io/denkoushi/raspisys-torque-agent@sha256:{'0' * 64}"
+                    f"{GHCR_NAMESPACE}/raspisys-torque-agent@sha256:{'0' * 64}"
                 ),
                 "release_torque_protocol_contract_version": 1,
             }
         )
     for listing in ("--list-hosts", "--list-tasks"):
         run(ansible_argv(str(inventory), args.limit, profiles, variables, listing, torque_cutover=torque_cutover), env=ansible_environment())
-    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "agentServices": list(selected_agents), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    result = {"schemaVersion": 1, "branch": args.branch, "releaseSha": sha, "releaseArtifactSha": artifact_sha, "inventory": relative, "limit": args.limit or None, "fullFleet": args.full_fleet, "remoteRoot": str(remote_root), "agentServices": list(selected_agents), "executionOrder": [{"profile": profile, "hosts": list(hosts), "images": images[profile]} for profile, hosts in selection]}
+    if getattr(args, "release_artifact_fallback", None):
+        result["releaseArtifactFallback"] = args.release_artifact_fallback
     if getattr(args, "first_install", False):
         result["firstInstall"] = {"hosts": pi4_hosts, "rollbackTarget": "empty"}
     if torque_cutover:
@@ -671,7 +774,7 @@ def remote_script(
     profiles: tuple[str, ...],
     remote_root: Path = REMOTE_ROOT,
 ) -> str:
-    internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
+    internal = ["python3", "scripts/deploy/standard-ansible-release.py", "--execute-standard-route", "--branch", args.branch, "--inventory", relative, "--sha", sha, "--release-artifact-sha", getattr(args, "release_artifact_sha", None) or sha, "--run-id", run_id, "--profiles", ",".join(profiles)]
     if getattr(args, "torque_cutover", False):
         internal.append("--torque-cutover")
     if getattr(args, "first_install", False):
@@ -1046,7 +1149,7 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
     else:
         command.append("--wait")
     for key, value in (hermes_environment or {}).items():
-        if key not in {"HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
+        if key not in {"PI5_GATEWAY_RECREATE", "HERMES_SEARCH_TRIAL_ENABLED", "HERMES_SEARCH_TRIAL_JEV_ENABLED",
                        "HERMES_SEARCH_RECORD_CLASSIFICATION_ENABLED",
                        "HERMES_RETRIEVAL_V2_ENABLED",
                        "HERMES_RETRIEVAL_SOURCES",
@@ -1065,6 +1168,8 @@ def systemd_argv(args: argparse.Namespace, sha: str, run_id: str, relative: str,
                        "HERMES_SEARCH_TRIAL_ARTIFACT", "HERMES_SEARCH_TRIAL_MAINTENANCE",
                        "HERMES_ANSWER_CACHE_ARTIFACT"}:
             raise UsageError("unsupported Hermes release environment")
+        if key == "PI5_GATEWAY_RECREATE" and value not in {"", "true", "false"}:
+            raise UsageError("PI5_GATEWAY_RECREATE must be true, false, or empty")
         command.append(f"--setenv={key}={value}")
     command.extend(["--", "/bin/bash", "-lc", remote_script(args, sha, run_id, relative, profiles, remote_root)])
     return command
@@ -1129,7 +1234,7 @@ def _verify_component_attestation_command(
         f"oci://{exact_reference}",
         "--bundle-from-oci",
         "--repo",
-        "denkoushi/RaspberryPiSystem_002",
+        SOURCE_REPOSITORY,
         "--source-digest",
         source_sha,
         "--source-ref",
@@ -1195,10 +1300,15 @@ def release_set_artifacts(
     *,
     require_torque: bool = False,
 ) -> ReleaseArtifacts:
+    # main CI publishes a release set only when the commit changes image inputs
+    # (release_pair in scripts/ci/classify_changes.py); docs-only heads use the
+    # resolved ancestor artifact SHA here while checkout identity stays at head.
+    # render-release-build-contract.sh --sha reads working-tree inventory.yml:
+    # it is a Pi4 kiosk release file (release_pair), so image-free diffs keep it equal.
     build_hash = config_hash(sha, inventory)
     tag_suffix = "-torque-v2" if require_torque else ""
     reference = (
-        f"ghcr.io/denkoushi/raspisys-release-set:"
+        f"{GHCR_NAMESPACE}/raspisys-release-set:"
         f"{sha}-{build_hash}{tag_suffix}"
     )
     run(["docker", "image", "pull", reference])
@@ -1207,7 +1317,7 @@ def release_set_artifacts(
     release = _read_release_set_from_image(exact_release_set)
     validate_release_set(
         release,
-        "denkoushi/RaspberryPiSystem_002",
+        SOURCE_REPOSITORY,
         sha,
         build_hash,
         ".github/workflows/ci.yml",
@@ -1226,7 +1336,7 @@ def release_set_artifacts(
         base_release = _read_release_set_from_image(base_reference)
         validate_release_set(
             base_release,
-            "denkoushi/RaspberryPiSystem_002",
+            SOURCE_REPOSITORY,
             sha,
             build_hash,
             ".github/workflows/ci.yml",
@@ -1309,7 +1419,7 @@ def normalize_torque_cutover_plan(
 
 
 def signage_identity(sha: str) -> tuple[str, str]:
-    reference = f"ghcr.io/denkoushi/raspisys-pi3-signage:{sha}"
+    reference = f"{GHCR_NAMESPACE}/raspisys-pi3-signage:{sha}"
     run(["docker", "image", "pull", "--platform", "linux/arm/v7", reference])
     digest = run(["docker", "image", "inspect", "--format", '{{index .Config.Labels "io.raspisystem.signage.artifact-sha256"}}', reference]).stdout.strip()
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
@@ -1318,6 +1428,7 @@ def signage_identity(sha: str) -> tuple[str, str]:
 
 
 def execute_standard_route(args: argparse.Namespace) -> int:
+    gateway_recreate_environment()
     torque_cutover = bool(getattr(args, "torque_cutover", False))
     inventory, relative = inventory_path(args.inventory)
     if run(["git", "rev-parse", "HEAD"]).stdout.strip() != args.sha:
@@ -1330,6 +1441,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         validate_torque_cutover_selection(selected, requested_selection)
     if tuple(profile for profile, _hosts in requested_selection) != declared_profiles:
         raise RuntimeError("remote target profiles differ from the sealed launch request")
+    artifact_sha = verify_release_artifact_sha(args, declared_profiles)
     reachable_selection, excluded = preflight_optional_hosts(
         selected, requested_selection
     )
@@ -1359,7 +1471,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     requested_profiles = tuple(profile for profile, _hosts in requested_selection)
     needs_signed_release = bool(set(requested_profiles) & {"pi5", "pi4"})
     artifacts = (
-        release_set_artifacts(args.sha, inventory, require_torque=torque_cutover)
+        release_set_artifacts(artifact_sha, inventory, require_torque=torque_cutover)
         if needs_signed_release
         else ReleaseArtifacts(
             f"unused:{args.sha}", f"unused-web:{args.sha}", None, None, ()
@@ -1368,7 +1480,7 @@ def execute_standard_route(args: argparse.Namespace) -> int:
     api, web = artifacts.api, artifacts.web
     signage, signage_sha = signage_identity(args.sha) if "pi3" in profiles else (f"unused-signage:{args.sha}", "0" * 64)
     pi4_hosts = list(dict(reachable_selection).get("pi4", ()))
-    variables = {"release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
+    variables = {"release_pi5_image_sha": artifact_sha, "release_sha": args.sha, "release_run_id": args.run_id, "release_pi5_api_image": api, "release_pi5_web_image": web, "release_signage_artifact_image": signage, "release_signage_artifact_sha256": signage_sha, "release_torque_cutover": torque_cutover, "release_torque_cutover_hosts": pi4_hosts, "release_kiosk_service_allowlist": [TORQUE_CUTOVER_SERVICE] if torque_cutover else [], "release_kiosk_agent_services": list(artifacts.agent_services)}
     if getattr(args, "first_install", False):
         variables["release_kiosk_first_install"] = True
     maintenance = os.environ.get("HERMES_SEARCH_TRIAL_MAINTENANCE", "")
@@ -1381,10 +1493,10 @@ def execute_standard_route(args: argparse.Namespace) -> int:
         variables["release_kiosk_notice_enabled"] = False
     cache_enabled = selected.get('_meta', {}).get('hostvars', {}).get('raspberrypi5', {}).get('business_hermes_answer_cache_enabled', False)
     if 'pi5' in profiles and cache_enabled in (True, 'true'):
-        reference = f'ghcr.io/denkoushi/raspisys-hermes-answer-cache:{args.sha}'
+        reference = f'{GHCR_NAMESPACE}/raspisys-hermes-answer-cache:{artifact_sha}'
         run(['docker', 'image', 'pull', '--platform', 'linux/arm64', reference])
         exact = _exact_repo_digest(reference)
-        verify_component_attestation(exact, args.sha)
+        verify_component_attestation(exact, artifact_sha)
         variables['release_pi5_answer_cache_image'] = reference + '@' + exact.split('@')[1]
     if torque_cutover:
         cutover_plan = normalize_torque_cutover_plan(
@@ -1396,14 +1508,28 @@ def execute_standard_route(args: argparse.Namespace) -> int:
             flush=True,
         )
     command = ansible_argv(relative, effective_limit, profiles, variables, torque_cutover=torque_cutover)
-    return execute_ansible_with_cleanup(command, args.run_id)
+    return execute_ansible_with_cleanup(
+        command, args.run_id,
+        failure_cleanup_command=pi4_failure_cleanup_argv(
+            relative, effective_limit, profiles, args.run_id, torque_cutover=torque_cutover,
+        ),
+    )
 
 
-def execute_ansible_with_cleanup(command: list[str], run_id: str) -> int:
+def execute_ansible_with_cleanup(
+    command: list[str], run_id: str, *, failure_cleanup_command: list[str] | None = None,
+) -> int:
     # Detached units remain active/exited on success, so ExecStopPost alone
     # would leave unreachable kiosks in maintenance until the unit is stopped.
     try:
         result = subprocess.run(command, env=ansible_environment())
+        if result.returncode != 0 and failure_cleanup_command is not None:
+            try:
+                subprocess.run(
+                    failure_cleanup_command, env=ansible_environment(), check=True, timeout=2400,
+                )
+            except (OSError, subprocess.SubprocessError) as error:
+                print(f"WARNING: Pi4 failure cleanup failed: {error}", file=sys.stderr, flush=True)
         return result.returncode if result.returncode >= 0 else 128 - result.returncode
     finally:
         try:
@@ -1434,6 +1560,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return execute_standard_route(args)
     if args.status:
         return status(args)
+    gateway_environment = gateway_recreate_environment()
     reject_unforwarded_hermes_flags(args)
     inventory, relative = inventory_path(args.inventory)
     sha = resolve_sha(args.branch)
@@ -1449,13 +1576,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         hermes_source, hermes_environment = hermes_trial_configuration(args, selection, remote_root, run_id)
     cache_source, cache_environment = answer_cache_configuration(args, selection, remote_root, run_id)
     hermes_environment.update(cache_environment)
+    hermes_environment.update(gateway_environment)
     if getattr(args, "torque_cutover", False):
         validate_torque_cutover_selection(selected, selection)
+    # Only Pi5/Pi4 releases consume a signed release set; a Pi3-only release
+    # never did, so it must not start requiring one here.
+    artifact_sha, args.release_artifact_fallback = (
+        resolve_release_artifact_sha(
+            sha, inventory, tuple(profile for profile, _hosts in selection),
+            torque_cutover=bool(getattr(args, "torque_cutover", False)),
+            first_install=bool(getattr(args, "first_install", False)),
+        )
+        if {profile for profile, _hosts in selection} & {"pi5", "pi4"}
+        else (sha, None)
+    )
+    args.release_artifact_sha = artifact_sha
     if args.print_plan:
         plan_agent_services: Sequence[str] = PI4_AGENT_SERVICES
         if {profile for profile, _hosts in selection} & {"pi5", "pi4"}:
             plan_agent_services = release_set_artifacts(
-                sha,
+                artifact_sha,
                 inventory,
                 require_torque=getattr(args, "torque_cutover", False),
             ).agent_services
@@ -1477,6 +1617,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 if plan_agent_services
                 else "skipped: this release set names no Pi4 agent, so the launcher, browser unit and status-agent files are not updated"
             )
+        document["pi5GatewayRecreate"] = {"requested": gateway_environment["PI5_GATEWAY_RECREATE"] == "true"}
         if 'HERMES_SEARCH_TRIAL_ENABLED' in hermes_environment:
             document["hermesSearchTrial"] = {"enabled": hermes_environment["HERMES_SEARCH_TRIAL_ENABLED"] == "true",
                 "staging": ("four checksum-verified private files on Pi5 SSD; real current records are classified incrementally"
@@ -1500,15 +1641,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     host, user, port = server_connection(complete)
     profiles = tuple(item[0] for item in selection)
     if cache_source is not None:
-        release_set_artifacts(sha, inventory)
+        release_set_artifacts(artifact_sha, inventory)
         stage_answer_cache_artifact(inventory, cache_source, cache_environment['HERMES_ANSWER_CACHE_ARTIFACT'], user)
     if hermes_source is not None:
         # Verify the signed exact release before copying any private artifact.
-        release_set_artifacts(sha, inventory)
+        release_set_artifacts(artifact_sha, inventory)
         stage_hermes_trial_artifact(inventory, hermes_source,
             hermes_environment["HERMES_SEARCH_TRIAL_ARTIFACT"], user)
     if "HERMES_RETRIEVAL_ENRICHMENT_IDS" in hermes_environment:
-        release_set_artifacts(sha, inventory)
+        release_set_artifacts(artifact_sha, inventory)
         stage_enrichment_ids(
             inventory,
             enrichment_id_source(),
@@ -1518,7 +1659,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     result = run(ssh_argv(host, user, port, systemd_argv(args, sha, run_id, relative, profiles, user, remote_root,
         hermes_environment=hermes_environment)), check=False)
     status_command = shlex.join(["scripts/update-all-clients.sh", "--status", run_id, "--inventory", relative])
-    print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command}))
+    print(json.dumps({"runId": run_id, "unit": unit_name(run_id), "detached": args.detach, "statusCommand": status_command,
+                      "pi5GatewayRecreate": {"requested": gateway_environment["PI5_GATEWAY_RECREATE"] == "true"}}))
     if result.stdout:
         print(result.stdout, end="")
     if result.stderr:

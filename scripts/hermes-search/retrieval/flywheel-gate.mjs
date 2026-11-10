@@ -37,6 +37,7 @@ export function splitOf(anchorId) {
 export function questionSet(rows) {
   const byAnchor = new Map();
   for (const row of rows) {
+    if (row?.kind === 'follow_up') continue;
     const real = ['real', 'regression'].includes(row?.source);
     if (row?.kind === 'filter' || real) {
       if (typeof row.question !== 'string' || !row.question || !row.id || byAnchor.has(row.id)) continue;

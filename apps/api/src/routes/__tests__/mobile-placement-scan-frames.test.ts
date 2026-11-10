@@ -15,6 +15,7 @@ vi.mock('../../config/env/load-dotenv.js', () => ({}));
 vi.mock('../../config/env.js', () => ({ env: { JWT_ACCESS_SECRET: 'scan-frame-test-signing-key', ADMIN_MFA_REQUIRED: false } }));
 vi.mock('../kiosk/shared.js', () => ({ requireClientDevice: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {
+  authSession: { findUnique: vi.fn() },
   mobileScanFrame: { findUnique: vi.fn(), create: vi.fn(), findMany: vi.fn() },
   orderPlacementEvent: { findUnique: vi.fn() }
 } }));
@@ -28,7 +29,10 @@ const jpeg = (size = 5) => { const bytes = Buffer.alloc(size); bytes.set([0xff, 
 const body = () => ({ clientFrameId: frameId, kind: 'scan_frame', outcome: 'decoded', decodedValue: '001', decodeMs: 100, retryCount: 0,
   engine: 'native', camera: { width: 1280 }, cropBox: null, capturedAt: '2026-10-29T03:00:00.000Z', fullJpeg: jpeg() });
 const post = (payload: object) => app.inject({ method: 'POST', url: '/mobile-placement/scan-frames', headers: { 'x-client-key': 'device-test-key' }, payload });
-const authorization = (role: string) => ({ authorization: `Bearer ${jwt.sign({ sub: 'user', username: 'test', role }, 'scan-frame-test-signing-key')}` });
+const authorization = (role: string) => {
+  vi.mocked(prisma.authSession.findUnique).mockImplementation(async ({ where }) => ({ id: where.id, userId: where.id, expiresAt: new Date(Date.now() + 86400000), revokedAt: null, user: { id: 'user', username: 'test', role, status: 'ACTIVE', mfaEnabled: false } }) as never);
+  return { authorization: `Bearer ${jwt.sign({ tokenType: 'access', sessionId: 'user', sub: 'user', username: 'test', role }, 'scan-frame-test-signing-key')}` };
+};
 beforeEach(async () => {
   vi.resetAllMocks();
   vi.mocked(requireClientDevice).mockResolvedValue({ clientDevice: { id: 'device' } } as never);

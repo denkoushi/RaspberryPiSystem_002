@@ -131,7 +131,7 @@ jobs:
       - name: Run shelf-layout-core tests
         run: pnpm --filter @raspi-system/shelf-layout-core test
 
-      # pnpm 10 still uses legacy audit endpoints; keep the bulk client isolated.
+      # Keep the pinned bulk audit client isolated from the workspace install.
       - name: Setup Node.js for bulk advisory audit
         uses: actions/setup-node@v7
         with:
@@ -139,7 +139,7 @@ jobs:
 
       - name: Security scan (pnpm bulk audit)
         env:
-          AUDIT_PNPM_VERSION: '11.4.0'
+          AUDIT_PNPM_VERSION: '12.16.1'
         run: node scripts/ci/run-pnpm-bulk-audit.mjs
 
   api:
@@ -203,15 +203,19 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/borrow_return
 
+      - name: Prepare API worker databases
+        run: bash scripts/ci/prepare-api-test-databases.sh postgres-test 4
+
       - name: Run API tests (coverage shard)
         run: |
           cd apps/api
           docker exec postgres-test psql -U postgres -d borrow_return -c "SELECT 1;"
           BACKUP_CONFIG_PATH=/tmp/test-backup.json PROJECT_ROOT=$(pwd) \
-            pnpm test:coverage --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=1 \
+            pnpm test:coverage --shard=${{ matrix.shard }} --fileParallelism=true --maxWorkers=4 \
               --reporter=default --reporter=blob \
               --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
         env:
+          API_TEST_DB_PER_WORKER: '1'
           # 作業手順の保存処理の結合テストは、接続先が 127.0.0.1 のときだけ動く（localhost は不可）
           DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/borrow_return
           WORK_INSTRUCTION_INTEGRATION: 'true'
@@ -275,10 +279,17 @@ jobs:
           retention-days: 7
 
   web:
-    name: web
+    name: web (${{ matrix.shard }})
     needs: change-classification
     if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { shard: "1/3", shard_id: "1-of-3", build: true }
+          - { shard: "2/3", shard_id: "2-of-3", build: false }
+          - { shard: "3/3", shard_id: "3-of-3", build: false }
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -294,11 +305,60 @@ jobs:
           pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
-      - name: Run Web tests with coverage floor
-        run: pnpm --filter @raspi-system/web test:coverage
+      - name: Run Web tests (coverage shard)
+        run: >-
+          pnpm --filter @raspi-system/web test:coverage --shard=${{ matrix.shard }}
+          --reporter=default --reporter=blob
+          --outputFile.blob=vitest-blob/blob-${{ matrix.shard_id }}.json
+        env:
+          COVERAGE_ENFORCE_THRESHOLDS: 'false'
+
+      - name: Upload Web test blob
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-blob-${{ matrix.shard_id }}
+          path: apps/web/vitest-blob/
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Build Web
+        if: matrix.build
         run: pnpm --filter @raspi-system/web build
+
+  web-coverage:
+    name: web-coverage
+    needs: [change-classification, web]
+    if: ${{ github.event_name != 'push' && needs.change-classification.outputs.web == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm-monorepo
+
+      - name: Download Web test blobs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: web-blob-*
+          path: apps/web/vitest-blob
+          merge-multiple: true
+
+      - name: Merge shard coverage and enforce thresholds
+        working-directory: apps/web
+        env:
+          COVERAGE_ENFORCE_THRESHOLDS: 'true'
+        run: |
+          test "$(find vitest-blob -name 'blob-*.json' | wc -l)" -eq 3
+          pnpm exec vitest run --merge-reports=vitest-blob --coverage --coverage.provider=v8
+
+      - name: Upload Web coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
+          retention-days: 7
 
   db-infra:
     name: db-infra
@@ -710,6 +770,10 @@ jobs:
       id-token: write
       attestations: write
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact source
         uses: actions/checkout@v7
       - name: Check catalogue and nightly regression boundaries
@@ -733,7 +797,7 @@ jobs:
           platforms: linux/arm64
           load: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache:${{ github.sha }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha,scope=hermes-answer-cache
           cache-to: type=gha,scope=hermes-answer-cache,mode=max
@@ -743,7 +807,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
-          image-ref: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache:${{ github.sha }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -753,7 +817,7 @@ jobs:
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         uses: actions/attest-build-provenance@v4
         with:
-          subject-name: ghcr.io/denkoushi/raspisys-hermes-answer-cache
+          subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
@@ -761,7 +825,7 @@ jobs:
         if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CACHE_IMAGE: ghcr.io/denkoushi/raspisys-hermes-answer-cache:${{ github.sha }}
+          CACHE_IMAGE: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-hermes-answer-cache:${{ github.sha }}
         run: |
           docker image pull "$CACHE_IMAGE"
           exact_reference="$(docker image inspect --format '{{index .RepoDigests 0}}' "$CACHE_IMAGE")"
@@ -836,6 +900,10 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       repository: ${{ steps.identity.outputs.repository }}
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
 
@@ -847,7 +915,7 @@ jobs:
 
       - name: Define immutable API repository
         id: identity
-        run: echo "repository=ghcr.io/denkoushi/raspisys-api" >> "$GITHUB_OUTPUT"
+        run: echo "repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-api" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR for this job
         uses: docker/login-action@v4
@@ -932,6 +1000,10 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       repository: ${{ steps.identity.outputs.repository }}
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
 
@@ -943,7 +1015,7 @@ jobs:
 
       - name: Define immutable Web repository
         id: identity
-        run: echo "repository=ghcr.io/denkoushi/raspisys-web" >> "$GITHUB_OUTPUT"
+        run: echo "repository=ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-web" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR for this job
         uses: docker/login-action@v4
@@ -1372,6 +1444,7 @@ jobs:
       - api
       - api-coverage
       - web
+      - web-coverage
       - db-infra
       - deploy-contract
       - container-runtime-rehearsal
@@ -1406,6 +1479,7 @@ jobs:
           API_COVERAGE_RESULT: ${{ needs['api-coverage'].result }}
           WEB_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.web == 'true' }}
           WEB_RESULT: ${{ needs.web.result }}
+          WEB_COVERAGE_RESULT: ${{ needs['web-coverage'].result }}
           DB_INFRA_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.db_infra == 'true' }}
           DB_INFRA_RESULT: ${{ needs['db-infra'].result }}
           DEPLOY_CONTRACT_SELECTED: ${{ github.event_name != 'push' && needs['change-classification'].outputs.deploy_contract == 'true' }}
@@ -1440,6 +1514,7 @@ jobs:
             "api=$API_SELECTED:$API_RESULT" \
             "api-coverage=$API_SELECTED:$API_COVERAGE_RESULT" \
             "web=$WEB_SELECTED:$WEB_RESULT" \
+            "web-coverage=$WEB_SELECTED:$WEB_COVERAGE_RESULT" \
             "db-infra=$DB_INFRA_SELECTED:$DB_INFRA_RESULT" \
             "deploy-contract=$DEPLOY_CONTRACT_SELECTED:$DEPLOY_CONTRACT_RESULT" \
             "container-runtime-rehearsal=$CONTAINER_RUNTIME_REHEARSAL_SELECTED:$CONTAINER_RUNTIME_REHEARSAL_RESULT" \
@@ -1477,15 +1552,19 @@ jobs:
       matrix:
         include:
           - service: nfc-agent
-            repository: ghcr.io/denkoushi/raspisys-nfc-agent
+            repository: raspisys-nfc-agent
             dockerfile: infrastructure/docker/Dockerfile.nfc-agent
           - service: barcode-agent
-            repository: ghcr.io/denkoushi/raspisys-barcode-agent
+            repository: raspisys-barcode-agent
             dockerfile: infrastructure/docker/Dockerfile.barcode-agent
           - service: torque-agent
-            repository: ghcr.io/denkoushi/raspisys-torque-agent
+            repository: raspisys-torque-agent
             dockerfile: infrastructure/docker/Dockerfile.torque-agent
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
 
@@ -1510,7 +1589,7 @@ jobs:
           file: ${{ matrix.dockerfile }}
           platforms: linux/arm64,linux/arm/v7
           push: true
-          tags: ${{ matrix.repository }}:${{ github.sha }}
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/${{ matrix.repository }}:${{ github.sha }}
           cache-from: type=gha,scope=pi4-${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=pi4-${{ matrix.service }}
           provenance: mode=min
@@ -1522,7 +1601,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm64
         with:
           scan-type: image
-          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -1535,7 +1614,7 @@ jobs:
           TRIVY_PLATFORM: linux/arm/v7
         with:
           scan-type: image
-          image-ref: ${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
+          image-ref: ghcr.io/${{ steps.ghcr.outputs.owner }}/${{ matrix.repository }}@${{ steps.publish.outputs.digest }}
           ignore-unfixed: true
           severity: HIGH,CRITICAL
           exit-code: '1'
@@ -1597,6 +1676,10 @@ jobs:
       id-token: write
       packages: write
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
 
@@ -1668,7 +1751,7 @@ jobs:
           file: infrastructure/docker/Dockerfile.signage-release
           platforms: linux/arm/v7
           push: true
-          tags: ghcr.io/denkoushi/raspisys-pi3-signage:${{ github.sha }}
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage:${{ github.sha }}
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             ARTIFACT_SHA256=${{ steps.identity.outputs.artifact_sha256 }}
@@ -1678,15 +1761,15 @@ jobs:
 
       - name: Verify the published exact OCI digest exists
         env:
-          IMAGE_REFERENCE: ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}
+          IMAGE_REFERENCE: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}
         run: docker buildx imagetools inspect "$IMAGE_REFERENCE"
 
       - name: Attest source, artifact, and manifest identities
         uses: actions/attest@v4
         with:
-          subject-name: ghcr.io/denkoushi/raspisys-pi3-signage
+          subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage
           subject-digest: ${{ steps.publish.outputs.digest }}
-          predicate-type: https://github.com/denkoushi/RaspberryPiSystem_002/attestations/pi3-signage-release/v1
+          predicate-type: https://github.com/${{ github.repository }}/attestations/pi3-signage-release/v1
           predicate-path: signage-release-attestation.json
           push-to-registry: true
 
@@ -1698,7 +1781,7 @@ jobs:
           python3 scripts/deploy/rolling_release/signage_artifact_stage.py \
             --verify-published-attestation \
             --gh "$SIGNAGE_GH" \
-            --exact-reference "ghcr.io/denkoushi/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}" \
+            --exact-reference "ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-pi3-signage@${{ steps.publish.outputs.digest }}" \
             --source-sha "$GITHUB_SHA" \
             --artifact-sha256 "${{ steps.identity.outputs.artifact_sha256 }}" \
             --manifest-sha256 "${{ steps.identity.outputs.manifest_sha256 }}"
@@ -1764,6 +1847,10 @@ jobs:
       id-token: write
       packages: write
     steps:
+      - name: Resolve lowercase GHCR owner
+        id: ghcr
+        shell: bash
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
       - name: Checkout exact main source
         uses: actions/checkout@v7
 
@@ -1808,7 +1895,7 @@ jobs:
           file: infrastructure/docker/Dockerfile.release-set
           platforms: linux/arm64
           push: true
-          tags: ghcr.io/denkoushi/raspisys-release-set:${{ github.sha }}-${{ needs.release-build-contract.outputs.config_hash }}
+          tags: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set:${{ github.sha }}-${{ needs.release-build-contract.outputs.config_hash }}
           build-args: |
             BUILD_COMMIT=${{ github.sha }}
             BUILD_CONFIG_HASH=${{ needs.release-build-contract.outputs.config_hash }}
@@ -1832,6 +1919,6 @@ jobs:
       - name: Attest the release set after all fixed gates
         uses: actions/attest@v4
         with:
-          subject-name: ghcr.io/denkoushi/raspisys-release-set
+          subject-name: ghcr.io/${{ steps.ghcr.outputs.owner }}/raspisys-release-set
           subject-digest: ${{ steps.publish-release-set.outputs.digest }}
           push-to-registry: true

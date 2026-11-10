@@ -1,3 +1,5 @@
+import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL, buildBoardDueDateSql } from '../d-schedule-minutes/board-due.sql.js';
+import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
 import { Prisma } from '@prisma/client';
 
 import {
@@ -11,7 +13,7 @@ import { buildProductionScheduleEffectiveCompletedSql } from '../production-sche
 import type { LeaderboardShellRankJoinContext } from './leaderboard-shell-rank-join.sql.js';
 
 /** 納期ソート用（note / supplement JOIN 後に評価） */
-export const LEADERBOARD_SHELL_DUE_SORT_EXPR = Prisma.sql`COALESCE("n"."dueDate", "supplement"."plannedEndDate")`;
+export const LEADERBOARD_SHELL_DUE_SORT_EXPR = buildBoardDueDateSql;
 
 /**
  * 品番ごとの加工種別（SELECT 列専用）。
@@ -49,6 +51,7 @@ export function buildLeaderboardShellRowAuxiliaryJoins(rankJoins: LeaderboardShe
     LEFT JOIN "ProductionScheduleFkojunstMailStatus" AS "fkmail"
       ON "fkmail"."csvDashboardRowId" = "CsvDashboardRow"."id"
       AND "fkmail"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    ${BOARD_DUE_JOINS_SQL}
     ${rankJoins.orderAssignmentJoin}
     ${rankJoins.globalRankJoin}
   `;
@@ -65,7 +68,7 @@ export function buildLeaderboardShellRowFromJoins(rankJoins: LeaderboardShellRan
 }
 
 /** shell 行 SELECT 列（enrich 前・3 クエリ共通）。 */
-export function buildLeaderboardShellRowSelectList(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
+export function buildLeaderboardShellRowSelectList(rankJoins: LeaderboardShellRankJoinContext, dueSource: BoardDueSource = 'excel'): Prisma.Sql {
   return Prisma.sql`
     "CsvDashboardRow"."id",
     NULLIF(BTRIM("CsvDashboardRow"."rowData"->>'FSEIBAN'), '') AS "seibanJoinKey",
@@ -87,6 +90,10 @@ export function buildLeaderboardShellRowSelectList(rankJoins: LeaderboardShellRa
     NULLIF(TRIM("n"."note"), '') AS "note",
     COALESCE(${LEADERBOARD_SHELL_PART_PROCESSING_TYPE_SUBQUERY}, "n"."processingType") AS "processingType",
     "n"."dueDate" AS "dueDate",
+    ${BOARD_MANUAL_UPDATED_AT_SQL} AS "manualUpdatedAt",
+    "excel_due"."partsCompleteDate" AS "excelDueDate",
+    "excel_due"."excelChangedAt" AS "excelChangedAt",
+    ${buildBoardDueDateSql(dueSource)} AS "boardDueDate",
     "supplement"."plannedQuantity" AS "plannedQuantity",
     "supplement"."plannedStartDate" AS "plannedStartDate",
     "supplement"."plannedEndDate" AS "plannedEndDate"
@@ -94,10 +101,10 @@ export function buildLeaderboardShellRowSelectList(rankJoins: LeaderboardShellRa
 }
 
 /** manual 行 ORDER BY（資源内順位優先）。 */
-export function buildLeaderboardShellManualOrderBy(rankJoins: LeaderboardShellRankJoinContext): Prisma.Sql {
+export function buildLeaderboardShellManualOrderBy(rankJoins: LeaderboardShellRankJoinContext, dueSource: BoardDueSource = 'excel'): Prisma.Sql {
   return Prisma.sql`
     ${rankJoins.processingOrderExpr} ASC NULLS LAST,
-    ${LEADERBOARD_SHELL_DUE_SORT_EXPR} ASC NULLS LAST,
+    ${LEADERBOARD_SHELL_DUE_SORT_EXPR(dueSource)} ASC NULLS LAST,
     ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
     ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
     (CASE
@@ -109,9 +116,9 @@ export function buildLeaderboardShellManualOrderBy(rankJoins: LeaderboardShellRa
 }
 
 /** filler / expansion 行 ORDER BY（納期優先）。 */
-export function buildLeaderboardShellFillerOrderBy(): Prisma.Sql {
+export function buildLeaderboardShellFillerOrderBy(dueSource: BoardDueSource = 'excel'): Prisma.Sql {
   return Prisma.sql`
-    ${LEADERBOARD_SHELL_DUE_SORT_EXPR} ASC NULLS LAST,
+    ${LEADERBOARD_SHELL_DUE_SORT_EXPR(dueSource)} ASC NULLS LAST,
     ("CsvDashboardRow"."rowData"->>'FSEIBAN') ASC,
     ("CsvDashboardRow"."rowData"->>'ProductNo') ASC,
     (CASE

@@ -269,7 +269,7 @@ ssh denkon5sd02@100.106.158.2 "curl http://localhost:4173"
    ssh denkon5sd02@100.106.158.2 "cd /opt/RaspberryPiSystem_002 && docker compose -f infrastructure/docker/docker-compose.server.yml up -d --force-recreate --build web"
    ```
 
-詳細な検証手順は [実機検証手順書](../guides/ui-visibility-color-theme-real-device-verification.md) を参照してください。
+詳細な検証手順は [実機検証手順書](../archive/guides/ui-visibility-color-theme-real-device-verification.md) を参照してください。
 
 ## 関連ドキュメント
 

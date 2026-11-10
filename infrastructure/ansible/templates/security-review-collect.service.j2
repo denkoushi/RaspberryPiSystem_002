@@ -5,5 +5,5 @@ Description=Collect private security review material
 Type=oneshot
 User=root
 UMask=0077
-ExecStart=/usr/bin/python3 /usr/local/bin/security-review-collect.py /etc/security-review/collect.json
+ExecStart=/usr/bin/python3 /usr/local/bin/security-review-collect.py /etc/security-review/collect.json --mode nightly
 TimeoutStartSec=30min

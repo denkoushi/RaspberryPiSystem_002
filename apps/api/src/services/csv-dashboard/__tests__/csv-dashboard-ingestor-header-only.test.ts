@@ -1,18 +1,25 @@
+import { ProgressSyncFromCsvService } from '../../production-schedule/progress-sync-from-csv.service.js';
+import { CsvDashboardDedupCleanupService } from '../csv-dashboard-dedup-cleanup.service.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { findUnique, createRun, updateRun, createMany, transaction } = vi.hoisted(() => ({
+const { findUnique, createRun, updateRun, createMany, transaction, pieceSets, createRow, findRows } = vi.hoisted(() => ({
   findUnique: vi.fn(),
   createRun: vi.fn(),
   updateRun: vi.fn(),
   createMany: vi.fn(),
   transaction: vi.fn(),
+  createRow: vi.fn(),
+  findRows: vi.fn().mockResolvedValue([]),
+  pieceSets: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
+    productionScheduleSessakuPieceSet: { findMany: pieceSets },
     csvDashboard: { findUnique },
     csvDashboardIngestRun: { create: createRun, update: updateRun },
-    csvDashboardRow: { createMany },
+    csvDashboardRow: { createMany, create: createRow, findMany: findRows },
     $transaction: transaction,
   },
 }));
@@ -72,4 +79,30 @@ describe('CsvDashboardIngestor APPEND header-only CSV', () => {
       data: [expect.objectContaining({ rowData: { h1: 'v1' } })],
     });
   });
+  it.each([{ sets: [] }, { sets: [{ fseiban: 'SEIBAN01', fhincd: '', fsigencd: '', fkojun: '', pieces: [] }] }])('keeps production APPEND on createMany with only the legacy completion tx for %j', async ({ sets }) => {
+    const dashboard = await findUnique();
+    findUnique.mockResolvedValue({ ...dashboard, id: PRODUCTION_SCHEDULE_DASHBOARD_ID, columnDefinitions: ['ProductNo', 'FSEIBAN'].map((name) => ({ internalName: name, displayName: name, csvHeaderCandidates: [name], dataType: 'string' })) });
+    pieceSets.mockResolvedValueOnce(sets);
+    await new CsvDashboardIngestor().ingestFromGmail(PRODUCTION_SCHEDULE_DASHBOARD_ID, 'ProductNo,FSEIBAN\n0000000123,SEIBAN01\n');
+    expect(createMany).toHaveBeenCalledTimes(1);
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(pieceSets).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks a production ingest FAILED and skips success completion and cleanup when progress sync rejects', async () => {
+    const dashboard = await findUnique();
+    findUnique.mockResolvedValue({ ...dashboard, id: PRODUCTION_SCHEDULE_DASHBOARD_ID, ingestMode: 'DEDUP', columnDefinitions: ['ProductNo', 'FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN', 'progress'].map((name) => ({ internalName: name, displayName: name, csvHeaderCandidates: [name], dataType: 'string' })) });
+    createRow.mockResolvedValue({ id: 'persisted-row' });
+    const sync = vi.spyOn(ProgressSyncFromCsvService.prototype, 'sync').mockRejectedValueOnce(new Error('CSV progress sync failed for 1 rows'));
+    const cleanup = vi.spyOn(CsvDashboardDedupCleanupService.prototype, 'deleteDuplicateLosersForKeys');
+    try {
+      await expect(new CsvDashboardIngestor().ingestFromGmail(PRODUCTION_SCHEDULE_DASHBOARD_ID, 'ProductNo,FSEIBAN,FHINCD,FSIGENCD,FKOJUN,progress\n0000000123,SEIBAN01,PART-A,1,1,完了\n')).rejects.toThrow('CSV progress sync failed for 1 rows');
+      expect(createRow).toHaveBeenCalledTimes(1);
+      expect(sync).toHaveBeenCalledWith(expect.objectContaining({ candidates: [expect.objectContaining({ rowId: 'persisted-row' })] }));
+      expect(updateRun).toHaveBeenCalledExactlyOnceWith({ where: { id: 'run-1' }, data: { status: 'FAILED', errorMessage: 'CSV progress sync failed for 1 rows', completedAt: expect.any(Date) } });
+      expect(transaction).not.toHaveBeenCalled();
+      expect(cleanup).not.toHaveBeenCalled();
+    } finally { sync.mockRestore(); cleanup.mockRestore(); }
+  });
+
 });

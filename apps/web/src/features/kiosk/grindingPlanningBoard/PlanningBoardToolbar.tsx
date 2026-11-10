@@ -5,13 +5,17 @@ import { createPortal } from 'react-dom';
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
 import { pageZoom } from './pageZoom';
+import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';
+import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResourcePicker';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
 import type {
+  GrindingPlanningBoardCategory,
+  GrindingPlanningBoardScheduleSource,
   GrindingPlanningBoardSpecialDueKind,
   GrindingPlanningBoardView
 } from '@raspi-system/shared-types';
@@ -73,6 +77,17 @@ export type PlanningBoardToolbarProps = {
   onClearSeibanFocus?: () => void;
   largeScreen?: boolean;
   onToggleLargeScreen?: () => void;
+  arrivalFilterEnabled?: boolean;
+  onToggleArrivalFilter?: () => void;
+  scawEnabled?: boolean;
+  onToggleScawMode?: () => void;
+  singleResourceCd?: string | null;
+  singleResourceLanes?: readonly string[];
+  singleResourceNameMap?: Record<string, string[]>;
+  singleResourcePickerAnchor?: HTMLElement | null;
+  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
+  onCloseSingleResourcePicker?: () => void;
+  onSingleResourceChange?: (resource: string | null) => void;
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
   colorBySeiban?: boolean;
@@ -96,7 +111,9 @@ export type PlanningBoardToolbarProps = {
   canUndoOrder?: boolean;
   overlapCount?: number;
   onNextOverlap?: () => void;
-  categories: { grinding: boolean; cutting: boolean };
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
+  onScheduleSourceChange?: (source: GrindingPlanningBoardScheduleSource) => void;
+  category: GrindingPlanningBoardCategory;
   view: GrindingPlanningBoardView;
   status: PlanningBoardStatus;
   allocation: PlanningBoardAllocation;
@@ -106,7 +123,7 @@ export type PlanningBoardToolbarProps = {
   registeredCount: number;
   feedback?: ReactNode;
   onOpenDrawer: () => void;
-  onCategoriesChange: (categories: { grinding: boolean; cutting: boolean }) => void;
+  onCategoryChange: (category: GrindingPlanningBoardCategory) => void;
   onViewChange: (view: GrindingPlanningBoardView) => void;
   onStatusChange: (status: PlanningBoardStatus) => void;
   onAllocationChange: (allocation: PlanningBoardAllocation) => void;
@@ -120,8 +137,13 @@ export type PlanningBoardToolbarProps = {
 const formatWait = (minutes: number) => `${Math.floor(minutes / 60)}時間${String(minutes % 60).padStart(2, '0')}分`;
 
 export function PlanningBoardToolbar({
+  scheduleSource = 'both', onScheduleSourceChange,
   onOrderScan, focusedSeiban = null, onClearSeibanFocus,
   largeScreen = false, onToggleLargeScreen,
+  scawEnabled = false, onToggleScawMode,
+  arrivalFilterEnabled = true, onToggleArrivalFilter,
+  singleResourceCd = null, singleResourceLanes = [], singleResourceNameMap = {}, singleResourcePickerAnchor = null,
+  onOpenSingleResourcePicker, onCloseSingleResourcePicker, onSingleResourceChange,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -132,7 +154,7 @@ export function PlanningBoardToolbar({
   onProposeOrder, onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
   overlapCount = 0,
   onNextOverlap,
-  categories,
+  category,
   view,
   status,
   allocation,
@@ -142,7 +164,7 @@ export function PlanningBoardToolbar({
   registeredCount,
   feedback,
   onOpenDrawer,
-  onCategoriesChange,
+  onCategoryChange,
   onViewChange,
   onStatusChange,
   onAllocationChange,
@@ -156,6 +178,7 @@ export function PlanningBoardToolbar({
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
   const scaleButton = useRef<HTMLButtonElement>(null);
   const scalePanel = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (singleResourcePickerAnchor) setScaleOpen(false); }, [singleResourcePickerAnchor]);
   const hiddenScale = ganttScale > 2;
   useEffect(() => { if (!ganttEnabled) setScaleOpen(false); }, [ganttEnabled]);
   // Follow the queue popover pattern; a portal avoids the toolbar's scroll clipping.
@@ -165,7 +188,7 @@ export function PlanningBoardToolbar({
       if (event.target instanceof Node && !scalePanel.current?.contains(event.target) && !scaleButton.current?.contains(event.target)) setScaleOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') { setScaleOpen(false); scaleButton.current?.focus(); }
+      if (event.key === 'Escape' && !document.querySelector('[role="dialog"]')) { event.preventDefault(); setScaleOpen(false); scaleButton.current?.focus(); }
     };
     const close = () => setScaleOpen(false);
     document.addEventListener('pointerdown', outside);
@@ -189,7 +212,7 @@ export function PlanningBoardToolbar({
     (scalePanel.current.querySelector<HTMLButtonElement>('[aria-pressed="true"]') ?? scalePanel.current.querySelector<HTMLButtonElement>('button'))?.focus();
   }, [scaleOpen]);
   return (
-    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
+    <div className="flex h-[66px] min-w-0 flex-nowrap items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-lg border border-slate-800 bg-slate-925 px-2 py-1.5">
       <button
         type="button"
         onClick={onOpenDrawer}
@@ -200,14 +223,17 @@ export function PlanningBoardToolbar({
         製番
         <span className="min-w-6 rounded-full bg-slate-950 px-1.5 py-0.5 text-center tabular-nums text-emerald-300">{registeredCount}</span>
       </button>
-      <SegmentGroup ariaLabel="工程">
-        <SegmentButton disabled={scopeDisabled} pressed={categories.grinding} onClick={() => { if (categories.cutting) onCategoriesChange({ ...categories, grinding: !categories.grinding }); }}>
-          研削
-        </SegmentButton>
-        <SegmentButton disabled={scopeDisabled} pressed={categories.cutting} onClick={() => { if (categories.grinding) onCategoriesChange({ ...categories, cutting: !categories.cutting }); }}>
-          切削
-        </SegmentButton>
-      </SegmentGroup>
+      <PlanningBoardDropdown ariaLabel="区分" value={scheduleSource}
+        closedLabel={scheduleSource === 'both' ? '一般・D社' : scheduleSource === 'general' ? '一般' : 'D社'}
+        options={[{ value: 'general', label: '一般' }, { value: 'dCompany', label: 'D社' }, { value: 'both', label: '両方' }]}
+        disabled={scopeDisabled} onChange={(value) => onScheduleSourceChange?.(value)} />
+      <PlanningBoardDropdown ariaLabel="工程" value={category}
+        closedLabel={category === 'all' ? '切削・研削' : category === 'cutting' ? '切削' : '研削'}
+        options={[{ value: 'cutting', label: '切削' }, { value: 'grinding', label: '研削' }, { value: 'all', label: '両方' }]}
+        disabled={scopeDisabled} onChange={onCategoryChange} />
+      <button type="button" aria-label="前工程が済んだものだけ表示" aria-pressed={arrivalFilterEnabled}
+        onClick={onToggleArrivalFilter} disabled={Boolean(orderPreview)}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-base font-bold', arrivalFilterEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>着</button>
       <SegmentGroup ariaLabel="表示単位">
         <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
           製番
@@ -229,16 +255,25 @@ export function PlanningBoardToolbar({
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
             {GANTT_SCALES.filter((days) => days <= 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}
             <button ref={scaleButton} type="button" aria-label="他の幅" aria-expanded={scaleOpen} aria-pressed={hiddenScale}
-              onClick={() => setScaleOpen((open) => !open)}
+              onClick={() => { onCloseSingleResourcePicker?.(); setScaleOpen((open) => !open); }}
               className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-xs font-bold', hiddenScale ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
               {hiddenScale ? `${ganttScaleLabel(ganttScale)} ▾` : <span className="text-2xl">⋯</span>}
             </button>
-            {scaleOpen && createPortal(<div ref={scalePanel} role="group" aria-label="他の幅" style={scalePosition}
+            {scaleOpen && createPortal(<div ref={scalePanel} data-planning-board-popover role="group" aria-label="他の幅" style={scalePosition}
               className="fixed z-[100] flex flex-wrap gap-0.5 rounded-lg border border-slate-600 bg-slate-900 p-1 shadow-xl">
               {GANTT_SCALES.filter((days) => days > 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days}
                 onClick={() => { onGanttScaleChange?.(days); setScaleOpen(false); scaleButton.current?.focus(); }}>{ganttScaleLabel(days)}</SegmentButton>)}
             </div>, document.body)}
           </div>
+          {onSingleResourceChange && <button type="button" aria-pressed={Boolean(singleResourceCd)} aria-expanded={Boolean(singleResourcePickerAnchor)}
+            aria-label={singleResourceCd ? `${singleResourceCd} 1台表示をやめる` : '1台'} disabled={Boolean(orderPreview)}
+            onClick={(event) => { setScaleOpen(false); if (singleResourceCd) onSingleResourceChange(null); else onOpenSingleResourcePicker?.(event.currentTarget); }}
+            className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
+            {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
+          </button>}
+          {singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
+            anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={singleResourceCd} resourceNameMap={singleResourceNameMap}
+            onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}
           <button type="button" aria-label="製番ごとに色分け" aria-pressed={colorBySeiban} onClick={onToggleColorBySeiban}
             className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border', colorBySeiban ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-5 w-5" aria-hidden="true">
@@ -248,6 +283,8 @@ export function PlanningBoardToolbar({
           </button>
         </>}
       </div>}
+      {!orderPreview && <button type="button" aria-pressed={scawEnabled} onClick={onToggleScawMode}
+        className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-[11px] font-bold', scawEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>SCAW</button>}
       {onOrderScan && <PlanningBoardOrderScan onScan={onOrderScan} />}
       {!ganttEnabled && focusedSeiban && <div className="flex shrink-0 items-center gap-1 rounded-md border border-slate-600 pl-2 text-sm">
         <span>製番 {focusedSeiban}</span>

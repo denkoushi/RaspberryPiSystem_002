@@ -22,7 +22,6 @@ export function serializeAssemblyWorkSessionApproval(
     approverEmployeeId: approval.approverEmployeeId,
     approverEmployeeCodeSnapshot: approval.approverEmployeeCodeSnapshot,
     approverEmployeeNameSnapshot: approval.approverEmployeeNameSnapshot,
-    approverNfcTagUidSnapshot: approval.approverNfcTagUidSnapshot,
     comment: approval.comment,
     clientDeviceId: approval.clientDeviceId,
     clientDeviceNameSnapshot: approval.clientDeviceNameSnapshot
@@ -64,6 +63,13 @@ export class AssemblyWorkSessionRecordApprovalService {
       }
       if (approver.status !== 'ACTIVE') {
         throw new ApiError(403, '有効な社員のみ承認できます');
+      }
+
+      if (
+        session.operatorEmployeeId === approver.id ||
+        session.operatorAccesses.some((access) => access.employeeId === approver.id)
+      ) {
+        throw new ApiError(403, '同じ人は承認できません', undefined, 'RECORD_APPROVAL_SAME_PERSON');
       }
 
       const clientDevice = input.clientDeviceId

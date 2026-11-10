@@ -1,0 +1,39 @@
+---
+- name: Restore the previous GUI autologin configuration
+  when:
+    - kiosk_gui_autologin_attempted | default(false) | bool
+    - (kiosk_unprivileged_session_enabled | default(false) | bool) or release_kiosk_gui_autologin_original.stat.exists
+  block:
+    - name: Restore the original LightDM drop-in and metadata
+      ansible.builtin.copy:
+        src: '{{ release_kiosk_stage_dir }}/gui-autologin.original'
+        dest: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+        remote_src: true
+        owner: '{{ release_kiosk_gui_autologin_original.stat.uid }}'
+        group: '{{ release_kiosk_gui_autologin_original.stat.gid }}'
+        mode: '{{ release_kiosk_gui_autologin_original.stat.mode }}'
+      when: release_kiosk_gui_autologin_original.stat.exists
+
+    - name: Remove a GUI autologin drop-in introduced by the candidate
+      ansible.builtin.file:
+        path: /etc/lightdm/lightdm.conf.d/99-kiosk-gui-session.conf
+        state: absent
+      when: not release_kiosk_gui_autologin_original.stat.exists
+
+    - name: Stop the candidate browser before restoring its GUI session
+      ansible.builtin.systemd:
+        name: kiosk-browser.service
+        state: stopped
+      when: kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)
+
+    - name: Restart LightDM with the restored autologin configuration
+      ansible.builtin.systemd:
+        name: lightdm.service
+        state: restarted
+      when: kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)
+
+    - name: Wait for the restored GUI session before restarting its browser
+      ansible.builtin.import_tasks: '{{ playbook_dir }}/../tasks/kiosk-gui-session-wait.yml'
+      vars:
+        kiosk_gui_user: '{{ release_kiosk_previous_gui_owner.stdout | default(ansible_user, true) }}'
+      when: kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)

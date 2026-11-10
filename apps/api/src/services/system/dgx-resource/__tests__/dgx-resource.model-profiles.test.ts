@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   fetchDgxModelProfilesOverview,
+  fetchBusinessModelSwitchCapability,
+  parseDgxActiveModelRuntimeState,
 } from '../dgx-resource.model-profiles.js';
 
 describe('fetchDgxModelProfilesOverview', () => {
@@ -228,5 +230,43 @@ describe('fetchDgxModelProfilesOverview', () => {
     expect(overview.status).toBe('degraded');
     expect(overview.available).toEqual([]);
     expect(overview.errorMessageJa).toContain('HTTP 503');
+  });
+});
+
+
+describe('business switch contract', () => {
+  it.each([
+    [200, { enabled: true, contractVersion: 1 }, true],
+    [200, { enabled: false, contractVersion: 1 }, false],
+    [200, { enabled: true, contractVersion: 2 }, false],
+    [200, { enabled: 'true', contractVersion: 1 }, false],
+    [404, {}, false], [503, {}, false],
+  ])('capability status %s and body %j -> %s', async (status, body, enabled) => {
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json(body, { status }));
+    expect(await fetchBusinessModelSwitchCapability({ baseUrl: 'http://cp.test', sharedToken: 'business-principal',
+      fetchImpl, timeoutMs: 1000 })).toBe(enabled);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe('http://cp.test/system/business-model-switch-capability');
+    expect(fetchImpl.mock.calls[0]?.[1]).toMatchObject({ headers: { 'X-LLM-Token': 'business-principal' } });
+  });
+  it('closes capability on unreachable, malformed or unauthenticated CP', async () => {
+    for (const fetchImpl of [vi.fn(async () => { throw new Error('unreachable'); }),
+      vi.fn(async () => new Response('not-json'))]) {
+      expect(await fetchBusinessModelSwitchCapability({ baseUrl: 'http://cp.test', sharedToken: 't', fetchImpl, timeoutMs: 1000 })).toBe(false);
+    }
+    const fetchImpl = vi.fn();
+    expect(await fetchBusinessModelSwitchCapability({ baseUrl: 'http://cp.test', fetchImpl, timeoutMs: 1000 })).toBe(false);
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+  it('hides the new manifest when off and preserves DGX selection when on', async () => {
+    const selected = 'business_deepseek_v41_flash_tp2';
+    const fetchImpl = vi.fn(async () => Response.json({ activeProfileId: selected,
+      profiles: [{ id: selected, displayNameJa: 'DeepSeek', backend: 'blue', enabled: true, status: 'available' }],
+      state: { runtimeReadyCapabilities: ['text'], selectedBusinessProfileId: selected, selectionRevision: 7, businessTransition: 'ready' } }));
+    const input = { baseUrl: 'http://cp.test', sharedToken: 't', fetchImpl, timeoutMs: 1000 };
+    expect((await fetchDgxModelProfilesOverview(input)).available).toEqual([]);
+    const overview = await fetchDgxModelProfilesOverview({ ...input, businessDeepseekSwitchEnabled: true });
+    expect(overview.available.map((p) => p.id)).toEqual([selected]);
+    expect(overview.activeRuntimeState).toMatchObject({ selectedBusinessProfileId: selected, selectionRevision: 7, businessTransition: 'ready' });
+    expect(parseDgxActiveModelRuntimeState({ runtimeReadyCapabilities: ['text'] })).toEqual({ runtimeReadyCapabilities: ['text'], visionReadyReason: null });
   });
 });

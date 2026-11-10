@@ -57,6 +57,8 @@ export interface Item {
 
 export interface ClientDevice {
   id: string;
+  isSignage?: boolean;
+  signagePreviewTargetDeviceId?: string | null;
   name: string;
   location?: string | null;
   defaultMode?: 'PHOTO' | 'TAG' | null; // デフォルト: 'TAG'
@@ -101,6 +103,8 @@ export interface Transaction {
 }
 
 export interface BorrowPayload {
+  eventKey?: string;
+  readAt?: string;
   itemTagUid: string;
   employeeTagUid: string;
   clientId?: string;
@@ -109,6 +113,8 @@ export interface BorrowPayload {
 }
 
 export interface ReturnPayload {
+  eventKey?: string;
+  readAt?: string;
   loanId: string;
   clientId?: string;
   note?: string | null;

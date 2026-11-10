@@ -1,3 +1,4 @@
+import { assertMachineNfcUidAvailable } from '../../lib/nfc-uid-availability.js';
 import { Prisma } from '@prisma/client';
 import type { MeasuringInstrument, MeasuringInstrumentStatus } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
@@ -86,6 +87,7 @@ export class MeasuringInstrumentService {
 
         const tagUid = data.rfidTagUid?.trim();
         if (tagUid) {
+          await assertMachineNfcUidAvailable(tagUid, tx);
           const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
           if (existing) {
             throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');
@@ -121,6 +123,7 @@ export class MeasuringInstrumentService {
 
         if (rfidTagUid !== undefined) {
           if (tagUid) {
+            await assertMachineNfcUidAvailable(tagUid, tx);
             const existing = await tx.measuringInstrumentTag.findUnique({ where: { rfidTagUid: tagUid } });
             if (existing && existing.measuringInstrumentId !== id) {
               throw new ApiError(409, 'このタグUIDは既に他の計測機器に紐づいています');

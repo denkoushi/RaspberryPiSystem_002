@@ -6,9 +6,13 @@ last-verified: 2026-04-18
 related: [mobile-placement-smartphone.md, ADR-20260418-mobile-placement-android-browser-shell.md]
 category: knowledge-base
 update-frequency: low
+status: superseded
+superseded_by: ../plans/android-haizen-shell-ocr-execplan.md
 ---
 
 # KB-351: 配膳スマホ Android キオスクブラウザ調査（Chrome 継続 vs OSS 殻）
+
+> **superseded（2026-11）**: 本 KB の『Chrome 継続』の方針は、自前の Android WebView シェル（`apps/android-haizen-shell`、[ExecPlan](../plans/android-haizen-shell-ocr-execplan.md)）で置き換わりました。以下は 2026-04-18 時点の調査記録です。
 
 ## Context
 
@@ -55,7 +59,7 @@ update-frequency: low
 
 ## Fix（採用した方針）
 
-**当面は Chrome 継続 + Web UI/UX 改善を正とする**（意思決定は ADR に記録）。
+**当面は Chrome 継続 + Web UI/UX 改善を正とする**（意思決定は ADR に記録）。（現行: 2026-11 時点では `apps/android-haizen-shell` へ移行済み）
 
 - ADR: [ADR-20260418](../decisions/ADR-20260418-mobile-placement-android-browser-shell.md)
 

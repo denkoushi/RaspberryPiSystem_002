@@ -3,6 +3,7 @@ import { Fragment, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { inventoryThumbnailUrl, type InventoryCompartment } from '../../../api/client';
+import { ProtectedImage } from '../../../components/common/ProtectedImage';
 
 import { issuedLabel, unitLabel } from './inventoryDailyFlow';
 import { detailLabels, invLabelNumber } from './inventoryUi';
@@ -30,7 +31,7 @@ export function InventoryHoverCard({ id, compartment, rect, photoIndex = 0 }: { 
   return createPortal(<div ref={ref} id={id} role="tooltip" style={position} className="pointer-events-none fixed z-50 w-[560px] max-w-[calc(100vw-16px)] text-inv-text">
     <div className="inventory-hover-card flex max-h-[calc(100dvh-16px)] flex-col gap-3 overflow-hidden rounded-[20px] border border-inv-cyan/[.55] bg-gradient-to-b from-[#273650] to-[#1f2b3d] p-3.5 shadow-[0_30px_70px_rgba(0,0,0,.7),0_10px_24px_rgba(0,0,0,.5),0_0_0_4px_rgba(57,208,240,.10)] motion-reduce:animate-none">
       <div className="relative flex h-[440px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-inv-line2 bg-inv-bg">
-        {photo ? <img src={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-contain" /> : <span className="text-inv-faint">写真なし</span>}
+        {photo ? <ProtectedImage path={inventoryThumbnailUrl(photo.photoUrl)} alt={photo.originalFilename} className="h-full w-full object-contain" /> : <span className="text-inv-faint">写真なし</span>}
         {compartment.item.photos.length > 1 ? <div aria-label="写真の枚数" className="absolute inset-x-0 bottom-2 flex justify-center gap-1.5">
           {compartment.item.photos.map((entry, index) => <span key={entry.id} className={`h-2 w-2 rounded-full ${index === photoIndex ? 'bg-white' : 'bg-white/[.35]'}`} />)}
         </div> : null}

@@ -7,6 +7,16 @@ export function verifyTotpCode(secret: string, token: string): boolean {
   return authenticator.check(token, secret);
 }
 
+export function verifyTotpCodeStep(secret: string, token: string): number | null {
+  if (!token || !secret) return null;
+  const verifier = authenticator.clone();
+  const options = verifier.allOptions();
+  // Pin the epoch so verification and the saved step use the same instant.
+  verifier.options = { epoch: options.epoch };
+  const delta = verifier.checkDelta(token, secret);
+  return delta === null ? null : Math.floor(options.epoch / (options.step * 1000)) + delta;
+}
+
 export function generateTotpSecret(): string {
   return authenticator.generateSecret();
 }

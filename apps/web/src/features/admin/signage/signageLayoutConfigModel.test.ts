@@ -41,7 +41,7 @@ function baseSchedule(partial: Partial<SignageSchedule>): SignageSchedule {
     contentType: 'TOOLS',
     pdfId: null,
     layoutConfig: null,
-    targetClientKeys: [],
+    targetClientDeviceIds: [],
     dayOfWeek: [1, 2, 3],
     startTime: '09:00',
     endTime: '18:00',

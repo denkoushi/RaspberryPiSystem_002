@@ -78,7 +78,9 @@ export function useAssemblyTemplateEditorController(input: {
     readOnly,
     selectedDocumentId: procedure.selectedDocumentId,
     selectedPage: procedure.selectedPage,
-    selectedPageKey: procedure.selectedPageKey,
+    // 表示中のページで渡す。読込直後に未選択('')から先頭ページへ揃えるだけの変化を
+    // ページ移動とみなすと、その前に押したマーカーの選択が消える。
+    selectedPageKey: procedure.selectedPage?.key ?? '',
     selectedStep: procedure.selectedStep
   });
   const canvasZoom = useImageCanvasZoom();

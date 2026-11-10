@@ -106,8 +106,11 @@ async function cacheAsset(request, strict = false, event) {
   const cached = await cache.match(request);
   if (cached) return cached;
   const response = await fetchAsset(request);
-  // A maintenance/SPA fallback is not a JavaScript/CSS asset.
-  if (!response.ok || response.redirected || response.headers.get('content-type')?.includes('text/html')) {
+  // A maintenance/SPA fallback is not a JavaScript/CSS asset, but a hashed
+  // `.html` build asset (e.g. an SOP manual imported with `?url`) is HTML by design.
+  const pathname = new URL(typeof request === 'string' ? request : request.url, self.location.origin).pathname;
+  const htmlAllowed = pathname.startsWith('/assets/') && pathname.endsWith('.html');
+  if (!response.ok || response.redirected || (!htmlAllowed && response.headers.get('content-type')?.includes('text/html'))) {
     if (strict) throw new Error('App shell asset unavailable');
     return response;
   }

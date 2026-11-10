@@ -1,6 +1,12 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_PLANNING_BOARD_OFFLINE_ENABLED?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_LOSS_AFTER_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_PROBE_INTERVAL_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_RECOVERY_SUCCESSES?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_RECOVERED_BANNER_MS?: string;
   readonly VITE_AGENT_WS_MODE?: string;
   readonly VITE_AGENT_WS_URL?: string;
   readonly VITE_API_BASE_URL?: string;
@@ -17,7 +23,6 @@ interface ImportMetaEnv {
   readonly VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_ENABLED?: string;
   readonly VITE_KIOSK_LEADERBOARD_TERMINAL_CACHE_PHASE2_SWR?: string;
   readonly VITE_KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED?: string;
-  readonly VITE_KIOSK_PRODUCTION_SCHEDULE_ORDER_SPLIT_ENABLED?: string;
   /** Immutable lowercase Git SHA compiled into a release Web bundle. */
   readonly VITE_RELEASE_SHA?: string;
   /** Draft kiosk SOP popup. Production defaults to disabled until copy sign-off. */

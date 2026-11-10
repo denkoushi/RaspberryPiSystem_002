@@ -47,11 +47,21 @@ export class PartMeasurementDrawingSiblingMatchService {
         return Array.isArray(payload.dimensions) && payload.image ? [{ ...visual, map: payload }] : [];
       } catch { return []; }
     }));
-    const candidates = prefilterDrawingSiblings({ ...target, map }, decoded.flat());
     const row = await prisma.partMeasurementDrawingSiblingMatch.upsert({
       where, create: { ...key, status: 'PENDING', method: 'dgx-vision', siblings: [], attempts: 1 },
       update: { attempts: { increment: 1 } }
     });
+    const pool = decoded.flat();
+    let candidates: typeof pool = [];
+    try {
+      if (this.deps.enabled()) candidates = await prefilterDrawingSiblings(target, pool, this.deps);
+    } catch (error) {
+      // An unreadable target image is recorded like a failed vision attempt instead of being re-picked forever.
+      return prisma.partMeasurementDrawingSiblingMatch.update({ where: { id: row.id }, data: {
+        status: row.attempts >= 3 ? 'NO_MATCH' : 'PENDING', method: 'dgx-vision', siblings: [],
+        lastError: (error instanceof Error ? error.message : String(error)).slice(0, 2000)
+      } });
+    }
     const decision = await selectDrawingSiblings(target, candidates, row.attempts, this.deps);
     return prisma.partMeasurementDrawingSiblingMatch.update({ where: { id: row.id }, data: decision });
   }

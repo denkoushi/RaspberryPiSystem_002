@@ -3,7 +3,7 @@ title: KB-389 DGX resource runtimeProfile and shared resourceState
 tags: [DGX, DGX_RESOURCE, Spark, runtimeProfile, resourceState, vLLM]
 audience: [開発者, 運用者]
 last-verified: 2026-06-15
-last-updated: 2026-06-15-preflight-metrics-deploy
+last-updated: 2026-11-03
 category: knowledge-base
 status: active
 scope: DGX Spark system-prod LocalLLM, Pi5 `/admin/tools/dgx-resource`, profile-scoped memory budget
@@ -23,6 +23,8 @@ related_docs:
 ---
 
 # KB-389: DGX resource runtimeProfile and shared resourceState
+
+> Pi5 の管理画面と API の記述（`runtimeSummary`、`scenarioExecute`、切替シナリオ、`buildDgxResourceDashboardViewModel()`、`DgxResourceStatusHeader` / `DgxResourceStatusBoard` / `DgxResourcePreflightPanel`、詳細タブ）は 2026-06-07〜06-15 時点の旧 UI と旧契約の記録で、現行コードでは置き換わっている。現行の画面と API は [ADR-20261017](../decisions/ADR-20261017-dgx-resource-business-llm-only.md) と [Runbook §管理コンソール: DGX リソース](../runbooks/dgx-system-prod-local-llm.md#管理コンソール-dgx-リソースpi5-api-経由) を正本とする。
 
 ## Context
 
@@ -65,10 +67,22 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Path: `/srv/dgx/system-prod/state/dgx-resource-state.json`
 - `owner`: `business` | `private` | `experiment` | `unknown`
 - `status`: `preparing` | `released` (see Open Items — `ready` not written yet)
-- Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`
+- Pi5 admin shows **`DGX 所有`** via `overview.runtimeSummary.resourceOwnerLabelJa`（当時の記録。現行の overview に `runtimeSummary` はない）
 - Strict Ready / business readiness still uses Pi5 orchestration + `/v1/models`; resourceState is **display and cross-workload lease hint**, not a KPI.
 
+### Business DeepSeek private-sharing attestation (local implementation · 2026-11-03)
+
+- `DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED` defaults to false in the Business launcher, control server and gateway; the existing `BUSINESS_DEEPSEEK_SWITCH_ENABLED` must also be enabled. Enabling requires a new Business DeepSeek launch: existing containers cannot acquire proof by changing the flag alone. GLM and the Private port 8888 launcher are unchanged.
+- Business DeepSeek always refuses all `--learn*` options. Opt-in launches additionally pin `--prompt-cache-gib 0` and use a read-only container root, read-only data mounts and memory-only `/tmp`; both containers retain Docker `--log-driver none`.
+- Authenticated gateway `GET /system/resource-state` optionally adds `businessRuntime.privateSharing`. Missing, unknown, unsafe, stopped, loading or stale observations omit it. Internal `privateSharingEvidence` from the control server is removed at the gateway; only the gateway publishes the complete attestation.
+- `generation` comes from matching state/launch labels and live container IDs/start times on both ranks; `selectionRevision` is the current integer selection revision. Prepared-marker verification and matching live image IDs, model/checkpoint paths and worker rank-cache mount establish `weightsRevision`. Observed native serve/port/parallel/thinking arguments establish `runtimeIdentity`.
+- `promptCacheGiB` and `learn` come from the observed argv; `logDriver` comes from Docker inspection on both ranks. Discarded engine stdout/stderr, read-only durable storage and absent learning/retained prompt cache establish `requestResponseLogging: false` and `persistsConversations: false`. Gateway shared-request access logging is suppressed; its forwarding paths do not log bodies.
+- `generationFenced: true` is added only by the gateway after checking the proof against the current ready selection under the existing lifecycle/routing lock. `X-Private-Shared-Runtime: <selectionRevision>:<generation>` requires fresh proof and fixes the upstream for the entire request/stream. Stale, duplicate, empty or unverified headers return an empty HTTP 409 response. Requests without the header retain existing routing and locking.
+- Contract owner: [DGXSparkControlPlane repository boundary](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/repository-boundary.md) and [shared-model contract](https://github.com/denkoushi/DGXSparkControlPlane/blob/main/docs/exec-plans/shared-model-both-pis.md). This is local implementation evidence only; live container startup with a read-only root, engine behavior and two-rank operation still require operator validation before enablement. No deployment was performed.
+
 ### Async business-return UX (Pi5 only · 2026-06-07)
+
+（当時の記録。現行の actions は `RETURN_TO_BUSINESS` / `STOP_BUSINESS_LLM` / `PREVIEW_MODEL_STORAGE_DELETE` / `EXECUTE_MODEL_STORAGE_DELETE` だけ）
 
 - Scenarios: **`private_to_business`** / **`experiment_to_business`** only.
 - After workload steps and DGX `POST /start` with `modelProfileId`, API sets **`deferReadiness: true`** and returns **`scenarioExecute.outcomeKind: in_progress`** instead of blocking on Strict Ready.
@@ -77,6 +91,8 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - DGX code unchanged for this UX fix.
 
 ### Modern dashboard UI (Pi5 Web only · 2026-06-07)
+
+（当時の記録。現行の画面は `DgxResourceDashboard.tsx` と `DgxResourceStatusPanel.tsx` で構成され、下記の view model とコンポーネントはない）
 
 - **Scope**: Web presentation only. API / DGX contracts unchanged.
 - **View model**: `buildDgxResourceDashboardViewModel()` in `dgxResourceDashboardViewModel.ts` maps `overview` → header pills, 4-tile status row, detail rows. UI components consume the view model; they do not re-derive owner/ready/memory labels inline.
@@ -93,6 +109,8 @@ Contract details (paths, API fields, env): [Runbook §DGX model profiles](../run
 - Runtime budget shown when selecting business-return profile (e.g. `vLLM memory budget 65%`).
 
 ### Admin preflight metrics (2026-06-15)
+
+（Web の記述は当時の記録。`DgxResourceStatusBoard` / `DgxResourcePreflightPanel` は現行コードにない）
 
 - DGX gateway `/system/metrics` returns optional detail fields from `nvidia-smi`: `gpuTemperatureC`, `gpuPowerDrawW`, `gpuPowerLimitW`, `gpuClockSmMhz`, `gpuClockGraphicsMhz`, `gpuClockMemoryMhz`, `gpuPstate`, `gpuClocksThrottleReason`, `gpuName`, `driverVersion`.
 - Pi5 API passes these through `overview.kpis` (`dgx-resource.probes.ts` accepts camelCase and legacy snake_case keys).

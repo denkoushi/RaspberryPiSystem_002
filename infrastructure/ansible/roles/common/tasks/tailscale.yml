@@ -1,29 +1,54 @@
 ---
-- name: Check if curl is already installed
-  ansible.builtin.command: which curl
-  register: curl_check
-  failed_when: false
-  changed_when: false
-
-- name: Ensure curl is installed (required for Tailscale install script)
-  ansible.builtin.package:
-    name: curl
-    state: present
-  when: curl_check.rc != 0
-
 - name: Check if tailscaled is already installed
   ansible.builtin.command: tailscaled --version
   register: tailscaled_version
   failed_when: false
   changed_when: false
 
-- name: Install Tailscale package
-  ansible.builtin.shell: |
-    set -euo pipefail
-    curl -fsSL {{ tailscale_install_script }} | sh
-  args:
-    executable: /bin/bash
+- name: Install Tailscale from its signed apt repository
   when: tailscaled_version.rc != 0
+  block:
+    - name: Gather distribution facts for the Tailscale repository
+      ansible.builtin.setup:
+        gather_subset:
+          - '!all'
+          - '!min'
+          - distribution
+
+    - name: Ensure HTTPS repository prerequisites are installed
+      ansible.builtin.apt:
+        name: ca-certificates
+        state: present
+        update_cache: true
+
+    - name: Ensure the apt keyring directory exists
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Download the Tailscale repository signing key
+      ansible.builtin.get_url:
+        url: "https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }}/{{ ansible_distribution_release }}.noarmor.gpg"
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        checksum: "{{ ('sha256:' ~ tailscale_keyring_sha256) if tailscale_keyring_sha256 | length > 0 else omit }}"
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure the signed Tailscale apt repository
+      ansible.builtin.apt_repository:
+        repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/{{ ansible_distribution | lower }} {{ ansible_distribution_release }} main"
+        filename: tailscale
+        state: present
+
+    - name: Install Tailscale package
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+        update_cache: true
 
 - name: Ensure tailscaled service is enabled and started
   ansible.builtin.service:
