@@ -95,6 +95,48 @@ describe('kiosk shelf master', () => {
     await waitFor(() => expect(offline.submit).toHaveBeenCalledWith({ shelfCodeRaw: 'Ｍ１ 南', displayLabel: '治具', photo: { contentType: 'image/jpeg', dataBase64: 'photo' } }));
     expect(await screen.findByRole('status')).toHaveTextContent('未送信に保存しました');
   });
+  it('holds a switch away from a new shelf with a photo until the photo is discarded', async () => {
+    mount(); fireEvent.click(await screen.findByRole('button', { name: 'M1 南 に棚を追加' }));
+    fireEvent.change(screen.getByLabelText('棚の写真'), { target: { files: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'M1 東 に棚を追加' }));
+    expect(screen.getByRole('textbox', { name: 'この棚の名前' })).toHaveValue('M1 南');
+    expect(screen.getByRole('button', { name: 'M1 東 に棚を追加' })).toHaveClass('sk-held');
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('button', { name: 'やめる' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: '登録する棚の写真' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    expect(screen.getByRole('textbox', { name: 'この棚の名前' })).toHaveValue('M1 南');
+    fireEvent.click(screen.getByRole('button', { name: /M2 加工機/ }));
+    expect(screen.getByRole('button', { name: /M2 加工機/ })).toHaveClass('sk-held');
+    fireEvent.click(screen.getByRole('button', { name: '写真を捨てる' }));
+    expect(screen.getByRole('button', { name: 'M2 北 に棚を追加' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'この棚の名前' })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('mobile-placement:shelf-photo-draft')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'M2 北 に棚を追加' }));
+    fireEvent.click(screen.getByRole('button', { name: 'M2 南 に棚を追加' }));
+    expect(screen.getByRole('textbox', { name: 'この棚の名前' })).toHaveValue('M2 南');
+  });
+  it('keeps the photo when the same cell is pressed or a landmark is deleted, and restarts the hold timer for a new target', async () => {
+    mount(); fireEvent.click(await screen.findByRole('button', { name: 'M1 南 に棚を追加' }));
+    fireEvent.change(screen.getByLabelText('棚の写真'), { target: { files: [new File(['photo'], 'photo.jpg', { type: 'image/jpeg' })] } });
+    await waitFor(() => expect(screen.getByRole('button', { name: '登録する' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'M1 南 に棚を追加' }));
+    expect(screen.getByRole('button', { name: 'やめる' })).toBeInTheDocument();
+    const remove = screen.getByRole('button', { name: '出荷口 を消す' });
+    fireEvent.click(remove); fireEvent.click(remove);
+    await waitFor(() => expect(api.deleteMobilePlacementShelfLandmark).toHaveBeenCalledWith('出荷口'));
+    expect(screen.getByRole('img', { name: '登録する棚の写真' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '写真を捨てる' })).not.toBeInTheDocument();
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'M1 東 に棚を追加' }));
+    act(() => { vi.advanceTimersByTime(3000); });
+    fireEvent.click(screen.getByRole('button', { name: 'M1 西 に棚を追加' }));
+    act(() => { vi.advanceTimersByTime(3000); });
+    expect(screen.getByRole('button', { name: 'M1 西 に棚を追加' })).toHaveClass('sk-held');
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(screen.getByRole('button', { name: 'やめる' })).toBeInTheDocument();
+  });
   it('blocks pending shelves and opens the reason and removal for needs-check shelves', async () => {
     offline.records = [
       { id: 'pending', shelfCodeRaw: 'Ｍ１ 南', status: 'pending', stage: 'unregistered', displayLabel: null, photo: { contentType: 'image/jpeg', dataBase64: 'photo' }, createdAt: '' },

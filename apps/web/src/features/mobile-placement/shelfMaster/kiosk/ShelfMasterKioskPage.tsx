@@ -29,19 +29,25 @@ export function ShelfMasterKioskPage() {
   const [selected, setSelected] = useState(() => readShelfPhotoDraft()?.machine ?? '');
   const [editing, setEditing] = useState<Editing | null>(() => { const draft = readShelfPhotoDraft(); return draft ? { key: 'draft', initial: draft } : null; });
   const [toast, setToast] = useState<string | null>(null);
+  const [hasPhoto, setHasPhoto] = useState(false);
+  const [held, setHeld] = useState<{ key: string; run: () => void } | null>(null);
+  useDeleteConfirmation(held?.key, () => setHeld(null));
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 2500); return () => window.clearTimeout(timer); }, [toast]);
   const queuedCodes = new Set(queue.records.map((r) => r.shelfCodeRaw));
   const shelves: KioskShelf[] = [...(query.data?.shelves ?? []).filter((s) => !queuedCodes.has(s.shelfCodeRaw)).map((shelf) => ({ shelfCodeRaw: shelf.shelfCodeRaw, shelf })), ...queue.records.map((record) => ({ shelfCodeRaw: record.shelfCodeRaw, record }))];
   const marks: Landmark[] = [...(machinesQuery.data?.machines ?? []).map((name) => ({ name, kind: '加工機' })), ...(machinesQuery.data?.landmarks ?? []).map((name) => ({ name, kind: '目安' }))];
   if (shelves.some((s) => !shelfPosition(s.shelfCodeRaw, marks))) marks.push({ name: 'その他', kind: '', other: true });
   const mark = marks.find((m) => m.name === selected) ?? marks[0];
-  const open = (next: Editing | null) => { if (editing && !editing.item) clearShelfPhotoDraft(); setEditing(next); };
+  const open = (next: Editing | null) => { if (editing && !editing.item) clearShelfPhotoDraft(); setHeld(null); setHasPhoto(false); setEditing(next); };
   const close = () => open(null);
+  const keepsPhoto = Boolean(editing && !editing.item && hasPhoto);
+  const guard = (key: string, run: () => void) => { if (keepsPhoto) setHeld({ key, run }); else run(); };
+  const isEditingNew = (machine: string, direction: ShelfDirection | '') => Boolean(editing && !editing.item && editing.initial?.machine === machine && editing.initial.direction === direction);
   const devices = devicesQuery.data?.devices ?? [];
   return <div className="sk-screen" data-testid="shelf-master-kiosk"><ShelfKioskHeader count={shelves.length} used={devices.filter((d) => d.shelfCodeRaw).length} total={devices.length} pending={queue.records.length} onBack={() => navigate('/kiosk/mobile-placement', { state: isMobilePlacementShelfRegisterRouteState(location.state) ? location.state : undefined })} />
-    <div className="sk-main"><ShelfLandmarkList marks={marks} shelves={shelves} selected={mark?.name} onSelect={(name) => { setSelected(name); open(null); }} />
-      <div className="sk-center">{query.isLoading || machinesQuery.isLoading ? <p>読込中…</p> : query.isError || machinesQuery.isError ? <p role="alert">{query.isError ? '棚を取得できませんでした' : '目安を取得できませんでした'} <button type="button" onClick={() => { void query.refetch(); void machinesQuery.refetch(); }}>再試行</button></p> : <ShelfCompass mark={mark} marks={marks} shelves={shelves} selectedCode={editing?.item?.shelfCodeRaw} selectedDirection={editing?.initial?.machine === mark?.name ? editing?.initial?.direction : undefined} devices={devices} onShelf={(item) => open({ key: item.shelfCodeRaw, item })} onNew={(direction) => { if (mark) open({ key: `${mark.name}:${direction}`, initial: { machine: mark.name, direction } }); }} />}</div>
-      {editing?.item?.record ? <QueueEditor key={editing.key} item={editing.item} remove={queue.remove} onClose={close} /> : editing ? <ShelfKioskEditor key={editing.key} shelf={editing.item?.shelf ?? null} shelves={shelves.map((s) => s.shelf ?? { shelfCodeRaw: s.shelfCodeRaw, isStructured: true })} initial={editing.initial} machinesQuery={machinesQuery} devicesQuery={devicesQuery} submit={queue.submit} onClose={close} onMessage={setToast} /> : <section className="sk-editor" aria-label="棚" />}
+    <div className="sk-main"><ShelfLandmarkList marks={marks} shelves={shelves} selected={mark?.name} heldKey={held?.key} onSelect={(name) => guard(`mark:${name}`, () => { setSelected(name); open(null); })} onAdded={(name) => { setSelected(name); if (!keepsPhoto) open(null); }} onDeleted={(name) => { setSelected(''); if (!keepsPhoto || editing?.initial?.machine === name) open(null); }} />
+      <div className="sk-center">{query.isLoading || machinesQuery.isLoading ? <p>読込中…</p> : query.isError || machinesQuery.isError ? <p role="alert">{query.isError ? '棚を取得できませんでした' : '目安を取得できませんでした'} <button type="button" onClick={() => { void query.refetch(); void machinesQuery.refetch(); }}>再試行</button></p> : <ShelfCompass mark={mark} marks={marks} shelves={shelves} selectedCode={editing?.item?.shelfCodeRaw} selectedDirection={editing?.initial?.machine === mark?.name ? editing?.initial?.direction : undefined} devices={devices} heldKey={held?.key} onShelf={(item) => { if (editing?.item?.shelfCodeRaw !== item.shelfCodeRaw) guard(item.shelfCodeRaw, () => open({ key: item.shelfCodeRaw, item })); }} onNew={(direction) => { if (mark && !isEditingNew(mark.name, direction)) guard(`${mark.name}:${direction}`, () => open({ key: `${mark.name}:${direction}`, initial: { machine: mark.name, direction } })); }} />}</div>
+      {editing?.item?.record ? <QueueEditor key={editing.key} item={editing.item} remove={queue.remove} onClose={close} /> : editing ? <ShelfKioskEditor key={editing.key} shelf={editing.item?.shelf ?? null} shelves={shelves.map((s) => s.shelf ?? { shelfCodeRaw: s.shelfCodeRaw, isStructured: true })} initial={editing.initial} machinesQuery={machinesQuery} devicesQuery={devicesQuery} submit={queue.submit} onClose={close} onCancel={() => guard('close', close)} discardHeld={Boolean(held)} onDiscard={() => held?.run()} onPhotoChange={setHasPhoto} onMessage={setToast} /> : <section className="sk-editor" aria-label="棚" />}
     </div>{toast && <div className="sk-toast" role="status">{toast}</div>}
   </div>;
 }

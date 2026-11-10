@@ -1,5 +1,5 @@
 import { splitArea } from '@raspi-system/shelf-layout-core';
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { ShelfPhoto } from '../../shelfPhoto/ShelfPhoto';
 import { ShelfPhotoCamera } from '../../shelfPhoto/ShelfPhotoCamera';
@@ -11,7 +11,7 @@ import { useShelfPhotoEditor } from './useShelfPhotoEditor';
 
 import type { ShelfPhotoEditorProps } from './useShelfPhotoEditor';
 
-export function useDeleteConfirmation(confirmed: boolean, reset: () => void) {
+export function useDeleteConfirmation(confirmed: boolean | string | undefined, reset: () => void) {
   const resetRef = useRef(reset);
   resetRef.current = reset;
   useEffect(() => {
@@ -22,8 +22,11 @@ export function useDeleteConfirmation(confirmed: boolean, reset: () => void) {
     return () => { window.clearTimeout(timer); window.removeEventListener('keydown', escape); };
   }, [confirmed]);
 }
-export function ShelfKioskEditor(props: ShelfPhotoEditorProps) {
+export function ShelfKioskEditor(props: ShelfPhotoEditorProps & { onCancel?: () => void; discardHeld?: boolean; onDiscard?: () => void; onPhotoChange?: (hasPhoto: boolean) => void }) {
   const e = useShelfPhotoEditor(props);
+  const { onPhotoChange } = props;
+  const hasPhoto = Boolean(e.photo);
+  useLayoutEffect(() => { onPhotoChange?.(hasPhoto); }, [hasPhoto, onPhotoChange]);
   useDeleteConfirmation(e.confirmDelete, () => e.setConfirmDelete(false));
   const position = props.shelf ? splitArea(props.shelf.shelfCodeRaw) : null;
   const selectedDirection = position ? position.direction ?? '' : e.direction;
@@ -38,7 +41,7 @@ export function ShelfKioskEditor(props: ShelfPhotoEditorProps) {
       <label className="sk-row"><span>メモ</span><input aria-label="メモ" maxLength={60} value={e.memo} disabled={e.busy} onChange={(event) => e.setMemo(event.target.value)} /></label>
       {e.error && <p role="alert">{e.error}</p>}
     </div>
-    <footer className="sk-foot">{props.shelf ? <button type="button" className="sk-delete" disabled={e.busy} onClick={() => { if (e.confirmDelete) void e.deleteShelf(); else e.setConfirmDelete(true); }}>{e.confirmDelete ? '本当に消す' : '消す'}</button> : <button type="button" disabled={e.busy} onClick={props.onClose}>やめる</button>}<button type="submit" className="sk-go" disabled={!e.canSave}>{props.shelf ? '保存する' : '登録する'}</button></footer>
+    <footer className="sk-foot">{props.shelf ? <button type="button" className="sk-delete" disabled={e.busy} onClick={() => { if (e.confirmDelete) void e.deleteShelf(); else e.setConfirmDelete(true); }}>{e.confirmDelete ? '本当に消す' : '消す'}</button> : props.discardHeld ? <button type="button" className="sk-delete sk-discard" disabled={e.busy} onClick={props.onDiscard}>写真を捨てる</button> : <button type="button" disabled={e.busy} onClick={props.onCancel ?? props.onClose}>やめる</button>}<button type="submit" className="sk-go" disabled={!e.canSave}>{props.shelf ? '保存する' : '登録する'}</button></footer>
     {e.cameraOpen && <ShelfPhotoCamera onCapture={(photo) => { e.setPhoto(photo); e.setCameraOpen(false); }} onClose={() => e.setCameraOpen(false)} onSelectFile={() => e.input.current?.click()} />}
   </form>;
 }
