@@ -68,13 +68,16 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       metrics.lockStarted = performance.now();
       previousStale = new Map(staleInputs);
       previousRejected = new Map(rejectedInputs);
-      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits);
+      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started);
       await check(true);
       return result;
     }, { timeout: runnerTimeoutMs, maxWait: 1000 }));
     committed = true;
     return saved;
   } catch (error) {
+    metrics.errorCode = (error as { code?: string })?.code ?? 'error';
+    metrics.errorMessage = error instanceof Error ? error.message : String(error);
+    metrics.failedParentItemId = metrics.currentParentItemId ?? null;
     if (previousStale && previousRejected) {
       staleInputs.clear();
       for (const [key, value] of previousStale) staleInputs.set(key, value);
@@ -96,6 +99,8 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       requestId: params.audit?.requestId, processedLotCount: committed ? result.splitCount : 0,
       writtenRowCount: committed ? metrics.writtenRowCount : 0, totalMs: performance.now() - started,
       lockHeldMs: metrics.lockHeldMs, yieldReason: metrics.yieldReason,
+      errorCode: metrics.errorCode ?? null, errorMessage: metrics.errorMessage ?? null,
+      failedParentItemId: metrics.failedParentItemId ?? null,
       candidateMs: metrics.candidateMs ?? 0, candidateSqlCount: metrics.candidateSqlCount ?? 0,
       yieldCheckCount: metrics.yieldCheckCount ?? 0, yieldCheckMs: metrics.yieldCheckMs ?? 0 }, 'Automatic unit split call');
   }
@@ -113,7 +118,7 @@ async function setPreprocessingStatementTimeout(runner: Prisma.TransactionClient
 }
 
 async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteKey: string; audit?: PieceAuditContext }, deadline: number, runnerDeadline: number,
-  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }): Promise<SessakuPiecesAutoUnitSplitResponse> {
+  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number): Promise<SessakuPiecesAutoUnitSplitResponse> {
   assertRunnerDeadline(runnerDeadline);
   await ensurePlanningBoardState(params.siteKey);
   await setPreprocessingStatementTimeout(runner, runnerDeadline);
@@ -249,6 +254,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           attempted += 1;
           let expectedVersion = pieces[0].pieceSetVersion ?? 0;
           const rejectionKey = JSON.stringify([params.siteKey, parentItemId]);
+          if (metrics) metrics.currentParentItemId = parentItemId;
           try {
             await runAutoUnitSplitLot(async () => {
               for (const item of pieces) {
@@ -286,16 +292,24 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             retryNeeded ||= Boolean(reloadable);
             logger.warn({
               event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,
+              lotIndex: attempted - 1, elapsedMs: performance.now() - started,
+              message: error instanceof Error ? error.message : String(error),
               statusCode: error instanceof ApiError ? error.statusCode : undefined, code
             }, 'Automatic unit split skipped');
             // Only lock contention and deadline exhaustion stop work on unrelated lots.
             if (code === 'AUTO_UNIT_SPLIT_BUSY' || code === 'AUTO_UNIT_SPLIT_BUDGET') {
-              const metrics = autoUnitSplitMetrics.getStore();
-              if (metrics) metrics.yieldReason = code ?? null;
+              if (metrics) {
+                metrics.yieldReason = code;
+                metrics.errorCode = code;
+                metrics.errorMessage = error instanceof Error ? error.message : String(error);
+                metrics.failedParentItemId = metrics.currentParentItemId ?? null;
+                metrics.currentParentItemId = null;
+              }
               if (code === 'AUTO_UNIT_SPLIT_BUSY') throw error;
               stopped = true; break;
             }
           }
+          if (metrics) metrics.currentParentItemId = null;
         }
         if (stopped || performance.now() >= deadline || performance.now() >= runnerDeadline || result.splitCount >= limits.maxLots) {
           return { ...result, hasMore: true };

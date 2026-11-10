@@ -109,6 +109,92 @@ describe('automatic unit split', () => {
       event: 'sessaku_piece.auto_unit_split_call', yieldCheckCount: 2, yieldCheckMs: 0
     }), expect.any(String));
   });
+  it('records zero-based lot indexes, call elapsed time and messages for skipped lots', async () => {
+    vi.mocked(performance.now).mockReturnValue(100);
+    mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' }), item({ itemId: 'row:three', fhincd: 'THREE' })];
+    mocks.rows.mockImplementation(async () => { vi.mocked(performance.now).mockReturnValue(200); return []; });
+    mocks.split.mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(250);
+      throw new ApiError(409, 'stale first lot', undefined, 'STALE_SESSAKU_PIECES');
+    }).mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(400);
+      throw new ApiError(409, 'invalid second lot', undefined, 'PIECE_QUANTITY_CONFLICT');
+    }).mockResolvedValue({ pieceSetVersion: 1 });
+    expect(await autoSplitSessakuUnits({ siteKey: 'skip-log' })).toEqual({ splitCount: 1, skippedCount: 2, hasMore: true });
+    expect(mocks.warn.mock.calls.map(([entry]) => entry)).toEqual([
+      expect.objectContaining({ event: 'sessaku_piece.auto_unit_split_skipped', parentItemId: 'row:one',
+        lotIndex: 0, elapsedMs: 150, code: 'STALE_SESSAKU_PIECES', message: 'stale first lot' }),
+      expect.objectContaining({ event: 'sessaku_piece.auto_unit_split_skipped', parentItemId: 'row:two',
+        lotIndex: 1, elapsedMs: 300, code: 'PIECE_QUANTITY_CONFLICT', message: 'invalid second lot' })
+    ]);
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+      errorCode: null, errorMessage: null, failedParentItemId: null, yieldReason: null
+    }), expect.any(String));
+  });
+  it.each([
+    { kind: 'server ApiError', error: new ApiError(500, 'split failed', undefined, 'SPLIT_FAILED'), code: 'SPLIT_FAILED' },
+    { kind: 'uncoded server ApiError', error: new ApiError(500, 'unexpected failure'), code: 'error' }
+  ])('records the active lot and error when rethrowing a $kind', async ({ error, code }) => {
+    mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' })];
+    mocks.split.mockResolvedValueOnce({ pieceSetVersion: 1 }).mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(500);
+      throw error;
+    });
+    await expect(autoSplitSessakuUnits({ siteKey: 'rethrow-log' })).rejects.toBe(error);
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_call', errorCode: code, errorMessage: error.message,
+      failedParentItemId: 'row:two', yieldReason: code, processedLotCount: 0
+    }), expect.any(String));
+  });
+  it('records the budget error and failed lot when returning after a lot deadline', async () => {
+    const error = new ApiError(409, '自動分割の時間予算を超えました', undefined, 'AUTO_UNIT_SPLIT_BUDGET');
+    mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' })];
+    mocks.split.mockResolvedValueOnce({ pieceSetVersion: 1 }).mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(3000);
+      throw error;
+    });
+    expect(await autoSplitSessakuUnits({ siteKey: 'lot-budget-log' })).toEqual({ splitCount: 1, skippedCount: 1, hasMore: true });
+    expect(mocks.warn).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_skipped', lotIndex: 1, elapsedMs: 3000, message: error.message
+    }), expect.any(String));
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_call', errorCode: error.code, errorMessage: error.message,
+      failedParentItemId: 'row:two', yieldReason: 'AUTO_UNIT_SPLIT_BUDGET', totalMs: 3000, processedLotCount: 1
+    }), expect.any(String));
+  });
+  it.each(['AUTO_UNIT_SPLIT_BUSY', 'AUTO_UNIT_SPLIT_YIELD', 'P2028'])(
+    'records the active lot and error when returning after %s', async (code) => {
+      const error = new ApiError(409, `stopped: ${code}`, undefined, code);
+      mocks.items = [item(), item({ itemId: 'row:two', fhincd: 'TWO' })];
+      mocks.split.mockResolvedValueOnce({ pieceSetVersion: 1 }).mockRejectedValueOnce(error);
+      expect(await autoSplitSessakuUnits({ siteKey: `return-log-${code}` })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+      expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+        event: 'sessaku_piece.auto_unit_split_call', errorCode: code, errorMessage: error.message,
+        failedParentItemId: 'row:two', yieldReason: code === 'P2028' ? code : 'human_write', processedLotCount: 0
+      }), expect.any(String));
+    });
+  it('records a null failed lot when the runner deadline expires before lot processing', async () => {
+    mocks.items = [item()];
+    mocks.rows.mockImplementation(async () => { vi.mocked(performance.now).mockReturnValue(AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS); return []; });
+    expect(await autoSplitSessakuUnits({ siteKey: 'pre-lot-budget-log' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_call', errorCode: 'AUTO_UNIT_SPLIT_BUDGET', errorMessage: '自動分割の時間予算を超えました',
+      failedParentItemId: null, yieldReason: 'AUTO_UNIT_SPLIT_BUDGET', totalMs: AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS
+    }), expect.any(String));
+    expect(mocks.split).not.toHaveBeenCalled();
+  });
+  it.each(['success', 'skip'])('clears the active lot after %s before a runner failure', async (outcome) => {
+    mocks.items = [item()];
+    if (outcome === 'skip') mocks.split.mockRejectedValueOnce(new ApiError(409, 'stale', undefined, 'STALE_SESSAKU_PIECES'));
+    const transaction = mocks.transaction.getMockImplementation()!;
+    const error = new ApiError(500, 'runner failed', undefined, 'RUNNER_FAILED');
+    mocks.transaction.mockImplementationOnce(async (callback) => { await transaction(callback); throw error; });
+    await expect(autoSplitSessakuUnits({ siteKey: `post-lot-log-${outcome}` })).rejects.toBe(error);
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_call', errorCode: error.code, errorMessage: error.message,
+      failedParentItemId: null, yieldReason: 'RUNNER_FAILED'
+    }), expect.any(String));
+  });
   it('continues after a structural per-lot 409 and bounds the number of attempted transactions', async () => {
     mocks.items = Array.from({ length: 6 }, (_, i) => item({ itemId: `row:${Buffer.from(JSON.stringify(['S', `PART-${i}`, '021', '10'])).toString('base64url')}`, fhincd: `PART-${i}` }));
     expect(AUTO_UNIT_SPLIT_MAX_LOTS).toBe(3);

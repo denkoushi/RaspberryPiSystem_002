@@ -32,7 +32,7 @@ function assertCuttingPieceSet(set: Awaited<ReturnType<typeof readSessakuPieceSe
 }
 
 function conflict(code = 'STALE_SESSAKU_PIECES'): never {
-  throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, code);
+  throw new ApiError(409, code === 'AUTO_UNIT_SPLIT_BUDGET' ? '自動分割の時間予算を超えました' : '片が更新されています。再読み込みしてください', undefined, code);
 }
 async function timed<T>(audit: PieceAuditContext | undefined, stage: Extract<keyof PieceOperationTiming, `${string}Ms`>, work: () => Promise<T>): Promise<T> {
   const started = performance.now();

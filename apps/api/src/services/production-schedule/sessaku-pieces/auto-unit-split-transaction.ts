@@ -2,7 +2,8 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
 
-export type AutoUnitSplitMetrics = { writtenRowCount: number; lockStarted?: number; lockHeldMs: number; yieldReason: string | null; candidateMs?: number; candidateSqlCount?: number; yieldCheckCount?: number; yieldCheckMs?: number };
+export type AutoUnitSplitMetrics = { writtenRowCount: number; lockStarted?: number; lockHeldMs: number; yieldReason: string | null; candidateMs?: number; candidateSqlCount?: number; yieldCheckCount?: number; yieldCheckMs?: number;
+  currentParentItemId?: string | null; errorCode?: string; errorMessage?: string; failedParentItemId?: string | null };
 export const autoUnitSplitMetrics = new AsyncLocalStorage<AutoUnitSplitMetrics>();
 
 export function isAutoUnitSplitYield(error: unknown): boolean {
