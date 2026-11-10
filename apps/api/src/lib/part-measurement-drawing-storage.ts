@@ -1,4 +1,4 @@
-import { validateImageBuffer, IMAGE_INPUT_MAX_PIXELS } from './validated-image.js';
+import { validateImageBuffer } from './validated-image.js';
 import { randomUUID } from 'crypto';
 import type { Stats } from 'fs';
 import path from 'path';
@@ -20,6 +20,11 @@ const MIME_TO_EXT: Record<string, string> = {
 const MAX_BYTES = 12 * 1024 * 1024;
 
 const DRAWING_URL_PREFIX = '/api/storage/part-measurement-drawings/';
+/**
+ * 保存済み図面から表示用画像を作るときの画素上限。
+ * 新規登録の上限(IMAGE_INPUT_MAX_PIXELS)より前に登録された大きな図面も表示できるよう、sharp 既定の上限(16383×16383)を使う。
+ */
+const STORED_DRAWING_MAX_PIXELS = 16383 * 16383;
 
 /**
  * 取込元の PDF/TIFF 原本。配信 URL を持たせないため、配信ルートが拒否する下位ディレクトリに置く。
@@ -80,7 +85,7 @@ async function generateDerivativeWebp(
   derivativeKey: string,
   width: DerivativeWidth
 ): Promise<void> {
-  const buffer = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: IMAGE_INPUT_MAX_PIXELS })
+  const buffer = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: STORED_DRAWING_MAX_PIXELS })
     .resize({ width, withoutEnlargement: true })
     .webp({ quality: DERIVATIVE_WEBP_QUALITY })
     .toBuffer();
@@ -235,7 +240,7 @@ export class PartMeasurementDrawingStorage {
       getFileStorageRuntime().store.stat(sourceKey),
       getFileStorageRuntime().store.read(sourceKey, { verifyIntegrity: true }),
     ]);
-    const metadata = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: IMAGE_INPUT_MAX_PIXELS }).metadata();
+    const metadata = await sharp(sourceBuffer, { failOn: 'none', limitInputPixels: STORED_DRAWING_MAX_PIXELS }).metadata();
     const sourceWidth = metadata.width ?? 0;
 
     if (sourceWidth > 0 && sourceWidth <= width) {
