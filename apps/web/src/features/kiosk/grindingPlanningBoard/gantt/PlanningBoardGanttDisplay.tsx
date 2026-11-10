@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardSingleResourcePicker } from '../PlanningBoardSingleResourcePicker';
@@ -15,6 +15,11 @@ type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function TwoMachineGantt(props, ref) {
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
+  const [chainOwner, setChainOwner] = useState<string | null>(null);
+  const [chainTops, setChainTops] = useState<Record<string, number | null>>({});
+  const onChainTopChange = useCallback((resource: string, top: number | null) => {
+    setChainTops(current => current[resource] === top ? current : { ...current, [resource]: top });
+  }, []);
   const [headContainer, setHeadContainer] = useState<HTMLDivElement | null>(null);
   const [picker, setPicker] = useState<{ anchor: HTMLElement; index: number } | null>(null);
   useEffect(() => {
@@ -82,7 +87,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
       <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className={`flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-600 font-mono text-[22px] font-black tracking-[.1em] [writing-mode:vertical-rl] ${index ? 'bg-emerald-950 text-emerald-300' : 'bg-slate-800 text-sky-300'}`}>{resource}<span className="text-xs">▼</span></button>
       <div className="min-h-0 min-w-0 flex-1">
-        <PlanningBoardGanttView {...props} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+        <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner] : null} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
           ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
           valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
           onNavigateBar={(bar) => {
@@ -112,6 +117,13 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
   const partners = enabled.filter(resource => resource !== top && !resources.includes(`${top}+${resource}`));
   const canPair = Boolean(top && enabled.includes(top) && partners.length > 0);
   const partnerKey = `kiosk.planning-board.machine-partners:${props.preferenceScope ?? 'default'}`;
+  const pendingModeFocus = useRef(false);
+  const machineModeButtonRef = useCallback((button: HTMLButtonElement | null) => {
+    if (button && pendingModeFocus.current) {
+      button.focus();
+      pendingModeFocus.current = false;
+    }
+  }, []);
   const lastSelected = useRef<string | null>(null);
   const changeSelection = (selection: string | null) => {
     const nextPair = planningBoardPair(selection, resources) ?? pair;
@@ -132,12 +144,14 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       const selectedBars = props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars))
         .filter(bar => props.selectedItemIds.has(bar.item.itemId) && pair.includes(bar.resource));
       const selectedResource = selectedBars.find(bar => bar.resource === lastSelected.current)?.resource ?? selectedBars.find(bar => bar.resource === pair[0])?.resource ?? selectedBars[0]?.resource;
+      pendingModeFocus.current = true;
       changeSelection(selectedResource ?? top);
     } else if (!pair && canPair) {
       let previous: unknown;
       try { previous = JSON.parse(localStorage.getItem(partnerKey) ?? '{}')?.[top]; } catch { /* Storage is optional. */ }
       const partner = typeof previous === 'string' && partners.includes(previous) ? previous
         : partners.find(resource => resource > top) ?? partners[0]!;
+      pendingModeFocus.current = true;
       changeSelection(`${top}+${partner}`);
     }
   };
@@ -151,7 +165,7 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       onSingleResourceChange?.(pairTop);
     }
   }, [machineSelectionLocked, capacityLoaded, pairTop, pairBottom, topAvailable, unitSplitEnabledByResource, onSingleResourceChange]);
-  const shared = { ...props, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
+  const shared = { ...props, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
   return pair
     ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
     : <PlanningBoardGanttView {...shared} ref={ref} />;

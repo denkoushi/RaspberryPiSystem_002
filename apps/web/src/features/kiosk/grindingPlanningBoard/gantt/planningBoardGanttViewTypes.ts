@@ -17,6 +17,11 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   resourceHeadContainer?: HTMLElement | null;
   valueSheetContainer?: HTMLElement | null;
   sharedValueSheetOpen?: boolean;
+  chainOwner?: string | null;
+  onChainFocus?: (resource: string) => void;
+  sharedChainTop?: number | null;
+  onChainTopChange?: (resource: string, top: number | null) => void;
+  machineModeButtonRef?: (button: HTMLButtonElement | null) => void;
   hideResourceHead?: boolean;
   machineMode?: 1 | 2;
   twoMachineDisabled?: boolean;

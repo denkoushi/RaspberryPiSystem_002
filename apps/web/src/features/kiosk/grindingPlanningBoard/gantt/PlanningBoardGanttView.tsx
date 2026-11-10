@@ -66,7 +66,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource: _unitSplitFlags, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
@@ -298,7 +298,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       return [item.itemId, positions.get(key)!];
     }));
   }, [chain]);
-  const showChain = chain.length > 0 && !interaction.pinMode;
+  const showChain = chain.length > 0 && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
   }, [showChain]);
@@ -336,11 +336,19 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
   const sharedGeometry = planningBoardSheetGeometry(sharedBounds.height, sharedBounds.top, sharedBounds.bottom,
     sharedValueSheetOpen, showChain ? chainStripHeight : 0);
-  const bottomInset = valueSheetContainer ? sharedGeometry.bottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
+  const chainTop = sharedBounds.height - sharedGeometry.chainBottom - chainStripHeight;
+  useLayoutEffect(() => {
+    if (!singleResourceCd || !onChainTopChange) return;
+    onChainTopChange(singleResourceCd, showChain ? chainTop : null);
+    return () => onChainTopChange(singleResourceCd, null);
+  }, [singleResourceCd, onChainTopChange, showChain, chainTop]);
+  const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : Math.min(Math.max(0, sharedBounds.bottom - sharedBounds.top), Math.max(sharedGeometry.sheetOverlap, sharedBounds.bottom - sharedChainTop));
+  const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
+    if (singleResourceCd) onChainFocus?.(singleResourceCd);
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
     setCurrentItemId(null);
-  }, []);
+  }, [onChainFocus, singleResourceCd]);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
     if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
   }, [showChain]);
@@ -507,7 +515,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     return [group.resource!, old?.text === group.label ? old : { text: group.label, node: resourceLabel(group.resource!, group.label) }];
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
-  const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+  const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineModeButtonRef={machineModeButtonRef} machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
         items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}

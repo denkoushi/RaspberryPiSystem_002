@@ -93,6 +93,60 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   expect(screen.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
 });
 
+it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open: %s then %s', (first, second) => {
+  const values = props('forward');
+  function Board() {
+    const [resource, setResource] = useState<string | null>(null);
+    return <PlanningBoardGanttDisplay {...values} valueSheetResource={resource}
+      onToggleValueSheet={() => setResource(current => current ? null : '021')} />;
+  }
+  render(<Board />, { wrapper: ({ children }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider> });
+  const openChain = (resource: string) => fireEvent.click(within(screen.getByRole('region', { name: resource })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
+  openChain(first);
+  const previous = screen.getByRole('region', { name: '工程のつながり' });
+  openChain(second);
+  expect(previous).not.toBeInTheDocument();
+  expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
+  const strip = screen.getByRole('region', { name: '工程のつながり' });
+  expect(within(strip).getAllByRole('button', { name: new RegExp(`工順.*${second}`) }).length).toBeGreaterThan(0);
+  expect(within(screen.getByRole('region', { name: first })).queryByTestId(/^planning-gantt-chain-badge-/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
+  expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
+  expect(strip.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+  fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+  expect(screen.queryByRole('region', { name: '工程のつながり' })).toBeNull();
+  openChain(first);
+  expect(screen.getByRole('region', { name: '工程のつながり' })).toBeInTheDocument();
+});
+
+it('includes the lower pane chain above the value sheet in the upper pane scroll inset', () => {
+  const rect = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+    if (this.dataset.testid === 'planning-two-machine') return { top: 0, bottom: 600, height: 600 } as DOMRect;
+    if (this.getAttribute('aria-label') === 'ガントの日付と工程') {
+      return this.closest('section[aria-label="021"]')
+        ? { top: 40, bottom: 300, height: 260 } as DOMRect : { top: 300, bottom: 600, height: 300 } as DOMRect;
+    }
+    return rect.call(this);
+  });
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function () {
+    return this.dataset.testid === 'planning-two-machine' ? 600 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+    return this.dataset.testid === 'planning-gantt-chain-strip' ? 60 : 0;
+  });
+  const values = props('forward');
+  const view = render(<PlanningBoardGanttDisplay {...values} />, { wrapper: ({ children }) => <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider> });
+  fireEvent.click(within(screen.getByRole('region', { name: '022' })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
+  const upper = within(screen.getByRole('region', { name: '021' })).getByLabelText('ガントの日付と工程');
+  expect(upper.style.scrollPaddingBottom).toBe('0px');
+  view.rerender(<PlanningBoardGanttDisplay {...values} valueSheetResource="021" />);
+  expect(parseFloat(screen.getByRole('region', { name: '工程のつながり' }).style.bottom)).toBeCloseTo(336);
+  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(96);
+  fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(36);
+});
+
 it.each(['scrollToNextOverlap', 'scrollToNextLate'] as const)('moves one pane per %s and restarts on layout change', method => {
   const values = props(method === 'scrollToNextLate' ? 'forward' : 'backward');
   const ref = createRef<PlanningBoardGanttHandle>();
@@ -212,6 +266,21 @@ function InteractiveBoard({ start = '021', lanes = ['021', '022', '023', '024'],
   return <PlanningBoardGanttDisplay {...values} layout={layout} singleResourceCd={selection} resourceLanes={lanes}
     unitSplitEnabledByResource={flags} onSingleResourceChange={next => setSelection(next ?? '')} selectedItemIds={selected} />;
 }
+
+it('restores focus to the activated machine count button after keyboard switching in both directions', () => {
+  localStorage.clear();
+  render(<InteractiveBoard />);
+  for (const name of ['2台', '1台']) {
+    const button = screen.getByRole('button', { name, exact: true });
+    button.focus();
+    // Native keyboard activation dispatches a click with no pointer click count.
+    fireEvent.click(button, { detail: 0 });
+    const next = screen.getByRole('button', { name, exact: true });
+    expect(button).not.toBeInTheDocument();
+    expect(next).toHaveAttribute('aria-pressed', 'true');
+    expect(next).toHaveFocus();
+  }
+});
 
 it('switches to the next ON machine, swaps from a lane label, and restores the previous partner after remount', () => {
   localStorage.clear();

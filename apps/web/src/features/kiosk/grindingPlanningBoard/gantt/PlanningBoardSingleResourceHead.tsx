@@ -5,7 +5,8 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ machineSelectionLabel, machineSelectionLocked = false, resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+export function PlanningBoardSingleResourceHead({ machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+  machineModeButtonRef?: (button: HTMLButtonElement | null) => void;
   machineSelectionLabel?: string;
   machineSelectionLocked?: boolean;
   machineMode?: 1 | 2;
@@ -37,7 +38,7 @@ export function PlanningBoardSingleResourceHead({ machineSelectionLabel, machine
       <b className="font-mono text-[17px]">{machineSelectionLabel ?? resourceCd}</b><span className="text-sm font-bold text-slate-300">{machineMode === 2 ? '2台' : names?.join(' / ')}</span><span className="text-[11px] text-slate-400">▼</span>
     </button>
     <div className="flex h-8 shrink-0 overflow-hidden rounded-md border border-slate-700" role="group" aria-label="表示台数">
-      {([1, 2] as const).map((mode) => <button key={mode} type="button" className={clsx('shrink-0 px-3.5 text-[15px] font-extrabold disabled:opacity-40', machineMode === mode ? 'bg-slate-100 text-slate-950' : 'text-slate-400')}
+      {([1, 2] as const).map((mode) => <button key={mode} ref={mode === machineMode ? machineModeButtonRef : undefined} type="button" className={clsx('shrink-0 px-3.5 text-[15px] font-extrabold disabled:opacity-40', machineMode === mode ? 'bg-slate-100 text-slate-950' : 'text-slate-400')}
         aria-pressed={machineMode === mode} disabled={machineSelectionLocked || (mode === 2 && twoMachineDisabled)} onClick={() => { if (!machineSelectionLocked) onMachineModeChange?.(mode); }}>{mode}台</button>)}
     </div>
     <div className="flex gap-1" role="group" aria-label={`${resourceCd}の1日の稼働時間`}>
