@@ -3,7 +3,7 @@ import sharp from 'sharp';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  env: { INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: false, INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED: false },
+  env: { INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED: false, INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED: false, INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED: false },
   warn: vi.fn(),
   vision: { completeMany: vi.fn() },
   readDrawing: vi.fn(),
@@ -60,6 +60,7 @@ const service = new PartMeasurementDrawingPlacementService();
 
 beforeEach(async () => {
   vi.resetAllMocks();
+  mocks.env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = false;
   mocks.env.INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED = false;
   mocks.env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = false;
   mocks.readDrawing.mockResolvedValue({ buffer: await sharp({ create: {
@@ -360,7 +361,7 @@ describe('backfill', () => {
     expect(ensure).toHaveBeenCalledWith('a', { processGroup: 'GRINDING', reorderProvider: provider });
     const sql = db.$queryRaw.mock.calls[1][0].join('');
     expect(sql).toContain('r."drawingImageFingerprint" = m."drawingImageFingerprint"');
-    expect(sql).toContain('|| p."processGroup"::text');
+    expect(sql).toContain('CASE p."processGroup"');
     expect(sql).toContain(`r."rankingMethod" NOT IN ('semantic-failed', 'semantic-failed-chunked') OR EXISTS`);
     expect(sql).not.toContain('semantic-failed-stream');
     expect(sql).toContain('proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL');
@@ -540,7 +541,7 @@ describe('semantic placement', () => {
   });
 
   it.each([new InferenceDeferredError(), new InferenceUnavailableError()])('uses the active version and stops remaining transfers on %s', async (error) => {
-    expect(currentPlacementVersion()).toBe('semantic-v1');
+    expect(currentPlacementVersion('CUTTING')).toBe('semantic-v1');
     expect(placementVersionFor('GRINDING')).toBe('semantic-v1:GRINDING');
     db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([
       { id: 'target', processGroup: 'CUTTING' }, { id: 'next', processGroup: 'GRINDING' }
@@ -549,9 +550,9 @@ describe('semantic placement', () => {
     const ensure = vi.spyOn(worker, 'ensureRun').mockRejectedValueOnce(error);
     expect(await worker.backfill(30)).toMatchObject({ deferred: 1, failed: 0, ready: 0 });
     expect(ensure).toHaveBeenCalledOnce();
-    expect(db.$queryRaw.mock.calls[1].slice(1)).toContain('semantic-v1:');
+    expect(db.$queryRaw.mock.calls[1].slice(1)).toContain('semantic-v1:CUTTING');
     mocks.env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = false;
-    expect(currentPlacementVersion()).toBe('transfer-v2');
+    expect(currentPlacementVersion('CUTTING')).toBe('transfer-v2');
     expect(placementVersionFor('CUTTING')).toBe('transfer-v2:CUTTING');
   });
 });
@@ -596,5 +597,113 @@ describe('disabled reference placement', () => {
     await service.backfill(30);
     expect(db.$queryRaw).toHaveBeenCalledTimes(2);
     expect(mocks.vision.completeMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('layout placement', () => {
+  beforeEach(() => {
+    mocks.env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = true;
+    mocks.env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = true;
+    mocks.maps.getCompletedPayload.mockResolvedValue(payload);
+  });
+
+  it('creates CUTTING layout runs with inference disabled, retaining source values', async () => {
+    const reorder = vi.fn();
+    const reorderProvider = vi.fn();
+    await service.ensureRun('target', { processGroup: 'CUTTING', allowInference: false, reorder, reorderProvider });
+    expect(currentPlacementVersion('CUTTING')).toBe('layout-v1');
+    expect(placementVersionFor('CUTTING')).toBe('layout-v1:CUTTING');
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      placementVersion: 'layout-v1:CUTTING', rankingMethod: 'layout', proposalCount: 1, unplacedCount: 0,
+      proposals: { create: [{ nominalValue: 10, lowerLimit: 9.123456, upperLimit: 10.987654,
+        markerXRatio: 0.5, markerYRatio: 0.5 }] }
+    });
+    expect(mocks.vision.completeMany).not.toHaveBeenCalled();
+    expect(mocks.readDrawing).not.toHaveBeenCalled();
+    expect(reorder).not.toHaveBeenCalled();
+    expect(reorderProvider).not.toHaveBeenCalled();
+  });
+
+  it('keeps GRINDING semantic and leaves inference to backfill', async () => {
+    expect(currentPlacementVersion('GRINDING')).toBe('semantic-v1');
+    expect(await service.ensureRun('target', { processGroup: 'GRINDING', allowInference: false }))
+      .toEqual({ status: 'map-pending', run: null });
+    expect(db.partMeasurementDrawingPlacementRun.create).not.toHaveBeenCalled();
+    await service.ensureRun('target', { processGroup: 'GRINDING' });
+    expect(mocks.vision.completeMany).toHaveBeenCalled();
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      placementVersion: 'semantic-v1:GRINDING', rankingMethod: 'semantic', proposalCount: 1
+    });
+  });
+
+  it.each([true, false])('restores CUTTING legacy behavior when layout is disabled (semantic=%s)', async (semantic) => {
+    mocks.env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED = false;
+    mocks.env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED = semantic;
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      placementVersion: `${semantic ? 'semantic-v1' : 'transfer-v2'}:CUTTING`, rankingMethod: semantic ? 'semantic' : 'position'
+    });
+    expect(mocks.vision.completeMany).toHaveBeenCalledTimes(semantic ? 1 : 0);
+  });
+
+  it.each(['count', 'updatedAt', 'sibling-order', 'zero'])('selects source templates by %s', async (rule) => {
+    db.partMeasurementDrawingSiblingMatch.findUnique.mockResolvedValue({ status: 'MATCHED', siblings: [
+      { visualTemplateId: 'first', confidence: 0.95 }, { visualTemplateId: 'second', confidence: 0.9 }
+    ] });
+    db.partMeasurementVisualTemplate.findMany.mockResolvedValue([{ ...source, id: 'second' }, { ...source, id: 'first' }]);
+    const firstItems = [sourceItem()];
+    const secondItems = rule === 'count' ? [sourceItem(), { ...sourceItem(), id: 'extra', measurementLabel: '幅' }] : [sourceItem()];
+    db.partMeasurementTemplate.findMany.mockResolvedValue([
+      { id: 'first-template', visualTemplateId: 'first', isActive: true, updatedAt: new Date(100), items: firstItems },
+      { id: 'second-template', visualTemplateId: 'second', isActive: true,
+        updatedAt: new Date(rule === 'count' ? 0 : rule === 'sibling-order' ? 100 : 200), items: secondItems }
+    ]);
+    if (rule === 'zero') mocks.maps.getCompletedPayload.mockImplementation(async (id) => id === 'target' ? payload : null);
+    await service.ensureRun('target', { processGroup: 'CUTTING', allowInference: false });
+    const expected = rule === 'count' || rule === 'updatedAt' ? 'second' : 'first';
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      sourceVisualTemplateId: expected, sourceTemplateId: `${expected}-template`, rankingMethod: 'layout',
+      proposalCount: rule === 'zero' ? 0 : rule === 'count' ? 2 : 1,
+      unplacedCount: rule === 'zero' ? 1 : 0
+    });
+    expect(mocks.maps.getCompletedPayload).toHaveBeenCalledWith('first', 'first-hash');
+    expect(mocks.maps.getCompletedPayload).toHaveBeenCalledWith('second', 'second-hash');
+    expect(mocks.vision.completeMany).not.toHaveBeenCalled();
+  });
+
+  it('evaluates every template of a sibling', async () => {
+    db.partMeasurementTemplate.findMany.mockResolvedValue([
+      { id: 'missing', visualTemplateId: 'source', isActive: true, updatedAt: new Date(200),
+        items: [{ ...sourceItem(), nominalValue: decimal(99) }] },
+      { id: 'matching', visualTemplateId: 'source', isActive: true, updatedAt: new Date(0), items: [sourceItem()] }
+    ]);
+    await service.ensureRun('target', { processGroup: 'CUTTING' });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      sourceTemplateId: 'matching', proposalCount: 1
+    });
+  });
+
+  it('persists none when there is no source', async () => {
+    db.partMeasurementTemplate.findMany.mockResolvedValue([]);
+    await service.ensureRun('target', { processGroup: 'CUTTING', allowInference: false });
+    expect(db.partMeasurementDrawingPlacementRun.create.mock.calls[0][0].data).toMatchObject({
+      placementVersion: 'layout-v1:CUTTING', rankingMethod: 'none', sourceTemplateId: null
+    });
+  });
+
+  it('reuses cached layout failures without semantic retries', async () => {
+    const old = run({ rankingMethod: 'semantic-failed', proposals: [{ ...proposal(), decidedAt: null }] });
+    db.partMeasurementDrawingPlacementRun.findUnique.mockResolvedValue(old);
+    expect((await service.ensureRun('target', { processGroup: 'CUTTING' })).run).toBe(old);
+    expect(db.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('compares process-specific versions in backfill SQL', async () => {
+    db.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    await service.backfill(10);
+    const [sql, ...values] = db.$queryRaw.mock.calls[1];
+    expect(sql.join('')).toContain('CASE p."processGroup"');
+    expect(values).toContain('layout-v1:CUTTING');
+    expect(values).toContain('semantic-v1:GRINDING');
   });
 });
