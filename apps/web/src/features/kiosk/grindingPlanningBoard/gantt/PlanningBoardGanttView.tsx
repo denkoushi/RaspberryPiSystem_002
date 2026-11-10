@@ -175,13 +175,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     setCompletionTargetId((current) => current === itemId ? null : itemId);
   }, []);
   const forward = layout.mode === 'forward';
-  const singleGroup = forward && singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const resourceGroup = singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const singleGroup = forward ? resourceGroup : undefined;
+  const showResourceHead = Boolean(singleGroup || (fitPane && resourceGroup));
   const singleMode = Boolean(singleGroup);
   const singleItems = useMemo(() => {
-    const items = resourceMinutesItems ?? singleGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
+    const items = resourceMinutesItems ?? resourceGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
     return [...new Map(items.filter((item) => (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
       .map((item) => [item.itemId, item])).values()];
-  }, [resourceMinutesItems, singleGroup, singleResourceCd]);
+  }, [resourceMinutesItems, resourceGroup, singleResourceCd]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
@@ -314,7 +316,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain]);
-  const sheetHeight = valueSheetOpen && singleGroup ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
   const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
@@ -490,7 +492,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      {singleGroup && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+      {showResourceHead && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
         items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
@@ -587,7 +589,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
       </div>}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
-      {singleGroup && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
+      {showResourceHead && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
         values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} />}
       {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
