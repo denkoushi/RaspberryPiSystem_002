@@ -10,8 +10,11 @@ import {
   sortGrindingPlanningBoardItems
 } from '../sortGrindingPlanningBoardItems';
 
+import { buildUnitSegments, ganttRequiredMinutes, isUnitPiece, unitSetupMinutesByResource } from './planningBoardUnitSegments';
+
+import type { OpSegment } from './planningBoardUnitSegments';
 import type { PlanningBoardAllocation } from '../types';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 const DAY_MS = 86_400_000;
 export const NO_PREDECESSORS: readonly string[] = [];
@@ -33,6 +36,7 @@ export function planningBoardPartKey(item: GrindingPlanningBoardItem): string {
 }
 
 function requiredMinutesUnknown(item: GrindingPlanningBoardItem): boolean {
+  if (isUnitPiece(item)) return false;
   return !item.requiredMinutesKnown || (item.kind === 'piece' ? item.requiredMinutes == null : !item.requiredMinutes);
 }
 
@@ -61,6 +65,8 @@ export type GanttBar = {
   overlaps: { start: number; end: number }[];
   flagged: boolean;
   segments?: { start: number; end: number }[];
+  setupSegments?: { start: number; end: number }[];
+  opSegments?: OpSegment[];
   waitFrom?: number;
   predecessorEnd?: number;
   lateDays?: number;
@@ -82,6 +88,7 @@ export type GanttLayoutOptions = {
   seibanOrder: readonly string[];
   resources: readonly string[];
   category?: GrindingPlanningBoardCategory;
+  resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   resourceCategories?: GrindingPlanningBoardResponse['resourceCategories'];
   runsThroughBreaks?: ReadonlySet<string>;
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
@@ -113,19 +120,24 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   const sorted = sortGrindingPlanningBoardItems(items.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled))), seibanOrder, view, allocation);
   const parts = new Map<string, GanttBar[]>();
   let processCounts: Map<string, number> | undefined;
+  const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
+  const previousParts = new Map<string, string>();
   const bars = sorted.map((item): GanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const end = due ? dateToDay(due) + 1 : null;
     const unknown = requiredMinutesUnknown(item);
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
+    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? setupByResource.get(resource)?.get(item.fhincd) ?? 0 : 0;
+    previousParts.set(resource, item.fhincd);
     const bar: GanttBar = {
       item, resource, due, end, unknown, partKey: planningBoardPartKey(item),
       // Give the due marker a tiny interval for same-day chain checks; its visual width is fixed.
-      start: end == null ? null : unknown ? end - 0.001 : end - item.requiredMinutes! / (hours * 60),
+      start: end == null ? null : unknown ? end - 0.001 : end - (ganttRequiredMinutes(item)! + setup) / (hours * 60),
       tone: item.isCompleted ? 'completed' : due && due < options.today ? 'late' : 'planned',
       overlaps: [], flagged: false
     };
+    if (isUnitPiece(item) && bar.start != null && bar.end != null) Object.assign(bar, buildUnitSegments(item, [{ start: bar.start, end: bar.end }], setup));
     if (item.kind === 'piece') (processCounts ??= new Map()).set(bar.partKey, 0);
     const chain = parts.get(bar.partKey) ?? [];
     chain.push(bar);
@@ -299,6 +311,8 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const heads = new Map<string, number>();
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
+  const previousParts = new Map<string, string>();
+  const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
   const isReady = (item: GrindingPlanningBoardItem) => {
     for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) if (!scheduled.has(id)) return false;
     return true;
@@ -314,12 +328,15 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
     const ready = readyAt(item);
     const unknown = requiredMinutesUnknown(item);
-    const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : item.requiredMinutes!, hours, pausesForBreaks);
+    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? setupByResource.get(resource)?.get(item.fhincd) ?? 0 : 0;
+    const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : ganttRequiredMinutes(item)! + setup, hours, pausesForBreaks);
+    previousParts.set(resource, item.fhincd);
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
     scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,
       partKey: planningBoardPartKey(item), tone: lateDays > 0 ? 'late' : 'planned', lateDays,
       overlaps: [], flagged: false,
+      ...(isUnitPiece(item) ? buildUnitSegments(item, timing.segments, setup) : {}),
       ...(ready > cursor + 1e-10 ? { waitFrom: cursor, predecessorEnd: ready } : {}) });
     cursors.set(resource, timing.end);
   };

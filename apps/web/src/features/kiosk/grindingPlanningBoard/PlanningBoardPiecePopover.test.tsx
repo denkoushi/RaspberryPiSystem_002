@@ -573,3 +573,36 @@ describe('usePlanningBoardPieceFocus', () => {
     expect(result.current.current).toBeNull();
   });
 });
+
+describe('piece operation controls', () => {
+  it('opens a single-unit piece even with split disabled, sorts operations, and toggles either intent', async () => {
+    vi.useFakeTimers();
+    try {
+      const item = piece('unit', 1, { unitRequiredMinutes: 40, ops: [{ opNo: 20, minutes: 30 }, { opNo: 10, minutes: 10 }], completedOpNos: [10] });
+      const onOpCompletion = vi.fn().mockResolvedValue(undefined);
+      const h = setup(item, [item], new Set(), false);
+      const actions = { ...h.value, onOpCompletion };
+      h.rerender(<PlanningBoardPiecesContext.Provider value={actions}><PlanningBoardPiecePopover item={item} variant="gantt" /></PlanningBoardPiecesContext.Provider>);
+      fireEvent.click(screen.getByRole('button', { name: '部品Aの数量 1／5' }));
+      const done = screen.getByRole('button', { name: '工程10を未完了にする' });
+      const todo = screen.getByRole('button', { name: '工程20を完了にする' });
+      expect(done).toHaveAttribute('aria-pressed', 'true'); expect(done).toHaveClass('bg-slate-600');
+      expect([...document.querySelectorAll('[data-planning-board-piece-dialog] button')]).toEqual([done, todo]);
+      expect(todo).toBeDisabled();
+      await act(async () => { vi.advanceTimersByTime(350); });
+      await act(async () => { fireEvent.click(todo); });
+      expect(onOpCompletion).toHaveBeenLastCalledWith(item, 'complete', 20);
+      await act(async () => { fireEvent.click(done); });
+      expect(onOpCompletion).toHaveBeenLastCalledWith(item, 'incomplete', 10);
+      expect(h.onSplit).not.toHaveBeenCalled();
+      h.unmount();
+    } finally { vi.useRealTimers(); }
+  });
+  it('disables every operation during a parent completion write', async () => {
+    const item = piece('unit', 1, { ops: [{ opNo: 10, minutes: 10 }] });
+    const h = setup(item, [item], new Set(), false);
+    const actions = { ...h.value, completionPendingParentIds: new Set([row.itemId]) };
+    h.rerender(<PlanningBoardPiecesContext.Provider value={actions}><PlanningBoardPiecePopover item={item} /></PlanningBoardPiecesContext.Provider>);
+    expect(screen.getByRole('button', { name: '部品Aの数量 1／5' })).toBeDisabled();
+  });
+});

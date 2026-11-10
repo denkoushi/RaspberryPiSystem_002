@@ -9,8 +9,8 @@ import { useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgres
 import type { GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), board: vi.fn(), load: vi.fn() }));
-vi.mock('../client', () => ({ splitKioskSessakuPieces: mocks.split, mergeKioskSessakuPieces: mocks.merge, setKioskSessakuPieceCompletion: mocks.completion, getKioskGrindingPlanningBoard: mocks.board, getKioskGrindingPlanningBoardLoad: mocks.load }));
+const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), board: vi.fn(), load: vi.fn() }));
+vi.mock('../client', () => ({ splitKioskSessakuPieces: mocks.split, mergeKioskSessakuPieces: mocks.merge, setKioskSessakuPieceCompletion: mocks.completion, setKioskSessakuPieceOpCompletion: mocks.opCompletion, getKioskGrindingPlanningBoard: mocks.board, getKioskGrindingPlanningBoardLoad: mocks.load }));
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: 3, retryDelay: 0 } } });
@@ -59,6 +59,15 @@ describe('piece mutations', () => {
     expect(h.invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.historyProgressAll });
     expect(h.invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(null).slice(0, 1) });
     expect(h.invalidate).toHaveBeenCalledTimes(6);
+  });
+  it('saves operation completion through the same invalidation path without automatic retries', async () => {
+    const h = setup(); mocks.opCompletion.mockResolvedValue({ pieces: [] });
+    await act(async () => { await h.result.current.opCompletion.mutateAsync({ pieceId: 'piece/id', opNo: 20, intent: 'complete', expectedPieceSetVersion: 4, itemRevision: 'r' }); });
+    expect(mocks.opCompletion).toHaveBeenCalledExactlyOnceWith('piece/id', 20, { intent: 'complete', expectedPieceSetVersion: 4, itemRevision: 'r' });
+    expect(h.invalidate).toHaveBeenCalledTimes(6);
+    mocks.opCompletion.mockRejectedValueOnce(new Error('conflict'));
+    await act(async () => { await expect(h.result.current.opCompletion.mutateAsync({ pieceId: 'piece/id', opNo: 20, intent: 'incomplete', expectedPieceSetVersion: 4, itemRevision: 'r' })).rejects.toThrow('conflict'); });
+    expect(mocks.opCompletion).toHaveBeenCalledTimes(2);
   });
   it('marks board consumers stale without fetching, leaving exactly one board GET to the caller', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });

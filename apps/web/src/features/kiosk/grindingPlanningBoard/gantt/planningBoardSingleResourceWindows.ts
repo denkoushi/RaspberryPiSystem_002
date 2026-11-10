@@ -62,14 +62,16 @@ export function singleResourceWindowTime(window: SingleResourceWindow, time: num
 }
 
 export function clipSingleResourceBar(bar: GanttBar, window: SingleResourceWindow, dayWidth: number): GanttBar | null {
-  const segments = (bar.unknown && bar.start != null ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? [])
-    .flatMap((segment) => window.periods.flatMap((period) => {
-      const start = Math.max(period.start, segment.start);
-      const end = Math.min(period.end, segment.end);
-      return end > start + EPSILON ? [{ start: singleResourceWindowTime(window, start), end: singleResourceWindowTime(window, end) }] : [];
-    }));
+  const clip = <T extends Period>(segments: T[]): T[] => segments.flatMap((segment) => window.periods.flatMap((period) => {
+    const start = Math.max(period.start, segment.start);
+    const end = Math.min(period.end, segment.end);
+    return end > start + EPSILON ? [{ ...segment, start: singleResourceWindowTime(window, start), end: singleResourceWindowTime(window, end) }] : [];
+  }));
+  const segments = clip(bar.unknown && bar.start != null ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? []);
   if (!segments.length) return null;
-  return { ...bar, start: segments[0]!.start, end: segments[segments.length - 1]!.end, segments };
+  return { ...bar, start: segments[0]!.start, end: segments[segments.length - 1]!.end, segments,
+    ...(bar.setupSegments ? { setupSegments: clip(bar.setupSegments) } : {}),
+    ...(bar.opSegments ? { opSegments: clip(bar.opSegments) } : {}) };
 }
 
 export function foldSingleResourceRow(row: GanttRow, window: SingleResourceWindow, dayWidth: number): GanttRow {

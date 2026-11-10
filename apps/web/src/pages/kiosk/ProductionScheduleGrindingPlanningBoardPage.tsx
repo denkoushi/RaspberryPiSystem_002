@@ -31,12 +31,10 @@ import { buildPlanningBoardPlacementByPart, buildPlanningBoardProcessChipsByPart
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
 import { PlanningBoardSeibanDrawer } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardSeibanDrawer';
 import { PlanningBoardToolbar } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardToolbar';
-import {
-  resolveGrindingPlanningBoardResource,
-  sortGrindingPlanningBoardItems
-} from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
+import { usePlanningBoardAutoUnitSplit } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardAutoUnitSplit';
 import { usePlanningBoardCategory } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
 import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
@@ -61,6 +59,7 @@ import type {
 } from '@raspi-system/shared-types';
 
 export function ProductionScheduleGrindingPlanningBoardPage() {
+  usePlanningBoardAutoUnitSplit();
   const { category, changeCategory } = usePlanningBoardCategory();
   const { scheduleSource, changeScheduleSource } = usePlanningBoardScheduleSource();
   const [pinMode, setPinMode] = useState(false);
@@ -240,7 +239,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const onIncomplete = useCallback(() => setCompletionNotice(null), [setCompletionNotice]);
   const { displayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
     data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
-    completePiece: pieceMutations.completion.mutateAsync, notify, onCompleted, onIncomplete
+    completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
 
   const arrivalItems = useMemo(() => displayItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [displayItems, arrivalFilterEnabled]);
@@ -658,7 +657,7 @@ export function ProductionScheduleGrindingPlanningBoardPage() {
   const pieceActions = usePlanningBoardPieceActions({
     createEnabled: data?.pieceCapabilities?.createEnabled === true,
     enabled: data?.pieceCapabilities?.includePieces === true,
-    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, completionPendingParentIds, onRemoved: onPieceRemoved,
+    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, completionPendingParentIds, onRemoved: onPieceRemoved, onOpCompletion: toggleCompletion,
     ready: bulkReady && !writeQueue.blocked && !rankConflict && !orderConflict && !orderPreview, blocked: writeBlocked || writeQueue.pending || completionPendingRef.current.size > 0,
     blockedMessage: refreshRequired ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', blockedIsError: refreshRequired
   });
