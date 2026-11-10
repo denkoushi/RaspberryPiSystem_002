@@ -3,6 +3,7 @@ import type { BackupConfig } from '../backup/backup-config.js';
 import { BackupHistoryService } from '../backup/backup-history.service.js';
 import { logger } from '../../lib/logger.js';
 import { ImportHistoryService } from './import-history.service.js';
+import { extractIntervalMinutes } from './import-schedule-policy.js';
 import { ImportAlertService } from './import-alert.service.js';
 import { CsvDashboardRetentionService } from '../csv-dashboard/csv-dashboard-retention.service.js';
 import { CsvDashboardDedupCleanupService } from '../csv-dashboard/csv-dashboard-dedup-cleanup.service.js';
@@ -87,25 +88,6 @@ export class CsvImportScheduler {
       this.createProductionScheduleCleanupService = overrides.createProductionScheduleCleanupService;
     if (overrides.createCsvDashboardDedupCleanupService)
       this.createCsvDashboardDedupCleanupService = overrides.createCsvDashboardDedupCleanupService;
-  }
-
-  private extractIntervalMinutes(schedule: string): number | null {
-    const parts = schedule.trim().split(/\s+/);
-    if (parts.length !== 5) {
-      return null;
-    }
-    const [minute, hour, dayOfMonth, month] = parts;
-    if (hour !== '*' || dayOfMonth !== '*' || month !== '*') {
-      return null;
-    }
-    if (minute === '*') {
-      return 1;
-    }
-    if (minute.startsWith('*/')) {
-      const interval = parseInt(minute.slice(2), 10);
-      return Number.isInteger(interval) ? interval : null;
-    }
-    return null;
   }
 
   private hasCsvDashboardTarget(importSchedule: NonNullable<BackupConfig['csvImports']>[0]): boolean {
@@ -363,7 +345,7 @@ export class CsvImportScheduler {
         continue;
       }
 
-      const intervalMinutes = this.extractIntervalMinutes(importSchedule.schedule);
+      const intervalMinutes = extractIntervalMinutes(importSchedule.schedule);
       if (intervalMinutes !== null && intervalMinutes < this.minIntervalMinutes) {
         logger?.warn(
           { taskId, name: importSchedule.name, schedule: importSchedule.schedule, intervalMinutes },
