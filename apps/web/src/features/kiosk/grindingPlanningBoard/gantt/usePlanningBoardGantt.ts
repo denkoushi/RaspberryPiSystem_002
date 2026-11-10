@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
+import { usePlanningBoardQueryData } from '../usePlanningBoardQueryData';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
@@ -23,6 +24,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const minutes = useKioskGrindingPlanningBoardResourceMinutes(enabled);
+  const resourceMinutes = usePlanningBoardQueryData(minutes.data);
   const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
   const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useKioskGrindingPlanningBoardResourceCapacity(enabled);
@@ -70,8 +72,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, resourceMinutes: minutes.data, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
-  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, minutes.data, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
+  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
