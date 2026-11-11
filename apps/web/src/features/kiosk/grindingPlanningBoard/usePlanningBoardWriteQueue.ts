@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type PlanningBoardDisplayItem = GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null };
@@ -25,6 +27,7 @@ export type PlanningBoardWrite = {
   save: (context: PlanningBoardWriteContext) => Promise<PlanningBoardWriteResult>;
   onSaved?: (result: PlanningBoardWriteResult) => void;
   onFailed?: (error: unknown) => void;
+  onDiscarded?: () => void;
 };
 type Confirmed = { item: GrindingPlanningBoardItem; stale: Set<string> };
 type Options = {
@@ -51,6 +54,7 @@ function savedFields(base: GrindingPlanningBoardItem, saved: GrindingPlanningBoa
 
 /** A single board writer keeps accepted display intents above acknowledged server state. */
 export function usePlanningBoardWriteQueue(options: Options) {
+  const { gate } = usePlanningBoardOffline();
   const latest = useRef(options);
   latest.current = options;
   const createState = () => ({ scope: options.scope, writes: [] as PlanningBoardWrite[], confirmed: new Map<string, Confirmed>(),
@@ -127,7 +131,16 @@ export function usePlanningBoardWriteQueue(options: Options) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [options.scope, options.items, options.order, options.uncheckedFseibans, revision]);
 
+  useEffect(() => gate.subscribeReadOnly(() => {
+    const current = state.current;
+    for (const write of current.writes) write.onDiscarded?.();
+    current.writes = [];
+    state.current = { ...current, writes: [], confirmed: new Map(), confirmedOrder: null, staleRevisions: new Set(), awaitingItems: new Map(), blockedAt: null, running: false, recovering: false, blocked: false };
+  }), [gate]);
+
   const enqueue = useCallback((write: PlanningBoardWrite): boolean => {
+    if (!gate.attempt()) return false;
+    const generation = gate.generation();
     const current = state.current;
     if (current.scope !== latest.current.scope || current.blocked || current.recovering || write.seibans.some((id) => current.awaitingItems.has(id))) return false;
     current.writes.push(write);
@@ -145,9 +158,9 @@ export function usePlanningBoardWriteQueue(options: Options) {
           const requestRevision = current.sourceRevision;
           const requestItems = latest.current.items;
           try {
-            const result = await next.save({ sourceRevision: current.sourceRevision,
-              item: (original) => current.confirmed.get(original.itemId)?.item ?? original });
-            if (!mounted.current || current !== state.current) return;
+            const result = await gate.run(() => next.save({ sourceRevision: current.sourceRevision,
+              item: (original) => current.confirmed.get(original.itemId)?.item ?? original }));
+            if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
             if (result.awaitItemRefresh) {
               const stale = new Map([...current.confirmed].map(([id, saved]) => [id, new Set([...saved.stale, saved.item.itemRevision])]));
               for (const seiban of next.seibans) current.awaitingItems.set(seiban, { items: requestItems, sourceRevision: requestRevision, stale });
@@ -179,7 +192,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
             next.onSaved?.(result);
             changed();
           } catch (error) {
-            if (!mounted.current || current !== state.current) return;
+            if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
             failed = true;
             const cancelled = [next];
             current.writes = current.writes.slice(1).filter((candidate) => {
@@ -193,7 +206,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
             changed();
             try {
               const refreshed = await latest.current.refresh();
-              if (!mounted.current || current !== state.current) return;
+              if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
               if (refreshed && typeof refreshed === 'object' && 'isError' in refreshed && refreshed.isError) throw new Error('Refresh failed');
               const data = refreshed && typeof refreshed === 'object' && 'data' in refreshed ? refreshed.data : null;
               const revision = data && typeof data === 'object' && 'sourceRevision' in data ? data.sourceRevision : latest.current.sourceRevision;
@@ -204,34 +217,33 @@ export function usePlanningBoardWriteQueue(options: Options) {
                 if (current.confirmedOrder && !current.confirmedOrder.stale.has(revision)) current.confirmedOrder = null;
               }
             } catch {
-              if (!mounted.current || current !== state.current) return;
+              if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
               current.blockedAt = { items: latest.current.items, sourceRevision: latest.current.sourceRevision };
               current.blocked = true;
               for (const pending of [...current.writes].reverse()) pending.onFailed?.(error);
               current.writes = [];
             } finally {
-              current.recovering = false;
-              changed();
+              if (current === state.current && generation === gate.generation()) { current.recovering = false; changed(); }
             }
             if (current.blocked) break;
           }
         }
-        if (!mounted.current || current !== state.current) return;
+        if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
         if (!failed) {
           latest.current.onSuccess(lastLabel);
           // One reconciliation per drained batch, rather than one refetch per click.
-          void Promise.resolve().then(() => latest.current.refresh()).catch(() => {
+          void Promise.resolve().then(() => { if (current === state.current && generation === gate.generation()) return latest.current.refresh(); }).catch(() => {
             // Keep confirmed writes visible until polling or explicit refresh reconciles them.
           });
         }
       } finally {
         current.running = false;
-        changed();
+        if (current === state.current && generation === gate.generation()) changed();
       }
     };
     void run();
     return true;
-  }, [changed]);
+  }, [changed, gate]);
 
   const acceptRefreshedState = useCallback(() => {
     if (state.current.running) return;

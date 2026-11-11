@@ -32,7 +32,7 @@ const menuTiles = [
   { label: '日程', hint: 'エクセルの製番', path: '/kiosk/mobile-placement/schedule-seibans', icon: 'calendar', color: colors.teal },
   { label: 'パレット', hint: '加工機ごとの部品', path: '/kiosk/mobile-placement/pallet-viz', icon: 'pallet', color: colors.teal },
   { label: 'Zero2W 配膳', hint: '棚スキャナの記録', path: '/kiosk/mobile-placement/zero2w-status', icon: 'zero', color: colors.slip },
-  { label: '棚マスタ', hint: '工場の棚の配置を変える', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
+  { label: '棚マスタ', hint: '写真で棚を登録する', path: '/kiosk/mobile-placement/shelf-master', icon: 'grid', color: colors.actual }
 ] as const;
 
 export type HaizenHubSheet = 'menu' | 'shelves' | 'inputs' | 'pending' | 'needs_check' | null;
@@ -198,7 +198,7 @@ export function HaizenHub({ mp, sheet, setSheet, shelves, branches, onNavigate, 
     if (actual) mp.resetActualSlipOcrFeedback();
   };
   const fields = [
-    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) mp.setTransferPart(''); mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
+    { label: '移動票 製造order', value: mp.transferOrder, set: (value: string) => { if (mp.transferOrder && mp.transferOrder !== value) { mp.setTransferPart(''); clearActual(); } mp.setTransferOrder(value); }, scan: 'transferOrder', actual: false },
     { label: '現品票 注文番号 / 製造order', value: mp.actualOrder, set: mp.setActualOrder, scan: 'actualOrder', actual: true },
     { label: '移動票 部品番号', value: mp.transferPart, set: mp.setTransferPart, scan: 'transferPart', actual: false },
     { label: '現品票 部品番号', value: mp.actualPart, set: mp.setActualPart, scan: 'actualPart', actual: true },

@@ -1,3 +1,4 @@
+import { autoUnitSplitMetrics, cooperativeAutoUnitSplitTransaction, isAutoUnitSplitYield, type AutoUnitSplitMetrics } from './auto-unit-split-transaction.js';
 import { isAutoUnitSplitBusyError, sessakuPieceSqlState } from './piece-db-error.js';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceCapacityResponse, SessakuPiecesAutoUnitSplitResponse } from '@raspi-system/shared-types';
 import { Prisma } from '@prisma/client';
@@ -10,74 +11,120 @@ import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } fro
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
-import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
-import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
-import { sessakuPieceParentItemId, decodeSessakuPieceParentItemId } from './piece-key.js';
-import { splitSessakuPieces } from './sessaku-pieces.service.js';
+import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput } from './auto-unit-split-candidates.js';
+import { runSessakuPieceOperation, pieceTimingStage, type PieceAuditContext } from './piece-audit.js';
+import { sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
+import { runAutoUnitSplitBatch, runAutoUnitSplitLot, splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 
-export const AUTO_UNIT_SPLIT_MAX_LOTS = 5;
-export const AUTO_UNIT_SPLIT_MAX_EXCLUDED_PARENTS = 60;
+export const AUTO_UNIT_SPLIT_MAX_LOTS = 3;
 export const AUTO_UNIT_SPLIT_BUDGET_MS = 3000;
 export const AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS = AUTO_UNIT_SPLIT_BUDGET_MS + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
-const structuralConflictCodes = new Set(['LATER_PROCESS_PIECE_COMPLETED', 'LATER_PROCESS_PIECE_LOCKED', 'PIECE_OPERATION_COMPLETED']);
+
+const REJECTED_INPUT_TTL_MS = 3 * 60 * 1000;
+const staleInputs = new Map<string, { inputVersion: string; expiresAt: number }>();
+const rejectedInputs = new Map<string, AutoUnitSplitRejectedInput & { siteKey: string; expiresAt: number }>();
 
 export function autoUnitSplitCandidates(items: readonly GrindingPlanningBoardItem[], capacity: GrindingPlanningBoardResourceCapacityResponse,
-  isCutting: (resourceCd: string) => boolean, touchedParentIds: ReadonlySet<string> = new Set()): GrindingPlanningBoardItem[] {
-  return items.filter((item) => !touchedParentIds.has(item.itemId) && item.kind === 'row' && item.pieceSetVersion === undefined && !item.isLaterProcess
+  isCutting: (resourceCd: string) => boolean): GrindingPlanningBoardItem[] {
+  // History is retained for auditing, but never blocks enabled resources.
+  const parentsWithPieces = new Set(items.map((item) => item.parentItemId));
+  return items.filter((item) => !item.sourcePieceId && !item.isLaterProcess
+    && (item.kind === 'piece' || item.pieceSetVersion === undefined || !parentsWithPieces.has(item.itemId))
     && item.fseiban.trim() !== '********' && item.fseiban.trim() !== '' && item.fhincd.trim() !== '' && item.processOrder.trim() !== ''
     && item.originalResourceCd != null && isCutting(item.originalResourceCd)
     && isUnitSplitEnabled(item.effectiveResourceCd, capacity) && !item.isCompleted && !item.quantityWarning
+    && (item.parentPlannedQuantity == null || item.parentPlannedQuantity >= 2 && item.parentPlannedQuantity <= 50)
     && Number.isSafeInteger(item.plannedQuantity) && item.plannedQuantity! >= 2 && item.plannedQuantity! <= 50
     && isFirstAutoUnitSplitProcess(item, items));
 }
 
-export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesAutoUnitSplitResponse> {
-  if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') return { splitCount: 0, skippedCount: 0, hasMore: false };
-  const deadline = performance.now() + AUTO_UNIT_SPLIT_BUDGET_MS;
-  // This lock only excludes other auto-split runners; individual lots retain their own transactions.
+export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: PieceAuditContext },
+  // Server-side overrides let the opt-in DB benchmark exercise every N through the same complete call.
+  limits = { maxLots: AUTO_UNIT_SPLIT_MAX_LOTS, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS }): Promise<SessakuPiecesAutoUnitSplitResponse> {
+  const started = performance.now();
+  const metrics: AutoUnitSplitMetrics = { writtenRowCount: 0, lockHeldMs: 0, yieldReason: null };
+  let committed = false;
+  let previousStale: typeof staleInputs | undefined;
+  let previousRejected: typeof rejectedInputs | undefined;
+  const deadline = performance.now() + limits.budgetMs;
+  const runnerTimeoutMs = limits.budgetMs + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
+  // The runner owns both the exclusion lock and all successful lot writes.
   let result: SessakuPiecesAutoUnitSplitResponse = { splitCount: 0, skippedCount: 0, hasMore: true };
-  const paging: AutoUnitSplitPaging = { extraPage: false, skippedCount: 0 };
   try {
-    return await prisma.$transaction(async (runner) => {
-      // The runner owns the global lock, while splits use other connections.
-      // Reserve time for connection acquisition/commit before its lock can expire.
-      const runnerDeadline = performance.now() + AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS - AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS;
-      const [lock] = await runner.$queryRaw<Array<{ acquired: boolean }>>`
-        SELECT pg_try_advisory_xact_lock(hashtextextended('sessaku-auto-unit-split', 0)) AS acquired`;
-      if (!lock.acquired) return result;
-      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, paging);
-      return result;
-    }, { timeout: AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS, maxWait: 1000 });
-  } catch (error) {
-    // A page after exclusions is bounded by the discovery deadline; a retry would restart from the same head.
-    if (paging.extraPage && (error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_BUDGET' || sessakuPieceSqlState(error) === '57014')) {
-      logger.info({ event: 'sessaku_piece.auto_unit_split_discovery_stopped', siteKey: params.siteKey, reason: 'page_deadline' },
-        'Automatic unit split discovery stopped');
-      return { splitCount: 0, skippedCount: paging.skippedCount, hasMore: false };
+    if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') {
+      metrics.yieldReason = 'disabled';
+      return { splitCount: 0, skippedCount: 0, hasMore: false };
     }
-    if (isAutoUnitSplitBusyError(error) || error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_BUDGET') return { ...result, hasMore: true };
+    const saved = await autoUnitSplitMetrics.run(metrics, () => prisma.$transaction(async (raw) => {
+      const { tx: runner, check } = cooperativeAutoUnitSplitTransaction(raw, metrics);
+      // Reserve time for the shared transaction to flush placements and commit.
+      const runnerDeadline = performance.now() + runnerTimeoutMs - AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS;
+      const [lock] = await raw.$queryRaw<Array<{ acquired: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtextextended('sessaku-auto-unit-split', 0)) AS acquired`;
+      if (!lock.acquired) { metrics.yieldReason = 'runner_busy'; return result; }
+      metrics.lockStarted = performance.now();
+      // KB-452: JIT compilation ignores statement_timeout. Production row counts can push plan costs
+      // past jit_above_cost, so keep this transaction (and only this one) out of JIT.
+      await raw.$executeRaw`SET LOCAL jit = off`;
+      previousStale = new Map(staleInputs);
+      previousRejected = new Map(rejectedInputs);
+      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started, raw);
+      await check(true);
+      return result;
+    }, { timeout: runnerTimeoutMs, maxWait: 1000 }));
+    committed = true;
+    return saved;
+  } catch (error) {
+    metrics.errorCode = (error as { code?: string })?.code ?? 'error';
+    metrics.errorMessage = error instanceof Error ? error.message : String(error);
+    metrics.failedParentItemId = metrics.currentParentItemId ?? null;
+    if (previousStale && previousRejected) {
+      staleInputs.clear();
+      for (const [key, value] of previousStale) staleInputs.set(key, value);
+      rejectedInputs.clear();
+      for (const [key, value] of previousRejected) rejectedInputs.set(key, value);
+    }
+    metrics.yieldReason = isAutoUnitSplitYield(error) ? 'human_write' : sessakuPieceSqlState(error)
+      ?? (error as { code?: string })?.code ?? 'error';
+    if (error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT') {
+      logger.warn({ event: 'sessaku_piece.auto_unit_split_candidate_timeout', siteKey: params.siteKey }, 'Automatic unit split candidate query timed out');
+      return { splitCount: 0, skippedCount: result.skippedCount, hasMore: true };
+    }
+    if (isAutoUnitSplitYield(error) || isAutoUnitSplitBusyError(error) || error instanceof ApiError && error.code === 'AUTO_UNIT_SPLIT_BUDGET') return { splitCount: 0, skippedCount: result.skippedCount, hasMore: true };
     throw error;
+  } finally {
+    metrics.lockHeldMs = metrics.lockStarted === undefined ? 0 : performance.now() - metrics.lockStarted;
+    // Emit only after commit/rollback; rolled-back lots have no operation/audit log.
+    logger.child({}, { level: 'info' }).info({ event: 'sessaku_piece.auto_unit_split_call', siteKey: params.siteKey,
+      requestId: params.audit?.requestId, processedLotCount: committed ? result.splitCount : 0,
+      writtenRowCount: committed ? metrics.writtenRowCount : 0, totalMs: performance.now() - started,
+      lockHeldMs: metrics.lockHeldMs, yieldReason: metrics.yieldReason,
+      errorCode: metrics.errorCode ?? null, errorMessage: metrics.errorMessage ?? null,
+      failedParentItemId: metrics.failedParentItemId ?? null,
+      candidateMs: metrics.candidateMs ?? 0, candidateSqlCount: metrics.candidateSqlCount ?? 0,
+      yieldCheckCount: metrics.yieldCheckCount ?? 0, yieldCheckMs: metrics.yieldCheckMs ?? 0 }, 'Automatic unit split call');
   }
 }
-
-type AutoUnitSplitPaging = { extraPage: boolean; skippedCount: number };
 
 function assertRunnerDeadline(runnerDeadline: number): void {
   if (performance.now() >= runnerDeadline) throw new ApiError(409, '自動分割の時間予算を超えました', undefined, 'AUTO_UNIT_SPLIT_BUDGET');
 }
 
-async function setPreprocessingStatementTimeout(runner: Prisma.TransactionClient, runnerDeadline: number): Promise<void> {
+async function setPreprocessingStatementTimeout(runner: Prisma.TransactionClient, runnerDeadline: number, yieldOnDeadline = false): Promise<boolean> {
+  if (yieldOnDeadline && performance.now() >= runnerDeadline) return false;
   assertRunnerDeadline(runnerDeadline);
   const remainingMs = Math.max(1, Math.floor(runnerDeadline - performance.now()));
   await runner.$queryRaw`SELECT set_config('statement_timeout', ${`${remainingMs}ms`}, true)`;
+  if (yieldOnDeadline && performance.now() >= runnerDeadline) return false;
   assertRunnerDeadline(runnerDeadline);
+  return true;
 }
 
 async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteKey: string; audit?: PieceAuditContext }, deadline: number, runnerDeadline: number,
-  paging: AutoUnitSplitPaging = { extraPage: false, skippedCount: 0 }): Promise<SessakuPiecesAutoUnitSplitResponse> {
+  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number, raw: Prisma.TransactionClient): Promise<SessakuPiecesAutoUnitSplitResponse> {
   assertRunnerDeadline(runnerDeadline);
   await ensurePlanningBoardState(params.siteKey);
   await setPreprocessingStatementTimeout(runner, runnerDeadline);
@@ -93,108 +140,221 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
   const capacity = await getGrindingPlanningBoardResourceCapacity(params, runner);
   assertRunnerDeadline(runnerDeadline);
   const excludedParentIds = new Set<string>();
-  const skippedTouched = new Set<string>();
-  let candidateRows: Array<{ id: string; fseiban: string; parentId: string }>;
-  let candidates: GrindingPlanningBoardItem[];
-  while (true) {
-    paging.extraPage = excludedParentIds.size > 0;
-    const pageDeadline = paging.extraPage ? Math.min(deadline, runnerDeadline) : runnerDeadline;
-    const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds]);
-    await setPreprocessingStatementTimeout(runner, pageDeadline);
-    candidateRows = await runner.$queryRaw<Array<{ id: string; fseiban: string; parentId: string }>>(Prisma.sql`${candidateSql} LIMIT ${AUTO_UNIT_SPLIT_MAX_LOTS + 1}`);
-    assertRunnerDeadline(pageDeadline);
-    if (!candidateRows.length) return { splitCount: 0, skippedCount: skippedTouched.size, hasMore: false };
-    const candidateIds = new Set(candidateRows.map((row) => row.id));
-    const candidateFseibans = [...new Set(candidateRows.map((row) => row.fseiban))];
-    await setPreprocessingStatementTimeout(runner, pageDeadline);
-    const rows = await readWinnerRowsByFseibans(runner, candidateFseibans);
-    assertRunnerDeadline(pageDeadline);
-    const keySelect = { fseiban: true, fhincd: true, fsigencd: true, fkojun: true } as const;
-    await setPreprocessingStatementTimeout(runner, pageDeadline);
-    const [details, existingKeys, overrides, ranks, history] = await Promise.all([
-      readRowDetails(runner, rows.map((row) => row.id)),
-      runner.productionScheduleSessakuPieceSet.findMany({
-        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: candidateFseibans } }, select: keySelect
-      }),
-      readOverrides(runner, params.siteKey, rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData))), readRanks(runner, rows.map((row) => row.id), params.siteKey),
-      runner.productionScheduleSessakuPieceHistory.findMany({
-        where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: candidateFseibans } }, select: keySelect
-      })
-    ]);
-    assertRunnerDeadline(pageDeadline);
-    const items = projectGrindingPlanningBoard({ rows, details, overrides, ranks, seibanOrder: stateOrder(state), category: 'all' }).items;
-    assertRunnerDeadline(pageDeadline);
-    const structuralCandidates = autoUnitSplitCandidates(items, capacity, (resourceCd) => isProductionScheduleCuttingResourceCd(resourceCd, policy));
-    const touched = new Set([...existingKeys, ...history].map(sessakuPieceParentItemId));
-    candidates = structuralCandidates.filter((item) => !touched.has(item.itemId) && candidateIds.has(item.sourceRowId));
-    for (const item of structuralCandidates) {
-      if (touched.has(item.itemId) && candidateIds.has(item.sourceRowId)) skippedTouched.add(item.itemId);
-    }
-    paging.skippedCount = skippedTouched.size;
-    assertRunnerDeadline(pageDeadline);
-    if (!candidates.length) {
-      if (candidateRows.length <= AUTO_UNIT_SPLIT_MAX_LOTS) return { splitCount: 0, skippedCount: skippedTouched.size, hasMore: false };
-      const nextExcluded = new Set([...excludedParentIds, ...candidateRows.map((row) => row.parentId)]);
-      // Exclusions last only for this request, so a retry would rescan the same head without progress.
-      // Report no more work instead of inviting futile client polling; the bound is a documented limit.
-      if (nextExcluded.size > AUTO_UNIT_SPLIT_MAX_EXCLUDED_PARENTS || nextExcluded.size === excludedParentIds.size
-        || performance.now() >= deadline) {
-        logger.info({ event: 'sessaku_piece.auto_unit_split_discovery_stopped', siteKey: params.siteKey, excludedCount: excludedParentIds.size,
-          reason: performance.now() >= deadline ? 'deadline' : 'exclusion_limit' }, 'Automatic unit split discovery stopped');
-        return { splitCount: 0, skippedCount: skippedTouched.size, hasMore: false };
-      }
-      for (const parentId of nextExcluded) excludedParentIds.add(parentId);
-      continue;
-    }
-    paging.extraPage = false;
-    break;
+  const cachedRejections: AutoUnitSplitRejectedInput[] = [];
+  const now = performance.now();
+  for (const [key, rejected] of rejectedInputs) {
+    if (rejected.expiresAt <= now) rejectedInputs.delete(key);
+    else if (rejected.siteKey === params.siteKey) cachedRejections.push(rejected);
   }
-  return runSessakuPieceOperation({ ...params.audit, action: 'auto_unit_split', siteKey: params.siteKey }, async () => {
-    let splitCount = 0;
-    let skippedCount = skippedTouched.size;
-    let attempted = 0;
-    let retryNeeded = false;
-    let markedHistory = false;
-    // Each split owns its existing transaction, lock, optimistic checks, propagation and audit.
-    for (const item of candidates.slice(0, AUTO_UNIT_SPLIT_MAX_LOTS)) {
-      const now = performance.now();
-      if (now >= runnerDeadline || attempted > 0 && now >= deadline) break;
-      // The first-lot grace never extends beyond the runner's safe deadline.
-      const lotDeadline = Math.min(runnerDeadline,
-        attempted === 0 && now >= deadline ? now + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS : deadline);
-      attempted += 1;
-      try {
-        await runSessakuPieceOperation({ action: 'auto_unit_split_lot', siteKey: params.siteKey, parentItemId: item.itemId,
-          requestId: params.audit?.requestId, actorClientDeviceId: params.audit?.actorClientDeviceId, actorDeviceName: params.audit?.actorDeviceName,
-          expectedVersion: 0, itemRevision: item.itemRevision }, (audit) => splitSessakuPieces({
-          siteKey: params.siteKey, parentItemId: item.itemId, expectedPieceSetVersion: 0, itemRevision: item.itemRevision,
-          quantities: Array.from({ length: item.plannedQuantity! }, () => 1), autoUnitSplit: true, deadline: lotDeadline, audit
-        }));
-        splitCount += 1;
-      } catch (error) {
-        if (isAutoUnitSplitBusyError(error)) return { splitCount, skippedCount: skippedCount + 1, hasMore: true };
-        const code = (error as { code?: string })?.code;
-        if (error instanceof ApiError ? error.statusCode >= 500 : code !== 'P2034') throw error;
-        skippedCount += 1;
-        retryNeeded ||= !(error instanceof ApiError) && code === 'P2034';
-        if (error instanceof ApiError) logger.warn({
-          event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId: item.itemId,
-          statusCode: error.statusCode, code: error.code
-        }, 'Automatic unit split skipped');
-        if (error instanceof ApiError && error.code && structuralConflictCodes.has(error.code)) {
-          await prisma.productionScheduleSessakuPieceHistory.createMany({ data: [{
-            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, ...decodeSessakuPieceParentItemId(item.itemId)
-          }], skipDuplicates: true });
-          markedHistory = true;
+  for (const [key, stale] of staleInputs) if (stale.expiresAt <= now) staleInputs.delete(key);
+  let attempted = 0;
+  let retryNeeded = false;
+  return runSessakuPieceOperation({ ...params.audit, action: 'auto_unit_split', siteKey: params.siteKey }, (batchAudit) =>
+    runAutoUnitSplitBatch(runner, async () => {
+      await setPreprocessingStatementTimeout(runner, runnerDeadline);
+      const rows = await runner.$queryRaw<Array<{ parentId: string }>>(Prisma.sql`SELECT "parentId" FROM (${autoUnitSplitCandidateSql(params.siteKey, order, policy, [], cachedRejections)}) AS lock_candidates`);
+      return rows.map((row) => row.parentId);
+    }, async () => {
+      while (true) {
+        const pageDeadline = excludedParentIds.size ? Math.min(deadline, runnerDeadline) : runnerDeadline;
+        if (result.splitCount > 0 && performance.now() >= deadline) return { ...result, hasMore: true };
+        // Later discovery must not abort writes from completed lots.
+        const preserveCompletedLots = result.splitCount > 0;
+        if (preserveCompletedLots) await runner.$executeRaw`SAVEPOINT auto_unit_split_page`;
+        let page;
+        try {
+          page = await (async () => {
+            const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections);
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            let candidateRows: Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>;
+            const candidateStarted = performance.now();
+            try {
+              candidateRows = await pieceTimingStage.run('candidateMs', () => runner.$queryRaw(Prisma.sql`${candidateSql} LIMIT ${limits.maxLots + 1}`));
+            } catch (error) {
+              if (sessakuPieceSqlState(error) !== '57014') throw error;
+              throw new ApiError(503, '自動分割の候補取得がタイムアウトしました', undefined, 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT');
+            }
+            const candidateMs = performance.now() - candidateStarted;
+            if (batchAudit.timing) { batchAudit.timing.candidateMs += candidateMs; batchAudit.timing.candidateSqlCount += 1; }
+            const metrics = autoUnitSplitMetrics.getStore();
+            if (metrics) {
+              metrics.candidateMs = (metrics.candidateMs ?? 0) + candidateMs;
+              metrics.candidateSqlCount = (metrics.candidateSqlCount ?? 0) + 1;
+            }
+            if (result.splitCount > 0 && performance.now() >= pageDeadline) return;
+            assertRunnerDeadline(pageDeadline);
+            if (!candidateRows.length) return { empty: true as const };
+            const candidateIds = new Set(candidateRows.map((row) => row.id));
+            const candidateFseibans = [...new Set(candidateRows.map((row) => row.fseiban))];
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            const rows = await readWinnerRowsByFseibans(runner, candidateFseibans);
+            if (result.splitCount > 0 && performance.now() >= pageDeadline) return;
+            assertRunnerDeadline(pageDeadline);
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            const pieceSets = await readSessakuPieceSets(runner, rows);
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            const details = await readRowDetails(runner, rows.map((row) => row.id));
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            const overrides = await readOverrides(runner, params.siteKey, [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
+              ...[...pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))]);
+            if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
+            const ranks = await readRanks(runner, rows.map((row) => row.id), params.siteKey);
+            if (result.splitCount > 0 && performance.now() >= pageDeadline) return;
+            assertRunnerDeadline(pageDeadline);
+            const items = projectGrindingPlanningBoard({ rows, details, pieceSets, includePieces: true, overrides, ranks, seibanOrder: stateOrder(state), category: 'all' }).items;
+            if (result.splitCount > 0 && performance.now() >= pageDeadline) return;
+            assertRunnerDeadline(pageDeadline);
+            const structuralCandidates = autoUnitSplitCandidates(items, capacity, (resourceCd) => isProductionScheduleCuttingResourceCd(resourceCd, policy));
+            const setsByPiece = new Map([...pieceSets.values()].flatMap((set) => set.pieces.map((piece) => [piece.id, set] as const)));
+            const setsById = new Map([...pieceSets.values()].map((set) => [set.id, set]));
+            const completedParents = new Set(items.filter((item) => item.isCompleted).map((item) => item.parentItemId ?? item.itemId));
+            for (const row of rows) {
+              const detail = details.get(row.id);
+              if (detail?.productionScheduleProgress?.isCompleted || detail?.productionScheduleExternalCompletion?.isExternallyCompleted) {
+                completedParents.add(sessakuPieceParentItemId(sessakuPieceKeyFromRow(row.rowData)));
+              }
+            }
+            const blockedParents = new Set<string>();
+            const protectedPieces = new Set<string>();
+            for (const set of pieceSets.values()) {
+              const parentId = sessakuPieceParentItemId(set);
+              if (set.quantityWarning || set.pieces.some((piece) => piece.sourcePieceId)) blockedParents.add(parentId);
+              if (set.quantityWarning || completedParents.has(parentId) || set.pieces.some((piece) => piece.isCompleted)) {
+                const sourceIds = new Set([set.sourcePieceSetId, ...set.pieces.map((piece) => piece.sourcePieceId ? setsByPiece.get(piece.sourcePieceId)?.id : null)]);
+                for (const id of sourceIds) {
+                  const source = id ? setsById.get(id) : undefined;
+                  if (source) blockedParents.add(sessakuPieceParentItemId(source));
+                }
+              }
+              for (const piece of set.pieces) if (piece.opCompletions?.length) {
+                protectedPieces.add(piece.id);
+                if (piece.sourcePieceId) protectedPieces.add(piece.sourcePieceId);
+              }
+            }
+            const candidates = structuralCandidates.filter((item) => candidateIds.has(item.sourceRowId)
+              && !blockedParents.has(item.parentItemId ?? item.itemId) && !protectedPieces.has(item.pieceId!));
+            if (result.splitCount > 0 && performance.now() >= pageDeadline) return;
+            assertRunnerDeadline(pageDeadline);
+            return { empty: false as const, candidateRows, items, candidates, metrics };
+          })();
+        } catch (error) {
+          if (!preserveCompletedLots) throw error;
+          // The cooperative runner cannot query an aborted PostgreSQL transaction.
+          await raw.$executeRaw`ROLLBACK TO SAVEPOINT auto_unit_split_page`;
+          await raw.$executeRaw`RELEASE SAVEPOINT auto_unit_split_page`;
+          if (sessakuPieceSqlState(error) === '57014' || error instanceof ApiError
+            && ['AUTO_UNIT_SPLIT_BUDGET', 'AUTO_UNIT_SPLIT_CANDIDATE_TIMEOUT'].includes(error.code ?? '')) {
+            return { ...result, hasMore: true };
+          }
+          throw error;
         }
-        // Only lock contention and deadline exhaustion stop work on unrelated lots.
-        if (code === 'AUTO_UNIT_SPLIT_BUSY' || code === 'AUTO_UNIT_SPLIT_BUDGET') {
-          return { splitCount, skippedCount, hasMore: true };
+        if (!page) {
+          // Also restore statement_timeout before flushing the completed lots.
+          await raw.$executeRaw`ROLLBACK TO SAVEPOINT auto_unit_split_page`;
+          await raw.$executeRaw`RELEASE SAVEPOINT auto_unit_split_page`;
+          return { ...result, hasMore: true };
         }
+        if (preserveCompletedLots) await runner.$executeRaw`RELEASE SAVEPOINT auto_unit_split_page`;
+        if (page.empty) return { ...result, hasMore: retryNeeded };
+        const { candidateRows, items, candidates, metrics } = page;
+        // Rejections expire or are invalidated by any changed eligibility input.
+        const rememberRejection = (parentId: string) => {
+          const row = candidateRows.find((row) => row.parentId === parentId);
+          if (!row?.inputVersion) return;
+          rejectedInputs.set(JSON.stringify([params.siteKey, parentId]), {
+            parentId, inputVersion: row.inputVersion, siteKey: params.siteKey, expiresAt: performance.now() + REJECTED_INPUT_TTL_MS
+          });
+        };
+        for (const row of candidateRows) {
+          const projected = items.find((item) => item.sourceRowId === row.id);
+          if (projected && !isFirstAutoUnitSplitProcess(projected, items)) rememberRejection(row.parentId);
+        }
+        // All other exclusions last only for this request. History never gates discovery.
+        const previousExcludedCount = excludedParentIds.size;
+        for (const row of candidateRows) excludedParentIds.add(row.parentId);
+        if (!candidates.length) {
+          if (candidateRows.length <= limits.maxLots) return { ...result, hasMore: retryNeeded };
+          if (excludedParentIds.size === previousExcludedCount) return { ...result, hasMore: true };
+          continue;
+        }
+        let stopped = false;
+        const lots = new Map<string, GrindingPlanningBoardItem[]>();
+        for (const item of candidates) {
+          const parentId = item.parentItemId ?? item.itemId;
+          const pieces = lots.get(parentId) ?? [];
+          pieces.push(item);
+          lots.set(parentId, pieces);
+        }
+        // Each lot keeps its checks and propagation, with a SAVEPOINT for independent rejection.
+        for (const [parentItemId, pieces] of lots) {
+          if (result.splitCount >= limits.maxLots) break;
+          const now = performance.now();
+          if (now >= runnerDeadline || attempted > 0 && now >= deadline) break;
+          const lotDeadline = Math.min(runnerDeadline, attempted === 0 ? now + limits.budgetMs : deadline);
+          attempted += 1;
+          let expectedVersion = pieces[0].pieceSetVersion ?? 0;
+          const rejectionKey = JSON.stringify([params.siteKey, parentItemId]);
+          if (metrics) metrics.currentParentItemId = parentItemId;
+          try {
+            await runAutoUnitSplitLot(async () => {
+              for (const item of pieces) {
+                const saved = await runSessakuPieceOperation({ action: 'auto_unit_split_lot', siteKey: params.siteKey, parentItemId,
+                  requestId: params.audit?.requestId, actorClientDeviceId: params.audit?.actorClientDeviceId, actorDeviceName: params.audit?.actorDeviceName,
+                  expectedVersion, itemRevision: item.itemRevision }, (audit) => {
+                  return splitSessakuPieces({
+                    siteKey: params.siteKey, parentItemId, expectedPieceSetVersion: expectedVersion, targetPieceId: item.pieceId, itemRevision: item.itemRevision,
+                    quantities: Array.from({ length: item.plannedQuantity! }, () => 1), autoUnitSplit: true, deadline: lotDeadline, audit
+                  });
+                }, { tx: runner, successOnly: true });
+                expectedVersion = saved.pieceSetVersion;
+              }
+            });
+            staleInputs.delete(rejectionKey);
+            result.splitCount += 1;
+          } catch (error) {
+            const code = (error as { code?: string })?.code;
+            if (code === 'P2028' || code === 'P2024') throw error;
+            if (isAutoUnitSplitBusyError(error) || isAutoUnitSplitYield(error)) throw error;
+            if (error instanceof ApiError && error.statusCode >= 500) throw error;
+            result.skippedCount += 1;
+            let reloadable = code === 'P2034' || code?.startsWith('STALE_')
+              || ['SOURCE_ITEM_MISSING', 'PIECE_REFERENCED', 'AUTO_UNIT_SPLIT_BUDGET'].includes(code ?? '');
+            if (code?.startsWith('STALE_')) {
+              const row = candidateRows.find((row) => row.parentId === parentItemId);
+              if (row?.inputVersion) {
+                if (staleInputs.get(rejectionKey)?.inputVersion === row.inputVersion) {
+                  reloadable = false;
+                  staleInputs.delete(rejectionKey);
+                } else staleInputs.set(rejectionKey, { inputVersion: row.inputVersion, expiresAt: performance.now() + REJECTED_INPUT_TTL_MS });
+              }
+            } else staleInputs.delete(rejectionKey);
+            if (!reloadable) rememberRejection(parentItemId);
+            retryNeeded ||= Boolean(reloadable);
+            logger.warn({
+              event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,
+              lotIndex: attempted - 1, elapsedMs: performance.now() - started,
+              message: error instanceof Error ? error.message : String(error),
+              statusCode: error instanceof ApiError ? error.statusCode : undefined, code
+            }, 'Automatic unit split skipped');
+            // Deadline exhaustion stops work on unrelated lots.
+            if (code === 'AUTO_UNIT_SPLIT_BUDGET') {
+              if (metrics) {
+                metrics.yieldReason = code;
+                metrics.errorCode = code;
+                metrics.errorMessage = error instanceof Error ? error.message : String(error);
+                metrics.failedParentItemId = metrics.currentParentItemId ?? null;
+                metrics.currentParentItemId = null;
+              }
+              stopped = true; break;
+            }
+          }
+          if (metrics) metrics.currentParentItemId = null;
+        }
+        if (stopped || performance.now() >= deadline || performance.now() >= runnerDeadline || result.splitCount >= limits.maxLots) {
+          return { ...result, hasMore: true };
+        }
+        if (candidateRows.length <= limits.maxLots) return { ...result, hasMore: retryNeeded };
+        if (excludedParentIds.size === previousExcludedCount) return { ...result, hasMore: true };
       }
-    }
-    return { splitCount, skippedCount, hasMore: retryNeeded
-      || attempted < Math.min(candidates.length, AUTO_UNIT_SPLIT_MAX_LOTS)
-      || (splitCount > 0 || markedHistory) && (candidates.length > attempted || candidateRows.length > AUTO_UNIT_SPLIT_MAX_LOTS) };
-  });
+    }, batchAudit, raw), { tx: runner, successOnly: true });
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { pageZoom } from './pageZoom';
 
 const HOLD_MS = 450;
@@ -59,6 +60,7 @@ export function usePlanningBoardPaneOrder(
   disabled: boolean,
   { startOnMove = false }: { startOnMove?: boolean } = {}
 ) {
+  const { gate, frozen } = usePlanningBoardOffline();
   // Browser-local storage deliberately keeps each kiosk's layout independent.
   const key = `kiosk.planning-board.resource-panes:${scope}`;
   const [saved, setSaved] = useState(() => ({ key, order: readOrder(key) }));
@@ -88,6 +90,7 @@ export function usePlanningBoardPaneOrder(
     if (drag.handle.hasPointerCapture?.(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId);
   }, []);
 
+  useEffect(() => gate.subscribeReadOnly(clear), [clear, gate]);
   useEffect(() => {
     window.addEventListener('blur', clear);
     return () => {
@@ -96,10 +99,11 @@ export function usePlanningBoardPaneOrder(
     };
   }, [clear, key]);
   useEffect(() => {
-    if (disabled || (pending.current && !resources.includes(pending.current.resource))) clear();
-  }, [clear, disabled, resources]);
+    if (disabled || frozen || (pending.current && !resources.includes(pending.current.resource))) clear();
+  }, [clear, disabled, frozen, resources]);
 
   const save = useCallback((next: string[]) => {
+    if (!gate.attempt()) return;
     // Keep temporarily absent resources so filtering does not erase their saved position.
     let index = 0;
     const persisted = storedOrder.map((resource) => order.includes(resource) ? next[index++]! : resource);
@@ -110,7 +114,7 @@ export function usePlanningBoardPaneOrder(
     } catch {
       // Storage can be unavailable; the current session can still rearrange panes.
     }
-  }, [key, order, storedOrder]);
+  }, [gate, key, order, storedOrder]);
 
   const move = useCallback((source: string, target: string) => {
     const from = order.indexOf(source);
@@ -145,7 +149,7 @@ export function usePlanningBoardPaneOrder(
   }, [paneAtPoint]);
 
   const start = useCallback((drag: PaneDrag) => {
-    if (pending.current !== drag || drag.ghost) return;
+    if (pending.current !== drag || drag.ghost || !gate.canWrite()) return;
     if (drag.timer !== null) clearTimeout(drag.timer);
     drag.timer = null;
     const ghost = document.createElement('div');
@@ -181,9 +185,10 @@ export function usePlanningBoardPaneOrder(
       drag.line = line;
     }
     flush();
-  }, [flush, paneAtPoint]);
+  }, [flush, gate, paneAtPoint]);
 
   const onPointerDown = useCallback((event: React.PointerEvent<HTMLButtonElement>, resource: string) => {
+    if (!gate.attempt()) return;
     if (disabled || pending.current || event.button !== 0 || event.isPrimary === false) return;
     const handle = event.currentTarget;
     let scrollParent = handle.parentElement;
@@ -199,7 +204,7 @@ export function usePlanningBoardPaneOrder(
     // A hold shows the frame too; with startOnMove, moving earlier starts at once.
     drag.timer = setTimeout(() => start(drag), HOLD_MS);
     event.stopPropagation();
-  }, [disabled, start]);
+  }, [disabled, gate, start]);
 
   const onPointerMove = useCallback((event: React.PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;
@@ -232,11 +237,12 @@ export function usePlanningBoardPaneOrder(
   const onKeyDown = useCallback((event: React.KeyboardEvent<HTMLButtonElement>, resource: string) => {
     if (event.key === 'Escape') clear();
     if (disabled || !event.altKey || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    if (!gate.attempt()) return;
     const direction = event.key === 'ArrowLeft' || event.key === 'ArrowUp' ? -1 : 1;
     const target = order[order.indexOf(resource) + direction];
     if (target) move(resource, target);
     event.preventDefault();
-  }, [clear, disabled, move, order]);
+  }, [clear, disabled, gate, move, order]);
 
   return { order, onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown };
 }

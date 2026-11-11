@@ -364,6 +364,13 @@ describe('Haizen hub', () => {
     fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     fireEvent.change(screen.getByLabelText(field === 'transfer' ? '移動票 製造order' : '現品票 注文番号 / 製造order'), { target: { value: 'NEW' } });
     fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    if (field === 'transfer') {
+      expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '次を照合' })).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
+      fireEvent.change(screen.getByLabelText('現品票 注文番号 / 製造order'), { target: { value: '4501238876' } });
+      fireEvent.click(screen.getByRole('button', { name: '完了' }));
+    }
     await screen.findByRole('status', { name: '一致' });
     expect(screen.getByRole('button', { name: '分配1', exact: true })).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByRole('button', { name: '棚 50013_540AP 北' })).toHaveAttribute('aria-pressed', 'false');
@@ -393,12 +400,16 @@ describe('Haizen hub', () => {
     expect(screen.queryByRole('status', { name: '一致' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '現品票を読む' })).toBeInTheDocument();
   });
-  it.each(['manual', 'scan'] as const)('clears a stale transfer part after a new order via %s', async (method) => {
+  it.each(['manual', 'scan'] as const)('clears stale transfer and actual slips after a new order via %s', async (method) => {
     mount(); typeSlips();
     await screen.findByRole('status', { name: '一致' });
     fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     fireEvent.change(screen.getByLabelText('移動票 部品番号'), { target: { value: 'STALE' } });
     await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferPartBarcodeRaw: 'STALE' })));
+    fireEvent.change(screen.getByLabelText('現品票 部品番号'), { target: { value: 'ACTUAL' } });
+    fireEvent.change(screen.getByLabelText('現品票 製番'), { target: { value: 'FS1' } });
+    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ actualPartBarcodeRaw: 'ACTUAL', actualFseibanRaw: 'FS1' })));
+    const verifyCalls = vi.mocked(verifyMobilePlacementSlipMatch).mock.calls.length;
     if (method === 'manual') {
       fireEvent.change(screen.getByLabelText('移動票 製造order'), { target: { value: '0004099556' } });
     } else {
@@ -408,7 +419,11 @@ describe('Haizen hub', () => {
       fireEvent.click(screen.getByRole('button', { name: 'open inputs' }));
     }
     expect(screen.getByLabelText('移動票 部品番号')).toHaveValue('');
-    await waitFor(() => expect(verifyMobilePlacementSlipMatch).toHaveBeenLastCalledWith(expect.objectContaining({ transferOrderBarcodeRaw: '0004099556', transferPartBarcodeRaw: '' })));
+    expect(screen.getByLabelText('移動票 製造order')).toHaveValue('0004099556');
+    expect(screen.getByLabelText('現品票 注文番号 / 製造order')).toHaveValue('');
+    expect(screen.getByLabelText('現品票 部品番号')).toHaveValue('');
+    expect(screen.getByLabelText('現品票 製番')).toHaveValue('');
+    expect(verifyMobilePlacementSlipMatch).toHaveBeenCalledTimes(verifyCalls);
   });
 
   it.each([

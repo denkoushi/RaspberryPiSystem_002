@@ -1046,3 +1046,15 @@ Reading: a drop utterance that names the field it drops (「部門」) is re-rea
 The ExecPlan ④ budget rule was adjusted before merge: a candidate whose first turn failed is recorded as `first_turn_mismatch` without a live run and does not consume the follow-up budget. No such row appeared this night (all 10 first turns passed).
 
 Private files: `work/flywheel/questions-2026-11-07.jsonl`, `questions-2026-11-08.jsonl`, `runner-2026-11-07.log`, `runner-2026-11-08.log`, `flywheel-status.json`, `learned-queries.jsonl`, `regressions.jsonl` (empty).
+
+### 2026-11-10: night 37, the second synthetic follow-up night passes 8 of 8 after the drop fix (measurement)
+
+Night of 2026-11-09 (Pi 5 at cd1d8c5f, #2664 in place): generated 16, kept 16 (the night file holds 111 first-turn rows including the earlier ones), live 95, relevant shown 64, `lossStages other_shown 25, not_in_pool 5, status 1`, synthetic filter questions 10 of 10 correct, learned 2 accepted (active). Regression file empty, `real=0`.
+
+Synthetic follow-up questions, second night: 8 of 8 ok (count 2, add 1, replace 3, drop 2), 0 unsupported. The two drop utterances that failed on 2026-11-08 (「全部門で」「部門は問わず」) now drop the department condition without a clarification and without turning the phrase into a query (#2664: a low-confidence field mention inside a drop utterance is neither a new condition nor query text, and a date-ordered plan with no condition left lists the whole set).
+
+Recall across the three nights since the follow-up change: 49/71, 60/83, 64/95 (67%). `other_shown` 18, 20, 25. The night-37 first-turn set is larger than before (111 rows), so the counts are not directly comparable; nothing in the follow-up change touches first-turn scoring.
+
+Note for ⑤ (adoption rule): the synthetic follow-up rows now give the planner-version comparison a set with computable targets, which the 2026-10-28 decision named as the condition for switching adoption on. Proposed rule, to be decided by the owner: a candidate wording is adopted only when, on the night's synthetic follow-up and filter rows, affected questions are at least 5, gained minus lost is at least 2, and held-out and real rows lose nothing; a tie stays in report mode. The learned-query rule (tie accepted) is left as it is.
+
+Private files: `work/flywheel/questions-2026-11-09.jsonl`, `runner-2026-11-09.log`, `flywheel-status.json`, `learned-queries.jsonl`, `regressions.jsonl` (empty).

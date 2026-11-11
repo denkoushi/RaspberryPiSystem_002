@@ -261,6 +261,7 @@ update-frequency: high
 | [KB-359](./ci-cd.md#kb-359-開発端末の-python3-パス不良update-all-clients-の非致命警告) | 開発端末の `python3` パス不良（`update-all-clients` の非致命警告） | 🔄 進行中（環境依存） |
 | [KB-450](./ci-cd.md#kb-450-import-replaceexisting-full-suite-flake) | API import `replaceExisting=true` 統合テストが full suite でだけ flake する | ✅ 解決済み |
 | [KB-451](./ci-cd.md#kb-451-route-integration-shared-fixture-postgres-test-local) | route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失 | ✅ 解決済み |
+| [KB-452](./KB-452-postgres-jit-uninterruptible-sessaku-lane-read.md) | 切削の列の読み取りで PostgreSQL 18 の JIT が数分止まり、取り消せない | ✅ 解決済み |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連

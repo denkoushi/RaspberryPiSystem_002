@@ -21,15 +21,19 @@ import {
   type PlacementTransferResult
 } from './part-measurement-drawing-placement-transfer.js';
 
+import { transferItemsByLayout } from './part-measurement-drawing-placement-layout.js';
+
 import { transferItemsSemantically, unplacedSemanticItems } from './part-measurement-drawing-placement-semantic.js';
 
 import { siblingMatchesSchema, SIBLING_MATCH_VERSION } from './part-measurement-drawing-sibling-match.js';
 import { PartMeasurementDrawingSiblingMatchService } from './part-measurement-drawing-sibling-match.service.js';
 
-export const currentPlacementVersion = () => env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED ? 'semantic-v1' : 'transfer-v2';
+export const currentPlacementVersion = (processGroup: PartMeasurementProcessGroup) =>
+  processGroup === 'CUTTING' && env.INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED ? 'layout-v1' :
+    env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED ? 'semantic-v1' : 'transfer-v2';
 // The process is part of the version so the existing unique run key stays unchanged (expand-only migration).
 export const placementVersionFor = (processGroup: PartMeasurementProcessGroup) =>
-  `${currentPlacementVersion()}:${processGroup}`;
+  `${currentPlacementVersion(processGroup)}:${processGroup}`;
 export type PlacementReorderProvider = (
   visualTemplateId: string, source: { sourceVisualTemplateId: string; sourceMap: DimensionMap | null }
 ) =>
@@ -114,7 +118,8 @@ export class PartMeasurementDrawingPlacementService {
     processGroup: PartMeasurementProcessGroup; reorder?: PlacementReorder; reorderProvider?: PlacementReorderProvider | null;
     allowInference?: boolean;
   }): Promise<EnsureRunResult> {
-    const semantic = env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED;
+    const layout = currentPlacementVersion(options.processGroup) === 'layout-v1';
+    const semantic = !layout && env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED;
     const { drawingImageFingerprint } = await this.drawingOcrService.getCurrentStatus(visualTemplateId);
     const targetMap = await this.dimensionMapService.getCompletedPayload(visualTemplateId, drawingImageFingerprint);
     if (!targetMap) return { status: 'map-pending', run: null };
@@ -149,7 +154,7 @@ export class PartMeasurementDrawingPlacementService {
       include: { items: { orderBy: { sortOrder: 'asc' } } },
       orderBy: { id: 'asc' }
     }) : [];
-    const source = chooseSourceSibling({
+    let source = layout ? null : chooseSourceSibling({
       target, targetMap, semantic,
       siblings: siblingVisuals.map((visual) => ({
         ...visual, isActive: true,
@@ -157,25 +162,50 @@ export class PartMeasurementDrawingPlacementService {
           .map((template) => ({ ...template, items: sourceItems(template.items) }))
       }))
     });
+    let transfers: PlacementTransferResult[] = [];
+    if (layout) {
+      const existingItems = await this.existingItems(visualTemplateId, options.processGroup);
+      const candidates = siblingVisuals.filter((visual) => visual.id !== target.id).flatMap((sibling) =>
+        templates.filter((template) => template.visualTemplateId === sibling.id)
+          .map((template) => ({ sibling: { ...sibling, isActive: true, templates: [] },
+            template: { ...template, items: sourceItems(template.items) } }))
+          .filter(({ template }) => template.items.length > 0));
+      source = null;
+      let bestCount = 0;
+      for (const candidate of candidates) {
+        // eslint-disable-next-line no-await-in-loop
+        const status = await this.drawingOcrService.getCurrentStatus(candidate.sibling.id);
+        // eslint-disable-next-line no-await-in-loop
+        const sourceMap = await this.dimensionMapService.getCompletedPayload(candidate.sibling.id, status.drawingImageFingerprint);
+        const results = transferItemsByLayout({ targetMap, sourceMap, sourceItems: candidate.template.items, existingItems });
+        const count = results.filter((entry) => entry.status === 'PROPOSED').length;
+        if (!source || count > bestCount || (count > 0 && count === bestCount &&
+          candidate.template.updatedAt.getTime() > source.template.updatedAt.getTime())) {
+          source = candidate;
+          bestCount = count;
+          transfers = results;
+        }
+      }
+    }
     // Semantic transfer takes minutes on the business LLM, so only the nightly backfill creates those runs.
     if (semantic && source && options.allowInference === false) return { status: 'map-pending', run: null };
-    let rankingMethod = semantic ? (source ? 'semantic' : 'none') : 'position';
-    let transfers: PlacementTransferResult[] = [];
-    if (source) {
+    let rankingMethod = layout ? (source ? 'layout' : 'none') : semantic ? (source ? 'semantic' : 'none') : 'position';
+    if (source && !layout) {
+      const selectedSource = source;
       const existingItems = await this.existingItems(visualTemplateId, options.processGroup);
       const transfer = async () => {
-        const status = await this.drawingOcrService.getCurrentStatus(source.sibling.id);
-        const sourceMap = await this.dimensionMapService.getCompletedPayload(source.sibling.id, status.drawingImageFingerprint);
+        const status = await this.drawingOcrService.getCurrentStatus(selectedSource.sibling.id);
+        const sourceMap = await this.dimensionMapService.getCompletedPayload(selectedSource.sibling.id, status.drawingImageFingerprint);
         if (semantic) return transferItemsSemantically({
-          sourceDrawingPath: siblingVisuals.find((visual) => visual.id === source.sibling.id)!.drawingImageRelativePath,
+          sourceDrawingPath: siblingVisuals.find((visual) => visual.id === selectedSource.sibling.id)!.drawingImageRelativePath,
           targetDrawingPath: target.drawingImageRelativePath,
-          targetMap, sourceMap, sourceItems: source.template.items, existingItems
+          targetMap, sourceMap, sourceItems: selectedSource.template.items, existingItems
         });
         const reorder = options.reorder ?? await options.reorderProvider?.(visualTemplateId, {
-          sourceVisualTemplateId: source.sibling.id, sourceMap
+          sourceVisualTemplateId: selectedSource.sibling.id, sourceMap
         });
         rankingMethod = reorder ? 'jev' : 'position';
-        return transferItems({ targetMap, sourceMap, sourceItems: source.template.items, existingItems, reorder: reorder ?? undefined });
+        return transferItems({ targetMap, sourceMap, sourceItems: selectedSource.template.items, existingItems, reorder: reorder ?? undefined });
       };
       try {
         transfers = await transfer();
@@ -183,8 +213,8 @@ export class PartMeasurementDrawingPlacementService {
         // Streaming failures are terminal; only undecided pre-stream failures receive one guarded retry.
         if (!semantic || error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError) throw error;
         rankingMethod = 'semantic-failed-stream';
-        transfers = unplacedSemanticItems(source.template.items);
-        log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: source.sibling.id }, 'drawing semantic placement failed');
+        transfers = unplacedSemanticItems(selectedSource.template.items);
+        log.warn({ err: error, visualTemplateId, sourceVisualTemplateId: selectedSource.sibling.id }, 'drawing semantic placement failed');
       }
     }
     const originalItems = new Map(templates.flatMap((template) => template.items).map((item) => [item.id, item]));
@@ -222,9 +252,9 @@ export class PartMeasurementDrawingPlacementService {
                 measurementLabel: entry.item.measurementLabel,
                 measurementPoint: original.measurementPoint,
                 decimalPlaces: original.decimalPlaces,
-                nominalValue: semantic ? entry.nominalValue : original.nominalValue!,
-                lowerLimit: semantic ? entry.lowerLimit : original.lowerLimit,
-                upperLimit: semantic ? entry.upperLimit : original.upperLimit,
+                nominalValue: (semantic || layout) ? entry.nominalValue : original.nominalValue!,
+                lowerLimit: (semantic || layout) ? entry.lowerLimit : original.lowerLimit,
+                upperLimit: (semantic || layout) ? entry.upperLimit : original.upperLimit,
                 depthMode: entry.item.depthMode,
                 valueKind: entry.item.valueKind,
                 markerXRatio: entry.markerXRatio,
@@ -378,7 +408,8 @@ export class PartMeasurementDrawingPlacementService {
         SELECT 1 FROM "PartMeasurementDrawingPlacementRun" r WHERE r."visualTemplateId" = m."id"
           AND r."drawingImageFingerprint" = m."drawingImageFingerprint"
           AND r."analysisVersion" = ${PART_MEASUREMENT_DRAWING_DIMENSION_MAP_VERSION}
-          AND r."placementVersion" = (${`${currentPlacementVersion()}:`}::text || p."processGroup"::text)
+          AND r."placementVersion" = CASE p."processGroup" WHEN 'CUTTING' THEN ${placementVersionFor('CUTTING')}
+            ELSE ${placementVersionFor('GRINDING')} END
           AND (r."rankingMethod" NOT IN ('semantic-failed', 'semantic-failed-chunked') OR EXISTS (
             SELECT 1 FROM "PartMeasurementDrawingPlacementProposal" proposal
             WHERE proposal."runId" = r."id" AND proposal."decidedAt" IS NOT NULL
@@ -394,7 +425,7 @@ export class PartMeasurementDrawingPlacementService {
         else if (result.status === 'no-sibling') counts.noSibling++;
         else counts.mapPending++;
       } catch (error) {
-        if (env.INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED && (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) {
+        if (currentPlacementVersion(row.processGroup) === 'semantic-v1' && (error instanceof InferenceDeferredError || error instanceof InferenceUnavailableError)) {
           counts.deferred++;
           break;
         }

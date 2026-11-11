@@ -55,6 +55,9 @@ TRIAL_HOSTS = {
     'raspi4-sessaku-01',
     'raspi4-fjv60-80',
     'raspi4-robodrill01',
+    'raspi4-assembly-01',
+    'raspi4-assembly-02',
+    'raspberrypi4',
 }
 
 

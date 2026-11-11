@@ -20,6 +20,7 @@ type Props = {
   machineMatrix: LoadMatrix | null;
   selected: HeatmapSelection | null;
   highlightUnset: boolean;
+  operationsDisabled?: boolean;
   onSelect: (selection: HeatmapSelection) => void;
   onEditCapacity: (resourceCd: string) => void;
 };
@@ -44,6 +45,7 @@ export function LoadBalancingHeatmap({
   machineMatrix,
   selected,
   highlightUnset,
+  operationsDisabled,
   onSelect,
   onEditCapacity
 }: Props) {
@@ -76,11 +78,15 @@ export function LoadBalancingHeatmap({
                 <span className="text-sm text-white/65">{displayName}</span>
                 <button
                   type="button"
-                  className={`float-right mt-0.5 rounded px-1.5 text-xs tabular-nums ${
+                  disabled={operationsDisabled}
+                  className={`float-right mt-0.5 rounded px-1.5 text-xs tabular-nums disabled:opacity-30 ${
                     unset ? 'bg-amber-700/70 font-bold text-amber-50' : 'text-white/45 hover:bg-slate-700'
                   }`}
                   aria-label={`${resource.resourceCd} の能力を編集`}
-                  onClick={() => onEditCapacity(resource.resourceCd)}
+                  onClick={() => {
+                    if (operationsDisabled) return;
+                    onEditCapacity(resource.resourceCd);
+                  }}
                 >
                   {unset ? '能力？' : `${formatHours(resource.baseCapacityMinutes!)}H`}
                 </button>

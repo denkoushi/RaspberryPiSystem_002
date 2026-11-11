@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { buildServer } from '../../app.js';
+import { configureTestDueManagementAccessPassword } from '../../test/due-management-access-password.js';
 import { prisma } from '../../lib/prisma.js';
 import { AssemblyTemplateService } from '../../services/assembly/assembly-template.service.js';
 import { AssemblyWorkSessionService } from '../../services/assembly/assembly-work-session.service.js';
@@ -135,6 +136,7 @@ async function createAssemblyFixture(
   });
   const boltCount = options.boltCount ?? 2;
   const template = await new AssemblyTemplateService().create({
+    accessPassword: '2520',
     modelCode: `OPTIONAL-${randomUUID()}`,
     procedurePattern: 'standard',
     name: 'Optional settings assembly',
@@ -313,6 +315,7 @@ describe('torque-wrench optional settings route integration', () => {
   });
 
   beforeEach(async () => {
+    await configureTestDueManagementAccessPassword();
     await resetOptionalSettingsRouteData();
   });
 

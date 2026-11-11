@@ -77,6 +77,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       haizenEdgeEnabled: body.haizenEdgeEnabled,
       shelfLayoutEditEnabled: body.shelfLayoutEditEnabled,
       procedureBoardEnabled: body.procedureBoardEnabled,
+      planningBoardOfflineEnabled: body.planningBoardOfflineEnabled,
       siteKey: body.siteKey,
       isSignage: body.isSignage,
       signagePreviewTargetDeviceId: body.signagePreviewTargetDeviceId,

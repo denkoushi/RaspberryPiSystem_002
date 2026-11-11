@@ -664,6 +664,7 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("inspection_drawing_transfer_jev_enabled | default(false)", bindings["INSPECTION_DRAWING_TRANSFER_JEV_ENABLED"])
         self.assertIn("inspection_drawing_reference_placement_enabled | default(false)", bindings["INSPECTION_DRAWING_REFERENCE_PLACEMENT_ENABLED"])
         self.assertIn("inspection_drawing_semantic_placement_enabled | default(true)", bindings["INSPECTION_DRAWING_SEMANTIC_PLACEMENT_ENABLED"])
+        self.assertIn("inspection_drawing_layout_placement_enabled | default(true)", bindings["INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED"])
         # The business GLM/DeepSeek switch flag reaches the API the same way, off unless the inventory sets it
         self.assertIn("api_business_deepseek_switch_enabled | default(false)", bindings["BUSINESS_DEEPSEEK_SWITCH_ENABLED"])
         # The sessaku piece creation gate reaches the API the same way, off unless the inventory sets it

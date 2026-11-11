@@ -110,7 +110,6 @@ export function InspectionDrawingProposalPanel({ placement, confirmedCount, disa
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] border-dotted border-amber-400 font-bold text-amber-200">?</span>
                 <div className="min-w-0 flex-1">
                   <p className="font-bold">{row.measurementLabel} {formatNominal(row)}</p>
-                  <p className="text-sm text-slate-200">同じ値が図面に見つからない</p>
                 </div>
                 <button
                   type="button"

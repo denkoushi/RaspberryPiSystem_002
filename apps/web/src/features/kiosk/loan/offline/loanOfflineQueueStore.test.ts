@@ -12,6 +12,7 @@ const input = (eventKey: string, readAt = '2026-11-03T09:00:00Z'): LoanQueueInpu
 let records: Map<string, LoanQueueRecord>;
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-11-03T12:00:00Z'));
   records = new Map();
   let lane = Promise.resolve();
   db.transaction.mockImplementation(() => {

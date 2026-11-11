@@ -12,16 +12,24 @@ describe('automatic candidate SQL contract', () => {
     const item = { fseiban: 'S', fhincd: 'PART', originalResourceCd: '021', processOrder: candidate } as GrindingPlanningBoardItem;
     expect(isFirstAutoUnitSplitProcess(item, [{ ...item, processOrder: base as string }])).toBe(!later);
   });
-  it('gates the probe by flags/defaults, quantity, progress, history, winners and raw part keys and conservative process order', () => {
+  it('gates the probe by flags/defaults, quantity, progress, editable pieces, winners and raw part keys and conservative process order', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: ['MSZ'] });
     expect(sql.sql).toContain('COALESCE(c."unitSplitEnabled",');
     expect(sql.sql).toContain("IN ('021', '022')");
     expect(sql.sql).toContain('q."plannedQuantity" BETWEEN 2 AND 50');
     for (const table of ['ProductionScheduleProgress', 'ProductionScheduleExternalCompletion', 'ProductionScheduleSessakuPieceSet',
-      'ProductionScheduleSessakuPieceHistory', 'ProductionScheduleGrindingPlanningBoardOverride']) expect(sql.sql).toContain(table);
+      'ProductionScheduleGrindingPlanningBoardOverride']) expect(sql.sql).toContain(table);
+    expect(sql.sql).not.toContain('ProductionScheduleSessakuPieceHistory');
+    expect(sql.sql).toContain('ProductionScheduleSessakuPieceOpCompletion');
     expect(sql.sql).toContain('NORMALIZE(e."rowData"');
     expect(sql.sql).toContain('ELSE false END');
-    expect(sql.sql).toContain('WITH untouched AS MATERIALIZED');
+    expect(sql.sql).toContain('WITH splittable_rows AS MATERIALIZED');
+    const cheapGate = sql.sql.slice(0, sql.sql.indexOf('eligible AS MATERIALIZED'));
+    expect(cheapGate).toContain('q."plannedQuantity" BETWEEN 2 AND 50');
+    expect(cheapGate).toContain('p."quantity" BETWEEN 2 AND 50');
+    expect(cheapGate).toContain('NOT p."isCompleted"');
+    expect(sql.sql).toContain('ds."quantityWarning" IS NOT NULL');
+    expect(sql.sql).toContain('dp."sourcePieceId" = p."id"');
     expect(sql.sql).toContain('ORDER BY array_position(?::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"');
     expect(sql.sql).toContain(`e."rowData"->>'FHINCD' = r."rowData"->>'FHINCD'`);
     expect(sql.values).toContain(STRING_TRIM_CHARACTERS);
@@ -31,9 +39,21 @@ describe('automatic candidate SQL contract', () => {
   it('keeps candidate discovery scoped to the board order without input-generation scans', () => {
     const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
     expect(sql.sql).toContain(`r."rowData"->>'FSEIBAN' = ANY(`);
-    for (const removed of ['input_keys', 'input_generations', 'inputKey', 'ctid', 'xmin', 'JSONB_TO_RECORDSET']) {
+    for (const removed of ['input_keys', 'input_generations', 'inputKey', 'ctid', 'xmin']) {
       expect(sql.sql).not.toContain(removed);
     }
+  });
+  it('compares cached structural rejections with current seiban rows and PieceSet versions before LIMIT', () => {
+    const rejected = [{ parentId: 'row:blocked', inputVersion: 'old-version' }];
+    const sql = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: [], cuttingExcludedResourceCds: [] }, [], rejected);
+    expect(sql.sql).toContain('JSONB_TO_RECORDSET(');
+    expect(sql.values).toContain(JSON.stringify(rejected));
+    expect(sql.sql).toContain('rejected."inputVersion" = ((SELECT versions."inputVersion"');
+    expect(sql.sql).toContain('v."rowData"');
+    expect(sql.sql).toContain('TO_JSONB(v)');
+    expect(sql.sql).toContain(`BTRIM(COALESCE(v."rowData"->>'FSEIBAN', ''), ?) = BTRIM(COALESCE(r."rowData"->>'FSEIBAN', ''), ?)`);
+    expect(sql.sql).toContain(`v."fseiban" = r."rowData"->>'FSEIBAN'`);
+    expect(sql.sql).not.toContain('ProductionScheduleSessakuPieceHistory');
   });
   it('optionally excludes raw parent IDs without changing the default candidate query or ordering', () => {
     const policy = { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] };
