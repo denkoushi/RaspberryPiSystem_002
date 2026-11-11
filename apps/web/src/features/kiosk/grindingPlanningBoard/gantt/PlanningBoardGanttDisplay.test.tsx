@@ -80,7 +80,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
   expect(onBreaks).toHaveBeenCalledWith('021', true);
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
-  expect(onSource).toHaveBeenCalledWith({ resourceCd: '021', source: 'own' });
+  expect(onSource.mock.calls).toEqual([[{ resourceCd: '021', source: 'own' }], [{ resourceCd: '022', source: 'own' }]]);
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   const sheet = screen.getByRole('region', { name: '品番の値' });
   expect(sheet.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
@@ -92,7 +92,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
   expect(sheet).toHaveStyle({ height: 'min(56%, 520px)' });
   expect(within(screen.getByRole('region', { name: '021' })).queryByRole('region', { name: '品番の値' })).toBeNull();
-  expect(within(sheet).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
+  expect(within(within(sheet).getByText('021').parentElement!).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
 });
@@ -735,4 +735,54 @@ it.each(['forward', 'backward'] as const)('scrolls each pane containing the sele
     fireEvent.click(legend.getByRole('button', { name: seiban }));
     scrolls.forEach(scroll => expect(scroll).not.toHaveBeenCalled());
   }
+});
+
+it.each([[[]], [['021']], [['022']], [['021', '022']]])('reflects both machines minutes sources: %j', (ownSourceResourceCds) => {
+  const onSource = vi.fn();
+  render(<PlanningBoardGanttDisplay {...props('forward')} resourceMinutes={{ ownSourceResourceCds, values: [] }} onMinutesSourceChange={onSource} />);
+  const original = screen.getByRole('button', { name: /元の値/ });
+  const own = screen.getByRole('button', { name: /独自の値/ });
+  expect(original).toHaveAttribute('aria-pressed', String(ownSourceResourceCds.length === 0));
+  expect(own).toHaveAttribute('aria-pressed', String(ownSourceResourceCds.length === 2));
+  for (const button of [original, own]) {
+    expect(button.classList.contains('bg-amber-400')).toBe(button.getAttribute('aria-pressed') === 'true');
+  }
+  fireEvent.click(own);
+  expect(onSource.mock.calls).toEqual(['021', '022'].filter(resourceCd => !ownSourceResourceCds.includes(resourceCd)).map(resourceCd => [{ resourceCd, source: 'own' }]));
+  onSource.mockClear();
+  fireEvent.click(original);
+  expect(onSource.mock.calls).toEqual(['021', '022'].filter(resourceCd => ownSourceResourceCds.includes(resourceCd)).map(resourceCd => [{ resourceCd, source: 'original' }]));
+});
+
+it('totals both machines and groups their parts in pane order, excluding other resources', () => {
+  const values = props('forward');
+  const base = values.layout.groups[0]!.rows[0]!.bars[0]!.item;
+  const items = ['022', '021', '023'].map((resourceCd, index) => ({ ...base, itemId: `minutes-${resourceCd}`, fhincd: `PART-${resourceCd}`,
+    originalResourceCd: resourceCd, effectiveResourceCd: resourceCd, originalRequiredMinutes: (index + 1) * 60, ownRequiredMinutes: (index + 1) * 120 }));
+  const minutes = { ownSourceResourceCds: [], values: items.map(item => ({ resourceCd: item.originalResourceCd, fhincd: item.fhincd, perUnitMinutes: 5, setupMinutes: 0 })) };
+  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} resourceMinutesItems={[...items, items[0]!]} resourceMinutes={minutes}
+    resourceNameMap={{ '021': ['上段機'], '022': ['下段機'] }} valueSheetResource="021" /></QueryClientProvider>);
+  expect(screen.getByRole('button', { name: /元の値/ })).toHaveTextContent('3.0h');
+  expect(screen.getByRole('button', { name: /独自の値/ })).toHaveTextContent('6.0h');
+  expect(screen.getByRole('button', { name: /品番の値/ })).toHaveTextContent('品番の値 2');
+  const sheet = within(screen.getByRole('region', { name: '品番の値' }));
+  const upper = sheet.getByText('021 上段機');
+  const lower = sheet.getByText('022 下段機');
+  expect(within(upper.parentElement!).getByText('PART-021')).toBeInTheDocument();
+  expect(within(lower.parentElement!).getByText('PART-022')).toBeInTheDocument();
+  expect(upper.compareDocumentPosition(lower) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(sheet.queryByText('PART-023')).toBeNull();
+});
+
+it('keeps minutes controls and the ungrouped sheet scoped to one machine', () => {
+  const values = props('forward');
+  const onSource = vi.fn();
+  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} singleResourceCd="021" valueSheetOpen
+    resourceMinutes={{ ownSourceResourceCds: ['022'], values: [] }} onMinutesSourceChange={onSource} /></QueryClientProvider>);
+  expect(screen.getByRole('button', { name: /元の値/ })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
+  expect(onSource.mock.calls).toEqual([[{ resourceCd: '021', source: 'own' }]]);
+  const sheet = screen.getByRole('region', { name: '品番の値' });
+  expect(within(sheet).getAllByRole('table')).toHaveLength(1);
+  expect(within(sheet).queryByText('021')).toBeNull();
 });

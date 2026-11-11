@@ -5,7 +5,7 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+export function PlanningBoardSingleResourceHead({ machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, resourceCds = [resourceCd], names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
   machineModeButtonRef?: (button: HTMLButtonElement | null) => void;
   machineSelectionLabel?: string;
   machineSelectionLocked?: boolean;
@@ -18,6 +18,7 @@ export function PlanningBoardSingleResourceHead({ machineModeButtonRef, machineS
   sheetOpen?: boolean;
   onToggleSheet?: () => void;
   minutesPending?: boolean;
+  resourceCds?: readonly string[];
   resourceCd: string;
   names: string[] | undefined;
   hours: GrindingPlanningBoardResourceDailyHours;
@@ -52,10 +53,10 @@ export function PlanningBoardSingleResourceHead({ machineModeButtonRef, machineS
     </div>}
     <div className="flex-1" />
     <div className="flex shrink-0 rounded-md border border-slate-600" role="group" aria-label="所要時間の値">
-      {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-disabled={frozen || undefined} aria-pressed={(minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own')}
-        className={clsx('h-8 whitespace-nowrap px-3 text-sm font-bold disabled:opacity-40', (minutes?.ownSourceResourceCds.includes(resourceCd) ?? false) === (source === 'own') ? 'bg-amber-400 text-slate-950' : 'text-slate-300')}
+      {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-disabled={frozen || undefined} aria-pressed={resourceCds.every((resource) => (minutes?.ownSourceResourceCds.includes(resource) ?? false) === (source === 'own'))}
+        className={clsx('h-8 whitespace-nowrap px-3 text-sm font-bold disabled:opacity-40', resourceCds.every((resource) => (minutes?.ownSourceResourceCds.includes(resource) ?? false) === (source === 'own')) ? 'bg-amber-400 text-slate-950' : 'text-slate-300')}
         onClick={() => onSourceChange?.(source)}>{source === 'original' ? '元の値' : '独自の値'} <span className="font-mono">{(items.reduce((sum, item) => sum + ((source === 'own' ? item.ownRequiredMinutes ?? item.originalRequiredMinutes : item.originalRequiredMinutes) ?? 0), 0) / 60).toFixed(1)}h</span></button>)}
     </div>
-    <button type="button" aria-expanded={sheetOpen} onClick={onToggleSheet} className="h-8 shrink-0 whitespace-nowrap rounded-md border border-amber-500 px-3 text-sm font-bold text-amber-300">品番の値 {minutes?.values.filter((value) => value.resourceCd === resourceCd).length ?? 0} {sheetOpen ? '▼' : '▲'}</button>
+    <button type="button" aria-expanded={sheetOpen} onClick={onToggleSheet} className="h-8 shrink-0 whitespace-nowrap rounded-md border border-amber-500 px-3 text-sm font-bold text-amber-300">品番の値 {minutes?.values.filter((value) => resourceCds.includes(value.resourceCd)).length ?? 0} {sheetOpen ? '▼' : '▲'}</button>
   </div>;
 }
