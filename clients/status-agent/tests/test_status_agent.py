@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+from email.message import Message
 import io
 import importlib.util
 import sys
+import ssl
+import urllib.error
+import urllib.request
+import urllib.response
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,8 +18,8 @@ STATUS_AGENT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(STATUS_AGENT_DIR))
 
 
-def load_status_agent():
-    spec = importlib.util.spec_from_file_location("status_agent_under_test", STATUS_AGENT_DIR / "status-agent.py")
+def load_status_agent(filename="status-agent.py"):
+    spec = importlib.util.spec_from_file_location("status_agent_under_test", STATUS_AGENT_DIR / filename)
     if spec is None or spec.loader is None:
         raise RuntimeError("failed to load status-agent.py")
     module = importlib.util.module_from_spec(spec)
@@ -23,6 +28,52 @@ def load_status_agent():
 
 
 class StatusAgentTest(unittest.TestCase):
+    def test_posts_reject_redirects_without_another_request(self) -> None:
+        for filename in ("status-agent.py", "status-agent-macos.py"):
+            for code in (301, 302, 303, 307, 308):
+                with self.subTest(filename=filename, code=code):
+                    agent = load_status_agent(filename)
+                    requests = []
+
+                    def respond(request):
+                        requests.append(request)
+                        headers = Message()
+                        headers["Location"] = "http://redirect.test/target"
+                        response = urllib.response.addinfourl(
+                            io.BytesIO(b"redirect"), headers, request.full_url, code
+                        )
+                        response.msg = "Redirect"
+                        return response
+
+                    config = {"API_BASE_URL": "http://server.test/api", "CLIENT_KEY": "fixture"}
+                    with patch.object(urllib.request.HTTPHandler, "http_open", side_effect=respond):
+                        with self.assertRaises(urllib.error.HTTPError) as raised:
+                            agent.post_payload(config, {})
+                    self.assertEqual(raised.exception.code, code)
+                    raised.exception.close()
+                    self.assertEqual(len(requests), 1)
+                    self.assertEqual(requests[0].full_url, "http://server.test/api/clients/status")
+                    self.assertEqual(requests[0].get_method(), "POST")
+
+    def test_post_opener_uses_existing_tls_context(self) -> None:
+        for filename in ("status-agent.py", "status-agent-macos.py"):
+            for skip_verify in ("0", "1"):
+                with self.subTest(filename=filename, skip_verify=skip_verify):
+                    agent = load_status_agent(filename)
+                    context = ssl.create_default_context()
+                    config = {"API_BASE_URL": "https://server.test/api", "CLIENT_KEY": "fixture",
+                              "TLS_SKIP_VERIFY": skip_verify}
+                    factory = "_create_unverified_context" if skip_verify == "1" else "create_default_context"
+                    with patch.object(agent.ssl, factory, return_value=context), patch.object(
+                        agent.urllib.request, "build_opener"
+                    ) as build:
+                        build.return_value.open.return_value.__enter__.return_value.getcode.return_value = 200
+                        agent.post_payload(config, {})
+                    https_handler, redirect_handler = build.call_args.args
+                    self.assertIs(https_handler._context, context)
+                    self.assertIsInstance(redirect_handler, agent.NoRedirectHandler)
+                    self.assertEqual(build.return_value.open.call_args.kwargs, {"timeout": 10.0})
+
     def test_parse_config_defaults_disable_success_log_and_storage_health(self) -> None:
         status_agent = load_status_agent()
         with tempfile.TemporaryDirectory() as temp_dir:

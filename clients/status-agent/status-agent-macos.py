@@ -207,6 +207,11 @@ def build_payload(config: Dict[str, str]) -> Dict[str, object]:
     return payload
 
 
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 def post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     api_base = config["API_BASE_URL"].rstrip("/")
     url = f"{api_base}/clients/status"
@@ -221,7 +226,10 @@ def post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     skip_verify = config.get("TLS_SKIP_VERIFY", "0").lower() in ("1", "true", "yes")
     context = ssl._create_unverified_context() if skip_verify else ssl.create_default_context()
 
-    with urllib.request.urlopen(request, timeout=timeout, context=context) as response:
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPSHandler(context=context), NoRedirectHandler()
+    )
+    with opener.open(request, timeout=timeout) as response:
         body = response.read().decode("utf-8")
         return_code = response.getcode()
         if return_code >= 300:
