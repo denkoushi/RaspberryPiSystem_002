@@ -567,6 +567,46 @@ describe('automatic unit split', () => {
     expect(await autoSplitSessakuUnits({ siteKey: 'paging-deadline' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: hasTail });
     expect(mocks.query).toHaveBeenCalledTimes(1); expect(mocks.audit.mock.calls.filter(([audit]) => audit.action === 'auto_unit_split_lot')).toHaveLength(0);
   });
+  it.each(['query', 'rows', 'sets', 'details', 'overrides', 'ranks', 'projection'] as const)(
+    'commits the completed lot after the second-page %s JS deadline', async (stage) => {
+      await completedLotThenPageTimeout(stage, false);
+    });
+  it.each(['query', 'rows', 'sets', 'details', 'overrides', 'ranks'] as const)(
+    'commits the completed lot after the second-page %s SQL timeout', async (stage) => {
+      await completedLotThenPageTimeout(stage, true);
+    });
+  async function completedLotThenPageTimeout(stage: 'query' | 'rows' | 'sets' | 'details' | 'overrides' | 'ranks' | 'projection', sqlTimeout: boolean) {
+    mocks.items = Array.from({ length: 8 }, (_, i) => item({ itemId: `row:${i}`, sourceRowId: `source-${i}`,
+      fhincd: `PART-${i}`, plannedQuantity: i === 0 || i >= candidatePageSize ? 3 : 1 }));
+    const sqlRows = mocks.items.map((row) => ({ id: row.sourceRowId, fseiban: 'S', parentId: row.itemId }));
+    let secondPage = false;
+    mocks.query.mockImplementation(async (sql) => {
+      const excluded = sqlExcludedParents(sql);
+      secondPage = excluded.size > 0;
+      return sqlRows.filter((row) => !excluded.has(row.parentId)).slice(0, candidatePageSize);
+    });
+    const original = mocks[stage].getMockImplementation()!;
+    mocks[stage].mockImplementation(async (...args: unknown[]) => {
+      const value = await original(...args);
+      if (secondPage) {
+        if (sqlTimeout) throw Object.assign(new Error('statement timeout'), { code: 'P2010', meta: { code: '57014' } });
+        vi.mocked(performance.now).mockReturnValue(AUTO_UNIT_SPLIT_BUDGET_MS);
+      }
+      return value;
+    });
+    if (stage === 'projection') mocks.projection.mockImplementation(() => {
+      if (secondPage) vi.mocked(performance.now).mockReturnValue(AUTO_UNIT_SPLIT_BUDGET_MS);
+      return { items: mocks.items };
+    });
+    expect(await autoSplitSessakuUnits({ siteKey: `completed-page-${stage}-${sqlTimeout}` }))
+      .toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
+    await expect(mocks.transaction.mock.results[0].value).resolves.toEqual({ splitCount: 1, skippedCount: 0, hasMore: true });
+    expect(mocks.split).toHaveBeenCalledTimes(1);
+    expect(mocks.execute).toHaveBeenCalledWith('SAVEPOINT auto_unit_split_page');
+    expect(mocks.execute).toHaveBeenCalledWith('RELEASE SAVEPOINT auto_unit_split_page');
+    expect(mocks.execute).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT auto_unit_split_page');
+    expect(mocks.callLog).toHaveBeenCalledWith(expect.objectContaining({ processedLotCount: 1 }), expect.any(String));
+  }
   it.each(['budget', 'statement-timeout'])('retains a retry when a page after exclusions overruns the discovery deadline (%s)', async (kind) => {
     mocks.items = Array.from({ length: 8 }, (_, i) => item({ itemId: `row:${i}`, sourceRowId: `source-${i}`,
       fhincd: `PART-${i}`, plannedQuantity: 1 }));
