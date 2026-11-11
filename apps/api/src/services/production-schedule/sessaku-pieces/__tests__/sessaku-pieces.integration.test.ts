@@ -160,6 +160,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [2, 3]
     })]);
     let saveSettled = false;
+    let blocked = false;
     let saving: Promise<PromiseSettledResult<Awaited<ReturnType<typeof updateGrindingPlanningBoardOverrides>>>[]> | undefined;
     try {
       await vi.waitFor(() => expect(splitPid).toBeGreaterThan(0), { timeout: 5000 });
@@ -177,7 +178,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
             WHERE ${splitPid} = ANY(pg_blocking_pids(pid))
               AND query LIKE '%ProductionScheduleGrindingPlanningBoardState%'
           ) AS blocked`;
-        expect(waiting!.blocked || saveSettled).toBe(true);
+        blocked = waiting!.blocked;
+        expect(blocked || saveSettled).toBe(true);
       }, { timeout: 5000, interval: 20 });
     } finally {
       release();
@@ -186,6 +188,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       spy.mockRestore();
     }
     const [splitResult] = await splitting;
+    expect(blocked, 'the sibling save must wait on the split state lock').toBe(true);
     expect(splitResult!.status).toBe('fulfilled');
     const [saveResult] = (await saving)!;
     const persisted = await reader.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({

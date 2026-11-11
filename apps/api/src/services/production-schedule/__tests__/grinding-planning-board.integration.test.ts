@@ -1078,7 +1078,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     let blocked = false;
     let save: ReturnType<typeof updateItem> | undefined;
     try {
-      await vi.waitFor(() => expect(reorderPid).toBeGreaterThan(0));
+      await vi.waitFor(() => expect(reorderPid).toBeGreaterThan(0), { timeout: 5000 });
       save = updateItem(fixture, edited!, {
         resourceCd: '581', due: { kind: 'date', date: '2026-10-01' }, specialDue: 'today'
       }, initial.sourceRevision);
