@@ -113,16 +113,14 @@ async function readSpecialDueCalendarModes(siteKey: string, requests: readonly O
 async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw'; pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
   await acquireSessakuPieceLogicalLocks(params.client, params.pieceKeys);
-  if (params.pieceKeys.length) await lockState(params.client, params.siteKey);
+  if (params.pieceKeys.length || params.requests.some((request) => request.alternateRank !== undefined)) await lockState(params.client, params.siteKey);
   for (const sourceRowId of rowsToLock) {
     await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
     const locked = await params.client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
     if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
   const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
-  // Item mutations are guarded by the target itemRevision/overrideVersion only.
-  // The board order version belongs to seiban-order mutations and must not make an
-  // unrelated item edit fail after another terminal reorders the left pane.
+  // Non-position edits are guarded only by itemRevision/overrideVersion; rank edits also need the board revision (unchanged neighbours keep their revision).
   const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean } & PersistedSpecialDue }> = [];
   for (const request of params.requests) {
     const item = current.byItemId.get(request.itemId);
@@ -177,12 +175,11 @@ async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw
       }
     }
     const resourceChanged = request.resourceCd !== undefined && (nextOverrideResource ?? item.originalResourceCd) !== item.effectiveResourceCd;
-    const effectiveDueAfterOverride = nextOverrideDue != null
-      ? ymd(nextOverrideDue)
-      : item.originalDueDate;
+    const effectiveDueAfterOverride = nextOverrideDue != null ? ymd(nextOverrideDue) : item.originalDueDate;
     const dueChanged = request.due !== undefined && effectiveDueAfterOverride !== item.effectiveDueDate;
     desired.push({ request, currentOverride, next: { orderPinned: request.orderPinned, overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null, specialDueKind: nextSpecialDueKind, specialDueExpiresAt: nextSpecialDueExpiresAt } });
   }
+  if (params.requests.some((request) => request.alternateRank !== undefined)) assertBoardRevision(params.sourceRevision, current.state);
   const overrides = new Map(current.overrides);
   for (const update of desired) {
     const saved = await writeOverrideIfChanged(params.client, params.siteKey, update.request.itemId, update.currentOverride, update.next);

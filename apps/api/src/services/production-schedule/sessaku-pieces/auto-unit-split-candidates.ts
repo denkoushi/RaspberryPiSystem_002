@@ -16,11 +16,13 @@ export function isFirstAutoUnitSplitProcess(item: GrindingPlanningBoardItem, ite
       : other.fhincd.normalize('NFKC').trim() === item.fhincd.normalize('NFKC').trim()));
 }
 
+export type AutoUnitSplitCursor = { fseiban: string; parentId: string; id: string };
+
 export type AutoUnitSplitRejectedInput = { parentId: string; inputVersion: string };
 
 /** The same predicate is executable in pre-deploy counts and SQL/TS contract integration tests. */
 export function autoUnitSplitCandidateSql(siteKey: string, order: string[], policy: ResourceCategoryPolicy, excludedParentIds: readonly string[] = [],
-  rejectedInputs: readonly AutoUnitSplitRejectedInput[] = [], options: { includeInputVersion?: boolean } = {}): Prisma.Sql {
+  rejectedInputs: readonly AutoUnitSplitRejectedInput[] = [], options: { includeInputVersion?: boolean; parentIds?: readonly string[]; after?: AutoUnitSplitCursor } = {}): Prisma.Sql {
   const includeInputVersion = options.includeInputVersion !== false || rejectedInputs.length > 0;
   const trim = (value: Prisma.Sql) => Prisma.sql`BTRIM(COALESCE(${value}, ''), ${STRING_TRIM_CHARACTERS})`;
   const resource = trim(Prisma.sql`r."rowData"->>'FSIGENCD'`);
@@ -74,6 +76,12 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     SELECT 1 FROM JSONB_TO_RECORDSET(${JSON.stringify(rejectedInputs)}::jsonb) AS rejected("parentId" text, "inputVersion" text)
     WHERE rejected."parentId" = (${parentId}) AND rejected."inputVersion" = (${version}))` : Prisma.empty;
   const exclusion = excludedParentIds.length ? Prisma.sql`AND (${parentId}) <> ALL(${[...excludedParentIds]}::text[])` : Prisma.empty;
+  const selection = options.parentIds === undefined ? Prisma.empty
+    : Prisma.sql`AND (${parentId}) = ANY(${[...options.parentIds]}::text[])`;
+  const after = options.after;
+  const continuation = after ? Prisma.sql`WHERE
+    (array_position(${order}::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id") >
+    (array_position(${order}::text[], ${after.fseiban}), ${after.fseiban} COLLATE "C", ${after.parentId} COLLATE "C", ${after.id})` : Prisma.empty;
   // MATERIALIZED keeps winner/predecessor joins behind quantity and editable-piece
   // probes. Unit pieces and quantity-one CSV rows do no expensive discovery work.
   const splittableRows = Prisma.sql`SELECT r.* FROM "CsvDashboardRow" r
@@ -82,6 +90,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
       AND s."fseiban" = COALESCE(r."rowData"->>'FSEIBAN', '') AND s."fhincd" = COALESCE(r."rowData"->>'FHINCD', '')
       AND s."fsigencd" = COALESCE(r."rowData"->>'FSIGENCD', '') AND s."fkojun" = COALESCE(r."rowData"->>'FKOJUN', '')
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
+      ${selection}
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       AND q."plannedQuantity" BETWEEN 2 AND 50 AND s."sourcePieceSetId" IS NULL
       AND s."autoUnitSplitHeldAt" IS NULL AND s."quantityWarning" IS NULL
@@ -108,6 +117,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     JOIN "ProductionScheduleOrderSupplement" q ON q."csvDashboardRowId" = r."id" AND q."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       AND ${trim(Prisma.sql`r."rowData"->>'FSEIBAN'`)} NOT IN ('', '********') AND ${part} <> '' AND ${process} <> ''
+      ${selection}
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       ${exclusion}
       ${rejected}
@@ -158,5 +168,6 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
         AND ${trim(Prisma.sql`NORMALIZE(e."rowData"->>'FHINCD', NFKC)`)} = ${trim(Prisma.sql`NORMALIZE(r."rowData"->>'FHINCD', NFKC)`)}
         AND ${buildMaxProductNoWinnerCondition('e')})
     ) SELECT "id", "fseiban", "parentId"${includeInputVersion ? Prisma.sql`, ${version} AS "inputVersion"` : Prisma.empty} FROM eligible r
+      ${continuation}
       ORDER BY array_position(${order}::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id"`;
 }

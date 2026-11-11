@@ -78,15 +78,16 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
         alternateRank: rank
       };
-      // Lane operations invalidate row revisions used by reorder and offline writes,
-      // including rows whose dense rank stays the same.
       const existing = before.overrides.get(item.itemId);
       const id = existing?.id ?? randomUUID();
       before.laneWrites.pending.add(item.itemId);
-      before.overrides.set(item.itemId, {
+      const row: Override = {
         id: existing?.id ?? id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: item.itemId,
         ...data, version: (before.laneWrites.original.get(item.itemId)?.version ?? 0) + 1, createdAt: existing?.createdAt ?? updatedAt, updatedAt
-      });
+      };
+      const original = before.laneWrites.original.get(item.itemId);
+      // Compare with the batch start, including placements temporarily changed by earlier lots.
+      before.overrides.set(item.itemId, original && samePlacement(original, row) ? original : row);
     }
   }
   for (const id of removed.filter((id) => sessakuPieceIdFromItemId(id) !== null && !replacements.includes(id))) {
@@ -107,14 +108,20 @@ const samePlacement = (a: Override, b: Override) =>
 
 /** Flush after every process has replaced its items, under the existing board locks. */
 export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<string, LaneReplacementState>, audit?: PieceAuditContext) {
-  const unchanged: Override[] = [];
   const changed: Override[] = [];
   const removedSites: string[] = [], removedKeys: string[] = [];
   for (const [siteKey, state] of states) {
-    for (const [itemId, alternateRank] of state.testBarRanks ?? []) await tx.productionScheduleGrindingPlanningBoardTestBar.updateMany({
-      where: { id: itemId.slice(5), csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, deletedAt: null },
-      data: { alternateRank, version: { increment: 1 } }
-    });
+    for (const [itemId, alternateRank] of state.testBarRanks ?? []) {
+      const original = state.testBars?.find((item) => item.itemId === itemId);
+      if (!original || original.alternateRank === alternateRank) continue;
+      await tx.productionScheduleGrindingPlanningBoardTestBar.updateMany({
+        where: { id: itemId.slice(5), csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, deletedAt: null },
+        data: { alternateRank, version: { increment: 1 } }
+      });
+      original.alternateRank = alternateRank;
+      original.version += 1;
+      original.itemRevision = `${itemId}:${original.version}`;
+    }
     for (const visits of state.laneWrites.laneVisits.values()) if (audit?.timing) {
       audit.timing.laneWriteCount += 1;
       audit.timing.repeatedLaneCount += visits - 1;
@@ -126,24 +133,11 @@ export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<s
     for (const itemKey of state.laneWrites.pending) {
       const row = state.overrides.get(itemKey)!;
       const original = state.laneWrites.original.get(itemKey);
-      (original && samePlacement(original, row) ? unchanged : changed).push(row);
+      if (original && samePlacement(original, row)) state.overrides.set(itemKey, original);
+      else changed.push(row);
     }
   }
   const updatedAt = new Date();
-  if (unchanged.length) {
-    const started = performance.now();
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE "ProductionScheduleGrindingPlanningBoardOverride" AS o
-      SET "version" = o."version" + 1, "updatedAt" = ${updatedAt}::timestamp
-      FROM unnest(${unchanged.map((r) => r.siteKey)}::text[], ${unchanged.map((r) => r.itemKey)}::text[]) AS k(site, item)
-      WHERE o."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND o."siteKey" = k.site AND o."itemKey" = k.item
-    `);
-    if (audit?.timing) {
-      audit.timing.versionUpdateMs += performance.now() - started;
-      audit.timing.versionUpdateCount += unchanged.length;
-      audit.timing.versionUpdateSqlCount += 1;
-    }
-  }
   if (changed.length) {
     const started = performance.now();
     // Each column is one bind, independent of lane size. Text dates preserve nulls
@@ -168,6 +162,7 @@ export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<s
         "alternateRank" = EXCLUDED."alternateRank", "updatedAt" = EXCLUDED."updatedAt",
         "version" = "ProductionScheduleGrindingPlanningBoardOverride"."version" + 1
     `);
+    for (const row of changed) row.updatedAt = updatedAt;
     if (audit?.timing) {
       audit.timing.placementUpsertMs += performance.now() - started;
       audit.timing.upsertCount += changed.length;
