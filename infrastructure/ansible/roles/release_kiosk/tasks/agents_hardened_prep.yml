@@ -119,6 +119,8 @@
                         names = [member.name.rsplit('/', 1)[-1] for member in source if member.isfile()]
                     migrate = 'nfc-agent-queue.db' in names
                     if names and not migrate:
+                        if info['State']['Running']:
+                            docker('start', container)
                         raise SystemExit('Old nfc-agent data has files but no queue database; inspect before releasing')
         if migrate:
             copy_queue = """

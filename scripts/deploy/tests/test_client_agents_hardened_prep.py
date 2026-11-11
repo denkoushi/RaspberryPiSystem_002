@@ -94,8 +94,8 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
 
     def run_storage(self, *, volumes=('actual-labeled-volume',), containers=('old-container',),
                     running=True, mounted=False, queue=True, service='nfc-agent',
-                    cp_error=None, stray=False):
-        calls = []
+                    cp_error=None, stray=False, record=None):
+        calls = [] if record is None else record
         archive_buffer = io.BytesIO()
         with tarfile.open(fileobj=archive_buffer, mode='w') as archive:
             for suffix in (('', '-wal', '-shm') if queue else ()):
@@ -147,8 +147,13 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
             self.run_storage(volumes=())
 
     def test_old_data_without_queue_database_fails_before_volume_mutation(self):
-        with self.assertRaisesRegex(SystemExit, 'no queue database'):
-            self.run_storage(queue=False, stray=True)
+        for running in (False, True):
+            with self.subTest(running=running):
+                with self.assertRaisesRegex(SystemExit, 'no queue database'):
+                    self.run_storage(queue=False, stray=True, running=running, record=(calls := []))
+                commands = [argv[1] for argv, _ in calls]
+                self.assertNotIn('run', commands)
+                self.assertEqual(commands.count('start'), 1 if running else 0)
 
     def test_ambiguous_volume_fails_before_stopping_writers(self):
         with self.assertRaisesRegex(SystemExit, 'exactly one Compose data volume'):
