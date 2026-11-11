@@ -214,6 +214,8 @@ all:
           # kiosk only through a release of that host (docs/plans/security-client-key-rotation-phase-b.md).
           hosts:
             raspberrypi4:
+              # Pi5 証明書の固定(段階有効化の2回目)
+              client_server_cert_pin_enabled: true
               ansible_host: "{{ kiosk_ip }}"
               ansible_user: tools03
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え4回目)
@@ -253,6 +255,8 @@ all:
               nfc_agent_client_id: "raspberrypi4-kiosk1"
               nfc_agent_client_secret: "{{ vault_nfc_agent_client_secret }}"
             raspi4-robodrill01:
+              # Pi5 証明書の固定(段階有効化の2回目)
+              client_server_cert_pin_enabled: true
               # RoboDrill01 キオスク（Pi4増設）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_robodrill01_ip を追加済み
               ansible_host: "{{ current_network.raspi4_robodrill01_ip | default(local_network.raspi4_robodrill01_ip) }}"
@@ -292,6 +296,8 @@ all:
               nfc_agent_client_id: "raspi4-robodrill01-kiosk1"
               nfc_agent_client_secret: "{{ vault_raspi4_robodrill01_nfc_agent_client_secret }}"
             raspi4-fjv60-80:
+              # Pi5 証明書の固定(段階有効化の2回目)
+              client_server_cert_pin_enabled: true
               # FJV60/80 キオスク（Pi4 3台目）
               # NOTE: group_vars/all.yml の local_network / tailscale_network に raspi4_fjv60_80_ip を定義
               ansible_host: "{{ current_network.raspi4_fjv60_80_ip | default(local_network.raspi4_fjv60_80_ip) }}"
@@ -401,6 +407,8 @@ all:
                   parserProfile: "cem3-btla-hogp-v1"
                   serialNumber: "702902S"
             raspi4-sessaku-01:
+              # Pi5 証明書の固定(段階有効化の2回目)
+              client_server_cert_pin_enabled: true
               # Sessaku-01 キオスク（Pi4 5台目）
               # NOTE: 通常運用は Tailscale、初期セットアップ時のみ local_network にフォールバックする
               ansible_host: "{{ current_network.raspi4_sessaku_01_ip | default(local_network.raspi4_sessaku_01_ip) }}"
@@ -537,6 +545,8 @@ all:
               nfc_agent_client_id: "raspi4-kensaku-02-kiosk1"
               nfc_agent_client_secret: "{{ vault_raspi4_kensaku_02_nfc_agent_client_secret }}"
             raspi4-assembly-02:
+              # Pi5 証明書の固定(段階有効化の2回目)
+              client_server_cert_pin_enabled: true
               # Assembly-02 キオスク（Pi4 8台目）
               ansible_host: "{{ current_network.raspi4_assembly_02_ip | default(local_network.raspi4_assembly_02_ip) }}"
               ansible_user: raspi4-assembly-02
