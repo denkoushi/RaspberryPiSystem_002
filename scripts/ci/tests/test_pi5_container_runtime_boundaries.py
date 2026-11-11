@@ -40,6 +40,18 @@ def service(compose: str, name: str) -> str:
 
 
 class Pi5ContainerRuntimeBoundaryTest(unittest.TestCase):
+    def test_restore_owner_credentials_do_not_replace_application_database_url(self):
+        for compose, names in ((SERVER, ("api",)), (PHASE3, ("api-blue", "api-green"))):
+            model = yaml.safe_load(compose)
+            for name in names:
+                config = model["services"][name]
+                environment = config["environment"]
+                with self.subTest(service=name):
+                    self.assertEqual(environment["DATABASE_URL"], "${APP_DATABASE_URL:?APP_DATABASE_URL is required}")
+                    self.assertEqual(environment["BACKUP_RESTORE_DATABASE_URL"], "${BACKUP_RESTORE_DATABASE_URL:-}")
+                    self.assertNotIn("MIGRATION_DATABASE_URL", environment)
+                    self.assertNotIn("../../apps/api/.env", config["env_file"])
+
     def test_compose_log_limits_preserve_stateful_runtime_configuration(self):
         # These persistent runtimes can remain running on an unchanged deploy.
         # Adding logging alone would recreate them during Compose convergence.

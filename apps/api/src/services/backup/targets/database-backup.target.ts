@@ -94,7 +94,9 @@ export class DatabaseBackupTarget implements BackupTarget {
     try {
       const pgDump = spawn(
         'pg_dump',
-        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', dbName],
+        // Extensions are provisioned separately and may be owned by postgres.
+        // Keep them installed while restoring the migrator-owned application objects.
+        ['-h', host, '-p', port, '-U', user, '--clean', '--if-exists', '--exclude-extension=vector', '--exclude-extension=pg_trgm', dbName],
         {
           env,
           stdio: ['ignore', 'pipe', 'pipe']
@@ -155,17 +157,48 @@ export class DatabaseBackupTarget implements BackupTarget {
 
   async restore(backupData: Buffer, options?: RestoreOptions): Promise<RestoreResult> {
     void options;
-    const url = new URL(this.connectionUrl);
-    const dbName = url.pathname.replace(/^\//, '');
-    const user = decodeURIComponent(url.username || 'postgres');
-    const host = url.hostname || 'localhost';
-    const port = url.port || '5432';
-    const password = url.password ? decodeURIComponent(url.password) : undefined;
+    const connection = this.getConnectionInfo();
+    const { dbName, host, port } = connection;
+    let { user, password } = connection;
+    const restoreUrl = process.env.BACKUP_RESTORE_DATABASE_URL;
+    if (!restoreUrl?.trim()) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new ApiError(500, 'DB復元には所有者権限の接続設定 BACKUP_RESTORE_DATABASE_URL が必要です。Ansibleの設定を再適用してください。');
+      }
+    } else {
+      try {
+        const credentials = new URL(restoreUrl);
+        const runtime = new URL(process.env.DATABASE_URL || this.connectionUrl);
+        if (
+          !['postgresql:', 'postgres:'].includes(credentials.protocol) ||
+          !credentials.username || !credentials.password ||
+          credentials.hostname !== runtime.hostname ||
+          (credentials.port || '5432') !== (runtime.port || '5432') ||
+          credentials.pathname !== runtime.pathname ||
+          credentials.hostname !== host ||
+          (credentials.port || '5432') !== port ||
+          credentials.pathname !== `/${dbName}`
+        ) {
+          throw new Error('Invalid restore connection');
+        }
+        // 復元先と接続オプションは変更せず、所有者の認証情報だけを使う。
+        user = decodeURIComponent(credentials.username);
+        password = decodeURIComponent(credentials.password);
+        if (user.includes('\0') || password.includes('\0')) {
+          throw new Error('Invalid restore credentials');
+        }
+      } catch {
+        throw new ApiError(500, 'BACKUP_RESTORE_DATABASE_URL が不正、または接続先のホスト・ポート・DB名が DATABASE_URL／復元対象と一致しません。所有者のユーザー・パスワードを同じ接続先で設定してください。');
+      }
+    }
+
+    const redactPassword = (message: string): string => {
+      if (!password) return message;
+      return message.split(password).join('[REDACTED]').split(encodeURIComponent(password)).join('[REDACTED]');
+    };
 
     const env = { ...process.env };
-    if (password) {
-      env.PGPASSWORD = password;
-    }
+    env.PGPASSWORD = password || '';
 
     logger?.info({ dbName, host, port }, '[DatabaseBackupTarget] Restoring database from backup');
 
@@ -182,7 +215,15 @@ export class DatabaseBackupTarget implements BackupTarget {
         reject(error);
       };
 
-      const psql = spawn('psql', ['-h', host, '-p', port, '-U', user, '-d', dbName, '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '--file', '-'], {
+      const args = ['-h', host, '-p', port, '-U', user, '-d', dbName, '--no-psqlrc', '--set', 'ON_ERROR_STOP=on', '--single-transaction', '-f', '-'];
+      const runtimeUser = decodeURIComponent(new URL(process.env.DATABASE_URL || this.connectionUrl).username || 'postgres');
+      if (user !== runtimeUser) {
+        const quotedRuntimeUser = `"${runtimeUser.replace(/"/g, '""')}"`;
+        // Existing default privileges grant CRUD when the dump recreates this
+        // table; its GRANT SELECT alone does not revoke those inherited writes.
+        args.push('-c', `REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM ${quotedRuntimeUser};`);
+      }
+      const psql = spawn('psql', args, {
         env,
         stdio: ['pipe', 'pipe', 'pipe']
       });
@@ -194,8 +235,9 @@ export class DatabaseBackupTarget implements BackupTarget {
 
       psql.on('close', (code) => {
         if (code !== 0) {
-          logger?.error({ errors, code }, '[DatabaseBackupTarget] Database restore failed');
-          rejectOnce(new ApiError(500, `Database restore failed: ${errors.join('') || `psql exited with code ${code}`}`));
+          const detail = redactPassword(errors.join('').split(/\r?\n/).filter((line) => !line.startsWith('CONTEXT:')).join('\n')).slice(0, 2000);
+          logger?.error({ detail, code }, '[DatabaseBackupTarget] Database restore failed');
+          rejectOnce(new ApiError(500, `Database restore failed: ${detail || 'psqlが異常終了しました。'}`));
         } else {
           logger?.info({ dbName }, '[DatabaseBackupTarget] Database restore completed');
           resolveOnce({
@@ -206,24 +248,26 @@ export class DatabaseBackupTarget implements BackupTarget {
         }
       });
 
-      psql.stdin.on('error', (error: NodeJS.ErrnoException) => {
-        // ON_ERROR_STOPでpsqlが先に終了した場合は、closeでSQLエラーを報告する。
-        if (error.code === 'EPIPE') return;
-        psql.kill('SIGTERM');
-        rejectOnce(new ApiError(500, `Database restore input failed: ${error.message}`));
-      });
-
       psql.on('error', (error) => {
-        logger?.error({ err: error }, '[DatabaseBackupTarget] Failed to spawn psql');
-        rejectOnce(new ApiError(500, `Failed to spawn psql: ${error.message}`));
+        const detail = redactPassword(error.message);
+        logger?.error({ detail }, '[DatabaseBackupTarget] Failed to spawn psql');
+        rejectOnce(new ApiError(500, `Failed to spawn psql: ${detail}`));
       });
 
       // バックアップデータをstdinに書き込む。gzip済みDBバックアップも復元できるようにする。
       const inputStream = this.createRestoreInputStream(backupData);
-      inputStream.on('error', (error) => {
-        logger?.error({ err: error }, '[DatabaseBackupTarget] Failed to read restore backup stream');
+      psql.stdin.on('error', (error: NodeJS.ErrnoException) => {
+        inputStream.destroy();
+        // ON_ERROR_STOPでpsqlが先に終了した場合は、closeでSQLエラーを報告する。
+        if (error.code === 'EPIPE') return;
         psql.kill('SIGTERM');
-        rejectOnce(new ApiError(500, `Database restore input failed: ${error.message}`));
+        rejectOnce(new ApiError(500, `Database restore input failed: ${redactPassword(error.message)}`));
+      });
+      inputStream.on('error', (error) => {
+        const detail = redactPassword(error.message);
+        logger?.error({ detail }, '[DatabaseBackupTarget] Failed to read restore backup stream');
+        psql.kill('SIGTERM');
+        rejectOnce(new ApiError(500, `Database restore input failed: ${detail}`));
       });
       inputStream.pipe(psql.stdin);
     });

@@ -79,10 +79,10 @@ services:
       - ../../apps/api/.env.example
       - .env
     environment:
-      # Ordinary API containers receive only the least-privilege application
-      # URL. Migration and superuser authority live in host-only files and are
-      # added only to an ephemeral migration container.
+      # Prisma/pg_dump use the application role. Restore's psql alone uses the
+      # owner credentials; migration files and superuser secrets stay unmounted.
       DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      BACKUP_RESTORE_DATABASE_URL: ${BACKUP_RESTORE_DATABASE_URL:-}
       FILE_STORAGE_ROOT: /app/storage
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage

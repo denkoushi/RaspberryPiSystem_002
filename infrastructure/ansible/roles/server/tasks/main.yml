@@ -17,8 +17,9 @@
       - migration_database_url is defined
       - migration_database_url is match('^postgresql://raspi_migrator:[^@]+@db:5432/' ~ (app_database_name | default('borrow_return')) ~ '(?:[?].*)?$')
     fail_msg: >-
-      Dedicated PostgreSQL superuser, application, and migration inputs are
-      required and must use the fixed production roles and Docker endpoint.
+      Dedicated PostgreSQL superuser, application, and migration/restore inputs
+      are required and must use the fixed production roles and the same Docker
+      endpoint/database. Only restore's psql may use owner credentials in the API.
   no_log: true
 
 - name: Validate required Web variables
@@ -267,6 +268,7 @@
     group: "{{ ansible_user }}"
     mode: '0600'
   register: api_env_result
+  no_log: true
 
 - name: Ensure Web .env directory exists
   ansible.builtin.file:
@@ -576,6 +578,7 @@
     group: "{{ ansible_user }}"
     mode: '0600'
   register: docker_env_result
+  no_log: true
 
 - name: Validate API .env syntax
   ansible.builtin.shell: |

@@ -1,6 +1,7 @@
 services:
   api:
     # This override is used only with `docker compose run --rm --no-deps`.
-    # The ordinary API service never loads migration authority.
+    # The ordinary API never loads this file. It receives owner credentials
+    # separately as BACKUP_RESTORE_DATABASE_URL for restore's psql only.
     env_file:
       - ${MIGRATION_DATABASE_ENV_FILE:?MIGRATION_DATABASE_ENV_FILE is required}
