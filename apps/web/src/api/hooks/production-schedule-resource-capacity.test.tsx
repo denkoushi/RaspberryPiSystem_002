@@ -105,3 +105,19 @@ it.each([{ dailyHours: 8 as const }, { runsThroughBreaks: true }])('preserves en
   expect(screen.getByRole('button', { name: '2台', exact: true })).toBeEnabled();
   await act(async () => finish(previous));
 });
+
+it.each([true, false, null])('optimistically updates unit split (%s), preserving other settings and rolling back failure', async unitSplitEnabled => {
+  const { client, wrapper } = setup();
+  const previous = { dailyHoursByResource: { '305': 10 }, runsThroughBreaksResources: ['305'], unitSplitEnabledByResource: { '021': false, '305': true } };
+  client.setQueryData(key, previous);
+  let fail!: (error: Error) => void;
+  mocks.put.mockReturnValue(new Promise((_resolve, reject) => { fail = reject; }));
+  const { result } = renderHook(useUpdateKioskGrindingPlanningBoardResourceCapacity, { wrapper });
+  act(() => result.current.mutate({ resourceCd: '305', unitSplitEnabled }));
+  await waitFor(() => expect(client.getQueryData(key)).toEqual({ ...previous,
+    unitSplitEnabledByResource: { '021': false, ...(unitSplitEnabled === null ? {} : { '305': unitSplitEnabled }) } }));
+  expect(mocks.put).toHaveBeenCalledWith({ resourceCd: '305', unitSplitEnabled });
+  await act(async () => fail(new Error('save failed')));
+  await waitFor(() => expect(result.current.isError).toBe(true));
+  expect(client.getQueryData(key)).toEqual(previous);
+});

@@ -510,11 +510,15 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceCapacityRequest) => updateKioskGrindingPlanningBoardResourceCapacity(payload),
-    onMutate: async ({ resourceCd, dailyHours, runsThroughBreaks }) => {
+    onMutate: async ({ resourceCd, dailyHours, runsThroughBreaks, unitSplitEnabled }) => {
       await queryClient.cancelQueries({ queryKey: planningBoardCapacityKey });
       const previous = queryClient.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey);
+      const flags = { ...previous?.unitSplitEnabledByResource };
+      if (unitSplitEnabled === null) delete flags[resourceCd];
+      else if (typeof unitSplitEnabled === 'boolean') flags[resourceCd] = unitSplitEnabled;
       queryClient.setQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey, {
         ...previous,
+        ...(unitSplitEnabled !== undefined ? { unitSplitEnabledByResource: flags } : {}),
         dailyHoursByResource: { ...previous?.dailyHoursByResource, ...(dailyHours !== undefined ? { [resourceCd]: dailyHours } : {}) },
         runsThroughBreaksResources: runsThroughBreaks === undefined ? previous?.runsThroughBreaksResources ?? []
           : [...(previous?.runsThroughBreaksResources ?? []).filter((resource) => resource !== resourceCd), ...(runsThroughBreaks ? [resourceCd] : [])]

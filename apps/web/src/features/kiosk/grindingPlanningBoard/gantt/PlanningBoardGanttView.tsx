@@ -68,7 +68,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[] }>(function PlanningBoardGanttView({
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  resourceLanes: _resourceLanes, unitSplitEnabledByResource, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
@@ -490,6 +490,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineModeButtonRef={machineModeButtonRef} machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+        unitSplitEnabledByResource={unitSplitEnabledByResource} onUnitSplitChange={onUnitSplitChange} unitSplitAvailable={unitSplitAvailable?.(singleResourceCd!)}
         resourceCds={minutesResourceCds} items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => {
           for (const resourceCd of minutesResourceCds ?? [singleResourceCd!]) {
