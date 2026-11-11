@@ -9,6 +9,10 @@
         torque_agent_hid_links: "{{ torque_agent_hid_links | default([]) }}"
       when: "'torque-agent' in release_kiosk_services"
 
+    - name: Ensure the host group for the hardened torque guard exists
+      ansible.builtin.include_tasks: "{{ role_path }}/../client/tasks/agents_hardened_group.yml"
+      when: "'torque-agent' in release_kiosk_services"
+
     # The hardened Compose file covers every enabled agent, so check all of them
     # even when this release updates only some services.
     - name: Read numeric groups required by enabled agents
@@ -204,3 +208,6 @@
             daemon_reload: true
             enabled: true
             state: "{{ 'restarted' if (release_kiosk_hardened_guard_helper.changed or release_kiosk_hardened_torque_policy.changed) else 'started' }}"
+
+        - name: Require the hardened torque guard to stay running
+          ansible.builtin.include_tasks: "{{ role_path }}/../client/tasks/torque_guard_running.yml"

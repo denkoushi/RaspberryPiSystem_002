@@ -57,6 +57,10 @@
     mode: '0755'
   register: torque_bluetooth_guard_result
 
+- name: Ensure the host group for the hardened torque guard exists
+  ansible.builtin.include_tasks: agents_hardened_group.yml
+  when: client_agents_hardened | default(false) | bool
+
 - name: Deploy torque Bluetooth guard systemd unit
   ansible.builtin.template:
     src: torque-bluetooth-guard.service.j2
@@ -191,6 +195,10 @@
     name: torque-bluetooth-guard.service
     state: restarted
   when: terminal_release_mode | default('full') == 'release-only'
+
+- name: Require the torque guard to stay running
+  ansible.builtin.include_tasks: torque_guard_running.yml
+  when: client_agents_hardened | default(false) | bool
 
 - name: Verify guard initialized the exact external controller OFF
   ansible.builtin.command: /usr/local/libexec/torque-bluetooth-adapter --status

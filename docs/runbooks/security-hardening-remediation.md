@@ -172,7 +172,7 @@ capabilities. Host networking, service/profile selection, environment files, res
 - Barcode adds the host dialout GID read during prepare, permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`. Serial nodes live directly in
   `/dev`; the parent bind supports unplugged startup, replacement nodes and `/dev/serial` links without container recreation.
 - Torque adds the host input GID read during prepare, permits major 13, and binds `/dev/input:ro`. Exact wrench udev rules add `GROUP="input", MODE="0660"`.
-  The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes.
+  The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes. The release creates host group `kiosk-agent` (GID 10001) when no group has that GID, because systemd refuses a numeric `Group=` without a host entry, and fails if the guard does not stay running after start.
 - Device cgroup rules allow `rw` without `m`; read-only binds prevent directory changes while allowing permitted device I/O.
 
 The standard release automatically prepares terminals with `client_agents_hardened: true`: it reads and validates the host plugdev/dialout/input GIDs

@@ -86,7 +86,8 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
             self.assertIn(expected, text)
 
     def test_group_checks_only_require_enabled_services(self):
-        task = self.tasks[0]['block'][1]
+        task = next(task for task in self.tasks[0]['block']
+                    if task['name'] == 'Read numeric groups required by enabled agents')
         self.assertEqual(task['when'], 'item.services | intersect(release_kiosk_enabled_services) | length > 0')
         self.assertEqual({item['name']: item['services'] for item in task['loop']}, {
             'plugdev': ['nfc-agent'], 'dialout': ['barcode-agent'],
@@ -293,3 +294,50 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
                     client_agents_hardened=True, torque_agent_hid_links=links)
                 if template['src'].endswith('rules.j2') and variables:
                     self.assertIn('input/by-id/torque-wrench', rendered)
+
+    def test_guard_group_is_ensured_before_stopping_anything(self):
+        block = self.tasks[0]['block']
+        names = [task['name'] for task in block]
+        index = names.index('Ensure the host group for the hardened torque guard exists')
+        self.assertLess(index, names.index('Read numeric groups required by enabled agents'))
+        include = block[index]
+        self.assertEqual(include['when'], "'torque-agent' in release_kiosk_services")
+        self.assertTrue(include['ansible.builtin.include_tasks'].endswith('/client/tasks/agents_hardened_group.yml'))
+        group_tasks = yaml.safe_load((TASKS.parent.parent / 'client/tasks/agents_hardened_group.yml').read_text())
+        create = group_tasks[-1]['ansible.builtin.group']
+        self.assertEqual((create['name'], create['gid']), ('kiosk-agent', 10001))
+        self.assertEqual(group_tasks[-1]['when'], 'client_agents_hardened_gid_group.rc == 2')
+        guard = (TASKS.parent.parent / 'client/templates/torque-bluetooth-guard.service.j2').read_text()
+        self.assertIn('Group=10001', guard)
+
+    def test_guard_must_stay_running_after_hardened_start(self):
+        torque = self.tasks[1]['block'][1]['block']
+        names = [task['name'] for task in torque]
+        start = names.index('Start the hardened torque guard before Compose recreation')
+        check = names.index('Require the hardened torque guard to stay running')
+        self.assertEqual(check, start + 1)
+        self.assertTrue(torque[check]['ansible.builtin.include_tasks'].endswith('/client/tasks/torque_guard_running.yml'))
+        running = yaml.safe_load((TASKS.parent.parent / 'client/tasks/torque_guard_running.yml').read_text())
+        environment = Environment(undefined=StrictUndefined)
+        first_until = [environment.compile_expression(c) for c in running[0]['until']]
+        second_failed = environment.compile_expression(running[2]['failed_when'])
+        first = {'stdout_lines': ['MainPID=4242', 'ActiveState=active']}
+        self.assertTrue(all(c(torque_guard_first=first) for c in first_until))
+        for lines in (['MainPID=0', 'ActiveState=activating'], ['MainPID=0', 'ActiveState=failed']):
+            self.assertFalse(all(c(torque_guard_first={'stdout_lines': lines}) for c in first_until))
+        environment.filters['sort'] = sorted
+        second_failed = environment.compile_expression(running[2]['failed_when'])
+        self.assertFalse(second_failed(torque_guard_first=first,
+                                       torque_guard_second={'stdout_lines': ['ActiveState=active', 'MainPID=4242']}))
+        for lines in (['ActiveState=active', 'MainPID=4300'], ['ActiveState=failed', 'MainPID=0']):
+            self.assertTrue(second_failed(torque_guard_first=first, torque_guard_second={'stdout_lines': lines}))
+
+    def test_client_role_ensures_guard_group_and_running_on_hardened_hosts(self):
+        tasks = yaml.safe_load((TASKS.parent.parent / 'client/tasks/torque-agent.yml').read_text())
+        names = [task['name'] for task in tasks]
+        group = names.index('Ensure the host group for the hardened torque guard exists')
+        self.assertLess(group, names.index('Deploy torque Bluetooth guard systemd unit'))
+        running = names.index('Require the torque guard to stay running')
+        self.assertLess(names.index('Restart fail-closed torque Bluetooth guard after release changes'), running)
+        for index in (group, running):
+            self.assertEqual(tasks[index]['when'], 'client_agents_hardened | default(false) | bool')

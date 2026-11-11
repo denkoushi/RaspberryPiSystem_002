@@ -39,6 +39,10 @@ Parent completion updated pieces without passing through the piece audit writer.
   60 s. This covers fast lot failures (P2034, SOURCE_ITEM_MISSING, PIECE_REFERENCED), a budget hit
   before any lot is chosen, and lots that keep exceeding the budget. One split returns it to 1 s.
   Wakes from old pages do not shorten this delay.
+- Pacing (2026-11-11, after the Pi5 deploy): each lot rewrote 12k-19k rows and the 1 s interval kept
+  docker-db-1 busy (lock held 141 s in 6 min, CPU up to 228%). A round that split a lot and still has
+  more now waits 3 times its own duration (up to 5 min), so the job holds the DB at most about a quarter
+  of the time. Wakes are ignored during this wait. Log event: `sessaku_piece.auto_unit_split_background_pacing`.
   The existing xact advisory lock still prevents a double run, and progress is
   re-derived from the DB after a restart or blue/green switch.
 - The background job splits one lot per transaction, so every lot gets the full
@@ -59,6 +63,7 @@ Parent completion updated pieces without passing through the piece audit writer.
 - Log events to watch: `sessaku_piece.auto_unit_split_background`,
   `sessaku_piece.auto_unit_split_background_error`, `sessaku_piece.auto_unit_split_deferred`,
   `sessaku_piece.auto_unit_split_background_backoff` (`retryAfterMs`),
+  `sessaku_piece.auto_unit_split_background_pacing` (`retryAfterMs`),
   and `sessaku_piece.auto_unit_split_call` (`totalMs`, `lockHeldMs`, `yieldReason`, `errorCode`).
 
 ## FHINCD Investigation
