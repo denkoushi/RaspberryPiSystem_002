@@ -168,7 +168,7 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
                 "--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_xml", "--enable-auto-tool-choice",
                 "--gpu-memory-utilization", "0.85", "--nnodes", "2", "--master-addr", env["BLUE_MASTER_ADDR"],
                 "--master-port", "29501", "--node-rank",
-            ] + (["1", "--headless"] if node == "worker" else ["0", "--host", "127.0.0.1", "--port", "38083"]))
+            ] + (["1", "--headless"] if node == "worker" else ["0", "--host", "127.0.0.1", "--port", "38083", "--scheduling-policy", "priority"]))
             self.assertIn(f"{self.model}:/models/qwen38fn:ro", args)
             self.assertIn("dgx.profile=" + env["BLUE_MODEL_PROFILE_ID"], args)
             self.assertEqual(args[args.index("--entrypoint") + 2], env["BLUE_SERVER_IMAGE"])
@@ -204,7 +204,8 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             "VLLM_TOOL_CALL_PARSER": "glm47", "VLLM_KV_CACHE_DTYPE": "fp8",
             "VLLM_SPECULATIVE_CONFIG": '{}', "VLLM_MAX_NUM_SEQS": "8",
             "VLLM_MAX_NUM_BATCHED_TOKENS": "8192", "VLLM_ENABLE_PREFIX_CACHING": "false",
-            "VLLM_ENABLE_CHUNKED_PREFILL": "false",
+            "VLLM_ENABLE_CHUNKED_PREFILL": "false", "VLLM_MAX_MODEL_LEN": "262144",
+            "VLLM_GPU_MEMORY_UTILIZATION": "0.9",
         }.items():
             with self.subTest(key=key):
                 result = self.run_script("glm53-flash-tp2-adapter.sh", **{**env, key: value})

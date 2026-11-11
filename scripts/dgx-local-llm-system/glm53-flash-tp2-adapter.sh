@@ -83,6 +83,8 @@ import sys
 
 expected = {
     "VLLM_KV_CACHE_DTYPE": "auto",
+    "VLLM_MAX_MODEL_LEN": "131072",
+    "VLLM_GPU_MEMORY_UTILIZATION": "0.85",
     "VLLM_MAX_NUM_SEQS": "4",
     "VLLM_MAX_NUM_BATCHED_TOKENS": "4096",
     "VLLM_ENABLE_PREFIX_CACHING": "true",
@@ -169,7 +171,7 @@ if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
     --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}"
     --enable-auto-tool-choice --gpu-memory-utilization "${GPU_MEM_UTIL}" --nnodes 2
     --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
-  HEAD_ARGS=(--host 127.0.0.1 --port "${HOST_PORT}")
+  HEAD_ARGS=(--host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority)
 else
 VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"
   --tensor-parallel-size 2 --mamba-cache-mode align --enable-prefix-caching --enable-chunked-prefill
