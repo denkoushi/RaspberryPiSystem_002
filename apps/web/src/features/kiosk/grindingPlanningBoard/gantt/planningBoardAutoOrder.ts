@@ -8,11 +8,11 @@ import type { GanttLayout, GanttLayoutOptions } from './planningBoardGanttLayout
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 
-export type PlanningBoardOrderMetrics = { lateCount: number; waitMinutes: number };
+export type PlanningBoardOrderMetrics = { lateCount: number; waitMinutes: number; setupCount?: number };
 
-export function planningBoardOrderMetrics(layout: GanttLayout): PlanningBoardOrderMetrics {
+export function planningBoardOrderMetrics(layout: GanttLayout, includeSetup = false): PlanningBoardOrderMetrics {
   const bars = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
-  return { lateCount: bars.filter((bar) => bar.tone === 'late').length,
+  return { ...(includeSetup ? { setupCount: bars.filter(bar => bar.setupSegments?.some(segment => segment.end > segment.start)).length } : {}), lateCount: bars.filter((bar) => bar.tone === 'late').length,
     waitMinutes: Math.round(bars.reduce((sum, bar) => sum + (bar.start != null && bar.waitFrom != null ? Math.max(0, bar.start - bar.waitFrom) * 1440 : 0), 0)) };
 }
 

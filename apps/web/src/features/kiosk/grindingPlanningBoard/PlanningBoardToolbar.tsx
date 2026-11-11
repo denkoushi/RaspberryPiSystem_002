@@ -12,6 +12,7 @@ import { PlanningBoardSingleResourcePicker } from './PlanningBoardSingleResource
 import { planningBoardPair } from './planningBoardTwoMachine';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
+import type { UnitOrderMethod } from './gantt/planningBoardUnitOrder';
 import type { PlanningBoardGanttMode } from './gantt/usePersistedPlanningBoardGanttMode';
 import type { PlanningBoardGanttScale } from './gantt/usePersistedPlanningBoardGanttScale';
 import type { PlanningBoardAllocation, PlanningBoardStatus } from './types';
@@ -104,7 +105,8 @@ export type PlanningBoardToolbarProps = {
   onSortDue?: () => void;
   pinMode?: boolean;
   onTogglePinMode?: () => void;
-  orderPreview?: { before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics } | null;
+  onChangeOrderMethod?: (method: UnitOrderMethod) => void;
+  orderPreview?: { method?: UnitOrderMethod; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics } | null;
   previewPending?: boolean;
   onApplyOrder?: () => void;
   onCancelOrder?: () => void;
@@ -152,7 +154,7 @@ export function PlanningBoardToolbar({
   ganttScale = 14,
   onGanttScaleChange,
   ganttMode = 'forward', onGanttModeChange, lateCount = 0, onNextLate,
-  pinMode = false, onTogglePinMode, orderPreview, previewPending = false, onApplyOrder, onCancelOrder,
+  pinMode = false, onTogglePinMode, orderPreview, onChangeOrderMethod, previewPending = false, onApplyOrder, onCancelOrder,
   onProposeOrder, onSortDue, onUndoOrder, orderDisabled = false, canUndoOrder = false,
   overlapCount = 0,
   onNextOverlap,
@@ -253,7 +255,7 @@ export function PlanningBoardToolbar({
           ガント
         </SegmentButton>
         {ganttEnabled && <>
-          <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="並べ方">
+          <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={orderPreview?.method ? 'ガントの方向' : '並べ方'}>
             <span className="px-1 text-[10px] text-slate-400">並べ方</span>
             <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'forward'} onClick={() => onGanttModeChange?.('forward')}>今日から</SegmentButton>
             <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
@@ -302,9 +304,16 @@ export function PlanningBoardToolbar({
             {ganttMode === 'forward' ? (lateCount ? `遅れ ${lateCount}` : '遅れなし') : (overlapCount ? `重なり ${overlapCount}` : '重なりなし')}
           </button>
           {ganttMode === 'forward' && view === 'resource' && (orderPreview ? <>
+            {orderPreview.method && <SegmentGroup ariaLabel="並べ方">
+              {([['group', 'まとめる'], ['round', '順に回す'], ['balance', '2台に均す']] as const).map(([method, label]) =>
+                <SegmentButton key={method} pressed={orderPreview.method === method}
+                  disabled={previewPending || (method === 'balance' && !planningBoardPair(singleResourceCd, singleResourceLanes))}
+                  onClick={() => onChangeOrderMethod?.(method)}>{label}</SegmentButton>)}
+            </SegmentGroup>}
             <div className="flex shrink-0 flex-col rounded-md border border-amber-400 px-2 py-1 text-xs tabular-nums" role="status" aria-label="並べ替えの比較">
               <span>遅れ {orderPreview.before.lateCount} → <b className={clsx(orderPreview.after.lateCount < orderPreview.before.lateCount && 'text-emerald-300')}>{orderPreview.after.lateCount}</b> 件</span>
               <span>待ち {formatWait(orderPreview.before.waitMinutes)} → <b className={clsx(orderPreview.after.waitMinutes < orderPreview.before.waitMinutes && 'text-emerald-300')}>{formatWait(orderPreview.after.waitMinutes)}</b></span>
+              {orderPreview.method && <span>段取り {orderPreview.before.setupCount ?? 0} → <b className={clsx((orderPreview.after.setupCount ?? 0) < (orderPreview.before.setupCount ?? 0) && 'text-emerald-300')}>{orderPreview.after.setupCount ?? 0}</b> 回</span>}
             </div>
             <button type="button" aria-disabled={frozen || undefined} onClick={onApplyOrder} disabled={previewPending}
               className="min-h-11 shrink-0 rounded-md bg-emerald-400 px-3 text-[13px] font-bold text-slate-950 disabled:opacity-40">適用</button>

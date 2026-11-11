@@ -617,7 +617,7 @@ export function PlanningBoardPage() {
 
   const {
     focusItems, gantt, orderActionsDisabled, ganttLayout, lastResourceOrder, handleOrderScan,
-    moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder
+    moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder, changeOrderMethod
   } = usePlanningBoardPageGantt({
     focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
     data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
@@ -685,7 +685,7 @@ export function PlanningBoardPage() {
         lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => planningBoardResourceMatches(gantt.singleResourceCd!, group.resource ?? '', gantt.singleResourceLanes)).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
         pinMode={pinMode} onTogglePinMode={() => { if (gate.attempt()) setPinMode((value) => !value); }}
         orderPreview={orderPreview} previewPending={writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict}
-        onApplyOrder={applyResourceOrder} onCancelOrder={() => { if (gate.attempt()) setOrderPreview(null); }}
+        onChangeOrderMethod={changeOrderMethod} onApplyOrder={applyResourceOrder} onCancelOrder={() => { if (gate.attempt()) setOrderPreview(null); }}
         onProposeOrder={proposeResourceOrder} onSortDue={sortResourceOrdersByDue} onUndoOrder={undoResourceOrder}
         orderDisabled={orderActionsDisabled} canUndoOrder={Boolean(lastResourceOrder)} overlapCount={ganttLayout.overlapCount} onNextOverlap={gantt.scrollToNextOverlap}
         scheduleSource={scheduleSource} category={category} view={view} onScheduleSourceChange={(value) => { if (!writeQueue.pending && (!offline.frozen || gate.attempt())) changeScheduleSource(value); }}
