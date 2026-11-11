@@ -101,6 +101,12 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, runsThroughBreaks })).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
+  const changeUnitSplit = useCallback((resourceCd: string, unitSplitEnabled: boolean) => {
+    if (!gate.attempt() || isPending) return;
+    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, unitSplitEnabled });
+    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, unitSplitEnabled })).then(() =>
+      Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
+  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
   return { testBarControls: undefined as PlanningBoardTestBarControls | undefined,
     mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
     resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,
@@ -111,6 +117,6 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
     }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources),
     valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),
-    capacityLoaded: capacity.data?.unitSplitEnabledByResource !== undefined, unitSplitEnabledByResource: capacity.data?.unitSplitEnabledByResource, singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+    capacityLoaded: capacity.data?.unitSplitEnabledByResource !== undefined, unitSplitEnabledByResource: capacity.data?.unitSplitEnabledByResource, singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks, changeUnitSplit,
     capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

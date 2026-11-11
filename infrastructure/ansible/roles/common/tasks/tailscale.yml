@@ -79,14 +79,37 @@
     - (tailscale_connected | default(false)) | bool == false
   no_log: true
 
-- name: Bring up Tailscale with the selected auth key
-  ansible.builtin.command: >-
-    tailscale up {{ tailscale_extra_args }}
-    --authkey={{ tailscale_effective_auth_key }}
+- name: Authenticate Tailscale with a temporary auth key file
+  become: true
   when:
     - (tailscale_connected | default(false)) | bool == false
     - tailscale_effective_auth_key | default('') | length > 0
   no_log: true
+  block:
+    - name: Create temporary Tailscale auth key file
+      ansible.builtin.tempfile:
+        state: file
+        prefix: tailscale-auth-
+      register: tailscale_auth_key_file
+
+    - name: Write the selected Tailscale auth key
+      ansible.builtin.copy:
+        content: "{{ tailscale_effective_auth_key }}"
+        dest: "{{ tailscale_auth_key_file.path }}"
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: Bring up Tailscale with the selected auth key
+      ansible.builtin.command: >-
+        tailscale up {{ tailscale_extra_args }}
+        --auth-key=file:{{ tailscale_auth_key_file.path }}
+  always:
+    - name: Remove temporary Tailscale auth key file
+      ansible.builtin.file:
+        path: "{{ tailscale_auth_key_file.path }}"
+        state: absent
+      when: tailscale_auth_key_file.path is defined
 
 - name: Fail when no auth provider supplied a key and Tailscale is not connected
   ansible.builtin.fail:

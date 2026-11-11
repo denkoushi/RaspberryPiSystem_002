@@ -2,6 +2,7 @@ import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoard
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
+import type { UnitOrderMethod, UnitOrderResourceChange } from './gantt/planningBoardUnitOrder';
 import type { PlanningBoardAllocation } from './types';
 import type { PlanningBoardDisplayItem } from './usePlanningBoardWriteQueue';
 import type {
@@ -22,10 +23,10 @@ export type CompletionOverlay = {
 
 export type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
 export type OrderPreview = { options: GanttLayoutOptions; sourceRevision: string; current: Record<string, string[]>;
-  proposal: Record<string, string[]>; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
+  proposal: Record<string, string[]>; method?: UnitOrderMethod; resourceChanges?: UnitOrderResourceChange[]; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
 
 export type ResourceOrderHistory = { testBarUndo?: { item: import('@raspi-system/shared-types').GrindingPlanningBoardTestBar; action: 'delete' | 'restore' }; id: number; scope: string; orders: ResourceOrderSnapshot[];
-  restoreResource?: { itemId: string; resourceCd: string | null } };
+  restoreResources?: { itemId: string; resourceCd: string | null }[] };
 
 export const EMPTY_ITEMS: GrindingPlanningBoardItem[] = [];
 export const EMPTY_ORDER: string[] = [];

@@ -16,6 +16,8 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
   valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
   resourceLanes?: readonly string[];
+  onUnitSplitChange?: (resourceCd: string, enabled: boolean) => void;
+  unitSplitAvailable?: (resourceCd: string) => boolean;
   unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
   onSelectedBarResource?: (resource: string) => void;
   capacityLoaded?: boolean;

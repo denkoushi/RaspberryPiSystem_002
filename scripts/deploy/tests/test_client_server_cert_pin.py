@@ -146,6 +146,9 @@ def signage_options(environment):
                           env=env, text=True, capture_output=True)
 
 
+PIN_ENABLED_HOSTS = {'raspi4-kensaku-02', 'raspberrypi3'}
+
+
 class ClientServerCertPinTests(unittest.TestCase):
     def test_legacy_modes_keep_their_behavior(self):
         self.assertEqual(status.build_tls_context({'TLS_SKIP_VERIFY': '1'}).verify_mode, ssl.CERT_NONE)
@@ -168,10 +171,17 @@ class ClientServerCertPinTests(unittest.TestCase):
                                 release_kiosk_hardened_gids={'plugdev': '46', 'dialout': '20', 'input': '996'})
                 template = env.from_string((ANSIBLE / relative).read_text())
                 for host, values in current.items():
+                    if host in PIN_ENABLED_HOSTS:
+                        continue
                     self.assertFalse(values.get('client_server_cert_pin_enabled', False), host)
                     rendered = template.render({**defaults, **values})
                     for marker in PIN_MARKERS:
                         self.assertNotIn(marker, rendered, (host, marker))
+
+    def test_pin_is_enabled_only_for_the_rollout_hosts(self):
+        current = inventory_hosts(yaml.safe_load((ANSIBLE / 'inventory.yml').read_text()))
+        enabled = {host for host, values in current.items() if values.get('client_server_cert_pin_enabled', False)}
+        self.assertEqual(enabled, PIN_ENABLED_HOSTS)
 
     def test_zero_edge_heartbeat_forces_pin_off(self):
         playbook = (ANSIBLE / 'playbooks/zero-edge.yml').read_text()

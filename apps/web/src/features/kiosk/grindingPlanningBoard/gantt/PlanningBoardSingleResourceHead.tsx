@@ -3,11 +3,16 @@ import clsx from 'clsx';
 
 import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 
+import { PlanningBoardUnitSplitButton } from './PlanningBoardUnitSplitButton';
+
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled, testMinutes = 0, machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, resourceCds = [resourceCd], names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled, testMinutes = 0, machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, resourceCds = [resourceCd], names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable = false, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
   onTestBarAdd?: () => void;
   testMinutes?: number;
+  unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
+  onUnitSplitChange?: (resourceCd: string, enabled: boolean) => void;
+  unitSplitAvailable?: boolean;
   machineModeButtonRef?: (button: HTMLButtonElement | null) => void;
   machineSelectionLabel?: string;
   machineSelectionLocked?: boolean;
@@ -51,6 +56,9 @@ export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled,
       <button type="button" className={clsx(buttonClass(pausesForBreaks), 'w-[60px]')} aria-disabled={frozen || undefined} aria-pressed={pausesForBreaks} disabled={disabled || hours === 24}
         onClick={() => onBreaksChange?.(resourceCd, pausesForBreaks)}>休憩</button>
     </div>
+    {unitSplitAvailable && resourceCd !== '未設定' && <PlanningBoardUnitSplitButton resourceCd={resourceCd}
+      flags={machineMode === 2 ? { [resourceCd]: true } : unitSplitEnabledByResource}
+      disabled={disabled || frozen || machineMode === 2} onChange={onUnitSplitChange} />}
     {averageSeconds !== undefined && <div className="flex shrink-0 items-baseline gap-1.5 whitespace-nowrap" title="稼働した日の1日あたり稼働時間の中央値">
       <span className="text-[13px] font-bold text-slate-300">月平均</span><span className="font-mono text-base font-bold text-emerald-300">{(averageSeconds / 3600).toFixed(1)}h</span>
     </div>}

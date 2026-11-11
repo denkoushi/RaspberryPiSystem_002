@@ -4,15 +4,18 @@ import { isVisibleByArrival } from '../isVisibleByArrival';
 
 import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout, planningBoardVisibleBars } from './gantt/planningBoardGanttLayout';
+import { mergeUnitOrderLane, planningBoardUnitOrder } from './gantt/planningBoardUnitOrder';
+import { isUnitPiece } from './gantt/planningBoardUnitSegments';
 import { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
-import { planningBoardResourceMatches } from './planningBoardTwoMachine';
+import { planningBoardPair, planningBoardResourceMatches } from './planningBoardTwoMachine';
 import { comparePlanningBoardBarOrder, compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
 
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
+import type { UnitOrderMethod } from './gantt/planningBoardUnitOrder';
 import type { FeedbackKind, OrderPreview, ResourceOrderHistory, ResourceOrderSnapshot } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
@@ -177,7 +180,7 @@ export function usePlanningBoardPageGantt({
     const request = { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource };
     if (!enqueueOverrides([item], [request], '資源CD', undefined, undefined, { onSaved: () => {
       setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: before,
-        restoreResource: { itemId: item.itemId, resourceCd: previousResource } }].slice(-10));
+        restoreResources: [{ itemId: item.itemId, resourceCd: previousResource }] }].slice(-10));
     } })) return;
     // A resource change clears alternateRank. Queue the complete destination order after its override acknowledgement.
     if (sameBand) enqueueResourceOrder({ resourceCd: targetResource, itemIds: proposed }, '資源CDと順番', () => {}, undefined, undefined,
@@ -211,12 +214,38 @@ export function usePlanningBoardPageGantt({
       }
     }
   };
-  const proposeResourceOrder = () => {
+  const proposeResourceOrder = (method: UnitOrderMethod = 'group', previous?: OrderPreview | null) => {
     if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
     const options: GanttLayoutOptions = { items: ganttItems, testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
       seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, resourceMinutes: gantt.resourceMinutes, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
       today, scale: gantt.scale, now: ganttNow };
+    const resources: string[] = gantt.singleResourceCd ? planningBoardPair(gantt.singleResourceCd, gantt.singleResourceLanes) ?? [gantt.singleResourceCd] : [];
+    const unitMethod = resources.length && orderItems.some(item => !item.isCompleted && isUnitPiece(item) &&
+      resources.includes(resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定')) ? method : undefined;
+    if (unitMethod === 'balance' && resources.length !== 2) return;
+    if (unitMethod) {
+      const base = previous ? { ...previous.options, items: ganttItems } : options;
+      const current = previous?.current ?? planningBoardLaneOrder(base);
+      const { proposal, resourceChanges } = planningBoardUnitOrder(base, resources, unitMethod, {
+        visibleItemIds: new Set(orderItems.map(item => item.itemId)), canMoveResource,
+        hasPendingSeiban: (fseiban) => hasPendingSeiban(fseiban, true)
+      });
+      if (resources.some(resource => proposal[resource]!.length > 500 || (current[resource]?.length ?? 0) > 500) || resourceChanges.length > 2000) {
+        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+      }
+      const changes = new Map(resourceChanges.map(change => [change.itemId, change]));
+      const previewOptions = { ...base, items: base.items.map(item => {
+        const change = changes.get(item.itemId);
+        return change ? applyOptimisticOverride(item, { ...change, itemRevision: item.itemRevision }) : item;
+      }) };
+      setPinMode(false);
+      setOrderPreview({ options: previewOptions, sourceRevision: previous?.sourceRevision ?? sourceRevision,
+        current, proposal, method: unitMethod, resourceChanges,
+        before: previous?.before ?? planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout(base), true),
+        after: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout({ ...previewOptions, laneOrder: proposal }), true) });
+      return;
+    }
     const current = planningBoardLaneOrder(options);
     const visibleProposal = planningBoardAutoOrder({ ...options, items: orderItems }, new Set(orderItems.filter((item) => item.orderPinned).map((item) => item.itemId)));
     const proposal = Object.fromEntries(Object.entries(current).map(([resource, itemIds]) =>
@@ -234,8 +263,49 @@ export function usePlanningBoardPageGantt({
     if (!gate.attempt()) return;
     if (!orderPreview || writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict) return;
     const preview = orderPreview;
-    const changed = Object.keys(preview.proposal).filter((resource) => preview.proposal[resource]!.some((id, index) => id !== preview.current[resource]?.[index]));
+    const changed = Object.keys(preview.proposal).filter((resource) => preview.proposal[resource]!.length !== (preview.current[resource]?.length ?? 0) ||
+      preview.proposal[resource]!.some((id, index) => id !== preview.current[resource]?.[index]));
     const id = ++resourceOrderHistoryId.current;
+    if (preview.resourceChanges?.length) {
+      const changes = preview.resourceChanges;
+      const originals = changes.map(change => currentItemsRef.current.find(item => item.itemId === change.itemId));
+      if (originals.some((item, index) => !item || item.isCompleted || item.orderPinned || item.specialDue ||
+        !canMoveResource(item, changes[index]!.resourceCd) || hasPendingSeiban(item.fseiban, true))) {
+        setOrderPreview(null);
+        notify('対象の工程が変わったため並べ替えできません。表示を確認してください。', 'error'); return;
+      }
+      const resources = [...new Set(changes.flatMap(change => [change.previousResourceCd ?? '未設定', change.resourceCd]))];
+      const before = resources.map(snapshotResourceOrder);
+      // Unchecked seibans are absent from the proposal; keep them in their full-lane slots.
+      const fullProposal = Object.fromEntries(before.map(snapshot => [snapshot.resourceCd,
+        mergeUnitOrderLane(snapshot.itemIds, preview.current[snapshot.resourceCd] ?? [], preview.proposal[snapshot.resourceCd] ?? [])]));
+      if (resources.some(resource => fullProposal[resource]!.length > 500) || changes.length > 2000) {
+        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+      }
+      const members = originals as GrindingPlanningBoardItem[];
+      const requests = members.map((item, index) => ({ itemId: item.itemId, itemRevision: item.itemRevision,
+        overrideVersion: item.version, resourceCd: changes[index]!.resourceCd }));
+      if (!enqueueOverrides(members, requests, '資源CDと並べ替え', () => setOrderPreview(null), preview.sourceRevision, { onSaved: () => {
+        setResourceOrderHistory(history => [...history, { id, scope: historyScope, orders: before,
+          restoreResources: changes.map(change => ({ itemId: change.itemId, resourceCd: change.previousResourceCd })) }].slice(-10));
+        let remaining = resources.filter(resource => fullProposal[resource]!.length).length;
+        if (!remaining) setOrderPreview(null);
+        for (const resourceCd of resources) {
+          if (!fullProposal[resourceCd]!.length) continue;
+          if (!enqueueResourceOrder({ resourceCd, itemIds: fullProposal[resourceCd]! }, '並べ替え', () => {
+            if (--remaining === 0) setOrderPreview(null);
+          }, undefined, () => setOrderPreview(null), [...preview.options.items])) {
+            setOrderPreview(null);
+            notify('対象の工程が変わったため並べ替えできません。表示を確認してください。', 'error'); break;
+          }
+        }
+      } })) {
+        setOrderPreview(null);
+        notify('対象の工程が変わったため並べ替えできません。表示を確認してください。', 'error');
+      }
+      return;
+    }
+    if (!changed.length) { setOrderPreview(null); return; }
     let remaining = changed.length;
     for (const resourceCd of changed) {
       const before = snapshotResourceOrder(resourceCd);
@@ -267,21 +337,24 @@ export function usePlanningBoardPageGantt({
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled || !lastResourceOrder) return;
     if (lastResourceOrder.testBarUndo) { tests.undo(lastResourceOrder, () => setResourceOrderHistory((history) => history.filter((entry) => entry.id !== lastResourceOrder.id))); return; }
     let restoredItems = currentItemsRef.current;
-    if (lastResourceOrder.restoreResource) {
-      const restore = lastResourceOrder.restoreResource;
-      const item = restoredItems.find((candidate) => candidate.itemId === restore.itemId);
-      if (!item || item.isCompleted) { notify('対象の工程が変わったため移動を戻せません。表示を確認してください。', 'error'); return; }
-      const request = { ...restore, itemRevision: item.itemRevision, overrideVersion: item.version };
-      if (!enqueueOverrides([item], [request], '資源CDを戻す', undefined, undefined, { onSaved: () => {
-        setResourceOrderHistory((history) => history.map((entry) => entry.id === lastResourceOrder.id ? { ...entry, restoreResource: undefined } : entry));
+    if (lastResourceOrder.restoreResources?.length) {
+      const restores = new Map(lastResourceOrder.restoreResources.map(restore => [restore.itemId, restore]));
+      const items = restoredItems.filter(item => restores.has(item.itemId));
+      if (items.length !== restores.size || items.some(item => item.isCompleted || hasPendingSeiban(item.fseiban, true))) {
+        notify('対象の工程が変わったため移動を戻せません。表示を確認してください。', 'error'); return;
+      }
+      const requests = items.map(item => ({ ...restores.get(item.itemId)!, itemRevision: item.itemRevision, overrideVersion: item.version }));
+      if (!enqueueOverrides(items, requests, '資源CDを戻す', undefined, undefined, { onSaved: () => {
+        setResourceOrderHistory((history) => history.map((entry) => entry.id === lastResourceOrder.id ? { ...entry, restoreResources: undefined } : entry));
       } })) return;
-      restoredItems = restoredItems.map((candidate) => candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate);
+      const byId = new Map(requests.map(request => [request.itemId, request]));
+      restoredItems = restoredItems.map(item => byId.has(item.itemId) ? applyOptimisticOverride(item, byId.get(item.itemId)!) : item);
     }
     for (const snapshot of lastResourceOrder.orders) {
       const saved = () => setResourceOrderHistory((history) => history.flatMap((entry) => {
         if (entry.id !== lastResourceOrder.id) return [entry];
         const orders = entry.orders.filter((order) => order !== snapshot);
-        return orders.length || entry.restoreResource ? [{ ...entry, orders }] : [];
+        return orders.length || entry.restoreResources?.length ? [{ ...entry, orders }] : [];
       }));
       if (!snapshot.itemIds.length) { saved(); continue; }
       const currentOrder = sortGrindingPlanningBoardItems(restoredItems.filter((item) => !item.isCompleted &&
@@ -298,6 +371,7 @@ export function usePlanningBoardPageGantt({
   };
   return {
     focusItems, gantt, orderActionsDisabled, ganttLayout, lastResourceOrder, handleOrderScan,
-    moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder, applyResourceOrder, togglePin, undoResourceOrder
+    moveResourceInGantt, sortResourceOrdersByDue, proposeResourceOrder: () => proposeResourceOrder(), applyResourceOrder, togglePin, undoResourceOrder,
+    changeOrderMethod: (method: UnitOrderMethod) => proposeResourceOrder(method, orderPreview)
   };
 }
