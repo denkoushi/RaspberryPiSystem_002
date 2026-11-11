@@ -55,6 +55,12 @@
         else release_kiosk_enabled_services | intersect(release_kiosk_requested_services) | intersect(release_kiosk_service_allowlist)
       }}
 
+- name: Check hardened agent access before the kiosk switch
+  ansible.builtin.include_tasks: agents_hardened_prep.yml
+  vars:
+    release_kiosk_hardened_phase: prepare
+  when: client_agents_hardened | default(false) | bool
+
 - name: Prove this Pi4 is empty before first-install mutation
   ansible.builtin.import_tasks: first_install_preflight.yml
   when: release_kiosk_first_install | bool

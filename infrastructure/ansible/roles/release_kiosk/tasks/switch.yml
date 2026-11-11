@@ -62,6 +62,15 @@
 - name: Apply reversible Pi4 kiosk host network configuration
   ansible.builtin.import_tasks: network.yml
 
+- name: Prepare hardened agent storage and host policy before Compose recreation
+  ansible.builtin.include_tasks: agents_hardened_prep.yml
+  vars:
+    release_kiosk_hardened_phase: switch
+  # Torque cutover only stages the candidate; the standard release prepares storage.
+  when:
+    - client_agents_hardened | default(false) | bool
+    - not (release_torque_cutover | default(false) | bool)
+
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-
     docker compose --project-name {{ release_kiosk_compose_project | quote }}

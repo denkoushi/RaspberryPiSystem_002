@@ -1,0 +1,197 @@
+---
+- name: Check hardened agent prerequisites while the kiosk remains visible
+  when:
+    - client_agents_hardened | default(false) | bool
+    - release_kiosk_hardened_phase == 'prepare'
+  block:
+    - name: Supply the client template default before stopping any containers
+      ansible.builtin.set_fact:
+        torque_agent_hid_links: "{{ torque_agent_hid_links | default([]) }}"
+      when: "'torque-agent' in release_kiosk_services"
+
+    # The hardened Compose file covers every enabled agent, so check all of them
+    # even when this release updates only some services.
+    - name: Read numeric groups required by enabled agents
+      ansible.builtin.command:
+        argv: [getent, group, "{{ item.name }}"]
+      loop:
+        - {name: plugdev, gid: '46', services: ['nfc-agent']}
+        - {name: dialout, gid: '20', services: ['barcode-agent']}
+        - {name: input, gid: '104', services: ['nfc-agent', 'torque-agent']}
+      when: item.services | intersect(release_kiosk_enabled_services) | length > 0
+      register: release_kiosk_hardened_groups
+      changed_when: false
+      failed_when: false
+
+    - name: Require group IDs matching the hardened Compose supplementary groups
+      ansible.builtin.assert:
+        that:
+          - item.rc == 0
+          - item.stdout.split(':') | length >= 3
+          - item.stdout.split(':')[2] == item.item.gid
+        fail_msg: "Hardened agents require group {{ item.item.name }} with GID {{ item.item.gid }}. Fix the host group before releasing."
+      loop: "{{ release_kiosk_hardened_groups.results }}"
+      when: not (item.skipped | default(false))
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Inspect the host PC/SC socket permissions
+      ansible.builtin.stat:
+        path: /run/pcscd/pcscd.comm
+        follow: true
+      register: release_kiosk_hardened_pcscd
+      when: "'nfc-agent' in release_kiosk_enabled_services"
+
+    - name: Require PC/SC socket access for the hardened NFC user
+      ansible.builtin.assert:
+        that:
+          - >-
+            not release_kiosk_hardened_pcscd.stat.exists
+            or (release_kiosk_hardened_pcscd.stat.roth | default(false)
+                and release_kiosk_hardened_pcscd.stat.woth | default(false))
+            or release_kiosk_hardened_pcscd.stat.gid | default(-1) in [46, 104]
+        fail_msg: "The PC/SC socket must allow other read/write access or belong to GID 46 or 104 before releasing hardened NFC."
+      when: "'nfc-agent' in release_kiosk_enabled_services"
+
+- name: Prepare hardened persistent storage immediately before Compose recreation
+  when:
+    - client_agents_hardened | default(false) | bool
+    - release_kiosk_hardened_phase == 'switch'
+  block:
+    - name: Stop volume writers, preserve the legacy NFC queue, and set agent ownership
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import io
+        import json
+        import os
+        import subprocess
+        import tarfile
+
+        def docker(*args, **kwargs):
+            return subprocess.run(['docker', *args], check=True, stdout=subprocess.PIPE, **kwargs).stdout
+
+        project = os.environ['AGENT_PROJECT']
+        service = os.environ['AGENT_SERVICE']
+        image = os.environ['AGENT_IMAGE']
+        volumes = docker('volume', 'ls', '--quiet',
+                         '--filter', 'label=com.docker.compose.project=' + project,
+                         '--filter', 'label=com.docker.compose.volume=' + service + '-data').decode().split()
+        containers = docker('ps', '--all', '--quiet',
+                            '--filter', 'label=com.docker.compose.project=' + project,
+                            '--filter', 'label=com.docker.compose.service=' + service).decode().split()
+        if not volumes:
+            if containers:
+                # Release containers always mount this volume; anything else may hold
+                # data that Compose recreation would discard.
+                raise SystemExit('Existing ' + service + ' container has no Compose data volume; prepare it manually')
+            raise SystemExit(0)
+        if len(volumes) != 1:
+            raise SystemExit('Expected exactly one Compose data volume for ' + service)
+        volume = volumes[0]
+        if len(containers) > 1:
+            raise SystemExit('Expected at most one existing container for ' + service)
+        migrate = False
+        if containers:
+            container = containers[0]
+            info = json.loads(docker('inspect', container))[0]
+            if info['State']['Running']:
+                # Stop before copying SQLite files or changing ownership. Rollback
+                # restarts the previous image if any subsequent switch step fails.
+                docker('stop', container)
+            if service == 'nfc-agent' and not any(
+                mount['Destination'] == '/app/nfc-agent/data' for mount in info['Mounts']
+            ):
+                copied = subprocess.run(
+                    ['docker', 'cp', container + ':/app/nfc-agent/data/.', '-'],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if copied.returncode:
+                    missing = any(
+                        ('Could not find the file ' + path + ' in container ' + container)
+                        in copied.stderr.decode(errors='replace')
+                        for path in ('/app/nfc-agent/data', '/app/nfc-agent/data/.'))
+                    if not missing:
+                        raise subprocess.CalledProcessError(
+                            copied.returncode, copied.args, stderr=copied.stderr)
+                else:
+                    archive = copied.stdout
+                    # Only migrate archives containing the main queue database.
+                    with tarfile.open(fileobj=io.BytesIO(archive)) as source:
+                        names = [member.name.rsplit('/', 1)[-1] for member in source if member.isfile()]
+                    migrate = 'nfc-agent-queue.db' in names
+                    if names and not migrate:
+                        if info['State']['Running']:
+                            docker('start', container)
+                        raise SystemExit('Old nfc-agent data has files but no queue database; inspect before releasing')
+        if migrate:
+            copy_queue = """
+        import io, os, sys, tarfile
+        from pathlib import Path
+        target = Path('/data')
+        queue = 'nfc-agent-queue.db'
+        if not (target / queue).exists():
+            with tarfile.open(fileobj=io.BytesIO(sys.stdin.buffer.read())) as archive:
+                files = {member.name.rsplit('/', 1)[-1]: member for member in archive if member.isfile()}
+                # Publish the main DB last, so an interrupted copy can be retried.
+                for name in (queue + '-wal', queue + '-shm', queue):
+                    if name in files:
+                        temporary = target / (name + '.hardened-prep')
+                        temporary.write_bytes(archive.extractfile(files[name]).read())
+                        os.replace(temporary, target / name)
+                    elif name != queue:
+                        (target / name).unlink(missing_ok=True)
+        """
+            docker('run', '--rm', '-i', '--network', 'none', '--user', '0:0',
+                   '--mount', 'type=volume,src=' + volume + ',dst=/data',
+                   '--entrypoint', 'python', image, '-c', copy_queue, input=archive)
+        docker('run', '--rm', '--network', 'none', '--user', '0:0',
+               '--mount', 'type=volume,src=' + volume + ',dst=/data',
+               '--entrypoint', 'chown', image, '-R', '10001:10001', '/data')
+        print('Prepared ' + service + ' data volume')
+        PY
+      environment:
+        AGENT_PROJECT: "{{ release_kiosk_compose_project }}"
+        AGENT_SERVICE: "{{ item }}"
+        AGENT_IMAGE: "{{ release_kiosk_candidate_images[item] }}"
+      loop: "{{ release_kiosk_services | intersect(['nfc-agent', 'torque-agent']) }}"
+      register: release_kiosk_hardened_storage
+      changed_when: "'Prepared ' in release_kiosk_hardened_storage.stdout"
+
+    - name: Apply hardened torque host policy before the container starts
+      when: "'torque-agent' in release_kiosk_services"
+      block:
+        - name: Install the torque guard helper used by the hardened unit
+          ansible.builtin.copy:
+            src: "{{ role_path }}/../client/files/torque-bluetooth-guard.py"
+            dest: /usr/local/libexec/torque-bluetooth-guard
+            owner: root
+            group: root
+            mode: '0755'
+          register: release_kiosk_hardened_guard_helper
+
+        - name: Render the hardened torque guard unit and exact HID rules
+          ansible.builtin.template:
+            src: "{{ role_path }}/../client/templates/{{ item.src }}"
+            dest: "{{ item.dest }}"
+            owner: root
+            group: root
+            mode: '0644'
+          loop:
+            - {src: torque-bluetooth-guard.service.j2, dest: /etc/systemd/system/torque-bluetooth-guard.service}
+            - {src: 99-torque-wrench-hid.rules.j2, dest: /etc/udev/rules.d/99-torque-wrench-hid.rules}
+          register: release_kiosk_hardened_torque_policy
+
+        - name: Reload and retrigger exact torque input permissions
+          ansible.builtin.command: "{{ item }}"
+          loop:
+            - udevadm control --reload-rules
+            - udevadm trigger --subsystem-match=input --property-match=ID_BUS=bluetooth --action=add
+            - udevadm settle --timeout=30
+          changed_when: false
+          when: release_kiosk_hardened_torque_policy.changed
+
+        - name: Start the hardened torque guard before Compose recreation
+          ansible.builtin.systemd:
+            name: torque-bluetooth-guard.service
+            daemon_reload: true
+            enabled: true
+            state: "{{ 'restarted' if (release_kiosk_hardened_guard_helper.changed or release_kiosk_hardened_torque_policy.changed) else 'started' }}"
