@@ -2,11 +2,14 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../../lib/prisma.js';
 import { logger } from '../../../lib/logger.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { autoSplitSessakuUnits } from './auto-unit-split.service.js';
+import { AUTO_UNIT_SPLIT_BUDGET_MS, autoSplitSessakuUnits } from './auto-unit-split.service.js';
 
 const START_DELAY_MS = 30000;
 const ACTIVE_INTERVAL_MS = 1000;
 const IDLE_INTERVAL_MS = 60000;
+// One lot per transaction gives every lot the full budget, and a flush/commit failure or
+// yield can only be caused by that lot, so the per-lot deferral always blames the right lot.
+const BACKGROUND_LIMITS = { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS };
 let activeWake: (() => void) | undefined;
 
 /** Legacy pages can only bring forward a running leader's next round. */
@@ -57,7 +60,7 @@ export function createSessakuAutoUnitSplitScheduler() {
         if (!siteKey.trim()) continue;
         let yieldReason: string | null = null;
         try {
-          const result = await autoSplitSessakuUnits({ siteKey, onYield: reason => { yieldReason = reason; } });
+          const result = await autoSplitSessakuUnits({ siteKey, onYield: reason => { yieldReason = reason; } }, BACKGROUND_LIMITS);
           hasMore ||= result.hasMore;
           const runnerBusy = yieldReason === 'runner_busy';
           delayed ||= yieldReason !== null && !['human_write', 'AUTO_UNIT_SPLIT_BUDGET', 'disabled'].includes(yieldReason);

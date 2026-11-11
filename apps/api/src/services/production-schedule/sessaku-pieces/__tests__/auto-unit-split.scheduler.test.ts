@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ query: vi.fn(), split: vi.fn(), info: vi.fn(), warn: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.query } }));
 vi.mock('../../../../lib/logger.js', () => ({ logger: { info: mocks.info, warn: mocks.warn } }));
-vi.mock('../auto-unit-split.service.js', () => ({ autoSplitSessakuUnits: mocks.split }));
+vi.mock('../auto-unit-split.service.js', () => ({ AUTO_UNIT_SPLIT_BUDGET_MS: 20000, autoSplitSessakuUnits: mocks.split }));
 import { createSessakuAutoUnitSplitScheduler, wakeSessakuAutoUnitSplit } from '../auto-unit-split.scheduler.js';
 
 describe('sessaku background splitting', () => {
@@ -21,6 +21,7 @@ describe('sessaku background splitting', () => {
     await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(2);
     expect(mocks.query.mock.calls[0][0].sql).toContain('UNION');
     expect(mocks.split.mock.calls.map(([p]) => p.siteKey)).toEqual(['site-a', 'site-b']);
+    expect(mocks.split.mock.calls.map(([, limits]) => limits)).toEqual(Array(2).fill({ maxLots: 1, budgetMs: 20000 }));
     await vi.advanceTimersByTimeAsync(1000); expect(mocks.split).toHaveBeenCalledTimes(4);
     await vi.advanceTimersByTimeAsync(59999); expect(mocks.split).toHaveBeenCalledTimes(4);
     await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(6);
