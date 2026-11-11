@@ -414,6 +414,13 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
         }
         if (candidate) break;
       }
+      // Last resort if a predecessor can never be placed: keep every bar on the chart.
+      if (!candidate) {
+        for (const [resource, queue] of lanes) {
+          const item = queue.slice(heads.get(resource) ?? 0).find((entry) => !scheduled.has(entry.itemId));
+          if (item) { candidate = { resource, item }; break; }
+        }
+      }
       if (!candidate) break;
       place(candidate.item, candidate.resource);
     }
