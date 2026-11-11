@@ -2290,7 +2290,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(jumpBottom).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
     const sheet = screen.getByRole('region', { name: '品番の値' });
-    expect(sheet.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+    expect(sheet.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
     expect(within(sheet).getByText('PART-0')).toBeInTheDocument();
     expect(within(sheet).queryByText('PART-1')).toBeNull();
     expect(within(upper).queryByRole('region', { name: '品番の値' })).toBeNull();

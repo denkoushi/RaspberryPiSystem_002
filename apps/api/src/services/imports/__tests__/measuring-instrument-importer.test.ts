@@ -5,6 +5,7 @@ import type { CsvImportConfigService } from '../csv-import-config.service.js';
 import { MeasuringInstrumentCsvImporter } from '../importers/measuring-instrument.js';
 
 const mocks = vi.hoisted(() => ({
+  outsideDeleteMany: vi.fn(),
   measuringInstrument: { findUnique: vi.fn(), update: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   measuringInstrumentTag: { findUnique: vi.fn(), upsert: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   loan: { findMany: vi.fn() },
@@ -12,15 +13,19 @@ const mocks = vi.hoisted(() => ({
   machineNfcTag: { findUnique: vi.fn() },
 }));
 
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('../../../lib/prisma.js', () => {
   const tx = {
+    loan: mocks.loan,
+    inspectionRecord: mocks.inspectionRecord,
     measuringInstrument: mocks.measuringInstrument,
     measuringInstrumentTag: mocks.measuringInstrumentTag,
     machineNfcTag: mocks.machineNfcTag,
   };
   return {
     prisma: {
-      measuringInstrument: mocks.measuringInstrument,
+      measuringInstrument: { ...mocks.measuringInstrument, deleteMany: mocks.outsideDeleteMany },
       loan: mocks.loan,
       inspectionRecord: mocks.inspectionRecord,
       $transaction: async (run: (client: unknown) => unknown) => run(tx),
@@ -113,19 +118,21 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
     expect(mocks.measuringInstrumentTag.create).toHaveBeenCalledWith({ data: { measuringInstrumentId: 'mi-new', rfidTagUid: 'E200AA' } });
   });
 
-  it('rejects duplicate RFID UIDs within a CSV (trimmed) before the transaction', async () => {
+  it.each([false, true])('rejects duplicate RFID UIDs within a CSV (trimmed) before the transaction', async (replaceExisting) => {
     const error = await importer()
       .import(
         [
           { name: 'A', managementNumber: 'MI-001', rfidTagUid: 'E2', status: 'AVAILABLE', calibrationExpiryDate: null },
           { name: 'B', managementNumber: 'MI-002', rfidTagUid: 'E2 ', status: 'AVAILABLE', calibrationExpiryDate: null },
         ],
-        false,
+        replaceExisting,
       )
       .catch((e: unknown) => e);
     expect((error as ApiError).statusCode).toBe(400);
     expect((error as ApiError).message).toBe('CSV内でrfidTagUidが重複しています: rfidTagUid="E2" (managementNumber: MI-001, MI-002)');
     expect(mocks.measuringInstrument.findUnique).not.toHaveBeenCalled();
+    expect(mocks.measuringInstrument.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
   });
 
   it('rejects creating with a tag that belongs to another instrument and names that instrument', async () => {
@@ -247,5 +254,16 @@ describe('MeasuringInstrumentCsvImporter.import', () => {
     mocks.measuringInstrument.create.mockResolvedValue({ id: 'new' });
     await importer().import([{ name: 'A', managementNumber: 'MI-001', status: 'AVAILABLE', calibrationExpiryDate: null }], true);
     expect(mocks.measuringInstrument.deleteMany).toHaveBeenCalledWith();
+  });
+
+  it('keeps replacement deletion inside the transaction when a later insert fails', async () => {
+    mocks.measuringInstrument.findUnique.mockResolvedValue(null);
+    const failure = new Error('insert failed');
+    mocks.measuringInstrument.create.mockRejectedValueOnce(failure);
+    await expect(importer().import([{ name: 'A', managementNumber: 'MI-001' }], true)).rejects.toBe(failure);
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.measuringInstrument.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mocks.measuringInstrument.deleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.measuringInstrument.create.mock.invocationCallOrder[0]);
   });
 });

@@ -1,3 +1,4 @@
+import { deleteEmptyRowNote } from './empty-row-note.js';
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
@@ -77,22 +78,14 @@ export const listSeibanRowIdsForWriteback = async (params: {
 
 const applyDueDateToRowNotes = async (rowIds: string[], dueDate: Date | null, client?: Prisma.TransactionClient): Promise<void> => {
   const apply = async (tx: Prisma.TransactionClient) => {
-    for (const rowId of rowIds) {
-      const existing = await tx.productionScheduleRowNote.findUnique({
-        where: { csvDashboardRowId: rowId }
-      });
-
+    for (const rowId of [...new Set(rowIds)].sort()) {
       if (!dueDate) {
-        const hasNote = Boolean(existing?.note?.trim());
-        const hasProcessing = Boolean(existing?.processingType?.trim());
-        if (!hasNote && !hasProcessing) {
-          await tx.productionScheduleRowNote.deleteMany({
-            where: {
-              csvDashboardRowId: rowId
-            }
-          });
-          continue;
-        }
+        await tx.productionScheduleRowNote.updateMany({
+          where: { csvDashboardRowId: rowId },
+          data: { dueDate: null }
+        });
+        await deleteEmptyRowNote(tx, rowId);
+        continue;
       }
 
       await tx.productionScheduleRowNote.upsert({
@@ -102,8 +95,7 @@ const applyDueDateToRowNotes = async (rowIds: string[], dueDate: Date | null, cl
         create: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           csvDashboardRowId: rowId,
-          note: existing?.note?.trim() ?? '',
-          processingType: existing?.processingType ?? null,
+          note: '',
           dueDate
         },
         update: { dueDate }
@@ -162,5 +154,7 @@ export async function writebackSeibanProcessingDueDateToRowNotes(params: {
 export function isValidDueDateText(dueDateText: string): boolean {
   const trimmed = dueDateText.trim();
   if (trimmed.length === 0) return true;
-  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return false;
+  const date = new Date(`${trimmed}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === trimmed;
 }

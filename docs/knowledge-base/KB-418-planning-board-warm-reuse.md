@@ -100,6 +100,12 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - Scope: local web implementation and focused regression tests only; no API, database or deployment changes.
 - Local validation: queue tests passed (13); focused due-save/refetch and order-conflict/stale-GET page tests passed (5). The original queue failed the three new recovery/unmount regressions. The full page file had 206 passes and one split-button enabled-state failure; the same split test timed out with the unchanged HEAD queue/test, so complete page acceptance remains unverified. Web type checking passed after building the existing `part-search-core` dependency, and changed-file ESLint passed.
 
+## Settings refresh across kiosks (2026-11-10)
+
+- **Symptom**: daily hours and per-part minutes edited on one kiosk did not reach a board left open on another kiosk (the queries had a 10-minute `staleTime` and no interval, and the board stays mounted for days).
+- **Fix**: both settings queries refetch every 60 seconds (`PLANNING_BOARD_SETTINGS_REFETCH_MS`). A capacity save that finishes while a fetch is in flight invalidates the query, so the older fetch cannot bring back the previous value.
+- **Not covered**: if a periodic fetch finishes while a capacity save is still in flight, the board can show the old value until the save returns.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.
