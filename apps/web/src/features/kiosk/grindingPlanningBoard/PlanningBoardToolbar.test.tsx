@@ -218,6 +218,38 @@ describe('PlanningBoardToolbar forward controls', () => {
     expect(screen.getByRole('button', { name: '適用' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'やめる' })).toBeDisabled();
   });
+  it('shows unit methods before comparison, selects and dispatches them, and disables balance on one machine', () => {
+    const onChangeOrderMethod = vi.fn();
+    const metrics = { lateCount: 0, waitMinutes: 0, setupCount: 3 };
+    const preview = { method: 'group' as const, before: metrics, after: { ...metrics, setupCount: 2 } };
+    const values = { ...props(), onChangeOrderMethod, orderPreview: preview, singleResourceCd: '021', singleResourceLanes: ['021', '022'] };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const methods = screen.getByRole('group', { name: '並べ方' });
+    expect(methods.nextElementSibling).toBe(screen.getByRole('status', { name: '並べ替えの比較' }));
+    expect(within(methods).getAllByRole('button').map(button => button.textContent)).toEqual(['まとめる', '順に回す', '2台に均す']);
+    expect(screen.getByRole('button', { name: 'まとめる' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'まとめる' })).toHaveClass('min-h-11');
+    expect(screen.getByRole('button', { name: '2台に均す' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '順に回す' }));
+    expect(onChangeOrderMethod).toHaveBeenLastCalledWith('round');
+    expect(screen.getByRole('status')).toHaveTextContent('段取り 3 → 2 回');
+    rerender(<PlanningBoardToolbar {...values} singleResourceCd="021+022" orderPreview={{ ...preview, method: 'round' }} />);
+    expect(screen.getByRole('button', { name: '順に回す' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '2台に均す' }));
+    expect(onChangeOrderMethod).toHaveBeenLastCalledWith('balance');
+    fireEvent.click(screen.getByRole('button', { name: 'まとめる' }));
+    expect(onChangeOrderMethod).toHaveBeenLastCalledWith('group');
+    rerender(<PlanningBoardToolbar {...values} singleResourceCd="021+022" previewPending />);
+    expect(within(methods).getAllByRole('button').every(button => button.hasAttribute('disabled'))).toBe(true);
+  });
+
+  it('keeps the existing preview without methods or setup text', () => {
+    const metrics = { lateCount: 0, waitMinutes: 0 };
+    render(<PlanningBoardToolbar {...props()} orderPreview={{ before: metrics, after: metrics }} />);
+    expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
+    expect(screen.getByRole('group', { name: '並べ方' })).toHaveTextContent('今日から');
+    expect(screen.getByRole('status')).not.toHaveTextContent('段取り');
+  });
   it('disables undo without history and keeps feedback shrinkable', () => {
     render(<PlanningBoardToolbar {...props()} canUndoOrder={false} feedback={<span>保存中</span>} />);
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
