@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import { sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import type { PieceAuditContext } from './piece-audit.js';
@@ -10,11 +11,11 @@ export const createLaneWrites = (overrides: Map<string, Override>) => ({
   laneVisits: new Map<string | null, number>()
 });
 export type LaneReplacementState = {
-  pieces: GrindingPlanningBoardItem[]; overrides: Map<string, Override>; stateVersionIncrements: number;
+  pieces: GrindingPlanningBoardItem[]; seibanOrder?: readonly string[]; overrides: Map<string, Override>; stateVersionIncrements: number;
   laneWrites: ReturnType<typeof createLaneWrites>;
 };
 
-export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, before: LaneReplacementState, siteKey: string, removed: string[], replacements: string[], audit?: PieceAuditContext) {
+export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, before: LaneReplacementState, siteKey: string, removed: string[], replacements: string[], audit?: PieceAuditContext, piecePositions?: ReadonlyMap<string, number>) {
   const started = performance.now();
   if (audit?.timing) audit.timing.replaceSiteItemsCount += 1;
   const selected = before.pieces.filter((item) => removed.includes(item.itemId));
@@ -22,30 +23,49 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
   const first = sorted.find((item) => removed.includes(item.itemId));
   if (!first) return;
   const inherited = before.overrides.get(first.itemId) ?? before.overrides.get(sessakuPieceParentItemId(key));
+  const inheritedRank = inherited?.alternateRank ?? null;
   // Every replacement takes this site's first selected item's placement and override.
-  const replacementItems = replacements.map((id) => ({ ...first, itemId: id }));
+  const parentItemId = sessakuPieceParentItemId(key);
+  const replacementItems = replacements.map((id, index) => ({
+    ...first, itemId: id, kind: id.startsWith('piece:') ? 'piece' as const : 'row' as const,
+    parentItemId: id.startsWith('piece:') ? parentItemId : undefined,
+    piecePosition: id.startsWith('piece:') ? piecePositions?.get(id) ?? (first.piecePosition ?? 1) + index : undefined
+  }));
   const next: GrindingPlanningBoardItem[] = [];
   for (const item of sorted) {
     if (item.itemId === first.itemId) next.push(...replacementItems);
-    if (!removed.includes(item.itemId)) next.push(item);
+    if (!removed.includes(item.itemId)) next.push(piecePositions?.has(item.itemId)
+      ? { ...item, piecePosition: piecePositions.get(item.itemId) } : item);
   }
   const resources = new Set(selected.map((item) => item.effectiveResourceCd));
 
   const updatedAt = new Date();
   for (const resource of resources) {
     before.laneWrites.laneVisits.set(resource, (before.laneWrites.laneVisits.get(resource) ?? 0) + 1);
-    const lane = next.filter((item) => item.effectiveResourceCd === resource && !item.isCompleted);
+    const allLane = next.filter((item) => item.effectiveResourceCd === resource);
+    const lane = allLane.filter((item) => !item.isCompleted);
+    // Apply current in-memory ranks, including earlier replacements in this transaction.
+    // Completed rows keep their ranks in both candidates, just as the old writer did.
+    const inheritedLane = allLane.map((item) => {
+      const own = before.overrides.get(item.itemId);
+      return { ...item, alternateRank: replacements.includes(item.itemId) ? inheritedRank : own ? own.alternateRank : item.alternateRank };
+    });
+    const denseRanks = new Map(lane.map((item, index) => [item.itemId, index + 1]));
+    const denseLane = inheritedLane.map((item) => ({ ...item, alternateRank: denseRanks.get(item.itemId) ?? item.alternateRank }));
+    const order = (items: GrindingPlanningBoardItem[]) => sortGrindingPlanningBoardProjectionItems(items, before.seibanOrder ?? [], 'resource', 'alternate').map((item) => item.itemId);
+    const inheritedOrder = order(inheritedLane), denseOrder = order(denseLane);
+    const fallback = inheritedOrder.some((id, index) => id !== denseOrder[index]);
+    if (fallback && audit?.timing) audit.timing.laneRerankFallbackCount += 1;
     for (const [index, item] of lane.entries()) {
+      if (!fallback && !replacements.includes(item.itemId)) continue;
       const isReplacement = replacements.includes(item.itemId);
       const own = isReplacement ? inherited : before.overrides.get(item.itemId);
       const data = {
         overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null,
         dueDateCleared: own?.dueDateCleared ?? null, orderPinned: own?.orderPinned ?? false,
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
-        alternateRank: index + 1
+        alternateRank: fallback ? index + 1 : inheritedRank
       };
-      // Lane operations invalidate row revisions used by reorder and offline writes,
-      // including rows whose dense rank stays the same.
       const existing = before.overrides.get(item.itemId);
       const id = existing?.id ?? randomUUID();
       before.laneWrites.pending.add(item.itemId);
@@ -73,7 +93,6 @@ const samePlacement = (a: Override, b: Override) =>
 
 /** Flush after every process has replaced its items, under the existing board locks. */
 export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<string, LaneReplacementState>, audit?: PieceAuditContext) {
-  const unchanged: Override[] = [];
   const changed: Override[] = [];
   const removedSites: string[] = [], removedKeys: string[] = [];
   for (const [siteKey, state] of states) {
@@ -88,24 +107,10 @@ export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<s
     for (const itemKey of state.laneWrites.pending) {
       const row = state.overrides.get(itemKey)!;
       const original = state.laneWrites.original.get(itemKey);
-      (original && samePlacement(original, row) ? unchanged : changed).push(row);
+      if (!original || !samePlacement(original, row)) changed.push(row);
     }
   }
   const updatedAt = new Date();
-  if (unchanged.length) {
-    const started = performance.now();
-    await tx.$executeRaw(Prisma.sql`
-      UPDATE "ProductionScheduleGrindingPlanningBoardOverride" AS o
-      SET "version" = o."version" + 1, "updatedAt" = ${updatedAt}::timestamp
-      FROM unnest(${unchanged.map((r) => r.siteKey)}::text[], ${unchanged.map((r) => r.itemKey)}::text[]) AS k(site, item)
-      WHERE o."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND o."siteKey" = k.site AND o."itemKey" = k.item
-    `);
-    if (audit?.timing) {
-      audit.timing.versionUpdateMs += performance.now() - started;
-      audit.timing.versionUpdateCount += unchanged.length;
-      audit.timing.versionUpdateSqlCount += 1;
-    }
-  }
   if (changed.length) {
     const started = performance.now();
     // Each column is one bind, independent of lane size. Text dates preserve nulls

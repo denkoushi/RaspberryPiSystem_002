@@ -75,7 +75,7 @@ async function projection(tx: Prisma.TransactionClient, siteKey: string, key: Se
   const resourceCapacity = allSiteRows ? undefined : await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
   const input = { dueSource, resourceMinutes, resourceCapacity, placementOnly: allSiteRows, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
-  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides, stateVersionIncrements: 0, laneWrites: createLaneWrites(overrides) }));
+  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, seibanOrder: input.seibanOrder, overrides, stateVersionIncrements: 0, laneWrites: createLaneWrites(overrides) }));
 }
 async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[]): Promise<SessakuLaneSourceScope> {
   // Later replacements share this projection, including their lanes at every affected site.
@@ -222,7 +222,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     const removed = source?.pieces.length ? previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id)) : previous;
     const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];
     if (previous.length || added.length) for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
-      previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit);
+      previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit, new Map(saved?.pieces.map((piece) => [`piece:${piece.id}`, piece.position])));
     await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true, source: process.rowId ? {
       set: saved, rowId: process.rowId, externallyCompleted: process.externallyCompleted,
       previousCompleted: process.previousCompleted, plannedQuantity: process.plannedQuantity
@@ -509,15 +509,14 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
       // Move surviving positions above both the old and new ranges before assigning final positions.
       const offset = Math.max(set.nextPosition, ...pieces.map((p) => p.position), ordered.length) + ordered.length + 1;
       if (pieces.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: offset } } });
-      for (const [index, piece] of ordered.entries()) {
-        if (pieces.some((p) => p.id === piece.id)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { position: index + 1 } });
-      }
+      for (const [index, piece] of ordered.entries()) if (pieces.some((p) => p.id === piece.id)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { position: index + 1 } });
       await tx.productionScheduleSessakuPiece.createMany({ data: added.map((piece) => ({ ...piece, pieceSetId: set.id,
         position: ordered.findIndex((item) => item.id === piece.id) + 1 })) });
       await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { ...(!pieces.length ? { plannedQuantity: total } : {}), nextPosition: Math.max(set.nextPosition, ordered.length + 1), ...(c.set ? { version: { increment: 1 } } : {}) } });
       return added;
     });
-    for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit);
+    const piecePositions = new Map((target ? c.set!.pieces.flatMap((piece) => piece.id === target.id ? added.map((p) => p.id) : [piece.id]) : added.map((p) => p.id)).map((id, index) => [`piece:${id}`, index + 1]));
+    for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, [itemId], added.map((p) => `piece:${p.id}`), params.audit, piecePositions);
     await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
     if (!autoUnitSplitBatch.getStore()) {
       await flushSiteItems(tx, before, params.audit);
@@ -552,7 +551,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     const id = randomUUID();
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
     await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null, autoUnitSplitHeldAt: new Date() } });
-    for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`], params.audit);
+    for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`], params.audit, new Map([[`piece:${id}`, Math.min(...selected.map((p) => p.position))]]));
     await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
     await flushSiteItems(tx, before, params.audit);
     await timed(params.audit, 'siteVersionMs', () => saveSiteVersions(tx, before));

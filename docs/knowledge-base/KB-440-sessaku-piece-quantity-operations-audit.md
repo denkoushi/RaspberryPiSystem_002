@@ -61,6 +61,35 @@ Parent completion updated pieces without passing through the piece audit writer.
   `sessaku_piece.auto_unit_split_background_backoff` (`retryAfterMs`),
   and `sessaku_piece.auto_unit_split_call` (`totalMs`, `lockHeldMs`, `yieldReason`, `errorCode`).
 
+## Scoped Lane Ranks (2026-11-11)
+
+- `replaceSiteItems` inherits the first selected item's placement, including
+  `alternateRank`, without enqueuing neighbouring rows. It compares the resulting
+  item ID order with the former dense ranks using the existing API resource-view
+  sorter and the site's製番 order. Both candidates include completed rows, whose
+  ranks stay unchanged. Only a lane whose visible order differs uses dense ranks;
+  `audit.timing.laneRerankFallbackCount` counts those decisions.
+- Split, resplit, merge and later-process propagation pass saved piece positions
+  into that comparison so sibling ties use position before UUID, as projection does.
+- `flushSiteItems` upserts actual placement changes only. It no longer updates
+  versions on unchanged rows, including unchanged fallback ranks. Site state
+  versions still advance when piece composition changes even with zero upserts.
+  Stale requests for removed parents/pieces still fail; an unchanged neighbour's
+  individual rank request remains valid. Whole-board reorders use the site version.
+- DB-free fixtures preserve dense-reference item order and non-rank attributes:
+  4,583 rows / seven processes / four sites / five units: 17,768 → 140 override
+  writes at both head and tail; 3,315 rows: 7,348 → 140 (five units) and
+  7,376 → 168 (six units). Fallback count is zero in all these fixtures.
+- Existing API/Web difference is recorded without changing either sorter:
+  unregistered製番 tied on alternate rank are compared by due date first in the
+  API, but by製番 first in Web. The registered製番 case with sibling pieces
+  sharing their parent's rank and a completed neighbour agrees in both sorters.
+- Accepted differences: the fallback check compares the resource view only.
+  The 製番 view compares `alternateRank` across lanes, which is not a meaningful
+  order, so its cross-lane ties may change after a split. Lanes that keep rank
+  ties (null ranks) are no longer densified by a split, so Web and API may break
+  those ties differently; the split pieces still take their parent's place.
+
 ## FHINCD Investigation
 
 Resource-part minute writes use `z.string().trim()`, and piece operation lookups

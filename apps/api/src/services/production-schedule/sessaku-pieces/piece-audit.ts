@@ -24,7 +24,7 @@ export type PieceOperationTiming = {
   candidateMs: number; candidateSqlCount: number;
   pieceCreationMs: number; propagationMs: number; rerankMs: number; siteVersionMs: number;
   versionUpdateMs: number; placementUpsertMs: number;
-  replaceSiteItemsCount: number; laneWriteCount: number; repeatedLaneCount: number;
+  laneRerankFallbackCount: number; replaceSiteItemsCount: number; laneWriteCount: number; repeatedLaneCount: number;
   versionUpdateCount: number; versionUpdateSqlCount: number; placementUpsertSqlCount: number;
   // Delegate calls include raw SQL. Prisma relation reads may issue more than one SQL statement.
   dbCallCount: number; lockDbCallCount: number; projectionDbCallCount: number;
@@ -55,7 +55,7 @@ export async function runSessakuPieceOperation<T>(context: PieceAuditContext, op
   context.timing = { lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0, totalMs: 0,
     sourceWinnerMs: 0, sourceDetailsMs: 0, sourcePieceSetsMs: 0, overridesMs: 0, ranksMs: 0, projectMs: 0, sourceRowCount: 0, laneDiscoveryMs: 0,
     candidateMs: 0, candidateSqlCount: 0, pieceCreationMs: 0, propagationMs: 0, rerankMs: 0, siteVersionMs: 0,
-    versionUpdateMs: 0, placementUpsertMs: 0, replaceSiteItemsCount: 0, laneWriteCount: 0, repeatedLaneCount: 0,
+    versionUpdateMs: 0, placementUpsertMs: 0, laneRerankFallbackCount: 0, replaceSiteItemsCount: 0, laneWriteCount: 0, repeatedLaneCount: 0,
     versionUpdateCount: 0, versionUpdateSqlCount: 0, placementUpsertSqlCount: 0,
     dbCallCount: 0, lockDbCallCount: 0, projectionDbCallCount: 0, pieceCreationDbCallCount: 0,
     propagationDbCallCount: 0, siteVersionDbCallCount: 0 };

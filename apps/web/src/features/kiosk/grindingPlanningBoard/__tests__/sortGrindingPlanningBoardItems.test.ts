@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { sortGrindingPlanningBoardProjectionItems } from '../../../../../../api/src/services/production-schedule/grinding-planning-board-projection.js';
 import {
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource,
@@ -36,6 +37,28 @@ const item = (overrides: Partial<GrindingPlanningBoardItem>): GrindingPlanningBo
 });
 
 describe('sortGrindingPlanningBoardItems', () => {
+  it('matches API order for pieces inheriting their parent rank, including UUID ties and completed rows', () => {
+    const rows = [
+      item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'row:parent', piecePosition: 2, alternateRank: 5 }),
+      item({ itemId: 'row:completed', alternateRank: 5, isCompleted: true, productNo: 'P-002' }),
+      item({ itemId: 'piece:z', kind: 'piece', parentItemId: 'row:parent', piecePosition: 1, alternateRank: 5 }),
+      item({ itemId: 'row:later', alternateRank: 6 })
+    ].map((row) => ({ ...row, effectiveResourceCd: '305', effectiveDueDate: row.originalDueDate }));
+    const ids = (items: GrindingPlanningBoardItem[]) => items.map((row) => row.itemId);
+    const api = ids(sortGrindingPlanningBoardProjectionItems(rows, ['26-1041'], 'resource', 'alternate'));
+    expect(api).toEqual(['piece:z', 'piece:a', 'row:completed', 'row:later']);
+    expect(ids(sortGrindingPlanningBoardItems(rows, ['26-1041'], 'resource', 'alternate'))).toEqual(api);
+  });
+
+  it('records the existing API/Web difference for unregistered serials tied on rank', () => {
+    const rows = [
+      item({ itemId: 'b', fseiban: 'unknown-b', alternateRank: 5, effectiveDueDate: '2026-09-10' }),
+      item({ itemId: 'a', fseiban: 'unknown-a', alternateRank: 5, effectiveDueDate: '2026-09-20' })
+    ];
+    expect(sortGrindingPlanningBoardItems(rows, [], 'resource', 'alternate').map((row) => row.itemId)).toEqual(['a', 'b']);
+    expect(sortGrindingPlanningBoardProjectionItems(rows, [], 'resource', 'alternate').map((row) => row.itemId)).toEqual(['b', 'a']);
+  });
+
   it.each(['seiban', 'resource'] as const)('orders sibling pieces by position before UUID in %s view while preserving row ties and saved ranks', (view) => {
     const pieces = [item({ itemId: 'piece:a', kind: 'piece', parentItemId: 'parent', piecePosition: 2 }),
       item({ itemId: 'piece:z', kind: 'piece', parentItemId: 'parent', piecePosition: 1 })];
