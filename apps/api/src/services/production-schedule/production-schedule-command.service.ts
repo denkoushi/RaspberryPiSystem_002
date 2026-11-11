@@ -340,7 +340,7 @@ export async function upsertProductionScheduleNote(params: {
         note: trimmedNote
       }, tx);
     }
-  });
+  }, { isolationLevel: 'ReadCommitted' });
 
   return { success: true, note: trimmedNote || null };
 }
@@ -365,6 +365,7 @@ export async function upsertProductionScheduleDueDate(params: {
     }
     const dueDate = dueDateValue ? new Date(`${dueDateValue}T00:00:00.000Z`) : null;
     await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    // Read Committed sees the preceding lock holder's commit in this new statement.
     const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
     if (!dueDate) {
       await sharedScheduleFieldsRepository.updateRowNoteFields(row.id, { dueDate: null }, tx);
@@ -382,7 +383,7 @@ export async function upsertProductionScheduleDueDate(params: {
       beforeDueDate: existing?.dueDate ?? null, afterDueDate: dueDate
     } });
     return dueDate;
-  });
+  }, { isolationLevel: 'ReadCommitted' });
   resetSelfInspectionMachineBoardScheduleRowCaches();
   return { success: true, dueDate };
 }
@@ -429,7 +430,7 @@ export async function upsertProductionScheduleProcessingType(params: {
         processingType: incomingType || null
       }, tx);
     }
-  });
+  }, { isolationLevel: 'ReadCommitted' });
 
   return { success: true, processingType: incomingType || null };
 }
