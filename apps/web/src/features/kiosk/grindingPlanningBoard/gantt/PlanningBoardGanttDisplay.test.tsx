@@ -80,7 +80,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
   expect(onBreaks).toHaveBeenCalledWith('021', true);
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
-  expect(onSource.mock.calls).toEqual([[{ resourceCd: '021', source: 'own' }], [{ resourceCd: '022', source: 'own' }]]);
+  expect(onSource.mock.calls).toEqual([[[{ resourceCd: '021', source: 'own' }, { resourceCd: '022', source: 'own' }]]]);
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   const sheet = screen.getByRole('region', { name: '品番の値' });
   expect(sheet.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
@@ -748,10 +748,12 @@ it.each([[[]], [['021']], [['022']], [['021', '022']]])('reflects both machines 
     expect(button.classList.contains('bg-amber-400')).toBe(button.getAttribute('aria-pressed') === 'true');
   }
   fireEvent.click(own);
-  expect(onSource.mock.calls).toEqual(['021', '022'].filter(resourceCd => !ownSourceResourceCds.includes(resourceCd)).map(resourceCd => [{ resourceCd, source: 'own' }]));
+  const ownChanges = ['021', '022'].filter(resourceCd => !ownSourceResourceCds.includes(resourceCd)).map(resourceCd => ({ resourceCd, source: 'own' }));
+  expect(onSource.mock.calls).toEqual(ownChanges.length ? [[ownChanges]] : []);
   onSource.mockClear();
   fireEvent.click(original);
-  expect(onSource.mock.calls).toEqual(['021', '022'].filter(resourceCd => ownSourceResourceCds.includes(resourceCd)).map(resourceCd => [{ resourceCd, source: 'original' }]));
+  const originalChanges = ['021', '022'].filter(resourceCd => ownSourceResourceCds.includes(resourceCd)).map(resourceCd => ({ resourceCd, source: 'original' }));
+  expect(onSource.mock.calls).toEqual(originalChanges.length ? [[originalChanges]] : []);
 });
 
 it('totals both machines and groups their parts in pane order, excluding other resources', () => {
@@ -781,7 +783,7 @@ it('keeps minutes controls and the ungrouped sheet scoped to one machine', () =>
     resourceMinutes={{ ownSourceResourceCds: ['022'], values: [] }} onMinutesSourceChange={onSource} /></QueryClientProvider>);
   expect(screen.getByRole('button', { name: /元の値/ })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
-  expect(onSource.mock.calls).toEqual([[{ resourceCd: '021', source: 'own' }]]);
+  expect(onSource.mock.calls).toEqual([[[{ resourceCd: '021', source: 'own' }]]]);
   const sheet = screen.getByRole('region', { name: '品番の値' });
   expect(within(sheet).getAllByRole('table')).toHaveLength(1);
   expect(within(sheet).queryByText('021')).toBeNull();

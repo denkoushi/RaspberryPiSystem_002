@@ -505,9 +505,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         unitSplitEnabledByResource={unitSplitEnabledByResource} onUnitSplitChange={onUnitSplitChange} unitSplitAvailable={unitSplitAvailable?.(singleResourceCd!)}
         resourceCds={minutesResourceCds} items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => {
-          for (const resourceCd of minutesResourceCds ?? [singleResourceCd!]) {
-            if (!minutesResourceCds || (resourceMinutes?.ownSourceResourceCds.includes(resourceCd) ?? false) !== (source === 'own')) onMinutesSourceChange?.({ resourceCd, source });
-          }
+          const sources = (minutesResourceCds ?? [singleResourceCd!])
+            .filter((resourceCd) => !minutesResourceCds || (resourceMinutes?.ownSourceResourceCds.includes(resourceCd) ?? false) !== (source === 'own'))
+            .map((resourceCd) => ({ resourceCd, source }));
+          if (sources.length > 0) onMinutesSourceChange?.(sources);
         }}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
