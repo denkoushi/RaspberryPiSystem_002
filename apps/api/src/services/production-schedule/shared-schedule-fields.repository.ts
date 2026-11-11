@@ -4,9 +4,9 @@ import { prisma } from '../../lib/prisma.js';
 type RowNoteUpsertInput = {
   csvDashboardId: string;
   csvDashboardRowId: string;
-  note: string;
-  dueDate: Date | null;
-  processingType: string | null;
+  note?: string;
+  dueDate?: Date | null;
+  processingType?: string | null;
 };
 
 type SeibanDueDateUpsertInput = {
@@ -54,9 +54,9 @@ export const sharedScheduleFieldsRepository = {
       create: {
         csvDashboardId: input.csvDashboardId,
         csvDashboardRowId: input.csvDashboardRowId,
-        note: input.note,
-        dueDate: input.dueDate,
-        processingType: input.processingType
+        note: input.note ?? '',
+        dueDate: input.dueDate ?? null,
+        processingType: input.processingType ?? null
       },
       update: {
         note: input.note,
