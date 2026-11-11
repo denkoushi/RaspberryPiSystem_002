@@ -41,9 +41,41 @@ describe('due-date transaction retries', () => {
     }
   });
 
-  it('returns 409 after exactly three raw SQL serialization failures', async () => {
+  it.each([undefined, {}, { isolationLevel: 'ReadCommitted' as const }])('passes the requested isolation level: %j', async (options) => {
+    const work = vi.fn();
+    mocks.transaction.mockResolvedValue('saved');
+    await expect(runDueDateTransaction(work, options)).resolves.toBe('saved');
+    expect(mocks.transaction).toHaveBeenCalledExactlyOnceWith(work, {
+      isolationLevel: options?.isolationLevel ?? 'Serializable', maxWait: 5_000, timeout: 15_000
+    });
+  });
+
+  it('succeeds on the sixth attempt with increasing jittered waits', async () => {
+    vi.useFakeTimers();
+    const random = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValueOnce(0.9)
+      .mockReturnValueOnce(0.5).mockReturnValueOnce(0.1).mockReturnValueOnce(0.7);
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      mocks.transaction.mockRejectedValue(known('P2034'));
+      mocks.transaction.mockRejectedValueOnce(known('P2034')).mockRejectedValueOnce(known('P2034'))
+        .mockRejectedValueOnce(known('P2034')).mockRejectedValueOnce(known('P2034'))
+        .mockRejectedValueOnce(known('P2034')).mockResolvedValueOnce('saved');
+      const result = expect(runDueDateTransaction(vi.fn())).resolves.toBe('saved');
+      await vi.runAllTimersAsync();
+      await result;
+      expect(mocks.transaction).toHaveBeenCalledTimes(6);
+      expect(timer.mock.calls.map(([, delay]) => delay)).toEqual([10, 29, 35, 41, 57]);
+      expect(random).toHaveBeenCalledTimes(5);
+    } finally {
+      timer.mockRestore();
+      random.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns 409 after exactly six raw SQL serialization failures', async () => {
     mocks.transaction.mockRejectedValue(known('P2010', { driverAdapterError: { cause: { originalCode: '40001' } } }));
-    await expect(runDueDateTransaction(vi.fn())).rejects.toMatchObject({ statusCode: 409 });
-    expect(mocks.transaction).toHaveBeenCalledTimes(3);
+    await expect(runDueDateTransaction(vi.fn())).rejects.toMatchObject({ statusCode: 409, message: '他の端末で同時に更新されました。もう一度お試しください' });
+    expect(mocks.transaction).toHaveBeenCalledTimes(6);
   });
 });
