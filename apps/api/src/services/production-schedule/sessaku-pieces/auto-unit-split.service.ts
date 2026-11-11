@@ -52,6 +52,7 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
   let committed = false;
   let previousStale: typeof staleInputs | undefined;
   let previousRejected: typeof rejectedInputs | undefined;
+  const extendedAttempts: Array<{ siteKey: string; parentId: string; inputVersion: string }> = [];
   const deadline = performance.now() + limits.budgetMs;
   const runnerTimeoutMs = limits.budgetMs + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
   // The runner owns both the exclusion lock and all successful lot writes.
@@ -74,7 +75,7 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       await raw.$executeRaw`SET LOCAL jit = off`;
       previousStale = new Map(staleInputs);
       previousRejected = new Map(rejectedInputs);
-      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started, raw);
+      result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started, raw, extendedAttempts);
       await check(true);
       return result;
     }, { timeout: runnerTimeoutMs, maxWait: 1000 }));
@@ -89,6 +90,16 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       for (const [key, value] of previousStale) staleInputs.set(key, value);
       rejectedInputs.clear();
       for (const [key, value] of previousRejected) rejectedInputs.set(key, value);
+    }
+    // Transaction expiry is also classified as busy by the shared helper, but an extended
+    // lot must not regain its retry when the batch flush or commit expires the runner.
+    const runnerExpired = (error as { code?: string })?.code === 'P2028';
+    if (!isAutoUnitSplitYield(error) && (runnerExpired || !isAutoUnitSplitBusyError(error))) {
+      for (const attempt of extendedAttempts) {
+        const key = JSON.stringify([attempt.siteKey, attempt.parentId]);
+        rejectedInputs.set(key, { ...attempt, expiresAt: performance.now() + REJECTED_INPUT_TTL_MS });
+        staleInputs.delete(key);
+      }
     }
     metrics.yieldReason = isAutoUnitSplitYield(error) ? 'human_write' : sessakuPieceSqlState(error)
       ?? (error as { code?: string })?.code ?? 'error';
@@ -127,7 +138,8 @@ async function setPreprocessingStatementTimeout(runner: Prisma.TransactionClient
 }
 
 async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteKey: string; audit?: PieceAuditContext }, deadline: number, runnerDeadline: number,
-  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number, raw: Prisma.TransactionClient): Promise<SessakuPiecesAutoUnitSplitResponse> {
+  result: SessakuPiecesAutoUnitSplitResponse, limits: { maxLots: number; budgetMs: number }, started: number, raw: Prisma.TransactionClient,
+  extendedAttempts: Array<{ siteKey: string; parentId: string; inputVersion: string }>): Promise<SessakuPiecesAutoUnitSplitResponse> {
   assertRunnerDeadline(runnerDeadline);
   await ensurePlanningBoardState(params.siteKey);
   await setPreprocessingStatementTimeout(runner, runnerDeadline);
@@ -295,12 +307,19 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           if (now >= runnerDeadline || attempted > 0 && now >= deadline) break;
           const rejectionKey = JSON.stringify([params.siteKey, parentItemId]);
           const inputVersion = candidateRows.find((row) => row.parentId === parentItemId)?.inputVersion;
-          const previous = staleInputs.get(rejectionKey);
+          let previous = staleInputs.get(rejectionKey);
+          if (previous && previous.expiresAt <= performance.now()) {
+            staleInputs.delete(rejectionKey);
+            previous = undefined;
+          }
           // Large board rewrites can need more than the normal budget on Pi5. Retry such a lot once
           // with the extended deadline; a second BUDGET defers it so later lots still progress.
-          const extended = attempted === 0 && Boolean(inputVersion) && previous?.reason === 'budget' && previous.inputVersion === inputVersion;
-          const firstLotDeadline = extended ? Math.max(now + limits.budgetMs, runnerDeadline - AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS) : now + limits.budgetMs;
+          const first = attempted === 0;
+          const extended = first && Boolean(inputVersion) && previous?.reason === 'budget' && previous.inputVersion === inputVersion
+            && runnerDeadline - AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS > now + limits.budgetMs;
+          const firstLotDeadline = extended ? runnerDeadline - AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS : now + limits.budgetMs;
           const lotDeadline = Math.min(runnerDeadline, attempted === 0 ? firstLotDeadline : deadline);
+          if (extended && inputVersion) extendedAttempts.push({ siteKey: params.siteKey, parentId: parentItemId, inputVersion });
           attempted += 1;
           let expectedVersion = pieces[0].pieceSetVersion ?? 0;
           let lotTiming: PieceAuditContext['timing'];
@@ -330,9 +349,17 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             result.skippedCount += 1;
             let reloadable = code === 'P2034' || code?.startsWith('STALE_')
               || ['SOURCE_ITEM_MISSING', 'PIECE_REFERENCED', 'AUTO_UNIT_SPLIT_BUDGET'].includes(code ?? '');
-            if (code?.startsWith('STALE_') || code === 'AUTO_UNIT_SPLIT_BUDGET') {
+            if (code === 'AUTO_UNIT_SPLIT_BUDGET') {
+              if (extended) {
+                reloadable = false;
+                staleInputs.delete(rejectionKey);
+              } else if (first) {
+                if (inputVersion) staleInputs.set(rejectionKey, { inputVersion, reason: 'budget', expiresAt: performance.now() + REJECTED_INPUT_TTL_MS });
+                else staleInputs.delete(rejectionKey);
+              }
+            } else if (code?.startsWith('STALE_')) {
               if (inputVersion) {
-                const reason = code === 'AUTO_UNIT_SPLIT_BUDGET' ? 'budget' : 'stale';
+                const reason = 'stale';
                 if (previous?.inputVersion === inputVersion && previous.reason === reason) {
                   reloadable = false;
                   staleInputs.delete(rejectionKey);
