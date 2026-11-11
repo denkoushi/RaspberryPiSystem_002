@@ -1,7 +1,7 @@
 import { api } from '../../http';
 
 import type { GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse ,
-  SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
+  SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardFirstProcessArrivalResponse,
   GrindingPlanningBoardArrivalRequest,
@@ -269,4 +269,13 @@ export async function mutateKioskGrindingPlanningBoardTestBar(id: string, action
   if (action === 'delete') return (await api.delete<GrindingPlanningBoardTestBarMutationResponse>(path, { data: body })).data;
   if (action === 'restore') return (await api.post<GrindingPlanningBoardTestBarMutationResponse>(`${path}/restore`, body)).data;
   return (await api.put<GrindingPlanningBoardTestBarMutationResponse>(`${path}/completion`, { ...body, intent: action })).data;
+}
+
+export async function splitKioskSessakuPieceOps(payload: SessakuPieceOpSplitRequest) {
+  const { data } = await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/split', payload);
+  return data;
+}
+export async function mergeKioskSessakuPieceOps(payload: SessakuPieceOpMergeRequest) {
+  const { data } = await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/merge', payload);
+  return data;
 }

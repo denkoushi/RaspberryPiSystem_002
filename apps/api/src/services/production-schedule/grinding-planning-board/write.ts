@@ -2,7 +2,7 @@ import { hasPlanningTestBars, reorderPlanningTestBarLane } from './test-bars.js'
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
-import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, sessakuPieceIdFromItemId, sessakuPieceItemIds, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse, GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
@@ -28,7 +28,7 @@ async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: reado
 async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<string, string>> {
   const logicalKeyByItem = new Map<string, string>();
   for (const itemId of itemIds) {
-    const pieceKey = itemId.startsWith('piece:') ? (await resolveSessakuPieceItemKeys(prisma, [itemId])).get(itemId) : null;
+    const pieceKey = sessakuPieceIdFromItemId(itemId) ? (await resolveSessakuPieceItemKeys(prisma, [itemId])).get(itemId) : null;
     const logicalKey = pieceKey ? encodeSessakuPieceKey(pieceKey) : decodeRowItemId(itemId);
     if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
     logicalKeyByItem.set(itemId, logicalKey);
@@ -74,7 +74,7 @@ export async function resolveCurrentProjectionInTransaction(params: { dueSource?
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
     return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
   });
-  const common = { dueSource: params.dueSource, resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => id.startsWith('piece:')), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
+  const common = { dueSource: params.dueSource, resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => sessakuPieceIdFromItemId(id) != null), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });
   const cutting = projectGrindingPlanningBoard({ ...common, category: 'cutting' });
   const byItemId = new Map<string, GrindingPlanningBoardItem>();
@@ -318,7 +318,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       // Select the resource's parents before hydrating details or calculating progress.
       const parentByItem = new Map(registeredRows.map((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), row]));
       const sets = await readSessakuPieceSets(client, registeredRows);
-      for (const row of registeredRows) for (const piece of sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []) parentByItem.set(`piece:${piece.id}`, row);
+      for (const row of registeredRows) for (const piece of sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []) { for (const itemId of sessakuPieceItemIds(piece)) parentByItem.set(itemId, row); }
       const sourceParent = parentByItem.get(params.itemId);
       const targetParent = parentByItem.get(params.targetItemId);
       if (!sourceParent || !targetParent) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');

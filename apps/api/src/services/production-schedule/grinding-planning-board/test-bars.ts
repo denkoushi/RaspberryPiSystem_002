@@ -4,7 +4,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { sortGrindingPlanningBoardProjectionItems } from '../grinding-planning-board-projection.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
@@ -60,9 +60,10 @@ async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 
       const state = await lockState(tx, siteKey);
       assertBoardRevision(sourceRevision, state);
       const rows = await readWinnerRowsByFseibans(tx, stateOrder(state));
-      for (const row of [...rows].sort((a, b) => a.id.localeCompare(b.id))) {
-        await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-        await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+      const sortedIds = rows.map((row) => row.id).sort((a, b) => a.localeCompare(b));
+      if (sortedIds.length) {
+        await acquireProductionScheduleParentRowLocksInTransaction(tx, sortedIds);
+        await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(${sortedIds}::text[]) ORDER BY "id" FOR UPDATE`;
       }
       const current = await resolveCurrentProjectionInTransaction({ client: tx, siteKey, dueSource, sourceRowIds: rows.map((row) => row.id), itemIds: [], policy,
         includeAllOverrides: true, preloaded: { state, rows, overrides: await readOverrides(tx, siteKey) } });

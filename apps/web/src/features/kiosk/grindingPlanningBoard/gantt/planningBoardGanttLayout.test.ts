@@ -479,3 +479,38 @@ describe('unit piece timing and setup', () => {
     expect(bar.setupSegments![1]!.start).toBeCloseTo(dateToDay('2026-10-14') + (10 * 60 + 10) / 1440);
   });
 });
+
+describe('operation interval placement', () => {
+  const head = () => item({ kind: 'piece', itemId: 'piece:p', pieceId: 'p', parentItemId: 'parent', piecePosition: 0, alternateRank: 1,
+    opRange: { fromOpNo: 10, toOpNo: 19 }, unitRequiredMinutes: 30, setupMinutes: 7, ops: [{ opNo: 10, minutes: 30 }], completedOpNos: [10] });
+  it.each(['backward', 'forward'] as const)('preserves interval duration, operations and lane-transition setup in %s', mode => {
+    const entry = head(); const dayMinutes = mode === 'forward' ? 1440 : 480;
+    for (const resource of ['305', '306']) {
+      const values = [entry, { ...entry, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 30 }, setupMinutes: 11,
+        unitRequiredMinutes: 50, ops: [{ opNo: 20, minutes: 20 }, { opNo: 30, minutes: 30 }], completedOpNos: [], alternateRank: 2 }];
+      const result = bars(layout(values.map(value => ({ ...value, effectiveResourceCd: resource })), { mode,
+        now: new Date('2026-10-14T08:00:00+09:00'), resources: [resource], resourceMinutes: {
+          ownSourceResourceCds: [resource], values: [{ resourceCd: resource, fhincd: 'P1', perUnitMinutes: 999, setupMinutes: 999,
+            ops: [{ opNo: 99, minutes: 999 }] }]
+        } }));
+      const first = result.find(bar => bar.item.itemId === entry.itemId)!;
+      const second = result.find(bar => bar.item.itemId === 'pieceops:p:20')!;
+      expect(first.end! - first.start!).toBeCloseTo(37 / dayMinutes, 8);
+      expect(first.setupSegments!.reduce((sum, segment) => sum + segment.end - segment.start, 0)).toBeCloseTo(7 / dayMinutes, 8);
+      expect(first.opSegments!.map(op => [op.opNo, op.completed])).toEqual([[10, true]]);
+      expect(second.end! - second.start!).toBeCloseTo(50 / dayMinutes, 8);
+      expect(second.setupSegments).toEqual([]);
+      expect(second.opSegments!.map(op => op.opNo)).toEqual([20, 30]);
+      const transition = bars(layout([item({ itemId: 'other', fhincd: 'OTHER', requiredMinutes: 1, alternateRank: 1 }), { ...values[1]!, effectiveResourceCd: resource }], { mode, resources: [resource], now: new Date('2026-10-14T08:00:00+09:00') })).find(bar => bar.item.itemId === 'pieceops:p:20')!;
+      expect(transition.setupSegments!.reduce((sum, segment) => sum + segment.end - segment.start, 0)).toBeCloseTo(11 / dayMinutes, 8);
+    }
+  });
+  it('does not constrain interval order and starts subsequent processing at the last interval', () => {
+    const leading = head(); const tail = { ...leading, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 30 } };
+    const later = item({ kind: 'piece', itemId: 'piece:later', parentItemId: 'later', pieceId: 'later', sourcePieceId: 'p', sourceItemId: tail.itemId, processOrder: '20' });
+    const result = forwardPlanningBoardPredecessors([tail, leading, later]);
+    expect(result.predecessors.has(tail.itemId)).toBe(false); expect(result.predecessors.has(leading.itemId)).toBe(false);
+    expect(result.predecessors.get(later.itemId)).toEqual([tail.itemId]);
+    expect(forwardPlanningBoardPredecessors([leading, tail, { ...later, sourceItemId: undefined }]).predecessors.get(later.itemId)).toEqual([tail.itemId]);
+  });
+});

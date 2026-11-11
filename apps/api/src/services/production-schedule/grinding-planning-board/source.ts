@@ -341,7 +341,7 @@ export async function readOverrides(client: DbClient, siteKey: string, itemKeys?
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
       siteKey,
       itemKey: itemKeys == null ? undefined : { in: [...new Set(itemKeys)] },
-      ...(itemKeys == null ? { OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] } : {})
+      ...(itemKeys == null ? { OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }, { itemKey: { startsWith: 'pieceops:' } }] } : {})
     }
   });
   return new Map(rows.map((row) => [row.itemKey, row]));

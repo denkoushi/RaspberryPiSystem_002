@@ -24,9 +24,9 @@ const before = new Date('2026-11-01T00:00:00.000Z');
 const after = new Date('2026-11-10T00:00:00.000Z');
 const actor = { locationKey: 'site-key', actorClientDeviceId: 'device', actorDeviceName: 'terminal' };
 const cases = [
-  { action: 'row', run: (date: string) => upsertProductionScheduleDueDate({ ...actor, rowId: 'row', dueDateText: date }), target: { csvDashboardRowId: 'row' } },
-  { action: 'seiban', run: (date: string) => upsertProductionScheduleSeibanDueDate({ ...actor, fseiban: 'ORDER', dueDateText: date }), target: { fseiban: 'ORDER' } },
-  { action: 'processing', run: (date: string) => upsertProductionScheduleSeibanProcessingDueDate({ ...actor, fseiban: 'ORDER', processingType: 'paint', dueDateText: date }), target: { fseiban: 'ORDER', processingType: 'paint' } }
+  { action: 'row', isolationLevel: 'ReadCommitted', run: (date: string) => upsertProductionScheduleDueDate({ ...actor, rowId: 'row', dueDateText: date }), target: { csvDashboardRowId: 'row' } },
+  { action: 'seiban', isolationLevel: 'Serializable', run: (date: string) => upsertProductionScheduleSeibanDueDate({ ...actor, fseiban: 'ORDER', dueDateText: date }), target: { fseiban: 'ORDER' } },
+  { action: 'processing', isolationLevel: 'Serializable', run: (date: string) => upsertProductionScheduleSeibanProcessingDueDate({ ...actor, fseiban: 'ORDER', processingType: 'paint', dueDateText: date }), target: { fseiban: 'ORDER', processingType: 'paint' } }
 ];
 let committedAudits: unknown[];
 beforeEach(() => {
@@ -44,7 +44,7 @@ beforeEach(() => {
   mocks.tx.$queryRaw.mockImplementation(async (query: TemplateStringsArray) => String(query).includes('SELECT EXISTS') ? [{ exists: true }] : String(query).includes('SELECT "processingType"') ? [] : [{ id: 'row' }]);
 });
 
-describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
+describe.each(cases)('$action due-date audit', ({ action, isolationLevel, run, target }) => {
   it.each(['2026-11-10', '', '2026-11-01'])('records one entry with previous value and actor for %s', async (date) => {
     await run(date);
     expect(committedAudits).toEqual([expect.objectContaining({
@@ -52,7 +52,7 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
       beforeDueDate: before, afterDueDate: date ? date === '2026-11-10' ? after : before : null
     })]);
     expect(mocks.tx.productionScheduleDueDateAuditLog.create).toHaveBeenCalledOnce();
-    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5_000, timeout: 15_000 });
+    expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel, maxWait: 5_000, timeout: 15_000 });
     expect(mocks.resetCaches).toHaveBeenCalledOnce();
     if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.updateMany).toHaveBeenCalledWith({ where: { csvDashboardRowId: 'row' }, data: { dueDate: null } });
     else expect(mocks.tx.productionScheduleRowNote.upsert).toHaveBeenCalled();
@@ -64,10 +64,10 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
     expect(committedAudits).toHaveLength(1);
     expect(mocks.resetCaches).toHaveBeenCalledOnce();
   });
-  it('returns 409 after three serialization conflicts', async () => {
+  it('returns 409 after six serialization conflicts', async () => {
     mocks.transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError('conflict', { code: 'P2034', clientVersion: '7' }));
     await expect(run('2026-11-10')).rejects.toMatchObject({ statusCode: 409, message: '他の端末で同時に更新されました。もう一度お試しください' });
-    expect(mocks.transaction).toHaveBeenCalledTimes(3);
+    expect(mocks.transaction).toHaveBeenCalledTimes(6);
     expect(committedAudits).toEqual([]);
     expect(mocks.resetCaches).not.toHaveBeenCalled();
   });

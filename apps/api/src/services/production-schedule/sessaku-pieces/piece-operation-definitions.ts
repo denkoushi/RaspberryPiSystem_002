@@ -1,12 +1,13 @@
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
+import type { GrindingPlanningBoardResourcePartOpMinutes } from '@raspi-system/shared-types';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
 import { readRowDetails, readWinnerRowsByLogicalKeyFseibans } from '../grinding-planning-board/source.js';
 import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey,
-  sessakuPieceKeyFromRow, sessakuPieceParentItemId, type SessakuPieceLogicalKey, type SessakuPieceSet } from './piece-key.js';
+  sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, type SessakuPieceLogicalKey, type SessakuPieceSet } from './piece-key.js';
 import { STRING_TRIM_CHARACTERS } from '../grinding-planning-board/shared.js';
 import { stateOrder } from '../grinding-planning-board/state.js';
 
@@ -46,12 +47,12 @@ export async function readPieceOperationNumbers(tx: Prisma.TransactionClient, si
 
 /** Whole-piece APIs share this synchronization, including cancellation after a definition was removed. */
 export async function syncWholePieceOperationCompletions(tx: Prisma.TransactionClient, siteKey: string,
-  piece: { id: string; isCompleted: boolean }, item: { effectiveResourceCd: string | null; fhincd: string }, completed: boolean): Promise<boolean> {
+  piece: { id: string; isCompleted: boolean }, item: { effectiveResourceCd: string | null; fhincd: string; ops?: GrindingPlanningBoardResourcePartOpMinutes[] }, completed: boolean): Promise<boolean> {
   if (!completed) {
     if (!piece.isCompleted) return false;
     return (await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({ where: { pieceId: piece.id } })).count > 0;
   }
-  const definitions = await readPieceOperationNumbers(tx, siteKey, item);
+  const definitions = item.ops ?? await readPieceOperationNumbers(tx, siteKey, item);
   if (!definitions.length) return false;
   return (await tx.productionScheduleSessakuPieceOpCompletion.createMany({
     data: definitions.map(({ opNo }) => ({ pieceId: piece.id, opNo })), skipDuplicates: true
@@ -60,7 +61,7 @@ export async function syncWholePieceOperationCompletions(tx: Prisma.TransactionC
 
 /** Parent-row actions load each resource/part definition together, including missing definitions. */
 export async function syncWholePiecesOperationCompletions(tx: Prisma.TransactionClient, siteKey: string,
-  pieces: Array<{ id: string; isCompleted: boolean; effectiveResourceCd: string | null; fhincd: string }>, completed: boolean): Promise<boolean> {
+  pieces: Array<{ id: string; isCompleted: boolean; effectiveResourceCd: string | null; fhincd: string; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>, completed: boolean): Promise<boolean> {
   if (!pieces.length) return false;
   if (!completed) {
     const completedIds = pieces.filter((piece) => piece.isCompleted).map((piece) => piece.id);
@@ -69,7 +70,14 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
       where: { pieceId: { in: completedIds } }
     })).count > 0;
   }
-  const pairs = new Map(pieces.filter((piece) => piece.effectiveResourceCd !== null)
+  const intervals = pieces.flatMap((piece) => {
+    const splits = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo);
+    if (!splits.length) return [{ ...piece, fromOpNo: 1, toOpNo: Infinity }];
+    return [splits[0].leadingSourceResourceCd ?? splits[0].sourceResourceCd, ...splits.map((split) => split.sourceResourceCd)]
+      .map((effectiveResourceCd, index) => ({ ...piece, effectiveResourceCd,
+        fromOpNo: index === 0 ? 1 : splits[index - 1].fromOpNo, toOpNo: splits[index] ? splits[index].fromOpNo - 1 : Infinity }));
+  });
+  const pairs = new Map(intervals.filter((piece) => piece.effectiveResourceCd !== null)
     .map((piece) => [JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()]), piece]));
   if (!pairs.size) return false;
   const parts = await tx.$queryRaw<Array<{ id: string; resourceCd: string; fhincd: string }>>(Prisma.sql`
@@ -83,7 +91,8 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
   });
   const byPair = new Map(parts.map((part) => [JSON.stringify([part.resourceCd, part.fhincd]),
     definitions.filter((op) => op.partMinutesId === part.id)]));
-  const data = pieces.flatMap((piece) => (byPair.get(JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()])) ?? [])
+  const data = intervals.flatMap((piece) => (byPair.get(JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()])) ?? [])
+    .filter(({ opNo }) => opNo >= piece.fromOpNo && opNo <= piece.toOpNo)
     .map(({ opNo }) => ({ pieceId: piece.id, opNo })));
   return data.length > 0 && (await tx.productionScheduleSessakuPieceOpCompletion.createMany({ data, skipDuplicates: true })).count > 0;
 }
@@ -101,14 +110,14 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
   for (let start = 0; start < keys.length; start += 300) {
     sets.push(...await tx.productionScheduleSessakuPieceSet.findMany({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: keys.slice(start, start + 300).map(({ fseiban, fhincd, fsigencd, fkojun }) => ({ fseiban, fhincd, fsigencd, fkojun })) },
-      include: { pieces: true }
+      include: { pieces: { include: { opSplits: true } } }
     }));
   }
   const boardSeibans = [...new Set(keys.filter((key) => displayedSeibans.has(key.fseiban.trim())).map((key) => key.fseiban))];
   const rows = boardSeibans.length ? await readWinnerRowsByLogicalKeyFseibans(tx, boardSeibans) : [];
   const details = rows.length ? await readRowDetails(tx, rows.map((row) => row.id)) : new Map();
   const rowsByKey = new Map(rows.map((row) => [encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)), row]));
-  const itemKeys = sets.flatMap((set) => [sessakuPieceParentItemId(set), ...set.pieces.map((piece) => `piece:${piece.id}`)]);
+  const itemKeys = sets.flatMap((set) => [sessakuPieceParentItemId(set), ...set.pieces.flatMap(sessakuPieceItemIds)]);
   const overrideRows: ProductionScheduleGrindingPlanningBoardOverride[] = [];
   // Name the sites so each chunk uses the (dashboard, site, item) unique index instead of scanning the dashboard.
   // groupBy dedupes in SQL; findMany+distinct would fetch every override row and dedupe in memory.
@@ -145,6 +154,23 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
         const override = overrides?.get(`piece:${piece.id}`) ?? overrides?.get(parentId);
         return (override?.overrideResourceCd ?? set.fsigencd).trim();
       };
+      if (piece.opSplits?.length) {
+        const splits = [...piece.opSplits].sort((a, b) => a.fromOpNo - b.fromOpNo);
+        const resources = [splits[0].leadingSourceResourceCd ?? splits[0].sourceResourceCd, ...splits.map((split) => split.sourceResourceCd)];
+        const inRange = (opNo: number, index: number) => opNo >= (index === 0 ? 1 : splits[index - 1].fromOpNo)
+          && opNo < (splits[index]?.fromOpNo ?? Infinity);
+        const retained = new Set<number>();
+        const fill = new Set<number>();
+        for (const siteKey of siteKeys) for (const [index, resource] of resources.entries()) {
+          const numbers = siteKey === params.siteKey && resource === params.resourceCd ? opNos
+            : definitions.find((definition) => definition.siteKey === siteKey && definition.resourceCd === resource && definition.fhincd === set.fhincd.trim())?.ops.map((op) => op.opNo) ?? [];
+          for (const opNo of numbers.filter((opNo) => inRange(opNo, index))) {
+            retained.add(opNo);
+            if (siteKey === params.siteKey && resource === params.resourceCd) fill.add(opNo);
+          }
+        }
+        return [{ piece, retained, fill: onBoard ? [...fill] : [], onBoard }];
+      }
       const matches = (siteKey: string) => scopes.get(siteKey)?.has(set.fseiban.trim()) && effective(siteKey) === params.resourceCd;
       const partDefinitions = definitions.filter((definition) => definition.fhincd === set.fhincd.trim()
         && !(definition.siteKey === params.siteKey && definition.resourceCd === params.resourceCd));

@@ -6,7 +6,7 @@ import { buildMaxProductNoWinnerCondition } from '../row-resolver/index.js';
 export type SessakuPieceLogicalKey = { fseiban: string; fhincd: string; fsigencd: string; fkojun: string };
 export type SessakuPieceClient = Prisma.TransactionClient | PrismaClient;
 export type SessakuPieceSet = Omit<Prisma.ProductionScheduleSessakuPieceSetGetPayload<{ include: { pieces: true } }>, 'pieces'> & {
-  pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { opCompletions?: Array<{ opNo: number }> }>;
+  pieces: Array<Prisma.ProductionScheduleSessakuPieceGetPayload<object> & { sourcePiece?: { opSplits: Array<{ fromOpNo: number }> } | null; opCompletions?: Array<{ opNo: number }>; opSplits?: Array<{ fromOpNo: number; sourceResourceCd: string; leadingSourceResourceCd?: string | null }> }>;
 };
 const RELATED_KEY_CHUNK = 300;
 const columns = ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'] as const;
@@ -82,7 +82,7 @@ async function readRelatedSessakuPieceKeys(client: SessakuPieceClient, keys: rea
 export async function readSessakuPieceSet(client: SessakuPieceClient, key: SessakuPieceLogicalKey): Promise<SessakuPieceSet | null> {
   return client.productionScheduleSessakuPieceSet.findUnique({
     where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: sessakuPieceSetWhere(key) },
-    include: { pieces: { orderBy: { position: 'asc' } } }
+    include: { pieces: { orderBy: { position: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } }
   });
 }
 export async function readSessakuPieceSets(client: SessakuPieceClient, rows: readonly { rowData: unknown }[]): Promise<Map<string, SessakuPieceSet>> {
@@ -90,7 +90,7 @@ export async function readSessakuPieceSets(client: SessakuPieceClient, rows: rea
   if (!keys.size) return new Map();
   const sets = await client.productionScheduleSessakuPieceSet.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...keys.values()].map((key) => key.fseiban))] } },
-    include: { pieces: { orderBy: { position: 'asc' }, include: { opCompletions: { select: { opNo: true } } } } }
+    include: { pieces: { orderBy: { position: 'asc' }, include: { opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } } } }
   });
   return new Map(sets.filter((set) => keys.has(encodeSessakuPieceKey(set))).map((set) => [encodeSessakuPieceKey(set), set]));
 }
@@ -107,11 +107,12 @@ export async function findSessakuPieceWinner(client: SessakuPieceClient, key: Se
   return rows[0] ?? null;
 }
 export async function resolveSessakuPieceItemKeys(client: SessakuPieceClient, itemIds: readonly string[]): Promise<Map<string, SessakuPieceLogicalKey>> {
-  const pieceIds = itemIds.filter((id) => id.startsWith('piece:')).map((id) => id.slice(6));
+  const pieceIds = [...new Set(itemIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null))];
   const pieces = pieceIds.length ? await client.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } }, include: { pieceSet: true } }) : [];
-  const byId = new Map(pieces.map((piece) => [`piece:${piece.id}`, piece.pieceSet]));
+  const byId = new Map(pieces.map((piece) => [piece.id, piece.pieceSet]));
   return new Map(itemIds.map((id) => {
-    const key = id.startsWith('piece:') ? byId.get(id) : decodeSessakuPieceParentItemId(id);
+    const pieceId = sessakuPieceIdFromItemId(id);
+    const key = pieceId ? byId.get(pieceId) : decodeSessakuPieceParentItemId(id);
     if (!key) throw new ApiError(409, '片が更新されています。再読み込みしてください', undefined, 'STALE_SESSAKU_PIECES');
     return [id, key];
   }));
@@ -141,4 +142,13 @@ export async function acquireSessakuPieceBoardStateLocks(tx: Prisma.TransactionC
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('sessaku-piece-board-states', 0))`;
   await tx.$queryRaw`SELECT "id" FROM "ProductionScheduleGrindingPlanningBoardState"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} ORDER BY "siteKey" FOR UPDATE`;
+}
+
+export function sessakuPieceIdFromItemId(itemId: string): string | null {
+  if (itemId.startsWith('piece:')) return itemId.slice(6);
+  const match = /^pieceops:([^:]+):[1-9]\d*$/.exec(itemId);
+  return match?.[1] ?? null;
+}
+export function sessakuPieceItemIds(piece: { id: string; opSplits?: readonly { fromOpNo: number }[] }): string[] {
+  return [`piece:${piece.id}`, ...(piece.opSplits ?? []).map((split) => `pieceops:${piece.id}:${split.fromOpNo}`)];
 }
