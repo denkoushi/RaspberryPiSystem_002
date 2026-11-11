@@ -21,13 +21,26 @@
 
     - name: Archive and fetch client directory
       block:
+        - name: Create private archive file on client
+          become: true
+          ansible.builtin.file:
+            path: "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+            state: touch
+            mode: '0600'
+            owner: root
+
         - name: Archive directory on client
           become: true
-          ansible.builtin.shell: >-
-            umask 077 && tar --create --gzip
-            --file {{ ('/tmp/' ~ inventory_hostname ~ '_' ~ (client_dir_path | basename) ~ '.tar.gz') | quote }}
-            --directory {{ (client_dir_path | dirname) | quote }}
-            {{ (client_dir_path | basename) | quote }}
+          ansible.builtin.command:
+            argv:
+              - tar
+              - --create
+              - --gzip
+              - --file
+              - "/tmp/{{ inventory_hostname }}_{{ client_dir_path | basename }}.tar.gz"
+              - --directory
+              - "{{ client_dir_path | dirname }}"
+              - "{{ client_dir_path | basename }}"
           register: archive_result
           ignore_errors: true
 
