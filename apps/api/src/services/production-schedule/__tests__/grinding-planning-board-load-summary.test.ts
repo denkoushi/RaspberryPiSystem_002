@@ -426,4 +426,50 @@ describe('own minutes in load summary paths', () => {
     }
   });
 
+  it.each([false, true])('uses each op bar source and excludes completed ranges (materialized=%s)', async (materialized) => {
+    const resourceMinutes = { ownSourceResourceCds: [], values: [
+      { resourceCd: 'G-01', fhincd: 'part', perUnitMinutes: 30, setupMinutes: 7,
+        ops: [{ opNo: 1, minutes: 10, setupMinutes: 3 }, { opNo: 2, minutes: 20, setupMinutes: 4 }] },
+      { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 70, setupMinutes: 11,
+        ops: [{ opNo: 1, minutes: 30, setupMinutes: 5 }, { opNo: 2, minutes: 40, setupMinutes: 6 }] },
+      { resourceCd: 'G-03', fhincd: 'part', perUnitMinutes: 999, setupMinutes: 999,
+        ops: [{ opNo: 1, minutes: 999, setupMinutes: 999 }, { opNo: 2, minutes: 999, setupMinutes: 999 }] }
+    ] };
+    for (const tailCompleted of [false, true]) {
+      const sources = [0, 1].flatMap((pieceIndex) => [
+        { opBarFromOpNo: null, opBarToOpNo: 1, opBarSourceResourceCd: 'G-01' },
+        { opBarFromOpNo: 2, opBarToOpNo: null, opBarSourceResourceCd: 'G-02' }
+      ].map((range) => ({ id: 'row', fseiban: 'S1', fhinCd: 'part', productNo: '1',
+        resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: '100', requiredMinutes: 100,
+        plannedQuantity: 2, isCompleted: false, pieceId: `unit-${pieceIndex}`, pieceQuantity: 1,
+        includeSetup: pieceIndex === 0, completedOpNos: tailCompleted ? [2] : [], ...range })));
+      const queryRaw = vi.fn(async (query: Prisma.Sql) => {
+        if (query.sql.includes('effectiveItems')) {
+          expect(query.sql).toContain("ELSE 'pieceops:'");
+          return sources.map((source) => ({ ...source, originalResourceCd: 'G-01',
+            effectiveResourceCd: source.opBarFromOpNo == null ? 'G-01' : 'G-03', fhincd: 'part', quantity: 1,
+            itemCount: 1n, unknownItemCount: 0n, requiredMinutesSum: 50 }));
+        }
+        if (query.sql.includes('FROM "CsvDashboardRow"')) {
+          expect(query.sql).toContain('ProductionScheduleSessakuPieceOpSplit');
+          return sources;
+        }
+        if (query.sql.includes('SELECT "itemKey", "overrideResourceCd"')) return [0, 1].map((index) => ({
+          itemKey: `pieceops:unit-${index}:2`, overrideResourceCd: 'G-03'
+        }));
+        return [];
+      });
+      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+        siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes,
+        ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
+      expect(summary.unknownRequiredMinutesCount).toBe(0);
+      expect(summary.load).toEqual([
+        expect.objectContaining({ resourceCd: 'G-01', originalItemCount: tailCompleted ? 2 : 4,
+          requiredMinutes: 23, unfinishedItemCount: 2 }),
+        ...(!tailCompleted ? [expect.objectContaining({ resourceCd: 'G-03', requiredMinutes: 86,
+          unfinishedItemCount: 2 })] : [])
+      ]);
+    }
+  });
+
 });

@@ -13,7 +13,7 @@ import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput } from './auto-unit-split-candidates.js';
 import { runSessakuPieceOperation, pieceTimingStage, type PieceAuditContext } from './piece-audit.js';
-import { sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
 import { runAutoUnitSplitBatch, runAutoUnitSplitLot, splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 
@@ -218,7 +218,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
             const details = await readRowDetails(runner, rows.map((row) => row.id));
             if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
             const overrides = await readOverrides(runner, params.siteKey, [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
-              ...[...pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))]);
+              ...[...pieceSets.values()].flatMap((set) => set.pieces.flatMap(sessakuPieceItemIds))]);
             if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
             const ranks = await readRanks(runner, rows.map((row) => row.id), params.siteKey);
             if (result.splitCount > 0 && performance.now() >= pageDeadline) return;

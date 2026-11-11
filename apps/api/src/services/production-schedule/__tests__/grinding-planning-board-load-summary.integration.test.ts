@@ -599,6 +599,47 @@ describeIntegration('grinding planning board lightweight load summary integratio
     }
   });
 
+  it('matches op-bar source durations and range completion across both load paths', async () => {
+    const fixture = await createFixture();
+    const row = fixture.rows[0]!;
+    const pieceId = randomUUID();
+    const pieceSet = await db().productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+      fseiban: row.data.FSEIBAN!, fhincd: row.data.FHINCD!, fsigencd: row.data.FSIGENCD!, fkojun: row.data.FKOJUN!,
+      plannedQuantity: 1, nextPosition: 2,
+      pieces: { create: [{ id: pieceId, quantity: 1, position: 1,
+        opSplits: { create: [{ fromOpNo: 2, sourceResourceCd: 'G-02', leadingSourceResourceCd: 'G-01' }] } }] }
+    } });
+    try {
+      await db().productionScheduleGrindingPlanningBoardOverride.create({ data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey,
+        itemKey: `pieceops:${pieceId}:2`, overrideResourceCd: 'G-03'
+      } });
+      const resourceMinutes = { ownSourceResourceCds: [], values: [
+        { resourceCd: 'G-01', fhincd: row.data.FHINCD!, perUnitMinutes: 30, setupMinutes: 7,
+          ops: [{ opNo: 1, minutes: 10, setupMinutes: 3 }, { opNo: 2, minutes: 20, setupMinutes: 4 }] },
+        { resourceCd: 'G-02', fhincd: row.data.FHINCD!, perUnitMinutes: 70, setupMinutes: 11,
+          ops: [{ opNo: 1, minutes: 30, setupMinutes: 5 }, { opNo: 2, minutes: 40, setupMinutes: 6 }] }
+      ] };
+      const params = { client: db(), siteKey: fixture.siteKey, category: 'grinding' as const, resourceMinutes,
+        isResourceInCategory: (resourceCd: string) => resourceCd.startsWith('G-') };
+      for (const tailCompleted of [false, true]) {
+        if (tailCompleted) await db().productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId, opNo: 2 } });
+        const sql = await summaryReader()({ ...params,
+          leaderboardMaterializedBaseWhere: buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+            PRODUCTION_SCHEDULE_DASHBOARD_ID, [row.id]) });
+        const enumeration = await summaryReader()({ ...params, winnerRowIds: [row.id] });
+        expect(sql).toEqual(enumeration);
+        expect(sql.load).toEqual([
+          expect.objectContaining({ resourceCd: 'G-01', originalItemCount: tailCompleted ? 1 : 2, requiredMinutes: 13 }),
+          ...(!tailCompleted ? [expect.objectContaining({ resourceCd: 'G-03', requiredMinutes: 46 })] : [])
+        ]);
+      }
+    } finally {
+      await db().productionScheduleSessakuPieceSet.delete({ where: { id: pieceSet.id } });
+    }
+  });
+
   it('matches SQL, row enumeration and projection for multiple rows of fractional pieces', async () => {
     const fixture = await createFixture();
     const rows = fixture.rows.filter((entry) => ['A', 'D'].some((suffix) => String(entry.data.FHINCD).endsWith(`-${suffix}`)))

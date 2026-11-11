@@ -60,6 +60,41 @@ beforeEach(() => {
 });
 
 describe('operation definition replacement', () => {
+  it('preserves source operation evidence after split bars move to the resource whose definition is replaced', async () => {
+    set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }];
+    mocks.overrides.mockResolvedValue([
+      { siteKey: 'site', itemKey: 'piece:p', overrideResourceCd: '022' },
+      { siteKey: 'site', itemKey: 'pieceops:p:3', overrideResourceCd: '022' }
+    ]);
+    tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
+      { siteKey: 'site', resourceCd: '021', fhincd: 'PART', ops: [1, 2, 3, 4].map((opNo) => ({ opNo })) },
+      { siteKey: 'site', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 9 }] }
+    ]);
+    records = [{ pieceId: 'p', opNo: 1 }, { pieceId: 'p', opNo: 3 }];
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '022' }, [key], [9]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }, { pieceId: 'p', opNo: 3 }]);
+    expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).not.toHaveBeenCalled();
+    expect(tx.productionScheduleSessakuPieceOpCompletion.deleteMany).toHaveBeenCalledWith({ where: {
+      pieceId: { in: ['p'] }, opNo: { notIn: [1, 2, 3, 4] }
+    } });
+    expect(mocks.overrides).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      itemKey: { in: expect.arrayContaining(['piece:p', 'pieceops:p:3']) }
+    }) }));
+  });
+  it('updates only a split source interval while retaining the other source evidence and filling within its range', async () => {
+    set.pieces[0].isCompleted = true;
+    set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '022', leadingSourceResourceCd: '021' }];
+    tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
+      { siteKey: 'site', resourceCd: '021', fhincd: 'PART', ops: [{ opNo: 1 }, { opNo: 2 }] },
+      { siteKey: 'site', resourceCd: '022', fhincd: 'PART', ops: [1, 3, 4, 8].map((opNo) => ({ opNo })) }
+    ]);
+    records = [1, 3, 4, 8].map((opNo) => ({ pieceId: 'p', opNo }));
+    await reconcile([2, 5]);
+    expect(records).toEqual([3, 4, 8, 2].map((opNo) => ({ pieceId: 'p', opNo })));
+    expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).toHaveBeenCalledExactlyOnceWith({
+      data: [{ pieceId: 'p', opNo: 2 }], skipDuplicates: true
+    });
+  });
   it('uses the piece edit lock order before a definition can be written', async () => {
     tx.$queryRaw.mockResolvedValueOnce([key]).mockResolvedValue([]);
     expect(await lockOperationDefinitionPieces(client, '\tPART\u3000')).toEqual([key]);
@@ -492,6 +527,22 @@ describe('operation definition replacement', () => {
 
 describe('parent-row operation batching', () => {
   const pieces = Array.from({ length: 100 }, (_, i) => ({ id: `p${i}`, isCompleted: i % 2 === 0, effectiveResourceCd: i < 50 ? '021' : '022', fhincd: ' PART ' }));
+  it('completes every source interval of a moved split piece using the appropriate source definition', async () => {
+    tx.$queryRaw.mockResolvedValue([{ id: 'head', resourceCd: '021', fhincd: 'PART' }, { id: 'tail', resourceCd: '022', fhincd: 'PART' }]);
+    tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany.mockResolvedValue([
+      ...[1, 2, 3, 9].map((opNo) => ({ partMinutesId: 'head', opNo })),
+      ...[1, 3, 4].map((opNo) => ({ partMinutesId: 'tail', opNo }))
+    ]);
+    const movedPiece = { id: 'p', isCompleted: false, effectiveResourceCd: '099', fhincd: ' PART ',
+      opSplits: [{ fromOpNo: 3, sourceResourceCd: '022', leadingSourceResourceCd: '021' }] };
+    expect(await syncWholePiecesOperationCompletions(client, 'site', [movedPiece], true)).toBe(true);
+    expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).toHaveBeenCalledExactlyOnceWith({
+      data: [1, 2, 3, 4].map((opNo) => ({ pieceId: 'p', opNo })), skipDuplicates: true
+    });
+    const sql = tx.$queryRaw.mock.calls[0][0] as Prisma.Sql;
+    expect(sql.values).toEqual(expect.arrayContaining(['021', '022']));
+    expect(sql.values).not.toContain('099');
+  });
   it('loads definitions once for repeated resource/part pairs including unregistered operations', async () => {
     tx.$queryRaw.mockResolvedValue([{ id: 'part', resourceCd: '021', fhincd: 'PART' }, { id: 'empty', resourceCd: '022', fhincd: 'PART' }]);
     tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany.mockResolvedValue([{ partMinutesId: 'part', opNo: 1 }, { partMinutesId: 'part', opNo: 3 }]);

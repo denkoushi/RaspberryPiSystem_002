@@ -311,3 +311,17 @@ describe('piece operation completion', () => {
     expect(completePieceOp).not.toHaveBeenCalled();
   });
 });
+
+it.each([false, true])('sends the suffix itemId for completion (whole interval=%s)', async whole => {
+  const entry = piece('a', { itemId: 'pieceops:a:20', opRange: { fromOpNo: 20, toOpNo: 30 },
+    unitRequiredMinutes: 30, ops: [{ opNo: 20, minutes: 10 }, { opNo: 30, minutes: 20 }], completedOpNos: [] });
+  const h = setup([entry]); const completePieceOp = vi.fn().mockResolvedValue(response([entry]));
+  h.rerender({ ...h.options, completePieceOp });
+  await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', whole ? undefined : 20); });
+  expect(whole ? h.options.completePiece : completePieceOp).toHaveBeenCalledWith(expect.objectContaining({
+    itemId: entry.itemId, pieceId: 'a', intent: 'complete', expectedPieceSetVersion: 1, itemRevision: entry.itemRevision,
+    ...(whole ? {} : { opNo: 20 })
+  }));
+  await act(async () => { await h.result.current.toggleCompletion(entry, 'complete', 10); });
+  expect(completePieceOp).toHaveBeenCalledTimes(whole ? 0 : 1);
+});

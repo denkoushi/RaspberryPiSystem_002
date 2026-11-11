@@ -42,7 +42,7 @@ vi.mock('../../features/kiosk/errorTelemetry', async (importOriginal) => ({ ...a
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
-  pieceCompletion: vi.fn(), pieceSplit: vi.fn(), pieceMerge: vi.fn(),
+  pieceCompletion: vi.fn(), pieceSplit: vi.fn(), pieceMerge: vi.fn(), opSplit: vi.fn(), opMerge: vi.fn(),
   arrival: vi.fn(),
   capacity: vi.fn(),
   snapshot: vi.fn(),
@@ -72,6 +72,8 @@ vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKi
 
 vi.mock('../../api/hooks', () => ({
   useKioskSessakuPieceMutations: vi.fn(() => ({
+    opSplit: useMutation({ mutationFn: (args: unknown) => mocks.opSplit(args) }),
+    opMerge: useMutation({ mutationFn: (args: unknown) => mocks.opMerge(args) }),
     completion: useMutation({ mutationFn: (args: unknown) => mocks.pieceCompletion(args) }),
     split: useMutation({ mutationFn: (args: unknown) => mocks.pieceSplit(args) }),
     merge: useMutation({ mutationFn: (args: unknown) => mocks.pieceMerge(args) })
@@ -233,6 +235,64 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   describe('piece interactions', () => {
     beforeEach(() => {
       vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
+    });
+    it.each(['split', 'merge'] as const)('saves operation %s with the current bar revision and selects the resulting interval', async operation => {
+      let data = splitBoard(); const head = { ...data.items[0]!, itemId: 'piece:id-0', plannedQuantity: 1, quantity: 1,
+        unitRequiredMinutes: 60, ops: [{ opNo: 10, minutes: 10 }, { opNo: 20, minutes: 20 }, { opNo: 30, minutes: 30 }] };
+      const suffix = { ...head, itemId: 'pieceops:id-0:20', opRange: { fromOpNo: 20, toOpNo: 30 }, ops: head.ops.slice(1), unitRequiredMinutes: 50 };
+      const leading = { ...head, opRange: { fromOpNo: 10, toOpNo: 19 }, ops: head.ops.slice(0, 1), unitRequiredMinutes: 10 };
+      data = { ...data, items: operation === 'split' ? [head] : [leading, suffix] };
+      const saved = (operation === 'split' ? [leading, suffix] : [head]).map(item => ({ ...item, pieceSetVersion: 5, itemRevision: 'saved-op' }));
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      (operation === 'split' ? mocks.opSplit : mocks.opMerge).mockResolvedValue({ pieces: saved, affectedItemIds: data.items.map(item => item.itemId), pieceSetVersion: 5 });
+      mocks.refetch.mockImplementation(async () => { data = { ...data, snapshotId: 'op-saved', items: saved }; return { data, isError: false }; });
+      renderSeibanBoard();
+      const source = operation === 'split' ? head : suffix;
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${source.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: operation === 'split' ? '工程20の前で分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      await waitFor(() => expect(operation === 'split' ? mocks.opSplit : mocks.opMerge).toHaveBeenCalledWith({ itemId: source.itemId,
+        expectedPieceSetVersion: 4, itemRevision: source.itemRevision, ...(operation === 'split' ? { fromOpNo: 20 } : {}) }));
+      const target = operation === 'split' ? suffix : head;
+      await waitFor(() => expect(within(screen.getByTestId(`planning-board-item-${target.itemId}`)).getByRole('checkbox')).toBeChecked());
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${target.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const next = screen.getByRole('button', { name: operation === 'split' ? 'まとめる' : '工程20の前で分ける' });
+      await waitFor(() => expect(next).toBeEnabled()); fireEvent.click(next);
+      await waitFor(() => expect(operation === 'split' ? mocks.opMerge : mocks.opSplit).toHaveBeenCalledWith(expect.objectContaining({
+        itemId: target.itemId, itemRevision: 'saved-op', expectedPieceSetVersion: 5
+      })));
+    });
+    it('displays the returned intervals while the existing board refresh is pending', async () => {
+      const data = splitBoard(); const head = { ...data.items[0]!, itemId: 'piece:id-0', quantity: 1, plannedQuantity: 1,
+        unitRequiredMinutes: 30, ops: [{ opNo: 10, minutes: 10 }, { opNo: 20, minutes: 20 }] };
+      data.items = [head];
+      const saved = [{ ...head, opRange: { fromOpNo: 10, toOpNo: 19 }, ops: head.ops.slice(0, 1), unitRequiredMinutes: 10, itemRevision: 'saved-head' },
+        { ...head, itemId: 'pieceops:id-0:20', opRange: { fromOpNo: 20, toOpNo: 20 }, ops: head.ops.slice(1), unitRequiredMinutes: 20, itemRevision: 'saved-suffix' }];
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      mocks.opSplit.mockResolvedValue({ parentItemId: head.parentItemId, pieces: saved, affectedItemIds: [head.itemId], pieceSetVersion: 5 });
+      let refresh!: (value: unknown) => void;
+      mocks.refetch.mockImplementation(() => new Promise(resolve => { refresh = resolve; }));
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${head.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: '工程20の前で分ける' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      await waitFor(() => expect(screen.getByTestId('planning-board-item-pieceops:id-0:20')).toBeInTheDocument());
+      expect(within(screen.getByTestId('planning-board-item-pieceops:id-0:20')).getByRole('checkbox')).toBeChecked();
+      await act(async () => { refresh({ data, isError: true }); });
+    });
+    it.each(['split', 'merge'] as const)('keeps the operation %s dialog and refreshes after a conflict', async operation => {
+      const data = splitBoard(); const entry = { ...data.items[0]!, itemId: operation === 'split' ? 'piece:id-0' : 'pieceops:id-0:20',
+        plannedQuantity: 1, quantity: 1, unitRequiredMinutes: 50, opRange: { fromOpNo: 20, toOpNo: 30 },
+        ops: [{ opNo: 20, minutes: 20 }, { opNo: 30, minutes: 30 }] };
+      data.items = [entry];
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      (operation === 'split' ? mocks.opSplit : mocks.opMerge).mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+      renderSeibanBoard();
+      fireEvent.click(within(screen.getByTestId(`planning-board-item-${entry.itemId}`)).getByRole('button', { name: /の数量/ }));
+      const action = screen.getByRole('button', { name: operation === 'split' ? '工程30の前で分ける' : 'まとめる' });
+      await waitFor(() => expect(action).toBeEnabled()); fireEvent.click(action);
+      await waitFor(() => expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent('表示中のデータが更新されています。最新状態を取得してください。'));
+      expect(mocks.refetch).toHaveBeenCalled(); expect(action).toBeEnabled();
     });
     it.each([false, true])('clears affected later selections returned by split and preserves other parts (piece=%s)', async (asPiece) => {
       const data = { ...fixture(), pieceCapabilities: { createEnabled: true, includePieces: true } };
@@ -1298,7 +1358,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem(CATEGORY_STORAGE_KEY);
     localStorage.removeItem(SCHEDULE_SOURCE_STORAGE_KEY);
     for (const category of ['grinding', 'cutting', 'all']) localStorage.removeItem(`kiosk.planning-board.single-resource:site-1:${category}`);
-    mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset();
+    mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset(); mocks.opSplit.mockReset(); mocks.opMerge.mockReset();
     mocks.completion.mockReset();
     mocks.completion.mockResolvedValue({});
     mocks.capacity.mockReset();

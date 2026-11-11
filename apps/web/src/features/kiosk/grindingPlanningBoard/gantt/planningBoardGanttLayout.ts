@@ -131,7 +131,7 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   // Bars end at their own due date, so compare with the previous bar in lane time order, not display order.
   for (const { item, resource } of sorted.map((item) => ({ item, resource: resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定', due: resolveGrindingPlanningBoardDueDate(item, allocation) ?? '\uffff' }))
     .sort((a, b) => a.resource.localeCompare(b.resource) || a.due.localeCompare(b.due))) {
-    if (isUnitPiece(item) && previousParts.get(resource) !== item.fhincd) setupByItemId.set(item.itemId, setupByResource.get(resource)?.get(item.fhincd) ?? 0);
+    if (isUnitPiece(item) && previousParts.get(resource) !== item.fhincd) setupByItemId.set(item.itemId, (item.opRange ? item.setupMinutes ?? 0 : setupByResource.get(resource)?.get(item.fhincd) ?? 0));
     previousParts.set(resource, item.fhincd);
   }
   const bars = sorted.map((item): NormalGanttBar => {
@@ -269,6 +269,9 @@ export function placeForward(time: number, minutes: number, hours: number, pause
   return { start, end: cursor, segments };
 }
 
+// Op bars of one piece chain only through the bar holding its last op.
+const lastOpNo = (items: readonly GrindingPlanningBoardItem[], pieceId: string | undefined) => Math.max(...items.filter((item) => item.pieceId === pieceId).map((item) => item.opRange?.toOpNo ?? 0));
+
 export function forwardPlanningBoardPredecessors(items: readonly GrindingPlanningBoardItem[]) {
   const parts = new Map<string, GrindingPlanningBoardItem[]>();
   let processCounts: Map<string, number> | undefined;
@@ -287,7 +290,7 @@ export function forwardPlanningBoardPredecessors(items: readonly GrindingPlannin
       (processCounts ??= new Map()).set(key, processes.length);
       for (let i = 1; i < processes.length; i++) {
         const previous: string[] = [];
-        for (const item of processes[i - 1]!) previous.push(item.itemId);
+        for (const item of processes[i - 1]!) if (!item.opRange || item.opRange.toOpNo >= lastOpNo(processes[i - 1]!, item.pieceId)) previous.push(item.itemId);
         for (const item of processes[i]!) predecessors.set(item.itemId, previous);
       }
     } else {
@@ -350,7 +353,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
     const ready = readyAt(item);
     const unknown = requiredMinutesUnknown(item);
-    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? setupByResource.get(resource)?.get(item.fhincd) ?? 0 : 0;
+    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? (item.opRange ? item.setupMinutes ?? 0 : setupByResource.get(resource)?.get(item.fhincd) ?? 0) : 0;
     const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : ganttRequiredMinutes(item)! + setup, hours, pausesForBreaks);
     if (item.kind === 'test') previousParts.delete(resource);
     else previousParts.set(resource, item.fhincd);
