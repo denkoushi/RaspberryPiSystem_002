@@ -125,24 +125,15 @@ capabilities. Host networking, service/profile selection, environment files, res
   The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes.
 - Device cgroup rules allow `rw` without `m`; read-only binds prevent directory changes while allowing permitted device I/O.
 
-Prepare each terminal before enabling:
+The standard release automatically prepares terminals with `client_agents_hardened: true`: it checks the required numeric GIDs
+and PC/SC socket access before stopping the kiosk, stops affected agents before migrating the old NFC queue (including SQLite
+sidecars) only when the volume has no queue, fixes existing NFC/torque volume ownership, and applies the hardened torque guard
+and udev rules before Compose recreation. Volumes are identified by Compose labels; repeated releases preserve existing queues.
+Manual preparation is verification only: check actual USB/input/serial node access and PC/SC card access as the agent user, and
+verify the torque runtime directory is `root:10001`, mode `0770`, with exact wrench nodes in group `input`, mode `0660`.
+The repository does not provision numeric group IDs; resolve any reported mismatch before retrying the release.
 
-1. Check `getent group plugdev dialout input` against GIDs `46/20/104`. The repository does not provision these numeric IDs. If they
-   differ, resolve the mismatch before enabling; do not assume group names alone grant access.
-2. Check `stat -Lc '%a %u %g %n'` on the actual USB, input and serial nodes. USB must grant plugdev access, serial must grant dialout
-   access, and torque/optional TS100 HID must grant input access. Do not use world-writable device permissions.
-3. Verify the installed `/run/pcscd/pcscd.comm` socket mode and actual card access as the agent user. The existing polkit rule allows
-   PC/SC access. A socket restricted to `0660` needs its actual numeric GID added to NFC's hardened `group_add` before enabling;
-   retain restricted socket permissions.
-4. Stop the affected agents and back up persistent queues. Identify the actual NFC/torque named volumes with `docker inspect`, without
-   guessing project prefixes. Use a maintenance container to `chown -R 10001:10001 /data` on each existing volume, including SQLite
-   sidecars. New volumes inherit image ownership and mode `0750`; image ownership does not change existing volumes. Preserve any NFC
-   queue held at `./data` inside the old container and copy it into the named volume before recreation covers that path.
-5. For torque, install the updated guard helper and render its unit and wrench udev rules with the terminal's hardened setting.
-   Reload systemd, restart the guard, reload/retrigger udev and verify `/run/torque-bluetooth-guard` is `root:10001`, mode `0770`, and the
-   exact wrench nodes are `input`, mode `0660`, before starting the hardened container. Controller identity selection remains unchanged.
-
-Enable only the prepared terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
+Enable only the trial terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
 release procedure in [deployment.md](../guides/deployment.md), inspect its plan and limit the release to that exact host:
 
 ```bash
@@ -163,10 +154,14 @@ Verify on that Pi4:
 5. Recreate/restart the agents and repeat hardware checks and queue persistence checks. Exercise release rollback: the release template
    also renders with previous images, which must work with the selected mode and existing volumes. Record the release run ID and results.
 
-To roll back the mode, set `client_agents_hardened: false` for the same terminal and redeploy with the same exact host limit. Reapply
-its guard/udev templates in legacy mode: the unit omits the group/mode overrides and the helper defaults the runtime directory to `0755`.
-Legacy containers run as root and retain access to volumes owned by `10001:10001`; no reverse chown or volume deletion is needed.
-Preserve queue backups, verify NFC, barcode, torque and health again, and record the rollback run ID and result.
+Automatic release rollback starts the previous images in the same selected mode; it cannot fix a hardening-mode defect.
+To roll back the mode, set `client_agents_hardened: false` for the same terminal and redeploy with the same exact `--limit`.
+The standard release does not re-render the torque guard unit, udev rules or helper when the flag is false; their hardened versions
+remain installed and work with the root-running legacy containers. No reverse chown or volume deletion is needed.
+The NFC queue remains in the volume at `/data`, while the legacy agent defaults to `./data` in its writable layer. Before redeploying
+that terminal, add `nfc_agent_queue_db_path: /data/nfc-agent-queue.db` to its inventory host vars; `templates/nfc-agent.env.j2` uses
+this variable for `QUEUE_DB_PATH`. Preserve queue backups, verify NFC, barcode, torque and health again, and record the rollback run ID
+and result.
 
 ## Verification checklist (per item)
 
