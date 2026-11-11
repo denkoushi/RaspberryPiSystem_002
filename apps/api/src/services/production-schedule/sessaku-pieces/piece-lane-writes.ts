@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardTestBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceIdFromItemId, sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import type { PieceAuditContext } from './piece-audit.js';
 
 export const createLaneWrites = (overrides: Map<string, Override>) => ({
@@ -89,12 +89,12 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
       });
     }
   }
-  for (const id of removed.filter((id) => id.startsWith('piece:'))) {
+  for (const id of removed.filter((id) => sessakuPieceIdFromItemId(id) !== null && !replacements.includes(id))) {
     before.laneWrites.removed.add(id);
     before.laneWrites.pending.delete(id);
   }
   before.pieces = next.filter((item): item is GrindingPlanningBoardItem => item.kind !== 'test');
-  for (const id of removed.filter((id) => id.startsWith('piece:'))) before.overrides.delete(id);
+  for (const id of removed.filter((id) => sessakuPieceIdFromItemId(id) !== null && !replacements.includes(id))) before.overrides.delete(id);
   before.stateVersionIncrements += 1;
   if (audit?.timing) audit.timing.rerankMs += performance.now() - started;
 }

@@ -1186,6 +1186,18 @@ describe('forward PlanningBoardGanttView', () => {
     expect(buttons).toHaveLength(1);
     expect(screen.getByTestId('planning-gantt-chain-strip')).toContainElement(buttons[0]!);
   });
+  it('connects same-piece intervals by operation number and uses the final source interval for later processing', () => {
+    const entry = item({ kind: 'piece', pieceId: 'p', parentItemId: 'parent', piecePosition: 1, processOrder: '10', unitRequiredMinutes: 30, setupMinutes: 0 });
+    const entries = [item({ ...entry, itemId: 'pieceops:p:30', opRange: { fromOpNo: 30, toOpNo: 30 } }),
+      item({ ...entry, itemId: 'piece:p', opRange: { fromOpNo: 10, toOpNo: 19 } }),
+      item({ ...entry, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 29 } }),
+      item({ kind: 'piece', itemId: 'piece:later', pieceId: 'later', parentItemId: 'later-parent', processOrder: '20', sourcePieceId: 'p', sourceItemId: 'pieceops:p:30', requiredMinutes: 30 })];
+    render(<PlanningBoardGanttView {...forwardProps(entries)} />);
+    tap(screen.getAllByTestId('planning-gantt-bar-piece:p')[0]!);
+    expect(screen.getAllByTestId('planning-gantt-piece-link').map(link => link.getAttribute('data-from-to'))).toEqual(['piece:p->pieceops:p:20', 'pieceops:p:20->pieceops:p:30']);
+    fireEvent.click(screen.getByRole('button', { name: '線の表示を切り替える(今は分割)' }));
+    expect(screen.getAllByTestId('planning-gantt-chain-link').map(link => link.getAttribute('data-from-to'))).toEqual(['pieceops:p:30->piece:later']);
+  });
   it('defaults to ordered piece arcs and toggles exclusively to persisted process links', () => {
     const entries = [3, 1, 2].map((position) => item({ itemId: `piece:${position}`, kind: 'piece', parentItemId: 'parent',
       piecePosition: position, processOrder: '10', requiredMinutes: 480 }));

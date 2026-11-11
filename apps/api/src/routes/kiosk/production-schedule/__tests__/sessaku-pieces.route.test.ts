@@ -4,8 +4,8 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { ApiError } from '../../../../lib/errors.js';
-const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), autoSplit: vi.fn(), wake: vi.fn() }));
-vi.mock('../../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split, mergeSessakuPieces: mocks.merge, setSessakuPieceCompletion: mocks.completion, setSessakuPieceOpCompletion: mocks.opCompletion }));
+const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), opSplit: vi.fn(), opMerge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), autoSplit: vi.fn(), wake: vi.fn() }));
+vi.mock('../../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split, mergeSessakuPieces: mocks.merge, splitSessakuPieceOps: mocks.opSplit, mergeSessakuPieceOps: mocks.opMerge, setSessakuPieceCompletion: mocks.completion, setSessakuPieceOpCompletion: mocks.opCompletion }));
 vi.mock('../../../../services/production-schedule/sessaku-pieces/auto-unit-split.service.js', () => ({ autoSplitSessakuUnits: mocks.autoSplit }));
 vi.mock('../../../../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js', () => ({ wakeSessakuAutoUnitSplit: mocks.wake }));
 import { registerSessakuPiecesRoutes } from '../sessaku-pieces.js';
@@ -115,6 +115,95 @@ describe('sessaku piece routes', () => {
     const denied = await app(false);
     expect((await denied.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/1/completion`, payload })).statusCode).toBe(401);
     await denied.close();
+  });
+
+  it.each(['split', 'merge'] as const)('forwards operation %s and records authenticated scope and audit', async (action) => {
+    const instance = await app();
+    const pieceId = randomUUID();
+    const itemId = `pieceops:${pieceId}:3`;
+    const service = action === 'split' ? mocks.opSplit : mocks.opMerge;
+    const result = { parentItemId: 'row:parent', pieceSetVersion: 4, pieces: [{ itemId }] };
+    service.mockResolvedValue(result);
+    const payload = { itemId, expectedPieceSetVersion: 3, itemRevision: 'a'.repeat(64), dueSource: 'scaw', siteKey: 'untrusted',
+      ...(action === 'split' ? { fromOpNo: 5 } : {}) };
+    try {
+      const response = await instance.inject({ method: 'POST', url: `${base}/ops/${action}`, payload });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(service).toHaveBeenCalledWith({ ...payload, siteKey: 'server-site', audit: expect.objectContaining({
+        action: `op_${action}`, pieceIds: [pieceId], expectedVersion: 3, itemRevision: payload.itemRevision,
+        actorClientDeviceId: 'device-1', actorDeviceName: expect.any(String), requestId: expect.any(String)
+      }) });
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        action: `op_${action}`, siteKey: 'server-site', actorClientDeviceId: 'device-1', pieceIds: [pieceId],
+        expectedVersion: 3, itemRevision: payload.itemRevision, outcome: 'success', httpStatus: 200
+      }) });
+    } finally { await instance.close(); }
+  });
+
+  it.each(['split', 'merge'] as const)('rejects unauthenticated operation %s before service or audit', async (action) => {
+    const instance = await app(false);
+    try {
+      expect((await instance.inject({ method: 'POST', url: `${base}/ops/${action}`, payload: {} })).statusCode).toBe(401);
+      expect(mocks.opSplit).not.toHaveBeenCalled();
+      expect(mocks.opMerge).not.toHaveBeenCalled();
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
+    } finally { await instance.close(); }
+  });
+
+  it.each(['split', 'merge'] as const)('preserves stale revision conflicts and audits operation %s', async (action) => {
+    const instance = await app();
+    const service = action === 'split' ? mocks.opSplit : mocks.opMerge;
+    service.mockRejectedValue(new ApiError(409, 'stale', undefined, 'STALE_SESSAKU_PIECES'));
+    const payload = { itemId: `pieceops:${randomUUID()}:3`, expectedPieceSetVersion: 2, itemRevision: 'a'.repeat(64),
+      ...(action === 'split' ? { fromOpNo: 4 } : {}) };
+    try {
+      const response = await instance.inject({ method: 'POST', url: `${base}/ops/${action}`, payload });
+      expect(response.statusCode).toBe(409);
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        action: `op_${action}`, outcome: 'rejected', httpStatus: 409, errorCode: 'STALE_SESSAKU_PIECES'
+      }) });
+    } finally { await instance.close(); }
+  });
+
+  it.each([
+    ['split', { fromOpNo: 0 }], ['split', { fromOpNo: 21 }], ['split', { fromOpNo: 2.5 }], ['split', { fromOpNo: undefined }],
+    ['split', { itemId: 'piece:not-a-uuid' }], ['merge', { itemId: 'row:parent' }],
+    ['merge', { itemId: `pieceops:${randomUUID()}:0` }], ['merge', { expectedPieceSetVersion: -1 }],
+    ['split', { itemRevision: 'invalid' }], ['merge', { dueSource: 'invalid' }]
+  ])('validates operation %s input %j', async (action, invalid) => {
+    const instance = await app();
+    const payload = { itemId: `piece:${randomUUID()}`, fromOpNo: 3, expectedPieceSetVersion: 1, itemRevision: 'a'.repeat(64), ...invalid };
+    try {
+      expect((await instance.inject({ method: 'POST', url: `${base}/ops/${action}`, payload })).statusCode).toBe(400);
+      expect(mocks.opSplit).not.toHaveBeenCalled();
+      expect(mocks.opMerge).not.toHaveBeenCalled();
+      expect(prisma.productionScheduleSessakuPieceAuditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+        action: `op_${action}`, outcome: 'rejected', httpStatus: 400, errorCode: 'VALIDATION_ERROR'
+      }) });
+    } finally { await instance.close(); }
+  });
+
+  it.each(['piece', 'pieceops'] as const)('accepts %s item identity for operation completion', async (prefix) => {
+    const instance = await app();
+    const pieceId = randomUUID();
+    const itemId = `${prefix}:${pieceId}${prefix === 'pieceops' ? ':3' : ''}`;
+    mocks.opCompletion.mockResolvedValue({ pieceSetVersion: 2 });
+    const payload = { itemId, intent: 'complete', expectedPieceSetVersion: 1, itemRevision: 'a'.repeat(64) };
+    try {
+      expect((await instance.inject({ method: 'PUT', url: `${base}/${pieceId}/ops/3/completion`, payload })).statusCode).toBe(200);
+      expect(mocks.opCompletion).toHaveBeenCalledWith(expect.objectContaining({ ...payload, pieceId, opNo: 3, siteKey: 'server-site' }));
+    } finally { await instance.close(); }
+  });
+
+  it('rejects malformed completion item identity', async () => {
+    const instance = await app();
+    try {
+      expect((await instance.inject({ method: 'PUT', url: `${base}/${randomUUID()}/ops/3/completion`, payload: {
+        itemId: 'pieceops:invalid:3', intent: 'complete', expectedPieceSetVersion: 1, itemRevision: 'a'.repeat(64)
+      } })).statusCode).toBe(400);
+      expect(mocks.opCompletion).not.toHaveBeenCalled();
+    } finally { await instance.close(); }
   });
 
 });

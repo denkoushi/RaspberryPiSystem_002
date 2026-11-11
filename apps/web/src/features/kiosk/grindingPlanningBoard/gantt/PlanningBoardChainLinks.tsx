@@ -45,7 +45,11 @@ export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, 
       };
     };
     const positions = new Map(bars.map((bar) => [bar.item.itemId, position(bar)]));
+    const lastIntervalByPiece = new Map<string, string>();
     const processes = new Map<string, GanttBar[]>();
+    for (const bar of [...bars].sort((a, b) => (a.item.opRange?.fromOpNo ?? 0) - (b.item.opRange?.fromOpNo ?? 0))) {
+      if (bar.item.pieceId) lastIntervalByPiece.set(bar.item.pieceId, bar.item.itemId);
+    }
     for (const bar of bars) {
       const key = bar.item.kind === 'piece' && bar.item.parentItemId ? bar.item.parentItemId : bar.item.itemId;
       const process = processes.get(key);
@@ -61,7 +65,7 @@ export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, 
         else pieceGroups.set(bar.item.parentItemId, [bar]);
       }
       setLinks([...pieceGroups.values()].flatMap((group) => {
-        group.sort((a, b) => (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity));
+        group.sort((a, b) => (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || (a.item.opRange?.fromOpNo ?? 0) - (b.item.opRange?.fromOpNo ?? 0));
         return group.slice(1).flatMap((bar, index) => {
           const previousBar = group[index]!;
           const previous = positions.get(previousBar.item.itemId)?.last;
@@ -78,6 +82,7 @@ export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, 
     }
     const groups = [...processes.values()];
     setLinks(groups.slice(1).flatMap((group, index) => groups[index]!.flatMap((previousBar) => group.flatMap((bar) => {
+      if (previousBar.item.opRange && previousBar.item.itemId !== lastIntervalByPiece.get(previousBar.item.pieceId!)) return [];
       const previous = positions.get(previousBar.item.itemId)?.last;
       const next = positions.get(bar.item.itemId)?.first;
       if (!previous || !next) return [];

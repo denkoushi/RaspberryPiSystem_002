@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 
 import { Dialog } from '../../../components/ui/Dialog';
 
+import { isUnitPiece } from './gantt/planningBoardUnitSegments';
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -22,6 +23,8 @@ type PieceActions = {
   completionPendingParentIds?: ReadonlySet<string>;
   onSplit: (item: GrindingPlanningBoardItem, quantities: number[]) => Promise<void>;
   onMerge: (items: GrindingPlanningBoardItem[]) => Promise<void>;
+  onOpSplit?: (item: GrindingPlanningBoardItem, fromOpNo: number) => Promise<void>;
+  onOpMerge?: (item: GrindingPlanningBoardItem) => Promise<void>;
   onOpCompletion?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo: number) => Promise<void>;
   onRemoved?: (item: GrindingPlanningBoardItem) => void;
 };
@@ -37,7 +40,8 @@ const EMPTY_SELECTED_PIECES: ReadonlyMap<string, GrindingPlanningBoardItem[]> = 
 const PIECE_COLORS = ['bg-sky-400', 'bg-violet-400', 'bg-amber-500', 'bg-pink-400', 'bg-green-400', 'bg-rose-400'];
 const PIECE_BORDERS = ['border-t-sky-400', 'border-t-violet-400', 'border-t-amber-500', 'border-t-pink-400', 'border-t-green-400', 'border-t-rose-400'];
 
-export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved, onOpCompletion }: {
+export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved, onOpCompletion, changePieceOps }: {
+  changePieceOps?: (item: GrindingPlanningBoardItem, fromOpNo?: number) => Promise<void>;
   onRemoved?: (item: GrindingPlanningBoardItem) => void;
   onOpCompletion?: PieceActions['onOpCompletion'];
   createEnabled: boolean;
@@ -66,12 +70,14 @@ export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceC
   }), []);
   const opCompletionRef = useRef(onOpCompletion);
   opCompletionRef.current = onOpCompletion;
+  const changePieceOpsRef = useRef(changePieceOps);
+  changePieceOpsRef.current = changePieceOps;
   const changePiecesRef = useRef(changePieces);
   changePiecesRef.current = changePieces;
   const selectedItemsByParent = useMemo(() => {
     const parent = selectedItems[0]?.parentItemId;
     const mergeable = selectedItems.length >= 2 && selectedItems.every((item) => item.kind === 'piece' &&
-      item.parentItemId === parent && !item.isLaterProcess && !item.isCompleted && !item.quantityWarning);
+      item.parentItemId === parent && !item.opRange && !item.isLaterProcess && !item.isCompleted && !item.quantityWarning);
     return mergeable && parent
       ? new Map([[parent, [...selectedItems]]])
       : EMPTY_SELECTED_PIECES;
@@ -81,6 +87,8 @@ export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceC
     isCutting: (item: GrindingPlanningBoardItem) => resourceCategories?.[item.originalResourceCd ?? ''] === 'cutting',
     selectedItemsByParent, completionPendingParentIds,
     onOpCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo: number) => opCompletionRef.current?.(item, intent, opNo) ?? Promise.resolve(),
+    onOpSplit: (item: GrindingPlanningBoardItem, fromOpNo: number) => changePieceOpsRef.current?.(item, fromOpNo) ?? Promise.resolve(),
+    onOpMerge: (item: GrindingPlanningBoardItem) => changePieceOpsRef.current?.(item) ?? Promise.resolve(),
     onSplit: (item: GrindingPlanningBoardItem, quantities: number[]) => changePiecesRef.current([item], quantities),
     onMerge: (items: GrindingPlanningBoardItem[]) => changePiecesRef.current(items)
   }), [blockingAccess, onRemoved, createEnabled, enabled, resourceCategories, selectedItemsByParent, completionPendingParentIds]);
@@ -126,15 +134,16 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
 }) {
   const actions = useContext(PlanningBoardPiecesContext);
   const [open, setOpen] = useState(false);
-  const mergeItems = !item.isLaterProcess && actions?.isCutting(item) && selected && item.kind === 'piece' && item.parentItemId
+  const mergeItems = !item.opRange && !item.isLaterProcess && actions?.isCutting(item) && selected && item.kind === 'piece' && item.parentItemId
     ? actions?.selectedItemsByParent.get(item.parentItemId) : undefined;
   const quantity = item.plannedQuantity;
-  const canSplit = Boolean(!item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && item.fseiban?.trim() !== '********' && !item.isCompleted && !item.quantityWarning &&
+  const canSplit = Boolean(!item.opRange && !item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && item.fseiban?.trim() !== '********' && !item.isCompleted && !item.quantityWarning &&
     typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2);
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
+  const canMergeOps = item.itemId.startsWith('pieceops:');
   const canCompleteOp = item.kind === 'piece' && Boolean(item.ops?.length) && item.completionSource !== 'import';
-  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp);
+  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps);
   if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
@@ -230,6 +239,22 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
       if (generation === gate.generation()) setPending(false);
     }
   };
+  const runOps = async (fromOpNo?: number) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
+    if (pending || !backdropReady || !operable || actions.getBlocking().blocked) return;
+    setPending(true); setFailure(null);
+    try {
+      if (fromOpNo == null) await actions.onOpMerge?.(item);
+      else await actions.onOpSplit?.(item, fromOpNo);
+      if (generation === gate.generation()) setOpen(false);
+    } catch (error) {
+      if (generation !== gate.generation()) return;
+      if (error instanceof PieceOperationBlockedError && !error.failure) return;
+      setFailure({ message: error instanceof Error ? error.message : '保存できませんでした。時間をおいて再試行してください。', isError: true });
+    } finally { if (generation === gate.generation()) setPending(false); }
+  };
+  const ops = [...(item.ops ?? [])].filter((op) => !item.opRange || (op.opNo >= item.opRange.fromOpNo && op.opNo <= item.opRange.toOpNo)).sort((a, b) => a.opNo - b.opNo);
   const toggleOp = async (opNo: number, completed: boolean) => {
     if (!gate.attempt()) return;
     const generation = gate.generation();
@@ -238,17 +263,21 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
     try { await actions.onOpCompletion?.(item, completed ? 'incomplete' : 'complete', opNo); }
     finally { if (generation === gate.generation()) setPending(false); }
   };
-  return <PieceDialog actions={actions} showSplit={showSplit && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
+  return <PieceDialog actions={actions} showSplit={showSplit && !item.opRange && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
-        {item.kind === 'piece' && [...(item.ops ?? [])].sort((a, b) => a.opNo - b.opNo).map((op) => {
+        {item.kind === 'piece' && ops.map((op, index) => {
           const completed = item.completedOpNos?.includes(op.opNo) ?? false;
-          return <button key={op.opNo} type="button" aria-label={`工程${op.opNo}を${completed ? '未完了' : '完了'}にする`} aria-pressed={completed}
+          return <Fragment key={op.opNo}>
+            {index > 0 && isUnitPiece(item) && actions.createEnabled && <button type="button" aria-label={`工程${op.opNo}の前で分ける`}
+              disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void runOps(op.opNo); }}
+              className="h-8 rounded border border-dashed border-slate-600 bg-transparent text-slate-300 disabled:opacity-40">✂</button>}
+            <button type="button" aria-label={`工程${op.opNo}を${completed ? '未完了' : '完了'}にする`} aria-pressed={completed}
             disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void toggleOp(op.opNo, completed); }}
             className={`min-h-11 rounded border px-2 text-left tabular-nums disabled:opacity-40 ${completed ? 'border-slate-600 bg-slate-600 text-slate-300' : 'border-sky-400 bg-sky-900'}`}>
             {op.opNo}<span aria-hidden="true" className="float-right">{completed ? '✓' : '○'}</span>
-          </button>;
+          </button></Fragment>;
         })}
-        {showSplit && actions.createEnabled && <>
+        {showSplit && !item.opRange && actions.createEnabled && <>
           <div role="group" aria-label="分け数" className="grid grid-cols-5 gap-1">
             {[2, 3, 4, 5, 6].map((value) => <button key={value} type="button" aria-label={`${value}つに分ける数`} aria-pressed={count === value}
               disabled={pending || blocked || value > (quantity ?? 0)} onClick={() => setCount(value)}
@@ -275,7 +304,8 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
           </div>
           <button type="button" disabled={!backdropReady || pending || blocked || !operable || !validSplit} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>{count}つに分ける</button>
         </>}
-        {mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
+        {item.itemId.startsWith('pieceops:') && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void runOps()}>まとめる</button>}
+        {!item.opRange && mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
       </div>}
     </PieceDialog>;
 }

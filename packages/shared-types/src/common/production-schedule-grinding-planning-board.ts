@@ -107,6 +107,8 @@ export interface GrindingPlanningBoardItem {
   parentItemId?: string;
   pieceId?: string;
   sourcePieceId?: string;
+  sourceItemId?: string;
+  opRange?: { fromOpNo: number; toOpNo: number } | null;
   isLaterProcess?: boolean;
   piecePosition?: number;
   pieceSetVersion?: number;
@@ -403,7 +405,19 @@ export interface SessakuPiecesMergeRequest {
   expectedPieceSetVersion: number;
   itemRevisions: Record<string, string>;
 }
+export interface SessakuPieceOpSplitRequest {
+  dueSource?: 'excel' | 'scaw';
+  itemId: string;
+  fromOpNo: number;
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export type SessakuPieceOpMergeRequest = Omit<SessakuPieceOpSplitRequest, 'fromOpNo'>;
+export type SessakuPieceOpSplitResponse = SessakuPiecesMutationResponse;
+export type SessakuPieceOpMergeResponse = SessakuPiecesMutationResponse;
+
 export interface SessakuPieceCompletionRequest {
+  itemId?: string;
   dueSource?: 'excel' | 'scaw';
   intent: 'complete' | 'incomplete';
   expectedPieceSetVersion: number;
