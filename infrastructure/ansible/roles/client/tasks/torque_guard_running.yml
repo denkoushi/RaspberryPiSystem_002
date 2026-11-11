@@ -1,0 +1,24 @@
+---
+# Restart=always hides start failures from the systemd module, so require the
+# same main process to stay active across a short window.
+- name: Read the torque guard main process
+  ansible.builtin.command:
+    argv: [systemctl, show, torque-bluetooth-guard.service, -p, ActiveState, -p, MainPID]
+  register: torque_guard_first
+  changed_when: false
+  retries: 5
+  delay: 1
+  until:
+    - "'ActiveState=active' in torque_guard_first.stdout_lines"
+    - "'MainPID=0' not in torque_guard_first.stdout_lines"
+
+- name: Give a failing torque guard time to exit
+  ansible.builtin.wait_for:
+    timeout: 3
+
+- name: Require the torque guard main process to stay running
+  ansible.builtin.command:
+    argv: [systemctl, show, torque-bluetooth-guard.service, -p, ActiveState, -p, MainPID]
+  register: torque_guard_second
+  changed_when: false
+  failed_when: torque_guard_second.stdout_lines | sort != torque_guard_first.stdout_lines | sort

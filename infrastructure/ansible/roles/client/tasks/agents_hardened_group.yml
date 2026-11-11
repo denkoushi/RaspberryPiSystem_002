@@ -1,0 +1,32 @@
+---
+# systemd rejects a numeric Group= that has no host entry, so hardened hosts
+# need a host group for the agent GID shared with the torque guard runtime dir.
+- name: Look up the host group for the hardened agent GID
+  ansible.builtin.command:
+    argv: [getent, group, '10001']
+  register: client_agents_hardened_gid_group
+  changed_when: false
+  failed_when: client_agents_hardened_gid_group.rc not in [0, 2]
+
+- name: Look up the hardened agent group name
+  ansible.builtin.command:
+    argv: [getent, group, kiosk-agent]
+  register: client_agents_hardened_name_group
+  changed_when: false
+  failed_when: client_agents_hardened_name_group.rc not in [0, 2]
+  when: client_agents_hardened_gid_group.rc == 2
+
+- name: Refuse to repurpose an existing kiosk-agent group with another GID
+  ansible.builtin.assert:
+    that:
+      - client_agents_hardened_name_group.rc == 2
+    fail_msg: "Host group kiosk-agent exists with a GID other than 10001. Fix the host group before releasing hardened agents."
+  when: client_agents_hardened_gid_group.rc == 2
+
+- name: Create the host group for the hardened agent GID
+  ansible.builtin.group:
+    name: kiosk-agent
+    gid: 10001
+    system: false
+    state: present
+  when: client_agents_hardened_gid_group.rc == 2
