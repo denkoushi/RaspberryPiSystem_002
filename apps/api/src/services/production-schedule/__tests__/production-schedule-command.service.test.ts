@@ -19,6 +19,11 @@ import { prisma } from '../../../lib/prisma.js';
 import { sharedScheduleFieldsRepository } from '../shared-schedule-fields.repository.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 
+vi.mock('@prisma/client', async () => {
+  const { sqltag, join, raw, empty, PrismaClientKnownRequestError } = await import('@prisma/client/runtime/client');
+  return { Prisma: { sql: sqltag, join, raw, empty, PrismaClientKnownRequestError } };
+});
+
 vi.mock('../order-assignment/order-assignment-release.repository.js', () => ({
   releaseOrderAssignmentAtLocation: vi.fn().mockResolvedValue({ shiftCount: 0 })
 }));
@@ -35,7 +40,7 @@ vi.mock('../shared-schedule-fields.repository.js', () => ({
   sharedScheduleFieldsRepository: {
     findRowNoteByRowId: vi.fn(),
     upsertRowNote: vi.fn(),
-    deleteRowNoteByRowId: vi.fn(),
+    updateRowNoteFields: vi.fn(),
   },
 }));
 
@@ -83,6 +88,7 @@ vi.mock('../../../lib/prisma.js', () => ({
       findUnique: vi.fn(),
       deleteMany: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
       upsert: vi.fn(),
     },
     productionScheduleProcessingTypeOption: {
@@ -99,10 +105,11 @@ vi.mock('../../../lib/prisma.js', () => ({
 describe('production-schedule-command.service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.$executeRaw).mockReset();
     vi.mocked(acquireProductionScheduleParentRowLockInTransaction).mockReset();
     vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mockReset();
     vi.mocked(sharedScheduleFieldsRepository.upsertRowNote).mockReset();
-    vi.mocked(sharedScheduleFieldsRepository.deleteRowNoteByRowId).mockReset();
+    vi.mocked(sharedScheduleFieldsRepository.updateRowNoteFields).mockReset();
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: (tx: typeof prisma) => Promise<unknown>) =>
       callback(prisma)
     );
@@ -120,15 +127,15 @@ describe('production-schedule-command.service', () => {
 
   it.each([
     ['note', 'new note'], ['note', ''], ['processingType', '塗装'], ['processingType', '']
-  ] as const)('%s 保存の読取後に納期保存が始まっても両方の値を保持する: %s', async (field, value) => {
+  ] as const)('%s 保存のロック取得後に納期保存が始まっても両方の値を保持する: %s', async (field, value) => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: {} } as never);
     let stored: { note: string; processingType: string | null; dueDate: Date | null } | null = {
       note: field === 'note' ? 'old note' : '', processingType: field === 'processingType' ? '塗装' : null, dueDate: null
     };
-    let releaseRead!: () => void;
-    let readStarted!: () => void;
-    const firstRead = new Promise<void>((resolve) => { readStarted = resolve; });
-    const resumeRead = new Promise<void>((resolve) => { releaseRead = resolve; });
+    let releaseLock!: () => void;
+    let lockStarted!: () => void;
+    const firstLock = new Promise<void>((resolve) => { lockStarted = resolve; });
+    const resumeLock = new Promise<void>((resolve) => { releaseLock = resolve; });
     let tail = Promise.resolve();
     const unlocks = new Map<unknown, () => void>();
     vi.mocked(prisma.$transaction).mockImplementation(async (callback: (tx: typeof prisma) => Promise<unknown>) => {
@@ -139,29 +146,32 @@ describe('production-schedule-command.service', () => {
       const previous = tail;
       tail = new Promise<void>((resolve) => { unlocks.set(tx, resolve); });
       await previous;
+      if (unlocks.size === 1) { lockStarted(); await resumeLock; }
     });
-    let reads = 0;
     vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mockImplementation(async () => {
       const snapshot = stored ? { ...stored } : null;
-      if (++reads === 1) { readStarted(); await resumeRead; }
       return snapshot as never;
     });
     vi.mocked(sharedScheduleFieldsRepository.upsertRowNote).mockImplementation(async (input) => {
       stored = { note: '', processingType: null, dueDate: null, ...stored, ...input };
       return stored as never;
     });
-    vi.mocked(sharedScheduleFieldsRepository.deleteRowNoteByRowId).mockImplementation(async () => {
-      stored = null;
-      return { count: 1 } as never;
+    vi.mocked(sharedScheduleFieldsRepository.updateRowNoteFields).mockImplementation(async (_rowId, fields) => {
+      if (stored) Object.assign(stored, fields);
+      return { count: stored ? 1 : 0 };
+    });
+    vi.mocked(prisma.$executeRaw).mockImplementation(async () => {
+      if (stored && !stored.note && !stored.processingType && !stored.dueDate) stored = null;
+      return 1;
     });
     const saving = field === 'note'
       ? upsertProductionScheduleNote({ rowId: 'row', locationKey: 'site', note: value })
       : upsertProductionScheduleProcessingType({ rowId: 'row', locationKey: 'site', processingType: value });
-    await firstRead;
+    await firstLock;
     const dueSaving = upsertProductionScheduleDueDate({ rowId: 'row', locationKey: 'site', dueDateText: '2026-11-20' });
     // Give the competing save time to reach the row lock (or finish on the old implementation).
     await new Promise((resolve) => setImmediate(resolve));
-    releaseRead();
+    releaseLock();
     await Promise.all([saving, dueSaving]);
     expect(stored).toMatchObject({
       note: field === 'note' ? value : '',
@@ -192,7 +202,17 @@ describe('production-schedule-command.service', () => {
     });
   });
 
-  it.each(['note', 'processingType', 'dueDate'] as const)('%s を消して3欄とも空になったらロック後に削除する', async (field) => {
+  it.each([{ note: '' }, { dueDate: null }, { processingType: null }])('共有欄のクリアは指定した列だけをupdateManyする: %j', async (fields) => {
+    const { sharedScheduleFieldsRepository: repository } = await vi.importActual<typeof import('../shared-schedule-fields.repository.js')>(
+      '../shared-schedule-fields.repository.js'
+    );
+    await repository.updateRowNoteFields('row', fields, prisma);
+    expect(prisma.productionScheduleRowNote.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { csvDashboardRowId: 'row' }, data: fields
+    });
+  });
+
+  it.each(['note', 'processingType', 'dueDate'] as const)('%s を消すと自分の列だけ更新してDB条件で空行を削除する', async (field) => {
     vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: {} } as never);
     vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mockResolvedValue({
       note: field === 'note' ? 'old' : '', processingType: field === 'processingType' ? '塗装' : null,
@@ -201,10 +221,25 @@ describe('production-schedule-command.service', () => {
     if (field === 'note') await upsertProductionScheduleNote({ rowId: 'row', locationKey: 'site', note: '' });
     if (field === 'processingType') await upsertProductionScheduleProcessingType({ rowId: 'row', locationKey: 'site', processingType: '' });
     if (field === 'dueDate') await upsertProductionScheduleDueDate({ rowId: 'row', locationKey: 'site', dueDateText: '' });
-    expect(sharedScheduleFieldsRepository.deleteRowNoteByRowId).toHaveBeenCalledExactlyOnceWith('row', prisma);
+    expect(sharedScheduleFieldsRepository.updateRowNoteFields).toHaveBeenCalledExactlyOnceWith('row', { [field]: field === 'note' ? '' : null }, prisma);
+    expect(prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const [sql, rowId] = vi.mocked(prisma.$executeRaw).mock.calls[0];
+    expect(String(sql)).toContain('DELETE FROM "ProductionScheduleRowNote"');
+    expect(String(sql)).toContain('"dueDate" IS NULL');
+    expect(String(sql)).toContain('BTRIM("note"');
+    expect(String(sql)).toContain('BTRIM("processingType"');
+    expect(rowId).toBe('row');
+    expect(prisma.productionScheduleRowNote.deleteMany).not.toHaveBeenCalled();
     expect(sharedScheduleFieldsRepository.upsertRowNote).not.toHaveBeenCalled();
     expect(vi.mocked(acquireProductionScheduleParentRowLockInTransaction).mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mock.invocationCallOrder[0]);
+      .toBeLessThan(vi.mocked(sharedScheduleFieldsRepository.updateRowNoteFields).mock.invocationCallOrder[0]);
+  });
+
+  it('存在しない納期日を400で拒否する', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: {} } as never);
+    await expect(upsertProductionScheduleDueDate({ rowId: 'row', locationKey: 'site', dueDateText: '2026-02-30' }))
+      .rejects.toMatchObject({ statusCode: 400, message: '納期日はYYYY-MM-DD形式で入力してください' });
+    expect(sharedScheduleFieldsRepository.upsertRowNote).not.toHaveBeenCalled();
   });
 
   it('完了はtransaction内の親行ロック後に割当を読み、直前に追加された枠も解放する', async () => {

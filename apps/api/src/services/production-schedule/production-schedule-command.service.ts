@@ -1,3 +1,5 @@
+import { deleteEmptyRowNote } from './empty-row-note.js';
+import { isValidDueDateText } from './due-date-writeback.service.js';
 import { runSessakuPieceOperation, type PieceAuditContext } from './sessaku-pieces/piece-audit.js';
 import type { SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { syncWholePiecesOperationCompletions } from './sessaku-pieces/piece-operation-definitions.js';
@@ -328,9 +330,9 @@ export async function upsertProductionScheduleNote(params: {
   const trimmedNote = note.slice(0, 100).trim();
   await runDueDateTransaction(async (tx) => {
     await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
-    if (!trimmedNote && !existing?.dueDate && !existing?.processingType?.trim()) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
+    if (!trimmedNote) {
+      await sharedScheduleFieldsRepository.updateRowNoteFields(row.id, { note: '' }, tx);
+      await deleteEmptyRowNote(tx, row.id);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -358,16 +360,15 @@ export async function upsertProductionScheduleDueDate(params: {
     });
     if (!row) throw new ApiError(404, '対象の行が見つかりません');
     const dueDateValue = dueDateText.trim();
-    if (dueDateValue && !/^\d{4}-\d{2}-\d{2}$/.test(dueDateValue)) {
+    if (dueDateValue && !isValidDueDateText(dueDateValue)) {
       throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
     }
     const dueDate = dueDateValue ? new Date(`${dueDateValue}T00:00:00.000Z`) : null;
     await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
     const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
-    const note = existing?.note?.trim() ?? '';
-    const processingType = existing?.processingType ?? null;
-    if (!dueDate && !note && !processingType?.trim()) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
+    if (!dueDate) {
+      await sharedScheduleFieldsRepository.updateRowNoteFields(row.id, { dueDate: null }, tx);
+      await deleteEmptyRowNote(tx, row.id);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -418,9 +419,9 @@ export async function upsertProductionScheduleProcessingType(params: {
 
   await runDueDateTransaction(async (tx) => {
     await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
-    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
-    if (!incomingType && !existing?.note?.trim() && !existing?.dueDate) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
+    if (!incomingType) {
+      await sharedScheduleFieldsRepository.updateRowNoteFields(row.id, { processingType: null }, tx);
+      await deleteEmptyRowNote(tx, row.id);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,

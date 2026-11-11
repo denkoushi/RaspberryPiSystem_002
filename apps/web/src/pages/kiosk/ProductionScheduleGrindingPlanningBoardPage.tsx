@@ -1,3 +1,4 @@
+import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS } from '@raspi-system/shared-types';
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -459,8 +460,8 @@ export function PlanningBoardPage() {
   const applyEditor = () => runEditor(async () => {
     if (!gate.attempt()) return; if (!editorSnapshot || allocation === 'original' || editorItems.length === 0) return;
     const offset = Number(offsetDays);
-    if (dueMode === 'offsetDays' && (!Number.isInteger(offset) || offset < 1)) {
-      setEditorError('加算日数は1以上の整数で入力してください。');
+    if (dueMode === 'offsetDays' && (!Number.isInteger(offset) || offset < 1 || offset > PLANNING_BOARD_MAX_DUE_OFFSET_DAYS)) {
+      setEditorError(`加算日数は1以上${PLANNING_BOARD_MAX_DUE_OFFSET_DAYS}以下の整数で入力してください。`);
       return;
     }
     const due: GrindingPlanningBoardDueRequest | undefined = dueMode === 'date'

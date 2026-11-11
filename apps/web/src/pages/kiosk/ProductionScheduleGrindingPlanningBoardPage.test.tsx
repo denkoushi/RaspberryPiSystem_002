@@ -3124,6 +3124,28 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 305を変更' })).toHaveLength(4);
   });
 
+  it.each([3650, 3651])('+暦日 %i の上限をプレビューと保存で検証する', async (days) => {
+    renderSeibanBoard();
+    selectAllBoardItems();
+    fireEvent.click(screen.getByRole('button', { name: '一括変更' }));
+    const dialog = screen.getByRole('dialog', { name: '一括変更' });
+    fireEvent.click(within(dialog).getByRole('button', { name: '+暦日' }));
+    const input = within(dialog).getByRole('spinbutton', { name: '加算日数' });
+    expect(input).toHaveAttribute('max', '3650');
+    fireEvent.change(input, { target: { value: String(days) } });
+    expect(within(dialog).queryAllByText(/入力エラー/).length > 0).toBe(days > 3650);
+    fireEvent.click(within(dialog).getByRole('button', { name: '適用' }));
+    if (days > 3650) {
+      expect(mocks.overrides).not.toHaveBeenCalled();
+      expect(within(dialog).getByRole('alert')).toHaveTextContent('加算日数は1以上3650以下の整数で入力してください。');
+    } else {
+      await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(1));
+      expect(mocks.overrides.mock.calls[0]?.[0].items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ due: { kind: 'offsetDays', days: 3650 } })
+      ]));
+    }
+  });
+
   it('+暦日の同期連打は1回だけ保存し、適用ボタンを保存完了までbusyにする', async () => {
     let resolve!: (value: unknown) => void;
     mocks.overrides.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));

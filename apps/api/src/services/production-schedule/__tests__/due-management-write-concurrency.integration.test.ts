@@ -1,3 +1,4 @@
+import { upsertProductionScheduleNote } from '../production-schedule-command.service.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
@@ -77,6 +78,23 @@ describe('due management write concurrency', () => {
       });
       await race(
         () => upsertProductionScheduleDueManagementPartNote({ ...part, note: '' }),
+        () => upsertProductionScheduleSeibanDueDate({ ...part, dueDateText: DUE_DATE_TEXT }),
+        iteration
+      );
+      const row = await prisma.productionScheduleRowNote.findUnique({ where: { csvDashboardRowId: rowIds[0]! } });
+      expect(row).toMatchObject({ note: '', dueDate: DUE_DATE });
+    }
+  });
+
+  it('行備考クリアと製番納期保存を並行実行しても保存した納期が残る', async () => {
+    for (let iteration = 0; iteration < REPEATS; iteration++) {
+      await prisma.productionScheduleRowNote.upsert({
+        where: { csvDashboardRowId: rowIds[0]! },
+        create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: rowIds[0]!, note: 'old' },
+        update: { note: 'old', dueDate: null, processingType: null }
+      });
+      await race(
+        () => upsertProductionScheduleNote({ rowId: rowIds[0]!, locationKey: LOCATION, note: '' }),
         () => upsertProductionScheduleSeibanDueDate({ ...part, dueDateText: DUE_DATE_TEXT }),
         iteration
       );

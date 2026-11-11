@@ -63,6 +63,18 @@ afterAll(async () => {
 });
 
 describe('atomic auto rank with PostgreSQL', () => {
+  it('accepts the same request twice with one assignment and one event', async () => {
+    const assignments = await rows(1);
+    await batch(assignments);
+    const before = await saved();
+    const eventCount = await prisma.dueManagementOutcomeEvent.count({ where: { csvDashboardRowId: { in: rowIds } } });
+    expect(eventCount).toBe(1);
+    await expect(batch(assignments)).resolves.toMatchObject({ success: true });
+    expect(await saved()).toEqual(before);
+    expect(before).toEqual([{ csvDashboardRowId: assignments[0]!.rowId, orderNumber: 1, location: locationKey }]);
+    expect(await prisma.dueManagementOutcomeEvent.count({ where: { csvDashboardRowId: { in: rowIds } } })).toBe(eventCount);
+  });
+
   it.each([locationKey, `${locationKey} - kioskA`])('rolls back earlier rows and events for an assigned middle row at %s', async (location) => {
     const assignments = await rows();
     await seed(assignments[1]!.rowId, location);
@@ -80,12 +92,8 @@ describe('atomic auto rank with PostgreSQL', () => {
     const singleResult = results[singleFirst ? 0 : 1]!;
     const batchResult = results[singleFirst ? 1 : 0]!;
     expect(singleResult.status).toBe('fulfilled');
-    if (batchResult.status === 'fulfilled') {
-      expect(await saved()).toEqual(assignments.map(({ rowId, orderNumber }) => ({ csvDashboardRowId: rowId, orderNumber, location: locationKey })));
-    } else {
-      expect(batchResult.reason).toMatchObject({ statusCode: 409, code: 'AUTO_RANK_ROW_ALREADY_ASSIGNED' });
-      expect(await saved()).toEqual([{ csvDashboardRowId: assignments[1]!.rowId, orderNumber: 2, location: locationKey }]);
-    }
+    expect(batchResult.status).toBe('fulfilled');
+    expect(await saved()).toEqual(assignments.map(({ rowId, orderNumber }) => ({ csvDashboardRowId: rowId, orderNumber, location: locationKey })));
   });
 
   it('serializes a batch and a same-row rank clear without deadlock in either start order', async () => {
