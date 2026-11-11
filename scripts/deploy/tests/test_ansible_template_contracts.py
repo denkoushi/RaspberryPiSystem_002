@@ -62,6 +62,24 @@ def production_web_variables() -> dict[str, str]:
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
+    def test_agent_env_allowed_origins(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        for agent in ("nfc", "barcode"):
+            template = environment.from_string(
+                (ANSIBLE_ROOT / "templates" / f"{agent}-agent.env.j2").read_text()
+            )
+            with self.subTest(agent=agent):
+                rendered = template.render(server_base_url="https://pi5.example").splitlines()
+                self.assertIn("ALLOWED_ORIGINS=https://pi5.example", rendered)
+                override = {f"{agent}_agent_allowed_origins": "https://one.example,https://two.example:8443"}
+                for variables in (override, dict(override, server_base_url="https://pi5.example")):
+                    self.assertIn(
+                        "ALLOWED_ORIGINS=https://one.example,https://two.example:8443",
+                        template.render(**variables).splitlines(),
+                    )
+                with self.assertRaises(UndefinedError):
+                    template.render()
+
     def test_restore_credentials_reuse_migration_url_without_replacing_runtime_url(self) -> None:
         environment = Environment(undefined=StrictUndefined)
         app_url = "postgresql://raspi_app:app-fixture@db:5432/borrow_return"
