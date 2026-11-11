@@ -185,9 +185,11 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
         current.baseOpIds = response.savedOpIds;
         if (response.savedOpNos !== undefined) current.baseOpNos = response.savedOpNos;
       }
+      let awaiting: Value | undefined;
       if (drafts.get(key) === next) {
         if (offline.enabled && response.savedMinutes !== undefined) {
-          drafts.set(key, { ...next });
+          awaiting = { ...next };
+          drafts.set(key, awaiting);
           queue.listeners.forEach((notify) => notify(next, false, false));
         } else {
           drafts.delete(key);
@@ -195,7 +197,15 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
         }
       } else queue.listeners.forEach((notify) => notify(next, false, false));
       if (offline.enabled) {
-        const results = await Promise.allSettled(['board', 'load', 'resource-minutes'].map((readKey) => offline.refreshRead(readKey)));
+        const results = await Promise.allSettled(['board', 'load', 'resource-minutes'].map(async (readKey) => {
+          const committed = await offline.refreshRead(readKey);
+          const acknowledged = awaiting;
+          if (readKey === 'resource-minutes' && committed && acknowledged?.awaitingRead?.pending && drafts.get(key) === acknowledged) {
+            drafts.delete(key);
+            queue.listeners.forEach((notify) => notify(acknowledged, false, true));
+            releaseQueue(key, queue);
+          }
+        }));
         results.forEach((result) => {
           if (result.status === 'rejected') console.warn('Planning board refresh after saving minutes failed', result.reason);
         });
