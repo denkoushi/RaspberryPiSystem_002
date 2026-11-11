@@ -12,7 +12,7 @@ import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import AgentConfig
+from .config import AgentConfig, normalize_origin
 from .serial_reader import SerialLineReader, SerialReaderStatus
 
 LOGGER = logging.getLogger("barcode_agent")
@@ -33,6 +33,14 @@ class EventIdGenerator:
             candidate = self._last_id + 1
         self._last_id = candidate
         return candidate
+
+
+class OriginCORSMiddleware(CORSMiddleware):
+    def is_allowed_origin(self, origin: str) -> bool:
+        try:
+            return normalize_origin(origin) in self.allow_origins
+        except ValueError:
+            return False
 
 
 class WebSocketManager:
@@ -72,10 +80,10 @@ def create_app(
     app = FastAPI(title="Barcode Agent")
 
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
+        OriginCORSMiddleware,
+        allow_origins=config.allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET"],
         allow_headers=["*"],
     )
 
@@ -94,6 +102,16 @@ def create_app(
 
     @app.websocket("/stream")
     async def websocket_stream(websocket: WebSocket) -> None:
+        origin = websocket.headers.get("origin")
+        if origin is not None:
+            try:
+                allowed = normalize_origin(origin) in config.allowed_origins
+            except ValueError:
+                allowed = False
+            if not allowed:
+                LOGGER.warning("Rejected WebSocket origin: %s", origin)
+                await websocket.close(code=1008)
+                return
         await event_manager.connect(websocket)
         try:
             for payload in list(replay):
