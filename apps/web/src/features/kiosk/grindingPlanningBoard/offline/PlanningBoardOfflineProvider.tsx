@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, createContext, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { flushSync } from 'react-dom';
 
 import { api, getResolvedClientKey } from '../../../../api/client';
@@ -101,51 +101,52 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
   const frozen = snapshot.phase === 'offline' || snapshot.phase === 'refreshing';
   const frozenNow = useRef<number | null>(null);
   const serverNow = () => clock.current ? clock.current.server + performance.now() - clock.current.mono : null;
+  const registerRead = useCallback((key: string, participant: BoardReadParticipant) => {
+    reads.current.set(key, participant);
+    return () => { if (reads.current.get(key) === participant) reads.current.delete(key); };
+  }, []);
+  const stagedRead = useCallback((key: string) => staged.current.get(key), []);
+  const reportRead = useCallback((generation: number, date: string | undefined) => {
+    if (generation !== controller.getSnapshot().generation || identity.current !== getResolvedClientKey()) return;
+    controller.reportBoardReadSuccess(generation);
+    if (generation !== controller.getSnapshot().generation) return;
+    const parsed = date ? Date.parse(date) : NaN;
+    lastReadDate.current = Number.isFinite(parsed) ? parsed : null;
+    if (Number.isFinite(parsed)) {
+      clock.current = { server: parsed, mono: performance.now() };
+    }
+  }, [controller]);
+  const publishRead = useCallback((generation: number) => {
+    if (generation === controller.getSnapshot().generation && identity.current === getResolvedClientKey()) setDisplayedAt(lastReadDate.current);
+  }, [controller]);
+  const refreshRead = useCallback(async (key: string) => {
+    if (!gate.canWrite()) return false;
+    const participant = reads.current.get(key); if (!participant) return false;
+    const generation = gate.generation(); const abort = new AbortController();
+    activeReads.current.add(abort);
+    const timeout = setTimeout(() => abort.abort(), config.lossAfterMs);
+    try {
+      const data = await participant.read(abort.signal);
+      if (abort.signal.aborted || generation !== gate.generation() || identity.current !== getResolvedClientKey() || reads.current.get(key) !== participant) return false;
+      participant.commit(data);
+      return true;
+    } catch (error: unknown) {
+      if (abort.signal.aborted) return false;
+      throw error;
+    } finally { clearTimeout(timeout); activeReads.current.delete(abort); }
+  }, [gate, config.lossAfterMs]);
+  const subscribeFreeze = useCallback((listener: () => void) => {
+    freezeListeners.current.add(listener);
+    return () => { freezeListeners.current.delete(listener); };
+  }, []);
   const value = useMemo(() => ({
     enabled: true, frozen, snapshot, gate, displayedAt, notification,
     now: () => {
       if (controller.getSnapshot().phase === 'online') return serverNow() ?? initialRenderTime.current;
       return frozenNow.current ?? clock.current?.server ?? initialRenderTime.current;
     },
-    registerRead: (key: string, participant: BoardReadParticipant) => {
-      reads.current.set(key, participant);
-      return () => { if (reads.current.get(key) === participant) reads.current.delete(key); };
-    },
-    stagedRead: (key: string) => staged.current.get(key),
-    reportRead: (generation: number, date: string | undefined) => {
-      if (generation !== controller.getSnapshot().generation || identity.current !== getResolvedClientKey()) return;
-      controller.reportBoardReadSuccess(generation);
-      if (generation !== controller.getSnapshot().generation) return;
-      const parsed = date ? Date.parse(date) : NaN;
-      lastReadDate.current = Number.isFinite(parsed) ? parsed : null;
-      if (Number.isFinite(parsed)) {
-        clock.current = { server: parsed, mono: performance.now() };
-      }
-    },
-    publishRead: (generation: number) => {
-      if (generation === controller.getSnapshot().generation && identity.current === getResolvedClientKey()) setDisplayedAt(lastReadDate.current);
-    },
-    refreshRead: async (key: string) => {
-      if (!gate.canWrite()) return false;
-      const participant = reads.current.get(key); if (!participant) return false;
-      const generation = gate.generation(); const abort = new AbortController();
-      activeReads.current.add(abort);
-      const timeout = setTimeout(() => abort.abort(), config.lossAfterMs);
-      try {
-        const data = await participant.read(abort.signal);
-        if (abort.signal.aborted || generation !== gate.generation() || identity.current !== getResolvedClientKey() || reads.current.get(key) !== participant) return false;
-        participant.commit(data);
-        return true;
-      } catch (error: unknown) {
-        if (abort.signal.aborted) return false;
-        throw error;
-      } finally { clearTimeout(timeout); activeReads.current.delete(abort); }
-    },
-    subscribeFreeze: (listener: () => void) => {
-      freezeListeners.current.add(listener);
-      return () => { freezeListeners.current.delete(listener); };
-    }
-  }), [frozen, snapshot, gate, displayedAt, notification, controller, config.lossAfterMs]);
+    registerRead, stagedRead, reportRead, publishRead, refreshRead, subscribeFreeze
+  }), [frozen, snapshot, gate, displayedAt, notification, controller, registerRead, stagedRead, reportRead, publishRead, refreshRead, subscribeFreeze]);
   useEffect(() => {
     const lifecycleRef = lifecycle;
     const listeners = freezeListeners.current;

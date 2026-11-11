@@ -45,10 +45,11 @@ export async function assignProductionScheduleOrderInTransaction(tx: Prisma.Tran
     ? await tx.productionScheduleOrderAssignment.findFirst({
       where: { csvDashboardRowId: rowId, siteKey },
       orderBy: { updatedAt: 'desc' },
-      select: { orderNumber: true }
+      select: { orderNumber: true, resourceCd: true }
     })
     : lockedAssignment;
   if (params.onlyIfUnassigned && displayedAssignment?.orderNumber != null) {
+    if (displayedAssignment.resourceCd === resourceCd && displayedAssignment.orderNumber === orderNumber) return;
     throw new ApiError(409, '対象の行には既に順位が設定されています', undefined, 'AUTO_RANK_ROW_ALREADY_ASSIGNED');
   }
   const rowResourceCd = typeof currentRow.rowData === 'object' && currentRow.rowData !== null

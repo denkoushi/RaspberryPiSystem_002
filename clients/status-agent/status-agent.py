@@ -325,6 +325,8 @@ def build_tls_context(config: Dict[str, str]) -> ssl.SSLContext:
 
 
 class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Report a 3xx answer as an error instead of following it."""
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 

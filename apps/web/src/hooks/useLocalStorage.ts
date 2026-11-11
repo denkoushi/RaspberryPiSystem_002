@@ -4,19 +4,23 @@ import { validateAndSanitizeApiKey, validateAndSanitizeUuid } from '../utils/val
 
 export function useLocalStorage<T>(key: string, defaultValue: T) {
   const [value, setValue] = useState<T>(() => {
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      try {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
         return JSON.parse(stored) as T;
-      } catch {
-        return defaultValue;
       }
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to read ${key}`, error);
     }
     return defaultValue;
   });
 
   useEffect(() => {
-    localStorage.setItem(key, JSON.stringify(value));
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to write ${key}`, error);
+    }
   }, [key, value]);
 
   return [value, setValue] as const;
@@ -27,15 +31,15 @@ export function useLocalStorage<T>(key: string, defaultValue: T) {
  */
 export function useLocalStorageApiKey(key: string, defaultValue: string) {
   const [value, setValue] = useState<string>(() => {
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      try {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
         const parsed = JSON.parse(stored) as string;
         // 初期読み込み時にバリデーションを適用
         return validateAndSanitizeApiKey(parsed, defaultValue);
-      } catch {
-        return defaultValue;
       }
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to read ${key}`, error);
     }
     return defaultValue;
   });
@@ -47,7 +51,11 @@ export function useLocalStorageApiKey(key: string, defaultValue: string) {
       // 不正な値が検出された場合は自動修復
       setValue(sanitized);
     }
-    localStorage.setItem(key, JSON.stringify(sanitized));
+    try {
+      localStorage.setItem(key, JSON.stringify(sanitized));
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to write ${key}`, error);
+    }
   }, [key, value, defaultValue]);
 
   const setValueWithValidation = (newValue: string) => {
@@ -63,15 +71,15 @@ export function useLocalStorageApiKey(key: string, defaultValue: string) {
  */
 export function useLocalStorageUuid(key: string, defaultValue: string = '') {
   const [value, setValue] = useState<string>(() => {
-    const stored = localStorage.getItem(key);
-    if (stored) {
-      try {
+    try {
+      const stored = localStorage.getItem(key);
+      if (stored) {
         const parsed = JSON.parse(stored) as string;
         // 初期読み込み時にバリデーションを適用
         return validateAndSanitizeUuid(parsed);
-      } catch {
-        return defaultValue;
       }
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to read ${key}`, error);
     }
     return defaultValue;
   });
@@ -83,7 +91,11 @@ export function useLocalStorageUuid(key: string, defaultValue: string = '') {
       // 不正な値が検出された場合は自動修復
       setValue(sanitized);
     }
-    localStorage.setItem(key, JSON.stringify(sanitized));
+    try {
+      localStorage.setItem(key, JSON.stringify(sanitized));
+    } catch (error) {
+      console.warn(`[useLocalStorage] Failed to write ${key}`, error);
+    }
   }, [key, value]);
 
   const setValueWithValidation = (newValue: string) => {

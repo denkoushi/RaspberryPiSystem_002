@@ -107,10 +107,12 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
   return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
     resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,
-    changeMinutesSource: (source: Parameters<typeof sourceMutation.mutate>[0]) => {
-      if (!gate.attempt()) return;
-      if (!offlineEnabled) sourceMutation.mutate(source);
-      else void gate.run(() => sourceMutation.mutateAsync(source)).then(() =>
+    changeMinutesSource: (sources: Parameters<typeof sourceMutation.mutate>[0][]) => {
+      if (sources.length === 0 || !gate.attempt()) return;
+      if (!offlineEnabled) sources.forEach((source) => sourceMutation.mutate(source));
+      else void gate.run(async () => {
+        for (const source of sources) await sourceMutation.mutateAsync(source);
+      }).then(() =>
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
     }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources),
     valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),

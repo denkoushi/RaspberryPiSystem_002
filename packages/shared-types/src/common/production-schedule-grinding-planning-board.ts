@@ -1,3 +1,5 @@
+export const PLANNING_BOARD_MAX_DUE_OFFSET_DAYS = 3650;
+
 /** キオスク研削順位ボードのページ専用API契約。既存順位ボードの順位・割当とは別管理。 */
 export type GrindingPlanningBoardView = 'seiban' | 'resource';
 export type GrindingPlanningBoardCategory = 'grinding' | 'cutting' | 'all';

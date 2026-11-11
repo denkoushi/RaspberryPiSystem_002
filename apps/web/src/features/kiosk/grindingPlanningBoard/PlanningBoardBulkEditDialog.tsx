@@ -1,3 +1,5 @@
+import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS } from '@raspi-system/shared-types';
+
 import { Button } from '../../../components/ui/Button';
 import { Dialog } from '../../../components/ui/Dialog';
 
@@ -45,7 +47,7 @@ export function PlanningBoardBulkEditDialog({
     if (dueMode === 'date') return `${shortDate(before)} → ${shortDate(dueDate)}`;
     if (dueMode === 'offsetDays') {
       const offset = Number(offsetDays);
-      return Number.isInteger(offset) && offset >= 1
+      return Number.isInteger(offset) && offset >= 1 && offset <= PLANNING_BOARD_MAX_DUE_OFFSET_DAYS
         ? `${shortDate(before)} → ${shortDate(addUtcDays(base, offset))}`
         : `${shortDate(before)} → 入力エラー`;
     }
@@ -124,7 +126,7 @@ export function PlanningBoardBulkEditDialog({
               <button type="button" className={`min-h-11 rounded-md border px-3 ${dueMode === 'date' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setDueMode('date')}>指定日</button>
               <input type="date" value={dueDate} onChange={(event) => { setDueDate(event.target.value); setDueMode('date'); }} className="min-h-11 rounded-md border border-slate-300 px-2" />
               <button type="button" className={`min-h-11 rounded-md border px-3 ${dueMode === 'offsetDays' ? 'border-emerald-600 bg-emerald-100 text-emerald-950' : 'border-slate-300'}`} onClick={() => setDueMode('offsetDays')}>+暦日</button>
-              <input type="number" min="1" step="1" value={offsetDays} onChange={(event) => { setOffsetDays(event.target.value); setDueMode('offsetDays'); }} className="min-h-11 w-20 rounded-md border border-slate-300 px-2" aria-label="加算日数" />
+              <input type="number" min="1" max={PLANNING_BOARD_MAX_DUE_OFFSET_DAYS} step="1" value={offsetDays} onChange={(event) => { setOffsetDays(event.target.value); setDueMode('offsetDays'); }} className="min-h-11 w-20 rounded-md border border-slate-300 px-2" aria-label="加算日数" />
             </div>
           </fieldset>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
