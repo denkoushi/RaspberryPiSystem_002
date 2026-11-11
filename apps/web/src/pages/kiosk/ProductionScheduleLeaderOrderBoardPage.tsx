@@ -56,6 +56,7 @@ import { usePersistedArrivalFilter } from '../../features/kiosk/usePersistedArri
 import { kioskInspectionDrawingPaperReportPrintPath } from '../../features/part-measurement/inspection-drawing/kioskInspectionDrawingRoutes';
 import { KIOSK_DATE_PICKER_OVERLAY_Z_ABOVE_LEFT_STACK } from '../../hooks/kioskRevealUi';
 import { useKioskLeftEdgeDrawerReveal } from '../../hooks/useKioskLeftEdgeDrawerReveal';
+import { useSingleFlight } from '../../hooks/useSingleFlight';
 import { isMacEnvironment } from '../../lib/client-key/resolver';
 
 import type { ProductionScheduleRow } from '../../api/client';
@@ -211,7 +212,6 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     notePending,
     commitDueDate: commitDueDateMutation,
     updateOrder,
-    updateOrderAsync,
     completeRow,
     saveNote
   } = useLeaderboardBoardCacheMutationBridge(
@@ -225,12 +225,14 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     true
   );
 
+  const autoRankFlight = useSingleFlight();
+  const autoRankPending = autoRankFlight.pending;
   useEffect(() => {
     if (orderError) window.alert('保存に失敗しました。再度お試しください。');
   }, [orderError]);
 
   const writePause =
-    mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
+    mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending || autoRankPending;
 
   const invalidateRelatedQueries = useCallback(() =>
     Promise.all([
@@ -471,21 +473,16 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     [updateOrder]
   );
 
-  const { handleAutoRank, autoRankDisabled, autoRankPending } = useLeaderBoardSlotAutoRank({
+  const { handleAutoRankSlot, autoRankDisabled } = useLeaderBoardSlotAutoRank({
     seibanEvalEnabled,
     interactionLocked: isInteractionLocked,
     orderPending,
     sortedGrouped,
     orderUsageByResourceCd: orderUsageQuery.data,
-    updateOrderAsync
+    targetDeviceScopeKey,
+    singleFlight: autoRankFlight,
+    onOrderSuccess: ({ rowId, orderNumber }) => applyDisplayMutation({ kind: 'order', rowId, processingOrder: orderNumber })
   });
-
-  const handleAutoRankSlot = useCallback(
-    (resourceCd: string) => {
-      void handleAutoRank(resourceCd).catch(() => {});
-    },
-    [handleAutoRank]
-  );
 
   const handleOpenRowDueDate = useCallback(
     (row: LeaderBoardRow) => {

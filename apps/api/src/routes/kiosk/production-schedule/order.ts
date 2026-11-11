@@ -1,12 +1,14 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import { env } from '../../../config/env.js';
 import { ApiError } from '../../../lib/errors.js';
 import { resolveSiteKeyForScopeKey } from '../../../lib/site-directory.js';
 import { assertRegisteredDeviceScopeKey } from '../../../lib/manual-order-device-scope.js';
+import { autoRankProductionScheduleOrder } from '../../../services/production-schedule/production-schedule-auto-rank.service.js';
 import { upsertProductionScheduleOrder } from '../../../services/production-schedule/production-schedule-command.service.js';
 import { canProxyTargetLocation } from '../shared.js';
 import {
+  productionScheduleAutoRankBodySchema,
   productionScheduleOrderBodySchema,
   productionScheduleOrderParamsSchema,
   toLegacyLocationKeyFromDeviceScope,
@@ -17,12 +19,14 @@ export async function registerProductionScheduleOrderRoute(
   app: FastifyInstance,
   deps: KioskRouteDeps
 ): Promise<void> {
-  app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
+  const resolveOrderTarget = async <T extends { targetLocation?: string; targetDeviceScopeKey?: string }>(
+    request: FastifyRequest,
+    parseInput: () => T
+  ) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
     const deviceScopeKey = locationScopeContext.deviceScopeKey;
-    const params = productionScheduleOrderParamsSchema.parse(request.params);
-    const body = productionScheduleOrderBodySchema.parse(request.body);
+    const body = parseInput();
     const actorLocation = toLegacyLocationKeyFromDeviceScope(deviceScopeKey);
 
     let targetLocation: string;
@@ -89,13 +93,23 @@ export async function registerProductionScheduleOrderRoute(
       });
     }
 
+    return { body, actorLocation, targetLocation, actorClientDeviceId: clientDevice.id };
+  };
+
+  app.put('/kiosk/production-schedule/:rowId/order', { config: { rateLimit: false } }, async (request) => {
+    const { body: input, actorLocation, targetLocation, actorClientDeviceId } = await resolveOrderTarget(request, () => {
+      const { rowId } = productionScheduleOrderParamsSchema.parse(request.params);
+      return { ...productionScheduleOrderBodySchema.parse(request.body), rowId };
+    });
+    const { rowId, ...body } = input;
+
     request.log.info(
       {
         event: 'production_schedule_order_update',
         actorLocation,
         targetLocation,
-        actorClientDeviceId: clientDevice.id,
-        rowId: params.rowId,
+        actorClientDeviceId,
+        rowId,
         resourceCd: body.resourceCd,
         orderNumber: body.orderNumber,
         manualOrderDeviceScopeV2: env.KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED
@@ -104,11 +118,28 @@ export async function registerProductionScheduleOrderRoute(
     );
 
     return upsertProductionScheduleOrder({
-      rowId: params.rowId,
+      rowId,
       resourceCd: body.resourceCd,
       orderNumber: body.orderNumber,
       locationKey: targetLocation,
       actorLocationKey: actorLocation
     });
+  });
+
+  app.put('/kiosk/production-schedule/order/auto-rank', { config: { rateLimit: false } }, async (request) => {
+    const { body, actorLocation, targetLocation, actorClientDeviceId } = await resolveOrderTarget(
+      request, () => productionScheduleAutoRankBodySchema.parse(request.body)
+    );
+    request.log.info({
+      event: 'production_schedule_order_auto_rank',
+      actorLocation,
+      targetLocation,
+      actorClientDeviceId,
+      resourceCd: body.resourceCd,
+      count: body.assignments.length,
+      assignments: body.assignments,
+      manualOrderDeviceScopeV2: env.KIOSK_MANUAL_ORDER_DEVICE_SCOPE_V2_ENABLED
+    }, 'production schedule order auto ranked');
+    return autoRankProductionScheduleOrder({ ...body, locationKey: targetLocation, actorLocationKey: actorLocation });
   });
 }
