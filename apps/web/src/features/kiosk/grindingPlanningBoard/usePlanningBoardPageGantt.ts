@@ -9,7 +9,7 @@ import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
 import { planningBoardResourceMatches } from './planningBoardTwoMachine';
-import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { comparePlanningBoardBarOrder, compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
 
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
@@ -113,7 +113,7 @@ export function usePlanningBoardPageGantt({
     const laneTests = tests.bars.filter((item) => item.resourceCd === resource && !item.isCompleted && !item.deletedAt);
     if (!laneTests.length) return normal;
     const mixed: GrindingPlanningBoardBar[] = [...normal.itemIds.flatMap((id) => byId.get(id) ? [byId.get(id)!] : []), ...laneTests];
-    mixed.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+    mixed.sort(comparePlanningBoardBarOrder);
     return { resourceCd: resource, itemIds: mixed.map((item) => item.itemId) };
   };
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
@@ -132,7 +132,7 @@ export function usePlanningBoardPageGantt({
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
     return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.flatMap((item) => item.kind === 'test' ? [] : [item.fseiban]))], order: true,
       apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
-      save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: context.sourceRevision, resourceCd: snapshot.resourceCd,
+      save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
         items: members.map((original) => { const item = original.kind === 'test' ? tests.bars.find((item) => item.itemId === original.itemId) ?? original : context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) })),
       onSaved: (result) => { tests.accept(result); onSaved(); }, onFailed
     });
@@ -288,7 +288,7 @@ export function usePlanningBoardPageGantt({
         (resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定') === snapshot.resourceCd), registeredFseibans, 'resource', allocation);
       const laneTests = tests.bars.filter((item) => item.resourceCd === snapshot.resourceCd && !item.isCompleted && !item.deletedAt);
       const mixedOrder: GrindingPlanningBoardBar[] = [...currentOrder, ...laneTests];
-      if (laneTests.length) mixedOrder.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+      if (laneTests.length) mixedOrder.sort(comparePlanningBoardBarOrder);
       const visibleIds = new Set(mixedOrder.filter((item) => item.kind === 'test' || isVisibleByArrival(item, arrivalFilterEnabled)).map((item) => item.itemId));
       const itemIds = arrivalFilterEnabled
         ? mergeVisibleResourceOrder(mixedOrder.map((item) => item.itemId), snapshot.itemIds.filter((itemId) => visibleIds.has(itemId))) : snapshot.itemIds;

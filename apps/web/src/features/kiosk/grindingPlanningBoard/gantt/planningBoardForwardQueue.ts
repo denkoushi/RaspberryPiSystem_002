@@ -1,5 +1,6 @@
 import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
+import { resolvePlanningBoardOrderBand } from '../sortGrindingPlanningBoardItems';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
@@ -44,5 +45,5 @@ export function forwardDueLabel(due: string | null): string | null {
 export function canReorderForwardBars(source: GanttBar, target: GanttBar): boolean {
   return source.item.itemId !== target.item.itemId && source.resource === target.resource &&
     !source.arrivalPending && !target.arrivalPending && !source.item.isCompleted && !target.item.isCompleted &&
-    (source.item.kind === 'test' || target.item.kind === 'test' || (source.item.specialDue?.expiresAt ?? null) === (target.item.specialDue?.expiresAt ?? null));
+    resolvePlanningBoardOrderBand(source.item) === resolvePlanningBoardOrderBand(target.item);
 }

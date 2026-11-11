@@ -1,6 +1,6 @@
 import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 
-import { resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../sortGrindingPlanningBoardItems';
+import { comparePlanningBoardBarOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../sortGrindingPlanningBoardItems';
 
 import { NO_PREDECESSORS, forwardPlanningBoardPredecessors, jstDay, nextWorkingStart, placeForward } from './planningBoardGanttLayout';
 
@@ -27,7 +27,7 @@ export function planningBoardLaneOrder(options: Pick<GanttLayoutOptions, 'items'
   }
   const byId = new Map<string, GrindingPlanningBoardBar>([...options.items, ...options.testBars ?? []].map((item) => [item.itemId, item]));
   for (const [resource, lane] of Object.entries(lanes)) {
-    if (lane.some((id) => byId.get(id)?.kind === 'test')) lane.sort((a, b) => (byId.get(a)?.alternateRank ?? Infinity) - (byId.get(b)?.alternateRank ?? Infinity));
+    if (lane.some((id) => byId.get(id)?.kind === 'test')) lane.sort((a, b) => comparePlanningBoardBarOrder(byId.get(a)!, byId.get(b)!));
     const explicit = options.laneOrder?.[resource];
     if (explicit) {
       const ranks = new Map(explicit.map((id, index) => [id, index]));

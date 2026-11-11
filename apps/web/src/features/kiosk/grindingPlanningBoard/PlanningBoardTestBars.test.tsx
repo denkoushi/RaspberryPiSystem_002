@@ -165,10 +165,15 @@ describe('テスト加工の順番と選択', () => {
     expect(proposal['300']).toEqual([items[1]!.itemId, testBar().itemId, items[0]!.itemId]);
     expect(mergeVisibleResourceOrder(planningBoardLaneOrder(options)['300']!, [items[1]!.itemId, items[0]!.itemId])).toEqual([items[1]!.itemId, testBar().itemId, items[0]!.itemId]);
   });
-  it('permits same-lane test reordering across special due bands and rejects another machine', () => {
+  it('permits test reordering only within the unbanded lane and rejects another machine', () => {
     const f = fixture(); const bars = planningBoardVisibleBars(buildPlanningBoardGanttLayout(f.options)); const test = bars.find((bar) => bar.item.kind === 'test')!;
     const normal = bars.find((bar) => bar.item.kind !== 'test')!;
-    expect(canReorderForwardBars(test, { ...normal, item: { ...f.items[0]!, specialDue: { kind: 'today', expiresAt: '2099-01-01' } } })).toBe(true);
+    const special = { ...normal, item: { ...f.items[0]!, specialDue: { kind: 'today' as const, expiresAt: '2099-01-01' } } };
+    expect(canReorderForwardBars(test, special)).toBe(false);
+    expect(canReorderForwardBars(special, test)).toBe(false);
+    expect(canReorderForwardBars(test, normal)).toBe(true);
+    expect(canReorderForwardBars(normal, test)).toBe(true);
+    expect(canReorderForwardBars(test, { ...test, item: testBar({ itemId: 'test:33a2ef84-772f-4822-b4e3-bc1c930a9c83' }) })).toBe(true);
     expect(canReorderForwardBars(test, { ...normal, resource: '301' })).toBe(false);
     const board = document.createElement('div'), lane = document.createElement('div'); lane.dataset.ganttLane = ''; lane.dataset.resourceCode = '301'; board.append(lane);
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => [lane] });

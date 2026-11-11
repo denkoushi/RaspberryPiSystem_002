@@ -55,6 +55,15 @@ export function resolveGrindingPlanningBoardRank(
   return allocation === 'alternate' ? item.alternateRank : item.originalRank;
 }
 
+export function resolvePlanningBoardOrderBand(item: GrindingPlanningBoardBar): string | null {
+  return item.kind === 'test' ? null : item.specialDue?.expiresAt ?? null;
+}
+
+export function comparePlanningBoardBarOrder(left: GrindingPlanningBoardBar, right: GrindingPlanningBoardBar): number {
+  return compareNullableIsoDate(resolvePlanningBoardOrderBand(left), resolvePlanningBoardOrderBand(right)) ||
+    (left.alternateRank ?? Infinity) - (right.alternateRank ?? Infinity);
+}
+
 export function compareGrindingPlanningBoardItems(
   left: GrindingPlanningBoardItem,
   right: GrindingPlanningBoardItem,
