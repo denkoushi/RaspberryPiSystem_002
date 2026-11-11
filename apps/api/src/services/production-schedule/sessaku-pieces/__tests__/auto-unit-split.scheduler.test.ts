@@ -82,6 +82,23 @@ describe('sessaku background splitting', () => {
     await vi.advanceTimersByTimeAsync(1999); expect(mocks.split).toHaveBeenCalledTimes(4);
     await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(5);
   });
+  it('waits three times a splitting round before the next one, caps it at 5 min and ignores wakes meanwhile', async () => {
+    mocks.query.mockResolvedValue([{ siteKey: 'site-a' }]);
+    const roundMs = [8000, 8000, 200000];
+    let round = 0;
+    mocks.split.mockImplementation(() => round >= roundMs.length
+      ? Promise.resolve({ splitCount: 0, skippedCount: 0, hasMore: false })
+      : new Promise(resolve => { setTimeout(() => resolve({ splitCount: 1, skippedCount: 0, hasMore: true }), roundMs[round++]); }));
+    scheduler.start(); await vi.advanceTimersByTimeAsync(30000 + 8000); expect(mocks.split).toHaveBeenCalledTimes(1);
+    wakeSessakuAutoUnitSplit();
+    await vi.advanceTimersByTimeAsync(23999); expect(mocks.split).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(8000 + 24000); expect(mocks.split).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(200000 + 299999); expect(mocks.split).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(4);
+    expect(mocks.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_background_pacing', retryAfterMs: 300000 }), expect.any(String));
+  });
   it('does nothing when creation is disabled or no scheduler is running', async () => {
     wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(60000);
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'false'); scheduler.start();
