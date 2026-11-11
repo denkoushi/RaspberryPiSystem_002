@@ -284,6 +284,31 @@ describe('automatic unit split', () => {
     }), expect.any(String));
     expect(mocks.split).not.toHaveBeenCalled();
   });
+  it.each([Object.assign(new Error('serialization'), { code: 'P2034' }),
+    new ApiError(409, 'missing', undefined, 'SOURCE_ITEM_MISSING'), new ApiError(409, 'referenced', undefined, 'PIECE_REFERENCED')])(
+    'reports zero progress with hasMore and no deferral for a fast %s, so every background round retries the same lot', async (error) => {
+      mocks.items = [item()];
+      mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: item().itemId, inputVersion: 'v1' }]);
+      mocks.split.mockRejectedValue(error);
+      const onYield = vi.fn();
+      for (let round = 0; round < 3; round += 1) {
+        expect(await autoSplitSessakuUnits({ siteKey: 'fast-failure', onYield }, { maxLots: 1, budgetMs: PRODUCTION_BUDGET_MS }))
+          .toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+      }
+      expect(mocks.split).toHaveBeenCalledTimes(3);
+      expect(onYield).not.toHaveBeenCalled();
+    });
+  it('reports zero progress with hasMore and no deferral when the budget ends before a lot is chosen', async () => {
+    mocks.items = [item()];
+    mocks.rows.mockImplementation(async () => { vi.mocked(performance.now).mockReturnValue(PRODUCTION_RUNNER_TIMEOUT_MS); return []; });
+    const onYield = vi.fn();
+    expect(await autoSplitSessakuUnits({ siteKey: 'pre-lot-budget-repeat', onYield }, { maxLots: 1, budgetMs: PRODUCTION_BUDGET_MS }))
+      .toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(onYield).toHaveBeenCalledExactlyOnceWith('AUTO_UNIT_SPLIT_BUDGET');
+    vi.mocked(performance.now).mockReturnValue(0); mocks.rows.mockResolvedValue([]); mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
+    expect(await autoSplitSessakuUnits({ siteKey: 'pre-lot-budget-repeat' }, { maxLots: 1, budgetMs: PRODUCTION_BUDGET_MS }))
+      .toMatchObject({ splitCount: 1 });
+  });
   it.each(['success', 'skip'])('clears the active lot after %s before a runner failure', async (outcome) => {
     mocks.items = [item()];
     if (outcome === 'skip') mocks.split.mockRejectedValueOnce(new ApiError(409, 'stale', undefined, 'STALE_SESSAKU_PIECES'));

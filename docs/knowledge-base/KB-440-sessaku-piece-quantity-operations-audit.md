@@ -35,6 +35,10 @@ Parent completion updated pieces without passing through the piece audit writer.
 - The split is a first-time-only process. It now runs as the post-listen scheduler
   `sessaku-auto-unit-split` (leader only, gated by `SESSAKU_PIECES_CREATE_ENABLED=true`).
   It starts 30 s after start-up, repeats every 1 s while `hasMore`, and every 60 s when idle or after an error.
+  A round that reports `hasMore` but splits nothing waits 2 s, then twice as long each time, up to
+  60 s. This covers fast lot failures (P2034, SOURCE_ITEM_MISSING, PIECE_REFERENCED), a budget hit
+  before any lot is chosen, and lots that keep exceeding the budget. One split returns it to 1 s.
+  Wakes from old pages do not shorten this delay.
   The existing xact advisory lock still prevents a double run, and progress is
   re-derived from the DB after a restart or blue/green switch.
 - The background job splits one lot per transaction, so every lot gets the full
@@ -54,6 +58,7 @@ Parent completion updated pieces without passing through the piece audit writer.
   background splits on its next refetch (up to 5 min) or on reload.
 - Log events to watch: `sessaku_piece.auto_unit_split_background`,
   `sessaku_piece.auto_unit_split_background_error`, `sessaku_piece.auto_unit_split_deferred`,
+  `sessaku_piece.auto_unit_split_background_backoff` (`retryAfterMs`),
   and `sessaku_piece.auto_unit_split_call` (`totalMs`, `lockHeldMs`, `yieldReason`, `errorCode`).
 
 ## FHINCD Investigation

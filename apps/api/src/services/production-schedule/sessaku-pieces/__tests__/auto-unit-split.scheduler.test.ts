@@ -58,6 +58,30 @@ describe('sessaku background splitting', () => {
     wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(1000);
     expect(mocks.split).toHaveBeenCalledTimes(1);
   });
+  it('backs off zero-progress hasMore rounds up to 60 s and ignores wakes while backing off', async () => {
+    mocks.split.mockResolvedValue({ splitCount: 0, skippedCount: 1, hasMore: true });
+    scheduler.start(); await vi.advanceTimersByTimeAsync(30000); expect(mocks.split).toHaveBeenCalledTimes(2);
+    let calls = 2;
+    for (const delay of [2000, 4000, 8000, 16000, 32000, 60000, 60000]) {
+      wakeSessakuAutoUnitSplit();
+      await vi.advanceTimersByTimeAsync(delay - 1); expect(mocks.split).toHaveBeenCalledTimes(calls);
+      await vi.advanceTimersByTimeAsync(1); calls += 2; expect(mocks.split).toHaveBeenCalledTimes(calls);
+    }
+    expect(mocks.info).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'sessaku_piece.auto_unit_split_background_backoff', retryAfterMs: 60000 }), expect.any(String));
+  });
+  it('returns to the 1 s interval once any lot splits, then backs off again from 2 s', async () => {
+    const rounds = [0, 0, 1, 0];
+    let round = 0;
+    mocks.query.mockResolvedValue([{ siteKey: 'site-a' }]);
+    mocks.split.mockImplementation(async () => ({ splitCount: rounds[round++] ?? 0, skippedCount: 0, hasMore: true }));
+    scheduler.start(); await vi.advanceTimersByTimeAsync(30000); expect(mocks.split).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2000); expect(mocks.split).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(4000); expect(mocks.split).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(1000); expect(mocks.split).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(1999); expect(mocks.split).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(1); expect(mocks.split).toHaveBeenCalledTimes(5);
+  });
   it('does nothing when creation is disabled or no scheduler is running', async () => {
     wakeSessakuAutoUnitSplit(); await vi.advanceTimersByTimeAsync(60000);
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'false'); scheduler.start();

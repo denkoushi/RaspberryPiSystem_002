@@ -7,6 +7,9 @@ import { AUTO_UNIT_SPLIT_BUDGET_MS, autoSplitSessakuUnits } from './auto-unit-sp
 const START_DELAY_MS = 30000;
 const ACTIVE_INTERVAL_MS = 1000;
 const IDLE_INTERVAL_MS = 60000;
+// Rounds that report more work but split nothing (fast transient lot failures, a budget hit
+// before any lot is chosen, lots that keep exceeding the budget) back off exponentially.
+const ZERO_PROGRESS_FIRST_DELAY_MS = 2000;
 // One lot per transaction gives every lot the full budget, and a flush/commit failure or
 // yield can only be caused by that lot, so the per-lot deferral always blames the right lot.
 const BACKGROUND_LIMITS = { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS };
@@ -24,6 +27,7 @@ export function createSessakuAutoUnitSplitScheduler() {
   let stopped = false;
   let started = false;
   let wakeRequested = false;
+  let backoffMs = 0;
 
   const schedule = (delayMs: number) => {
     if (stopped) return;
@@ -39,13 +43,15 @@ export function createSessakuAutoUnitSplitScheduler() {
     timer.unref();
   };
   const wake = () => {
-    if (stopped || !started) return;
+    // Legacy pages must not defeat the zero-progress backoff by waking every round.
+    if (stopped || !started || backoffMs) return;
     if (running) wakeRequested = true;
     else schedule(ACTIVE_INTERVAL_MS);
   };
   const run = async () => {
     let hasMore = false;
     let delayed = false;
+    let splitCount = 0;
     try {
       const sites = await prisma.$queryRaw<Array<{ siteKey: string }>>(Prisma.sql`
         SELECT "siteKey" FROM "ProductionScheduleGrindingPlanningBoardState"
@@ -62,6 +68,7 @@ export function createSessakuAutoUnitSplitScheduler() {
         try {
           const result = await autoSplitSessakuUnits({ siteKey, onYield: reason => { yieldReason = reason; } }, BACKGROUND_LIMITS);
           hasMore ||= result.hasMore;
+          splitCount += result.splitCount;
           const runnerBusy = yieldReason === 'runner_busy';
           delayed ||= yieldReason !== null && !['human_write', 'AUTO_UNIT_SPLIT_BUDGET', 'disabled'].includes(yieldReason);
           logger.info({ event: 'sessaku_piece.auto_unit_split_background', siteKey, ...result, yieldReason },
@@ -80,7 +87,17 @@ export function createSessakuAutoUnitSplitScheduler() {
         'Automatic unit split site discovery failed');
     } finally {
       running = undefined;
-      const delayMs = !delayed && (hasMore || wakeRequested) ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
+      let delayMs: number;
+      if (delayed) delayMs = IDLE_INTERVAL_MS;
+      else if (hasMore && splitCount === 0) {
+        backoffMs = Math.min(backoffMs ? backoffMs * 2 : ZERO_PROGRESS_FIRST_DELAY_MS, IDLE_INTERVAL_MS);
+        delayMs = backoffMs;
+        logger.info({ event: 'sessaku_piece.auto_unit_split_background_backoff', retryAfterMs: delayMs },
+          'Automatic unit split made no progress; backing off');
+      } else {
+        backoffMs = 0;
+        delayMs = hasMore || wakeRequested ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
+      }
       wakeRequested = false;
       schedule(delayMs);
     }
