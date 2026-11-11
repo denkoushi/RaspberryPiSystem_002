@@ -401,17 +401,12 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     }
     if (!progressed) {
       // Conflicting ranks can put a successor ahead of its own predecessor (also across resources).
-      // Explicit preview orders retain their slots in a cycle; legacy layouts prefer process precedence.
+      // Process precedence takes priority over test slots and explicit preview orders.
       let candidate: { resource: string; item: GrindingPlanningBoardBar } | undefined;
-      let explicitHead: typeof candidate;
       for (const [resource, queue] of lanes) {
         for (let index = heads.get(resource) ?? 0; index < queue.length; index++) {
           const item = queue[index]!;
           if (scheduled.has(item.itemId)) continue;
-          if (options.laneOrder?.[resource] || queue.some((candidate) => candidate.kind === 'test')) {
-            explicitHead ??= { resource, item };
-            break;
-          }
           if (isReady(item)) {
             candidate = { resource, item };
             break;
@@ -419,7 +414,6 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
         }
         if (candidate) break;
       }
-      candidate ??= explicitHead;
       if (!candidate) break;
       place(candidate.item, candidate.resource);
     }

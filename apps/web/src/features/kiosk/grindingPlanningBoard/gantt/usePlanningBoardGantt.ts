@@ -36,7 +36,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
   const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useCapacity(enabled);
-  const capacityMutation = useUpdateKioskGrindingPlanningBoardResourceCapacity();
+  const capacityMutation = useUpdateKioskGrindingPlanningBoardResourceCapacity({ invalidateOnSuccess: !offlineEnabled });
   const { isPending, isError } = capacityMutation;
   const writeStatus = useFrozenValue({ capacityPending: isPending, capacityError: isError,
     minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError });

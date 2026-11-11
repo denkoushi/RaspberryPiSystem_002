@@ -41,8 +41,8 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
   const pendingId = useRef(0);
   const clearPending = (id: number) => setPending((writes) => writes.filter((write) => write.id !== id));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const latest = useRef({ data, overlay }); latest.current = { data, overlay };
   const activeOverlay = overlay && data && overlay.siteKey === data.siteKey && (overlay.stale.has(data.sourceRevision) || overlay.revision === data.sourceRevision) ? overlay : null;
+  const latest = useRef({ data, activeOverlay }); latest.current = { data, activeOverlay };
   const pendingHere = pending.filter((write) => write.siteKey === data?.siteKey);
   const bars = pendingHere.reduce((bars, write) => write.apply(bars), activeOverlay?.bars ?? data?.testBars ?? EMPTY);
   const nextSequence = Math.max(activeOverlay?.next ?? data?.nextTestBarSequence ?? 1, ...pendingHere.map((write) => write.next ?? 1));
@@ -62,7 +62,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     let saved: GrindingPlanningBoardTestBarMutationResponse | undefined;
     const queued = enqueue({ label: 'テスト加工', itemIds: [item.itemId], seibans: [], order: true, apply: (display) => display,
       save: async (context) => {
-        const current = (latest.current.overlay?.siteKey === latest.current.data?.siteKey ? latest.current.overlay?.bars : latest.current.data?.testBars)?.find((candidate) => candidate.itemId === item.itemId) ?? item;
+        const current = (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((candidate) => candidate.itemId === item.itemId) ?? item;
         saved = await mutateKioskGrindingPlanningBoardTestBar(item.itemId, action, { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, expectedVersion: current.version });
         return saved;
       }, onSaved: (result) => { clearPending(id); accept(result); if (saved) onSaved?.(saved); },
@@ -91,7 +91,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       let saved: GrindingPlanningBoardTestBarMutationResponse | undefined;
       const queued = enqueue({ label: 'テスト加工', itemIds: after ? [after.itemId] : [], seibans: [], order: true, apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
         save: async (context) => {
-          const current = after?.kind === 'test' ? (latest.current.overlay?.siteKey === latest.current.data?.siteKey ? latest.current.overlay?.bars : latest.current.data?.testBars)?.find((bar) => bar.itemId === after.itemId) ?? after : after ? context.item(after) : undefined;
+          const current = after?.kind === 'test' ? (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((bar) => bar.itemId === after.itemId) ?? after : after ? context.item(after) : undefined;
           const request: GrindingPlanningBoardTestBarCreateRequest = { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, resourceCd, minutes,
             ...(current ? { afterItem: { itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version } } : {}) };
           saved = await createKioskGrindingPlanningBoardTestBar(request); return saved;

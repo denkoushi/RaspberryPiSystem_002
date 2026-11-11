@@ -195,6 +195,30 @@ describe('テスト加工の順番と選択', () => {
     await act(async () => result.current.undo({ id: 1, scope: 'site', orders: [], testBarUndo: { item: { ...made, version: 2 }, action: 'restore' } }, done));
     await waitFor(() => expect(done).toHaveBeenCalled()); expect(api.mutate).toHaveBeenLastCalledWith(made.itemId, 'restore', expect.objectContaining({ expectedVersion: 2 }));
   });
+  it.each(['complete', 'delete', 'create'] as const)('uses the refreshed version for %s after an overlay is superseded', async (action) => {
+    const original = testBar();
+    const saved = testBar({ version: 2, itemRevision: 'test:r2' });
+    const fresh = testBar({ version: 3, itemRevision: 'test:r3' });
+    const { data } = optimisticBoard([original]);
+    const writes: PlanningBoardWrite[] = [];
+    const enqueue = (write: PlanningBoardWrite) => { writes.push(write); return true; };
+    const { result, rerender } = renderHook(({ board }) => usePlanningBoardTestBars({ data: board, enqueue, remember: vi.fn(), disabled: false }), { initialProps: { board: data } });
+    act(() => result.current.accept({ sourceRevision: 'r2', testBars: [saved], nextTestBarSequence: 5 }));
+    expect(result.current.bars).toEqual([saved]);
+    rerender({ board: { ...data, sourceRevision: 'r3', testBars: [fresh] } });
+    expect(result.current.bars).toEqual([fresh]);
+    act(() => {
+      if (action === 'create') void result.current.create('300', 30, fresh);
+      else if (action === 'delete') result.current.remove(fresh);
+      else result.current.complete(fresh, 'complete');
+    });
+    api.create.mockResolvedValue({}); api.mutate.mockResolvedValue({});
+    await writes[0]!.save({ sourceRevision: 'r3', item: (item) => item });
+    if (action === 'create') expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      afterItem: { itemId: fresh.itemId, itemRevision: fresh.itemRevision, overrideVersion: 3 }
+    }));
+    else expect(api.mutate).toHaveBeenCalledWith(fresh.itemId, action, expect.objectContaining({ expectedVersion: 3 }));
+  });
   it('keeps cached test data isolated by site and blocks writes while offline', async () => {
     const data = { siteKey: 'A', sourceRevision: 'r1', testBars: [testBar()], nextTestBarSequence: 5 } as unknown as GrindingPlanningBoardResponse;
     const enqueue = vi.fn(); const remember = vi.fn();

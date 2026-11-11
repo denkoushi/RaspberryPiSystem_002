@@ -506,7 +506,7 @@ export function useKioskGrindingPlanningBoardResourceCapacity(enabled: boolean) 
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
+export function useUpdateKioskGrindingPlanningBoardResourceCapacity(options?: { invalidateOnSuccess?: boolean }) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceCapacityRequest) => updateKioskGrindingPlanningBoardResourceCapacity(payload),
@@ -528,11 +528,15 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
     onError: (_error, _variables, context) => {
       queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
     },
-    onSuccess: (response) => {
+    onSuccess: (response, variables) => {
       // A periodic fetch that started before this save would overwrite the saved value with an older one.
       const refetching = queryClient.isFetching({ queryKey: planningBoardCapacityKey }) > 0;
       queryClient.setQueryData(planningBoardCapacityKey, response);
       if (refetching) void queryClient.invalidateQueries({ queryKey: planningBoardCapacityKey });
+      if (variables.unitSplitEnabled !== undefined && options?.invalidateOnSuccess !== false) {
+        // This prefix includes both board and load queries.
+        void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+      }
     }
   });
 }
