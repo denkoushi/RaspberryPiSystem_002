@@ -66,7 +66,10 @@
   ansible.builtin.include_tasks: agents_hardened_prep.yml
   vars:
     release_kiosk_hardened_phase: switch
-  when: client_agents_hardened | default(false) | bool
+  # Torque cutover only stages the candidate; the standard release prepares storage.
+  when:
+    - client_agents_hardened | default(false) | bool
+    - not (release_torque_cutover | default(false) | bool)
 
 - name: Stage the torque candidate without starting ownership
   ansible.builtin.command: >-

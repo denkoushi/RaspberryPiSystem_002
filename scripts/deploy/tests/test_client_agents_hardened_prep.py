@@ -42,6 +42,20 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
                     self.assertFalse(expression(**variables))
                 self.assertTrue(expression(client_agents_hardened=True))
 
+    def test_switch_prep_skips_torque_cutover(self):
+        environment = Environment(undefined=StrictUndefined)
+        environment.filters['bool'] = lambda value: str(value).lower() in {'true', '1', 'yes', 'on'}
+        tasks = yaml.safe_load((TASKS / 'switch.yml').read_text())
+        include = next(task for task in tasks if task.get('ansible.builtin.include_tasks') == 'agents_hardened_prep.yml')
+        expressions = [environment.compile_expression(condition) for condition in include['when']]
+
+        def runs(**variables):
+            return all(expression(**variables) for expression in expressions)
+
+        self.assertTrue(runs(client_agents_hardened=True))
+        self.assertTrue(runs(client_agents_hardened=True, release_torque_cutover=False))
+        self.assertFalse(runs(client_agents_hardened=True, release_torque_cutover=True))
+
     def test_inventory_enables_only_the_trial_host(self):
         inventory = yaml.safe_load((ROOT / 'infrastructure/ansible/inventory.yml').read_text())
         enabled = []
