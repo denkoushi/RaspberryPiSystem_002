@@ -84,6 +84,17 @@ APP_DATABASE_URL="postgresql://raspi_app:${APP_PASSWORD}@127.0.0.1:${PORT}/borro
 
 DATABASE_URL="$MIGRATION_DATABASE_URL" "$PNPM" --dir "$ROOT/apps/api" exec prisma migrate status >/dev/null
 
+# Match DatabaseBackupTarget's flags: keep OWNER/ACL/default privileges and
+# existing superuser-owned extensions while dumping as app, restoring as owner. All
+# application CRUD/sequence and privilege-denial checks below run after restore.
+docker exec -e PGPASSWORD="$APP_PASSWORD" "$CONTAINER" \
+  pg_dump -h 127.0.0.1 -U raspi_app --clean --if-exists \
+    --exclude-extension=vector --exclude-extension=pg_trgm borrow_return \
+  | docker exec -i -e PGPASSWORD="$MIGRATION_PASSWORD" "$CONTAINER" \
+      psql -h 127.0.0.1 -U raspi_migrator -d borrow_return \
+      --set ON_ERROR_STOP=on --single-transaction -f - \
+      -c 'REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON TABLE public."_prisma_migrations" FROM raspi_app;' >/dev/null
+
 psql "$APP_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 <<'SQL'
 BEGIN;
 INSERT INTO "KnowledgeIntake" (id, "ownerKey", "conversationId", "inputHash", text, files, "updatedAt")
@@ -99,6 +110,10 @@ UPDATE "ClientDevice" SET location = 'contract' WHERE id = 'role-contract-client
 DELETE FROM "ClientDevice" WHERE id = 'role-contract-client';
 ROLLBACK;
 SQL
+
+extensions="$(docker exec "$CONTAINER" psql -U postgres -d borrow_return -Atqc \
+  "SELECT count(*) FROM pg_extension e JOIN pg_roles r ON r.oid = e.extowner WHERE e.extname IN ('vector', 'pg_trgm') AND r.rolname = 'postgres'")"
+[[ "$extensions" == 2 ]] || { echo '[ERROR] restore did not preserve the provisioned extensions' >&2; exit 1; }
 
 docker exec -e PGPASSWORD="$APP_PASSWORD" "$CONTAINER" \
   pg_dump -h 127.0.0.1 -U raspi_app -d borrow_return \

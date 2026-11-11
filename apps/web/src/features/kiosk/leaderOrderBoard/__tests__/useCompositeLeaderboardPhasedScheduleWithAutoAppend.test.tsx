@@ -1178,6 +1178,10 @@ describe('useCompositeLeaderboardPhasedScheduleWithAutoAppend', () => {
       expect(latest?.appendError).toBeNull();
     });
 
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    });
+
     boardDataUpdatedAt = 2000;
     utils.rerender(createElement(QueryClientProvider, { client: queryClient }, createElement(Harness)));
 

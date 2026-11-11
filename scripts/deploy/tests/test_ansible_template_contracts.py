@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, StrictUndefined, UndefinedError
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -62,10 +62,42 @@ def production_web_variables() -> dict[str, str]:
 
 
 class AnsibleTemplateContractTests(unittest.TestCase):
+    def test_restore_credentials_reuse_migration_url_without_replacing_runtime_url(self) -> None:
+        environment = Environment(undefined=StrictUndefined)
+        app_url = "postgresql://raspi_app:app-fixture@db:5432/borrow_return"
+        owner_url = "postgresql://raspi_migrator:owner-fixture@db:5432/borrow_return"
+        variables = {
+            "app_database_url": app_url,
+            "migration_database_url": owner_url,
+            "api_jwt_access_secret": "a" * 32,
+            "api_jwt_refresh_secret": "b" * 32,
+            "admin_allow_nets": ["127.0.0.1/32"],
+        }
+        for filename, runtime_key in (("api.env.j2", "DATABASE_URL"), ("docker.env.j2", "APP_DATABASE_URL")):
+            template = environment.from_string((ANSIBLE_ROOT / "templates" / filename).read_text())
+            with self.subTest(template=filename):
+                rendered = template.render(**variables).splitlines()
+                self.assertIn(f"{runtime_key}={app_url}", rendered)
+                if filename == "docker.env.j2":
+                    self.assertIn(f"BACKUP_RESTORE_DATABASE_URL={owner_url}", rendered)
+                    with self.assertRaises(UndefinedError):
+                        template.render(**{key: value for key, value in variables.items() if key != "migration_database_url"})
+                else:
+                    self.assertNotIn("BACKUP_RESTORE_DATABASE_URL", "\n".join(rendered))
+                    self.assertNotIn(owner_url, "\n".join(rendered))
+                    template.render(**{key: value for key, value in variables.items() if key != "migration_database_url"})
+                self.assertFalse(any(line.startswith("MIGRATION_DATABASE_URL=") for line in rendered))
+        tasks = SERVER_ROLE_TASKS.read_text()
+        for name in ("Deploy API environment variables", "Deploy Docker Compose environment variables"):
+            task = tasks.split(f"- name: {name}\n", 1)[1].split("\n- name:", 1)[0]
+            self.assertIn("no_log: true", task)
+            self.assertIn("mode: '0600'", task)
+
     def test_admin_mfa_is_required_by_default_and_can_be_disabled(self) -> None:
         environment = Environment(undefined=StrictUndefined)
         base = {
             "app_database_url": "postgresql://app:fixture@db:5432/borrow_return",
+            "migration_database_url": "postgresql://raspi_migrator:fixture@db:5432/borrow_return",
             "api_jwt_access_secret": "a" * 32,
             "api_jwt_refresh_secret": "b" * 32,
             "admin_allow_nets": ["127.0.0.1/32"],
@@ -93,6 +125,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
             (ANSIBLE_ROOT / "templates/api.env.j2").read_text(encoding="utf-8")
         ).render(
             app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            migration_database_url="postgresql://raspi_migrator:fixture@db:5432/borrow_return",
             api_jwt_access_secret="a" * 32,
             api_jwt_refresh_secret="b" * 32,
             business_hermes_web_base_url="https://gateway",
@@ -102,6 +135,7 @@ class AnsibleTemplateContractTests(unittest.TestCase):
         ).render(
             admin_allow_nets=["127.0.0.1/32"],
             app_database_url="postgresql://postgres:test@db:5432/borrow_return",
+            migration_database_url="postgresql://raspi_migrator:fixture@db:5432/borrow_return",
             business_hermes_web_base_url="https://gateway",
         )
         self.assertIn("BUSINESS_HERMES_WEB_BASE_URL=https://gateway", rendered_api)

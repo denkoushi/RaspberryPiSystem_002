@@ -152,7 +152,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
   return runSessakuPieceOperation({ ...params.audit, action: 'auto_unit_split', siteKey: params.siteKey }, (batchAudit) =>
     runAutoUnitSplitBatch(runner, async () => {
       await setPreprocessingStatementTimeout(runner, runnerDeadline);
-      const rows = await runner.$queryRaw<Array<{ parentId: string }>>(Prisma.sql`SELECT "parentId" FROM (${autoUnitSplitCandidateSql(params.siteKey, order, policy, [], cachedRejections)}) AS lock_candidates`);
+      const rows = await runner.$queryRaw<Array<{ parentId: string }>>(Prisma.sql`SELECT "parentId" FROM (${autoUnitSplitCandidateSql(params.siteKey, order, policy, [], cachedRejections, { includeInputVersion: false })}) AS lock_candidates`);
       return rows.map((row) => row.parentId);
     }, async () => {
       while (true) {

@@ -91,6 +91,21 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - Seiban-order writes still use the complete `registeredFseibans`. Resource drag and bulk requests carry the source; filtered rank writes merge the requested order into the complete resource order while preserving the slots of hidden items. Rank numbers can be normalized to preserve that global order; registration state is not replaced with a visible subset. Filtered responses contain only the requested/visible items.
 - Local verification: the isolated API source/order tests passed (8 tests). Web toolbar/preference/client tests had 64 passes and one existing single-resource picker accessible-name failure; the unchanged HEAD component/test reproduced the same failure. Page/progressive and API service tests could not collect because the installed Zod 3 lacks `guid()` used by existing shared types; route collection also hit a missing `@prisma/adapter-pg`. Shared-types build and web/API type checks failed against existing dependency/generated-type mismatches; changed-file ESLint could not start because `typescript-eslint` was absent. Full acceptance verification remains incomplete. No PostgreSQL integration tests, commit, push or deployment were performed.
 
+## Write queue recovery (2026-11-10)
+
+- Failed recovery blocks writes until polling supplies a changed board revision or item-array reference, or an explicit refresh is accepted. Successful recovery reads the complete refetch response revision before continuing independent queued writes; known stale revisions cannot replace it.
+- A successful due-scope mutation remains a successful save even if its follow-up reads fail. The existing refresh error is shown in due detail. If the board read fails, edits for that seiban stay pending until a complete board refresh supplies an item revision beyond the captured and confirmed revisions; other seibans and independent queued writes can continue. Processing-scope writes can leave other items in the same seiban unchanged. A due write that changes no item revision (same date) never satisfies that condition, so the explicit refresh in due detail (`acceptRefreshedState`) also releases held seibans.
+- Unmount cancels unsent writes through their failure callbacks; in-flight responses are ignored. Due-action callbacks guard state updates after unmount.
+- Missing-item confirmed entries are intentionally retained: item absence and an opaque board revision alone cannot distinguish a delayed pre-save snapshot from a post-save removal. Removing them without that evidence could break the stale-GET overlay. This leaves the original long-session retention concern unresolved.
+- Scope: local web implementation and focused regression tests only; no API, database or deployment changes.
+- Local validation: queue tests passed (13); focused due-save/refetch and order-conflict/stale-GET page tests passed (5). The original queue failed the three new recovery/unmount regressions. The full page file had 206 passes and one split-button enabled-state failure; the same split test timed out with the unchanged HEAD queue/test, so complete page acceptance remains unverified. Web type checking passed after building the existing `part-search-core` dependency, and changed-file ESLint passed.
+
+## Settings refresh across kiosks (2026-11-10)
+
+- **Symptom**: daily hours and per-part minutes edited on one kiosk did not reach a board left open on another kiosk (the queries had a 10-minute `staleTime` and no interval, and the board stays mounted for days).
+- **Fix**: both settings queries refetch every 60 seconds (`PLANNING_BOARD_SETTINGS_REFETCH_MS`). A capacity save that finishes while a fetch is in flight invalidates the query, so the older fetch cannot bring back the previous value.
+- **Not covered**: if a periodic fetch finishes while a capacity save is still in flight, the board can show the old value until the save returns.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.

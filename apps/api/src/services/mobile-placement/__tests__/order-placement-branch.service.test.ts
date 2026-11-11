@@ -9,7 +9,7 @@ import { deleteOrderPlacementBranch, listOrderPlacementBranches } from '../order
 vi.mock('../mobile-local-data.service.js', () => ({ invalidateMobileDataVersions: vi.fn() }));
 
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  orderPlacementBranchState: { delete: vi.fn(), findMany: vi.fn() },
+  orderPlacementBranchState: { delete: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
   $queryRaw: vi.fn(),
   orderPlacementEvent: { delete: vi.fn(), deleteMany: vi.fn(), update: vi.fn(), create: vi.fn() }
 } }));
@@ -27,9 +27,28 @@ describe('deleteOrderPlacementBranch', () => {
     expect(invalidateMobileDataVersions).toHaveBeenCalledTimes(1);
     for (const method of Object.values(prisma.orderPlacementEvent)) expect(method).not.toHaveBeenCalled();
   });
-  it('returns 404 for a missing or concurrently deleted branch', async () => {
+  it.each([undefined, new Date('2026-10-28T00:00:00.000Z')])('returns 404 for a missing or concurrently deleted branch (expectedUpdatedAt: %s)', async (expectedUpdatedAt) => {
     vi.mocked(prisma.orderPlacementBranchState.delete).mockRejectedValue(new Prisma.PrismaClientKnownRequestError('missing', { code: 'P2025', clientVersion: '5' }));
-    await expect(deleteOrderPlacementBranch('missing')).rejects.toMatchObject({ statusCode: 404, message: 'この品物はもうありません' });
+    vi.mocked(prisma.orderPlacementBranchState.findUnique).mockResolvedValue(null);
+    await expect(deleteOrderPlacementBranch('missing', expectedUpdatedAt)).rejects.toMatchObject({ statusCode: 404, message: 'この品物はもうありません' });
+    expect(invalidateMobileDataVersions).toHaveBeenCalledTimes(1);
+  });
+  it('atomically deletes only the version the client observed', async () => {
+    const updatedAt = new Date('2026-10-28T00:00:00.000Z');
+    vi.mocked(prisma.orderPlacementBranchState.delete).mockResolvedValue({ id: 'branch' } as never);
+    await deleteOrderPlacementBranch('branch', updatedAt);
+    expect(prisma.orderPlacementBranchState.delete).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'branch', updatedAt },
+      select: { id: true, manufacturingOrderBarcodeRaw: true, branchNo: true, shelfCodeRaw: true }
+    });
+  });
+  it('returns 409 and refreshes versions when an existing branch has a different updatedAt', async () => {
+    vi.mocked(prisma.orderPlacementBranchState.delete).mockRejectedValue(new Prisma.PrismaClientKnownRequestError('stale', { code: 'P2025', clientVersion: '7' }));
+    vi.mocked(prisma.orderPlacementBranchState.findUnique).mockResolvedValue({ updatedAt: new Date('2026-10-29T00:00:00.000Z') } as never);
+    await expect(deleteOrderPlacementBranch('branch', new Date('2026-10-28T00:00:00.000Z'))).rejects.toMatchObject({ statusCode: 409 });
+    expect(prisma.orderPlacementBranchState.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'branch' }, select: { updatedAt: true }
+    });
     expect(invalidateMobileDataVersions).toHaveBeenCalledTimes(1);
   });
   it('propagates database failures', async () => {

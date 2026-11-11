@@ -48,7 +48,13 @@ export function KioskPartMeasurementEditPage() {
   const [session, setSession] = useState<PartMeasurementSessionSummaryDto | null>(null);
   const [quantityInput, setQuantityInput] = useState('');
   const [cellValues, setCellValues] = useState<Record<string, string>>({});
-  const [message, setMessage] = useState<string | null>(null);
+  const [messageState, setMessageState] = useState<{ text: string; autosave: boolean } | null>(null);
+  const message = messageState?.text;
+  const setMessage = useCallback((text: string | null) => {
+    setMessageState(text === null ? null : { text, autosave: false });
+  }, []);
+  const finalizingRef = useRef(false);
+  const pendingAutosaveRef = useRef<Promise<void> | null>(null);
   const [busy, setBusy] = useState(false);
   const [lockPrompt, setLockPrompt] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -93,7 +99,7 @@ export function KioskPartMeasurementEditPage() {
     } finally {
       setBusy(false);
     }
-  }, [sheetId, clientKey, syncCellsFromSheet]);
+  }, [sheetId, clientKey, syncCellsFromSheet, setMessage]);
 
   useEffect(() => {
     void load();
@@ -110,14 +116,12 @@ export function KioskPartMeasurementEditPage() {
 
   const buildResultsPayload = useCallback(
     (qty: number, cells: Record<string, string>, items: { id: string }[]) => {
-      const results: Array<{ pieceIndex: number; templateItemId: string; value: string }> = [];
+      const results: Array<{ pieceIndex: number; templateItemId: string; value: string | null }> = [];
       for (let p = 0; p < qty; p += 1) {
         for (const it of items) {
           const k = resultKey(p, it.id);
           const raw = cells[k];
-          if (raw !== undefined && raw.trim() !== '') {
-            results.push({ pieceIndex: p, templateItemId: it.id, value: raw.trim() });
-          }
+          results.push({ pieceIndex: p, templateItemId: it.id, value: raw?.trim() || null });
         }
       }
       return results;
@@ -148,25 +152,31 @@ export function KioskPartMeasurementEditPage() {
     [buildResultsPayload, clientKey]
   );
 
-  useEffect(() => {
-    if (!sheet || sheet.status !== 'DRAFT') return;
-    const items = sheet.template?.items ?? [];
-    if (items.length === 0) return;
-
-    const n = parseInt(quantityInput, 10);
-    if (!Number.isFinite(n) || n < 0) return;
-
+  const scheduleSave = (quantity: string, cells: Record<string, string>) => {
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+    if (!sheet || sheet.status !== 'DRAFT' || finalizingRef.current) return;
+    const items = sheet.template?.items ?? [];
+    const n = parseInt(quantity, 10);
+    if (items.length === 0 || !Number.isFinite(n) || n < 0) return;
+
     autosaveTimerRef.current = setTimeout(() => {
-      void flushPatchSheet(sheet.id, n, cellValues, items).catch(() => {
-        /* 自動保存失敗は次回に委ねる */
+      if (finalizingRef.current) return;
+      pendingAutosaveRef.current = (pendingAutosaveRef.current ?? Promise.resolve()).then(() => {
+        if (finalizingRef.current) return;
+        return flushPatchSheet(sheet.id, n, cells, items);
+      }).then(() => {
+        if (!finalizingRef.current) setMessageState((prev) => prev?.autosave ? null : prev);
+      }).catch((e: unknown) => {
+        if (finalizingRef.current) return;
+        const err = e as { response?: { data?: { message?: string } } };
+        setMessageState({ text: err.response?.data?.message ?? '保存に失敗しました。', autosave: true });
       });
     }, AUTOSAVE_MS);
+  };
 
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-    };
-  }, [quantityInput, cellValues, sheet, flushPatchSheet]);
+  useEffect(() => () => {
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!nfcEvent || !sheet || sheet.status !== 'DRAFT') return;
@@ -189,7 +199,7 @@ export function KioskPartMeasurementEditPage() {
         setMessage(err.response?.data?.message ?? '社員タグの反映に失敗しました。');
       }
     })();
-  }, [nfcEvent, sheet, clientKey]);
+  }, [nfcEvent, sheet, clientKey, setMessage]);
 
   const templateItems = sheet?.template?.items ?? [];
   const drawingPath = sheet?.template?.visualTemplate?.drawingImageRelativePath;
@@ -202,7 +212,9 @@ export function KioskPartMeasurementEditPage() {
 
   const onCellChange = (pieceIndex: number, templateItemId: string, value: string) => {
     const k = resultKey(pieceIndex, templateItemId);
-    setCellValues((prev) => ({ ...prev, [k]: value }));
+    const next = { ...cellValues, [k]: value };
+    setCellValues(next);
+    scheduleSave(quantityInput, next);
   };
 
   const isRowComplete = (p: number) => {
@@ -227,15 +239,14 @@ export function KioskPartMeasurementEditPage() {
       setMessage('空の行がありません。');
       return;
     }
-    setCellValues((prev) => {
-      const next = { ...prev };
-      for (const it of templateItems) {
-        const kFrom = resultKey(fromPiece, it.id);
-        const kTo = resultKey(to, it.id);
-        next[kTo] = prev[kFrom] ?? '';
-      }
-      return next;
-    });
+    const next = { ...cellValues };
+    for (const it of templateItems) {
+      const kFrom = resultKey(fromPiece, it.id);
+      const kTo = resultKey(to, it.id);
+      next[kTo] = cellValues[kFrom] ?? '';
+    }
+    setCellValues(next);
+    scheduleSave(quantityInput, next);
     setMessage(null);
   };
 
@@ -254,10 +265,9 @@ export function KioskPartMeasurementEditPage() {
       setMessage('同じ項目の空欄セルがありません。');
       return;
     }
-    setCellValues((prev) => ({
-      ...prev,
-      [resultKey(targetPiece, templateItemId)]: src
-    }));
+    const next = { ...cellValues, [resultKey(targetPiece, templateItemId)]: src };
+    setCellValues(next);
+    scheduleSave(quantityInput, next);
     setMessage(null);
   };
 
@@ -281,14 +291,16 @@ export function KioskPartMeasurementEditPage() {
   };
 
   const handleFinalize = async () => {
-    if (!sheet) return;
+    if (!sheet || sheet.status !== 'DRAFT' || finalizingRef.current) return;
+    finalizingRef.current = true;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setBusy(true);
     setMessage(null);
     try {
+      await pendingAutosaveRef.current;
       const n = parseInt(quantityInput, 10);
       const items = sheet.template?.items ?? [];
       if (Number.isFinite(n) && n >= 1 && items.length > 0) {
-        if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
         await flushPatchSheet(sheet.id, n, cellValues, items);
       }
       const { sheet: finalized, session: nextSession } = await finalizePartMeasurementSheet(sheet.id, clientKey);
@@ -299,6 +311,7 @@ export function KioskPartMeasurementEditPage() {
       const err = e as { response?: { data?: { message?: string } } };
       setMessage(err.response?.data?.message ?? '確定に失敗しました。');
     } finally {
+      finalizingRef.current = false;
       setBusy(false);
     }
   };
@@ -466,7 +479,10 @@ export function KioskPartMeasurementEditPage() {
             <KioskPartMeasurementSheetMetaBlock
               sheet={sheet}
               quantityInput={quantityInput}
-              onQuantityChange={setQuantityInput}
+              onQuantityChange={(value) => {
+                setQuantityInput(value);
+                scheduleSave(value, cellValues);
+              }}
               readOnly={readOnly}
             />
           ) : null

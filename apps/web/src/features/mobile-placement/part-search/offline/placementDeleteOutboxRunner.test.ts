@@ -48,7 +48,7 @@ describe('placement delete outbox', () => {
     expect((await queue.list())[0].status).toBe('pending');
     expect(await local.listPlacements()).toEqual([]);
   });
-  it.each([400, 401, 403, 409, 422])('restores a row on terminal status %s, retaining needs_check', async (status) => {
+  it.each([400, 401, 403, 422])('restores a row on terminal status %s, retaining needs_check', async (status) => {
     const { local, queue, runner } = await setup();
     await runner.submit(row);
     vi.mocked(canSyncNow).mockReturnValue(true);
@@ -67,19 +67,39 @@ describe('placement delete outbox', () => {
     if (status === 404) vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { status } });
     else vi.mocked(deleteOrderPlacementBranch).mockResolvedValue({ deleted: row });
     await Promise.all([runner.flush(), runner.flush()]);
-    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith(row.id);
+    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith(row.id, row.updatedAt);
     expect(await local.listPlacements()).toEqual([]);
     expect(await queue.list()).toEqual([]);
     expect(requestSync).toHaveBeenCalledWith('placements-refresh');
   });
   it('does not overwrite a newer row when a delete is rejected', async () => {
-    const { local, runner } = await setup();
+    const { local, queue, runner } = await setup();
+    const restorePlacement = vi.spyOn(local, 'restorePlacement');
     await runner.submit(row);
-    await local.replace({ placements: { ...snapshot, rows: [packPlacement({ ...row, shelfCodeRaw: 'B' })] } });
+    await local.replace({ placements: { ...snapshot, rows: [packPlacement({ ...row, shelfCodeRaw: 'B', updatedAt: '2026-10-29T00:00:00Z' })] } });
     vi.mocked(canSyncNow).mockReturnValue(true);
     vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
     await runner.flush();
+    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith(row.id, row.updatedAt);
+    expect(restorePlacement).not.toHaveBeenCalled();
     expect((await local.listPlacements())[0].shelfCodeRaw).toBe('B');
+    expect(await queue.list()).toEqual([]);
+    expect(await runner.hasPendingWork()).toBe(false);
+    expect(requestSync).toHaveBeenCalledWith('placements-refresh');
+  });
+  it('discards a stale queued delete without restoring the old row on 409', async () => {
+    const { local, queue, runner } = await setup();
+    // Existing queue records already contain the original row and need no migration.
+    await queue.put({ id: row.id, row, queuedAt: row.updatedAt, status: 'pending' });
+    await local.removePlacement(row.id);
+    vi.mocked(canSyncNow).mockReturnValue(true);
+    vi.mocked(deleteOrderPlacementBranch).mockRejectedValue({ isAxiosError: true, response: { status: 409 } });
+    await runner.flush();
+    expect(deleteOrderPlacementBranch).toHaveBeenCalledExactlyOnceWith(row.id, row.updatedAt);
+    expect(await local.listPlacements()).toEqual([]);
+    expect(await queue.list()).toEqual([]);
+    expect(await runner.hasPendingWork()).toBe(false);
+    expect(requestSync).toHaveBeenCalledWith('placements-refresh');
   });
   it('rechecks the network gate between queued sends', async () => {
     const { queue, runner } = await setup();

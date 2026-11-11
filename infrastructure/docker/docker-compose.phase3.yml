@@ -37,6 +37,8 @@ services:
       - ${PI5_ENV_FILE:-.env}
     environment: &api-environment
       DATABASE_URL: ${APP_DATABASE_URL:?APP_DATABASE_URL is required}
+      # Owner credentials are used only by restore's psql, never Prisma/pg_dump.
+      BACKUP_RESTORE_DATABASE_URL: ${BACKUP_RESTORE_DATABASE_URL:-}
       PHOTO_STORAGE_DIR: /app/storage
       PDF_STORAGE_DIR: /app/storage
       SIGNAGE_RENDER_DIR: /app/storage/signage-rendered

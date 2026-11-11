@@ -252,10 +252,11 @@ export async function getOrderPlacementBranches(manufacturingOrder: string) {
   return data;
 }
 
-export async function deleteOrderPlacementBranch(id: string) {
+export async function deleteOrderPlacementBranch(id: string, expectedUpdatedAt?: string) {
   const { data } = await api.delete<{
     deleted: Pick<OrderPlacementBranchDto, 'id' | 'manufacturingOrderBarcodeRaw' | 'branchNo' | 'shelfCodeRaw'>;
-  }>(`/mobile-placement/order-placement-branches/${encodeURIComponent(id)}`);
+  }>(`/mobile-placement/order-placement-branches/${encodeURIComponent(id)}`,
+    expectedUpdatedAt === undefined ? undefined : { params: { expectedUpdatedAt } });
   return data;
 }
 

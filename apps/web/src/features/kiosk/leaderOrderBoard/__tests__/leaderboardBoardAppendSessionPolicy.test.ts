@@ -105,6 +105,20 @@ describe('shouldBeginLeaderboardAppendSession', () => {
     ).toBe(true);
   });
 
+  it.each(['rows', 'summary', 'complete'] as const)('retry増分時だけ途中overrideを再開する: %s', (kind) => {
+    const override = board([row('a'), row('b')], kind === 'rows');
+    override.residualSummaryDeferred = kind === 'summary';
+    const input = {
+      paramsKey, appendCompleteForParamsKey: null, appendCompleteShellFingerprint: null,
+      shellFingerprint: fp, lastStartedShellFingerprint: fp,
+      shell: board([row('a')], true), appendOverride: override,
+      retryNonce: 1, lastRetryNonceStarted: 0
+    };
+    expect(shouldBeginLeaderboardAppendSession(input)).toBe(kind !== 'complete');
+    expect(shouldBeginLeaderboardAppendSession({ ...input, lastRetryNonceStarted: 1 })).toBe(false);
+    if (kind !== 'complete') expect(resolveLeaderboardAppendLoopStartBoard(input.shell, override)).toBe(override);
+  });
+
   it('資源続きがなくても残骸 summary pending なら開始する', () => {
     const shell = { ...board([row('a')], false), residualSummaryDeferred: true as const };
     expect(

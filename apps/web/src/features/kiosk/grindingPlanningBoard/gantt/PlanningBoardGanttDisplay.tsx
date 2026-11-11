@@ -7,7 +7,10 @@ import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy
 
 import { planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { planningBoardSeibanColor } from './planningBoardSeibanColor';
+import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 
+import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
@@ -26,6 +29,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     if (props.machineSelectionLocked) setPicker(null);
   }, [props.machineSelectionLocked]);
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  const [valueSheetContainer, setValueSheetContainer] = useState<HTMLDivElement | null>(null);
   const handles = useRef(new Map<string, PlanningBoardGanttHandle>());
   const nextLate = useRef(0);
   const nextOverlap = useRef(0);
@@ -37,6 +41,28 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
       forwardQueue: props.layout.forwardQueue?.filter((bar) => bar.resource === resource)
     };
   }), [props.layout, resources]);
+  const paneBars = useMemo(() => resourceLayouts.map(planningBoardVisibleBars), [resourceLayouts]);
+  const seibanColors = useMemo(() => {
+    if (!props.colorBySeiban) return undefined;
+    const seibanOrder = props.seibanOrder ?? [];
+    const seibans = [...new Set(paneBars.flatMap(bars => bars.map(bar => bar.item.fseiban)))];
+    const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
+    seibans.sort((a, b) => rank(a) - rank(b));
+    return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
+  }, [props.colorBySeiban, props.seibanOrder, paneBars]);
+  const { focusedSeiban, onFocusedSeibanChange } = props;
+  useEffect(() => {
+    if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) onFocusedSeibanChange(null);
+  }, [focusedSeiban, seibanColors, onFocusedSeibanChange]);
+  const focusSeiban = (seiban: string) => {
+    onFocusedSeibanChange(seiban);
+    const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
+    paneBars.forEach((bars, index) => {
+      const first = bars.filter(bar => bar.item.fseiban === seiban).reduce<GanttBar | undefined>(
+        (earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
+      if (first) handles.current.get(resources[index]!)?.scrollToItem(first.item.itemId);
+    });
+  };
   const overlapBars = useMemo(() => resourceLayouts.flatMap((layout) => layout.groups.flatMap((group) =>
     group.rows.filter((row) => row.flagged).flatMap((row) => planningBoardVisibleBars({ ...layout, groups: [{ ...group, rows: [row] }] }).slice(0, 1)))), [resourceLayouts]);
   useLayoutEffect(() => { nextLate.current = 0; nextOverlap.current = 0; }, [props.layout, resources]);
@@ -81,23 +107,25 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     return next.join('+');
   };
   return <div ref={setContainer} data-testid="planning-two-machine" className="relative mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
-    <div ref={setHeadContainer} className="shrink-0" />
-    <div className="grid min-h-0 flex-1 grid-rows-2">
-    {resources.map((resource, index) => <section key={resource} aria-label={resource}
-      className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
-      <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
-      <div className="min-h-0 min-w-0 flex-1">
-        <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={container} sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
-          ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
-          valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
-          onNavigateBar={(bar) => {
-            if (!planningBoardResourceMatches(props.singleResourceCd!, bar.resource)) return false;
-            handles.current.get(bar.resource)?.scrollToItem(bar.item.itemId);
-            // Keep navigation within two-machine mode even when an elapsed row cannot be scrolled to.
-            return true;
-          }} />
+    <div ref={setValueSheetContainer} className="relative flex min-h-0 flex-1 flex-col">
+      <div ref={setHeadContainer} className="shrink-0" />
+      <div className="grid min-h-0 flex-1 grid-rows-2">
+      {resources.map((resource, index) => <section key={resource} aria-label={resource}
+        className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
+        <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
+        <div className="min-h-0 min-w-0 flex-1">
+          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+            ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
+            valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
+            onNavigateBar={(bar) => {
+              if (!planningBoardResourceMatches(props.singleResourceCd!, bar.resource)) return false;
+              handles.current.get(bar.resource)?.scrollToItem(bar.item.itemId);
+              // Keep navigation within two-machine mode even when an elapsed row cannot be scrolled to.
+              return true;
+            }} />
+        </div>
+      </section>)}
       </div>
-    </section>)}
     </div>
     {picker && !props.machineSelectionLocked && <PlanningBoardSingleResourcePicker placement="right" anchor={picker.anchor} resources={candidates}
       resourceCd={resources[picker.index]!} resourceNameMap={props.resourceNameMap}
@@ -107,6 +135,8 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         props.onSingleResourceChange?.(nextSelection(resource));
         setPicker(null);
       }} />}
+    {seibanColors && <PlanningBoardSeibanLegend seibanColors={seibanColors} focusedSeiban={focusedSeiban}
+      onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
   </div>;
 });
 
