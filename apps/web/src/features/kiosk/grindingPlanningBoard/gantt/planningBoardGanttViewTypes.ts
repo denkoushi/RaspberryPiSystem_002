@@ -6,7 +6,7 @@ import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoar
 export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   minutesPending?: boolean; minutesError?: boolean;
-  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
+  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest[]) => void;
   valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
   resourceLanes?: readonly string[];
   onUnitSplitChange?: (resourceCd: string, enabled: boolean) => void;
