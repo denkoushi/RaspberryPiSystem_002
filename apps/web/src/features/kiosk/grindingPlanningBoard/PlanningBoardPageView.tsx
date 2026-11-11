@@ -1,3 +1,4 @@
+import { isProductionScheduleGrindingResourceCd } from '@raspi-system/shared-types';
 import { useCallback, useLayoutEffect, useRef } from 'react';
 
 import { PlanningBoardGanttDisplay } from './gantt/PlanningBoardGanttDisplay';
@@ -23,7 +24,7 @@ type Props = {
   view: GrindingPlanningBoardView;
   orderPreview: OrderPreview | null;
   category: GrindingPlanningBoardCategory;
-  resourcesQuery: { data?: { resourceNameMap: Record<string, string[]> } };
+  resourcesQuery: { data?: { resourceNameMap: Record<string, string[]>; resourceItems?: { resourceCd: string; excluded: boolean }[] } };
   pinMode: boolean;
   togglePin: (item: GrindingPlanningBoardItem) => void;
   selectedItemIds: ReadonlySet<string>;
@@ -77,6 +78,9 @@ export function PlanningBoardPageView({
   sortedItemsBySeiban, openFseibans, scanFocusKey, visibleItems, moveResourceByDrag, specialDueMode,
   updateSpecialDue, nowMs, resourceDragDisabled
 }: Props) {
+  const unitSplitAvailable = (resourceCd: string) => category === 'cutting' && resourceCd !== '未設定'
+    && !isProductionScheduleGrindingResourceCd(resourceCd) && data?.resourceCategories?.[resourceCd] !== 'grinding'
+    && !(resourcesQuery.data?.resourceItems ?? []).some((item) => item.resourceCd === resourceCd && item.excluded);
   const writingRef = useRef(piecesWriting);
   useLayoutEffect(() => { writingRef.current = piecesWriting; }, [piecesWriting]);
   // Only write controls in this DOM subtree are gated. Portaled rank choices
@@ -92,6 +96,7 @@ export function PlanningBoardPageView({
     <>
       {data && ganttEnabled ? (
         <PlanningBoardGanttDisplay capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
+          onUnitSplitChange={gantt.changeUnitSplit} unitSplitAvailable={unitSplitAvailable}
           onMinutesSourceChange={gantt.changeMinutesSource} valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}
           resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}

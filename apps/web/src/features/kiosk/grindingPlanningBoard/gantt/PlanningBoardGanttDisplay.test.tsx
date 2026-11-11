@@ -786,3 +786,18 @@ it('keeps minutes controls and the ungrouped sheet scoped to one machine', () =>
   expect(within(sheet).getAllByRole('table')).toHaveLength(1);
   expect(within(sheet).queryByText('021')).toBeNull();
 });
+
+it('passes unit split controls through the display and view in single and two-machine modes', () => {
+  const onUnitSplitChange = vi.fn();
+  const values = { ...props('forward'), unitSplitAvailable: (resource: string) => resource === '021', onUnitSplitChange,
+    unitSplitEnabledByResource: { '021': false } };
+  const view = render(<PlanningBoardGanttDisplay {...values} singleResourceCd="021" />);
+  const button = screen.getByRole('button', { name: '1台ずつ' });
+  expect(button).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(button); expect(onUnitSplitChange).toHaveBeenCalledWith('021', true);
+  view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd="021+022" />);
+  expect(screen.getByRole('button', { name: '1台ずつ' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: '1台ずつ' })).toBeDisabled();
+  view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd="022" />);
+  expect(screen.queryByRole('button', { name: '1台ずつ' })).not.toBeInTheDocument();
+});
