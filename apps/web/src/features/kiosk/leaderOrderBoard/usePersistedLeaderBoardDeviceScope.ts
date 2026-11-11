@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   LEADER_BOARD_PERSIST_DEVICE_SCOPE_SCHEMA_VERSION,
   persistedLeaderBoardDeviceScopeStorageKey,
   type PersistedLeaderBoardActiveDeviceScope
 } from './constants';
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 
 function loadStoredDevice(scopeStorageKey: string): string | null {
   if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(scopeStorageKey);
+  const raw = readLeaderBoardLocalStorage(scopeStorageKey);
   if (!raw?.trim()) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedLeaderBoardActiveDeviceScope> | null;
@@ -28,7 +29,7 @@ function persistDevice(scopeStorageKey: string, deviceScopeKey: string): void {
     schemaVersion: LEADER_BOARD_PERSIST_DEVICE_SCOPE_SCHEMA_VERSION,
     deviceScopeKey: deviceScopeKey.trim()
   };
-  window.localStorage.setItem(scopeStorageKey, JSON.stringify(payload));
+  writeLeaderBoardLocalStorage(scopeStorageKey, JSON.stringify(payload));
 }
 
 /**
@@ -37,6 +38,8 @@ function persistDevice(scopeStorageKey: string, deviceScopeKey: string): void {
 export function usePersistedLeaderBoardDeviceScope(siteKey: string, validDeviceScopeKeys: readonly string[]) {
   const scopeStorageKey = useMemo(() => persistedLeaderBoardDeviceScopeStorageKey(siteKey), [siteKey]);
   const keySignature = useMemo(() => validDeviceScopeKeys.join('\0'), [validDeviceScopeKeys]);
+  const validKeys = useMemo(() => keySignature.length > 0 ? keySignature.split('\0') : [], [keySignature]);
+  const previousScopeStorageKey = useRef(scopeStorageKey);
 
   const [activeDeviceScopeKey, setInternal] = useState(() => {
     const stored =
@@ -49,20 +52,22 @@ export function usePersistedLeaderBoardDeviceScope(siteKey: string, validDeviceS
 
   const resolveAgainstValidList = useCallback(
     (candidate: string | null): string => {
-      if (candidate && validDeviceScopeKeys.includes(candidate)) {
+      if (candidate && validKeys.includes(candidate)) {
         return candidate;
       }
-      return validDeviceScopeKeys[0] ?? '';
+      return validKeys[0] ?? '';
     },
-    [validDeviceScopeKeys]
+    [validKeys]
   );
 
   /** クエリ済みで端末キー一覧が確定したら、保存済みとの整合を継続的に取る */
   useEffect(() => {
+    const sameScope = previousScopeStorageKey.current === scopeStorageKey;
+    previousScopeStorageKey.current = scopeStorageKey;
     const stored = loadStoredDevice(scopeStorageKey);
     const next = resolveAgainstValidList(stored);
-    setInternal((prev) => (prev !== next ? next : prev));
-  }, [resolveAgainstValidList, scopeStorageKey, keySignature]);
+    setInternal((prev) => (sameScope && validKeys.includes(prev) ? prev : next));
+  }, [resolveAgainstValidList, scopeStorageKey, keySignature, validKeys]);
 
   const setActiveDeviceScopeKey = useCallback(
     (next: string) => {

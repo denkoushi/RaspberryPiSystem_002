@@ -3,6 +3,8 @@ import { useCallback, useMemo, useRef } from 'react';
 import { postKioskProductionScheduleLeaderboardClientPerf } from '../../../api/client';
 import { readProductionBuildConfig } from '../../../config/productionBuildConfig';
 
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
+
 const STORAGE_KEY = 'leaderboardBoardPerfLog';
 let fallbackSessionCounter = 0;
 
@@ -60,14 +62,14 @@ export function isLeaderboardBoardClientPerfEnabled(): boolean {
   const params = new URLSearchParams(window.location.search);
   const flag = params.get('leaderboardPerf');
   if (flag === '1' || flag === 'true') {
-    window.localStorage.setItem(STORAGE_KEY, '1');
+    writeLeaderBoardLocalStorage(STORAGE_KEY, '1');
     return true;
   }
   if (flag === '0' || flag === 'false') {
-    window.localStorage.removeItem(STORAGE_KEY);
+    writeLeaderBoardLocalStorage(STORAGE_KEY, null);
     return false;
   }
-  return window.localStorage.getItem(STORAGE_KEY) === '1';
+  return readLeaderBoardLocalStorage(STORAGE_KEY) === '1';
 }
 
 export function useLeaderboardBoardClientPerfLogger(context: {

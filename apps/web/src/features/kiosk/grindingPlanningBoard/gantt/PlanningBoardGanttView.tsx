@@ -30,6 +30,7 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -251,35 +252,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   useLayoutEffect(() => { latestDragLanes.current = dragLanes; }, [dragLanes]);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
-  const pan = useRef<HTMLDivElement | null>(null);
-  useEffect(() => () => pan.current?.remove(), []);
-  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 1 || event.pointerType !== 'mouse' || pan.current) return;
-    event.preventDefault();
-    const element = event.currentTarget;
-    const { pointerId, clientX: x, clientY: y } = event;
-    const left = element.scrollLeft;
-    const top = element.scrollTop;
-    // A small cover shows the hand: styling the viewport would restyle every bar first, which is slow on big boards.
-    const cover = document.createElement('div');
-    cover.dataset.planningGanttPanCover = '';
-    cover.className = 'fixed inset-0 z-[90] cursor-grabbing';
-    document.body.appendChild(cover);
-    pan.current = cover;
-    cover.setPointerCapture?.(pointerId);
-    cover.addEventListener('pointermove', (move) => {
-      if (move.pointerId !== pointerId || pan.current !== cover) return;
-      element.scrollLeft = left - (move.clientX - x) / pageZoom();
-      element.scrollTop = top - (move.clientY - y) / pageZoom();
-      move.preventDefault();
-    });
-    const end = (stop: PointerEvent) => {
-      if (stop.pointerId !== pointerId || pan.current !== cover) return;
-      pan.current = null;
-      cover.remove();
-    };
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) cover.addEventListener(type, end);
-  };
+  const startPan = usePlanningBoardGanttPan();
   const content = useRef<HTMLDivElement>(null);
   const rowElements = useRef(new Map<string, HTMLDivElement>());
   const registerRow = useCallback((key: string, element: HTMLDivElement | null) => {
