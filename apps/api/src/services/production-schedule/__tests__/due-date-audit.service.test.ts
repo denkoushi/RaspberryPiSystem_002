@@ -54,8 +54,7 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
     expect(mocks.tx.productionScheduleDueDateAuditLog.create).toHaveBeenCalledOnce();
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5_000, timeout: 15_000 });
     expect(mocks.resetCaches).toHaveBeenCalledOnce();
-    if (!date && action === 'seiban') expect(mocks.tx.productionScheduleRowNote.updateMany).toHaveBeenCalledWith({ where: { csvDashboardRowId: 'row' }, data: { dueDate: null } });
-    else if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.deleteMany).toHaveBeenCalled();
+    if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.updateMany).toHaveBeenCalledWith({ where: { csvDashboardRowId: 'row' }, data: { dueDate: null } });
     else expect(mocks.tx.productionScheduleRowNote.upsert).toHaveBeenCalled();
   });
   it('retries the whole transaction after a serialization conflict', async () => {
