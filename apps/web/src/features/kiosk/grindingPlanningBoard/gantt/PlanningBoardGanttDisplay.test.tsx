@@ -646,3 +646,68 @@ it('rejects pair selections colliding with a real resource code', () => {
   fireEvent.click(screen.getByRole('button', { name: '022の機械を選ぶ' }));
   expect(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '023', exact: true })).toBeDisabled();
 });
+
+function seibanLegendBoard(mode: 'forward' | 'backward') {
+  const fixture = productionFixture(4, 1);
+  const seibans = ['26-1201', '26-1202', '26-1203', '26-1203'];
+  const items = fixture.items.map((item, i) => ({ ...item, originalResourceCd: i % 2 ? '022' : '021', fseiban: seibans[i]!,
+    specialDue: null, requiredMinutes: 60, orderPinned: false }));
+  const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'], seibanOrder: ['26-1203', '26-1202', '26-1201'], mode });
+  const values = { ...props(mode), layout, colorBySeiban: true, seibanOrder: ['26-1203', '26-1202', '26-1201'] };
+  function Board() {
+    const [focusedSeiban, setFocusedSeiban] = useState<string | null>(null);
+    return <PlanningBoardGanttDisplay {...values} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} />;
+  }
+  return Board;
+}
+
+it.each(['forward', 'backward'] as const)('shows one seiban legend below the lower pane with both panes\' seibans (%s)', mode => {
+  const Board = seibanLegendBoard(mode);
+  render(<Board />);
+  const legends = screen.getAllByRole('group', { name: '製番の色分け凡例' });
+  expect(legends).toHaveLength(1);
+  const legend = legends[0]!;
+  const upper = screen.getByRole('region', { name: '021' });
+  const lower = screen.getByRole('region', { name: '022' });
+  expect(upper).not.toContainElement(legend);
+  expect(lower).not.toContainElement(legend);
+  expect(lower.compareDocumentPosition(legend) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(within(legend).getAllByRole('button').map(chip => chip.textContent)).toEqual(['26-1203', '26-1202', '26-1201']);
+});
+
+it.each(['forward', 'backward'] as const)('keeps the seiban focus on both panes when the seiban is only in one pane (%s)', mode => {
+  const Board = seibanLegendBoard(mode);
+  render(<Board />);
+  const legend = () => within(screen.getAllByRole('group', { name: '製番の色分け凡例' })[0]!);
+  const surfaces = (id: string) => screen.getAllByTestId(new RegExp(`^planning-gantt-bar-${id}(-segment-\\d+)?$`))
+    .map(bar => mode === 'backward' ? bar.firstElementChild! : bar);
+  const focused = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('ring-2', 'ring-white'));
+  const dimmed = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('opacity-20'));
+  const clear = (id: string) => surfaces(id).forEach(surface => { expect(surface).not.toHaveClass('ring-2'); expect(surface).not.toHaveClass('opacity-20'); });
+
+  fireEvent.click(legend().getByRole('button', { name: '26-1201' }));
+  expect(legend().getByRole('button', { name: '26-1201' })).toHaveAttribute('aria-pressed', 'true');
+  focused('item-0000');
+  for (const id of ['item-0001', 'item-0002', 'item-0003']) dimmed(id);
+
+  fireEvent.click(legend().getByRole('button', { name: '26-1202' }));
+  expect(legend().getByRole('button', { name: '26-1202' })).toHaveAttribute('aria-pressed', 'true');
+  focused('item-0001');
+  for (const id of ['item-0000', 'item-0002', 'item-0003']) dimmed(id);
+
+  fireEvent.click(legend().getByRole('button', { name: '26-1203' }));
+  focused('item-0002');
+  focused('item-0003');
+  for (const id of ['item-0000', 'item-0001']) dimmed(id);
+
+  fireEvent.click(legend().getByRole('button', { name: '26-1203' }));
+  expect(legend().getByRole('button', { name: '26-1203' })).toHaveAttribute('aria-pressed', 'false');
+  for (const id of ['item-0000', 'item-0001', 'item-0002', 'item-0003']) clear(id);
+
+  fireEvent.click(legend().getByRole('button', { name: '26-1201' }));
+  fireEvent.click(legend().getByRole('button', { name: 'すべて表示' }));
+  for (const id of ['item-0000', 'item-0001', 'item-0002', 'item-0003']) clear(id);
+  fireEvent.click(legend().getByRole('button', { name: '26-1202' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  for (const id of ['item-0000', 'item-0001', 'item-0002', 'item-0003']) clear(id);
+});
