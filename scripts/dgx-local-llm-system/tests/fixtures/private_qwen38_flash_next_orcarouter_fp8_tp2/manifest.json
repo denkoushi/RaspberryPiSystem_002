@@ -35,7 +35,7 @@
       "maxNumSeqs": 4,
       "maxNumBatchedTokens": 4096,
       "schedulingPolicy": "priority",
-      "gpuMemoryUtilization": 0.85,
+      "gpuMemoryUtilization": 0.87,
       "kvCacheDtype": "auto",
       "enablePrefixCaching": true,
       "enableChunkedPrefill": true,
