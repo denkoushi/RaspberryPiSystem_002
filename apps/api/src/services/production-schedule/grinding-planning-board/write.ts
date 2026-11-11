@@ -113,7 +113,8 @@ async function readSpecialDueCalendarModes(siteKey: string, requests: readonly O
 async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw'; pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
   await acquireSessakuPieceLogicalLocks(params.client, params.pieceKeys);
-  if (params.pieceKeys.length) await lockState(params.client, params.siteKey);
+  // Serialize every override read/write with lane rewrites, including piece-free rows.
+  await lockState(params.client, params.siteKey);
   for (const sourceRowId of rowsToLock) {
     await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
     const locked = await params.client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
@@ -365,8 +366,8 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
         const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
         if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       }
-      // Logical and board locks keep the projection stable. The parent locks above reject
-      // concurrent parent writes; the board lock serializes override writers.
+      // Overrides were read under the site state lock, shared by all override writers.
+      // Logical locks protect pieces; the parent locks above serialize parent writes.
       const current = beforeLock;
       const source = current.byItemId.get(params.itemId);
       const target = current.byItemId.get(params.targetItemId);

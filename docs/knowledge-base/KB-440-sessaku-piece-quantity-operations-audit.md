@@ -66,6 +66,29 @@ Parent completion updated pieces without passing through the piece audit writer.
   `sessaku_piece.auto_unit_split_background_pacing` (`retryAfterMs`),
   and `sessaku_piece.auto_unit_split_call` (`totalMs`, `lockHeldMs`, `yieldReason`, `errorCode`).
 
+## Planning Board Override Lost Updates (2026-11-11)
+
+- Cause: lane rewrites (automatic/manual split, merge, quantity removal) run at
+  ReadCommitted, read every override in the resource lane, and later upsert the
+  whole lane with those read values. Piece-free item saves and due-scope saves did
+  not take the site's board state lock, so a save committed in between was
+  overwritten (due date, pin, special due, resource reverted).
+- Fix: item/rank saves and due-scope writes always take `lockState` for their site
+  before reading overrides (order: logical → state → parent row). Due-scope writes
+  ensure the state row exists before the transaction. Arrival writers keep their
+  conditional lock because they write separate tables.
+- `lockState` converts a raw `40001` (P2010) to 409 `STALE_PLANNING_BOARD`. A
+  RepeatableRead/Serializable save that waited behind a committed lane rewrite
+  otherwise returned 500. Users now see "reload" instead of a silent revert.
+- Evidence (local Postgres): `preserves a piece-free sibling save across a
+  ReadCommitted split lane rewrite` fails without the fix ("successful sibling save
+  must survive the split lane flush", value lost) and passes with it (409, values
+  unchanged). The resource-reorder case only proves serialization; its RR rewrite
+  already returned 409 before the fix.
+- The tombstone due-scope test now expects the state lock (still no `sessaku`
+  logical lock). `keeps an override on a same-logical-key winner…` in the board
+  integration suite also fails on unchanged HEAD and is unrelated.
+
 ## FHINCD Investigation
 
 Resource-part minute writes use `z.string().trim()`, and piece operation lookups
