@@ -11,15 +11,15 @@ export type LeaderboardAppendSessionGateInput = {
   lastStartedShellFingerprint: string | null;
   shell: ProductionScheduleLeaderboardBoardResponse;
   appendOverride: ProductionScheduleLeaderboardBoardResponse | null;
-  /** 直前の continue が失敗し override が無いとき、refetch で再試行する */
+  /** 直前の continue の一時失敗後、待ち時間を経て再試行する */
   retryNonce: number;
   lastRetryNonceStarted: number;
 };
 
 /**
  * 新しい continue 追補セッションを開始すべきか。
- * - params 変更後の初回 / shell 内容変化 / 追補未完了で override 無しの再試行 のみ true。
- * - 同一 shell 指紋で追補途中（override が shell より行数多い）なら false（refetch 巻き戻し防止）。
+ * - params 変更後の初回 / shell 内容変化 / 追補未完了の明示的な再試行 のみ true。
+ * - 同一 shell 指紋で追補途中（override が shell より行数多い）なら通常の refetch では false（巻き戻し防止）。
  */
 export function shouldBeginLeaderboardAppendSession(input: LeaderboardAppendSessionGateInput): boolean {
   const hasPendingWork =
@@ -34,11 +34,9 @@ export function shouldBeginLeaderboardAppendSession(input: LeaderboardAppendSess
   }
 
   if (input.lastStartedShellFingerprint === input.shellFingerprint) {
-    const overrideAhead =
-      input.appendOverride != null && input.appendOverride.rows.length > input.shell.rows.length;
-    if (overrideAhead) return false;
-    if (input.appendOverride != null) return false;
-    return input.retryNonce !== input.lastRetryNonceStarted;
+    if (input.retryNonce === input.lastRetryNonceStarted) return false;
+    const remaining = input.appendOverride ?? input.shell;
+    return remaining.resources.some((r) => r.hasMore) || remaining.residualSummaryDeferred === true;
   }
 
   return true;

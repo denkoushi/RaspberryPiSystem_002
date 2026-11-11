@@ -205,6 +205,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const {
     pauseRefetch: mutationPauseRefetch,
     orderPending,
+    orderError,
     dueDatePending,
     completePending,
     notePending,
@@ -223,6 +224,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
     (mutation) => applyDisplayMutationRef.current(mutation),
     true
   );
+
+  useEffect(() => {
+    if (orderError) window.alert('保存に失敗しました。再度お試しください。');
+  }, [orderError]);
 
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending;
@@ -477,7 +482,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const handleAutoRankSlot = useCallback(
     (resourceCd: string) => {
-      void handleAutoRank(resourceCd);
+      void handleAutoRank(resourceCd).catch(() => {});
     },
     [handleAutoRank]
   );
@@ -568,7 +573,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const handleCompleteRow = useCallback(
     (rowId: string, intent: 'complete' | 'incomplete') => {
-      void completeRow(rowId, intent);
+      void completeRow(rowId, intent).catch(() => window.alert('保存に失敗しました。再度お試しください。'));
     },
     [completeRow]
   );
