@@ -5,6 +5,7 @@ import type { CsvImportConfigService } from '../csv-import-config.service.js';
 import { ItemCsvImporter } from '../importers/item.js';
 
 const mocks = vi.hoisted(() => ({
+  outsideDeleteMany: vi.fn(),
   item: { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn(), create: vi.fn(), deleteMany: vi.fn() },
   loan: { findMany: vi.fn() },
   machineNfcTag: { findUnique: vi.fn() },
@@ -12,11 +13,13 @@ const mocks = vi.hoisted(() => ({
   transactionOptions: vi.fn(),
 }));
 
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('../../../lib/prisma.js', () => {
-  const tx = { item: mocks.item, machineNfcTag: mocks.machineNfcTag, inventoryNfcTag: mocks.inventoryNfcTag };
+  const tx = { loan: mocks.loan, item: mocks.item, machineNfcTag: mocks.machineNfcTag, inventoryNfcTag: mocks.inventoryNfcTag };
   return {
     prisma: {
-      item: mocks.item,
+      item: { ...mocks.item, deleteMany: mocks.outsideDeleteMany },
       loan: mocks.loan,
       $transaction: async (run: (client: unknown) => unknown, options: unknown) => {
         mocks.transactionOptions(options);
@@ -162,14 +165,14 @@ describe('ItemCsvImporter.import', () => {
     expect(mocks.item.update).toHaveBeenCalledWith({ where: { itemCode: 'TO0001' }, data: { name: '新名' } });
   });
 
-  it('rejects duplicate nfcTagUid inside the same CSV before any write', async () => {
+  it.each([false, true])('rejects duplicate nfcTagUid inside the same CSV before any write', async (replaceExisting) => {
     const error = await importer()
       .import(
         [
           { itemCode: 'TO0001', name: 'A', nfcTagUid: '04AABB' },
           { itemCode: 'TO0002', name: 'B', nfcTagUid: ' 04AABB ' },
         ],
-        false,
+        replaceExisting,
       )
       .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(ApiError);
@@ -177,6 +180,8 @@ describe('ItemCsvImporter.import', () => {
     expect((error as ApiError).message).toBe('CSV内でnfcTagUidが重複しています: nfcTagUid="04AABB" (itemCode: TO0001, TO0002)');
     expect(mocks.item.create).not.toHaveBeenCalled();
     expect(mocks.transactionOptions).not.toHaveBeenCalled();
+    expect(mocks.item.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
   });
 
   it('rejects creating an item whose NFC UID is already used by another item', async () => {
@@ -225,5 +230,16 @@ describe('ItemCsvImporter.import', () => {
     mocks.item.findUnique.mockResolvedValue(null);
     await importer().import([{ itemCode: 'TO0001', name: 'A' }], true);
     expect(mocks.item.deleteMany).toHaveBeenCalledWith();
+  });
+
+  it('keeps replacement deletion inside the transaction when a later insert fails', async () => {
+    mocks.item.findUnique.mockResolvedValue(null);
+    const failure = new Error('insert failed');
+    mocks.item.create.mockRejectedValueOnce(failure);
+    await expect(importer().import([{ itemCode: 'TO0001', name: 'A' }], true)).rejects.toBe(failure);
+    expect(mocks.outsideDeleteMany).not.toHaveBeenCalled();
+    expect(mocks.item.deleteMany).toHaveBeenCalledTimes(1);
+    expect(mocks.item.deleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.item.create.mock.invocationCallOrder[0]);
   });
 });
