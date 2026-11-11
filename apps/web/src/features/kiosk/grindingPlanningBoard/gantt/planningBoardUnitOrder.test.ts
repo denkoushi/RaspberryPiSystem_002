@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { planningBoardOrderMetrics } from './planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout } from './planningBoardGanttLayout';
-import { planningBoardUnitOrder } from './planningBoardUnitOrder';
+import { mergeUnitOrderLane, planningBoardUnitOrder } from './planningBoardUnitOrder';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { UnitOrderMethod } from './planningBoardUnitOrder';
@@ -131,5 +131,12 @@ describe('planningBoardUnitOrder', () => {
     expect(planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout({ ...input, laneOrder: run(input, 'group').proposal }), true).setupCount).toBe(2);
     expect(planningBoardOrderMetrics({ groups: [{ rows: [{ bars: [{ tone: 'planned', setupSegments: [{ start: 0, end: 1 }, { start: 2, end: 3 }] },
       { tone: 'planned', setupSegments: [{ start: 0, end: 0 }] }] }] }] } as Parameters<typeof planningBoardOrderMetrics>[0], true).setupCount).toBe(1);
+  });
+});
+
+describe('mergeUnitOrderLane', () => {
+  it('keeps hidden items in place, drops moved-out pieces and appends moved-in pieces', () => {
+    expect(mergeUnitOrderLane(['a', 'h1', 'b', 'c', 'h2'], ['a', 'b', 'c'], ['c', 'a'])).toEqual(['c', 'h1', 'a', 'h2']);
+    expect(mergeUnitOrderLane(['h1', 'a', 'h2'], ['a'], ['x', 'a', 'y'])).toEqual(['h1', 'x', 'h2', 'a', 'y']);
   });
 });

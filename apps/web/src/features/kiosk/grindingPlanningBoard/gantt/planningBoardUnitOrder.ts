@@ -96,3 +96,17 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
   });
   return { proposal, resourceChanges };
 }
+
+/** Rebuild a full lane after balancing: hidden items keep their slots, visible slots take the proposal, extra pieces go last. */
+export function mergeUnitOrderLane(fullOrder: readonly string[], visibleCurrent: readonly string[], proposal: readonly string[]): string[] {
+  const visible = new Set(visibleCurrent);
+  const placed = new Set(proposal);
+  let next = 0;
+  const lane: string[] = [];
+  for (const id of fullOrder) {
+    if (!visible.has(id)) { if (!placed.has(id)) lane.push(id); }
+    else if (next < proposal.length) lane.push(proposal[next++]!);
+  }
+  lane.push(...proposal.slice(next));
+  return lane;
+}

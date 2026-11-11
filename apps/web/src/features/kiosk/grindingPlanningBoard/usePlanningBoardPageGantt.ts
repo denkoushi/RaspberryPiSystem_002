@@ -4,7 +4,7 @@ import { isVisibleByArrival } from '../isVisibleByArrival';
 
 import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout, planningBoardVisibleBars } from './gantt/planningBoardGanttLayout';
-import { planningBoardUnitOrder } from './gantt/planningBoardUnitOrder';
+import { mergeUnitOrderLane, planningBoardUnitOrder } from './gantt/planningBoardUnitOrder';
 import { isUnitPiece } from './gantt/planningBoardUnitSegments';
 import { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
@@ -250,25 +250,33 @@ export function usePlanningBoardPageGantt({
       }
       const resources = [...new Set(changes.flatMap(change => [change.previousResourceCd ?? '未設定', change.resourceCd]))];
       const before = resources.map(snapshotResourceOrder);
-      if (resources.some(resource => preview.proposal[resource]!.length > 500) || changes.length > 2000) return;
+      // Unchecked seibans are absent from the proposal; keep them in their full-lane slots.
+      const fullProposal = Object.fromEntries(before.map(snapshot => [snapshot.resourceCd,
+        mergeUnitOrderLane(snapshot.itemIds, preview.current[snapshot.resourceCd] ?? [], preview.proposal[snapshot.resourceCd] ?? [])]));
+      if (resources.some(resource => fullProposal[resource]!.length > 500) || changes.length > 2000) {
+        notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
+      }
       const members = originals as GrindingPlanningBoardItem[];
       const requests = members.map((item, index) => ({ itemId: item.itemId, itemRevision: item.itemRevision,
         overrideVersion: item.version, resourceCd: changes[index]!.resourceCd }));
       if (!enqueueOverrides(members, requests, '資源CDと並べ替え', () => setOrderPreview(null), preview.sourceRevision, { onSaved: () => {
         setResourceOrderHistory(history => [...history, { id, scope: historyScope, orders: before,
           restoreResources: changes.map(change => ({ itemId: change.itemId, resourceCd: change.previousResourceCd })) }].slice(-10));
-        let remaining = resources.filter(resource => preview.proposal[resource]!.length).length;
+        let remaining = resources.filter(resource => fullProposal[resource]!.length).length;
         if (!remaining) setOrderPreview(null);
         for (const resourceCd of resources) {
-          if (!preview.proposal[resourceCd]!.length) continue;
-          if (!enqueueResourceOrder({ resourceCd, itemIds: preview.proposal[resourceCd]! }, '並べ替え', () => {
+          if (!fullProposal[resourceCd]!.length) continue;
+          if (!enqueueResourceOrder({ resourceCd, itemIds: fullProposal[resourceCd]! }, '並べ替え', () => {
             if (--remaining === 0) setOrderPreview(null);
           }, undefined, () => setOrderPreview(null), [...preview.options.items])) {
             setOrderPreview(null);
             notify('対象の工程が変わったため並べ替えできません。表示を確認してください。', 'error'); break;
           }
         }
-      } })) setOrderPreview(null);
+      } })) {
+        setOrderPreview(null);
+        notify('対象の工程が変わったため並べ替えできません。表示を確認してください。', 'error');
+      }
       return;
     }
     if (!changed.length) { setOrderPreview(null); return; }
