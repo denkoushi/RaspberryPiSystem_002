@@ -12,7 +12,7 @@ import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider'
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
 import { planningBoardPair, planningBoardResourceMatches } from './planningBoardTwoMachine';
 import { comparePlanningBoardBarOrder, compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
-import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
+import { isPendingPlanningTestBar, usePlanningBoardTestBars } from './usePlanningBoardTestBars';
 
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
 import type { UnitOrderMethod } from './gantt/planningBoardUnitOrder';
@@ -91,7 +91,7 @@ export function usePlanningBoardPageGantt({
   );
   const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const tests = usePlanningBoardTestBars({ data, enqueue: enqueueWrite,
+  const tests = usePlanningBoardTestBars({ data, items: writeQueue.items, enqueue: enqueueWrite,
     disabled: !scopeReady || !rankMutationReady || writeBlocked || writeQueue.pending || Boolean(orderPreview) || pinMode || allocation !== 'alternate',
     remember: (item, action) => { const id = ++resourceOrderHistoryId.current;
       setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: [], testBarUndo: { item, action } }].slice(-10)); }
@@ -100,7 +100,7 @@ export function usePlanningBoardPageGantt({
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
     today, now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const gantt = { ...baseGantt, testBarControls: { ...tests, reorder: (item: GrindingPlanningBoardBar, target: GrindingPlanningBoardBar, placement: 'before' | 'after') => {
-    if (tests.disabled || item.isCompleted || target.isCompleted) return;
+    if (tests.disabled || isPendingPlanningTestBar(item) || isPendingPlanningTestBar(target) || item.isCompleted || target.isCompleted) return;
     const resource = resolveGrindingPlanningBoardResource(item, 'alternate');
     if (!resource || resource !== resolveGrindingPlanningBoardResource(target, 'alternate')) return;
     const before = snapshotResourceOrder(resource);
@@ -129,7 +129,7 @@ export function usePlanningBoardPageGantt({
     if (!gate.attempt()) return false;
     const sourceById = new Map<string, GrindingPlanningBoardBar>([...sourceItems, ...tests.bars].map((item) => [item.itemId, item]));
     const items = snapshot.itemIds.map((id) => sourceById.get(id));
-    if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
+    if (!items.length || items.length > 500 || items.some((item) => !item || isPendingPlanningTestBar(item) || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || (item.kind !== 'test' && hasPendingSeiban(item.fseiban, true)))) return false;
     const members = items as GrindingPlanningBoardBar[];
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
