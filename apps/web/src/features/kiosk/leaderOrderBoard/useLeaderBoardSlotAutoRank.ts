@@ -1,11 +1,17 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
-import { useSingleFlight } from '../../../hooks/useSingleFlight';
+import { autoRankKioskProductionScheduleOrder } from '../../../api/client';
+import { getApiErrorMessageWithCode } from '../../../api/errors';
+import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
+import { patchScheduleListProcessingOrder, patchOrderUsageForProcessingOrderChange } from '../productionSchedule/cache/kioskProductionScheduleOrderCachePatch';
 
 import { applyLeaderBoardAutoRankAssignments } from './applyLeaderBoardAutoRankAssignments';
 import { buildLeaderBoardAutoRankAssignments } from './buildLeaderBoardAutoRankAssignments';
 
 import type { LeaderBoardRow } from './types';
+import type { useSingleFlight } from '../../../hooks/useSingleFlight';
+import type { KioskProductionScheduleListCache } from '../productionSchedule/cache/kioskProductionScheduleListCache';
 
 export type UseLeaderBoardSlotAutoRankParams = {
   seibanEvalEnabled: boolean;
@@ -13,11 +19,9 @@ export type UseLeaderBoardSlotAutoRankParams = {
   orderPending: boolean;
   sortedGrouped: Map<string, LeaderBoardRow[]>;
   orderUsageByResourceCd: Record<string, number[]> | undefined;
-  updateOrderAsync: (params: {
-    rowId: string;
-    resourceCd: string;
-    orderNumber: number | null;
-  }) => Promise<void>;
+  targetDeviceScopeKey?: string;
+  singleFlight: ReturnType<typeof useSingleFlight>;
+  onOrderSuccess: (assignment: { rowId: string; orderNumber: number }) => void;
 };
 
 export function useLeaderBoardSlotAutoRank({
@@ -26,9 +30,39 @@ export function useLeaderBoardSlotAutoRank({
   orderPending,
   sortedGrouped,
   orderUsageByResourceCd,
-  updateOrderAsync
+  targetDeviceScopeKey,
+  singleFlight,
+  onOrderSuccess
 }: UseLeaderBoardSlotAutoRankParams) {
-  const { run, pending: autoRankApplying } = useSingleFlight();
+  const queryClient = useQueryClient();
+  const { mutateAsync: saveAssignments } = useMutation({
+    mutationFn: (payload: Parameters<typeof autoRankKioskProductionScheduleOrder>[0]) =>
+      autoRankKioskProductionScheduleOrder(payload),
+    retry: false,
+    onMutate: () => {
+      void queryClient.cancelQueries({ queryKey: productionScheduleQueryKeys.leaderboardBoardAll });
+      void queryClient.cancelQueries({ queryKey: productionScheduleQueryKeys.orderUsageAll });
+    },
+    onSuccess: (_data, { assignments, resourceCd }) => {
+      for (const assignment of assignments) {
+        queryClient.setQueriesData<KioskProductionScheduleListCache>(
+          { queryKey: productionScheduleQueryKeys.scheduleAll },
+          old => old ? patchScheduleListProcessingOrder(old, assignment.rowId, assignment.orderNumber) : old
+        );
+        queryClient.setQueriesData<Record<string, number[]>>(
+          { queryKey: productionScheduleQueryKeys.orderUsageAll },
+          old => old ? patchOrderUsageForProcessingOrderChange(old, resourceCd, null, assignment.orderNumber) : old
+        );
+        onOrderSuccess(assignment);
+      }
+    },
+    onError: () => {
+      // No display patch is applied before success; recover conflicts from the server.
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.leaderboardBoardAll });
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderUsageAll });
+    }
+  });
+  const { run, pending: autoRankApplying } = singleFlight;
 
   const autoRankDisabled =
     !seibanEvalEnabled || interactionLocked || orderPending || autoRankApplying;
@@ -49,7 +83,7 @@ export function useLeaderBoardSlotAutoRank({
       });
       if (assignments.length === 0) return;
 
-      await run(() => applyLeaderBoardAutoRankAssignments(assignments, updateOrderAsync));
+      await run(() => applyLeaderBoardAutoRankAssignments(assignments, saveAssignments, targetDeviceScopeKey));
     },
     [
       run,
@@ -59,13 +93,19 @@ export function useLeaderBoardSlotAutoRank({
       orderUsageByResourceCd,
       seibanEvalEnabled,
       sortedGrouped,
-      updateOrderAsync
+      saveAssignments,
+      targetDeviceScopeKey
     ]
   );
 
+  const handleAutoRankSlot = useCallback((resourceCd: string) => {
+    void handleAutoRank(resourceCd).catch((error: unknown) => {
+      window.alert(getApiErrorMessageWithCode(error));
+    });
+  }, [handleAutoRank]);
+
   return {
-    handleAutoRank,
-    autoRankDisabled,
-    autoRankPending: autoRankApplying || orderPending
+    handleAutoRankSlot,
+    autoRankDisabled
   };
 }

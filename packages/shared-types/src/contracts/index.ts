@@ -20,3 +20,15 @@ export interface ApiListResponse<T> {
   items: T[];
   total?: number;
 }
+
+export interface ProductionScheduleAutoRankRequest {
+  resourceCd: string;
+  assignments: { rowId: string; orderNumber: number }[];
+  targetLocation?: string;
+  targetDeviceScopeKey?: string;
+}
+
+export interface ProductionScheduleAutoRankResponse {
+  success: true;
+  assignments: { rowId: string; orderNumber: number }[];
+}
