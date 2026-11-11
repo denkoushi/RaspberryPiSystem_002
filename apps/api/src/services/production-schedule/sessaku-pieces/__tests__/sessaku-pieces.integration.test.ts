@@ -1158,6 +1158,24 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(after).toHaveLength(1);
       expect(after[0].inputVersion).not.toBe(before[0].inputVersion);
     });
+  // The board reads CSV rows by raw seiban (readWinnerRowsByFseibans), so a padded row cannot change a decision.
+  it('keeps a cached rejection when only a whitespace-padded seiban CSV row changes', async () => {
+    await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
+      siteKey: site, itemKey: (await parent()).itemId, overrideResourceCd: '021' } });
+    await prisma.productionScheduleSessakuPieceSet.create({ data: { csvDashboardId: dashboardId, ...key(),
+      pieces: { create: [{ quantity: 4, position: 1 }, { quantity: 1, position: 2 }] } } });
+    const paddedData = { ...rowData, FSEIBAN: `\u3000${seiban}\t` };
+    const padded = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+      rowData: paddedData, occurredAt: new Date(), dataHash: `${site}-padded` } });
+    const policy = await getResourceCategoryPolicy({ siteKey: site });
+    const sql = (rejected: Array<{ parentId: string; inputVersion: string }> = []) => autoUnitSplitCandidateSql(site, [seiban], policy, [], rejected);
+    const before = await prisma.$queryRaw<Array<{ parentId: string; inputVersion: string }>>(sql());
+    expect(before).toHaveLength(1);
+    expect(await prisma.$queryRaw(sql(before))).toHaveLength(0);
+    await prisma.csvDashboardRow.update({ where: { id: padded.id },
+      data: { rowData: { ...paddedData, fingerprintProbe: 'changed' } } });
+    expect(await prisma.$queryRaw(sql(before))).toHaveLength(0);
+  });
   it.each([false, true])('unit quantity growth follows effective resource settings (disabled=%s), preserves records and links later units', async (disabled) => {
     await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
       siteKey: site, itemKey: (await parent()).itemId, overrideResourceCd: '021' } });

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-const mocks = vi.hoisted(() => ({ split: vi.fn(), items: [] as GrindingPlanningBoardItem[], query: vi.fn(),
+const mocks = vi.hoisted(() => ({ split: vi.fn(), batch: vi.fn(), items: [] as GrindingPlanningBoardItem[], query: vi.fn(),
   transaction: vi.fn(), tryLock: vi.fn(), timeout: vi.fn(), state: vi.fn(), ensureState: vi.fn(), policy: vi.fn(), capacity: vi.fn(), details: vi.fn(), overrides: vi.fn(), ranks: vi.fn(), warn: vi.fn(), sets: vi.fn(), history: vi.fn(), projection: vi.fn(), rows: vi.fn(), mark: vi.fn(), audit: vi.fn(), callLog: vi.fn(), execute: vi.fn() }));
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: {
   $transaction: mocks.transaction,
@@ -18,7 +18,7 @@ vi.mock('../../grinding-planning-board-projection.js', () => ({ projectGrindingP
 vi.mock('../../grinding-planning-board-resource-capacity.service.js', () => ({ getGrindingPlanningBoardResourceCapacity: mocks.capacity }));
 vi.mock('../../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: mocks.policy, isProductionScheduleCuttingResourceCd: (cd: string) => cd !== '305' }));
 vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split,
-  runAutoUnitSplitBatch: async (_tx: unknown, _ids: unknown, work: () => Promise<unknown>) => work(),
+  runAutoUnitSplitBatch: mocks.batch,
   runAutoUnitSplitLot: async (work: () => Promise<unknown>) => work() }));
 vi.mock('../piece-audit.js', async () => ({ runSessakuPieceOperation: mocks.audit,
   pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage() }));
@@ -52,6 +52,7 @@ describe('automatic unit split', () => {
       productionScheduleSessakuPieceSet: { findMany: mocks.sets },
       productionScheduleSessakuPieceHistory: { findMany: mocks.history }
     }));
+    mocks.batch.mockImplementation(async (_tx, _ids, work) => work());
     mocks.state.mockResolvedValue({ seibanOrder: ['S'] });
     mocks.policy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
     mocks.capacity.mockResolvedValue({}); mocks.details.mockResolvedValue(new Map());
@@ -216,6 +217,17 @@ describe('automatic unit split', () => {
       expect(await autoSplitSessakuUnits({ siteKey: 'site' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
       expect(mocks.rows).toHaveBeenCalledTimes(1);
     } finally { release(); await first; }
+  });
+  it('omits fingerprints from lock discovery while retaining them on the first page', async () => {
+    mocks.query.mockResolvedValue([]);
+    mocks.batch.mockImplementationOnce(async (_tx, ids, work) => { await ids(); return work(); });
+    await autoSplitSessakuUnits({ siteKey: 'lock-without-fingerprints' });
+    const [lock, page] = mocks.query.mock.calls.map(([sql]) => sql.sql as string);
+    expect(lock).toContain('AS lock_candidates');
+    expect(lock).not.toContain('input_versions');
+    expect(lock).not.toContain('"inputVersion"');
+    expect(page).toContain('input_versions AS MATERIALIZED');
+    expect(page).toContain('AS "inputVersion"');
   });
   it('returns without loading winners or projecting when no untouched cutting key exists', async () => {
     mocks.query.mockResolvedValue([]);
