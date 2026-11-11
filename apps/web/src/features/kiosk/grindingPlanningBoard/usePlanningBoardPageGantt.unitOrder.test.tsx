@@ -3,23 +3,28 @@ import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionFixture } from './__perf__/fixture';
+import { planningBoardLaneOrder } from './gantt/planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout } from './gantt/planningBoardGanttLayout';
 import { applyOptimisticOverride } from './planningBoardPageModel';
-import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { resolveGrindingPlanningBoardResource, resolvePlanningBoardOrderBand, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 import { usePlanningBoardPageGantt } from './usePlanningBoardPageGantt';
 import { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 
 import type { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import type { OrderPreview, ResourceOrderHistory, ResourceOrderSnapshot } from './planningBoardPageModel';
 import type { PlanningBoardWriteResult } from './usePlanningBoardWriteQueue';
-import type { GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderBulkRequest } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 type Options = Parameters<typeof usePlanningBoardPageGantt>[0];
 const selection = vi.hoisted(() => ({ resource: '021' as string | null }));
+const api = vi.hoisted(() => ({ create: vi.fn(), mutate: vi.fn() }));
+vi.mock('../../../api/domains/production-schedule/grinding-planning-board', () => ({
+  createKioskGrindingPlanningBoardTestBar: api.create, mutateKioskGrindingPlanningBoardTestBar: api.mutate
+}));
 vi.mock('./gantt/usePlanningBoardGantt', () => ({ usePlanningBoardGantt: (options: Parameters<typeof usePlanningBoardGantt>[0]) => ({
   mode: 'forward', scale: 14, capacityPending: false, dailyHoursByResource: {}, runsThroughBreaks: new Set(),
   singleResourceCd: selection.resource, singleResourceLanes: ['021', '022', '023'], resourceMinutes: undefined,
-  layout: buildForwardPlanningBoardGanttLayout({ items: options.items, seibanOrder: options.seibanOrder,
+  layout: buildForwardPlanningBoardGanttLayout({ items: options.items, testBars: options.testBars, seibanOrder: options.seibanOrder,
     resources: ['021', '022', '023'], allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, today: '2026-11-11', scale: 14 })
 }) }));
 const noop = () => {};
@@ -32,7 +37,19 @@ function fixture(count = 30) {
   value.seibans = [...new Set(value.items.map(item => item.fseiban))];
   return value;
 }
-function setup(input = fixture(), pending = new Set<string>()) {
+const testBar = (resourceCd = '021'): GrindingPlanningBoardTestBar => ({
+  kind: 'test', itemId: `test:00000000-0000-4000-8000-000000000${resourceCd}`, itemRevision: 'test-r1', version: 1,
+  sequence: 1, name: 'テスト1', resourceCd, minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null
+});
+function bandFixture() {
+  const input = fixture(7);
+  input.items = input.items.map((item, index) => ({ ...item, itemId: ['S1', 'S2', 'S3', 'A1', 'B1', 'A2', 'B2'][index]!,
+    fhincd: index % 2 ? 'A' : 'B', alternateRank: [1, 2, 1, 1, 3, 4, 5][index]!,
+    originalDueDate: index % 2 ? '2026-11-20' : '2026-11-12',
+    specialDue: index < 3 ? { kind: 'today', expiresAt: index < 2 ? '2026-11-11T10:00:00Z' : '2026-11-12T10:00:00Z' } : null }));
+  return { ...input, testBars: [testBar()] };
+}
+function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanningBoardTestBar[] } = fixture(), pending = new Set<string>()) {
   const calls: { kind: 'order' | 'override'; sourceRevision: string; resourceCd?: string;
     items: (GrindingPlanningBoardOverrideItemRequest | GrindingPlanningBoardResourceOrderBulkRequest['items'][number])[];
     resolve: (value: PlanningBoardWriteResult) => void; reject: (error: Error) => void }[] = [];
@@ -70,7 +87,7 @@ function setup(input = fixture(), pending = new Set<string>()) {
     const page = usePlanningBoardPageGantt({
       focusedFseiban: null, sortedItemsBySeiban: new Map(), view: 'resource', visibleItems: queue.items, ganttItems: queue.items,
       arrivalFilterEnabled: true, nowMs: new Date('2026-11-11T08:00:00+09:00').getTime(), ganttEnabled: true, allocation: 'alternate', category: 'cutting',
-      data: { resources: input.resources, siteKey: 'test' } as Options['data'], registeredFseibans: input.seibans,
+      data: { resources: input.resources, siteKey: 'test', sourceRevision: 'source-0', testBars: input.testBars } as Options['data'], registeredFseibans: input.seibans,
       bulkReady: true, rankMutationReady: true, writeBlocked: false, writeQueue: queue, orderPreview: preview,
       resourceOrderHistory: history, historyScope: 'unit', currentItemsRef,
       hasPendingSeiban: (seiban, wholeOnly) => pending.has(seiban) || queue.hasPendingSeiban(seiban, wholeOnly), enqueueWrite: queue.enqueue,
@@ -89,17 +106,110 @@ function setup(input = fixture(), pending = new Set<string>()) {
   });
   const acknowledge = async (index: number) => {
     const call = calls[index]!;
-    await act(async () => call.resolve({ sourceRevision: `source-${index + 1}`, items: call.items.map((request, rank) => {
+    const testBars = hook.result.current.page.gantt.testBarControls.bars.map(item => {
+      const rank = call.items.findIndex(request => request.itemId === item.itemId);
+      return rank < 0 ? item : { ...item, alternateRank: rank + 1, itemRevision: `saved-${index}-${item.itemId}`, version: item.version + 1 };
+    });
+    await act(async () => call.resolve({ sourceRevision: `source-${index + 1}`, testBars, items: call.items.flatMap((request, rank) => {
+      if (request.itemId.startsWith('test:')) return [];
       const item = hook.result.current.queue.items.find(item => item.itemId === request.itemId)!;
-      return { ...(call.kind === 'override' ? applyOptimisticOverride(item, request) : { ...item, alternateRank: rank + 1 }),
-        itemRevision: `saved-${index}-${item.itemId}`, version: (request.overrideVersion ?? 0) + 1 };
+      return [{ ...(call.kind === 'override' ? applyOptimisticOverride(item, request) : { ...item, alternateRank: rank + 1 }),
+        itemRevision: `saved-${index}-${item.itemId}`, version: (request.overrideVersion ?? 0) + 1 }];
     }) }));
   };
   return { ...hook, calls, saveOrder, saveOverrides, enqueueOverrides, acknowledge, notify };
 }
-beforeEach(() => { selection.resource = '021'; });
+beforeEach(() => { selection.resource = '021'; vi.clearAllMocks(); });
 
 describe('unit order preview and writes', () => {
+  it.each(['group', 'round', 'balance'] as const)('keeps special-due bands and test slots in preview, saved orders and undo (%s)', async method => {
+    const input = bandFixture();
+    if (method === 'balance') {
+      selection.resource = '021+022';
+      input.items.push({ ...input.items[0]!, itemId: 'S4', originalResourceCd: '022' });
+      input.testBars.push({ ...testBar('022'), alternateRank: 1 });
+    }
+    const initial = planningBoardLaneOrder({ ...input, allocation: 'alternate', seibanOrder: input.seibans });
+    const byId = new Map<string, GrindingPlanningBoardBar>([...input.items, ...input.testBars].map(item => [item.itemId, item]));
+    const expectBands = (ids: readonly string[], resource: string) => {
+      const bands = ids.map(id => resolvePlanningBoardOrderBand(byId.get(id)!));
+      const specialBands = initial[resource]!.map(id => resolvePlanningBoardOrderBand(byId.get(id)!)).filter(band => band !== null);
+      expect(bands).toEqual([...specialBands, ...Array(ids.length - specialBands.length).fill(null)]);
+      for (const test of input.testBars.filter(item => item.resourceCd === resource)) {
+        expect(ids.indexOf(test.itemId)).toBe(initial[resource]!.indexOf(test.itemId));
+      }
+    };
+    const h = setup(input);
+    act(() => h.result.current.page.changeOrderMethod(method));
+    const preview = h.result.current.preview!;
+    expect(preview.method).toBe(method);
+    for (const [resource, ids] of Object.entries(preview.proposal)) expectBands(ids, resource);
+    if (method === 'balance') {
+      expect(preview.resourceChanges!.length).toBeGreaterThan(0);
+      expect(preview.resourceChanges!.every(change => !change.itemId.startsWith('test:'))).toBe(true);
+      expect(preview.proposal['022']).toEqual(['S4', testBar('022').itemId, 'B1', 'B2']);
+    } else {
+      expect(preview.proposal['021']).toEqual(['S1', 'S2', 'S3', 'B1', testBar().itemId,
+        ...(method === 'group' ? ['B2', 'A1', 'A2'] : ['A1', 'B2', 'A2'])]);
+    }
+    act(() => h.result.current.page.applyResourceOrder());
+    let next = 0;
+    while (next < h.calls.length) {
+      const call = h.calls[next]!;
+      if (call.kind === 'order') {
+        const ids = call.items.map(item => item.itemId);
+        expect(ids).toEqual(preview.proposal[call.resourceCd!]);
+        expectBands(ids, call.resourceCd!);
+      }
+      await h.acknowledge(next++);
+    }
+    expect(h.result.current.preview).toBeNull();
+    expect(h.result.current.history).toHaveLength(1);
+    act(() => h.result.current.page.undoResourceOrder());
+    while (next < h.calls.length) {
+      const call = h.calls[next]!;
+      if (call.kind === 'order') expect(call.items.map(item => item.itemId)).toEqual(initial[call.resourceCd!]);
+      await h.acknowledge(next++);
+    }
+    expect(h.result.current.history).toEqual([]);
+    expect(planningBoardLaneOrder({ items: h.result.current.queue.items, testBars: h.result.current.page.gantt.testBarControls.bars,
+      allocation: 'alternate', seibanOrder: input.seibans })).toEqual(initial);
+    h.unmount();
+  });
+
+  it('undoes test deletion, automatic ordering, then test insertion through the shared history', async () => {
+    const input = bandFixture();
+    const made = input.testBars[0]!;
+    input.testBars = [];
+    api.create.mockResolvedValue({ sourceRevision: 'created', testBar: made, testBars: [made], items: [] });
+    api.mutate.mockImplementation(async (_id, action, request) => {
+      const item = { ...made, version: request.expectedVersion + 1, deletedAt: action === 'restore' ? null : '2026-11-11' };
+      return { sourceRevision: `test-${action}`, testBar: item, testBars: action === 'restore' ? [item] : [], items: [] };
+    });
+    const h = setup(input);
+    await act(async () => { expect(await h.result.current.page.gantt.testBarControls.create('021', 30)).toBe(true); });
+    expect(h.result.current.history[0]!.testBarUndo?.action).toBe('delete');
+    act(() => h.result.current.page.proposeResourceOrder());
+    act(() => h.result.current.page.applyResourceOrder());
+    await h.acknowledge(0);
+    await act(async () => h.result.current.page.gantt.testBarControls.remove(h.result.current.page.gantt.testBarControls.bars[0]!));
+    expect(h.result.current.history.map(entry => entry.testBarUndo?.action ?? 'order')).toEqual(['delete', 'order', 'restore']);
+    await act(async () => h.result.current.page.undoResourceOrder());
+    expect(api.mutate).toHaveBeenLastCalledWith(made.itemId, 'restore', expect.objectContaining({ expectedVersion: 3 }));
+    expect(h.result.current.page.gantt.testBarControls.selectedId).toBe(made.itemId);
+    expect(h.result.current.history).toHaveLength(2);
+    act(() => h.result.current.page.undoResourceOrder());
+    expect(h.calls[1]!.items.map(item => item.itemId)).toEqual(['S1', 'S2', 'S3', 'A1', made.itemId, 'B1', 'A2', 'B2']);
+    await h.acknowledge(1);
+    expect(h.result.current.history).toHaveLength(1);
+    await act(async () => h.result.current.page.undoResourceOrder());
+    expect(api.mutate).toHaveBeenLastCalledWith(made.itemId, 'delete', expect.objectContaining({ expectedVersion: 5 }));
+    expect(h.result.current.page.gantt.testBarControls.bars).toEqual([]);
+    expect(h.result.current.history).toEqual([]);
+    expect(h.enqueueOverrides).not.toHaveBeenCalled();
+    h.unmount();
+  });
+
   it('starts grouped, keeps before when switching, and submits one lane bulk for ten interleaved parts', async () => {
     const h = setup();
     act(() => h.result.current.page.proposeResourceOrder());

@@ -2,20 +2,20 @@ import clsx from 'clsx';
 
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 import type { CSSProperties } from 'react';
 
-type Props = {
-  item: GrindingPlanningBoardItem;
-  onToggle: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => void;
+type Props<T extends GrindingPlanningBoardBar> = {
+  item: T;
+  onToggle: (item: T, intent: 'complete' | 'incomplete') => void;
   disabled?: boolean;
   className?: string;
   style?: CSSProperties;
 };
 
-export function PlanningBoardCompletionButton({ item, onToggle, disabled, className, style }: Props) {
+export function PlanningBoardCompletionButton<T extends GrindingPlanningBoardBar>({ item, onToggle, disabled, className, style }: Props<T>) {
   const { frozen } = usePlanningBoardOffline();
-  const imported = item.completionSource === 'import';
+  const imported = item.kind !== 'test' && item.completionSource === 'import';
   return <button type="button" data-planning-board-piece-write="completion"
     className={clsx('flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 hover:bg-white/5 disabled:opacity-60 aria-disabled:opacity-55',
       imported ? 'border-sky-400 bg-cyan-700/35 text-sky-50 text-[9px] font-bold'

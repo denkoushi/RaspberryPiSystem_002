@@ -12,6 +12,7 @@ import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardG
 import { usePlanningBoardGanttScale } from './usePersistedPlanningBoardGanttScale';
 import { usePersistedPlanningBoardSingleResource } from './usePersistedPlanningBoardSingleResource';
 
+import type { PlanningBoardTestBarControls } from '../usePlanningBoardTestBars';
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';
 import type { GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
@@ -82,8 +83,9 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
+    testBars: enabled ? options.testBars : undefined,
     items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
-  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
+  }), [options.testBars, enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
@@ -105,7 +107,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, unitSplitEnabled })).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
-  return { mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
+  return { testBarControls: undefined as PlanningBoardTestBarControls | undefined,
+    mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
     resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,
     changeMinutesSource: (sources: Parameters<typeof sourceMutation.mutate>[0][]) => {
       if (sources.length === 0 || !gate.attempt()) return;

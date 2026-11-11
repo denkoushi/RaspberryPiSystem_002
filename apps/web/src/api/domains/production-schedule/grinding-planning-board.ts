@@ -1,6 +1,6 @@
 import { api } from '../../http';
 
-import type {
+import type { GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse ,
   SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardFirstProcessArrivalResponse,
@@ -33,6 +33,7 @@ import type {
   GrindingPlanningBoardDueScopeSnapshot,
   GrindingPlanningBoardSeibanCandidatesResponse
 } from '@raspi-system/shared-types';
+
 
 export async function getKioskGrindingPlanningBoardProcessChips(body: GrindingPlanningBoardProcessChipsRequest, scheduleSource?: GrindingPlanningBoardScheduleSource) {
   const chipsByPartKey: GrindingPlanningBoardProcessChipsResponse['chipsByPartKey'] = {};
@@ -258,4 +259,14 @@ export async function autoUnitSplitKioskSessakuPieces() {
 export async function setKioskSessakuPieceOpCompletion(pieceId: string, opNo: number, payload: SessakuPieceOpCompletionRequest) {
   const { data } = await api.put<SessakuPiecesMutationResponse>(`/kiosk/production-schedule/grinding-planning-board/pieces/${encodeURIComponent(pieceId)}/ops/${opNo}/completion`, payload);
   return data;
+}
+
+export async function createKioskGrindingPlanningBoardTestBar(body: GrindingPlanningBoardTestBarCreateRequest) {
+  return (await api.post<GrindingPlanningBoardTestBarMutationResponse>('/kiosk/production-schedule/grinding-planning-board/test-bars', body)).data;
+}
+export async function mutateKioskGrindingPlanningBoardTestBar(id: string, action: 'delete' | 'restore' | 'complete' | 'incomplete', body: GrindingPlanningBoardTestBarMutationRequest) {
+  const path = `/kiosk/production-schedule/grinding-planning-board/test-bars/${id.replace(/^test:/, '')}`;
+  if (action === 'delete') return (await api.delete<GrindingPlanningBoardTestBarMutationResponse>(path, { data: body })).data;
+  if (action === 'restore') return (await api.post<GrindingPlanningBoardTestBarMutationResponse>(`${path}/restore`, body)).data;
+  return (await api.put<GrindingPlanningBoardTestBarMutationResponse>(`${path}/completion`, { ...body, intent: action })).data;
 }

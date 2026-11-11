@@ -16,6 +16,7 @@ import {
   buildGrindingPlanningBoardRowItemId
 } from './grinding-planning-board-projection.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
+import { addPlanningTestBarLoad } from './grinding-planning-board-load-test-bars.js';
 
 export type GrindingPlanningBoardLoadSummaryRow = {
   /** Stable logical item id. Duplicate rows with this id are counted once. */
@@ -500,13 +501,13 @@ export async function readGrindingPlanningBoardLoadSummary(
 ): Promise<GrindingPlanningBoardLoadSummary> {
   const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))].sort();
   if (params.leaderboardMaterializedBaseWhere === undefined && winnerRowIds.length === 0) {
-    return { load: [], unknownRequiredMinutesCount: 0 };
+    return addPlanningTestBarLoad({ load: [], unknownRequiredMinutesCount: 0 }, params);
   }
   const dashboardId = params.dashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
   const resourceMinutes = params.resourceMinutes ?? await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey });
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
     const rows = await readMaterializedLoadAggregates({ ...params, resourceMinutes, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
-    return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
+    return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params), params);
   }
   const rows: LoadSummarySourceRow[] = [];
   const readSourceRows = async (where: Prisma.Sql) => {
@@ -569,7 +570,7 @@ export async function readGrindingPlanningBoardLoadSummary(
     if (originalResourceCd == null || !params.isResourceInCategory(originalResourceCd, params.category)) return [];
     return [toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd)];
   });
-  return buildGrindingPlanningBoardLoadSummary(summaryRows);
+  return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummary(summaryRows), params);
 }
 
 function addMinutes(

@@ -4,7 +4,7 @@ import { pageZoom } from '../pageZoom';
 
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 
-import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { NormalGanttBar as GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GanttBarLocations } from './planningBoardSingleResourceWindows';
 import type { PlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import type { RefObject } from 'react';

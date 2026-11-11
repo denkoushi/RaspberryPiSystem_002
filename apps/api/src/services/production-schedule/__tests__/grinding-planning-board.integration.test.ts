@@ -245,6 +245,11 @@ async function addRows(fixture: Fixture, specs: readonly RowSpec[]): Promise<str
 }
 
 async function cleanupFixture(fixture: Fixture): Promise<void> {
+  await db().productionScheduleGrindingPlanningBoardTestBar.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleGrindingPlanningBoardResourceCapacity.deleteMany({ where: { siteKey: fixture.siteKey } });
+  await db().productionScheduleSessakuPieceAuditLog.deleteMany({ where: { fseiban: { in: fixture.seibans } } });
+  await db().productionScheduleSessakuPieceSet.deleteMany({ where: { fseiban: { in: fixture.seibans } } });
+  await db().productionScheduleSessakuPieceHistory.deleteMany({ where: { fseiban: { in: fixture.seibans } } });
   await db().productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: fixture.siteKey } });
   await db().productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: fixture.siteKey } });
   if (fixture.splitIds.length > 0) {
@@ -1211,4 +1216,165 @@ describeIntegration('grinding planning board service real Postgres integration',
       fseibans: Array.from({ length: 101 }, (_, index) => `OVER-${index + 1}`)
     })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
   });
+  describe('テスト加工の棒', () => {
+    const testApi = () => import('../grinding-planning-board/test-bars.js');
+    const ref = (item: import('@raspi-system/shared-types').GrindingPlanningBoardBar) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version });
+    async function setup(resourceCd = '305') {
+      const f = await createFixture();
+      const lot = randomUUID().replaceAll('-', '').slice(0, 7);
+      if (!['305', '581', '1'].includes(resourceCd)) {
+        const name = `${f.prefix}-${resourceCd}`; f.resourceNames.push(name);
+        await db().productionScheduleResourceMaster.create({ data: { resourceCd, resourceName: name, resourceClassCd: 'M02', resourceGroupCd: 'IT' } });
+      }
+      await addRows(f, [{ fseiban: `${lot}A`, fhincd: 'A', resourceCd, plannedQuantity: 2 },
+        { fseiban: `${lot}B`, fhincd: 'B', resourceCd, plannedQuantity: 1 }]);
+      const board = await boardFor(f, { category: 'all', view: 'resource', includePieces: true });
+      return { f, board, api: await testApi(), resourceCd };
+    }
+    const read = (f: Fixture, extra = {}) => boardFor(f, { category: 'all', view: 'resource', includePieces: true, ...extra });
+    async function make(s: Awaited<ReturnType<typeof setup>>, after?: import('@raspi-system/shared-types').GrindingPlanningBoardBar, resourceCd = s.resourceCd) {
+      return s.api.createPlanningTestBar({ siteKey: s.f.siteKey, sourceRevision: (await read(s.f)).sourceRevision, resourceCd, minutes: 30, afterItem: after && ref(after) });
+    }
+    const lane = async (s: Awaited<ReturnType<typeof setup>>, resource = s.resourceCd) => {
+      const b = await read(s.f);
+      return s.api.mixedPlanningLane(b.items, b.testBars ?? [], b.seibanOrder, resource).map((item) => item.itemId);
+    };
+    it('inserts at the head without a selected bar', async () => {
+      const s = await setup(); const result = await make(s);
+      expect((await lane(s))[0]).toBe(result.testBar.itemId);
+      expect(result.testBar).toMatchObject({ name: 'テスト1', minutes: 30, resourceCd: '305', kind: 'test' });
+      expect(result.testBar).not.toHaveProperty('sourceRowId'); expect(result.testBar).not.toHaveProperty('fseiban');
+      expect((await read(s.f)).seibanOrder).toEqual(s.board.seibanOrder);
+    });
+    it('inserts immediately after the selected bar on the same machine', async () => {
+      const s = await setup(); const after = s.board.items[0]!; const result = await make(s, after);
+      expect(await lane(s)).toEqual([after.itemId, result.testBar.itemId, s.board.items[1]!.itemId]);
+    });
+    it('uses the head when the selected bar belongs to another machine', async () => {
+      const s = await setup(); const result = await make(s, s.board.items[0], '581');
+      expect(await lane(s, '581')).toEqual([result.testBar.itemId]);
+    });
+    it('numbers server-side across resources without reusing deleted sequences', async () => {
+      const s = await setup(); const one = await make(s);
+      await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: one.testBar.itemId.slice(5), sourceRevision: one.sourceRevision, expectedVersion: one.testBar.version, action: 'delete' });
+      const two = await make(s, undefined, '581'); const three = await make(s);
+      expect([one.testBar.name, two.testBar.name, three.testBar.name]).toEqual(['テスト1', 'テスト2', 'テスト3']);
+      expect(three.nextTestBarSequence).toBe(4);
+    });
+    it('soft deletes and restores the same ID and slot', async () => {
+      const s = await setup(); const created = await make(s, s.board.items[0]);
+      const gone = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: created.testBar.itemId.slice(5), sourceRevision: created.sourceRevision, expectedVersion: created.testBar.version, action: 'delete' });
+      expect((await read(s.f)).testBars).toEqual([]);
+      const restored = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: created.testBar.itemId.slice(5), sourceRevision: gone.sourceRevision, expectedVersion: gone.testBar.version, action: 'restore' });
+      expect(restored.testBar.itemId).toBe(created.testBar.itemId);
+      expect((await lane(s))[1]).toBe(created.testBar.itemId);
+    });
+    it('completes manually and can return to incomplete', async () => {
+      const s = await setup(); const created = await make(s);
+      const completed = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: created.testBar.itemId.slice(5), sourceRevision: created.sourceRevision, expectedVersion: created.testBar.version, action: 'complete' });
+      expect(completed.testBar.isCompleted).toBe(true); expect(await lane(s)).not.toContain(created.testBar.itemId);
+      const undone = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: created.testBar.itemId.slice(5), sourceRevision: completed.sourceRevision, expectedVersion: completed.testBar.version, action: 'incomplete' });
+      expect(undone.testBar.isCompleted).toBe(false); expect(await lane(s)).toContain(created.testBar.itemId);
+    });
+    it('moves tests relative to normal bars and normal bars relative to tests', async () => {
+      const s = await setup(); const created = await make(s); const b = await read(s.f);
+      const first = b.items[0]!, second = b.items[1]!;
+      await service().updateGrindingPlanningBoardResourceOrder({ siteKey: s.f.siteKey, sourceRevision: b.sourceRevision,
+        ...ref(created.testBar), targetItemId: second.itemId, targetItemRevision: second.itemRevision, targetOverrideVersion: second.version, placement: 'after' });
+      expect(await lane(s)).toEqual([first.itemId, second.itemId, created.testBar.itemId]);
+      const fresh = await read(s.f); const test = fresh.testBars![0]!, normal = fresh.items.find((item) => item.itemId === first.itemId)!;
+      await service().updateGrindingPlanningBoardResourceOrder({ siteKey: s.f.siteKey, sourceRevision: fresh.sourceRevision, ...ref(normal),
+        targetItemId: test.itemId, targetItemRevision: test.itemRevision, targetOverrideVersion: test.version, placement: 'after' });
+      expect(await lane(s)).toEqual([second.itemId, test.itemId, first.itemId]);
+    });
+    it('accepts a mixed bulk order', async () => {
+      const s = await setup(); await make(s); const b = await read(s.f); const ids = [b.items[1]!, b.testBars![0]!, b.items[0]!];
+      await service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: s.f.siteKey, sourceRevision: b.sourceRevision, resourceCd: s.resourceCd, items: ids.map(ref) });
+      expect(await lane(s)).toEqual(ids.map((item) => item.itemId));
+    });
+    it('rejects moving a test to a different machine', async () => {
+      const s = await setup(); const a = await make(s); const other = await make(s, undefined, '581');
+      const b = await read(s.f); const source = b.testBars!.find((item) => item.itemId === a.testBar.itemId)!;
+      await expect(service().updateGrindingPlanningBoardResourceOrder({ siteKey: s.f.siteKey, sourceRevision: b.sourceRevision, ...ref(source),
+        targetItemId: other.testBar.itemId, targetItemRevision: other.testBar.itemRevision, targetOverrideVersion: other.testBar.version, placement: 'after' })).rejects.toMatchObject({ statusCode: 409, code: 'RESOURCE_ORDER_PANE_MISMATCH' });
+      await expect(service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: s.f.siteKey, sourceRevision: b.sourceRevision, resourceCd: '581', items: [ref(source)] })).rejects.toMatchObject({ statusCode: 409 });
+    });
+    it('rejects old board and test versions with STALE errors', async () => {
+      const s = await setup(); const a = await make(s);
+      await expect(s.api.createPlanningTestBar({ siteKey: s.f.siteKey, sourceRevision: s.board.sourceRevision, resourceCd: s.resourceCd, minutes: 30 })).rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_ORDER' });
+      await expect(s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: a.testBar.itemId.slice(5), sourceRevision: a.sourceRevision, expectedVersion: 0, action: 'delete' })).rejects.toMatchObject({ statusCode: 409, code: 'STALE_TEST_BAR' });
+    });
+    it.each([4, 1441, 5.5])('rejects invalid minutes %s', async (minutes) => {
+      const s = await setup(); await expect(s.api.createPlanningTestBar({ siteKey: s.f.siteKey, sourceRevision: s.board.sourceRevision, resourceCd: s.resourceCd, minutes })).rejects.toMatchObject({ statusCode: 400 });
+    });
+    it('keeps the test ID after CSV reimport replaces the winner', async () => {
+      const s = await setup(); const a = await make(s); const old = s.board.items[0]!;
+      const dashboard = await db().csvDashboard.findUniqueOrThrow({ where: { id: PRODUCTION_SCHEDULE_DASHBOARD_ID } });
+      const row = await db().csvDashboardRow.findUniqueOrThrow({ where: { id: old.sourceRowId } });
+      const incoming = { ...row.rowData as Record<string, string>, ProductNo: '9999999999' };
+      const columns = Object.keys(incoming);
+      try {
+        await db().csvDashboard.update({ where: { id: dashboard.id }, data: { enabled: true, ingestMode: 'DEDUP', dateColumnName: null,
+          dedupKeyColumns: ['FSEIBAN', 'FHINCD', 'FSIGENCD', 'FKOJUN'], columnDefinitions: columns.map((name) => ({ internalName: name, displayName: name, csvHeaderCandidates: [name], dataType: 'string' })) } });
+        const { CsvDashboardIngestor } = await import('../../csv-dashboard/csv-dashboard-ingestor.js');
+        await new CsvDashboardIngestor().ingestFromGmail(dashboard.id, `${columns.join(',')}\n${Object.values(incoming).join(',')}\n`, undefined, s.f.siteKey);
+        const fresh = await read(s.f); expect(fresh.items.find((item) => item.itemId === old.itemId)?.sourceRowId).not.toBe(old.sourceRowId);
+        expect(fresh.testBars![0]!.itemId).toBe(a.testBar.itemId);
+      } finally {
+        const rows = await db().csvDashboardRow.findMany({ where: { csvDashboardId: dashboard.id, rowData: { path: ['FSEIBAN'], equals: old.fseiban } }, select: { id: true } });
+        s.f.rowIds.push(...rows.map((entry) => entry.id));
+        await db().csvDashboardIngestRun.deleteMany({ where: { messageSubject: s.f.siteKey } });
+        await db().csvDashboard.update({ where: { id: dashboard.id }, data: { enabled: dashboard.enabled, ingestMode: dashboard.ingestMode,
+          dateColumnName: dashboard.dateColumnName, dedupKeyColumns: dashboard.dedupKeyColumns, columnDefinitions: dashboard.columnDefinitions as Prisma.InputJsonValue } });
+      }
+    });
+    it.each(['split', 'auto', 'merge'] as const)('preserves the relative slot after %s on an arbitrary enabled resource', async (mode) => {
+      const s = await setup('761'); vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+      try {
+        await db().productionScheduleGrindingPlanningBoardResourceCapacity.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: s.f.siteKey, resourceCd: '761', dailyHours: 8, unitSplitEnabled: true } });
+        const a = await make(s, s.board.items[0]); const before = await read(s.f); const parent = before.items[0]!;
+        const pieces = await import('../sessaku-pieces/sessaku-pieces.service.js');
+        if (mode === 'auto') {
+          await db().productionScheduleOrderSupplement.updateMany({ where: { csvDashboardRowId: before.items[1]!.sourceRowId }, data: { plannedQuantity: 2 } });
+          const { autoSplitSessakuUnits } = await import('../sessaku-pieces/auto-unit-split.service.js');
+          expect((await autoSplitSessakuUnits({ siteKey: s.f.siteKey })).splitCount).toBe(2);
+        } else {
+          await pieces.splitSessakuPieces({ siteKey: s.f.siteKey, parentItemId: parent.itemId, itemRevision: parent.itemRevision, expectedPieceSetVersion: parent.pieceSetVersion ?? 0, quantities: [1, 1] });
+          if (mode === 'merge') {
+            const split = (await read(s.f)).items.filter((item) => item.parentItemId === parent.itemId);
+            await pieces.mergeSessakuPieces({ siteKey: s.f.siteKey, parentItemId: parent.itemId, pieceIds: split.map((item) => item.pieceId!), expectedPieceSetVersion: split[0]!.pieceSetVersion!, itemRevisions: Object.fromEntries(split.map((item) => [item.itemId, item.itemRevision])) });
+          }
+        }
+        const fresh = await read(s.f); const ordered = await lane(s); const testAt = ordered.indexOf(a.testBar.itemId);
+        const parentPieces = fresh.items.filter((item) => item.parentItemId === parent.itemId || item.itemId === parent.itemId);
+        expect(parentPieces.length).toBeGreaterThan(0);
+        expect(parentPieces.every((item) => ordered.indexOf(item.itemId) < testAt)).toBe(true);
+        expect(testAt).toBe(ordered.length - (mode === 'auto' ? 3 : 2));
+      } finally { vi.unstubAllEnvs(); }
+    });
+    it('adds to both list and deferred load, excluding complete and deleted tests', async () => {
+      const s = await setup(); const baseline = (await read(s.f)).load.find((load) => load.resourceCd === s.resourceCd)!;
+      const a = await make(s); const b = await read(s.f);
+      const load = b.load.find((load) => load.resourceCd === s.resourceCd)!;
+      expect(load.originalRequiredMinutes).toBe((baseline.originalRequiredMinutes ?? 0) + 30);
+      expect(load.alternateRequiredMinutes).toBe((baseline.alternateRequiredMinutes ?? 0) + 30);
+      expect((await service().getGrindingPlanningBoardLoad({ siteKey: s.f.siteKey, category: 'all' })).load).toEqual(b.load);
+      const complete = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: a.testBar.itemId.slice(5), sourceRevision: b.sourceRevision, expectedVersion: a.testBar.version, action: 'complete' });
+      expect((await read(s.f)).load.find((load) => load.resourceCd === s.resourceCd)).toEqual(baseline);
+      const pending = await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: a.testBar.itemId.slice(5), sourceRevision: complete.sourceRevision, expectedVersion: complete.testBar.version, action: 'incomplete' });
+      await s.api.mutatePlanningTestBar({ siteKey: s.f.siteKey, id: a.testBar.itemId.slice(5), sourceRevision: pending.sourceRevision, expectedVersion: pending.testBar.version, action: 'delete' });
+      expect((await service().getGrindingPlanningBoardLoad({ siteKey: s.f.siteKey, category: 'all' })).load.find((load) => load.resourceCd === s.resourceCd)).toEqual(baseline);
+    });
+    it('keeps tests independent of seiban selection and schedule-source filters', async () => {
+      const s = await setup(); const a = await make(s);
+      const filtered = await read(s.f, { fseibans: ['not-registered'], scheduleSource: 'general' });
+      expect(filtered.items).toEqual([]); expect(filtered.testBars!.map((item) => item.itemId)).toContain(a.testBar.itemId);
+    });
+    it('hides tests and prevents mutations from another site', async () => {
+      const s = await setup(); const a = await make(s); const other = await setup(); const otherBoard = await read(other.f);
+      expect(otherBoard.testBars).toEqual([]);
+      await expect(s.api.mutatePlanningTestBar({ siteKey: other.f.siteKey, id: a.testBar.itemId.slice(5), sourceRevision: otherBoard.sourceRevision, expectedVersion: a.testBar.version, action: 'delete' })).rejects.toMatchObject({ statusCode: 404 });
+    });
+  });
+
 });

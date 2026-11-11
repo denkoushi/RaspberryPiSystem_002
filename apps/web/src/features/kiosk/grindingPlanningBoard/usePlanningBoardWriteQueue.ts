@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardTestBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type PlanningBoardDisplayItem = GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null };
 export type PlanningBoardWriteDisplay = { items: PlanningBoardDisplayItem[]; order: string[]; uncheckedFseibans: string[] };
 export type PlanningBoardWriteResult = {
+  testBars?: GrindingPlanningBoardTestBar[];
+  nextTestBarSequence?: number;
   items?: GrindingPlanningBoardItem[];
   awaitItemRefresh?: boolean;
   order?: string[];

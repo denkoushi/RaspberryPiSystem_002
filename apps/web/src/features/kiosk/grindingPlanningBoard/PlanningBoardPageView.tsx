@@ -95,7 +95,7 @@ export function PlanningBoardPageView({
   const content = (
     <>
       {data && ganttEnabled ? (
-        <PlanningBoardGanttDisplay capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
+        <PlanningBoardGanttDisplay testBarControls={gantt.testBarControls ? { ...gantt.testBarControls, disabled: gantt.testBarControls.disabled || writeBlocked } : undefined} testBarCreationEnabled={allocation === 'alternate'} capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
           onUnitSplitChange={gantt.changeUnitSplit} unitSplitAvailable={unitSplitAvailable}
           onMinutesSourceChange={gantt.changeMinutesSource} valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}
@@ -105,7 +105,10 @@ export function PlanningBoardPageView({
           capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
           onArrivalChange={onArrivalChange} onFirstProcessArrivalChange={onFirstProcessArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && (Boolean(gantt.singleResourceCd) || view === 'resource') && pinMode} onTogglePin={togglePin}
-          selectedItemIds={selectedItemIds} onToggleItem={toggleItem} onCompleteToggle={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag} onResourceReorder={reorderResourceByDrag}
+          selectedItemIds={gantt.testBarControls?.selectedId ? new Set([...selectedItemIds, gantt.testBarControls.selectedId]) : selectedItemIds}
+          onToggleItem={(item, selected) => { gantt.testBarControls?.select(item, selected); if (item.kind !== 'test') toggleItem(item, selected); }}
+          onCompleteToggle={(item, intent) => { if (item.kind === 'test') gantt.testBarControls?.complete(item, intent); else void toggleCompletion(item, intent); }} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag}
+          onResourceReorder={(item, target, placement) => { if (item.kind === 'test' || target.kind === 'test' || gantt.testBarControls?.bars.some((bar) => !bar.isCompleted && bar.resourceCd === (item.effectiveResourceCd ?? item.originalResourceCd))) gantt.testBarControls?.reorder?.(item, target, placement); else reorderResourceByDrag(item, target, placement); }}
           onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
           pieceDisabled={allocation === 'original' || writeBlocked || Boolean(specialDueMode)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />

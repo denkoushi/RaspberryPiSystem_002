@@ -1,5 +1,5 @@
 import { autoUnitSplitMetrics, isAutoUnitSplitYield } from './auto-unit-split-transaction.js';
-import { createLaneWrites, replaceSiteItems, flushSiteItems } from './piece-lane-writes.js';
+import { createLaneWrites, replaceSiteItems, flushSiteItems, copyBatchProjections, type LaneReplacementState } from './piece-lane-writes.js';
 import { isAutoUnitSplitBusyError } from './piece-db-error.js';
 import { isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
 import { readPieceOperationNumbers, syncWholePieceOperationCompletions } from './piece-operation-definitions.js';
@@ -75,7 +75,7 @@ async function projection(tx: Prisma.TransactionClient, siteKey: string, key: Se
   const resourceCapacity = allSiteRows ? undefined : await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
   const input = { dueSource, resourceMinutes, resourceCapacity, placementOnly: allSiteRows, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
-  return timed(audit, 'projectMs', async () => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, overrides, stateVersionIncrements: 0, laneWrites: createLaneWrites(overrides) }));
+  return timed(audit, 'projectMs', async (): Promise<LaneReplacementState & { parents: GrindingPlanningBoardItem[] }> => ({ parents: allSiteRows ? [] : projectGrindingPlanningBoard(input).items, pieces: projectGrindingPlanningBoard({ ...input, includePieces: true }).items, seibanOrder: stateOrder(state), overrides, stateVersionIncrements: 0, laneWrites: createLaneWrites(overrides) }));
 }
 async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key: SessakuPieceLogicalKey, removed: string[], later: LaterProcess[]): Promise<SessakuLaneSourceScope> {
   // Later replacements share this projection, including their lanes at every affected site.
@@ -137,7 +137,7 @@ async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], 
         const next = await projection(tx, site, key, true, source, audit, {
           state: batch.states!.find((state) => state.siteKey === site)!, overrides: previous.overrides, ranks: batch.ranks!.get(site)!
         }, dueSource);
-        batch.before.set(site, { ...next, laneWrites: previous.laneWrites, stateVersionIncrements: previous.stateVersionIncrements });
+        batch.before.set(site, { ...next, testBars: previous.testBars, testBarRanks: previous.testBarRanks, laneWrites: previous.laneWrites, stateVersionIncrements: previous.stateVersionIncrements });
       }
     }
     return batch.before;
@@ -269,15 +269,6 @@ export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
     }
     return result;
   });
-}
-
-function copyBatchProjections(states: NonNullable<AutoUnitSplitBatch['before']>): NonNullable<AutoUnitSplitBatch['before']> {
-  return new Map([...states].map(([site, state]) => [site, {
-    ...state, overrides: new Map(state.overrides), laneWrites: {
-      original: state.laneWrites.original, pending: new Set(state.laneWrites.pending),
-      removed: new Set(state.laneWrites.removed), laneVisits: new Map(state.laneWrites.laneVisits)
-    }
-  }]));
 }
 
 /** Roll back both DB writes (including successful audits) and pending in-memory placements for one lot. */

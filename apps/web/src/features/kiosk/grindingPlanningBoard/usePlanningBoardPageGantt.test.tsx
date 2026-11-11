@@ -5,7 +5,9 @@ import { productionFixture } from './__perf__/fixture';
 import { useDueSortHarness } from './__perf__/harness';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
-import type { GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
+import type { OrderPreview } from './planningBoardPageModel';
+import type { usePlanningBoardPageGantt } from './usePlanningBoardPageGantt';
+import type { GrindingPlanningBoardResponse, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 vi.mock('../../../api/hooks', () => ({
   useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: { ownSourceResourceCds: ['305'], values: [] } }),
@@ -14,14 +16,15 @@ vi.mock('../../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false })
 }));
 
-function setup(fixture = productionFixture(30, 2)) {
+type PageOptions = Partial<Parameters<typeof usePlanningBoardPageGantt>[0]>;
+function setup(fixture = productionFixture(30, 2), pageOptions: PageOptions = {}) {
   const requests: { request: GrindingPlanningBoardResourceOrderBulkRequest; resolve: (value: GrindingPlanningBoardResourceOrderResponse) => void;
     reject: (error: Error) => void }[] = [];
   const save = vi.fn((request: GrindingPlanningBoardResourceOrderBulkRequest) => new Promise<GrindingPlanningBoardResourceOrderResponse>((resolve, reject) => {
     requests.push({ request, resolve, reject });
   }));
   const refresh = vi.fn().mockResolvedValue({ isError: false });
-  const hook = renderHook(() => useDueSortHarness(fixture, save, refresh));
+  const hook = renderHook((options) => useDueSortHarness(fixture, save, refresh, undefined, options), { initialProps: pageOptions });
   const acknowledge = async (index: number) => {
     const { request, resolve } = requests[index];
     await act(async () => { resolve({ sourceRevision: `source-${index + 1}`,
@@ -30,6 +33,58 @@ function setup(fixture = productionFixture(30, 2)) {
   };
   return { ...hook, requests, save, refresh, acknowledge };
 }
+
+function mixedLane() {
+  const fixture = productionFixture(4, 1);
+  fixture.items = fixture.items.map((item, index) => ({ ...item, itemId: ['S1', 'S2', 'A', 'B'][index],
+    fhincd: `part-${index}`, processOrder: '10', alternateRank: [1, 2, 1, 3][index],
+    specialDue: index < 2 ? { kind: 'today', expiresAt: '2026-11-05T17:00:00+09:00' } : null }));
+  const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:22a2ef84-772f-4822-b4e3-bc1c930a9c83',
+    itemRevision: 'test:r1', version: 1, sequence: 1, name: 'T', resourceCd: '300', minutes: 30,
+    alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null };
+  const data: GrindingPlanningBoardResponse = { siteKey: 'site', category: 'grinding', view: 'resource', sourceRevision: 'source-0',
+    boardVersion: 1, registeredFseibans: fixture.seibans, uncheckedFseibans: [], seibanOrder: fixture.seibans,
+    resources: fixture.resources, items: fixture.items, testBars: [test], load: [], unknownRequiredMinutesCount: 0,
+    seibanProgress: {}, snapshotId: 'snapshot-0', nextCursor: null };
+  return { fixture, data, test, order: ['S1', 'S2', 'A', test.itemId, 'B'] };
+}
+
+describe('planning board mixed test-bar order', () => {
+  it('snapshots special-due bands before ranks when sending a test-bar reorder', () => {
+    const { fixture, data, test, order } = mixedLane();
+    const h = setup(fixture, { data });
+    act(() => h.result.current.page.gantt.testBarControls.reorder!(test, fixture.items[3]!, 'before'));
+    expect(h.requests[0].request.items.map((item) => item.itemId)).toEqual(order);
+    h.unmount();
+  });
+
+  it('undoes visible slots in band/rank order while preserving an unarrived normal bar', () => {
+    const { fixture, data, order } = mixedLane();
+    fixture.items[2] = { ...fixture.items[2], arrived: false };
+    const h = setup(fixture, { data, arrivalFilterEnabled: true,
+      resourceOrderHistory: [{ id: 1, scope: 'perf:grinding', orders: [{ resourceCd: '300', itemIds: order }] }] });
+    act(() => h.result.current.page.undoResourceOrder());
+    expect(h.requests[0].request.items.map((item) => item.itemId)).toEqual(order);
+    h.unmount();
+  });
+
+  it.each([false, true])('saves the proposal revision after a newer board arrives (test bars: %s)', (withTest) => {
+    const { fixture, data } = mixedLane();
+    fixture.items = fixture.items.filter((item) => !item.specialDue).map((item, index) => ({ ...item,
+      originalDueDate: index ? '2026-11-05' : '2026-11-20', effectiveDueDate: null }));
+    const setOrderPreview = vi.fn();
+    const options: PageOptions = { data: { ...data, items: fixture.items, testBars: withTest ? data.testBars : [] }, setOrderPreview };
+    const h = setup(fixture, options);
+    act(() => h.result.current.page.proposeResourceOrder());
+    const preview: OrderPreview = setOrderPreview.mock.calls[0][0];
+    expect(preview.sourceRevision).toBe('source-0');
+    h.rerender({ ...options, sourceRevision: 'source-newer', orderPreview: preview,
+      data: { ...options.data!, sourceRevision: 'source-newer' } });
+    act(() => h.result.current.page.applyResourceOrder());
+    expect(h.requests[0].request.sourceRevision).toBe(preview.sourceRevision);
+    h.unmount();
+  });
+});
 
 describe('planning board due order', () => {
   it('keeps special due bands first, then due date, process and itemId, and excludes completed work', () => {

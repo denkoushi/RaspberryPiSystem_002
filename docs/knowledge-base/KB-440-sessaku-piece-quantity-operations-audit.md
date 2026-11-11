@@ -85,3 +85,17 @@ no DB connection or `.env` read is part of this local validation.
 - [Quantity planning](../../apps/api/src/services/production-schedule/sessaku-pieces/piece-quantity.ts)
 - [Operation reconciliation](../../apps/api/src/services/production-schedule/sessaku-pieces/piece-operation-definitions.ts)
 - [Parent commands](../../apps/api/src/services/production-schedule/production-schedule-command.service.ts)
+
+## テスト加工の棒
+
+- テスト加工はサイト別の独立表で管理し、公開IDは `test:<UUID>`。削除は論理削除で連番を再利用しない。
+- 独自割当の資源内順位は通常棒と共有し、分割・まとめ・自動1台ずつ分割でも相対位置を維持する。
+- 自動並べ替え・納期順はテスト棒のスロットを固定し、テスト棒の後は同品番でも段取りを付け直す。
+- 完了・削除済みを除く時間を両時間ソースの合計と負荷へ加算する。変更はボード版を上げてキャッシュを更新する。
+- 元割当は通常棒の既存順を保ち、テスト棒を保存順位に表示・集計する。編集は独自割当で行う。
+- 対象検証: `grinding-planning-board.integration.test.ts`、`planning-board-test-bar-lanes.test.ts`、`PlanningBoardTestBars.test.tsx`。
+- フォロー修正: テスト棒を含むレーンの保存前スナップショット・入荷フィルター中のundo・自動提案の現在順が
+  `alternateRank` だけで並び、帯ごとの順位が混ざって `SPECIAL_DUE_ORDER_BAND_MISMATCH` になっていた。
+  表示と共通の「特別納期の期限帯→帯内順位」で揃え、テスト棒は帯なしとして同じ帯へのドラッグだけを許可する。
+- 自動提案の保存は `preview.sourceRevision` を優先し、提案後の別端末更新を競合として扱う。
+  提案中はテスト棒の変更操作も無効になる。提案以外の保存はキューの最新リビジョンを使う。

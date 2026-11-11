@@ -23,10 +23,10 @@ import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } fr
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { ForwardDragLane, SingleResourceWindow } from './planningBoardSingleResourceWindows';
 import type { GanttWindow } from './usePlanningBoardGanttWindow';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, ReactNode } from 'react';
 
-export type ForwardReorder = (item: GrindingPlanningBoardItem, target: GrindingPlanningBoardItem, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
+export type ForwardReorder = (item: GrindingPlanningBoardBar, target: GrindingPlanningBoardBar, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 export type ForwardMove = (item: GrindingPlanningBoardItem, resource: string, target: GrindingPlanningBoardItem | null, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 type Drop = { rowKey?: string; resource: string; bar: GanttBar | null; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
 export type ForwardDragPreview = { rowKey?: string; source?: 'queue'; bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
@@ -58,7 +58,7 @@ type Props = {
   disabled: boolean;
   dragDisabled: boolean;
   resourceView: boolean;
-  onToggleItem: (item: GrindingPlanningBoardItem, selected: boolean, resource?: string) => void;
+  onToggleItem: (item: GrindingPlanningBoardBar, selected: boolean, resource?: string) => void;
   onResourceReorder?: ForwardReorder;
   onResourceMove?: ForwardMove;
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
@@ -177,16 +177,17 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     if (distance >= 8 && !dragDisabled && resourceView && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!pending.moved && distance >= 8) { pending.moved = true; onCloseQueue(); }
     if (pending.moved && !disabled && !dragDisabled && !pinMode && resourceView) {
-      pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || canMoveResource?.(pending.bar.item, lane.resource)).map((lane) => lane.resource));
+      pending.allowed ??= new Set(lanes.current.filter((lane) => lane.resource === pending.bar.resource || (pending.bar.item.kind !== 'test' && canMoveResource?.(pending.bar.item, lane.resource))).map((lane) => lane.resource));
       onDragPreview({ rowKey: row.key, bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: findDrop(event.clientX, event.clientY, pending) });
     }
   };
   // One chip strip per part under its first bar: completed chips fold into 「済N」, at most two lines, and what still does not fit becomes 「+N」.
   const chipLayout = useMemo(() => {
     const barStart = (bar: GanttBar) => bar.unknown ? bar.start : bar.segments?.[0]?.start;
-    const placementOf = (bar: GanttBar) => placementByPart.get(bar.partKey) ?? bar.item.placement ?? null;
+    const placementOf = (bar: GanttBar) => placementByPart.get(bar.partKey) ?? (bar.item.kind !== 'test' ? bar.item.placement : null) ?? null;
     const firstBars = new Map<string, GanttBar & { start: number }>();
     for (const bar of row.bars) {
+      if (bar.item.kind === 'test') continue;
       const left = barStart(bar);
       const current = firstBars.get(bar.partKey);
       if (left != null && (chipsByPart.get(bar.partKey)?.length || planningBoardBadgeWidth(placementOf(bar))) && (!current || left < current.start)) firstBars.set(bar.partKey, { ...bar, start: left });
@@ -269,7 +270,9 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         </IconActionTooltip>}
       </div>)}
       {visibleBars.map((bar) => {
-        const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
+        const test = bar.item.kind === 'test' ? bar.item : null;
+        const normal = bar.item.kind !== 'test' ? bar.item : undefined;
+        const color = bar.tone !== 'completed' && normal ? seibanColors?.get(normal.fseiban) : undefined;
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
         const segments = bar.unknown && !foldedWindow ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
@@ -277,24 +280,24 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           {segments.map((segment, index) => {
             const segmentWidth = bar.unknown && !foldedWindow ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - 2);
             return <button key={index} type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
-              data-gantt-pinned={bar.item.orderPinned ? 'true' : undefined}
+              data-gantt-pinned={normal?.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
-              aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
-              aria-pressed={pinMode ? Boolean(bar.item.orderPinned) : selected} disabled={disabled || bar.item.isCompleted}
+              aria-label={test ? `${test.name} ${test.minutes}分 ${bar.resource}` : `${normal?.fhinmei || normal?.fhincd} 工順${normal?.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
+              aria-pressed={pinMode ? Boolean(normal?.orderPinned) : selected} disabled={disabled || bar.item.isCompleted}
               data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView}
               className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
                 bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
                 selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : inChain && 'outline outline-2 outline-offset-1 outline-white',
-                focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
+                focusedSeiban !== null ? focusedSeiban === normal?.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
-                bar.item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
+                normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ top: foldedWindow ? 22 : undefined, boxShadow: bar.item.orderPinned ? `${focusedSeiban === bar.item.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ top: foldedWindow ? 22 : undefined, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 clipPath: bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
-                backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : undefined,
-                color: draggedItemId === bar.item.itemId ? 'rgb(148 163 184)' : undefined,
+                backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
+                color: draggedItemId === bar.item.itemId ? 'rgb(148 163 184)' : test ? '#1e1b4b' : undefined,
                 outline: draggedItemId === bar.item.itemId ? '3px dashed rgb(251 191 36)' : undefined,
                 outlineOffset: draggedItemId === bar.item.itemId ? -3 : undefined,
                 zIndex: draggedItemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
@@ -324,7 +327,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 suppressClick.current = pending.tapCancelled || pending.longPressed;
                 clear();
                 if (pending.moved && drop && !disabled && !dragDisabled && !pinMode && resourceView && gate.attempt()) {
-                  if (drop.resource !== pending.bar.resource) onResourceMove?.(pending.bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
+                  if (drop.resource !== pending.bar.resource && pending.bar.item.kind !== 'test' && drop.bar?.item.kind !== 'test') onResourceMove?.(pending.bar.item, drop.resource, drop.bar?.item ?? null, drop.placement);
                   else if (drop.bar) onResourceReorder?.(pending.bar.item, drop.bar.item, drop.placement);
                 }
               }}
@@ -332,13 +335,13 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
-                if (pinMode) { if (gate.attempt()) onTogglePin?.(bar.item); } else { if (foldedWindow) { onToggleItem(bar.item, !selected, bar.resource); onFocusChain(bar, true); } else onFocusChain(bar); }
+                if (pinMode) { if (normal && gate.attempt()) onTogglePin?.(normal); } else { if (foldedWindow) { onToggleItem(bar.item, !selected, bar.resource); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
-              {bar.item.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
+              {normal?.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
-              {bar.unknown ? '所要不明' : segmentWidth >= 48
-                ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}><b className="line-clamp-2">{bar.item.fhinmei || bar.item.fhincd}</b>
+              {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? '所要不明' : segmentWidth >= 48
+                ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}><b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>
                   <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>
                 </span> : null}
             </button>;

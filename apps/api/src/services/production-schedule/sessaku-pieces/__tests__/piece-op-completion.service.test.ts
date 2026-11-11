@@ -1,3 +1,4 @@
+import * as laneWrites from '../piece-lane-writes.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -8,7 +9,8 @@ import type { PieceAuditContext } from '../piece-audit.js';
 const mocks = vi.hoisted(() => ({
   tx: {
     $queryRaw: vi.fn(), $executeRaw: vi.fn(),
-    productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+    productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
+    productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn(), updateMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn() },
@@ -71,6 +73,7 @@ describe('piece operation completion transaction', () => {
         sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: now, updatedAt: now, opCompletions: [] }] };
     detail = { updatedAt: null, rowNotes: [], orderSupplements: [{ plannedQuantity: 1, plannedEndDate: null }],
       productionScheduleProgress: null, productionScheduleExternalCompletion: null };
+    mocks.tx.productionScheduleGrindingPlanningBoardTestBar.findMany.mockResolvedValue([]);
     mocks.tx.productionScheduleSessakuPieceHistory.findUnique.mockResolvedValue(null);
     mocks.tx.productionScheduleSessakuPieceSet.findUnique.mockResolvedValue(null);
     mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst.mockResolvedValue(null);
@@ -127,6 +130,46 @@ describe('piece operation completion transaction', () => {
     expect(statements.filter((sql) => sql === 'SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
     expect(statements.filter((sql) => sql === 'ROLLBACK TO SAVEPOINT auto_unit_split_lot')).toHaveLength(1);
     expect(statements.filter((sql) => sql === 'RELEASE SAVEPOINT auto_unit_split_lot')).toHaveLength(3);
+  });
+  it('restores pending test ranks and item placements after a lot fails following an earlier successful split', async () => {
+    vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+    mocks.readSet.mockResolvedValue(null); mocks.sets.mockResolvedValue(new Map());
+    detail.orderSupplements[0].plannedQuantity = 2;
+    const parent = sessakuPieceParentItemId(key);
+    mocks.tx.productionScheduleGrindingPlanningBoardOverride.findMany.mockImplementation(async ({ select }) => select ? [] : [{
+      id: 'override', itemKey: parent, siteKey: 'site', alternateRank: 1, version: 1
+    }]);
+    mocks.tx.productionScheduleGrindingPlanningBoardTestBar.findMany.mockResolvedValue([{
+      id: 'test', resourceCd: '021', sequence: 1, alternateRank: 2, minutes: 30, version: 1, deletedAt: null, completedAt: null
+    }]);
+    mocks.tx.productionScheduleSessakuPieceSet.create.mockResolvedValue({ id: 'new-set', nextPosition: 1 });
+    const replace = vi.spyOn(laneWrites, 'replaceSiteItems');
+    const flush = vi.spyOn(laneWrites, 'flushSiteItems');
+    const tx = mocks.tx as unknown as Prisma.TransactionClient;
+    await runAutoUnitSplitBatch(tx, async () => [parent], async () => {
+      await runAutoUnitSplitLot(() => splitSessakuPieces({ siteKey: 'site', parentItemId: parent,
+        expectedPieceSetVersion: 0, itemRevision: 'auto', quantities: [1, 1], autoUnitSplit: true }));
+      const state = replace.mock.calls[0][2];
+      expect(state.testBarRanks?.get('test:test')).toBe(3);
+      expect(state.seibanOrder).toEqual(['S']);
+      const originalReferences = [...state.pieces];
+      const originalPieces = state.pieces.map((item) => ({ ...item }));
+      const originalTests = state.testBars!.map((item) => ({ ...item }));
+      await expect(runAutoUnitSplitLot(async () => {
+        await laneWrites.replaceSiteItems(tx, key, state, 'site', [state.pieces[0].itemId], ['piece:failed1', 'piece:failed2']);
+        expect(state.testBarRanks?.get('test:test')).toBe(4);
+        throw new Error('failed after reranking');
+      })).rejects.toThrow('failed after reranking');
+      // Neither ordinary item objects nor test objects are rewritten by replacement.
+      expect(originalReferences).toEqual(originalPieces);
+      expect(state.testBars).toEqual(originalTests);
+    });
+    const restored = flush.mock.calls[0][1].get('site')!;
+    expect(restored.testBarRanks?.get('test:test')).toBe(3);
+    expect(restored.pieces.some((item) => item.itemId.startsWith('piece:failed'))).toBe(false);
+    expect(mocks.tx.productionScheduleGrindingPlanningBoardTestBar.updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: 'test', siteKey: 'site' }), data: { alternateRank: 3, version: { increment: 1 } }
+    });
   });
   it.each([0, 30])('drains a rejected lot before SAVEPOINT rollback across a %ims waiter check interval', async (probeMs) => {
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');

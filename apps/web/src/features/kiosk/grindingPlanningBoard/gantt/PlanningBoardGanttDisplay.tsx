@@ -2,16 +2,18 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardSingleResourcePicker } from '../PlanningBoardSingleResourcePicker';
+import { PlanningBoardTestBarDialog } from '../PlanningBoardTestBarDialog';
 import { planningBoardPair, planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
-import { planningBoardVisibleBars } from './planningBoardGanttLayout';
+import { isNormalGanttBar, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
+import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 
@@ -19,6 +21,8 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
+  const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
+  useEffect(() => { if (selectedTestResource) setChainOwner(selectedTestResource); }, [selectedTestResource, props.testBarControls?.selectedId]);
   const [chainTops, setChainTops] = useState<Record<string, { top: number | null; height: number }>>({});
   const onChainTopChange = useCallback((resource: string, top: number | null, height: number) => {
     setChainTops(current => current[resource]?.top === top && current[resource]?.height === height ? current : { ...current, [resource]: { top, height } });
@@ -45,7 +49,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const seibanColors = useMemo(() => {
     if (!props.colorBySeiban) return undefined;
     const seibanOrder = props.seibanOrder ?? [];
-    const seibans = [...new Set(paneBars.flatMap(bars => bars.map(bar => bar.item.fseiban)))];
+    const seibans = [...new Set(paneBars.flatMap(bars => bars.flatMap(bar => bar.item.kind === 'test' ? [] : [bar.item.fseiban])))];
     const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
@@ -58,7 +62,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     onFocusedSeibanChange(seiban);
     const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
     paneBars.forEach((bars, index) => {
-      const first = bars.filter(bar => bar.item.fseiban === seiban).reduce<GanttBar | undefined>(
+      const first = bars.filter(bar => bar.item.kind !== 'test' && bar.item.fseiban === seiban).reduce<GanttBar | undefined>(
         (earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
       if (first) handles.current.get(resources[index]!)?.scrollToItem(first.item.itemId);
     });
@@ -114,7 +118,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
         <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
         <div className="min-h-0 min-w-0 flex-1">
-          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.filter(isNormalGanttBar).map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
             ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
             valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
             onNavigateBar={(bar) => {
@@ -196,8 +200,21 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       onSingleResourceChange?.(pairTop);
     }
   }, [machineSelectionLocked, capacityLoaded, pairTop, pairBottom, topAvailable, unitSplitEnabledByResource, onSingleResourceChange]);
-  const shared = { ...props, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
-  return pair
+  const [testDialog, setTestDialog] = useState<{ resources: string[]; after?: GrindingPlanningBoardBar; initial: string } | null>(null);
+  const testAnchor = useRef<GrindingPlanningBoardBar | null>(null);
+  const openTestDialog = () => {
+    const shown = pair ?? (props.singleResourceCd ? [props.singleResourceCd] : []);
+    if (!shown.length || !props.testBarControls || props.testBarControls.disabled) return;
+    const selected = props.testBarControls.selectedBar ?? testAnchor.current ?? props.layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
+      .find((bar) => props.selectedItemIds.has(bar.item.itemId))?.item;
+    const resource = selected?.kind === 'test' ? selected.resourceCd : selected?.effectiveResourceCd ?? selected?.originalResourceCd;
+    setTestDialog({ resources: shown, after: selected?.isCompleted ? undefined : selected, initial: resource && shown.includes(resource) ? resource : shown[0]! });
+  };
+  const shared = { ...props, onTestBarAnchorChange: (item: GrindingPlanningBoardBar | null) => { testAnchor.current = item; }, onTestBarAdd: props.testBarCreationEnabled && props.layout.mode === 'forward' ? openTestDialog : undefined, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
+  return <> {pair
     ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
-    : <PlanningBoardGanttView {...shared} ref={ref} />;
+    : <PlanningBoardGanttView {...shared} ref={ref} />}
+    {testDialog && props.testBarControls && <PlanningBoardTestBarDialog sequence={props.testBarControls.nextSequence} resources={testDialog.resources} initialResource={testDialog.initial}
+      onClose={() => setTestDialog(null)} onInsert={(resource, minutes) => props.testBarControls!.create(resource, minutes, testDialog.after)} />}
+  </>;
 });

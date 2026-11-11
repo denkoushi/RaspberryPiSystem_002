@@ -3,6 +3,7 @@ import { GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS } from '@raspi-sys
 import { isVisibleByArrival } from '../../isVisibleByArrival';
 import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
 import {
+  comparePlanningBoardBarOrder,
   compareProcessOrder,
   sortPlanningBoardResources,
   resolveGrindingPlanningBoardDueDate,
@@ -14,7 +15,7 @@ import { buildUnitSegments, ganttRequiredMinutes, isUnitPiece, unitSetupMinutesB
 
 import type { OpSegment } from './planningBoardUnitSegments';
 import type { PlanningBoardAllocation } from '../types';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar, GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 const DAY_MS = 86_400_000;
 export const NO_PREDECESSORS: readonly string[] = [];
@@ -29,14 +30,15 @@ export const dayLabel = (day: number): string => {
 };
 
 // Same identity as the projection: only unassigned seibans split by productNo.
-export function planningBoardPartKey(item: GrindingPlanningBoardItem): string {
+export function planningBoardPartKey(item: GrindingPlanningBoardBar): string {
+  if (item.kind === 'test') return item.itemId;
   const parts = [item.fseiban.trim(), item.fhincd.trim()];
   if (item.fseiban.trim() === '********') parts.push(item.productNo.trim());
   return parts.join('\0');
 }
 
-function requiredMinutesUnknown(item: GrindingPlanningBoardItem): boolean {
-  if (isUnitPiece(item)) return false;
+function requiredMinutesUnknown(item: GrindingPlanningBoardBar): boolean {
+  if (item.kind === 'test' || isUnitPiece(item)) return false;
   return !item.requiredMinutesKnown || (item.kind === 'piece' ? item.requiredMinutes == null : !item.requiredMinutes);
 }
 
@@ -54,7 +56,7 @@ function planningBoardProcessGroups<T>(items: readonly T[], itemOf: (value: T) =
 }
 
 export type GanttBar = {
-  item: GrindingPlanningBoardItem;
+  item: GrindingPlanningBoardBar;
   partKey: string;
   resource: string;
   due: string | null;
@@ -72,6 +74,8 @@ export type GanttBar = {
   lateDays?: number;
   arrivalPending?: boolean;
 };
+export type NormalGanttBar = Omit<GanttBar, 'item'> & { item: GrindingPlanningBoardItem };
+export const isNormalGanttBar = (bar: GanttBar): bar is NormalGanttBar => bar.item.kind !== 'test';
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
 export type GanttGroup = { key: string; label: string; resource: string | null; category?: 'grinding' | 'cutting'; rows: GanttRow[] };
 export type GanttLayout = { groups: GanttGroup[]; start: number; end: number; today: number; overlapCount: number; mode?: 'forward' | 'backward'; now?: number; lateCount?: number; completedOnly?: boolean; forwardQueue?: GanttBar[] };
@@ -83,6 +87,7 @@ export function planningBoardVisibleBars(layout: GanttLayout): GanttBar[] {
 
 export type GanttLayoutOptions = {
   items: readonly GrindingPlanningBoardItem[];
+  testBars?: readonly GrindingPlanningBoardTestBar[];
   allocation: PlanningBoardAllocation;
   view: GrindingPlanningBoardView;
   seibanOrder: readonly string[];
@@ -118,7 +123,7 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   const { items, allocation, view, seibanOrder, resources, dailyHoursByResource, scale } = options;
   const today = dateToDay(options.today);
   const sorted = sortGrindingPlanningBoardItems(items.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled))), seibanOrder, view, allocation);
-  const parts = new Map<string, GanttBar[]>();
+  const parts = new Map<string, NormalGanttBar[]>();
   let processCounts: Map<string, number> | undefined;
   const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
   const previousParts = new Map<string, string>();
@@ -129,14 +134,14 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
     if (isUnitPiece(item) && previousParts.get(resource) !== item.fhincd) setupByItemId.set(item.itemId, setupByResource.get(resource)?.get(item.fhincd) ?? 0);
     previousParts.set(resource, item.fhincd);
   }
-  const bars = sorted.map((item): GanttBar => {
+  const bars = sorted.map((item): NormalGanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const end = due ? dateToDay(due) + 1 : null;
     const unknown = requiredMinutesUnknown(item);
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
     const setup = setupByItemId.get(item.itemId) ?? 0;
-    const bar: GanttBar = {
+    const bar: NormalGanttBar = {
       item, resource, due, end, unknown, partKey: planningBoardPartKey(item),
       // Give the due marker a tiny interval for same-day chain checks; its visual width is fixed.
       start: end == null ? null : unknown ? end - 0.001 : end - (ganttRequiredMinutes(item)! + setup) / (hours * 60),
@@ -297,38 +302,49 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const now = jstDay(options.now ?? new Date());
   const today = Math.floor(now);
   const sorted = sortGrindingPlanningBoardItems(options.items.filter((item) => !item.isCompleted), seibanOrder, 'resource', allocation);
-  const schedulingItems = sorted.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)));
-  const { parts, predecessors, processCounts } = forwardPlanningBoardPredecessors(schedulingItems);
-  const allLanes = new Map<string, GrindingPlanningBoardItem[]>();
-  for (const item of sorted) {
+  const mixed: GrindingPlanningBoardBar[] = [...sorted, ...(view === 'resource' ? (options.testBars ?? []).filter((item) => !item.isCompleted && !item.deletedAt) : [])];
+  const visible = (item: GrindingPlanningBoardBar) => item.kind === 'test' || isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled));
+  const schedulingItems = mixed.filter(visible);
+  const { parts, predecessors, processCounts } = forwardPlanningBoardPredecessors(schedulingItems.filter((item): item is GrindingPlanningBoardItem => item.kind !== 'test'));
+  const allLanes = new Map<string, GrindingPlanningBoardBar[]>();
+  for (const item of mixed) {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
     const queue = allLanes.get(resource);
     if (queue) queue.push(item);
     else allLanes.set(resource, [item]);
   }
   for (const [resource, queue] of allLanes) {
+    if (queue.some((item) => item.kind === 'test')) {
+      if (allocation === 'alternate') queue.sort(comparePlanningBoardBarOrder);
+      else {
+        const originalOrder: GrindingPlanningBoardBar[] = queue.filter((item) => item.kind !== 'test');
+        for (const test of queue.filter((item): item is GrindingPlanningBoardTestBar => item.kind === 'test').sort((a, b) => a.alternateRank - b.alternateRank))
+          originalOrder.splice(Math.min(test.alternateRank - 1, originalOrder.length), 0, test);
+        queue.splice(0, queue.length, ...originalOrder);
+      }
+    }
     const order = options.laneOrder?.[resource];
     if (!order) continue;
     const ranks = new Map(order.map((id, index) => [id, index]));
     queue.sort((a, b) => (ranks.get(a.itemId) ?? Infinity) - (ranks.get(b.itemId) ?? Infinity));
   }
   const lanes = new Map([...allLanes].map(([resource, queue]) => [resource,
-    queue.filter((item) => isVisibleByArrival(item, Boolean(options.arrivalFilterEnabled)))]));
+    queue.filter(visible)]));
   const heads = new Map<string, number>();
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
   const previousParts = new Map<string, string>();
   const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
-  const isReady = (item: GrindingPlanningBoardItem) => {
+  const isReady = (item: GrindingPlanningBoardBar) => {
     for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) if (!scheduled.has(id)) return false;
     return true;
   };
-  const readyAt = (item: GrindingPlanningBoardItem) => {
+  const readyAt = (item: GrindingPlanningBoardBar) => {
     let ready = now;
     for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) ready = Math.max(ready, scheduled.get(id)?.end ?? now);
     return ready;
   };
-  const place = (item: GrindingPlanningBoardItem, resource: string) => {
+  const place = (item: GrindingPlanningBoardBar, resource: string) => {
     const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
     const pausesForBreaks = !options.runsThroughBreaks?.has(resource);
     const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
@@ -336,7 +352,8 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     const unknown = requiredMinutesUnknown(item);
     const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? setupByResource.get(resource)?.get(item.fhincd) ?? 0 : 0;
     const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : ganttRequiredMinutes(item)! + setup, hours, pausesForBreaks);
-    previousParts.set(resource, item.fhincd);
+    if (item.kind === 'test') previousParts.delete(resource);
+    else previousParts.set(resource, item.fhincd);
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
     scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,
@@ -358,9 +375,10 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
           const hours = dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
           const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, !options.runsThroughBreaks?.has(resource));
           if (readyAt(item) > cursor + 1e-10) {
-            let filler: GrindingPlanningBoardItem | undefined;
+            let filler: GrindingPlanningBoardBar | undefined;
             for (let index = head + 1; index < queue.length; index++) {
               const candidate = queue[index]!;
+              if (candidate.kind === 'test') break;
               if (scheduled.has(candidate.itemId)) continue;
               if (isReady(candidate) && readyAt(candidate) <= cursor + 1e-10) {
                 filler = candidate;
@@ -381,13 +399,13 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     if (!progressed) {
       // Conflicting ranks can put a successor ahead of its own predecessor (also across resources).
       // Explicit preview orders retain their slots in a cycle; legacy layouts prefer process precedence.
-      let candidate: { resource: string; item: GrindingPlanningBoardItem } | undefined;
+      let candidate: { resource: string; item: GrindingPlanningBoardBar } | undefined;
       let explicitHead: typeof candidate;
       for (const [resource, queue] of lanes) {
         for (let index = heads.get(resource) ?? 0; index < queue.length; index++) {
           const item = queue[index]!;
           if (scheduled.has(item.itemId)) continue;
-          if (options.laneOrder?.[resource]) {
+          if (options.laneOrder?.[resource] || queue.some((candidate) => candidate.kind === 'test')) {
             explicitHead ??= { resource, item };
             break;
           }
@@ -435,5 +453,5 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   return { groups, start: today, today, now, mode: 'forward', overlapCount: 0, forwardQueue,
     end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
     lateCount: bars.filter((bar) => bar.tone === 'late').length,
-    completedOnly: options.items.length > 0 && sorted.length === 0 };
+    completedOnly: (options.items.length > 0 || (options.testBars?.length ?? 0) > 0) && mixed.length === 0 };
 }
