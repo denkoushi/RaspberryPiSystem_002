@@ -373,9 +373,19 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     </div></td>
   </tr>;
 });
-export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, disabled, unitSplitEnabledByResource }: {
+type SheetProps = {
   resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean; unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
-}) {
+  resourceCds?: readonly string[]; resourceNameMap?: Record<string, string[]>;
+};
+export function PlanningBoardResourceMinutesSheet({ resourceCds, resourceNameMap, ...props }: SheetProps) {
+  return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: 'min(56%, 520px)' }}>
+    {resourceCds && resourceCds.length > 1 ? <div className="min-h-0 overflow-auto">{resourceCds.map(resourceCd => <div key={resourceCd}>
+      <div className="px-4 py-2 font-bold">{resourceCd}{resourceNameMap?.[resourceCd]?.length ? ` ${resourceNameMap[resourceCd]!.join(' / ')}` : ''}</div>
+      <ResourceMinutesTable {...props} resourceCd={resourceCd} items={props.items.filter(item => (item.effectiveResourceCd ?? item.originalResourceCd) === resourceCd)} />
+    </div>)}</div> : <ResourceMinutesTable {...props} />}
+  </div>;
+}
+function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEnabledByResource }: SheetProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [opOverrides, setOpOverrides] = useState<Record<string, number[] | undefined>>({});
   const select = useCallback((fhincd: string) => setSelected(fhincd), []);
@@ -403,7 +413,7 @@ export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, d
   const columnKey = used.size ? [...used].sort((a, b) => a - b).join(',') : '1';
   const columns = useMemo(() => columnKey.split(',').map(Number), [columnKey]);
   const header = 'sticky top-0 z-20 border-b border-slate-700 bg-slate-950 px-2 py-2 text-[15px] font-normal text-slate-400';
-  return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: 'min(56%, 520px)' }}>
+  return <>
     {selected && <div className="px-4 py-2 break-words text-[17px]"><b className="mr-2 font-mono">{selected}</b>{groups.get(selected)?.[0]?.fhinmei}</div>}
     <div className="min-h-0 overflow-auto"><table className="w-max text-left"><thead><tr>
       <th className={`${header} sticky left-0 z-30`}>品番</th><th className={`${header} text-right`}>数</th><th className={`${header} whitespace-nowrap text-right`}>元/台</th><th className={`${header} min-w-[150px] text-right`}>ロット</th>
@@ -412,5 +422,5 @@ export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, d
     </tr></thead><tbody>{[...groups].map(([fhincd, members]) => <PartRow key={`${resourceCd}:${fhincd}`} resourceCd={resourceCd} fhincd={fhincd} items={members}
       saved={values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)} disabled={disabled} columns={columns} hasOps={hasOps} selected={selected === fhincd}
       select={select} onOpsChange={onOpsChange} />)}</tbody></table></div>
-  </div>;
+  </>;
 }

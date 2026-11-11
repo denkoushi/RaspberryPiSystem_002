@@ -66,8 +66,8 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
-  resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[] }>(function PlanningBoardGanttView({
+  minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
@@ -188,9 +188,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const singleMode = Boolean(singleGroup);
   const singleItems = useMemo(() => {
     const items = resourceMinutesItems ?? resourceGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
-    return [...new Map(items.filter((item) => (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
+    return [...new Map(items.filter((item) => minutesResourceCds ? minutesResourceCds.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? '') : (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
       .map((item) => [item.itemId, item])).values()];
-  }, [resourceMinutesItems, resourceGroup, singleResourceCd]);
+  }, [resourceMinutesItems, resourceGroup, singleResourceCd, minutesResourceCds]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
@@ -286,7 +286,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain, valueSheetContainer]);
-  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
+  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} resourceCds={minutesResourceCds} resourceNameMap={resourceNameMap} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
     values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
   const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
   useLayoutEffect(() => {
@@ -490,8 +490,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
   const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineModeButtonRef={machineModeButtonRef} machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
-        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
-        onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
+        resourceCds={minutesResourceCds} items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
+        onSourceChange={(source) => {
+          for (const resourceCd of minutesResourceCds ?? [singleResourceCd!]) {
+            if (!minutesResourceCds || (resourceMinutes?.ownSourceResourceCds.includes(resourceCd) ?? false) !== (source === 'own')) onMinutesSourceChange?.({ resourceCd, source });
+          }
+        }}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} /> : null;
