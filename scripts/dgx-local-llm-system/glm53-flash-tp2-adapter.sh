@@ -22,6 +22,19 @@ MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-262144}"
 LIMIT_MM="${VLLM_LIMIT_MM_PER_PROMPT:-}"
 SPECULATIVE="${VLLM_SPECULATIVE_CONFIG:-}"
 GPU_MEM_UTIL="${VLLM_GPU_MEMORY_UTILIZATION:-0.85}"
+RECIPE="${BLUE_RUNTIME_RECIPE:-}"
+MODEL_PATH=/models/GLM-5.3-Flash-FP4-Local
+case "${RECIPE}" in
+  "") ;;
+  qwen38_fp8_tp2)
+    MODEL_PATH=/models/qwen38fn
+    MAX_MODEL_LEN="${VLLM_MAX_MODEL_LEN:-131072}"
+    if [[ -z "${SPECULATIVE}" ]]; then
+      SPECULATIVE='{"method":"mtp","num_speculative_tokens":3,"draft_tensor_parallel_size":2}'
+    fi
+    ;;
+  *) echo "GLM TP2 adapter: unsupported BLUE_RUNTIME_RECIPE: ${RECIPE}" >&2; exit 1 ;;
+esac
 if [[ -z "${LIMIT_MM}" ]]; then LIMIT_MM='{"image":61}'; fi
 if [[ -z "${SPECULATIVE}" ]]; then
   SPECULATIVE='{"method":"mtp","num_speculative_tokens":5,"moe_backend":"humming","attention_backend":"B12X"}'
@@ -61,6 +74,37 @@ if not isinstance(speculative, dict):
     raise SystemExit("speculativeConfig must be an object")
 PY
 
+if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
+  # Fixed recipe values must not silently override a conflicting manifest.
+  python3 - "${SPECULATIVE}" <<'PYVALIDATE'
+import json
+import os
+import sys
+
+expected = {
+    "VLLM_KV_CACHE_DTYPE": "auto",
+    "VLLM_MAX_MODEL_LEN": "131072",
+    "VLLM_GPU_MEMORY_UTILIZATION": "0.85",
+    "VLLM_MAX_NUM_SEQS": "4",
+    "VLLM_MAX_NUM_BATCHED_TOKENS": "4096",
+    "VLLM_ENABLE_PREFIX_CACHING": "true",
+    "VLLM_ENABLE_CHUNKED_PREFILL": "true",
+    "VLLM_SAFETENSORS_LOAD_STRATEGY": "eager",
+    "VLLM_MM_ENCODER_TP_MODE": "data",
+    "VLLM_REASONING_PARSER": "qwen3",
+    "VLLM_TOOL_CALL_PARSER": "qwen3_xml",
+}
+for key, value in expected.items():
+    if os.environ.get(key, value) != value:
+        raise SystemExit(f"qwen38_fp8_tp2 requires {key}={value}")
+chat_kwargs = json.loads(os.environ.get("VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS", '{"enable_thinking":false}'))
+if chat_kwargs != {"enable_thinking": False} or chat_kwargs["enable_thinking"] is not False:
+    raise SystemExit("qwen38_fp8_tp2 requires enable_thinking=false")
+if json.loads(sys.argv[1]) != {"method": "mtp", "num_speculative_tokens": 3, "draft_tensor_parallel_size": 2}:
+    raise SystemExit("qwen38_fp8_tp2 requires the contracted MTP speculativeConfig")
+PYVALIDATE
+fi
+
 # SSH joins arguments into a shell command. Quote each argument for a POSIX shell,
 # including paths containing spaces or single quotes; never interpolate raw paths.
 worker() {
@@ -87,6 +131,18 @@ install -d "$(dirname "${MARKER}")"
 DOCKER_ARGS=(run -d --privileged --gpus all --ipc host --network host --shm-size=16g
   --ulimit nofile=1048576:1048576 --ulimit memlock=-1 --ulimit stack=67108864
   --label "dgx.profile=${PROFILE_ID}")
+if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
+  for setting in \
+    HF_HUB_OFFLINE=1 "MN_IF_NAME=${ETH_IF}" "UCX_NET_DEVICES=${ETH_IF}" "NCCL_SOCKET_IFNAME=${ETH_IF}" \
+    "NCCL_IB_HCA=${IB_IF}" NCCL_IB_DISABLE=0 "OMPI_MCA_btl_tcp_if_include=${ETH_IF}" \
+    "GLOO_SOCKET_IFNAME=${ETH_IF}" "TP_SOCKET_IFNAME=${ETH_IF}" NCCL_IGNORE_CPU_AFFINITY=1 \
+    "HEAD_IP=${HEAD_IP}" "MASTER_PORT=${MASTER_PORT}" CUTE_DSL_ARCH=sm_121a SAFETENSORS_FAST_GPU=1 \
+    VLLM_ENABLE_ROCE_ALLREDUCE=1 VLLM_ROCE_ALLREDUCE_MAX_SIZE=2MB NCCL_BUFFSIZE=1048576 NCCL_MAX_CTAS=8 \
+    VLLM_WORKER_MULTIPROC_METHOD=spawn VLLM_SSM_CONV_STATE_LAYOUT=DS VLLM_USE_V2_MODEL_RUNNER=1 \
+    VLLM_ENABLE_PCIE_ALLREDUCE=0 VLLM_PLE_TABLE_MEMORY=shared; do
+    DOCKER_ARGS+=(-e "${setting}")
+  done
+else
 for setting in \
   HF_HUB_OFFLINE=1 "MN_IF_NAME=${ETH_IF}" "UCX_NET_DEVICES=${ETH_IF}" "NCCL_SOCKET_IFNAME=${ETH_IF}" \
   "NCCL_IB_HCA=${IB_IF}" NCCL_IB_DISABLE=0 "OMPI_MCA_btl_tcp_if_include=${ETH_IF}" \
@@ -98,9 +154,25 @@ for setting in \
   B12X_POLICY_MODE=auto VLLM_B12X_MOE_FP4_FORCE_A16=1 B12X_W4A16_A4_PREFILL=1; do
   DOCKER_ARGS+=(-e "${setting}")
 done
+fi
 DOCKER_ARGS+=(-v "${CACHE_DIR}/vllm:/root/.cache/vllm"
   -v "${CACHE_DIR}/flashinfer:/root/.cache/flashinfer"
   -v "${CACHE_DIR}/triton:/root/.triton" -v "${CACHE_DIR}/b12x:/root/.cache/b12x")
+if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
+  CHAT_KWARGS="${VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS:-}"
+  if [[ -z "${CHAT_KWARGS}" ]]; then CHAT_KWARGS='{"enable_thinking":false}'; fi
+  VLLM_ARGS=(serve /models/qwen38fn --served-model-name "${ALIAS}"
+    --tensor-parallel-size 2 --mamba-cache-mode align --enable-prefix-caching --enable-chunked-prefill
+    --kv-cache-dtype "${VLLM_KV_CACHE_DTYPE:-auto}" --max-model-len "${MAX_MODEL_LEN}"
+    --max-num-seqs "${VLLM_MAX_NUM_SEQS:-4}" --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-4096}"
+    --speculative-config "${SPECULATIVE}" --mm-encoder-tp-mode "${VLLM_MM_ENCODER_TP_MODE:-data}"
+    --safetensors-load-strategy "${VLLM_SAFETENSORS_LOAD_STRATEGY:-eager}"
+    --default-chat-template-kwargs "${CHAT_KWARGS}"
+    --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}"
+    --enable-auto-tool-choice --gpu-memory-utilization "${GPU_MEM_UTIL}" --nnodes 2
+    --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
+  HEAD_ARGS=(--host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority)
+else
 VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"
   --tensor-parallel-size 2 --mamba-cache-mode align --enable-prefix-caching --enable-chunked-prefill
   --dtype bfloat16 --kv-cache-dtype fp8 --quantization modelopt_mixed --attention-backend B12X
@@ -109,6 +181,9 @@ VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"
   --speculative-config "${SPECULATIVE}" --reasoning-parser glm45 --tool-call-parser glm47
   --enable-auto-tool-choice --gpu-memory-utilization "${GPU_MEM_UTIL}" --nnodes 2
   --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
+
+  HEAD_ARGS=(--host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority --limit-mm-per-prompt "${LIMIT_MM}")
+fi
 
 # Write recovery information before launch: SSH can fail after starting the worker.
 python3 - "${MARKER}" "${WORKER_SSH}" "${WORKER_NAME}" <<'PY'
@@ -121,21 +196,32 @@ tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(json.dumps({"sshTarget": sys.argv[2], "containerName": sys.argv[3]}) + "\n", encoding="utf-8")
 tmp.replace(path)
 PY
-# Pin each rank's vLLM address to the cluster link; the default-route IP (e.g. Wi-Fi)
-# may be unreachable from the peer and hangs the startup handshake.
-worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" -e "VLLM_HOST_IP=${WORKER_SSH#*@}" \
-  -v "${WORKER_MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
-  --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 1 --headless
-[[ "$(worker docker inspect --format '{{.State.Running}}' "${WORKER_NAME}")" == "true" ]] || fail "worker is not running"
-
+# Qwen needs both nodes' page caches cleared before either rank starts.
+if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
 if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: worker drop_caches failed; continuing launch" >&2
 fi
 if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: head drop_caches failed; continuing launch" >&2
 fi
+fi
+# Pin each rank's vLLM address to the cluster link; the default-route IP (e.g. Wi-Fi)
+# may be unreachable from the peer and hangs the startup handshake.
+worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" -e "VLLM_HOST_IP=${WORKER_SSH#*@}" \
+  -v "${WORKER_MODEL_DIR}:${MODEL_PATH}:ro" \
+  --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 1 --headless
+[[ "$(worker docker inspect --format '{{.State.Running}}' "${WORKER_NAME}")" == "true" ]] || fail "worker is not running"
+
+if [[ -z "${RECIPE}" ]]; then
+if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+  echo "GLM TP2 adapter: worker drop_caches failed; continuing launch" >&2
+fi
+if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+  echo "GLM TP2 adapter: head drop_caches failed; continuing launch" >&2
+fi
+fi
 docker "${DOCKER_ARGS[@]}" --name "${HEAD_NAME}" -e "VLLM_HOST_IP=${HEAD_IP}" \
-  -v "${MODEL_DIR}:/models/GLM-5.3-Flash-FP4-Local:ro" \
+  -v "${MODEL_DIR}:${MODEL_PATH}:ro" \
   --entrypoint vllm "${IMAGE}" "${VLLM_ARGS[@]}" --node-rank 0 \
-  --host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority --limit-mm-per-prompt "${LIMIT_MM}"
+  "${HEAD_ARGS[@]}"
 echo "started GLM TP2 head=${HEAD_NAME} worker=${WORKER_SSH}:${WORKER_NAME}"
