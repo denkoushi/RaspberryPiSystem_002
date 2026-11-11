@@ -4,7 +4,7 @@ import { upsertProductionScheduleSeibanDueDate, upsertProductionScheduleSeibanPr
 import { upsertProductionScheduleDueDate } from '../production-schedule-command.service.js';
 
 const mocks = vi.hoisted(() => {
-  const delegate = () => ({ findUnique: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() });
+  const delegate = () => ({ findUnique: vi.fn(), upsert: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() });
   const tx = {
     csvDashboardRow: { findFirst: vi.fn() },
     productionScheduleRowNote: delegate(),
@@ -54,7 +54,8 @@ describe.each(cases)('$action due-date audit', ({ action, run, target }) => {
     expect(mocks.tx.productionScheduleDueDateAuditLog.create).toHaveBeenCalledOnce();
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5_000, timeout: 15_000 });
     expect(mocks.resetCaches).toHaveBeenCalledOnce();
-    if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.deleteMany).toHaveBeenCalled();
+    if (!date && action === 'seiban') expect(mocks.tx.productionScheduleRowNote.updateMany).toHaveBeenCalledWith({ where: { csvDashboardRowId: 'row' }, data: { dueDate: null } });
+    else if (!date && action !== 'processing') expect(mocks.tx.productionScheduleRowNote.deleteMany).toHaveBeenCalled();
     else expect(mocks.tx.productionScheduleRowNote.upsert).toHaveBeenCalled();
   });
   it('retries the whole transaction after a serialization conflict', async () => {
