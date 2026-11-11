@@ -13,6 +13,8 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
+import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
+import type { SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
@@ -20,6 +22,15 @@ type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function TwoMachineGantt(props, ref) {
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
+  const [dragPreview, setDragPreview] = useState<SharedForwardDrag['preview']>(null);
+  const paneDragLanes = useRef(new Map<string, readonly ForwardDragLane[]>());
+  const dragLanes = useRef<readonly ForwardDragLane[]>([]);
+  const registerDragLanes = useCallback((resource: string, lanes: readonly ForwardDragLane[] | null) => {
+    if (lanes) paneDragLanes.current.set(resource, lanes); else paneDragLanes.current.delete(resource);
+    dragLanes.current = [...paneDragLanes.current.values()].flat();
+  }, []);
+  const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview,
+    lanes: dragLanes, registerLanes: registerDragLanes }), [dragPreview, registerDragLanes]);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
   const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
   useEffect(() => { if (selectedTestResource) setChainOwner(selectedTestResource); }, [selectedTestResource, props.testBarControls?.selectedId]);
@@ -118,7 +129,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
         <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
         <div className="min-h-0 min-w-0 flex-1">
-          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.filter(isNormalGanttBar).map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} onResourceMove={undefined} canMoveResource={undefined}
+          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.filter(isNormalGanttBar).map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} sharedDrag={sharedDrag}
             ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
             valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
             onNavigateBar={(bar) => {

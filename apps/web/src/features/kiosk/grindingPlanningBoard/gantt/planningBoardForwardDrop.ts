@@ -6,6 +6,10 @@ import type { ForwardDragPreview } from './PlanningBoardForwardGanttRow';
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 
+export function forwardDropBoard(element: Element | null) {
+  return element?.closest('[data-testid="planning-two-machine"]') ?? element?.closest('[data-testid="planning-board-gantt"]');
+}
+
 export function findForwardDrop(clientX: number, clientY: number, source: GanttBar,
   allowed: ReadonlySet<string> | undefined, board: Element | null | undefined,
   lanes: readonly ForwardDragLane[], start: number, dayWidth: number
