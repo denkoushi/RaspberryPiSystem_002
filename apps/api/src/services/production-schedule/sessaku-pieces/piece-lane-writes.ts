@@ -63,7 +63,7 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
     const lane = next.filter((item) => (item.kind === 'test' ? item.resourceCd : item.effectiveResourceCd) === resource && !item.isCompleted);
     const ranks = new Map<string | null, number>();
     for (const item of lane) {
-      const band = planningBarBand(item);
+      const band = resource && resourcesWithTests.has(resource) ? planningBarBand(item) : null;
       const rank = (ranks.get(band) ?? 0) + 1;
       ranks.set(band, rank);
       if (item.kind === 'test') {
