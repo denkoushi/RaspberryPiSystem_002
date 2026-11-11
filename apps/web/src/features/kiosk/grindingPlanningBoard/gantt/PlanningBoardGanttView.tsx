@@ -30,6 +30,7 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 
@@ -264,6 +265,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const chain = useMemo(() => forward && focusedPartKey ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
     .filter((bar) => bar.partKey === focusedPartKey)
     .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId)) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
+  const { view: chainView, changeView: changeChainView } = usePersistedPlanningBoardChainView();
+  const hasPieceLinks = useMemo(() => {
+    const parents = new Set<string>();
+    return chain.some(({ item }) => {
+      if (item.kind !== 'piece' || !item.parentItemId) return false;
+      if (parents.has(item.parentItemId)) return true;
+      parents.add(item.parentItemId);
+      return false;
+    });
+  }, [chain]);
+  const effectiveChainView = hasPieceLinks ? chainView : 'process';
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
     return new Map(chain.map(({ item }) => {
@@ -502,6 +514,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} /> : null;
   const chainStripView = <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
+        chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => changeChainView(chainView === 'pieces' ? 'process' : 'pieces') : undefined}
         onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />;
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
@@ -584,7 +597,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {forward && !singleGroup && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth}
             onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
-          {showChain && <PlanningBoardChainLinks barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
+          {showChain && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
