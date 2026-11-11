@@ -66,7 +66,7 @@ it.each(['forward', 'backward'] as const)('renders each resource only in its own
 });
 
 it('opens the upper machine value sheet at the bottom of the shared Gantt container', () => {
-  const values = props('forward');
+  const values = { ...props('forward'), colorBySeiban: true };
   const onSource = vi.fn(); const onBreaks = vi.fn();
   function Board() {
     const [resource, setResource] = useState<string | null>(null);
@@ -83,7 +83,11 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   expect(onSource).toHaveBeenCalledWith({ resourceCd: '021', source: 'own' });
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   const sheet = screen.getByRole('region', { name: '品番の値' });
-  expect(sheet.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+  expect(sheet.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+  const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
+  expect(sheet.parentElement).not.toContainElement(legend);
+  expect(screen.getByTestId('planning-two-machine').lastElementChild).toBe(legend);
+  expect(sheet.parentElement).toHaveClass('flex-1', 'min-h-0', 'flex-col');
   expect(sheet.parentElement).toHaveClass('relative');
   expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
   expect(sheet).toHaveStyle({ height: 'min(56%, 520px)' });
@@ -112,7 +116,7 @@ it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open
   expect(within(screen.getByRole('region', { name: first })).queryByTestId(/^planning-gantt-chain-badge-/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
-  expect(strip.parentElement).toBe(screen.getByTestId('planning-two-machine'));
+  expect(strip.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
   fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
   expect(screen.queryByRole('region', { name: '工程のつながり' })).toBeNull();
   openChain(first);
@@ -122,7 +126,7 @@ it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open
 it.each(['021', '022'])('reserves only overlapping chain space in each pane (owner %s)', owner => {
   const rect = HTMLElement.prototype.getBoundingClientRect;
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
-    if (this.dataset.testid === 'planning-two-machine') return { top: 0, bottom: 600, height: 600 } as DOMRect;
+    if (this.parentElement?.dataset.testid === 'planning-two-machine') return { top: 0, bottom: 600, height: 600 } as DOMRect;
     if (this.getAttribute('aria-label') === 'ガントの日付と工程') {
       return this.closest('section[aria-label="021"]')
         ? { top: 40, bottom: 300, height: 260 } as DOMRect : { top: 300, bottom: 600, height: 300 } as DOMRect;
@@ -130,7 +134,7 @@ it.each(['021', '022'])('reserves only overlapping chain space in each pane (own
     return rect.call(this);
   });
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function () {
-    return this.dataset.testid === 'planning-two-machine' ? 600 : 0;
+    return this.parentElement?.dataset.testid === 'planning-two-machine' ? 600 : 0;
   });
   vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
     return this.dataset.testid === 'planning-gantt-chain-strip' ? 60 : 0;
@@ -710,4 +714,25 @@ it.each(['forward', 'backward'] as const)('keeps the seiban focus on both panes 
   fireEvent.click(legend().getByRole('button', { name: '26-1202' }));
   fireEvent.keyDown(document, { key: 'Escape' });
   for (const id of ['item-0000', 'item-0001', 'item-0002', 'item-0003']) clear(id);
+});
+
+
+it.each(['forward', 'backward'] as const)('scrolls each pane containing the selected legend seiban (%s)', mode => {
+  const Board = seibanLegendBoard(mode);
+  render(<Board />);
+  const scrolls = ['021', '022'].map(resource => {
+    const viewport = within(screen.getByRole('region', { name: resource })).getByLabelText('ガントの日付と工程');
+    const scroll = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { value: scroll, configurable: true });
+    return scroll;
+  });
+  const legend = within(screen.getByRole('group', { name: '製番の色分け凡例' }));
+  for (const [seiban, counts] of [['26-1201', [1, 0]], ['26-1202', [0, 1]], ['26-1203', [1, 1]]] as const) {
+    scrolls.forEach(scroll => scroll.mockClear());
+    fireEvent.click(legend.getByRole('button', { name: seiban }));
+    scrolls.forEach((scroll, index) => expect(scroll).toHaveBeenCalledTimes(counts[index]!));
+    scrolls.forEach(scroll => scroll.mockClear());
+    fireEvent.click(legend.getByRole('button', { name: seiban }));
+    scrolls.forEach(scroll => expect(scroll).not.toHaveBeenCalled());
+  }
 });
