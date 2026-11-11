@@ -1108,6 +1108,17 @@ worker の停止情報は `/srv/dgx/system-prod/state/blue-remote-worker.json`
 SSH 停止失敗時は marker を保持して非0を返すため、接続を復旧して停止を再実行する。
 drop_caches は両ノードで特権一時コンテナから実行し、失敗は stderr に記録して起動を続ける。
 
+### 私用 Qwen3.8 Flash Next FP8 の2台レシピ
+
+`private_qwen38_flash_next_orcarouter_fp8_tp2` は `businessOrchestrationEligible:false`、
+`engine:control-server` の私用 profile とする。CP が operator 設定をマージした manifest の
+`blueServerAdapter:glm53_flash_tp2` と `blueRuntimeRecipe:qwen38_fp8_tp2` で既存起動経路を使う。
+契約 fixture は `scripts/dgx-local-llm-system/tests/fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json`。
+launcher はレシピと vLLM 設定を環境変数へ変換し、adapter は固定レシピとの不一致を起動前に拒否する。
+Qwen は両 rank の起動前に両ノードの drop_caches を試み、失敗時は警告して続行する。
+レシピ未指定・空は従来の GLM 引数と起動順序を維持する。業務 profile の切替は対象外。
+検証は偽 SSH / Docker によるローカル起動契約のみで、実機の readiness は未確認。
+
 ## Nemotron 3.5 Lightning + DSpark の段階導入
 
 対象は `business_nemotron35_lightning_dspark_nvfp4`。初期manifestは **disabled / 非推奨 / textのみ**。

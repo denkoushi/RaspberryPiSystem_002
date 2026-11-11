@@ -14,6 +14,40 @@ from profile_launcher import launcher_env_for_profile  # noqa: E402
 
 
 class ProfileLauncherTests(unittest.TestCase):
+    def test_private_qwen38_fixture_maps_recipe_and_all_runtime_values(self):
+        profile = load_model_profile_manifest(
+            MODULE_DIR / "tests/fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json"
+        )
+        self.assertEqual(profile.id, "private_qwen38_flash_next_orcarouter_fp8_tp2")
+        self.assertFalse(profile.enabled)
+        self.assertFalse(profile.business_orchestration_eligible)
+        self.assertEqual(profile.declared_capabilities, ("text",))
+        self.assertEqual(profile.runtime_profile["engine"], "control-server")
+        self.assertEqual(profile.runtime_profile["openaiBaseUrl"], "http://127.0.0.1:38083/v1")
+        self.assertEqual(launcher_env_for_profile(profile), {
+            "BLUE_MODEL_PROFILE_ID": profile.id,
+            "BLUE_SERVER_COMMAND": "", "TRTLLM_SERVER_COMMAND": "",
+            "VLLM_SERVED_MODEL_NAME": "private-qwen38-flash-next",
+            "BLUE_SERVER_ADAPTER": "glm53_flash_tp2",
+            "BLUE_RUNTIME_RECIPE": "qwen38_fp8_tp2",
+            "BLUE_SERVER_MODE": "container",
+            "BLUE_SERVER_IMAGE": profile.launcher_hints["blueServerImage"],
+            "BLUE_WORKER_SSH_TARGET": "user@spark2.example",
+            "BLUE_MODEL_DIR": "/abs/head/model", "BLUE_WORKER_MODEL_DIR": "/abs/worker/model",
+            "BLUE_CACHE_DIR": "/abs/cache", "BLUE_MASTER_ADDR": "192.168.100.10",
+            "DGX_RUNTIME_ENGINE": "control-server",
+            "VLLM_TENSOR_PARALLEL_SIZE": "2", "VLLM_MAX_MODEL_LEN": "131072",
+            "VLLM_MAX_NUM_SEQS": "4", "VLLM_MAX_NUM_BATCHED_TOKENS": "4096",
+            "VLLM_SCHEDULING_POLICY": "priority", "VLLM_GPU_MEMORY_UTILIZATION": "0.85",
+            "VLLM_KV_CACHE_DTYPE": "auto", "VLLM_ENABLE_PREFIX_CACHING": "true",
+            "VLLM_ENABLE_CHUNKED_PREFILL": "true",
+            "VLLM_SPECULATIVE_CONFIG": '{"method":"mtp","num_speculative_tokens":3,"draft_tensor_parallel_size":2}',
+            "VLLM_SAFETENSORS_LOAD_STRATEGY": "eager",
+            "VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS": '{"enable_thinking":false}',
+            "VLLM_MM_ENCODER_TP_MODE": "data", "VLLM_REASONING_PARSER": "qwen3",
+            "VLLM_TOOL_CALL_PARSER": "qwen3_xml",
+        })
+
     def test_private_glm53_fixture_parses_and_maps_launcher_hints(self):
         profile = load_model_profile_manifest(
             MODULE_DIR / "tests/fixtures/private_glm53_flash_ablit_tp2/manifest.json"

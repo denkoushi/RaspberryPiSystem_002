@@ -17,6 +17,7 @@ _LAUNCHER_HINT_ENV_MAP: dict[str, str] = {
     # Fixed, profile-selected adapter.  This is an enum-like selector rather
     # than a command so a registry manifest cannot inject shell code.
     "blueServerAdapter": "BLUE_SERVER_ADAPTER",
+    "blueRuntimeRecipe": "BLUE_RUNTIME_RECIPE",
     "blueUpstreamRecipeDir": "BLUE_QWEN38_RECIPE_DIR",
     "blueUpstreamRecipeRevision": "BLUE_QWEN38_RECIPE_REVISION",
     "blueModelRevision": "BLUE_QWEN38_MODEL_REVISION",
@@ -57,6 +58,9 @@ _VLLM_RUNTIME_ENV_MAP: dict[str, str] = {
     "enablePrefixCaching": "VLLM_ENABLE_PREFIX_CACHING",
     "limitMmPerPrompt": "VLLM_LIMIT_MM_PER_PROMPT",
     "speculativeConfig": "VLLM_SPECULATIVE_CONFIG",
+    "safetensorsLoadStrategy": "VLLM_SAFETENSORS_LOAD_STRATEGY",
+    "defaultChatTemplateKwargs": "VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS",
+    "mmEncoderTpMode": "VLLM_MM_ENCODER_TP_MODE",
 }
 
 _LLAMA_RUNTIME_ENV_MAP: dict[str, str] = {
@@ -109,7 +113,7 @@ def launcher_env_for_profile(profile: ModelProfile) -> dict[str, str]:
         for key, env_key in _VLLM_RUNTIME_ENV_MAP.items():
             raw = vllm.get(key)
             value = json.dumps(raw, separators=(",", ":")) if (
-                key in {"limitMmPerPrompt", "speculativeConfig"} and isinstance(raw, dict)
+                key in {"limitMmPerPrompt", "speculativeConfig", "defaultChatTemplateKwargs"} and isinstance(raw, dict)
             ) else _env_value(raw)
             if value is not None:
                 env[env_key] = value
