@@ -44,6 +44,50 @@ beforeEach(() => {
 afterEach(() => { document.getElementById('planning-board-connectivity-slot')?.remove(); vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('PlanningBoardOfflineProvider', () => {
+  it('returns true only after a registered read commits', async () => {
+    await online();
+    mocks.commit.mockClear();
+    mocks.aux.mockResolvedValueOnce('updated');
+    await act(async () => { expect(await current.refreshRead('aux')).toBe(true); });
+    expect(mocks.commit).toHaveBeenCalledExactlyOnceWith('aux', 'updated');
+    expect(screen.getByTestId('data')).toHaveTextContent('initial:updated');
+    expect(await current.refreshRead('missing')).toBe(false);
+  });
+  it('returns false when disabled or the gate is closed', async () => {
+    const view = render(<PlanningBoardOfflineProvider><Harness /></PlanningBoardOfflineProvider>);
+    expect(await current.refreshRead('board')).toBe(false);
+    view.unmount();
+    await offline();
+    mocks.board.mockClear();
+    expect(await current.refreshRead('board')).toBe(false);
+    expect(mocks.board).not.toHaveBeenCalled();
+  });
+  it.each(['removed', 'replaced', 'generation', 'aborted', 'abort-rejection'] as const)('returns false without committing a %s read', async (mode) => {
+    await online();
+    let finish!: (value: string) => void;
+    const read = vi.fn((signal: AbortSignal) => new Promise<string>((resolve, reject) => {
+      finish = resolve;
+      if (mode === 'abort-rejection') signal.addEventListener('abort', () => reject(new Error('aborted')));
+    }));
+    const commit = vi.fn();
+    const unregister = current.registerRead('test', { read, commit });
+    const result = current.refreshRead('test');
+    if (mode === 'removed') unregister();
+    if (mode === 'replaced') current.registerRead('test', { read, commit });
+    if (mode === 'generation') vi.spyOn(current.gate, 'generation').mockReturnValue(current.gate.generation() + 1);
+    if (mode === 'aborted' || mode === 'abort-rejection') await advance(config.lossAfterMs);
+    finish('late');
+    expect(await result).toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+  });
+  it('preserves read failures as rejections without committing', async () => {
+    await online();
+    const error = new Error('read failed');
+    mocks.aux.mockRejectedValueOnce(error);
+    mocks.commit.mockClear();
+    await expect(current.refreshRead('aux')).rejects.toBe(error);
+    expect(mocks.commit).not.toHaveBeenCalled();
+  });
   it('displays loaded data during bootstrapping before a successful probe', async () => {
     mocks.get.mockReturnValue(new Promise(() => undefined));
     render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>);
