@@ -4,8 +4,9 @@ import { resolveDeviceName } from '../shared.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { classifyErrorResponse } from '../../../lib/error-response.js';
-import { splitSessakuPieces, mergeSessakuPieces, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js';
-import { sessakuPiecesSplitSchema, sessakuPiecesMergeSchema, sessakuPieceCompletionSchema } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.schemas.js';
+import { splitSessakuPieces, mergeSessakuPieces, splitSessakuPieceOps, mergeSessakuPieceOps, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js';
+import { sessakuPiecesSplitSchema, sessakuPiecesMergeSchema, sessakuPieceCompletionSchema, sessakuPieceOpsSplitSchema, sessakuPieceOpsMergeSchema } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.schemas.js';
+import { sessakuPieceIdFromItemId } from '../../../services/production-schedule/sessaku-pieces/piece-key.js';
 import type { KioskRouteDeps } from './shared.js';
 
 export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: KioskRouteDeps): Promise<void> {
@@ -35,6 +36,18 @@ export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: Ki
       Object.assign(audit, { pieceIds: [pieceId], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision });
       return setSessakuPieceOpCompletion({ ...body, siteKey: audit.siteKey!, pieceId, opNo, audit });
     }));
+  app.post(`${base}/ops/split`, { config: { rateLimit: false } }, async (request) => perform(request, 'op_split', async (audit) => {
+    const body = sessakuPieceOpsSplitSchema.parse(request.body);
+    Object.assign(audit, { pieceIds: [sessakuPieceIdFromItemId(body.itemId)!], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision,
+      beforeJson: { itemId: body.itemId, fromOpNo: body.fromOpNo } });
+    return splitSessakuPieceOps({ ...body, siteKey: audit.siteKey!, audit });
+  }));
+  app.post(`${base}/ops/merge`, { config: { rateLimit: false } }, async (request) => perform(request, 'op_merge', async (audit) => {
+    const body = sessakuPieceOpsMergeSchema.parse(request.body);
+    Object.assign(audit, { pieceIds: [sessakuPieceIdFromItemId(body.itemId)!], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision,
+      beforeJson: { itemId: body.itemId } });
+    return mergeSessakuPieceOps({ ...body, siteKey: audit.siteKey!, audit });
+  }));
   app.post(`${base}/split`, { config: { rateLimit: false } }, async (request) => perform(request, 'split', async (audit) => {
     // Preserve numeric split input even when schema validation rejects it; never copy arbitrary bodies.
     const requested = z.object({ quantities: z.array(z.number()).max(2000) }).safeParse(request.body);

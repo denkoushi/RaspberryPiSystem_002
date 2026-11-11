@@ -4,7 +4,7 @@ import { sessakuPieceParentItemId } from './piece-key.js';
 import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import type { SessakuPieceQuantityWarning } from '@raspi-system/shared-types';
-import { acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, readSessakuPieceSet, type SessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, acquireSessakuPieceBoardStateLocks, findSessakuPieceWinner, readSessakuPieceSet, type SessakuPieceSet, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 export type QuantityPiece = { id: string; position: number; quantity: number; isCompleted: boolean };
@@ -132,12 +132,12 @@ async function removeQuantityPieces(tx: Prisma.TransactionClient, csvDashboardId
   if (!ids.length) return;
   // Defence in depth: quantity correction must never cascade-delete operation evidence.
   const removable = await tx.productionScheduleSessakuPiece.findMany({
-    where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } }, select: { id: true }
+    where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } }, select: { id: true, opSplits: true }
   });
   ids = removable.map((piece) => piece.id);
   if (!ids.length) return;
   await acquireSessakuPieceBoardStateLocks(tx);
-  await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
+  await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId, itemKey: { in: removable.flatMap(sessakuPieceItemIds) } } });
   await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids }, isCompleted: false, opCompletions: { none: {} } } });
 }
 async function readQuantitySource(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
@@ -187,6 +187,7 @@ export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClie
     select: { pieceId: true, piece: { select: { sourcePieceId: true } } }
   });
   const protectedIds = new Set(records.flatMap((record) => record.piece.sourcePieceId ? [record.pieceId, record.piece.sourcePieceId] : [record.pieceId]));
+  for (const piece of set.pieces) if (piece.opSplits?.length) protectedIds.add(piece.id);
   const source = await readQuantitySource(tx, key);
   const linked = set.pieces.filter((piece) => piece.sourcePieceId);
   if (linked.length || set.sourcePieceSetId) {

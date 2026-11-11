@@ -55,6 +55,66 @@ const baseParams = (overrides: Partial<Parameters<typeof projectGrindingPlanning
 });
 
 describe('grinding-planning-board-projection', () => {
+  it('projects operation ranges, frozen sources, independent overrides and completion', () => {
+    const key = sessakuPieceKeyFromRow(sourceRow().rowData);
+    const now = new Date('2026-11-11');
+    const piece = { id: 'range', pieceSetId: 'set', position: 1, quantity: 1, sourcePieceId: null,
+      isCompleted: false, completedAt: null, createdAt: now, updatedAt: now,
+      opCompletions: [{ opNo: 1 }, { opNo: 2 }, { opNo: 19 }],
+      opSplits: [{ fromOpNo: 3, sourceResourceCd: 'G-01', leadingSourceResourceCd: 'G-01' }] };
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 2, nextPosition: 2,
+      sourcePieceSetId: null, plannedQuantity: 1, quantityWarning: null, createdAt: now, updatedAt: now, pieces: [piece] };
+    const ops = [1, 2, 3, 4].map((opNo) => ({ opNo, minutes: opNo * 10, setupMinutes: opNo }));
+    const params = baseParams({ includePieces: true, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]),
+      resourceMinutes: { ownSourceResourceCds: ['G-01', 'G-02'], values: [
+        { resourceCd: 'G-01', fhincd: key.fhincd, perUnitMinutes: 100, setupMinutes: 10, ops },
+        { resourceCd: 'G-02', fhincd: key.fhincd, perUnitMinutes: 999, setupMinutes: 99, ops: [{ opNo: 1, minutes: 999 }] }
+      ] }, resourceCapacity: { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: { 'G-02': false } } });
+    const project = () => projectGrindingPlanningBoard(params);
+    const initial = project();
+    const [head, tail] = initial.items;
+    expect(head).toMatchObject({ itemId: 'piece:range', pieceId: 'range', opRange: { fromOpNo: 1, toOpNo: 2 },
+      unitRequiredMinutes: 30, setupMinutes: 3, completedOpNos: [1, 2], isCompleted: true });
+    expect(tail).toMatchObject({ itemId: 'pieceops:range:3', pieceId: 'range', parentItemId: head.parentItemId,
+      opRange: { fromOpNo: 3, toOpNo: 4 }, unitRequiredMinutes: 70, setupMinutes: 7, completedOpNos: [], isCompleted: false });
+    expect(head.ops?.map((op) => op.opNo)).toEqual([1, 2]);
+    expect(tail.ops?.map((op) => op.opNo)).toEqual([3, 4]);
+    params.overrides.set(tail.itemId, { overrideResourceCd: 'G-02', overrideDueDate: new Date('2026-11-20'), alternateRank: 42, orderPinned: true, version: 1 });
+    expect(project().items.find((item) => item.itemId === tail.itemId)).toMatchObject({
+      effectiveResourceCd: 'G-02', unitRequiredMinutes: 70, setupMinutes: 7, effectiveDueDate: '2026-11-20', alternateRank: 42, orderPinned: true });
+    piece.opSplits.push({ fromOpNo: 4, sourceResourceCd: 'G-01', leadingSourceResourceCd: 'G-01' });
+    const multiple = project().items;
+    expect(multiple).toHaveLength(3);
+    expect(multiple.find((item) => item.itemId === 'pieceops:range:3')?.opRange).toEqual({ fromOpNo: 3, toOpNo: 3 });
+    expect(multiple.find((item) => item.itemId === head.itemId)?.itemRevision).not.toBe(head.itemRevision);
+    piece.position = 2;
+    set.pieces.push({ ...piece, id: 'first', position: 1, opSplits: [], isCompleted: true });
+    expect(project().items.filter((item) => item.pieceId === piece.id).every((item) => item.setupMinutes === 0)).toBe(true);
+    piece.isCompleted = true;
+    expect(project().items.filter((item) => item.pieceId === piece.id).every((item) => item.isCompleted)).toBe(true);
+  });
+  it('links a later process to the last operation bar of its source piece', () => {
+    const row = sourceRow();
+    const later = sourceRow({ FKOJUN: '30' }, 'later-row');
+    const now = new Date('2026-11-11');
+    const key = sessakuPieceKeyFromRow(row.rowData);
+    const piece = { id: 'source', pieceSetId: 'set', position: 1, quantity: 1, sourcePieceId: null,
+      isCompleted: false, completedAt: null, createdAt: now, updatedAt: now,
+      opSplits: [{ fromOpNo: 3, sourceResourceCd: 'G-01' }] };
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 2, nextPosition: 2,
+      sourcePieceSetId: null, plannedQuantity: 1, quantityWarning: null, createdAt: now, updatedAt: now, pieces: [piece] };
+    const laterKey = sessakuPieceKeyFromRow(later.rowData);
+    const projected = projectGrindingPlanningBoard(baseParams({ rows: [row, later], includePieces: true,
+      details: new Map([['row-1', detail()], ['later-row', detail()]]),
+      pieceSets: new Map([[encodeSessakuPieceKey(key), set], [encodeSessakuPieceKey(laterKey), { ...set, ...laterKey,
+        id: 'later-set', sourcePieceSetId: set.id, pieces: [{ ...piece, id: 'later-piece', sourcePieceId: piece.id, sourcePiece: { opSplits: [{ fromOpNo: 3 }] }, opSplits: [] }] }]]) }));
+    expect(projected.items.find((item) => item.pieceId === 'later-piece')?.sourceItemId).toBe('pieceops:source:3');
+    const laterOnly = projectGrindingPlanningBoard(baseParams({ rows: [later], includePieces: true,
+      details: new Map([['later-row', detail()]]), pieceSets: new Map([[encodeSessakuPieceKey(laterKey), { ...set, ...laterKey,
+        id: 'later-set', sourcePieceSetId: set.id, pieces: [{ ...piece, id: 'later-piece', sourcePieceId: piece.id,
+          sourcePiece: { opSplits: [{ fromOpNo: 3 }] }, opSplits: [] }] }]]) }));
+    expect(laterOnly.items[0].sourceItemId).toBe('pieceops:source:3');
+  });
   it.each([true, false])('adds separate setup/operation fields only on enabled effective resources (enabled=%s)', (enabled) => {
     const source = sourceRow({ FSIGENCD: '021' });
     const key = sessakuPieceKeyFromRow(source.rowData);

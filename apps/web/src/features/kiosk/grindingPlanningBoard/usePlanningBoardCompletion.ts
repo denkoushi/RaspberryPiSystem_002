@@ -132,6 +132,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       let savedItem = currentItem;
       if (currentItem.kind === 'piece' && currentItem.pieceId && currentItem.pieceSetVersion != null) {
         const payload = { pieceId: currentItem.pieceId, intent,
+          ...(currentItem.itemId.startsWith('pieceops:') ? { itemId: currentItem.itemId } : {}),
           expectedPieceSetVersion: currentItem.pieceSetVersion, itemRevision: currentItem.itemRevision };
         const response = await gate.run(() => opNo != null && completePieceOp ? completePieceOp({ ...payload, opNo }) : completePiece(payload));
         savedItem = response.pieces.find((candidate) => candidate.itemId === item.itemId) ?? currentItem;
