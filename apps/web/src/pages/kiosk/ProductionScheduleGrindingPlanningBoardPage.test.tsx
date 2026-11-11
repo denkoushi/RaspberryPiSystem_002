@@ -3599,6 +3599,46 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     }
   });
 
+  it.each(['board', 'detail', 'reject'] as const)('納期保存後の再取得失敗(%s)は保存成功とし、対象製番を保留して後続を保存する', async (failure) => {
+    const detail = { fseiban: '26-1041', machineName: null, dueDate: '2026-09-15', processingTypeDueDates: [], parts: [] };
+    const dueRefetch = vi.fn().mockResolvedValue({ isError: failure === 'detail' });
+    mocks.dueDetail.mockReturnValue({ data: { original: detail, alternate: detail,
+      sourceGenerationToken: 'source-due-1', scopeRevision: 'scope-due-1' },
+      isLoading: false, isError: false, refetch: dueRefetch });
+    if (failure === 'board') mocks.refetch.mockResolvedValue({ isError: true });
+    if (failure === 'reject') mocks.refetch.mockRejectedValue(new Error('offline'));
+    let resolveDue!: (value: { scopeRevision: string }) => void;
+    mocks.dueScope.mockImplementationOnce(() => new Promise((resolve) => { resolveDue = resolve; }));
+    let queue!: ReturnType<typeof writeQueueHook.usePlanningBoardWriteQueue>;
+    const originalQueue = writeQueueHook.usePlanningBoardWriteQueue;
+    vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue').mockImplementation((options) => { queue = originalQueue(options); return queue; });
+    renderSeibanBoard();
+    fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+    const drawer = screen.getByRole('dialog', { name: '製番登録' });
+    fireEvent.click(within(drawer).getByRole('button', { name: '製番26-1041の納期詳細を開く' }));
+    fireEvent.click(screen.getByRole('button', { name: /納期日:/ }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '納期日' })).getByRole('button', { name: '今日' }));
+    await waitFor(() => expect(mocks.dueScope).toHaveBeenCalledTimes(1));
+    const save = vi.fn().mockResolvedValue({});
+    const onFailed = vi.fn();
+    act(() => { queue.enqueue({ label: '製番順', itemIds: [], seibans: [], order: true,
+      apply: (display) => display, save, onFailed }); });
+    await act(async () => { resolveDue({ scopeRevision: 'scope-due-2' }); });
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(onFailed).not.toHaveBeenCalled();
+    expect(screen.queryByText(/納期を保存できませんでした/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /納期日:/ })).toBeDisabled();
+    if (failure !== 'detail') {
+      expect(queue.hasPendingSeiban('26-1041', true)).toBe(true);
+      const refreshed = fixture();
+      refreshed.sourceRevision = 'board-due-2';
+      refreshed.items = refreshed.items.map((item) => ({ ...item, itemRevision: `${item.itemRevision}-due` }));
+      mocks.snapshot.mockReturnValue({ data: refreshed, isLoading: false, isError: false, refetch: mocks.refetch });
+      selectToolbarOption('工程', '両方');
+      await waitFor(() => expect(queue.hasPendingSeiban('26-1041', true)).toBe(false));
+    }
+  });
+
   it('元割当の納期詳細は参照表示にして日付変更を無効にする', () => {
     const detail = {
       fseiban: '26-1041',

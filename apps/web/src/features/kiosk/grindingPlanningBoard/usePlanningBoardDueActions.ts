@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios';
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 import { normalizeDueDateInput } from '../productionSchedule/dueManagement';
 
@@ -43,6 +43,8 @@ export function usePlanningBoardDueActions({
   duePickerState, writeBlocked, enqueueWrite, updateDueScope, setPendingDueScope
 }: Options) {
   const { gate } = usePlanningBoardOffline();
+  const mounted = useRef(true);
+  useLayoutEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const openDueDetail = useCallback((fseiban: string) => {
     dueDetailIdentityRef.current = fseiban;
     setDueDetailTargetFseiban(fseiban);
@@ -117,19 +119,28 @@ export function usePlanningBoardDueActions({
         const generation = gate.generation();
         const result = await gate.run(() => updateDueScope.mutateAsync({ fseiban: current.fseiban,
           payload: { ...current.snapshot, scope: current.scope, dueDate: nextDueDate } }));
+        if (!mounted.current || generation !== gate.generation()) return {};
         setPendingDueScope((pending) => pending?.fseiban === current.fseiban
           ? { ...pending, responseScopeRevision: result.scopeRevision } : pending);
         // Scope writes invalidate item revisions without returning them. Read them before this seiban becomes editable again.
-        const [detail, board] = await Promise.all([dueDetailQuery.refetch(), boardQuery.refetch()]);
-        if (generation !== gate.generation()) return {};
-        if (detail.isError || board.isError) throw new Error('納期保存後の最新状態を取得できませんでした。');
-        return {};
+        const [detail, board] = await Promise.allSettled([dueDetailQuery.refetch(), boardQuery.refetch()]);
+        if (!mounted.current || generation !== gate.generation()) return {};
+        const detailFailed = detail.status === 'rejected' || detail.value?.isError;
+        const boardFailed = board.status === 'rejected' || board.value?.isError;
+        if (mounted.current && dueDetailIdentityRef.current === current.fseiban) {
+          setDueConflict(Boolean(detailFailed || boardFailed));
+          setDueError(detailFailed || boardFailed ? '最新状態を取得できませんでした。再試行してください。' : null);
+        }
+        return { awaitItemRefresh: Boolean(boardFailed),
+          ...(board.status === 'fulfilled' && !board.value?.isError && board.value?.data
+            ? { items: board.value.data.items.filter((item) => item.fseiban === current.fseiban), sourceRevision: board.value.data.sourceRevision } : {}) };
       },
       onSaved: () => {
+        if (!mounted.current) return;
         setPendingDueScope((pending) => pending?.fseiban === current.fseiban ? null : pending);
-        if (dueDetailIdentityRef.current === current.fseiban) { setDueConflict(false); setDueError(null); }
       },
       onFailed: (error) => {
+        if (!mounted.current) return;
         setPendingDueScope((pending) => pending?.fseiban === current.fseiban ? null : pending);
         if (dueDetailIdentityRef.current !== current.fseiban) return;
         const conflict = isAxiosError(error) && error.response?.status === 409;
