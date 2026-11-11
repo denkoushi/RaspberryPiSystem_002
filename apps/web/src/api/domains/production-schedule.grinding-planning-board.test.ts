@@ -9,7 +9,7 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { autoUnitSplitKioskSessakuPieces, setKioskSessakuPieceOpCompletion, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { splitKioskSessakuPieceOps, mergeKioskSessakuPieceOps, autoUnitSplitKioskSessakuPieces, setKioskSessakuPieceOpCompletion, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
   it('posts an empty body for bounded automatic unit splitting', async () => {
@@ -149,4 +149,14 @@ describe('resource minutes requests', () => {
     expect(await updateKioskGrindingPlanningBoardResourcePartMinutes(value)).toEqual(settings);
     expect(put).toHaveBeenCalledWith('/kiosk/production-schedule/grinding-planning-board/resource-minutes/value', value);
   });
+});
+
+it('posts operation split and merge with item revision, version and due source', async () => {
+  const payload = { itemId: 'pieceops:a:20', expectedPieceSetVersion: 4, itemRevision: 'revision', dueSource: 'scaw' as const };
+  const data = { pieces: [], affectedItemIds: [payload.itemId], pieceSetVersion: 5 };
+  post.mockResolvedValue({ data });
+  await expect(splitKioskSessakuPieceOps({ ...payload, fromOpNo: 30 })).resolves.toEqual(data);
+  expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/ops/split', { ...payload, fromOpNo: 30 });
+  await expect(mergeKioskSessakuPieceOps(payload)).resolves.toEqual(data);
+  expect(post).toHaveBeenLastCalledWith('/kiosk/production-schedule/grinding-planning-board/pieces/ops/merge', payload);
 });

@@ -1,3 +1,4 @@
+import { mutateSessakuPieceOps, rememberPieceHistory, assertNoOperationCompletions } from './piece-op-splits.js';
 import { autoUnitSplitMetrics, isAutoUnitSplitYield } from './auto-unit-split-transaction.js';
 import { createLaneWrites, replaceSiteItems, flushSiteItems, copyBatchProjections, type LaneReplacementState } from './piece-lane-writes.js';
 import { isAutoUnitSplitBusyError } from './piece-db-error.js';
@@ -13,7 +14,7 @@ import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-st
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '@prisma/client';
-import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuPiecesMergeRequest, SessakuPiecesMutationResponse, SessakuPiecesSplitRequest } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuPiecesMergeRequest, SessakuPiecesMutationResponse, SessakuPiecesSplitRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest } from '@raspi-system/shared-types';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -23,7 +24,7 @@ import { decodeRowItemId } from '../grinding-planning-board/shared.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
-import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
+import { sessakuPieceItemIds, sessakuPieceIdFromItemId, acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, findSessakuPieceWinner, readSessakuPieceSet, readSessakuPieceSets, sessakuPieceKeyFromRow, encodeSessakuPieceKey, resolveSessakuPieceItemKeys, sessakuPieceConflict, sessakuPieceParentItemId, sessakuPieceSetWhere, type SessakuPieceLogicalKey } from './piece-key.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
@@ -66,12 +67,12 @@ async function projection(tx: Prisma.TransactionClient, siteKey: string, key: Se
   const scope = new Set(fseibans.map((value) => value.trim()).filter(Boolean));
   const rows = source ? shared.rows.filter((row) => scope.has(sessakuPieceKeyFromRow(row.rowData).fseiban)) : shared.rows;
   const itemKeys = siteData ? [] : [...rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
-    ...[...shared.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
+    ...[...shared.pieceSets.values()].flatMap((set) => set.pieces.flatMap(sessakuPieceItemIds))];
   const overrides = siteData?.overrides ?? await timed(audit, 'overridesMs', () => readOverrides(tx, siteKey, itemKeys));
   const ranks = siteData?.ranks ?? await timed(audit, 'ranksMs', () => readRanks(tx, rows.map((row) => row.id), siteKey));
-  // Lane replacement consumes ordering/placement only; durations and operation definitions
-  // do not participate in that order. Keep full enrichment for mutation response/revision checks.
-  const resourceMinutes = allSiteRows ? undefined : await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
+  // Split intervals need operation definitions even for placement: completed ranges leave the lane.
+  const hasOpSplits = [...shared.pieceSets.values()].some((set) => set.pieces.some((piece) => piece.opSplits?.length));
+  const resourceMinutes = allSiteRows && !hasOpSplits ? undefined : await getGrindingPlanningBoardResourceMinutes({ siteKey }, tx);
   const resourceCapacity = allSiteRows ? undefined : await getGrindingPlanningBoardResourceCapacity({ siteKey }, tx);
   const input = { dueSource, resourceMinutes, resourceCapacity, placementOnly: allSiteRows, rows, details: shared.details, overrides, pieceSets: shared.pieceSets, ranks, seibanOrder: stateOrder(state), category: 'all' as const, view: 'resource' as const };
   // Lane replacement only consumes pieces; avoid projecting every parent a second time.
@@ -81,7 +82,7 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
   // Later replacements share this projection, including their lanes at every affected site.
   const targets = [{ key, removed }, ...later.filter((process) => process.hasWinner).map((process) => ({
     key: process.key,
-    removed: process.set?.pieces.length ? process.set.pieces.map((piece) => `piece:${piece.id}`) : [sessakuPieceParentItemId(process.key)]
+    removed: process.set?.pieces.length ? process.set.pieces.flatMap(sessakuPieceItemIds) : [sessakuPieceParentItemId(process.key)]
   }))];
   const itemKeys = targets.flatMap((target) => [sessakuPieceParentItemId(target.key), ...target.removed]);
   const selectedOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({
@@ -112,7 +113,7 @@ async function readLaneScope(tx: Prisma.TransactionClient, sites: string[], key:
     const inbound = { fseiban, fhincd, fsigencd, fkojun };
     inboundKeys.set(encoded, inbound);
   }
-  const pieceIds = inboundIds.filter((id) => id.startsWith('piece:')).map((id) => id.slice(6));
+  const pieceIds = inboundIds.map(sessakuPieceIdFromItemId).filter((id): id is string => id !== null);
   if (pieceIds.length) {
     const pieces = await tx.productionScheduleSessakuPiece.findMany({ where: { id: { in: pieceIds } },
       select: { pieceSet: { select: { fseiban: true, fhincd: true, fsigencd: true, fkojun: true } } } });
@@ -148,7 +149,7 @@ async function beforeProjections(tx: Prisma.TransactionClient, sites: string[], 
   const laneScope = batch ? undefined : await timed(audit, 'laneDiscoveryMs', () => readLaneScope(tx, sites, key, removed, later));
   const source = await readProjectionSource(tx, [...new Set([key.fseiban, ...(batch?.keys.map((key) => key.fseiban) ?? []), ...states.flatMap(stateOrder)])], audit, laneScope);
   const itemKeys = [...source.rows.map((row) => buildGrindingPlanningBoardRowItemId(row.rowData)),
-    ...[...source.pieceSets.values()].flatMap((set) => set.pieces.map((piece) => `piece:${piece.id}`))];
+    ...[...source.pieceSets.values()].flatMap((set) => set.pieces.flatMap(sessakuPieceItemIds))];
   // The same source scope serves every site. Fetch its placements/ranks once and
   // retain each site's existing rank precedence when projecting its own lanes.
   const [overrides, ranks] = await Promise.all([
@@ -185,7 +186,7 @@ async function removeLaterPieces(tx: Prisma.TransactionClient, later: LaterProce
   const completedIds = references.filter((piece) => piece.isCompleted).map((piece) => piece.id);
   if (completedIds.length) await tx.productionScheduleSessakuPiece.updateMany({ where: { id: { in: completedIds } }, data: { sourcePieceId: null } });
   if (ids.length) {
-    await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: ids.map((id) => `piece:${id}`) } } });
+    await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: references.filter((piece) => ids.includes(piece.id)).flatMap(sessakuPieceItemIds) } } });
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: ids } } });
   }
   for (const { set, hasWinner } of later) {
@@ -222,7 +223,7 @@ async function replaceLaterPieces(tx: Prisma.TransactionClient, later: LaterProc
     const removed = source?.pieces.length ? previous.filter((piece) => !saved?.pieces.some((next) => next.id === piece.id)) : previous;
     const added = saved?.pieces.filter((piece) => !previous.some((old) => old.id === piece.id)).map((piece) => `piece:${piece.id}`) ?? [];
     if (previous.length || added.length) for (const site of sites) await replaceSiteItems(tx, process.key, before.get(site)!, site,
-      previous.length ? removed.map((piece) => `piece:${piece.id}`) : [parentId], source?.pieces.length ? added : [parentId], audit);
+      previous.length ? removed.flatMap(sessakuPieceItemIds) : [parentId], source?.pieces.length ? added : [parentId], audit);
     await reconcileSessakuPieceProgress(tx, process.key, { emptyIsIncomplete: true, source: process.rowId ? {
       set: saved, rowId: process.rowId, externallyCompleted: process.externallyCompleted,
       previousCompleted: process.previousCompleted, plannedQuantity: process.plannedQuantity
@@ -371,8 +372,8 @@ async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; 
         // Roll back before expanding locks so every attempt preserves critical -> logical -> board -> row.
         throw retryWithExpandedLocks;
       }
-      const relatedItemIds = later.flatMap((process) => [sessakuPieceParentItemId(process.key), ...(process.set?.pieces ?? []).map((piece) => `piece:${piece.id}`)]);
-      const siteOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: [...relatedItemIds, params.parentItemId, ...(set?.pieces ?? []).map((piece) => `piece:${piece.id}`)] } }, select: { siteKey: true } });
+      const relatedItemIds = later.flatMap((process) => [sessakuPieceParentItemId(process.key), ...(process.set?.pieces ?? []).flatMap(sessakuPieceItemIds)]);
+      const siteOverrides = await tx.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, itemKey: { in: [...relatedItemIds, params.parentItemId, ...(set?.pieces ?? []).flatMap(sessakuPieceItemIds)] } }, select: { siteKey: true } });
       const overrideSites = new Set(siteOverrides.map((o) => o.siteKey));
       const sites = (await tx.productionScheduleGrindingPlanningBoardState.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }, orderBy: { siteKey: 'asc' } }))
         .filter((state) => state.siteKey === params.siteKey || stateOrder(state).includes(key.fseiban) || overrideSites.has(state.siteKey)).map((s) => s.siteKey);
@@ -417,7 +418,7 @@ async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; 
           params.audit.resultPieceIds = [...new Set([...(params.audit.resultPieceIds ?? []), ...(changes[0].resultPieceIds ?? [])])];
         }
       }
-      return { affectedItemIds: [params.parentItemId, ...(set?.pieces ?? []).map((piece) => `piece:${piece.id}`), ...relatedItemIds], parentItemId: params.parentItemId, pieceSetVersion: saved?.version ?? 0,
+      return { affectedItemIds: [params.parentItemId, ...(set?.pieces ?? []).flatMap(sessakuPieceItemIds), ...relatedItemIds], parentItemId: params.parentItemId, pieceSetVersion: saved?.version ?? 0,
         quantityWarning: saved?.quantityWarning as SessakuPiecesMutationResponse['quantityWarning'],
         pieces: after.pieces.filter((item) => item.parentItemId === params.parentItemId),
         sourceRowId: winner.id, parentIsCompleted: result?.parentIsCompleted ?? false };
@@ -446,6 +447,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
   if (process.env.SESSAKU_PIECES_CREATE_ENABLED !== 'true') throw new ApiError(403, '分割作成は無効です', undefined, 'SESSAKU_PIECES_CREATE_DISABLED');
   return operate({ ...params, discoverUnsplitLater: true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
+    if (c.set?.pieces.some((piece) => piece.id === params.targetPieceId && piece.opSplits?.length)) conflict('PIECE_OP_SPLITS_EXIST');
     if (params.autoUnitSplit) {
       const item = params.targetPieceId
         ? c.current.pieces.find((item) => item.pieceId === params.targetPieceId)
@@ -521,6 +523,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     parentItemId: params.parentItemId, pieceIds: params.pieceIds, itemRevisions: params.itemRevisions }, (audit) => mergeSessakuPieces({ ...params, audit }));
   return operate({ ...params, discoverUnsplitLater: (set) => set?.pieces.some((piece) => !params.pieceIds.includes(piece.id)) === true }, async (tx, c) => {
     assertCuttingPieceSet(c.set);
+    if (c.set?.pieces.some((piece) => params.pieceIds.includes(piece.id) && piece.opSplits?.length)) conflict('PIECE_OP_SPLITS_EXIST');
     const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
     if (!isProductionScheduleCuttingResourceCd(c.key.fsigencd, policy)) throw new ApiError(403, '切削工程だけ結合できます', undefined, 'RESOURCE_CATEGORY_MISMATCH');
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
@@ -557,13 +560,14 @@ export async function setSessakuPieceCompletion(params: SessakuPieceCompletionRe
   return operate({ ...params, parentItemId: sessakuPieceParentItemId(key) }, async (tx, c) => {
     const piece = c.set?.pieces.find((p) => p.id === params.pieceId);
     if (!piece || !c.set) conflict();
-    assertRevision(c.current.pieces.find((p) => p.pieceId === piece.id), params.itemRevision);
+    assertRevision(c.current.pieces.find((p) => p.pieceId === piece.id && p.itemId === (params.itemId ?? `piece:${piece.id}`)), params.itemRevision);
     if (c.external && params.intent === 'incomplete') conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.external) return;
     const completed = params.intent === 'complete';
     const item = c.current.pieces.find((item) => item.pieceId === piece.id);
     if (!item) conflict('STALE_SESSAKU_PIECES');
-    const operationChanged = await syncWholePieceOperationCompletions(tx, params.siteKey, piece, item, completed);
+    const allOps = piece.opSplits?.length ? c.current.pieces.filter((candidate) => candidate.pieceId === piece.id).flatMap((candidate) => candidate.ops ?? []) : undefined;
+    const operationChanged = await syncWholePieceOperationCompletions(tx, params.siteKey, piece, { ...item, ops: allOps }, completed);
     await writePieceCompletion(tx, c.set.id, piece, completed, operationChanged);
     await reconcileSessakuPieceQuantities(tx, c.key, c.plannedQuantity);
   });
@@ -593,11 +597,13 @@ export async function setSessakuPieceOpCompletion(params: SessakuPieceCompletion
   const key = keys.get(`piece:${params.pieceId}`)!;
   return operate({ ...params, parentItemId: sessakuPieceParentItemId(key) }, async (tx, c) => {
     const piece = c.set?.pieces.find((piece) => piece.id === params.pieceId);
-    const item = c.current.pieces.find((item) => item.pieceId === params.pieceId);
+    const item = c.current.pieces.find((item) => item.pieceId === params.pieceId && (params.itemId ? item.itemId === params.itemId : !item.opRange || (item.ops ?? []).some((op) => op.opNo === opNo)));
     if (!piece || !c.set || !item) conflict();
     assertRevision(item, body.itemRevision);
-    const definitions = await readPieceOperationNumbers(tx, params.siteKey, item);
-    if (!definitions.length || !definitions.some((op) => op.opNo === opNo)) {
+    const definitions = piece.opSplits?.length
+      ? c.current.pieces.filter((candidate) => candidate.pieceId === piece.id).flatMap((candidate) => candidate.ops ?? [])
+      : await readPieceOperationNumbers(tx, params.siteKey, item);
+    if (!definitions.length || !definitions.some((op) => op.opNo === opNo) || (item.opRange && !item.ops?.some((op) => op.opNo === opNo))) {
       throw new ApiError(400, '登録されていない工程です', undefined, 'PIECE_OPERATION_NOT_CONFIGURED');
     }
     if (c.external && body.intent === 'incomplete') conflict('EXTERNALLY_COMPLETED_ITEM');
@@ -619,17 +625,14 @@ export async function setSessakuPieceOpCompletion(params: SessakuPieceCompletion
   });
 }
 
-async function rememberPieceHistory(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey) {
-  const logicalKey = sessakuPieceSetWhere(key);
-  await tx.productionScheduleSessakuPieceHistory.upsert({
-    where: { csvDashboardId_fseiban_fhincd_fsigencd_fkojun: logicalKey }, create: logicalKey, update: {}
-  });
+export async function splitSessakuPieceOps(params: SessakuPieceOpSplitRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+  return mutateSessakuPieceOps(params, false, { operate, assertCuttingPieceSet, assertRevision, conflict, beforeProjections, saveSiteVersions });
 }
-
-async function assertNoOperationCompletions(tx: Prisma.TransactionClient, pieceIds: string[]) {
-  if (!pieceIds.length) return;
-  const completion = await tx.productionScheduleSessakuPieceOpCompletion.findFirst({
-    where: { pieceId: { in: pieceIds } }, select: { pieceId: true }
-  });
-  if (completion) conflict('PIECE_OPERATION_COMPLETED');
+export async function mergeSessakuPieceOps(params: SessakuPieceOpMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
+  return mutateSessakuPieceOps(params, true, { operate, assertCuttingPieceSet, assertRevision, conflict, beforeProjections, saveSiteVersions });
 }
+export type PieceOpSplitContext = Parameters<Parameters<typeof operate>[1]>[1];
+export type PieceOpSplitDependencies = { operate: typeof operate;
+  assertCuttingPieceSet: typeof assertCuttingPieceSet; assertRevision: typeof assertRevision; conflict: typeof conflict;
+  beforeProjections: typeof beforeProjections; saveSiteVersions: typeof saveSiteVersions;
+};

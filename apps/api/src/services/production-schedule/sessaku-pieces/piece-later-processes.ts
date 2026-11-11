@@ -18,7 +18,7 @@ export async function readLaterProcesses(tx: Prisma.TransactionClient, key: Sess
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, OR: [
       { sourcePieceSetId: { in: sources.map((source) => source.id) } },
       { pieces: { some: { sourcePieceId: { in: sources.flatMap((source) => source.pieces.map((piece) => piece.id)) } } } }
-    ] }, include: { pieces: { orderBy: { position: 'asc' } } }
+    ] }, include: { pieces: { orderBy: { position: 'asc' }, include: { opSplits: true } } }
   });
   const toLaterProcess = (laterSet: NonNullable<typeof set>): LaterProcess => {
     const row = rows.find((row) => encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)) === encodeSessakuPieceKey(laterSet));

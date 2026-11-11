@@ -11,7 +11,7 @@ import {
 import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
-  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, setKioskSessakuPieceOpCompletion,
+  splitKioskSessakuPieceOps, mergeKioskSessakuPieceOps, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, setKioskSessakuPieceOpCompletion,
   getKioskGrindingPlanningBoardDueDetail,
   getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardResourceCapacity,
@@ -37,7 +37,7 @@ import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule'
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS } from './grinding-planning-board-resource-minutes';
 
 import type {
-  SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
+  SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardProcessChipsRequest,
@@ -567,7 +567,9 @@ export function useKioskSessakuPieceMutations(dueSource?: 'excel' | 'scaw') {
     setKioskSessakuPieceCompletion(pieceId, { ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
   const opCompletion = useMutation({ mutationFn: ({ pieceId, opNo, ...payload }: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) =>
     setKioskSessakuPieceOpCompletion(pieceId, opNo, { ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
-  return { split, merge, completion, opCompletion };
+  const opSplit = useMutation({ mutationFn: (payload: SessakuPieceOpSplitRequest) => splitKioskSessakuPieceOps({ ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
+  const opMerge = useMutation({ mutationFn: (payload: SessakuPieceOpMergeRequest) => mergeKioskSessakuPieceOps({ ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
+  return { split, merge, completion, opCompletion, opSplit, opMerge };
 }
 
 export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival(dueSource?: 'excel' | 'scaw') {

@@ -190,7 +190,7 @@ export async function driveProductionScheduleRowCompletion(params: {
         const overrides = await readOverrides(tx, siteKey, [parentId, ...set.pieces.map((piece) => `piece:${piece.id}`)]);
         const operationChanged = await syncWholePiecesOperationCompletions(tx, siteKey, set.pieces.map((piece) => {
           const override = overrides.get(`piece:${piece.id}`) ?? overrides.get(parentId);
-          return { id: piece.id, isCompleted: piece.isCompleted, effectiveResourceCd: (override?.overrideResourceCd ?? key.fsigencd).trim(), fhincd: key.fhincd };
+          return { id: piece.id, isCompleted: piece.isCompleted, opSplits: piece.opSplits, effectiveResourceCd: (override?.overrideResourceCd ?? key.fsigencd).trim(), fhincd: key.fhincd };
         }), nextIsCompleted);
         const changed = set.pieces.some((piece) => piece.isCompleted !== nextIsCompleted);
         if (operationChanged && !changed) await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { version: { increment: 1 } } });

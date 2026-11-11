@@ -6541,6 +6541,7 @@ model ProductionScheduleSessakuPiece {
   sourcePieceId String?
   sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: NoAction, map: "PSSPiece_source_fk")
   opCompletions ProductionScheduleSessakuPieceOpCompletion[]
+  opSplits ProductionScheduleSessakuPieceOpSplit[]
   laterProcessPieces ProductionScheduleSessakuPiece[] @relation("LaterProcessPieces")
   @@index([sourcePieceId], map: "PSSPiece_source_idx")
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
@@ -6692,4 +6693,15 @@ model ProductionScheduleSessakuPieceHistory {
   createdAt DateTime @default(now())
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSSPieceHistory_dashboard_fk")
   @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceHistory_logical_key")
+}
+
+model ProductionScheduleSessakuPieceOpSplit {
+  id String @id @default(uuid())
+  pieceId String
+  fromOpNo Int
+  sourceResourceCd String
+  leadingSourceResourceCd String?
+  createdAt DateTime @default(now())
+  piece ProductionScheduleSessakuPiece @relation(fields: [pieceId], references: [id], onDelete: Cascade, map: "PSSPieceOpSplit_piece_fk")
+  @@unique([pieceId, fromOpNo], map: "PSSPieceOpSplit_piece_op_key")
 }

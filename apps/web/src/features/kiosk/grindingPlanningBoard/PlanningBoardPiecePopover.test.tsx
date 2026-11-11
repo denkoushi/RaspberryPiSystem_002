@@ -606,3 +606,42 @@ describe('piece operation controls', () => {
     expect(screen.getByRole('button', { name: '部品Aの数量 1／5' })).toBeDisabled();
   });
 });
+
+describe('piece operation boundaries', () => {
+  const unit = (extra: Partial<GrindingPlanningBoardItem> = {}) => piece('a', 1, { unitRequiredMinutes: 60,
+    ops: [{ opNo: 30, minutes: 30 }, { opNo: 10, minutes: 10 }, { opNo: 20, minutes: 20 }], ...extra });
+  it.each([false, true])('places scissors strictly between sorted operations (suffix=%s)', async suffix => {
+    const item = unit(suffix ? { itemId: 'pieceops:a:20', opRange: { fromOpNo: 20, toOpNo: 30 } } : {});
+    const h = setup(item); const onOpSplit = vi.fn().mockResolvedValue(undefined);
+    h.value.onOpSplit = onOpSplit;
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    const scissors = screen.getAllByRole('button', { name: /の前で分ける/ });
+    expect(scissors.map(button => button.getAttribute('aria-label'))).toEqual(suffix ? ['工程30の前で分ける'] : ['工程20の前で分ける', '工程30の前で分ける']);
+    for (const button of scissors) {
+      expect(button).toHaveTextContent('✂');
+      expect(button.previousElementSibling).toHaveAttribute('aria-pressed');
+      expect(button.nextElementSibling).toHaveAttribute('aria-pressed');
+    }
+    await waitFor(() => expect(scissors[0]).toBeEnabled()); fireEvent.click(scissors[0]!);
+    await waitFor(() => expect(onOpSplit).toHaveBeenCalledExactlyOnceWith(item, suffix ? 30 : 20));
+  });
+  it.each([{ unitRequiredMinutes: undefined }, { ops: [{ opNo: 10, minutes: 10 }] }])('hides scissors outside unit multi-operation pieces (%j)', extra => {
+    setup(unit(extra)); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('button', { name: /の前で分ける/ })).not.toBeInTheDocument();
+  });
+  it.each([false, true])('shows operation merge only for suffixes and hides quantity controls (suffix=%s)', async suffix => {
+    const item = unit({ itemId: suffix ? 'pieceops:a:20' : 'piece:a', plannedQuantity: 5, opRange: { fromOpNo: suffix ? 20 : 10, toOpNo: 30 } });
+    const h = setup(item, [item, piece('b', 2)]); const onOpMerge = vi.fn().mockResolvedValue(undefined); h.value.onOpMerge = onOpMerge;
+    expect(h.value.selectedItemsByParent.size).toBe(0);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '分け数' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /片目の数量を/ })).not.toBeInTheDocument();
+    if (!suffix) expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
+    else {
+      const merge = screen.getByRole('button', { name: 'まとめる' });
+      await waitFor(() => expect(merge).toBeEnabled()); fireEvent.click(merge);
+      await waitFor(() => expect(onOpMerge).toHaveBeenCalledExactlyOnceWith(item));
+      expect(h.onMerge).not.toHaveBeenCalled();
+    }
+  });
+});
