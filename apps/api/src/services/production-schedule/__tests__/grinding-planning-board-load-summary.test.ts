@@ -102,7 +102,7 @@ describe('grinding-planning-board-load-summary', () => {
   });
 
   it('reduces materialized aggregate rows without changing the load payload contract', async () => {
-    const queryRaw = vi.fn()
+    const queryRaw = vi.fn().mockResolvedValue([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
@@ -129,7 +129,8 @@ describe('grinding-planning-board-load-summary', () => {
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
 
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect((queryRaw.mock.calls[2][0] as Prisma.Sql).sql).toContain('ProductionScheduleGrindingPlanningBoardTestBar');
     expect(result).toEqual({
       load: [
         {
@@ -167,7 +168,7 @@ describe('grinding-planning-board-load-summary', () => {
       resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: '1', requiredMinutes: 1,
       isCompleted: false, plannedQuantity: 3, quantityWarning: null
     };
-    const queryRaw = vi.fn().mockResolvedValueOnce([
+    const queryRaw = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
       { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
       { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02', requiredMinutes: 1.2345 }
@@ -183,7 +184,7 @@ describe('grinding-planning-board-load-summary', () => {
       expect.objectContaining({ resourceCd: 'G-01', originalItemCount: 2, requiredMinutes: 1 }),
       expect.objectContaining({ resourceCd: 'G-02', originalItemCount: 1, requiredMinutes: 1.2345 })
     ]);
-    const pieceOnlyQuery = vi.fn().mockResolvedValueOnce([
+    const pieceOnlyQuery = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 }
     ]).mockResolvedValueOnce([]);
     const pieceOnly = await readGrindingPlanningBoardLoadSummary({
@@ -198,7 +199,7 @@ describe('grinding-planning-board-load-summary', () => {
     const source = { id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: null,
       resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: minutes == null ? null : '0', requiredMinutes: minutes,
       isCompleted: false, plannedQuantity: 3, quantityWarning: null };
-    const queryRaw = vi.fn().mockResolvedValueOnce([
+    const queryRaw = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
       { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
       { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02' }

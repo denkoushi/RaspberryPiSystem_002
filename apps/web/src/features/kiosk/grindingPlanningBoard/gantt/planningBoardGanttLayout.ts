@@ -314,7 +314,12 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   }
   for (const [resource, queue] of allLanes) {
     if (queue.some((item) => item.kind === 'test')) {
-      if (allocation === 'alternate') queue.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+      if (allocation === 'alternate') queue.sort((a, b) => {
+        const left = a.kind === 'test' ? null : a.specialDue?.expiresAt ?? null;
+        const right = b.kind === 'test' ? null : b.specialDue?.expiresAt ?? null;
+        const band = left === right ? 0 : left == null ? 1 : right == null ? -1 : left.localeCompare(right);
+        return band || (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity);
+      });
       else {
         const originalOrder: GrindingPlanningBoardBar[] = queue.filter((item) => item.kind !== 'test');
         for (const test of queue.filter((item): item is GrindingPlanningBoardTestBar => item.kind === 'test').sort((a, b) => a.alternateRank - b.alternateRank))

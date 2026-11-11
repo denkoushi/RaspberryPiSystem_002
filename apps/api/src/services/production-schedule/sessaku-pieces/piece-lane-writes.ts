@@ -1,4 +1,4 @@
-import { mixedPlanningLane, readPlanningTestBars } from '../grinding-planning-board/test-bars.js';
+import { mixedPlanningLane, planningBarBand, readPlanningTestBars } from '../grinding-planning-board/test-bars.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardTestBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -13,9 +13,20 @@ export const createLaneWrites = (overrides: Map<string, Override>) => ({
 export type LaneReplacementState = {
   pieces: GrindingPlanningBoardItem[]; overrides: Map<string, Override>; stateVersionIncrements: number;
   laneWrites: ReturnType<typeof createLaneWrites>;
+  seibanOrder?: readonly string[];
   testBars?: GrindingPlanningBoardTestBar[];
   testBarRanks?: Map<string, number>;
 };
+
+export function copyBatchProjections<T extends LaneReplacementState>(states: Map<string, T>): Map<string, T> {
+  return new Map([...states].map(([site, state]) => [site, {
+    ...state, pieces: state.pieces.map((item) => ({ ...item })), testBars: state.testBars?.map((item) => ({ ...item })),
+    testBarRanks: state.testBarRanks && new Map(state.testBarRanks), overrides: new Map(state.overrides), laneWrites: {
+      original: state.laneWrites.original, pending: new Set(state.laneWrites.pending),
+      removed: new Set(state.laneWrites.removed), laneVisits: new Map(state.laneWrites.laneVisits)
+    }
+  }]));
+}
 
 export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, before: LaneReplacementState, siteKey: string, removed: string[], replacements: string[], audit?: PieceAuditContext) {
   const started = performance.now();
@@ -27,7 +38,10 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
   const sorted: GrindingPlanningBoardBar[] = [];
   if (!resourcesWithTests.size) sorted.push(...before.pieces);
   else for (const resource of new Set(before.pieces.map((item) => item.effectiveResourceCd))) {
-    if (resource && resourcesWithTests.has(resource)) sorted.push(...mixedPlanningLane(before.pieces, before.testBars, [], resource),
+    if (resource && resourcesWithTests.has(resource)) sorted.push(...mixedPlanningLane(
+      before.pieces.map((item) => ({ ...item, alternateRank: before.overrides.get(item.itemId)?.alternateRank ?? item.alternateRank })),
+      before.testBars.map((item) => ({ ...item, alternateRank: before.testBarRanks?.get(item.itemId) ?? item.alternateRank })),
+      before.seibanOrder ?? [], resource),
       ...before.pieces.filter((item) => item.effectiveResourceCd === resource && item.isCompleted));
     else sorted.push(...before.pieces.filter((item) => item.effectiveResourceCd === resource));
   }
@@ -47,20 +61,22 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
   for (const resource of resources) {
     before.laneWrites.laneVisits.set(resource, (before.laneWrites.laneVisits.get(resource) ?? 0) + 1);
     const lane = next.filter((item) => (item.kind === 'test' ? item.resourceCd : item.effectiveResourceCd) === resource && !item.isCompleted);
-    for (const [index, item] of lane.entries()) {
+    const ranks = new Map<string | null, number>();
+    for (const item of lane) {
+      const band = planningBarBand(item);
+      const rank = (ranks.get(band) ?? 0) + 1;
+      ranks.set(band, rank);
       if (item.kind === 'test') {
-        before.testBarRanks.set(item.itemId, index + 1);
-        item.alternateRank = index + 1;
+        before.testBarRanks.set(item.itemId, rank);
         continue;
       }
-      if (resource && resourcesWithTests.has(resource)) item.alternateRank = index + 1;
       const isReplacement = replacements.includes(item.itemId);
       const own = isReplacement ? inherited : before.overrides.get(item.itemId);
       const data = {
         overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null,
         dueDateCleared: own?.dueDateCleared ?? null, orderPinned: own?.orderPinned ?? false,
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
-        alternateRank: index + 1
+        alternateRank: rank
       };
       // Lane operations invalidate row revisions used by reorder and offline writes,
       // including rows whose dense rank stays the same.

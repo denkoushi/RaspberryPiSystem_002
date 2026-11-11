@@ -34,12 +34,18 @@ export async function hasPlanningTestBars(siteKey: string, resourceCd: string | 
 }
 export const planningBarResource = (item: GrindingPlanningBoardBar) => item.kind === 'test' ? item.resourceCd : item.effectiveResourceCd ?? item.originalResourceCd;
 
-/** With a test in the lane, ranks describe a single mixed sequence across due bands. */
+export const planningBarBand = (item: GrindingPlanningBoardBar) => item.kind === 'test' ? null : item.specialDue?.expiresAt ?? null;
+
+/** Test bars share ranks with normal items in the band without a special due date. */
 export function mixedPlanningLane(items: readonly GrindingPlanningBoardItem[], tests: readonly GrindingPlanningBoardTestBar[], order: readonly string[], resource: string | null) {
   const normal = sortGrindingPlanningBoardProjectionItems(items.filter((item) => !item.isCompleted && planningBarResource(item) === resource), order, 'resource', 'alternate');
   const laneTests = tests.filter((item) => !item.isCompleted && !item.deletedAt && item.resourceCd === resource);
   const mixed: GrindingPlanningBoardBar[] = [...normal, ...laneTests];
-  if (laneTests.length) mixed.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+  if (laneTests.length) mixed.sort((a, b) => {
+    const left = planningBarBand(a), right = planningBarBand(b);
+    const band = left === right ? 0 : left == null ? 1 : right == null ? -1 : left.localeCompare(right);
+    return band || (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity);
+  });
   return mixed;
 }
 async function withBoard<T>(siteKey: string, sourceRevision: string, dueSource: 'excel' | 'scaw' | undefined,
@@ -75,8 +81,11 @@ function assertReference(reference: GrindingPlanningBoardItemReference, item: Gr
   return item;
 }
 async function saveLane(tx: Prisma.TransactionClient, siteKey: string, current: CurrentProjection, lane: readonly GrindingPlanningBoardBar[]) {
-  for (const [index, item] of lane.entries()) {
-    const rank = index + 1;
+  const ranks = new Map<string | null, number>();
+  for (const item of lane) {
+    const band = planningBarBand(item);
+    const rank = (ranks.get(band) ?? 0) + 1;
+    ranks.set(band, rank);
     if (item.kind === 'test') {
       if (item.alternateRank !== rank) await tx.productionScheduleGrindingPlanningBoardTestBar.update({ where: { id: item.itemId.slice(5) }, data: { alternateRank: rank, version: { increment: 1 } } });
     } else {
@@ -101,14 +110,15 @@ export async function createPlanningTestBar(params: GrindingPlanningBoardTestBar
     const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
     if (!resourceCd || !current.masterResourceCds.has(resourceCd) || !isCategoryResource(resourceCd, 'all', current.policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
     const lane = mixedPlanningLane([...current.byItemId.values()], tests.testBars, stateOrder(current.state), resourceCd);
-    let at = 0;
+    const unbandedStart = lane.filter((item) => planningBarBand(item) != null).length;
+    let at = unbandedStart;
     if (params.afterItem) {
       const candidate = current.byItemId.get(params.afterItem.itemId) ?? tests.testBars.find((item) => item.itemId === params.afterItem!.itemId);
       const after = assertReference(params.afterItem, candidate);
-      if (planningBarResource(after) === resourceCd) at = lane.findIndex((item) => item.itemId === after.itemId) + 1;
+      if (planningBarResource(after) === resourceCd && planningBarBand(after) == null) at = lane.findIndex((item) => item.itemId === after.itemId) + 1;
     }
     const row = await tx.productionScheduleGrindingPlanningBoardTestBar.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      sequence: tests.nextTestBarSequence, resourceCd, minutes: params.minutes, alternateRank: at + 1 } });
+      sequence: tests.nextTestBarSequence, resourceCd, minutes: params.minutes, alternateRank: at - unbandedStart + 1 } });
     lane.splice(at, 0, projectPlanningTestBar(row));
     await saveLane(tx, params.siteKey, current, lane);
     return mutationResponse(tx, params.siteKey, current, row.id);
@@ -125,7 +135,7 @@ export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBar
     // Keep the tombstone rank: undo restores the same slot without reusing its sequence.
     if ((params.action === 'restore' && !row.completedAt) || params.action === 'incomplete') {
       const lane = mixedPlanningLane([...current.byItemId.values()], tests.testBars.filter((item) => item.itemId !== `test:${row.id}`), stateOrder(current.state), row.resourceCd);
-      lane.splice(Math.min(row.alternateRank - 1, lane.length), 0, { ...projectPlanningTestBar(row), deletedAt: null, isCompleted: false, completedAt: null });
+      lane.splice(Math.min(lane.filter((item) => planningBarBand(item) != null).length + row.alternateRank - 1, lane.length), 0, { ...projectPlanningTestBar(row), deletedAt: null, isCompleted: false, completedAt: null });
       await saveLane(tx, params.siteKey, current, lane);
     }
     return mutationResponse(tx, params.siteKey, current, row.id);
@@ -146,13 +156,14 @@ export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardR
     if ('items' in params) order = mergeScheduleSourceOrder(lane.map((item) => item.itemId), params.items.map((item) => item.itemId));
     else {
       const [source, target] = members;
-      if (source!.kind !== 'test' && target!.kind !== 'test' && (source!.specialDue?.expiresAt ?? null) !== (target!.specialDue?.expiresAt ?? null)) throw new ApiError(409, '特別納期の優先帯をまたいで並べ替えできません', undefined, 'SPECIAL_DUE_ORDER_BAND_MISMATCH');
+      if (planningBarBand(source!) !== planningBarBand(target!)) throw new ApiError(409, '特別納期の優先帯をまたいで並べ替えできません', undefined, 'SPECIAL_DUE_ORDER_BAND_MISMATCH');
       const moving = visible.findIndex((item) => item.itemId === source!.itemId);
       if (moving < 0) throw new ApiError(409, '対象が更新されています', undefined, 'STALE_PLANNING_BOARD_ITEM');
       visible.splice(moving, 1);
       visible.splice(visible.findIndex((item) => item.itemId === target!.itemId) + (params.placement === 'after' ? 1 : 0), 0, source!);
       order = mergeScheduleSourceOrder(lane.map((item) => item.itemId), visible.map((item) => item.itemId));
     }
+    if (order.some((id, index) => planningBarBand(byId.get(id)!) !== planningBarBand(lane[index]!))) throw new ApiError(409, '特別納期の優先帯をまたいで並べ替えできません', undefined, 'SPECIAL_DUE_ORDER_BAND_MISMATCH');
     await saveLane(tx, params.siteKey, current, order.map((id) => byId.get(id)!));
     const state = await tx.productionScheduleGrindingPlanningBoardState.update({ where: { id: current.state.id }, data: { version: { increment: 1 } } });
     return { sourceRevision: boardRevision(state), items: [...projectCurrentItems(current, current.overrides).values()], testBars: (await readPlanningTestBars(tx, params.siteKey)).testBars };
