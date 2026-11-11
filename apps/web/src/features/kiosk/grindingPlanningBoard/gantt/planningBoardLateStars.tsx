@@ -14,7 +14,7 @@ export function usePlanningBoardLateStars(bars: readonly GanttBar[], today: numb
     const datesBySeiban = new Map<string, Set<string>>();
     const itemIdsBySeiban = new Map<string, Set<string>>();
     for (const bar of bars) {
-      if (!bar.item.lslhSurface || bar.item.isCompleted || bar.tone === 'completed') continue;
+      if (bar.item.kind === 'test' || !bar.item.lslhSurface || bar.item.isCompleted || bar.tone === 'completed') continue;
       for (const { date } of rows.get(bar.item.fseiban)?.surfaceSendOutDates ?? []) {
         if (dateToDay(date) >= today) continue;
         itemIds.add(bar.item.itemId);

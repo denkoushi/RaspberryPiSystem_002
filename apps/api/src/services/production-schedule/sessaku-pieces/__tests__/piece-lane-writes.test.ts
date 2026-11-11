@@ -4,6 +4,7 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { createLaneWrites, flushSiteItems, replaceSiteItems, type LaneReplacementState } from '../piece-lane-writes.js';
 import { sessakuPieceParentItemId } from '../piece-key.js';
 import { legacyReplaceSiteItems } from './legacy-site-items.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 
 const key = { fseiban: 'lot', fhincd: 'part', fsigencd: '10', fkojun: '100' };
 const parent = sessakuPieceParentItemId(key);
@@ -19,9 +20,29 @@ const state = (pieces: GrindingPlanningBoardItem[], rows: Override[]): LaneRepla
   return { pieces, overrides, stateVersionIncrements: 0, laneWrites: createLaneWrites(overrides) };
 };
 const transaction = () => ({ $executeRaw: vi.fn().mockResolvedValue(1),
+  productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
   productionScheduleGrindingPlanningBoardOverride: { deleteMany: vi.fn() } });
 
 describe('deferred lane writes', () => {
+  it('reranks replacements together with unfinished test bars and flushes their ranks', async () => {
+    const next = state([{ ...item(parent), alternateRank: 1 }, { ...item('after'), alternateRank: 3 }], [override(parent, 1), override('after', 3)]);
+    const tx = transaction();
+    tx.productionScheduleGrindingPlanningBoardTestBar.findMany.mockResolvedValue([{
+      id: 'test-id', sequence: 1, resourceCd: '10', minutes: 30, alternateRank: 2,
+      version: 1, completedAt: null, deletedAt: null
+    }]);
+    await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', [parent], ['piece:a', 'piece:b']);
+    expect(next.overrides.get('piece:a')?.alternateRank).toBe(1);
+    expect(next.overrides.get('piece:b')?.alternateRank).toBe(2);
+    expect(next.testBarRanks?.get('test:test-id')).toBe(3);
+    expect(next.overrides.get('after')?.alternateRank).toBe(4);
+    await flushSiteItems(tx as unknown as Prisma.TransactionClient, new Map([['site', next]]));
+    expect(tx.productionScheduleGrindingPlanningBoardTestBar.updateMany).toHaveBeenCalledWith({
+      where: { id: 'test-id', csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: 'site', deletedAt: null },
+      data: { alternateRank: 3, version: { increment: 1 } }
+    });
+  });
+
   it('matches legacy intermediate parent ranks and all override columns, incrementing repeated versions only once', async () => {
     const rows = [override(parent, 1, { overrideResourceCd: '10', overrideDueDate: new Date('2026-11-10'),
       dueDateCleared: false, orderPinned: true, specialDueKind: 'special', specialDueExpiresAt: new Date('2026-11-11T12:34:56.789Z') }),

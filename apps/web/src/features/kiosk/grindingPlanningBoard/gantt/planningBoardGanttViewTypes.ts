@@ -1,9 +1,16 @@
+import type { PlanningBoardTestBarControls } from '../usePlanningBoardTestBars';
 import type { ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar , GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+  testBarControls?: PlanningBoardTestBarControls;
+  testBarCreationEnabled?: boolean;
+  onTestBarAdd?: () => void;
+  onTestBarAnchorChange?: (item: GrindingPlanningBoardBar | null) => void;
+  onToggleItem: (item: GrindingPlanningBoardBar, selected: boolean) => void;
+  onCompleteToggle?: (item: GrindingPlanningBoardBar, intent: 'complete' | 'incomplete') => void;
   resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   minutesPending?: boolean; minutesError?: boolean;
   onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;

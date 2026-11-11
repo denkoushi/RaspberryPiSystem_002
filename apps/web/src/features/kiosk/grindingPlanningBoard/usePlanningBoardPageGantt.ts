@@ -10,13 +10,14 @@ import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider'
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
 import { planningBoardResourceMatches } from './planningBoardTwoMachine';
 import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
+import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
 
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
 import type { FeedbackKind, OrderPreview, ResourceOrderHistory, ResourceOrderSnapshot } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 import type { useUpdateKioskGrindingPlanningBoardPins, useUpdateKioskGrindingPlanningBoardResourceOrderBulk } from '../../../api/hooks';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
 type Options = {
@@ -75,7 +76,7 @@ export function usePlanningBoardPageGantt({
   data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
   resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
   setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
-  scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
+  scopeReady, pinMode, canMoveResource, snapshotResourceOrder: normalSnapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
   setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict,
   orderConflict, updatePinsAsync
 }: Options) {
@@ -87,9 +88,34 @@ export function usePlanningBoardPageGantt({
   );
   const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+  const tests = usePlanningBoardTestBars({ data, enqueue: enqueueWrite,
+    disabled: !scopeReady || !rankMutationReady || writeBlocked || writeQueue.pending || Boolean(orderPreview) || pinMode || allocation !== 'alternate',
+    remember: (item, action) => { const id = ++resourceOrderHistoryId.current;
+      setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: [], testBarUndo: { item, action } }].slice(-10)); }
+  });
+  const baseGantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
     today, now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
+  const gantt = { ...baseGantt, testBarControls: { ...tests, reorder: (item: GrindingPlanningBoardBar, target: GrindingPlanningBoardBar, placement: 'before' | 'after') => {
+    if (tests.disabled || item.isCompleted || target.isCompleted) return;
+    const resource = resolveGrindingPlanningBoardResource(item, 'alternate');
+    if (!resource || resource !== resolveGrindingPlanningBoardResource(target, 'alternate')) return;
+    const before = snapshotResourceOrder(resource);
+    const ids = before.itemIds.filter((id) => id !== item.itemId);
+    const at = ids.indexOf(target.itemId); if (at < 0) return;
+    ids.splice(at + (placement === 'after' ? 1 : 0), 0, item.itemId);
+    const id = ++resourceOrderHistoryId.current;
+    enqueueResourceOrder({ resourceCd: resource, itemIds: ids }, '順番', () => rememberResourceOrder(id, before));
+  } } };
+  const snapshotResourceOrder = (resource: string): ResourceOrderSnapshot => {
+    const normal = normalSnapshotResourceOrder(resource);
+    const byId = new Map(currentItemsRef.current.map((item) => [item.itemId, item]));
+    const laneTests = tests.bars.filter((item) => item.resourceCd === resource && !item.isCompleted && !item.deletedAt);
+    if (!laneTests.length) return normal;
+    const mixed: GrindingPlanningBoardBar[] = [...normal.itemIds.flatMap((id) => byId.get(id) ? [byId.get(id)!] : []), ...laneTests];
+    mixed.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+    return { resourceCd: resource, itemIds: mixed.map((item) => item.itemId) };
+  };
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
   const ganttLayout = useMemo(() => orderPreview
     ? buildForwardPlanningBoardGanttLayout({ ...orderPreview.options, scale: gantt.scale, laneOrder: orderPreview.proposal })
@@ -98,24 +124,24 @@ export function usePlanningBoardPageGantt({
   const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
     sourceItems = currentItemsRef.current) => {
     if (!gate.attempt()) return false;
-    const sourceById = new Map(sourceItems.map((item) => [item.itemId, item]));
+    const sourceById = new Map<string, GrindingPlanningBoardBar>([...sourceItems, ...tests.bars].map((item) => [item.itemId, item]));
     const items = snapshot.itemIds.map((id) => sourceById.get(id));
     if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
-      (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || hasPendingSeiban(item.fseiban, true))) return false;
-    const members = items as GrindingPlanningBoardItem[];
+      (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || (item.kind !== 'test' && hasPendingSeiban(item.fseiban, true)))) return false;
+    const members = items as GrindingPlanningBoardBar[];
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
-    return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.map((item) => item.fseiban))], order: true,
+    return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.flatMap((item) => item.kind === 'test' ? [] : [item.fseiban]))], order: true,
       apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
-      save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
-        items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) })),
-      onSaved, onFailed
+      save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: context.sourceRevision, resourceCd: snapshot.resourceCd,
+        items: members.map((original) => { const item = original.kind === 'test' ? tests.bars.find((item) => item.itemId === original.itemId) ?? original : context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) })),
+      onSaved: (result) => { tests.accept(result); onSaved(); }, onFailed
     });
   };
   const handleOrderScan = (productNo: string): string | null => {
     const displayedItems = ganttEnabled
       ? planningBoardVisibleBars(ganttLayout).map((bar) => bar.item)
       : view === 'seiban' && focusedFseiban && focusItems.length > 0 ? focusItems : visibleItems;
-    const item = displayedItems.find((candidate) => candidate.productNo === productNo);
+    const item = displayedItems.filter((candidate): candidate is GrindingPlanningBoardItem => candidate.kind !== 'test').find((candidate) => candidate.productNo === productNo);
     if (!item) return ganttEnabled ? `${productNo} の棒はこのガントにありません。` : `${productNo} の行はこの画面にありません。`;
     if (ganttEnabled) setColorBySeiban(true);
     else if (view === 'seiban') {
@@ -188,7 +214,7 @@ export function usePlanningBoardPageGantt({
   const proposeResourceOrder = () => {
     if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
-    const options: GanttLayoutOptions = { items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+    const options: GanttLayoutOptions = { items: ganttItems, testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
       seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, resourceMinutes: gantt.resourceMinutes, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
       today, scale: gantt.scale, now: ganttNow };
     const current = planningBoardLaneOrder(options);
@@ -239,6 +265,7 @@ export function usePlanningBoardPageGantt({
   const undoResourceOrder = () => {
     if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled || !lastResourceOrder) return;
+    if (lastResourceOrder.testBarUndo) { tests.undo(lastResourceOrder, () => setResourceOrderHistory((history) => history.filter((entry) => entry.id !== lastResourceOrder.id))); return; }
     let restoredItems = currentItemsRef.current;
     if (lastResourceOrder.restoreResource) {
       const restore = lastResourceOrder.restoreResource;
@@ -259,9 +286,12 @@ export function usePlanningBoardPageGantt({
       if (!snapshot.itemIds.length) { saved(); continue; }
       const currentOrder = sortGrindingPlanningBoardItems(restoredItems.filter((item) => !item.isCompleted &&
         (resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定') === snapshot.resourceCd), registeredFseibans, 'resource', allocation);
-      const visibleIds = new Set(currentOrder.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)).map((item) => item.itemId));
+      const laneTests = tests.bars.filter((item) => item.resourceCd === snapshot.resourceCd && !item.isCompleted && !item.deletedAt);
+      const mixedOrder: GrindingPlanningBoardBar[] = [...currentOrder, ...laneTests];
+      if (laneTests.length) mixedOrder.sort((a, b) => (a.alternateRank ?? Infinity) - (b.alternateRank ?? Infinity));
+      const visibleIds = new Set(mixedOrder.filter((item) => item.kind === 'test' || isVisibleByArrival(item, arrivalFilterEnabled)).map((item) => item.itemId));
       const itemIds = arrivalFilterEnabled
-        ? mergeVisibleResourceOrder(currentOrder.map((item) => item.itemId), snapshot.itemIds.filter((itemId) => visibleIds.has(itemId))) : snapshot.itemIds;
+        ? mergeVisibleResourceOrder(mixedOrder.map((item) => item.itemId), snapshot.itemIds.filter((itemId) => visibleIds.has(itemId))) : snapshot.itemIds;
       if (!enqueueResourceOrder({ ...snapshot, itemIds }, '順番を戻す', saved, undefined, undefined, restoredItems))
         notify('対象の工程が変わったため順番を戻せません。表示を確認してください。', 'error');
     }

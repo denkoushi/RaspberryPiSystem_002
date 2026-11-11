@@ -24,7 +24,7 @@ export type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
 export type OrderPreview = { options: GanttLayoutOptions; sourceRevision: string; current: Record<string, string[]>;
   proposal: Record<string, string[]>; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
 
-export type ResourceOrderHistory = { id: number; scope: string; orders: ResourceOrderSnapshot[];
+export type ResourceOrderHistory = { testBarUndo?: { item: import('@raspi-system/shared-types').GrindingPlanningBoardTestBar; action: 'delete' | 'restore' }; id: number; scope: string; orders: ResourceOrderSnapshot[];
   restoreResource?: { itemId: string; resourceCd: string | null } };
 
 export const EMPTY_ITEMS: GrindingPlanningBoardItem[] = [];

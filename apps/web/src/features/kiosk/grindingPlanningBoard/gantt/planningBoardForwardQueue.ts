@@ -2,7 +2,7 @@ import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { mergeVisibleResourceOrder } from '../mergeVisibleResourceOrder';
 
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
   const scheduled = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
@@ -17,7 +17,8 @@ export function forwardQueueWindow(layout: GanttLayout, hovered: GanttBar) {
   return queue.map((bar, i) => ({ bar, position: i + 1 }));
 }
 
-export function forwardItemDetails(item: GrindingPlanningBoardItem): string {
+export function forwardItemDetails(item: GrindingPlanningBoardBar): string {
+  if (item.kind === 'test') return `${item.minutes}分`;
   return [item.fseiban, item.fhincd, item.plannedQuantity == null ? null : `${item.plannedQuantity}個`, normalizeMachineName(item.machineName)]
     .filter((part) => part != null && part.trim() !== '').join(' · ');
 }
@@ -43,5 +44,5 @@ export function forwardDueLabel(due: string | null): string | null {
 export function canReorderForwardBars(source: GanttBar, target: GanttBar): boolean {
   return source.item.itemId !== target.item.itemId && source.resource === target.resource &&
     !source.arrivalPending && !target.arrivalPending && !source.item.isCompleted && !target.item.isCompleted &&
-    (source.item.specialDue?.expiresAt ?? null) === (target.item.specialDue?.expiresAt ?? null);
+    (source.item.kind === 'test' || target.item.kind === 'test' || (source.item.specialDue?.expiresAt ?? null) === (target.item.specialDue?.expiresAt ?? null));
 }

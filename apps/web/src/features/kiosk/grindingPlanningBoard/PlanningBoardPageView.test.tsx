@@ -11,13 +11,13 @@ vi.mock('./gantt/PlanningBoardGanttView', () => ({ PlanningBoardGanttView: gantt
 describe('PlanningBoardPageView', () => {
   it('disables gantt piece operations while writes are blocked', () => {
     const props = {
-      data: { siteKey: 'site', resources: [] }, ganttEnabled: true, gantt: {},
+      data: { siteKey: 'site', resources: [] }, ganttEnabled: true, gantt: { testBarControls: { disabled: false } }, ganttLayout: { mode: 'forward', groups: [] },
       resourcesQuery: {}, pinMode: false, writeQueue: { pending: false }, allocation: 'alternate',
       interactionLocked: false, writeBlocked: false, specialDueMode: null
     } as ComponentProps<typeof PlanningBoardPageView>;
     const { rerender } = render(<PlanningBoardPageView {...props} />);
-    expect(ganttView.mock.lastCall?.[0]).toEqual(expect.objectContaining({ pieceDisabled: false }));
+    expect(ganttView.mock.lastCall?.[0]).toEqual(expect.objectContaining({ pieceDisabled: false, testBarControls: expect.objectContaining({ disabled: false }) }));
     rerender(<PlanningBoardPageView {...props} writeBlocked />);
-    expect(ganttView.mock.lastCall?.[0]).toEqual(expect.objectContaining({ pieceDisabled: true, disabled: false }));
+    expect(ganttView.mock.lastCall?.[0]).toEqual(expect.objectContaining({ pieceDisabled: true, disabled: false, testBarControls: expect.objectContaining({ disabled: true }) }));
   });
 });

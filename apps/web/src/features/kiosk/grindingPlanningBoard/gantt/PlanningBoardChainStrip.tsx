@@ -7,7 +7,7 @@ import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
 
-import type { GanttBar } from './planningBoardGanttLayout';
+import type { NormalGanttBar as GanttBar } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { Ref } from 'react';
 

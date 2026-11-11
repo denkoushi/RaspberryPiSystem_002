@@ -1,6 +1,7 @@
+import { mixedPlanningLane, readPlanningTestBars } from '../grinding-planning-board/test-bars.js';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardTestBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { sessakuPieceParentItemId, type SessakuPieceLogicalKey } from './piece-key.js';
 import type { PieceAuditContext } from './piece-audit.js';
@@ -12,19 +13,30 @@ export const createLaneWrites = (overrides: Map<string, Override>) => ({
 export type LaneReplacementState = {
   pieces: GrindingPlanningBoardItem[]; overrides: Map<string, Override>; stateVersionIncrements: number;
   laneWrites: ReturnType<typeof createLaneWrites>;
+  testBars?: GrindingPlanningBoardTestBar[];
+  testBarRanks?: Map<string, number>;
 };
 
 export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, before: LaneReplacementState, siteKey: string, removed: string[], replacements: string[], audit?: PieceAuditContext) {
   const started = performance.now();
   if (audit?.timing) audit.timing.replaceSiteItemsCount += 1;
   const selected = before.pieces.filter((item) => removed.includes(item.itemId));
-  const sorted = before.pieces;
+  before.testBars ??= (await readPlanningTestBars(_tx, siteKey)).testBars;
+  before.testBarRanks ??= new Map();
+  const resourcesWithTests = new Set(before.testBars.filter((item) => !item.isCompleted).map((item) => item.resourceCd));
+  const sorted: GrindingPlanningBoardBar[] = [];
+  if (!resourcesWithTests.size) sorted.push(...before.pieces);
+  else for (const resource of new Set(before.pieces.map((item) => item.effectiveResourceCd))) {
+    if (resource && resourcesWithTests.has(resource)) sorted.push(...mixedPlanningLane(before.pieces, before.testBars, [], resource),
+      ...before.pieces.filter((item) => item.effectiveResourceCd === resource && item.isCompleted));
+    else sorted.push(...before.pieces.filter((item) => item.effectiveResourceCd === resource));
+  }
   const first = sorted.find((item) => removed.includes(item.itemId));
-  if (!first) return;
+  if (!first || first.kind === 'test') return;
   const inherited = before.overrides.get(first.itemId) ?? before.overrides.get(sessakuPieceParentItemId(key));
   // Every replacement takes this site's first selected item's placement and override.
   const replacementItems = replacements.map((id) => ({ ...first, itemId: id }));
-  const next: GrindingPlanningBoardItem[] = [];
+  const next: GrindingPlanningBoardBar[] = [];
   for (const item of sorted) {
     if (item.itemId === first.itemId) next.push(...replacementItems);
     if (!removed.includes(item.itemId)) next.push(item);
@@ -34,8 +46,14 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
   const updatedAt = new Date();
   for (const resource of resources) {
     before.laneWrites.laneVisits.set(resource, (before.laneWrites.laneVisits.get(resource) ?? 0) + 1);
-    const lane = next.filter((item) => item.effectiveResourceCd === resource && !item.isCompleted);
+    const lane = next.filter((item) => (item.kind === 'test' ? item.resourceCd : item.effectiveResourceCd) === resource && !item.isCompleted);
     for (const [index, item] of lane.entries()) {
+      if (item.kind === 'test') {
+        before.testBarRanks.set(item.itemId, index + 1);
+        item.alternateRank = index + 1;
+        continue;
+      }
+      if (resource && resourcesWithTests.has(resource)) item.alternateRank = index + 1;
       const isReplacement = replacements.includes(item.itemId);
       const own = isReplacement ? inherited : before.overrides.get(item.itemId);
       const data = {
@@ -59,7 +77,7 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
     before.laneWrites.removed.add(id);
     before.laneWrites.pending.delete(id);
   }
-  before.pieces = next;
+  before.pieces = next.filter((item): item is GrindingPlanningBoardItem => item.kind !== 'test');
   for (const id of removed.filter((id) => id.startsWith('piece:'))) before.overrides.delete(id);
   before.stateVersionIncrements += 1;
   if (audit?.timing) audit.timing.rerankMs += performance.now() - started;
@@ -77,6 +95,10 @@ export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<s
   const changed: Override[] = [];
   const removedSites: string[] = [], removedKeys: string[] = [];
   for (const [siteKey, state] of states) {
+    for (const [itemId, alternateRank] of state.testBarRanks ?? []) await tx.productionScheduleGrindingPlanningBoardTestBar.updateMany({
+      where: { id: itemId.slice(5), csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, deletedAt: null },
+      data: { alternateRank, version: { increment: 1 } }
+    });
     for (const visits of state.laneWrites.laneVisits.values()) if (audit?.timing) {
       audit.timing.laneWriteCount += 1;
       audit.timing.repeatedLaneCount += visits - 1;

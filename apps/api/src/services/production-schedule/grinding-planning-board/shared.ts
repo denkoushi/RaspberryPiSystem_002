@@ -196,6 +196,8 @@ export type PlanningSource = {
 };
 
 export type PlanningSnapshotPayload = {
+  testBars?: GrindingPlanningBoardResponse['testBars'];
+  nextTestBarSequence?: number;
   items: GrindingPlanningBoardItem[];
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
@@ -225,3 +227,7 @@ export function planningBoardArrivalDate(now = new Date()): string {
 }
 
 export const grindingPlanningBoardDueSourceSchema = z.enum(['excel', 'scaw']).default('excel');
+
+export function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
+  if (expected !== item.itemRevision || (expectedVersion != null && expectedVersion !== item.version)) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+}

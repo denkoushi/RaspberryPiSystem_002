@@ -1,5 +1,5 @@
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 
 export function sortPlanningBoardResources(
@@ -33,16 +33,18 @@ export function compareProcessOrder(left: string, right: string): number {
 }
 
 export function resolveGrindingPlanningBoardResource(
-  item: GrindingPlanningBoardItem,
+  item: GrindingPlanningBoardBar,
   allocation: PlanningBoardAllocation
 ): string | null {
+  if (item.kind === 'test') return item.resourceCd;
   return allocation === 'alternate' ? (item.effectiveResourceCd ?? item.originalResourceCd) : item.originalResourceCd;
 }
 
 export function resolveGrindingPlanningBoardDueDate(
-  item: GrindingPlanningBoardItem,
+  item: GrindingPlanningBoardBar,
   allocation: PlanningBoardAllocation
 ): string | null {
+  if (item.kind === 'test') return null;
   return allocation === 'alternate' ? (item.effectiveDueDate ?? item.originalDueDate) : item.originalDueDate;
 }
 

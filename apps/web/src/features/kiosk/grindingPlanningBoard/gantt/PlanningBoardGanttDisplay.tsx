@@ -2,6 +2,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardSingleResourcePicker } from '../PlanningBoardSingleResourcePicker';
+import { PlanningBoardTestBarDialog } from '../PlanningBoardTestBarDialog';
 import { planningBoardPair, planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
@@ -12,6 +13,7 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
+import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 
@@ -19,6 +21,8 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
   const resources = useMemo(() => planningBoardPair(props.singleResourceCd, props.resourceLanes)!, [props.singleResourceCd, props.resourceLanes]);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
+  const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
+  useEffect(() => { if (selectedTestResource) setChainOwner(selectedTestResource); }, [selectedTestResource, props.testBarControls?.selectedId]);
   const [chainTops, setChainTops] = useState<Record<string, { top: number | null; height: number }>>({});
   const onChainTopChange = useCallback((resource: string, top: number | null, height: number) => {
     setChainTops(current => current[resource]?.top === top && current[resource]?.height === height ? current : { ...current, [resource]: { top, height } });
@@ -45,7 +49,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const seibanColors = useMemo(() => {
     if (!props.colorBySeiban) return undefined;
     const seibanOrder = props.seibanOrder ?? [];
-    const seibans = [...new Set(paneBars.flatMap(bars => bars.map(bar => bar.item.fseiban)))];
+    const seibans = [...new Set(paneBars.flatMap(bars => bars.flatMap(bar => bar.item.kind === 'test' ? [] : [bar.item.fseiban])))];
     const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
@@ -58,7 +62,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     onFocusedSeibanChange(seiban);
     const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
     paneBars.forEach((bars, index) => {
-      const first = bars.filter(bar => bar.item.fseiban === seiban).reduce<GanttBar | undefined>(
+      const first = bars.filter(bar => bar.item.kind !== 'test' && bar.item.fseiban === seiban).reduce<GanttBar | undefined>(
         (earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
       if (first) handles.current.get(resources[index]!)?.scrollToItem(first.item.itemId);
     });
@@ -196,8 +200,21 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
       onSingleResourceChange?.(pairTop);
     }
   }, [machineSelectionLocked, capacityLoaded, pairTop, pairBottom, topAvailable, unitSplitEnabledByResource, onSingleResourceChange]);
-  const shared = { ...props, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
-  return pair
+  const [testDialog, setTestDialog] = useState<{ resources: string[]; after?: GrindingPlanningBoardBar; initial: string } | null>(null);
+  const testAnchor = useRef<GrindingPlanningBoardBar | null>(null);
+  const openTestDialog = () => {
+    const shown = pair ?? (props.singleResourceCd ? [props.singleResourceCd] : []);
+    if (!shown.length || !props.testBarControls || props.testBarControls.disabled) return;
+    const selected = props.testBarControls.selectedBar ?? testAnchor.current ?? props.layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
+      .find((bar) => props.selectedItemIds.has(bar.item.itemId))?.item;
+    const resource = selected?.kind === 'test' ? selected.resourceCd : selected?.effectiveResourceCd ?? selected?.originalResourceCd;
+    setTestDialog({ resources: shown, after: selected?.isCompleted ? undefined : selected, initial: resource && shown.includes(resource) ? resource : shown[0]! });
+  };
+  const shared = { ...props, onTestBarAnchorChange: (item: GrindingPlanningBoardBar | null) => { testAnchor.current = item; }, onTestBarAdd: props.testBarCreationEnabled && props.layout.mode === 'forward' ? openTestDialog : undefined, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
+  return <> {pair
     ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
-    : <PlanningBoardGanttView {...shared} ref={ref} />;
+    : <PlanningBoardGanttView {...shared} ref={ref} />}
+    {testDialog && props.testBarControls && <PlanningBoardTestBarDialog sequence={props.testBarControls.nextSequence} resources={testDialog.resources} initialResource={testDialog.initial}
+      onClose={() => setTestDialog(null)} onInsert={(resource, minutes) => props.testBarControls!.create(resource, minutes, testDialog.after)} />}
+  </>;
 });

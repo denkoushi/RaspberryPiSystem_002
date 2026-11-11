@@ -16,7 +16,7 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   const lane = hits
     .map((element) => element.closest<HTMLElement>('[data-gantt-lane]')).find((element) => element && board?.contains(element));
   const targetResource = lane?.dataset.resourceCode;
-  if (!targetResource || !allowed?.has(targetResource)) return null;
+  if (!targetResource || !allowed?.has(targetResource) || source.item.kind === 'test' && targetResource !== source.resource) return null;
   const rowKey = lane.dataset.ganttWindowRow;
   const targetLane = lanes.find((candidate) => candidate.resource === targetResource && (!candidate.rowKey || candidate.rowKey === rowKey));
   const targetTrack = lane.querySelector<HTMLElement>('[data-gantt-track]');
@@ -38,6 +38,7 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   }
   const target = others.find((bar) => x < centre(bar));
   const bar = target ?? others[others.length - 1]!;
+  if (targetResource !== source.resource && bar.item.kind === 'test') return null;
   if (targetResource === source.resource && !canReorderForwardBars(source, bar)) return null;
   return { rowKey, resource: targetResource, bar, placement: target ? 'before' : 'after', left: Math.max(0, ((target ? bar.start! : bar.end!) - start) * dayWidth) };
 }

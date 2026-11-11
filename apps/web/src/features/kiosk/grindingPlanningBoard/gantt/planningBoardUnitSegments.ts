@@ -1,9 +1,9 @@
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 
 type Segment = { start: number; end: number };
 export type OpSegment = Segment & { opNo: number; completed: boolean };
-export const isUnitPiece = (item: GrindingPlanningBoardItem) => item.kind === 'piece' && typeof item.unitRequiredMinutes === 'number';
-export const ganttRequiredMinutes = (item: GrindingPlanningBoardItem) => isUnitPiece(item) ? item.unitRequiredMinutes! : item.requiredMinutes;
+export const isUnitPiece = (item: GrindingPlanningBoardBar): item is GrindingPlanningBoardItem & { kind: 'piece'; unitRequiredMinutes: number } => item.kind === 'piece' && typeof item.unitRequiredMinutes === 'number';
+export const ganttRequiredMinutes = (item: GrindingPlanningBoardBar) => item.kind === 'test' ? item.minutes : isUnitPiece(item) ? item.unitRequiredMinutes! : item.requiredMinutes;
 
 export function unitSetupMinutesByResource(data?: GrindingPlanningBoardResourceMinutesResponse) {
   const own = new Set(data?.ownSourceResourceCds);

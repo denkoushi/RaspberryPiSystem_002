@@ -9,7 +9,7 @@ import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
-import { dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
+import { isNormalGanttBar , dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import {
   estimateLateStarLabelHeight,
@@ -18,7 +18,7 @@ import {
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
-import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
+import type { NormalGanttBar as GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GanttWindow } from './usePlanningBoardGanttWindow';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { PointerEvent } from 'react';
@@ -182,7 +182,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
 }: PlanningBoardGanttRowProps) {
   const rowRef = useCallback((element: HTMLDivElement | null) => registerRow?.(row.key, element), [registerRow, row.key]);
   const [heldItemId, setHeldItemId] = useState<string | null>(null);
-  const visibleBars = row.bars.filter((bar) => {
+  const visibleBars = row.bars.filter(isNormalGanttBar).filter((bar) => {
     const rect = ganttBarGeometry(bar, start, dayWidth, false);
     return rect && (!window || heldItemId === bar.item.itemId || rect.left <= window.right && rect.left + rect.width >= window.left);
   });
@@ -194,7 +194,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
   const estimatedHeight = Math.max(GANTT_ROW_HEIGHT, estimateLateStarLabelHeight(lateStars.groups, labelWidth, Boolean(onToggleSeiban)));
   // One chip strip per part, under that part's last bar on this row.
   const lastBarByPart = new Map<string, GanttBar>();
-  for (const bar of row.bars) {
+  for (const bar of row.bars.filter(isNormalGanttBar)) {
     if (bar.end == null) continue;
     const last = lastBarByPart.get(bar.partKey);
     if (!last || bar.end > last.end!) lastBarByPart.set(bar.partKey, bar);
