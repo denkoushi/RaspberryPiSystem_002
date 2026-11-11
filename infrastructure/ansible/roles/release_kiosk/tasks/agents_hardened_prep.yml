@@ -15,21 +15,30 @@
       ansible.builtin.command:
         argv: [getent, group, "{{ item.name }}"]
       loop:
-        - {name: plugdev, gid: '46', services: ['nfc-agent']}
-        - {name: dialout, gid: '20', services: ['barcode-agent']}
-        - {name: input, gid: '104', services: ['nfc-agent', 'torque-agent']}
+        - {name: plugdev, services: ['nfc-agent']}
+        - {name: dialout, services: ['barcode-agent']}
+        - {name: input, services: ['nfc-agent', 'torque-agent']}
       when: item.services | intersect(release_kiosk_enabled_services) | length > 0
       register: release_kiosk_hardened_groups
       changed_when: false
       failed_when: false
 
-    - name: Require group IDs matching the hardened Compose supplementary groups
+    - name: Require existing host groups with numeric GIDs for hardened agents
       ansible.builtin.assert:
         that:
           - item.rc == 0
           - item.stdout.split(':') | length >= 3
-          - item.stdout.split(':')[2] == item.item.gid
-        fail_msg: "Hardened agents require group {{ item.item.name }} with GID {{ item.item.gid }}. Fix the host group before releasing."
+          - item.stdout.split(':')[2] is match('^[0-9]+$')
+        fail_msg: "Hardened agents require host group {{ item.item.name }} to exist with a numeric GID in the third getent field before releasing."
+      loop: "{{ release_kiosk_hardened_groups.results }}"
+      when: not (item.skipped | default(false))
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Save the validated host GIDs for hardened Compose supplementary groups
+      ansible.builtin.set_fact:
+        release_kiosk_hardened_gids: >-
+          {{ release_kiosk_hardened_gids | default({}) | combine({item.item.name: item.stdout.split(':')[2]}) }}
       loop: "{{ release_kiosk_hardened_groups.results }}"
       when: not (item.skipped | default(false))
       loop_control:
@@ -49,8 +58,8 @@
             not release_kiosk_hardened_pcscd.stat.exists
             or (release_kiosk_hardened_pcscd.stat.roth | default(false)
                 and release_kiosk_hardened_pcscd.stat.woth | default(false))
-            or release_kiosk_hardened_pcscd.stat.gid | default(-1) in [46, 104]
-        fail_msg: "The PC/SC socket must allow other read/write access or belong to GID 46 or 104 before releasing hardened NFC."
+            or release_kiosk_hardened_pcscd.stat.gid | default(-1) in [release_kiosk_hardened_gids.plugdev | int, release_kiosk_hardened_gids.input | int]
+        fail_msg: "The PC/SC socket must allow other read/write access or belong to the host plugdev GID {{ release_kiosk_hardened_gids.plugdev }} or input GID {{ release_kiosk_hardened_gids.input }} before releasing hardened NFC."
       when: "'nfc-agent' in release_kiosk_enabled_services"
 
 - name: Prepare hardened persistent storage immediately before Compose recreation

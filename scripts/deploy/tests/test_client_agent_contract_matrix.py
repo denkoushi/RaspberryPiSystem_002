@@ -11,7 +11,7 @@ from pathlib import Path
 from types import ModuleType
 
 import yaml
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, StrictUndefined, Undefined, UndefinedError
 
 from scripts.deploy.terminal_profile_registry import load_registry
 
@@ -75,6 +75,12 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
         environment = Environment(undefined=StrictUndefined)
         environment.filters["to_json"] = json.dumps
         environment.filters["bool"] = lambda value: str(value).lower() in {"1", "true", "yes", "on"}
+        def mandatory(value, msg):
+            if isinstance(value, Undefined):
+                raise UndefinedError(msg)
+            return value
+
+        environment.filters["mandatory"] = mandatory
         template = environment.from_string((
             ROOT / "infrastructure/ansible/roles/release_kiosk/templates/client-compose.yml.j2"
         ).read_text(encoding="utf-8"))
@@ -85,12 +91,12 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                              "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"],
         }
         hardened_contract = {
-            "nfc-agent": (["46", "104"], ["c 189:* rw", "c 13:* rw"],
+            "nfc-agent": (["64", "996"], ["c 189:* rw", "c 13:* rw"],
                           ["nfc-agent-data:/data", "nfc-agent-data:/app/nfc-agent/data",
                            "/run/pcscd:/run/pcscd:ro",
                            "/dev/bus/usb:/dev/bus/usb:ro", "/dev/input:/dev/input:ro"]),
-            "barcode-agent": (["20"], ["c 166:* rw", "c 188:* rw"], ["/dev:/dev:ro"]),
-            "torque-agent": (["104"], ["c 13:* rw"],
+            "barcode-agent": (["24"], ["c 166:* rw", "c 188:* rw"], ["/dev:/dev:ro"]),
+            "torque-agent": (["996"], ["c 13:* rw"],
                              ["torque-agent-data:/data", "/dev/input:/dev/input:ro",
                               "/run/torque-bluetooth-guard:/run/torque-bluetooth-guard"]),
         }
@@ -101,12 +107,25 @@ class ClientAgentContractMatrixTest(unittest.TestCase):
                 for value in (None, False, True, "false", "true"):
                     variables = {} if value is None else {"client_agents_hardened": value}
                     hardened = value is True or value == "true"
-                    rendered = yaml.safe_load(template.render(
+                    render_variables = dict(
                         release_kiosk_services=selected,
                         release_kiosk_project_dir=TERMINAL_REPOSITORY,
                         release_kiosk_compose_images={name: f"fixture/{name}:test" for name in selected},
                         **variables,
-                    ))
+                    )
+                    if hardened:
+                        for gids in (None, {}, {"plugdev": "64", "dialout": "24"}):
+                            if gids is not None:
+                                render_variables["release_kiosk_hardened_gids"] = gids
+                            # Missing input only affects services requiring that group.
+                            if gids and "nfc-agent" not in selected and "torque-agent" not in selected:
+                                continue
+                            with self.assertRaisesRegex(UndefinedError, "Hardened agents require host"):
+                                template.render(**render_variables)
+                        render_variables["release_kiosk_hardened_gids"] = {
+                            "plugdev": "64", "dialout": "24", "input": "996",
+                        }
+                    rendered = yaml.safe_load(template.render(**render_variables))
                     self.assertEqual(set(rendered["services"]), set(selected))
                     expected_volumes = {
                         name: None for name in ("nfc-agent-data", "torque-agent-data")
