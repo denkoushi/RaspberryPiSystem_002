@@ -46,6 +46,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'onComple
   colorBySeiban?: boolean;
   focusedSeiban: string | null;
   onFocusedSeibanChange: (seiban: string | null) => void;
+  sharedSeibanLegend?: boolean;
   seibanOrder?: readonly string[];
   layout: GanttLayout;
   scale: number;
