@@ -28,12 +28,38 @@ export const resourcePartMinutesSchema = z.object({
   perUnitMinutes: z.number().finite().min(0).max(100000).nullable(),
   setupMinutes: z.number().int().min(0).max(100000),
   expectedOpIds: z.array(z.string()).max(20).optional(),
+  expectedMinutes: z.object({
+    perUnitMinutes: z.number().finite().min(0).max(100000),
+    setupMinutes: z.number().int().min(0).max(100000),
+    ops: z.array(resourcePartOpMinutesSchema.extend({ setupMinutes: z.number().int().min(0).max(100000).nullable() })).max(20)
+      .refine((ops) => new Set(ops.map((op) => op.opNo)).size === ops.length)
+  }).nullable().optional(),
   ops: z.array(resourcePartOpMinutesSchema).max(20).optional()
 }).refine((value) => !value.ops || new Set(value.ops.map((op) => op.opNo)).size === value.ops.length,
   { message: '工程番号が重複しています' })
   .refine((value) => !value.ops?.length || value.perUnitMinutes !== null, { message: '工程には品番の時間が必要です' })
   .refine((value) => (value.ops?.reduce((sum, op) => sum + op.minutes, 0) ?? 0) <= 100000,
     { message: '工程の合計時間は100000分以下で指定してください' });
+
+type MinutesSnapshot = NonNullable<GrindingPlanningBoardResourcePartMinutesRequest['expectedMinutes']>;
+function resolveOperations(
+  ops: GrindingPlanningBoardResourcePartMinutesRequest['ops'],
+  previousOps: MinutesSnapshot['ops'],
+  setupMinutes: number
+): MinutesSnapshot['ops'] {
+  const nextOps = ops?.map((op) => ({
+    ...op,
+    setupMinutes: op.setupMinutes === undefined
+      ? previousOps.find((previous) => previous.opNo === op.opNo)?.setupMinutes ?? null
+      : op.setupMinutes
+  })) ?? previousOps;
+  if (ops?.length && !ops.some((op) => Object.prototype.hasOwnProperty.call(op, 'setupMinutes')) &&
+    nextOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) !== setupMinutes) {
+    const first = Math.min(...nextOps.map((op) => op.opNo));
+    nextOps.forEach((op) => { op.setupMinutes = op.opNo === first ? setupMinutes : null; });
+  }
+  return nextOps;
+}
 
 type MinutesClient = Pick<Prisma.TransactionClient,
   'productionScheduleGrindingPlanningBoardResourceMinutesSource' | 'productionScheduleGrindingPlanningBoardResourcePartMinutes'>;
@@ -72,23 +98,55 @@ export async function updateGrindingPlanningBoardResourceMinutesSource(
 export async function updateGrindingPlanningBoardResourcePartMinutes(
   params: GrindingPlanningBoardResourcePartMinutesRequest & { siteKey: string }
 ): Promise<GrindingPlanningBoardResourceMinutesResponse> {
-  const { resourceCd, fhincd, perUnitMinutes, setupMinutes, ops, expectedOpIds } = resourcePartMinutesSchema.parse(params);
+  const { resourceCd, fhincd, perUnitMinutes, setupMinutes, ops, expectedOpIds, expectedMinutes } = resourcePartMinutesSchema.parse(params);
   const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, resourceCd, fhincd };
-  const savedOps = await prisma.$transaction(async (tx) => {
-    const keys = expectedOpIds !== undefined || ops !== undefined || perUnitMinutes === null ? await lockOperationDefinitionPieces(tx, fhincd) : [];
-    if (expectedOpIds !== undefined) {
+  const result = await prisma.$transaction(async (tx) => {
+    const keys = await lockOperationDefinitionPieces(tx, fhincd);
+    if (expectedOpIds !== undefined || expectedMinutes !== undefined) {
       const current = await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findUnique({
         where: { csvDashboardId_siteKey_resourceCd_fhincd: key }, include: { ops: true }
       });
       const ids = (values: string[]) => JSON.stringify([...new Set(values)].sort());
-      if (ids(expectedOpIds) !== ids(current?.ops.map((op) => op.id) ?? [])) {
-        throw new ApiError(409, '他の端末で工程が変わりました。表を開き直してください', undefined, 'OPERATION_SET_CHANGED');
+      const idsChanged = expectedOpIds !== undefined && ids(expectedOpIds) !== ids(current?.ops.map((op) => op.id) ?? []);
+      const close = (left: number, right: number) => Math.abs(left - right) <= 1e-6;
+      const matchesCurrent = (minutes: MinutesSnapshot | null) => minutes === null ? !current : current &&
+        close(minutes.perUnitMinutes, current.perUnitMinutes) && close(minutes.setupMinutes, current.setupMinutes) &&
+        minutes.ops.length === current.ops.length && minutes.ops.every((op) => {
+          const saved = current.ops.find((entry) => entry.opNo === op.opNo);
+          return saved && close(op.minutes, saved.minutes) &&
+            (op.setupMinutes === null || saved.setupMinutes === null ? op.setupMinutes === saved.setupMinutes : close(op.setupMinutes, saved.setupMinutes));
+        });
+      const minutesChanged = expectedMinutes !== undefined && !matchesCurrent(expectedMinutes);
+      if (idsChanged || minutesChanged) {
+        const nextOps = resolveOperations(ops, current?.ops ?? [], setupMinutes);
+        const operationMinutes = nextOps.reduce((sum, op) => sum + op.minutes, 0);
+        const operationSetup = nextOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0);
+        const legacyMatches = ops !== undefined || !nextOps.length ||
+          (perUnitMinutes !== null && close(perUnitMinutes, operationMinutes) && setupMinutes === operationSetup);
+        const intended = perUnitMinutes === null ? null : {
+          perUnitMinutes: nextOps.length ? operationMinutes : perUnitMinutes,
+          setupMinutes: nextOps.length ? operationSetup : setupMinutes,
+          ops: nextOps
+        };
+        const identicalRetry = legacyMatches && matchesCurrent(intended);
+        if (identicalRetry && ops !== undefined) {
+          return { ops: [...(current?.ops ?? [])].sort((a, b) => a.opNo - b.opNo), minutes: current ? {
+            perUnitMinutes: current.perUnitMinutes, setupMinutes: current.setupMinutes,
+            ops: current.ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes }))
+          } : null };
+        }
+        if (idsChanged) {
+          throw new ApiError(409, '他の端末で工程が変わりました。表を開き直してください', undefined, 'OPERATION_SET_CHANGED');
+        }
+        if (!identicalRetry) {
+          throw new ApiError(409, '他の端末で加工時間が変わりました。表を開き直してください', undefined, 'RESOURCE_MINUTES_CHANGED');
+        }
       }
     }
     if (perUnitMinutes === null) {
       await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: key });
       await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, []);
-      return [];
+      return { ops: [], minutes: null };
     }
     // An omitted ops field preserves registered operations for existing clients.
     const saved = await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert({
@@ -99,17 +157,7 @@ export async function updateGrindingPlanningBoardResourcePartMinutes(
     if (ops === undefined && saved.ops.length && Math.abs(perUnitMinutes - saved.ops.reduce((sum, op) => sum + op.minutes, 0)) > 1e-6) {
       throw new ApiError(400, '工程の合計時間と一致しません。工程表を更新してください', undefined, 'OPERATION_MINUTES_MISMATCH');
     }
-    const nextOps = ops?.map((op) => ({
-      ...op,
-      setupMinutes: op.setupMinutes === undefined
-        ? saved.ops.find((previous) => previous.opNo === op.opNo)?.setupMinutes ?? null
-        : op.setupMinutes
-    })) ?? saved.ops;
-    if (ops?.length && !ops.some((op) => Object.prototype.hasOwnProperty.call(op, 'setupMinutes')) &&
-      nextOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) !== setupMinutes) {
-      const first = Math.min(...nextOps.map((op) => op.opNo));
-      nextOps.forEach((op) => { op.setupMinutes = op.opNo === first ? setupMinutes : null; });
-    }
+    const nextOps = resolveOperations(ops, saved.ops, setupMinutes);
     const operationSetup = nextOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0);
     if (operationSetup > 100000) {
       throw new ApiError(400, '工程の段取りの合計時間は100000分以下で指定してください');
@@ -142,10 +190,15 @@ export async function updateGrindingPlanningBoardResourcePartMinutes(
     if (ops !== undefined && !sameOpNos(saved.ops, ops)) {
       await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, nextOps.map((op) => op.opNo));
     }
-    return tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany({
+    const savedOps = await tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany({
       where: { partMinutesId: saved.id }, select: { id: true, opNo: true }, orderBy: { opNo: 'asc' }
     });
+    return { ops: savedOps, minutes: {
+      perUnitMinutes: nextOps.length ? nextOps.reduce((sum, op) => sum + op.minutes, 0) : perUnitMinutes,
+      setupMinutes: nextOps.length ? operationSetup : setupMinutes,
+      ops: nextOps.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes }))
+    } };
   }, { timeout: 30000, maxWait: 15000 });
   return { ...await getGrindingPlanningBoardResourceMinutes(params),
-    savedOpIds: savedOps.map((op) => op.id), savedOpNos: savedOps.map((op) => op.opNo) };
+    savedOpIds: result.ops.map((op) => op.id), savedOpNos: result.ops.map((op) => op.opNo), savedMinutes: result.minutes };
 }

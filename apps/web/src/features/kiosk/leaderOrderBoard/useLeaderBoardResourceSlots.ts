@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { filterLeaderBoardSlotResourceCds } from './applyOrderedResourceCdsToSlots';
 import {
@@ -9,6 +9,7 @@ import {
   leaderBoardSlotStorageKey
 } from './constants';
 import { isLeaderBoardExcludedResourceSlotCd } from './isLeaderBoardExcludedResourceSlotCd';
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 
 type Persisted = {
   schemaVersion: number;
@@ -51,7 +52,7 @@ function loadPersisted(storageKey: string): Persisted | null {
   if (typeof window === 'undefined') {
     return null;
   }
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = readLeaderBoardLocalStorage(storageKey);
   if (!raw) {
     return null;
   }
@@ -118,12 +119,18 @@ export function useLeaderBoardResourceSlots({
   );
   const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
 
+  const restoredStorageKey = useRef<string | null>(null);
+  const lastWriteSucceeded = useRef(true);
+
   useEffect(() => {
+    const sameScope = restoredStorageKey.current === storageKey;
+    restoredStorageKey.current = storageKey;
+    if (sameScope && !lastWriteSucceeded.current) return;
     const persisted = loadPersisted(storageKey);
     if (persisted) {
       setSlotCountState(persisted.slotCount);
       setResourceCdBySlotIndex(persisted.resourceCdBySlotIndex);
-    } else {
+    } else if (!sameScope) {
       const init = defaultStateFromFallback(fallbackResourceCds);
       setSlotCountState(init.slotCount);
       setResourceCdBySlotIndex(init.resourceCdBySlotIndex);
@@ -140,7 +147,7 @@ export function useLeaderBoardResourceSlots({
       slotCount,
       resourceCdBySlotIndex
     };
-    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+    lastWriteSucceeded.current = writeLeaderBoardLocalStorage(storageKey, JSON.stringify(payload));
   }, [hydratedStorageKey, resourceCdBySlotIndex, slotCount, storageKey]);
 
   const activeResourceCds = useMemo(

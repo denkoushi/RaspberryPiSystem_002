@@ -22,6 +22,7 @@ type PieceActions = {
   completionPendingParentIds?: ReadonlySet<string>;
   onSplit: (item: GrindingPlanningBoardItem, quantities: number[]) => Promise<void>;
   onMerge: (items: GrindingPlanningBoardItem[]) => Promise<void>;
+  onOpCompletion?: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo: number) => Promise<void>;
   onRemoved?: (item: GrindingPlanningBoardItem) => void;
 };
 
@@ -36,8 +37,9 @@ const EMPTY_SELECTED_PIECES: ReadonlyMap<string, GrindingPlanningBoardItem[]> = 
 const PIECE_COLORS = ['bg-sky-400', 'bg-violet-400', 'bg-amber-500', 'bg-pink-400', 'bg-green-400', 'bg-rose-400'];
 const PIECE_BORDERS = ['border-t-sky-400', 'border-t-violet-400', 'border-t-amber-500', 'border-t-pink-400', 'border-t-green-400', 'border-t-rose-400'];
 
-export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved }: {
+export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceCategories, selectedItems, changePieces, completionPendingParentIds, ready = true, blocked = false, blockedMessage = '保存中…', blockedIsError = false, onRemoved, onOpCompletion }: {
   onRemoved?: (item: GrindingPlanningBoardItem) => void;
+  onOpCompletion?: PieceActions['onOpCompletion'];
   createEnabled: boolean;
   enabled: boolean;
   resourceCategories: Record<string, GrindingPlanningBoardCategory> | undefined;
@@ -62,6 +64,8 @@ export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceC
     },
     getBlocking: () => blockingStore.current.value
   }), []);
+  const opCompletionRef = useRef(onOpCompletion);
+  opCompletionRef.current = onOpCompletion;
   const changePiecesRef = useRef(changePieces);
   changePiecesRef.current = changePieces;
   const selectedItemsByParent = useMemo(() => {
@@ -76,6 +80,7 @@ export function usePlanningBoardPieceActions({ createEnabled, enabled, resourceC
     ...blockingAccess, onRemoved, createEnabled, enabled,
     isCutting: (item: GrindingPlanningBoardItem) => resourceCategories?.[item.originalResourceCd ?? ''] === 'cutting',
     selectedItemsByParent, completionPendingParentIds,
+    onOpCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo: number) => opCompletionRef.current?.(item, intent, opNo) ?? Promise.resolve(),
     onSplit: (item: GrindingPlanningBoardItem, quantities: number[]) => changePiecesRef.current([item], quantities),
     onMerge: (items: GrindingPlanningBoardItem[]) => changePiecesRef.current(items)
   }), [blockingAccess, onRemoved, createEnabled, enabled, resourceCategories, selectedItemsByParent, completionPendingParentIds]);
@@ -128,7 +133,8 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
     typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2);
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
-  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge);
+  const canCompleteOp = item.kind === 'piece' && Boolean(item.ops?.length) && item.completionSource !== 'import';
+  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp);
   if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
@@ -141,13 +147,34 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   </span>;
 }
 
-function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disabled, open, setOpen, variant }: {
+type PiecePopoverControlProps = {
   variant: 'table' | 'gantt'; item: GrindingPlanningBoardItem; actions: PieceActions; canSplit: boolean;
   mergeItems?: GrindingPlanningBoardItem[]; label: string; disabled: boolean; open: boolean; setOpen: (open: boolean) => void;
-}) {
+};
+
+function PiecePopoverControl(props: PiecePopoverControlProps) {
+  const { item, actions, label, disabled, open, setOpen, variant } = props;
+  const { gate, frozen } = usePlanningBoardOffline();
+  const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
+  const operable = !disabled && ready;
+  const removalRef = useRef({ item, onRemoved: actions.onRemoved, open });
+  removalRef.current = { item, onRemoved: actions.onRemoved, open };
+  useEffect(() => () => {
+    const current = removalRef.current;
+    if (current.open) current.onRemoved?.(current.item);
+  }, []);
+  return <>
+    <button type="button" data-planning-board-quantity-item={item.itemId} aria-disabled={frozen || undefined} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
+      aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
+      onClick={() => { if (!gate.attempt()) return; setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
+    {open && <PiecePopoverDialog {...props} disabled={!operable} />}
+  </>;
+}
+
+function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, open, setOpen }: PiecePopoverControlProps) {
   const { gate, frozen } = usePlanningBoardOffline();
   const quantity = item.plannedQuantity;
-  const [showSplit, setShowSplit] = useState(canSplit);
+  const [showSplit] = useState(canSplit);
   const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
   useEffect(() => {
     if (open && typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2) {
@@ -175,14 +202,7 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
     const timer = window.setTimeout(() => setBackdropReady(true), 350);
     return () => window.clearTimeout(timer);
   }, [open]);
-  const removalRef = useRef({ item, onRemoved: actions.onRemoved, open });
-  removalRef.current = { item, onRemoved: actions.onRemoved, open };
-  useEffect(() => () => {
-    const current = removalRef.current;
-    if (current.open) current.onRemoved?.(current.item);
-  }, []);
-  const ready = useSyncExternalStore(actions.subscribeBlocking, () => actions.getBlocking().ready !== false);
-  const operable = !disabled && ready;
+  const operable = !disabled;
   const close = () => setOpen(false);
   const validSplit = canSplit && quantities.length >= 2 && quantities.length <= 2000 && quantities.every((value) => Number.isSafeInteger(value) && value > 0 && value <= 2_147_483_647) &&
     quantities.reduce((total, value) => total + value, 0) === quantity;
@@ -210,12 +230,24 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
       if (generation === gate.generation()) setPending(false);
     }
   };
-  return <>
-    <button type="button" data-planning-board-quantity-item={item.itemId} aria-disabled={frozen || undefined} disabled={!operable} aria-label={`${item.fhinmei ?? item.fhincd}の数量 ${label}`}
-      aria-haspopup="dialog" aria-expanded={open} className={`min-h-11 min-w-11 rounded px-1 tabular-nums disabled:border-transparent ${variant === 'gantt' ? 'border-2 border-sky-400 bg-sky-900' : 'border border-slate-600'}`}
-      onClick={() => { if (!gate.attempt()) return; setShowSplit(canSplit); setCount(2); setFailure(null); setBackdropReady(false); setOpen(true); }}>{label}{variant === 'gantt' && <span aria-hidden="true"> ▾</span>}</button>
-    {open && <PieceDialog actions={actions} showSplit={showSplit && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
+  const toggleOp = async (opNo: number, completed: boolean) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
+    if (pending || !backdropReady || !operable || actions.getBlocking().blocked) return;
+    setPending(true);
+    try { await actions.onOpCompletion?.(item, completed ? 'incomplete' : 'complete', opNo); }
+    finally { if (generation === gate.generation()) setPending(false); }
+  };
+  return <PieceDialog actions={actions} showSplit={showSplit && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
+        {item.kind === 'piece' && [...(item.ops ?? [])].sort((a, b) => a.opNo - b.opNo).map((op) => {
+          const completed = item.completedOpNos?.includes(op.opNo) ?? false;
+          return <button key={op.opNo} type="button" aria-label={`工程${op.opNo}を${completed ? '未完了' : '完了'}にする`} aria-pressed={completed}
+            disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void toggleOp(op.opNo, completed); }}
+            className={`min-h-11 rounded border px-2 text-left tabular-nums disabled:opacity-40 ${completed ? 'border-slate-600 bg-slate-600 text-slate-300' : 'border-sky-400 bg-sky-900'}`}>
+            {op.opNo}<span aria-hidden="true" className="float-right">{completed ? '✓' : '○'}</span>
+          </button>;
+        })}
         {showSplit && actions.createEnabled && <>
           <div role="group" aria-label="分け数" className="grid grid-cols-5 gap-1">
             {[2, 3, 4, 5, 6].map((value) => <button key={value} type="button" aria-label={`${value}つに分ける数`} aria-pressed={count === value}
@@ -245,8 +277,7 @@ function PiecePopoverControl({ item, actions, canSplit, mergeItems, label, disab
         </>}
         {mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
       </div>}
-    </PieceDialog>}
-  </>;
+    </PieceDialog>;
 }
 
 function PieceDialog({ actions, showSplit, pending, disabled, failure, backdropReady, onClose, children }: {

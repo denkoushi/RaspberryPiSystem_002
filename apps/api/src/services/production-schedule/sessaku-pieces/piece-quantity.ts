@@ -118,11 +118,13 @@ async function saveQuantityPlan(tx: Prisma.TransactionClient, set: SessakuPieceS
   // Move survivors out of the position range before a changed source order is applied.
   const moved = plan.pieces.some((piece) => { const old = set.pieces.find((old) => old.id === piece.id); return old && old.position !== piece.position; });
   if (moved) await tx.productionScheduleSessakuPiece.updateMany({ where: { pieceSetId: set.id }, data: { position: { increment: Math.max(set.nextPosition, ...set.pieces.map((piece) => piece.position), ...plan.pieces.map((piece) => piece.position)) + plan.pieces.length + 1 } } });
+  const added = plan.pieces.filter((piece) => !set.pieces.some((old) => old.id === piece.id));
   for (const piece of plan.pieces) {
     const old = set.pieces.find((old) => old.id === piece.id);
-    if (!old) await tx.productionScheduleSessakuPiece.create({ data: { ...piece, completedAt: piece.isCompleted ? new Date() : null, pieceSetId: set.id, sourcePieceId: sources?.get(piece.id) } });
-    else if (moved || old.quantity !== piece.quantity) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { quantity: piece.quantity, position: piece.position } });
+    if (old && (moved || old.quantity !== piece.quantity)) await tx.productionScheduleSessakuPiece.update({ where: { id: piece.id }, data: { quantity: piece.quantity, position: piece.position } });
   }
+  if (added.length) await tx.productionScheduleSessakuPiece.createMany({ data: added.map((piece) => ({ ...piece,
+    completedAt: piece.isCompleted ? new Date() : null, pieceSetId: set.id, sourcePieceId: sources?.get(piece.id) })) });
   await tx.productionScheduleSessakuPieceSet.update({ where: { id: set.id }, data: { plannedQuantity, quantityWarning: plan.quantityWarning, nextPosition: plan.nextPosition, version: { increment: 1 } } });
   return true;
 }
@@ -169,9 +171,17 @@ async function readUnitSplitEnabled(tx: Prisma.TransactionClient, set: SessakuPi
 }
 
 /** Caller holds all related logical locks. Progress for the requested row is published by its caller. */
-export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null, consolidateUnfinished = false): Promise<boolean> {
-  const set = await readSessakuPieceSet(tx, key);
+export async function reconcileSessakuPieceQuantities(tx: Prisma.TransactionClient, key: SessakuPieceLogicalKey, nextTotal: number | null, consolidateUnfinished = false,
+  initialLinkedSource?: { set: SessakuPieceSet; plannedQuantity: number | null; target?: SessakuPieceSet }): Promise<boolean> {
+  const set = initialLinkedSource?.target ?? await readSessakuPieceSet(tx, key);
   if (!set || !set.pieces.length && !set.sourcePieceSetId) return false;
+  // The split caller already locked and checked this unfinished winner and its source.
+  // Reuse those facts for an empty linked set instead of re-reading both CSV rows per process.
+  if (initialLinkedSource && !set.pieces.length && set.sourcePieceSetId === initialLinkedSource.set.id) {
+    const total = nextTotal ?? initialLinkedSource.plannedQuantity ?? initialLinkedSource.set.pieces.reduce((sum, piece) => sum + piece.quantity, 0);
+    const plan = planLaterProcessPieceQuantities([], initialLinkedSource.set.pieces, total, false, set.nextPosition, consolidateUnfinished);
+    return saveQuantityPlan(tx, set, plan, total, new Map(plan.pieces.map((piece) => [piece.id, piece.sourcePieceId])));
+  }
   const records = await tx.productionScheduleSessakuPieceOpCompletion.findMany({
     where: { piece: { pieceSet: { csvDashboardId: set.csvDashboardId, fseiban: key.fseiban, fhincd: key.fhincd } } },
     select: { pieceId: true, piece: { select: { sourcePieceId: true } } }

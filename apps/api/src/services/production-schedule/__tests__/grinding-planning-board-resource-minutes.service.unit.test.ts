@@ -33,6 +33,121 @@ describe('resource minutes storage', () => {
       productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops
     }));
   });
+  it('waits for the common lock before a legacy write without checking a baseline', async () => {
+    let unlock!: () => void;
+    vi.mocked(lockOperationDefinitionPieces).mockReturnValueOnce(new Promise((resolve) => { unlock = () => resolve([]); }));
+    const saving = updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value });
+    expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
+    expect(mocks.values.upsert).not.toHaveBeenCalled();
+    expect(mocks.values.findUnique).not.toHaveBeenCalled();
+    unlock();
+    await expect(saving).resolves.toMatchObject({ savedOpIds: [], savedOpNos: [], savedMinutes: { perUnitMinutes: value.perUnitMinutes, setupMinutes: value.setupMinutes, ops: [] } });
+    expect(mocks.values.upsert).toHaveBeenCalledTimes(1);
+    expect(mocks.values.findUnique).not.toHaveBeenCalled();
+  });
+  it.each(['unit', 'setup', 'op-unit', 'op-setup', 'created', 'deleted'])('rejects stale saved values: %s', async (field) => {
+    const baseline = { perUnitMinutes: 3, setupMinutes: 10, ops: [{ opNo: 1, minutes: 3, setupMinutes: 10 }] };
+    const current = structuredClone(baseline);
+    if (field === 'unit') current.perUnitMinutes = 4;
+    if (field === 'setup') current.setupMinutes = 15;
+    if (field === 'op-unit') current.ops[0].minutes = 4;
+    if (field === 'op-setup') current.ops[0].setupMinutes = 15;
+    mocks.values.findUnique.mockResolvedValue(field === 'deleted' ? null : { ...current, ops: current.ops.map((op) => ({ ...op, id: 'op-1' })) });
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+      expectedMinutes: field === 'created' ? null : baseline,
+      ...(!['created', 'deleted'].includes(field) ? { expectedOpIds: ['op-1'] } : {})
+    })).rejects.toMatchObject({ statusCode: 409, code: 'RESOURCE_MINUTES_CHANGED' });
+    expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
+    for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.ops.update, mocks.ops.createMany, mocks.ops.deleteMany, mocks.values.update]) expect(write).not.toHaveBeenCalled();
+  });
+  it.each(['operations', 'no-operations', 'cleared-operations', 'legacy-operations', 'legacy-allocation', 'deleted'] as const)(
+    'accepts only identical retries with a stale baseline: %s', async (kind) => {
+      const withOps = ['operations', 'legacy-operations', 'legacy-allocation'].includes(kind);
+      const ops = withOps ? [
+        { id: 'op-1', opNo: 1, minutes: 2, setupMinutes: 5 },
+        { id: 'op-2', opNo: 2, minutes: 3, setupMinutes: null }
+      ] : [];
+      const current = kind === 'deleted' ? null : { perUnitMinutes: 5, setupMinutes: 5, ops };
+      mocks.values.findUnique.mockResolvedValue(current);
+      mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops });
+      mocks.ops.findMany.mockResolvedValue(ops);
+      const request = { siteKey: key.siteKey, ...value,
+        perUnitMinutes: kind === 'deleted' ? null : 5, setupMinutes: 5,
+        expectedMinutes: { perUnitMinutes: 1, setupMinutes: 0, ops: [] },
+        expectedOpIds: ops.map((op) => op.id),
+        ...(kind === 'operations' ? { ops: ops.map((op) => ({ ...op, setupMinutes: op.setupMinutes })) }
+          : kind === 'legacy-allocation' ? { ops: ops.map((op) => ({ opNo: op.opNo, minutes: op.minutes })) }
+          : kind === 'cleared-operations' ? { ops: [] } : {})
+      };
+      await expect(updateGrindingPlanningBoardResourcePartMinutes(request)).resolves.toMatchObject({
+        savedMinutes: current === null ? null : { perUnitMinutes: 5, setupMinutes: 5,
+          ops: ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes })) }
+      });
+      expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
+      for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.values.update, mocks.ops.update]) write.mockClear();
+      const different = kind === 'deleted' ? { perUnitMinutes: 6 } : { setupMinutes: 6 };
+      await expect(updateGrindingPlanningBoardResourcePartMinutes({ ...request, ...different,
+        ...(kind === 'operations' ? { ops: ops.map((op) => ({ ...op, setupMinutes: op.opNo === 1 ? 6 : null })) } : {})
+      })).rejects.toMatchObject({ statusCode: 409, code: 'RESOURCE_MINUTES_CHANGED' });
+      for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.values.update, mocks.ops.update]) expect(write).not.toHaveBeenCalled();
+    }
+  );
+  it.each(['addition', 'replacement', 'deletion'] as const)('accepts an identical operation-set retry without writes: %s', async (kind) => {
+    const ops = kind === 'deletion' ? [] : [{ id: 'new-1', opNo: 1, minutes: 5, setupMinutes: 5 }];
+    const current = kind === 'deletion' ? null : { perUnitMinutes: 5, setupMinutes: 5, ops };
+    mocks.values.findUnique.mockResolvedValue(current);
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+      perUnitMinutes: kind === 'deletion' ? null : 5, setupMinutes: 5, ops,
+      expectedMinutes: null, expectedOpIds: kind === 'addition' ? [] : ['old-1']
+    })).resolves.toMatchObject({ savedOpIds: ops.map((op) => op.id), savedOpNos: ops.map((op) => op.opNo),
+      savedMinutes: current === null ? null : { perUnitMinutes: 5, setupMinutes: 5, ops: [{ opNo: 1, minutes: 5, setupMinutes: 5 }] } });
+    for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.values.update, mocks.ops.update,
+      mocks.ops.createMany, mocks.ops.deleteMany, reconcileOperationDefinitionPieces]) expect(write).not.toHaveBeenCalled();
+  });
+  it.each(['unit', 'setup', 'op-unit', 'op-setup', 'op-number', 'row'])(
+    'rejects an operation-set retry with different content: %s', async (field) => {
+      mocks.values.findUnique.mockResolvedValue(field === 'row' ? null : {
+        perUnitMinutes: field === 'unit' ? 6 : 5, setupMinutes: field === 'setup' ? 6 : 5,
+        ops: [{ id: 'new-1', opNo: field === 'op-number' ? 2 : 1,
+          minutes: field === 'op-unit' ? 6 : 5, setupMinutes: field === 'op-setup' ? 6 : 5 }]
+      });
+      await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+        perUnitMinutes: 5, setupMinutes: 5, ops: [{ opNo: 1, minutes: 5, setupMinutes: 5 }],
+        expectedMinutes: null, expectedOpIds: ['old-1']
+      })).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SET_CHANGED' });
+      expect(mocks.values.upsert).not.toHaveBeenCalled();
+    }
+  );
+  it('returns summed savedMinutes for a legacy request preserving registered operations', async () => {
+    const ops = [{ id: 'op-1', opNo: 1, minutes: 1.25, setupMinutes: 10 },
+      { id: 'op-2', opNo: 2, minutes: 2.5, setupMinutes: 20 }];
+    mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops });
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+      perUnitMinutes: 3.7500005
+    })).resolves.toMatchObject({ savedMinutes: { perUnitMinutes: 3.75, setupMinutes: 30,
+      ops: ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes })) } });
+  });
+  it.each([0, 0.0000005, -0.0000005])('accepts matching unordered values within tolerance: %s', async (delta) => {
+    const ops = [{ opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 2, minutes: 2, setupMinutes: 5 }];
+    mocks.values.findUnique.mockResolvedValue({ perUnitMinutes: 3 + delta, setupMinutes: 5, ops: ops.map((op) => ({ ...op, minutes: op.minutes + delta })) });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+      expectedMinutes: { perUnitMinutes: 3, setupMinutes: 5, ops: [...ops].reverse() } });
+    expect(mocks.values.upsert).toHaveBeenCalledTimes(1);
+  });
+  it('accepts an unregistered baseline and returns null after deletion', async () => {
+    mocks.values.findUnique.mockResolvedValue(null);
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
+      expectedMinutes: null, perUnitMinutes: null })).resolves.toMatchObject({ savedMinutes: null });
+  });
+  it.each([
+    { perUnitMinutes: -1, setupMinutes: 0, ops: [] },
+    { perUnitMinutes: 1, setupMinutes: 0.5, ops: [] },
+    { perUnitMinutes: 1, setupMinutes: 0, ops: [{ opNo: 1, minutes: 1 }] },
+    { perUnitMinutes: 1, setupMinutes: 0, ops: [{ opNo: 1, minutes: 1, setupMinutes: null }, { opNo: 1, minutes: 1, setupMinutes: null }] }
+  ])('validates the baseline before locking: %j', async (expectedMinutes) => {
+    await expect(updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, expectedMinutes } as never)).rejects.toThrow();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
   it.each([0, 10, null])('rejects stale IDs without ops or writes, perUnitMinutes: %s', async (perUnitMinutes) => {
     mocks.values.findUnique.mockResolvedValue({ ops: [{ id: 'remote-1', opNo: 1 }, { id: 'remote-2', opNo: 2 }] });
     await expect(updateGrindingPlanningBoardResourcePartMinutes({
@@ -47,10 +162,10 @@ describe('resource minutes storage', () => {
     let unlock!: () => void;
     vi.mocked(lockOperationDefinitionPieces).mockReturnValueOnce(new Promise((resolve) => { unlock = () => resolve([]); }));
     const ops = [{ id: 'op-1', opNo: 1, minutes: 10, setupMinutes: 30 }];
-    mocks.values.findUnique.mockResolvedValue({ ops });
+    mocks.values.findUnique.mockResolvedValue({ perUnitMinutes: 10, setupMinutes: 30, ops });
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops });
     mocks.ops.findMany.mockResolvedValue(ops);
-    const saving = updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: 10, expectedOpIds: ['op-1'] });
+    const saving = updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: 10, expectedOpIds: ['op-1'], expectedMinutes: { perUnitMinutes: 10, setupMinutes: 30, ops } });
     expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
     expect(mocks.values.findUnique).not.toHaveBeenCalled();
     expect(mocks.values.upsert).not.toHaveBeenCalled();
@@ -67,7 +182,7 @@ describe('resource minutes storage', () => {
     await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, ...(omitted ? {} : { ops: [] }) });
     expect(mocks.values.findUnique).not.toHaveBeenCalled();
     expect(mocks.values.upsert).toHaveBeenCalledTimes(1);
-    if (omitted) expect(lockOperationDefinitionPieces).not.toHaveBeenCalled();
+    expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
   });
   it('returns IDs and numbers read after writes inside the transaction even when the later GET differs', async () => {
     let inTransaction = false;
@@ -98,7 +213,7 @@ describe('resource minutes storage', () => {
     expect(mocks.ops.findMany).toHaveBeenCalledExactlyOnceWith({
       where: { partMinutesId: 'part-id' }, select: { id: true, opNo: true }, orderBy: { opNo: 'asc' }
     });
-    expect(response).toEqual({ ownSourceResourceCds: [], values: remote, savedOpIds: ['created-3'], savedOpNos: [3] });
+    expect(response).toEqual({ ownSourceResourceCds: [], values: remote, savedOpIds: ['created-3'], savedOpNos: [3], savedMinutes: { perUnitMinutes: 2, setupMinutes: 0, ops: [{ opNo: 3, minutes: 2, setupMinutes: 0 }] } });
   });
   it.each([false, true])('returns empty saved operation metadata after clearing operations, row deletion: %s', async (deletion) => {
     mocks.values.findMany.mockResolvedValue([{ ...value, ops: [{ id: 'remote-2', opNo: 2, minutes: 9 }] }]);

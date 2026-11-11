@@ -9,10 +9,12 @@ import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from 
 
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
+import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 import { pieceNotchClipPath } from './planningBoardPieceNotch';
+import { buildSingleResourceWindows } from './planningBoardSingleResourceWindows';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -572,6 +574,61 @@ describe('PlanningBoardGanttView', () => {
     expect(values.onDueDrop).not.toHaveBeenCalled();
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
+  it.each(['blur', 'pointerUp', 'pointerCancel', 'lostPointerCapture', 'unmount'] as const)('removes the pan cover and blur listener on %s', (end) => {
+    const add = vi.spyOn(window, 'addEventListener');
+    const remove = vi.spyOn(window, 'removeEventListener');
+    try {
+      const { unmount } = render(<PlanningBoardGanttView {...props()} />);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      const initialLeft = viewport.scrollLeft;
+      add.mockClear();
+      fireEvent.pointerDown(viewport, { pointerId: 9, button: 1, clientX: 100, clientY: 100 });
+      const cover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+      expect(cover).toBeInTheDocument();
+      const listener = add.mock.calls.find(([type]) => type === 'blur')?.[1];
+      if (end === 'blur') fireEvent(window, new Event('blur'));
+      else if (end === 'unmount') unmount();
+      else fireEvent[end](cover, { pointerId: 9 });
+      expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+      expect(listener).toBeTypeOf('function');
+      expect(remove).toHaveBeenCalledWith('blur', listener);
+      fireEvent.pointerMove(cover, { pointerId: 9, clientX: 150, clientY: 150 });
+      expect(viewport.scrollLeft).toBe(initialLeft);
+      if (end !== 'unmount') {
+        fireEvent.pointerDown(viewport, { pointerId: 10, button: 1 });
+        expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeInTheDocument();
+        fireEvent(window, new Event('blur'));
+        expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+      }
+    } finally {
+      add.mockRestore();
+      remove.mockRestore();
+    }
+  });
+  it.each([9, 10])('ignores delayed events from the blurred pan while pointer %s pans again', (pointerId) => {
+    render(<PlanningBoardGanttView {...props()} />);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    viewport.scrollLeft = 200;
+    viewport.scrollTop = 100;
+    fireEvent.pointerDown(viewport, { pointerId: 9, button: 1, clientX: 100, clientY: 100 });
+    const oldCover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+    fireEvent(window, new Event('blur'));
+    fireEvent.pointerDown(viewport, { pointerId, button: 1, clientX: 100, clientY: 100 });
+    const cover = document.querySelector<HTMLElement>('[data-planning-gantt-pan-cover]')!;
+    expect(cover).not.toBe(oldCover);
+    fireEvent.pointerMove(oldCover, { pointerId: 9, clientX: 150, clientY: 150 });
+    for (const end of ['pointerUp', 'pointerCancel', 'lostPointerCapture'] as const) {
+      fireEvent[end](oldCover, { pointerId: 9 });
+    }
+    expect(cover).toBeInTheDocument();
+    expect(viewport.scrollLeft).toBe(200);
+    expect(viewport.scrollTop).toBe(100);
+    fireEvent.pointerMove(cover, { pointerId, clientX: 130, clientY: 120 });
+    expect(viewport.scrollLeft).toBe(170);
+    expect(viewport.scrollTop).toBe(80);
+    fireEvent.pointerUp(cover, { pointerId });
+    expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
+  });
   it.each(['backward', 'forward'] as const)('shows one small header per category in %s resource view', (mode) => {
     const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['100', '305', '584'], category: 'all', resourceCategories: { '100': 'cutting', '305': 'grinding', '584': 'grinding' },
@@ -654,6 +711,25 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  it('keeps chain navigation on the current machine during an order preview without queuing a jump', () => {
+    const values = forwardProps([item({ requiredMinutes: 60 }), item({ itemId: 'b', originalResourceCd: '306', processOrder: '20', requiredMinutes: 60 })]);
+    const change = vi.fn(); const navigate = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} singleResourceCd="305" machineSelectionLocked onSingleResourceChange={change} onNavigateBar={navigate} />);
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    const scroll = vi.fn();
+    Object.defineProperty(viewport, 'scrollTo', { configurable: true, value: scroll });
+    const strip = within(screen.getByTestId('planning-gantt-chain-strip'));
+    fireEvent.click(strip.getByRole('button', { name: /工順.*305/ }));
+    expect(scroll).toHaveBeenCalledOnce();
+    scroll.mockClear();
+    fireEvent.click(strip.getByRole('button', { name: /工順.*306/ }));
+    expect(change).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+    rerender(<PlanningBoardGanttView {...values} singleResourceCd="306" onSingleResourceChange={change} />);
+    expect(scroll).not.toHaveBeenCalled();
+  });
   it.each(['piece', 'row'] as const)('notches a single forward segment only for pieces (%s)', (kind) => {
     render(<PlanningBoardGanttView {...forwardProps([item({ kind, requiredMinutes: 60 })])} />);
     expect(screen.getByTestId('planning-gantt-bar-a').style.clipPath).toBe(kind === 'piece' ? pieceNotchClipPath({ left: true, right: true }) : '');
@@ -843,6 +919,76 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...values} layout={later} scale={2} singleResourceCd="305" />);
     expect(viewport.scrollTop).toBe(0);
   });
+  it.each([8, 10, 24] as const)('hides an entire elapsed row at %iH, retaining the current and future rows', (hours) => {
+    const values = forwardProps();
+    const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, hours);
+    const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end - 1 / 86400 }} />);
+    const rowKeys = () => [...document.querySelectorAll<HTMLElement>('[data-gantt-window-row]')].map((row) => row.dataset.ganttWindowRow);
+    const before = rowKeys();
+    expect(before[0]).toContain(`:single:${windows[0]!.key}`);
+    rerender(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end }} />);
+    expect(rowKeys()).toEqual(before.slice(1));
+    expect(rowKeys()[0]).toContain(`:single:${windows[1]!.key}`);
+  });
+  it('removes a row on the next existing clock update without remounting the view', () => {
+    vi.useFakeTimers();
+    const values = forwardProps();
+    const boundary = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, 8)[0]!.end;
+    vi.setSystemTime(new Date((boundary - 9 / 24) * 86400000 - 15000));
+    const draw = () => <PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
+      layout={{ ...values.layout, now: (Date.now() + 9 * 3600000) / 86400000 }} />;
+    const { rerender } = render(draw());
+    const first = document.querySelector('[data-gantt-window-row]')!;
+    act(() => vi.advanceTimersByTime(30000));
+    // The page supplies layout.now from its existing 30-second clock.
+    rerender(draw());
+    expect(first).not.toBeInTheDocument();
+    expect(document.querySelector('[data-gantt-window-row]')).toBeInTheDocument();
+  });
+  it('filters past calendar windows even when the display begins on an earlier day', () => {
+    const values = forwardProps();
+    const { container } = render(<PlanningBoardGanttView {...values} scale={2} singleResourceCd="305"
+      layout={{ ...values.layout, today: values.layout.today - 4, now: values.layout.today + 0.5 }} />);
+    const rows = container.querySelectorAll<HTMLElement>('[data-gantt-window-row]');
+    expect(rows[0]!.dataset.ganttWindowRow).toContain(`:single:${values.layout.today}:2`);
+  });
+  it('skips late bars in hidden rows and jumps to the first remaining segment, then safely does nothing if all rows elapsed', () => {
+    const values = forwardProps([item({ requiredMinutes: 60, originalDueDate: '2026-10-13', alternateRank: 1 }),
+      item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 600, originalDueDate: '2026-10-13', alternateRank: 2 })]);
+    const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, 8);
+    const ref = { current: null as import('./PlanningBoardGanttView').PlanningBoardGanttHandle | null };
+    const draw = (now: number) => <PlanningBoardGanttView {...values} ref={ref} scale={1} singleResourceCd="305"
+      layout={{ ...values.layout, now }} />;
+    const { rerender } = render(draw(windows[0]!.end));
+    expect(values.layout.lateCount).toBe(2);
+    expect(screen.queryByTestId('planning-gantt-bar-a')).not.toBeInTheDocument();
+    const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!.closest('[data-gantt-window-row]')!;
+    vi.spyOn(target, 'getBoundingClientRect').mockReturnValue({ top: 300 } as DOMRect);
+    const viewport = screen.getByLabelText('ガントの日付と工程');
+    act(() => ref.current!.scrollToNextLate());
+    expect(viewport.scrollTop).toBeGreaterThan(0);
+    rerender(draw(values.layout.end + 1));
+    expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
+    viewport.scrollTop = 123;
+    viewport.scrollLeft = 45;
+    act(() => ref.current!.scrollToNextLate());
+    expect(viewport.scrollTop).toBe(123);
+    expect(viewport.scrollLeft).toBe(45);
+    expect(values.layout.lateCount).toBe(2);
+  });
+  it.each(['forward', 'backward'] as const)('keeps all-resource and backward rows when time advances in %s mode', (mode) => {
+    const values = mode === 'forward' ? forwardProps() : props();
+    const draw = (now: number) => <PlanningBoardGanttView {...values} singleResourceCd={mode === 'backward' ? '305' : null}
+      layout={{ ...values.layout, now }} />;
+    const { rerender } = render(draw(values.layout.today));
+    const rows = [...document.querySelectorAll('[data-testid^="planning-gantt-bar-"]')];
+    expect(rows.length).toBeGreaterThan(0);
+    rerender(draw(values.layout.end + 1));
+    expect([...document.querySelectorAll('[data-testid^="planning-gantt-bar-"]')]).toEqual(rows);
+    expect(screen.getByTestId('planning-gantt-bar-a')).toBeInTheDocument();
+  });
   it('keeps cross-resource predecessor timing and clips a long item into distinct registered rows', () => {
     const entries = [item({ itemId: 'pre', originalResourceCd: '306', processOrder: '10', requiredMinutes: 600 }),
       item({ processOrder: '20', requiredMinutes: 1200 })];
@@ -856,6 +1002,28 @@ describe('forward PlanningBoardGanttView', () => {
     const firstRow = bars[0]!.closest('[data-gantt-window-row]');
     expect(firstRow).not.toBe(document.querySelector('[data-gantt-window-row]'));
     expect(screen.queryByTestId('planning-gantt-bar-pre')).toBeNull();
+  });
+  it.each([false, true])('keeps two-machine drag within its pane (cross machine=%s)', (crossMachine) => {
+    vi.useFakeTimers();
+    const entries = [item({ originalResourceCd: '021', requiredMinutes: 60, alternateRank: 1 }),
+      item({ itemId: 'b', originalResourceCd: crossMachine ? '022' : '021', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 }),
+      item({ itemId: 'c', originalResourceCd: '022', fhincd: 'P3', requiredMinutes: 60 })];
+    const values = forwardProps(entries);
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} scale={1} singleResourceCd="021+022"
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
+    const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!;
+    vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+    fireEvent.pointerDown(source, { clientX: 0, clientY: 20, button: 0 });
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.pointerMove(source, { clientX: 900, clientY: 150 });
+    if (crossMachine) expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    else expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
+    fireEvent.pointerUp(source, { clientX: 900, clientY: 150 });
+    expect(onResourceMove).not.toHaveBeenCalled();
+    if (crossMachine) expect(values.onResourceReorder).not.toHaveBeenCalled();
+    else expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
   });
   it('reorders across working-minute windows after a long press, showing insertion only on the target row', () => {
     vi.useFakeTimers();
@@ -2174,6 +2342,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(card).toHaveClass('outline-dashed');
     expect(screen.getByTestId(`planning-gantt-bar-${source}`)).toHaveStyle({ outline: '3px dashed rgb(251 191 36)' });
     expect(marker).toHaveClass('bg-emerald-300', placement === 'before' ? '-left-1.5' : '-right-1');
+    expect(marker.parentElement).toBe(screen.getByTestId(`planning-forward-queue-card-${target}`));
+    screen.getAllByTestId(/^planning-forward-queue-card-/).forEach((queued) => expect(queued.style.transform).toBe(''));
     fireEvent.pointerUp(card, { clientX: destination });
     expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onToggleItem).not.toHaveBeenCalled();
@@ -2306,4 +2476,18 @@ describe('forward PlanningBoardGanttView', () => {
     });
   });
 
+});
+
+it.each(['backward', 'forward', 'single'] as const)('renders setup and operation completion through the %s Gantt view', (mode) => {
+  const entry = item({ kind: 'piece', parentItemId: 'parent', unitRequiredMinutes: 60,
+    ops: [{ opNo: 20, minutes: 30 }, { opNo: 10, minutes: 10 }], completedOpNos: [10] });
+  const layout = buildPlanningBoardGanttLayout({ items: [entry], allocation: 'alternate', view: 'resource',
+    seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: mode === 'backward' ? 14 : 1,
+    now: new Date('2026-10-14T08:00:00+09:00'), mode: mode === 'backward' ? 'backward' : 'forward',
+    resourceMinutes: { ownSourceResourceCds: ['305'], values: [{ resourceCd: '305', fhincd: 'P1', perUnitMinutes: 60, setupMinutes: 15 }] } });
+  const { container } = render(<PlanningBoardGanttView {...props([entry])} layout={layout} scale={mode === 'backward' ? 14 : 1}
+    singleResourceCd={mode === 'single' ? '305' : null} />);
+  expect(container.querySelector('[data-gantt-setup]')).toBeTruthy();
+  expect(container.querySelector('[data-gantt-op="10"]')).toHaveClass('bg-slate-600');
+  expect(container.querySelector('[data-gantt-op="20"]')).not.toHaveClass('bg-slate-600');
 });

@@ -5,10 +5,11 @@ import {
   persistedLeaderBoardGanttModeStorageKey,
   type PersistedLeaderBoardGanttMode
 } from './constants';
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 
 function loadPersistedGanttMode(storageKey: string): boolean {
   if (typeof window === 'undefined') return false;
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = readLeaderBoardLocalStorage(storageKey);
   if (!raw?.trim()) return false;
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedLeaderBoardGanttMode> | null;
@@ -27,7 +28,7 @@ function persistGanttMode(storageKey: string, enabled: boolean): void {
     schemaVersion: LEADER_BOARD_GANTT_MODE_SCHEMA_VERSION,
     enabled
   };
-  window.localStorage.setItem(storageKey, JSON.stringify(body));
+  writeLeaderBoardLocalStorage(storageKey, JSON.stringify(body));
 }
 
 function readGanttModeSnapshot(storageKey: string): boolean {

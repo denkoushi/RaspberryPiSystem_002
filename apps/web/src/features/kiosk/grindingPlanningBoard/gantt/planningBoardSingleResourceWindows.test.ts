@@ -58,3 +58,24 @@ describe('single resource windows', () => {
     expect(new Set(rows.map((entry) => entry.key)).size).toBe(rows.length);
   });
 });
+
+it('clips and compresses setup and operation metadata across a six-hour window', () => {
+  const item = { itemId: 'unit', kind: 'piece', parentItemId: 'parent', fseiban: 'S1', fhincd: 'H1', processOrder: '10',
+    originalResourceCd: '305', unitRequiredMinutes: 420, requiredMinutes: 999, requiredMinutesKnown: true,
+    ops: [{ opNo: 10, minutes: 1 }, { opNo: 20, minutes: 1 }], completedOpNos: [10] } as GrindingPlanningBoardItem;
+  const layout = buildForwardPlanningBoardGanttLayout({ items: [item], allocation: 'alternate', view: 'resource',
+    seibanOrder: ['S1'], resources: ['305'], dailyHoursByResource: {}, today: '2026-11-09', now: new Date('2026-11-09T08:00:00+09:00'), scale: 1,
+    resourceMinutes: { ownSourceResourceCds: ['305'], values: [{ resourceCd: '305', fhincd: 'H1', perUnitMinutes: 420, setupMinutes: 15 }] } });
+  const row = layout.groups[0]!.rows[0]!;
+  const windows = buildSingleResourceWindows(day, day + 1, 1, 8).filter(window => window.day === day);
+  const folded = windows.flatMap(window => foldSingleResourceRow(row, window, 1440).bars);
+  expect(workingMinutes(folded.flatMap(bar => bar.setupSegments ?? []))).toBeCloseTo(15);
+  expect(workingMinutes(folded.flatMap(bar => bar.opSegments ?? []))).toBeCloseTo(420);
+  expect(folded[0]!.setupSegments![0]!.start).toBeCloseTo(folded[0]!.start!);
+  expect(folded[1]!.setupSegments).toEqual([]);
+  expect(folded.flatMap(bar => bar.opSegments ?? []).filter(op => op.opNo === 10).every(op => op.completed)).toBe(true);
+  for (const bar of folded) for (const segment of [...bar.setupSegments!, ...bar.opSegments!]) {
+    expect(segment.start).toBeGreaterThanOrEqual(bar.start! - 1e-9);
+    expect(segment.end).toBeLessThanOrEqual(bar.end! + 1e-9);
+  }
+});

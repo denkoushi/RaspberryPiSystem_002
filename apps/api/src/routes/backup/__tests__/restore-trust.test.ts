@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   findFirst: vi.fn(), download: vi.fn(), restore: vi.fn(), createProvider: vi.fn(), createTarget: vi.fn(),
   createHistory: vi.fn(), completeHistory: vi.fn(), failHistory: vi.fn(), preBackup: vi.fn()
 }));
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('../../../lib/auth.js', () => ({ authorizeRoles: () => async () => {} }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { backupHistory: { findFirst: mocks.findFirst } } }));
 vi.mock('../../../services/backup/backup-config.loader.js', () => ({
@@ -93,6 +95,17 @@ describe.each(['/backup/restore', '/backup/restore/from-dropbox'])('%s restore v
     expect(response.json().message).toBe('このバックアップは復元できません');
     expect(mocks.restore).not.toHaveBeenCalled();
     expect(mocks.failHistory).toHaveBeenCalledWith('history', 'このバックアップは復元できません');
+  });
+
+  it('records a failed database restore with the SQL error instead of completing history', async () => {
+    mocks.download.mockResolvedValue(encryptBackup(key, data));
+    const message = 'Database restore failed: ERROR: cannot drop table because other objects depend on it';
+    mocks.restore.mockRejectedValue(new ApiError(500, message));
+    const response = await restore();
+    expect(response.statusCode).toBe(500);
+    expect(response.json().message).toBe(message);
+    expect(mocks.failHistory).toHaveBeenCalledWith('history', message);
+    expect(mocks.completeHistory).not.toHaveBeenCalled();
   });
 
   it('accepts legacy plaintext based on the current database before restore begins', async () => {

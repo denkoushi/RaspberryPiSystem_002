@@ -15,7 +15,7 @@ export function useHaizenShelves() {
 export function useDeleteOrderPlacementBranch() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: deleteOrderPlacementBranch,
+    mutationFn: (id: string) => deleteOrderPlacementBranch(id),
     onSuccess: () => client.invalidateQueries({ queryKey: ['mobile-placement', 'haizen-overview'] })
   });
 }

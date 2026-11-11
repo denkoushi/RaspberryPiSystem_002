@@ -1,3 +1,4 @@
+import { deleteEmptyRowNote } from './empty-row-note.js';
 import { runDueDateTransaction } from './due-date-transaction.js';
 import type { Prisma } from '@prisma/client';
 import { resetSelfInspectionMachineBoardScheduleRowCaches } from '../part-measurement/self-inspection-machine-board-cache-invalidation.js';
@@ -243,6 +244,8 @@ export async function upsertProductionSchedulePartPriorities(params: {
   }
 
   await prisma.$transaction(async (tx) => {
+    const lockKey = JSON.stringify(['production-schedule-part-priorities', PRODUCTION_SCHEDULE_DASHBOARD_ID, locationKey, trimmedFseiban]);
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`;
     await tx.productionSchedulePartPriority.deleteMany({
       where: {
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
@@ -352,37 +355,19 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
       AND ("CsvDashboardRow"."rowData"->>'FSEIBAN') = ${fseiban}
       AND ("CsvDashboardRow"."rowData"->>'FHINCD') = ${fhincd}
   `;
-  const rowIds = targetRows.map((row) => row.rowId);
+  const rowIds = [...new Set(targetRows.map((row) => row.rowId))].sort();
   if (rowIds.length === 0) {
     throw new ApiError(404, '指定された製番内に対象部品が見つかりません');
   }
 
-  const existingNotes = await sharedScheduleFieldsRepository.findRowNotesByRowIds(
-    PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    rowIds
-  );
-  const existingByRowId = new Map(existingNotes.map((row) => [row.csvDashboardRowId, row] as const));
-
   await prisma.$transaction(async (tx) => {
     for (const rowId of rowIds) {
-      const existing = existingByRowId.get(rowId);
       if (normalizedNote.length === 0) {
-        const existingProcessing = existing?.processingType?.trim() ?? '';
-        const hasDueDate = Boolean(existing?.dueDate);
-        if (existingProcessing.length === 0 && !hasDueDate) {
-          await tx.productionScheduleRowNote.deleteMany({
-            where: {
-              csvDashboardRowId: rowId
-            }
-          });
-        } else {
-          await tx.productionScheduleRowNote.update({
-            where: {
-              csvDashboardRowId: rowId
-            },
-            data: { note: '' }
-          });
-        }
+        await tx.productionScheduleRowNote.updateMany({
+          where: { csvDashboardRowId: rowId },
+          data: { note: '' }
+        });
+        await deleteEmptyRowNote(tx, rowId);
         continue;
       }
 
@@ -393,9 +378,7 @@ export async function upsertProductionScheduleDueManagementPartNote(params: {
         create: {
           csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           csvDashboardRowId: rowId,
-          note: normalizedNote,
-          processingType: existing?.processingType ?? null,
-          dueDate: existing?.dueDate ?? null
+          note: normalizedNote
         },
         update: {
           note: normalizedNote

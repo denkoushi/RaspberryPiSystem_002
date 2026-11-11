@@ -26,52 +26,21 @@ import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, ty
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
+import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
+import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
-import type { GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-type Props = Pick<PlanningBoardGanttRowProps, 'onCompleteToggle' | 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onToggleItem' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
-  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
-  minutesPending?: boolean; minutesError?: boolean;
-  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest) => void;
-  valueSheetOpen?: boolean; onToggleValueSheet?: () => void;
-  singleResourceCd?: string | null;
-  singleResourcePickerOpen?: boolean;
-  onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
-  onSingleResourceChange?: (resource: string | null) => void;
-  onResourceReorder?: ForwardReorder;
-  onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
-  onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
-  arrivalPending?: boolean;
-  arrivalError?: boolean;
-  onResourceMove?: ForwardMove;
-  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
-  pinMode?: boolean;
-  onTogglePin?: (item: GrindingPlanningBoardItem) => void;
-  runsThroughBreaks?: ReadonlySet<string>;
-  onBreaksChange?: (resourceCd: string, runsThroughBreaks: boolean) => void;
-  colorBySeiban?: boolean;
-  focusedSeiban: string | null;
-  onFocusedSeibanChange: (seiban: string | null) => void;
-  seibanOrder?: readonly string[];
-  layout: GanttLayout;
-  scale: number;
-  /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
-  homeKey?: number;
-  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
-  resourceNameMap: Record<string, string[]>;
-  capacityPending: boolean; capacityError: boolean;
-  onCapacityChange: (resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
-  /** Device-local lane order key, shared with the resource list panes. */
-  preferenceScope?: string;
-};
-export type PlanningBoardGanttHandle = { scrollToNextOverlap: () => void; scrollToNextLate: () => void };
+export type { PlanningBoardGanttHandle } from './planningBoardGanttViewTypes';
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 const EMPTY_CHAIN: GanttBar[] = [];
 const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
@@ -97,11 +66,12 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttView({
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps>(function PlanningBoardGanttView({
   resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
-  singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
+  resourceLanes: _resourceLanes, unitSplitEnabledByResource, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
+  onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, dailyHoursByResource, resourceNameMap, capacityPending, capacityError, onCapacityChange, runsThroughBreaks, onBreaksChange,
-  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, onCompleteToggle, completionPendingItemIds,
+  focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
   const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
@@ -130,8 +100,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   // Stable row handlers must still see current callbacks and acknowledgement revisions.
   const currentBars = useMemo(() => new Map(currentLayout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
-  const latest = useRef({ interaction, currentBars });
-  useLayoutEffect(() => { latest.current = { interaction, currentBars }; });
+  const latest = useRef({ interaction, currentBars, onSelectedBarResource });
+  useLayoutEffect(() => { latest.current = { interaction, currentBars, onSelectedBarResource }; });
   const parentPieceActions = useContext(PlanningBoardPiecesContext);
   const pieceActions = useMemo(() => {
     if (!parentPieceActions) return null;
@@ -164,7 +134,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const rowActions = useMemo(() => {
     const item = (original: GrindingPlanningBoardItem) => latest.current.currentBars.get(original.itemId)?.item ?? original;
     return {
-      onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean) => latest.current.interaction.onToggleItem(item(original), selected),
+      onToggleItem: (original: GrindingPlanningBoardItem, selected: boolean, resource?: string) => {
+        if (selected && resource) latest.current.onSelectedBarResource?.(resource);
+        latest.current.interaction.onToggleItem(item(original), selected);
+      },
       onTogglePin: (original: GrindingPlanningBoardItem) => latest.current.interaction.onTogglePin?.(item(original)),
       onResourceReorder: ((original, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceReorder?.(item(original), item(target), placement); }) as ForwardReorder,
       onResourceMove: ((original, resource, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceMove?.(item(original), resource, target && item(target), placement); }) as ForwardMove,
@@ -209,13 +182,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setCompletionTargetId((current) => current === itemId ? null : itemId);
   }, []);
   const forward = layout.mode === 'forward';
-  const singleGroup = forward && singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const resourceGroup = singleResourceCd ? layout.groups.find((group) => group.resource === singleResourceCd) : undefined;
+  const singleGroup = forward ? resourceGroup : undefined;
+  const showResourceHead = Boolean(singleGroup || (fitPane && resourceGroup));
   const singleMode = Boolean(singleGroup);
   const singleItems = useMemo(() => {
-    const items = resourceMinutesItems ?? singleGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
+    const items = resourceMinutesItems ?? resourceGroup?.rows.flatMap((row) => row.bars.map((bar) => bar.item)) ?? [];
     return [...new Map(items.filter((item) => (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
       .map((item) => [item.itemId, item])).values()];
-  }, [resourceMinutesItems, singleGroup, singleResourceCd]);
+  }, [resourceMinutesItems, resourceGroup, singleResourceCd]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
   const singlePauses = !runsThroughBreaks?.has(singleResourceCd ?? '');
   const [viewportWidth, setViewportWidth] = useState(1120);
@@ -224,16 +199,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const dayWidth = Math.max(1, viewportWidth - labelWidth) / (scale === 1 ? ONE_DAY_VISIBLE_DAYS : scale);
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
-    scale, singleHours, singlePauses) : [], [singleGroup, layout.today, layout.end, scale, singleHours, singlePauses]);
-  const dayLoads = useMemo(() => {
-    const loads = new Map<number, number>();
-    for (const row of singleGroup?.rows ?? []) for (const bar of row.bars) for (const segment of bar.segments ?? []) {
-      for (let day = Math.floor(segment.start); day < segment.end - 1e-9; day++) {
-        loads.set(day, (loads.get(day) ?? 0) + Math.max(0, Math.min(day + 1, segment.end) - Math.max(day, segment.start)) * 1440 / (singleHours * 60));
-      }
-    }
-    return loads;
-  }, [singleGroup, singleHours]);
+    scale, singleHours, singlePauses).filter((window) => window.end > (layout.now ?? -Infinity) + 1e-9) : [], [singleGroup, layout.today, layout.end, layout.now, scale, singleHours, singlePauses]);
   const foldedRows = useMemo(() => new Map(singleGroup?.rows.flatMap((row) => foldedWindows.map((window) => {
     const folded = foldSingleResourceRow(row, window, dayWidth);
     return [folded.key, { row: folded, window }] as const;
@@ -264,8 +230,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     ? previousColors.current : incomingColors, [incomingColors]);
   useLayoutEffect(() => { previousColors.current = seibanColors; }, [seibanColors]);
   useEffect(() => {
-    if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors, setFocusedSeiban]);
+    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
@@ -286,35 +252,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   useLayoutEffect(() => { latestDragLanes.current = dragLanes; }, [dragLanes]);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
-  const pan = useRef<HTMLDivElement | null>(null);
-  useEffect(() => () => pan.current?.remove(), []);
-  const startPan = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.button !== 1 || event.pointerType !== 'mouse' || pan.current) return;
-    event.preventDefault();
-    const element = event.currentTarget;
-    const { pointerId, clientX: x, clientY: y } = event;
-    const left = element.scrollLeft;
-    const top = element.scrollTop;
-    // A small cover shows the hand: styling the viewport would restyle every bar first, which is slow on big boards.
-    const cover = document.createElement('div');
-    cover.dataset.planningGanttPanCover = '';
-    cover.className = 'fixed inset-0 z-[90] cursor-grabbing';
-    document.body.appendChild(cover);
-    pan.current = cover;
-    cover.setPointerCapture?.(pointerId);
-    cover.addEventListener('pointermove', (move) => {
-      if (move.pointerId !== pointerId || pan.current !== cover) return;
-      element.scrollLeft = left - (move.clientX - x) / pageZoom();
-      element.scrollTop = top - (move.clientY - y) / pageZoom();
-      move.preventDefault();
-    });
-    const end = (stop: PointerEvent) => {
-      if (stop.pointerId !== pointerId || pan.current !== cover) return;
-      pan.current = null;
-      cover.remove();
-    };
-    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) cover.addEventListener(type, end);
-  };
+  const startPan = usePlanningBoardGanttPan();
   const content = useRef<HTMLDivElement>(null);
   const rowElements = useRef(new Map<string, HTMLDivElement>());
   const registerRow = useCallback((key: string, element: HTMLDivElement | null) => {
@@ -334,7 +272,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       return [item.itemId, positions.get(key)!];
     }));
   }, [chain]);
-  const showChain = chain.length > 0 && !interaction.pinMode;
+  const showChain = chain.length > 0 && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
   }, [showChain]);
@@ -347,13 +285,44 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     observer?.observe(element);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [showChain]);
-  const sheetHeight = valueSheetOpen && singleGroup ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
-  const bottomInset = (showChain ? chainStripHeight : 0) + sheetHeight;
+  }, [showChain, valueSheetContainer]);
+  const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
+    values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
+  const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
+  useLayoutEffect(() => {
+    const pane = viewport.current;
+    if (!valueSheetContainer || !pane) return;
+    const measure = () => {
+      const containerRect = valueSheetContainer.getBoundingClientRect();
+      const paneRect = pane.getBoundingClientRect();
+      const zoom = pageZoom();
+      const next = { height: valueSheetContainer.clientHeight,
+        top: (paneRect.top - containerRect.top) / zoom, bottom: (paneRect.bottom - containerRect.top) / zoom };
+      setSharedBounds(current => current.height === next.height && current.top === next.top && current.bottom === next.bottom ? current : next);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(valueSheetContainer);
+    observer?.observe(pane);
+    return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
+  }, [valueSheetContainer]);
+  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const sharedGeometry = planningBoardSheetGeometry(sharedBounds.height, sharedBounds.top, sharedBounds.bottom,
+    sharedValueSheetOpen, showChain ? chainStripHeight : 0);
+  const chainTop = sharedBounds.height - sharedGeometry.chainBottom - chainStripHeight;
+  useLayoutEffect(() => {
+    if (!singleResourceCd || !onChainTopChange) return;
+    onChainTopChange(singleResourceCd, showChain ? chainTop : null, chainStripHeight);
+    return () => onChainTopChange(singleResourceCd, null, 0);
+  }, [singleResourceCd, onChainTopChange, showChain, chainTop, chainStripHeight]);
+  const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
+  const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
+    if (singleResourceCd) onChainFocus?.(singleResourceCd);
     setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
     setCurrentItemId(null);
-  }, []);
+  }, [onChainFocus, singleResourceCd]);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
     if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
   }, [showChain]);
@@ -374,7 +343,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
       setLegendHeight(legend.current?.offsetHeight ?? 0);
-      if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
+      if (fitPane) setViewportHeight(element.clientHeight);
+      else if (window.innerHeight > 0) setViewportHeight(Math.max(192, Math.floor((window.innerHeight - top) / pageZoom() - GANTT_BOTTOM_GAP - (legend.current?.offsetHeight ?? 0))));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -382,7 +352,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [colorBySeiban, singleResourceCd, measureWindow]);
+  }, [colorBySeiban, singleResourceCd, measureWindow, fitPane]);
   // Before paint, so the mounted window follows the new position without a blank frame.
   useLayoutEffect(() => {
     if (!viewport.current) return;
@@ -409,32 +379,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
   const nudge = (direction: 1 | -1) => {
     if (viewport.current) viewport.current.scrollLeft = Math.max(0, viewport.current.scrollLeft + direction * NUDGE_DAYS * dayWidth);
   };
-  useImperativeHandle(ref, () => ({ scrollToNextOverlap: () => {
-    const element = viewport.current;
-    const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
-    if (!element || !rows.length) return;
-    flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
-    const row = rows[flaggedIndex.current]!;
-    const rowElement = rowElements.current.get(row.key);
-    if (!rowElement) return;
-    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
-    const rect = row.bars.map((bar) => ganttBarGeometry(bar, layout.start, dayWidth, forward)).find((rect) => rect !== null);
-    if (rect) element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
-    measureWindow();
-  }, scrollToNextLate: () => {
-    const element = viewport.current;
-    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || bar.resource === singleResourceCd)) : [];
-    if (!element || !bars.length) return;
-    flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
-    const bar = bars[flaggedIndex.current]!;
-    const location = barLocations.get(bar.item.itemId)?.first;
-    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
-    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
-    if (!rowElement || !rect) return;
-    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
-    element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
-    measureWindow();
-  } }), [layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode, singleResourceCd]);
   const days = useMemo(() => Array.from({ length: layout.end - layout.start }, (_, i) => {
     const day = layout.start + i;
     const weekday = new Date(day * 86_400_000).getUTCDay();
@@ -453,7 +397,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
     const location = barLocations.get(bar.item.itemId)?.first;
     const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
-    if (!element || !rowElement || !rect) return;
+    if (!element || !rowElement || !rect) return false;
     const bounds = element.getBoundingClientRect();
     // Centre the first segment, keeping its start visible when wider than the chart.
     const barLeft = labelWidth + rect.left;
@@ -464,7 +408,34 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
       element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
     else { element.scrollLeft = left; element.scrollTop = top; }
+    return true;
   }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
+  useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); return bar ? scrollToBar(bar) : false; }, scrollToNextOverlap: () => {
+    const element = viewport.current;
+    const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
+    if (!element || !rows.length) return;
+    flaggedIndex.current = (flaggedIndex.current + 1) % rows.length;
+    const row = rows[flaggedIndex.current]!;
+    const rowElement = rowElements.current.get(row.key);
+    if (!rowElement) return;
+    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() - 36;
+    const rect = row.bars.map((bar) => ganttBarGeometry(bar, layout.start, dayWidth, forward)).find((rect) => rect !== null);
+    if (rect) element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
+    measureWindow();
+  }, scrollToNextLate: () => {
+    const element = viewport.current;
+    const bars = forward ? planningBoardVisibleBars(layout).filter((bar) => bar.tone === 'late' && (!singleGroup || barLocations.has(bar.item.itemId))) : [];
+    if (!element || !bars.length) return;
+    flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
+    const bar = bars[flaggedIndex.current]!;
+    const location = barLocations.get(bar.item.itemId)?.first;
+    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
+    const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
+    if (!rowElement || !rect) return;
+    element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
+    element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
+    measureWindow();
+  } }), [currentBars, scrollToBar, layout, forward, dayWidth, viewportWidth, labelWidth, barRows, barLocations, measureWindow, singleGroup, singleMode]);
   const [pendingJump, setPendingJump] = useState<string | null>(null);
   useLayoutEffect(() => {
     if (!pendingJump || !barLocations.has(pendingJump)) return;
@@ -473,7 +444,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     setPendingJump(null);
   }, [pendingJump, barLocations, currentBars, scrollToBar]);
   const scrollToStep = (bar: GanttBar) => {
-    if (singleGroup && bar.resource !== singleResourceCd) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
+    if (!machineSelectionLocked && singleGroup && bar.resource !== singleResourceCd && !onNavigateBar?.(bar)) { onSingleResourceChange?.(bar.resource); setPendingJump(bar.item.itemId); }
     else scrollToBar(bar);
     setCurrentItemId(bar.item.itemId);
   };
@@ -518,19 +489,23 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
     return [group.resource!, old?.text === group.label ? old : { text: group.label, node: resourceLabel(group.resource!, group.label) }];
   })), [layout.groups, resourceLabel]);
   useLayoutEffect(() => { previousLabels.current = { render: resourceLabel, labels: resourceLabels }; }, [resourceLabel, resourceLabels]);
-  return (
-    <PlanningBoardPiecesContext.Provider value={pieceActions}>
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className="relative mt-2 overflow-hidden rounded-lg border border-slate-800 bg-slate-900">
-      {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
-      {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
-      {singleGroup && <PlanningBoardSingleResourceHead resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
-        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={onToggleValueSheet}
+  const resourceHead = showResourceHead && !hideResourceHead ? <PlanningBoardSingleResourceHead machineModeButtonRef={machineModeButtonRef} machineSelectionLocked={machineSelectionLocked} machineSelectionLabel={machineSelectionLabel} machineMode={machineMode} twoMachineDisabled={twoMachineDisabled} onMachineModeChange={onMachineModeChange} resourceCd={singleResourceCd!} names={resourceNameMap[singleResourceCd!]}
+        items={singleItems} minutes={resourceMinutes} minutesPending={minutesPending} sheetOpen={valueSheetOpen} onToggleSheet={() => onToggleValueSheet?.(singleResourceCd ?? undefined)}
         onSourceChange={(source) => onMinutesSourceChange?.({ resourceCd: singleResourceCd!, source })}
         hours={singleHours} pausesForBreaks={singlePauses} averageSeconds={uptimeByResource.get(normalizeMachineName(singleResourceCd!))}
         disabled={singleResourceCd === '未設定' || capacityPending || interaction.disabled} pickerOpen={singleResourcePickerOpen}
-        onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} />}
-      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className="relative min-h-48 overflow-auto"
-        style={{ height: viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
+        onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} /> : null;
+  const chainStripView = <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
+        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />;
+  return (
+    <PlanningBoardPiecesContext.Provider value={pieceActions}>
+    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
+      {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
+      {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
+      {resourceHead && (resourceHeadContainer === null ? null : resourceHeadContainer ? createPortal(resourceHead, resourceHeadContainer) : resourceHead)}
+      <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className={clsx('relative overflow-auto', fitPane ? 'min-h-0 flex-1 overscroll-contain' : 'min-h-48')}
+        style={{ height: fitPane ? undefined : viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
         onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
@@ -583,7 +558,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
               const folded = foldedRows.get(row.key);
               const rowStart = folded?.window.start ?? layout.start;
               const rowEnd = folded?.window.end ?? layout.end;
-              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} dayLoad={folded ? dayLoads.get(folded.window.day) ?? 0 : undefined} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
@@ -607,21 +582,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Props
           {showChain && <PlanningBoardChainLinks barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
-      {showChain && <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
-        onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
-        onStep={scrollToStep} onClose={() => setFocusedPartKey(null)} />}
-      {seibanColors && <div ref={legend} role="group" aria-label="製番の色分け凡例" className="flex max-h-[52px] snap-y snap-mandatory scroll-pt-1 flex-wrap gap-2 overflow-y-auto overscroll-contain border-t border-slate-700 px-2 py-1 text-xs text-slate-200">
-        {[...seibanColors].map(([seiban, color]) => <button key={seiban} type="button" aria-pressed={focusedSeiban === seiban}
-          onClick={() => focusedSeiban === seiban ? setFocusedSeiban(null) : focusSeiban(seiban)}
-          className={clsx('inline-flex min-h-[44px] snap-start items-center gap-1 rounded bg-slate-800 px-1.5 py-1 font-mono focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300', focusedSeiban === seiban && 'ring-2 ring-white')}>
-          <span className={clsx('h-3 w-3 rounded-sm', color)} />{seiban}
-        </button>)}
-        {focusedSeiban !== null && <button type="button" onClick={() => setFocusedSeiban(null)}
-          className="min-h-[44px] snap-start rounded bg-slate-800 px-2 py-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300">すべて表示</button>}
-      </div>}
+      {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
+      {!sharedSeibanLegend && seibanColors && <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
+        focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
-      {singleGroup && valueSheetOpen && <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} items={singleItems}
-        values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} />}
+      {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
       {dragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
       {dragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"

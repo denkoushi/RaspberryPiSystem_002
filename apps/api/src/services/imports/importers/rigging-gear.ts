@@ -146,51 +146,6 @@ export class RiggingGearCsvImporter implements CsvImporter {
       updated: 0
     };
 
-    // replaceExisting=trueの場合: LoanまたはRiggingInspectionRecordが存在しない吊具を削除
-    if (replaceExisting) {
-      try {
-        // 返却されていないLoanが存在する吊具IDを取得
-        const activeLoans = await prisma.loan.findMany({
-          where: { returnedAt: null },
-          select: { riggingGearId: true }
-        });
-        const gearIdsWithActiveLoans = new Set(
-          activeLoans
-            .map(l => l.riggingGearId)
-            .filter((id): id is string => id !== null)
-        );
-
-        // RiggingInspectionRecordが存在する吊具IDを取得
-        const inspectionRecords = await prisma.riggingInspectionRecord.findMany({
-          select: { riggingGearId: true }
-        });
-        const gearIdsWithInspections = new Set(
-          inspectionRecords.map(r => r.riggingGearId)
-        );
-
-        // 削除対象外のIDを結合
-        const protectedIds = new Set([
-          ...gearIdsWithActiveLoans,
-          ...gearIdsWithInspections
-        ]);
-
-        if (protectedIds.size > 0) {
-          await prisma.riggingGear.deleteMany({
-            where: {
-              id: {
-                notIn: Array.from(protectedIds)
-              }
-            }
-          });
-        } else {
-          await prisma.riggingGear.deleteMany();
-        }
-      } catch (error) {
-        logger?.error({ err: error }, '[RiggingGearCsvImporter] Error in deleteMany');
-        throw error;
-      }
-    }
-
     // CSV内のrfidTagUid重複チェック
     const rfidTagUidMap = new Map<string, string[]>();
     for (const row of gearRows) {
@@ -213,6 +168,51 @@ export class RiggingGearCsvImporter implements CsvImporter {
 
     // 各行をループ処理
     await prisma.$transaction(async (tx) => {
+      // replaceExisting=trueの場合: LoanまたはRiggingInspectionRecordが存在しない吊具を削除
+      if (replaceExisting) {
+        try {
+          // 返却されていないLoanが存在する吊具IDを取得
+          const activeLoans = await tx.loan.findMany({
+            where: { returnedAt: null },
+            select: { riggingGearId: true }
+          });
+          const gearIdsWithActiveLoans = new Set(
+            activeLoans
+              .map(l => l.riggingGearId)
+              .filter((id): id is string => id !== null)
+          );
+
+          // RiggingInspectionRecordが存在する吊具IDを取得
+          const inspectionRecords = await tx.riggingInspectionRecord.findMany({
+            select: { riggingGearId: true }
+          });
+          const gearIdsWithInspections = new Set(
+            inspectionRecords.map(r => r.riggingGearId)
+          );
+
+          // 削除対象外のIDを結合
+          const protectedIds = new Set([
+            ...gearIdsWithActiveLoans,
+            ...gearIdsWithInspections
+          ]);
+
+          if (protectedIds.size > 0) {
+            await tx.riggingGear.deleteMany({
+              where: {
+                id: {
+                  notIn: Array.from(protectedIds)
+                }
+              }
+            });
+          } else {
+            await tx.riggingGear.deleteMany();
+          }
+        } catch (error) {
+          logger?.error({ err: error }, '[RiggingGearCsvImporter] Error in deleteMany');
+          throw error;
+        }
+      }
+
       for (const row of gearRows) {
         const tagUid = row.rfidTagUid?.trim() || null;
 

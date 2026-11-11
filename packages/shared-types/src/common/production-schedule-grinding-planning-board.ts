@@ -371,10 +371,17 @@ export interface GrindingPlanningBoardResourceMinutesResponse {
   /** Updated row's operations read within the save transaction, in matching order. */
   savedOpIds?: string[];
   savedOpNos?: number[];
+  /** Values committed by this save, before the subsequent settings read; null after deletion. */
+  savedMinutes?: GrindingPlanningBoardResourcePartMinutesSnapshot | null;
 }
 export interface GrindingPlanningBoardResourceMinutesSourceRequest {
   resourceCd: string;
   source: GrindingPlanningBoardRequiredMinutesSource;
+}
+export interface GrindingPlanningBoardResourcePartMinutesSnapshot {
+  perUnitMinutes: number;
+  setupMinutes: number;
+  ops: Array<{ opNo: number; minutes: number; setupMinutes: number | null }>;
 }
 export interface GrindingPlanningBoardResourcePartMinutesRequest {
   resourceCd: string;
@@ -383,6 +390,8 @@ export interface GrindingPlanningBoardResourcePartMinutesRequest {
   setupMinutes: number;
   ops?: GrindingPlanningBoardResourcePartOpMinutes[];
   expectedOpIds?: string[];
+  /** Saved values when editing began; null means unregistered, omission keeps legacy behavior. */
+  expectedMinutes?: GrindingPlanningBoardResourcePartMinutesSnapshot | null;
 }
 
 export interface GrindingPlanningBoardResourcePartOpMinutes {

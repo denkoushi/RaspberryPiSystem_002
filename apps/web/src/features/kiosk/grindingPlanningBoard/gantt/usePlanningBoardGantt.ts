@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { useOfflineResourceMinutes, useOfflineResourceCapacity } from '../offline/planningBoardOfflineQueries';
+import { planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
+import { usePlanningBoardQueryData } from '../usePlanningBoardQueryData';
 
 import { buildPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 import { usePersistedPlanningBoardGanttMode } from './usePersistedPlanningBoardGanttMode';
@@ -19,15 +21,17 @@ const EMPTY_ITEMS: GanttLayoutOptions['items'] = [];
 
 export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' | 'dailyHoursByResource' | 'runsThroughBreaks'> & {
   enabled: boolean;
+  machineSelectionLocked?: boolean;
   preferenceScope: string;
 }) {
   const { gate, enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
-  const { enabled, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
+  const { enabled, machineSelectionLocked, preferenceScope, items, resources, seibanOrder, view, allocation, today, now, category, resourceCategories, laneOrder, arrivalFilterEnabled } = options;
   const { mode, changeMode } = usePersistedPlanningBoardGanttMode();
   const { scale, homeKey, changeScale } = usePlanningBoardGanttScale();
   const useMinutes = offlineEnabled ? useOfflineResourceMinutes : useKioskGrindingPlanningBoardResourceMinutes;
   const useCapacity = offlineEnabled ? useOfflineResourceCapacity : useKioskGrindingPlanningBoardResourceCapacity;
   const minutes = useMinutes(enabled);
+  const resourceMinutes = usePlanningBoardQueryData(minutes.data);
   const sourceMutation = useUpdateKioskGrindingPlanningBoardResourceMinutesSource();
   const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useCapacity(enabled);
@@ -68,18 +72,18 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     const escape = (event: KeyboardEvent) => {
       // Dialogs close on window; inspect the still-mounted overlay before leaving single mode.
       if (event.key === 'Escape' && !event.defaultPrevented && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue]')) {
-        if (valueSheetResource === singleResourceCd) setValueSheetResource(null);
-        else changeSingleResource(null);
+        if (valueSheetResource && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources)) setValueSheetResource(null);
+        else if (!machineSelectionLocked) changeSingleResource(null);
       }
     };
     document.addEventListener('keydown', escape);
     return () => document.removeEventListener('keydown', escape);
-  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource]);
+  }, [enabled, singleResourceCd, changeSingleResource, valueSheetResource, paneResources, machineSelectionLocked]);
   const effectiveMode = singleResourceCd ? 'forward' : mode;
   const effectiveView = singleResourceCd ? 'resource' : view;
   const layout = useMemo(() => buildPlanningBoardGanttLayout({
-    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
-  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
+    items: enabled ? items : EMPTY_ITEMS, allocation, view: effectiveView, seibanOrder, resources: resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, mode: effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled
+  }), [enabled, items, allocation, effectiveView, seibanOrder, resourceOrder, resourceMinutes, dailyHoursByResource, runsThroughBreaks, today, scale, effectiveMode, now, category, resourceCategories, laneOrder, arrivalFilterEnabled]);
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
@@ -102,8 +106,8 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
       if (!offlineEnabled) sourceMutation.mutate(source);
       else void gate.run(() => sourceMutation.mutateAsync(source)).then(() =>
         Promise.all(['board', 'load', 'resource-minutes'].map(refreshRead))).catch(() => undefined);
-    }, valueSheetOpen: valueSheetResource !== null && valueSheetResource === singleResourceCd,
-    toggleValueSheet: () => setValueSheetResource((current) => current === singleResourceCd ? null : singleResourceCd),
-    singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
+    }, valueSheetOpen: valueSheetResource !== null && singleResourceCd !== null && planningBoardResourceMatches(singleResourceCd, valueSheetResource, paneResources),
+    valueSheetResource, toggleValueSheet: (resource = singleResourceCd) => setValueSheetResource((current) => current === resource ? null : resource),
+    capacityLoaded: capacity.data?.unitSplitEnabledByResource !== undefined, unitSplitEnabledByResource: capacity.data?.unitSplitEnabledByResource, singleResourceCd, singleResourcePickerAnchor, openSingleResourcePicker, closeSingleResourcePicker, changeSingleResource, singleResourceLanes: resourceOrder, scrollToNextLate, scale, homeKey, changeScale, layout, viewRef, scrollToNextOverlap, dailyHoursByResource, runsThroughBreaks, changeBreaks,
     capacityPending: writeStatus.capacityPending, capacityError: writeStatus.capacityError, changeCapacity };
 }

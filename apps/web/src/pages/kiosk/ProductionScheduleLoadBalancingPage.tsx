@@ -85,9 +85,9 @@ export function ProductionScheduleLoadBalancingPage() {
           loading={state.query.isFetching && Boolean(data)}
         />
         <span className="inline-flex h-10 shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-slate-800 px-2 font-bold"><small className="text-[13px] text-white/60">外注</small><b className="text-lg tabular-nums">{Math.round(outsourceMinutes / 6) / 10}</b><small className="text-white/60">H</small></span>
-        <button type="button" className="ml-auto h-10 shrink-0 rounded-lg bg-emerald-600 px-3 text-sm font-bold disabled:opacity-30" disabled={!input || !summary || (summary.after.overMinutes <= 0.5 && !input.settings.namedTargets?.length)} onClick={() => input && state.commitResult(autoSelect(input))}>自動選定</button>
-        <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={!state.canUndo} onClick={state.undo}>1つ戻す</button>
-        <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={!state.actions.length && !state.result.noTaker.length} onClick={() => state.commitResult({ actions: [], noTaker: [] })}>クリア</button>
+        <button type="button" className="ml-auto h-10 shrink-0 rounded-lg bg-emerald-600 px-3 text-sm font-bold disabled:opacity-30" disabled={state.operationsDisabled || !input || !summary || (summary.after.overMinutes <= 0.5 && !input.settings.namedTargets?.length)} onClick={() => !state.operationsDisabled && input && state.commitResult(autoSelect(input))}>自動選定</button>
+        <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={state.operationsDisabled || !state.canUndo} onClick={state.undo}>1つ戻す</button>
+        <button type="button" className="h-10 shrink-0 rounded-lg bg-slate-800 px-2 text-sm font-bold disabled:opacity-30" disabled={state.operationsDisabled || (!state.actions.length && !state.result.noTaker.length)} onClick={() => state.commitResult({ actions: [], noTaker: [] })}>クリア</button>
         <button type="button" className="h-10 w-10 shrink-0 rounded-lg bg-slate-800 text-xl" aria-label="業者の設定" disabled={!data || state.query.isPlaceholderData} onClick={() => { settingsMutation.reset(); setSettingsOpen(true); }}>⚙</button>
       </LoadBalancingPageHeader>
 
@@ -107,6 +107,7 @@ export function ProductionScheduleLoadBalancingPage() {
           formattedMachineNames={formattedNames}
           thisMonth={state.thisMonth}
           resourceNameMap={state.resourceNameMap}
+          operationsDisabled={state.operationsDisabled}
           actions={state.actions}
           commitResult={state.commitResult}
           noTaker={state.result.noTaker}

@@ -24,13 +24,14 @@ const probe = vi.hoisted(() => ({ rows: 0, commits: 0, actualMs: 0,
   changedProps: {} as Record<string, number> }));
 const network = vi.hoisted(() => {
   type Store = { data: any; listeners: Set<() => void> };
-  const stores: Record<string, Store> = Object.fromEntries(['board', 'chips', 'minutes', 'uptime', 'capacity', 'resources', 'load', 'candidates', 'detail'].map(key => [key, { data: undefined, listeners: new Set() }]));
+  const stores: Record<string, Store> = Object.fromEntries(['board', 'chips', 'minutes', 'uptime', 'capacity', 'partMinutes', 'resources', 'load', 'candidates', 'detail'].map(key => [key, { data: undefined, listeners: new Set() }]));
   const mutateAsync = vi.fn<(...args: any[]) => Promise<any>>(async () => ({ sourceRevision: 'source-0', items: [] }));
   const mutate = vi.fn();
   const refetch = vi.fn(async () => ({ data: stores.board.data, isError: false }));
   return { stores, mutateAsync, mutate, refetch, nextBoard: undefined as any,
     split: vi.fn(), merge: vi.fn(), completion: vi.fn() };
 });
+vi.mock('../usePlanningBoardAutoUnitSplit', () => ({ usePlanningBoardAutoUnitSplit: () => undefined }));
 vi.mock('../../../../api/hooks', async () => {
   const { useSyncExternalStore, useMemo } = await import('react');
   function useStore(key: string) {
@@ -54,6 +55,7 @@ vi.mock('../../../../api/hooks', async () => {
     useKioskGrindingPlanningBoardDueDetail: () => useStore('detail'),
     useKioskSessakuPieceMutations: () => ({ split: { mutateAsync: network.split }, merge: { mutateAsync: network.merge }, completion: { mutateAsync: network.completion } }),
     useUpdateKioskGrindingPlanningBoardArrival: mutation,
+    useUpdateKioskGrindingPlanningBoardFirstProcessArrival: mutation,
     useSetKioskProductionScheduleRowCompletion: mutation,
     useUpdateKioskGrindingPlanningBoardResourceCapacity: mutation,
     useUpdateKioskGrindingPlanningBoardPins: mutation,
@@ -62,6 +64,10 @@ vi.mock('../../../../api/hooks', async () => {
     useUpdateKioskGrindingPlanningBoardRank: mutation,
     useUpdateKioskGrindingPlanningBoardResourceOrder: mutation,
     useUpdateKioskGrindingPlanningBoardResourceOrderBulk: mutation,
+    useKioskGrindingPlanningBoardResourceMinutes: () => useStore('partMinutes'),
+    useUpdateKioskGrindingPlanningBoardResourceMinutesSource: mutation,
+    useUpdateKioskGrindingPlanningBoardResourcePartMinutes: mutation,
+    useUpdateKioskGrindingPlanningBoardSeibanChecks: mutation,
     useUpdateKioskGrindingPlanningBoardSeibanOrder: mutation
   };
 });
@@ -131,12 +137,15 @@ it('measures real page interactions with the production fixture (one warmup, thr
   // Freeze the scheduling date, but leave performance.now real for measurements.
   vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval', 'setTimeout', 'clearTimeout'] });
   try {
-    for (const withPieces of [false, true]) {
+    for (const withPieces of process.env.PLANNING_BOARD_PAGE_PERF_PIECES_ONLY ? [true] : [false, true]) {
       const fixture = withPieces ? productionPiecesFixture() : productionFixture();
       expect(fixture.items).toHaveLength(withPieces ? 1650 : 1500);
       if (withPieces) {
         const pieces = fixture.items.filter(item => item.kind === 'piece');
         expect(pieces).toHaveLength(250);
+        const units = pieces.filter(item => typeof item.unitRequiredMinutes === 'number');
+        expect(units).toHaveLength(50);
+        expect(units.every(item => item.plannedQuantity === 1 && item.ops?.length === 5)).toBe(true);
         expect(new Set(pieces.map(item => item.parentItemId)).size).toBe(100);
       }
       for (let iteration = 0; iteration < 1 + PERF_REPETITIONS; iteration++) {
@@ -168,6 +177,7 @@ it('measures real page interactions with the production fixture (one warmup, thr
         network.stores.minutes.data = { rows: fixture.seibans.map((fseiban, i) => ({ fseiban, outsourceMarks: [], memo: null,
           surfaceSendOutDates: i % 3 === 0 ? [{ date: '2026-11-06', note: null }, { date: '2026-11-10', note: null }] : [] })) };
         network.stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, medianRunSeconds: 20000 + i * 100 })) };
+        network.stores.partMinutes.data = { ownSourceResourceCds: fixture.resources, values: fixture.items.filter(item => typeof item.unitRequiredMinutes === 'number').map(item => ({ resourceCd: item.originalResourceCd, fhincd: item.fhincd, perUnitMinutes: 50, setupMinutes: 15, ops: item.ops })) };
         network.stores.capacity.data = { dailyHoursByResource: Object.fromEntries(fixture.resources.map(cd => [cd, 8])), runsThroughBreaksResources: [] };
         network.stores.resources.data = { resourceNameMap: Object.fromEntries(fixture.resources.map(cd => [cd, [`機械${cd}`]])) };
         network.stores.load.data = { load: [], unknownRequiredMinutesCount: 0 };
@@ -178,7 +188,11 @@ it('measures real page interactions with the production fixture (one warmup, thr
           <ProductionScheduleGrindingPlanningBoardPage />
         </Profiler></QueryClientProvider>);
         const button = (label: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(node => (node.getAttribute('aria-label') === label || node.textContent?.trim() === label));
-        const click = (label: string) => { const node = button(label); expect(node, `button ${label}`).toBeTruthy(); fireEvent.click(node!); };
+        const click = async (label: string) => {
+          if (label === '切削' || label === '研削') {
+            await act(async () => { fireEvent.click(button('工程')!); });
+          }
+          const node = button(label); expect(node, `button ${label}`).toBeTruthy(); fireEvent.click(node!); };
         const measure = async (name: string, action: () => void | Promise<void>, supported = true, batch = true) => {
           if (!supported) { unavailable.add(name); return; }
           reset();
@@ -275,9 +289,9 @@ it('measures real page interactions with the production fixture (one warmup, thr
           await act(async () => { expect(choice).toBeTruthy(); fireEvent.click(choice); });
           if (mode === 'gantt') await act(async () => click('ガント'));
           expect(release, 'real write entered pending').toBeTypeOf('function');
-          expect(button('切削')).toBeDisabled();
+          expect(button('工程')).toBeDisabled();
           await measure(`${prefix}queue_pending_true_to_false`, async () => { release(); });
-          expect(button('切削')).not.toBeDisabled();
+          expect(button('工程')).not.toBeDisabled();
           await measure(`${prefix}refetch_same`, () => refresh(['board']));
           if (!withPieces || mode === 'gantt') continue;
           const target = network.stores.board.data.items.find((item: any) => item.kind === 'piece' && item.plannedQuantity === 3);
@@ -333,7 +347,7 @@ it('measures real page interactions with the production fixture (one warmup, thr
   const medians = Object.fromEntries(Object.entries(samples).map(([name, values]) => [name,
     Object.fromEntries(Object.keys(values[0]).filter(key => key !== 'changedProps').map(key => [key, median(values.map(value => value[key]))]))]));
   const result = { environment: { node: process.version, cpu: cpus()[0]?.model, dom: 'jsdom: no browser layout/paint', warmups: 1, repetitions: PERF_REPETITIONS },
-    fixture: { items: 1500, seibans: 80, resources: 20, processChipsPerPart: 6, splitParents: 100, pieceItems: 250, expandedItems: 1650 },
+    fixture: { items: 1500, seibans: 80, resources: 20, processChipsPerPart: 6, splitParents: 100, pieceItems: 250, expandedItems: 1650, unitPieces: 50, opsPerUnitPiece: 5 },
     notes: ['The real page mounts either table rows or Gantt rows; zero for the unmounted view is expected.',
       'Row renders count component function calls, including replacements mounted after split/merge.',
       'Queue pending uses an unchanged rank write, held until pending=true commits, then resolved with identical saved values; includes queue reconciliation/refetch.',

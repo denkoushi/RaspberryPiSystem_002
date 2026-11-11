@@ -206,6 +206,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
   const {
     pauseRefetch: mutationPauseRefetch,
     orderPending,
+    orderError,
     dueDatePending,
     completePending,
     notePending,
@@ -226,6 +227,10 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const autoRankFlight = useSingleFlight();
   const autoRankPending = autoRankFlight.pending;
+  useEffect(() => {
+    if (orderError) window.alert('保存に失敗しました。再度お試しください。');
+  }, [orderError]);
+
   const writePause =
     mutationPauseRefetch || orderPending || dueDatePending || completePending || notePending || autoRankPending;
 
@@ -565,7 +570,7 @@ export function ProductionScheduleLeaderOrderBoardPage() {
 
   const handleCompleteRow = useCallback(
     (rowId: string, intent: 'complete' | 'incomplete') => {
-      void completeRow(rowId, intent);
+      void completeRow(rowId, intent).catch(() => window.alert('保存に失敗しました。再度お試しください。'));
     },
     [completeRow]
   );

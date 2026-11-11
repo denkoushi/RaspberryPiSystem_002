@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   LEADER_BOARD_LABOR_MODE_SCHEMA_VERSION,
   persistedLeaderBoardLaborModeStorageKey,
   type PersistedLeaderBoardLaborMode
 } from './constants';
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 
 function normalizeEnabledBySlotIndex(raw: unknown, slotCount: number): boolean[] {
   const clampedCount = Math.max(0, Math.floor(slotCount));
@@ -12,32 +13,32 @@ function normalizeEnabledBySlotIndex(raw: unknown, slotCount: number): boolean[]
   return Array.from({ length: clampedCount }, (_, index) => Boolean(arr[index]));
 }
 
-function loadPersistedLaborMode(storageKey: string, slotCount: number): boolean[] {
+function loadPersistedLaborMode(storageKey: string, slotCount: number): boolean[] | null {
   if (typeof window === 'undefined') {
-    return normalizeEnabledBySlotIndex([], slotCount);
+    return null;
   }
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = readLeaderBoardLocalStorage(storageKey);
   if (!raw?.trim()) {
-    return normalizeEnabledBySlotIndex([], slotCount);
+    return null;
   }
   try {
     const parsed = JSON.parse(raw) as Partial<PersistedLeaderBoardLaborMode> | null;
     if (!parsed || parsed.schemaVersion !== LEADER_BOARD_LABOR_MODE_SCHEMA_VERSION) {
-      return normalizeEnabledBySlotIndex([], slotCount);
+      return null;
     }
     return normalizeEnabledBySlotIndex(parsed.enabledBySlotIndex, slotCount);
   } catch {
-    return normalizeEnabledBySlotIndex([], slotCount);
+    return null;
   }
 }
 
-function persistLaborMode(storageKey: string, enabledBySlotIndex: readonly boolean[]): void {
-  if (typeof window === 'undefined') return;
+function persistLaborMode(storageKey: string, enabledBySlotIndex: readonly boolean[]): boolean {
+  if (typeof window === 'undefined') return false;
   const body: PersistedLeaderBoardLaborMode = {
     schemaVersion: LEADER_BOARD_LABOR_MODE_SCHEMA_VERSION,
     enabledBySlotIndex: [...enabledBySlotIndex]
   };
-  window.localStorage.setItem(storageKey, JSON.stringify(body));
+  return writeLeaderBoardLocalStorage(storageKey, JSON.stringify(body));
 }
 
 /**
@@ -56,26 +57,25 @@ export function usePersistedLeaderBoardLaborMode(
   const [enabledBySlotIndex, setEnabledBySlotIndex] = useState<boolean[]>(() =>
     normalizeEnabledBySlotIndex([], slotCount)
   );
-  const [hydratedStorageKey, setHydratedStorageKey] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState<{ storageKey: string; slotCount: number } | null>(null);
+  const lastWriteSucceeded = useRef(true);
 
   useEffect(() => {
-    setEnabledBySlotIndex(loadPersistedLaborMode(storageKey, slotCount));
-    setHydratedStorageKey(storageKey);
-  }, [storageKey, slotCount]);
+    if (hydrated?.storageKey === storageKey && hydrated.slotCount === slotCount) return;
+    const sameScope = hydrated?.storageKey === storageKey;
+    // A write failure belongs to the scope it happened in; a new scope starts from its own storage.
+    if (!sameScope) lastWriteSucceeded.current = true;
+    // A failed write leaves stale storage behind; retain the current selection in that case.
+    const stored = sameScope && !lastWriteSucceeded.current ? null : loadPersistedLaborMode(storageKey, slotCount);
+    setEnabledBySlotIndex((prev) => stored ?? normalizeEnabledBySlotIndex(sameScope ? prev : [], slotCount));
+    setHydrated({ storageKey, slotCount });
+  }, [hydrated, storageKey, slotCount]);
 
   useEffect(() => {
-    if (hydratedStorageKey !== storageKey) return;
-    setEnabledBySlotIndex((prev) => {
-      if (prev.length === slotCount) return prev;
-      const next = normalizeEnabledBySlotIndex(prev, slotCount);
-      return next;
-    });
-  }, [hydratedStorageKey, slotCount, storageKey]);
-
-  useEffect(() => {
-    if (hydratedStorageKey !== storageKey) return;
-    persistLaborMode(storageKey, enabledBySlotIndex);
-  }, [enabledBySlotIndex, hydratedStorageKey, storageKey]);
+    // Do not overwrite storage with the old array while the slot count is being restored.
+    if (hydrated?.storageKey !== storageKey || hydrated.slotCount !== slotCount) return;
+    lastWriteSucceeded.current = persistLaborMode(storageKey, enabledBySlotIndex);
+  }, [enabledBySlotIndex, hydrated, slotCount, storageKey]);
 
   const toggleLaborForSlot = useCallback((slotIndex: number) => {
     setEnabledBySlotIndex((prev) => {

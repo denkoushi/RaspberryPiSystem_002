@@ -5,6 +5,7 @@ import {
   persistedLeaderBoardSeibanEvalStorageKey,
   type PersistedLeaderBoardSeibanEval
 } from './constants';
+import { readLeaderBoardLocalStorage, writeLeaderBoardLocalStorage } from './leaderBoardLocalStorage';
 import { mergeSharedHistoryWithLocalOrder } from './seibanPriority/mergeSharedHistoryWithLocalOrder';
 import { reorderSeibanToRank } from './seibanPriority/reorderSeibanToRank';
 
@@ -12,7 +13,7 @@ function loadPersistedSeibanEval(storageKey: string): Pick<PersistedLeaderBoardS
   if (typeof window === 'undefined') {
     return { enabled: false, localOrder: [] };
   }
-  const raw = window.localStorage.getItem(storageKey);
+  const raw = readLeaderBoardLocalStorage(storageKey);
   if (!raw?.trim()) {
     return { enabled: false, localOrder: [] };
   }
@@ -36,7 +37,7 @@ function persistSeibanEval(storageKey: string, payload: Pick<PersistedLeaderBoar
     enabled: payload.enabled,
     localOrder: payload.localOrder
   };
-  window.localStorage.setItem(storageKey, JSON.stringify(body));
+  writeLeaderBoardLocalStorage(storageKey, JSON.stringify(body));
 }
 
 function arraysEqual(a: readonly string[], b: readonly string[]): boolean {

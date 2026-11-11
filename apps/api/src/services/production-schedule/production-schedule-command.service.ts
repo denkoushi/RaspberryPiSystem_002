@@ -134,16 +134,8 @@ export async function driveProductionScheduleRowCompletion(params: {
   let nextIsCompleted = false;
   let unchanged = false;
 
-  const tFindAssignmentStart = performance.now();
-  const currentAssignment = await prisma.productionScheduleOrderAssignment.findUnique({
-    where: {
-      csvDashboardRowId_location: {
-        csvDashboardRowId: row.id,
-        location: locationKey
-      }
-    }
-  });
-  const findAssignmentMs = performance.now() - tFindAssignmentStart;
+  let currentAssignment: Awaited<ReturnType<typeof prisma.productionScheduleOrderAssignment.findUnique>> = null;
+  let findAssignmentMs = 0;
 
   let txUpdateRowMs = 0;
   let txDeleteAssignmentMs: number | null = null;
@@ -165,6 +157,16 @@ export async function driveProductionScheduleRowCompletion(params: {
       if (set?.pieces.length || set?.sourcePieceSetId || related.length) await acquireSessakuPieceBoardStateLocks(tx);
       await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
       await tx.$queryRaw`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${row.id} FOR UPDATE`;
+      const tFindAssignmentStart = performance.now();
+      currentAssignment = await tx.productionScheduleOrderAssignment.findUnique({
+        where: {
+          csvDashboardRowId_location: {
+            csvDashboardRowId: row.id,
+            location: locationKey
+          }
+        }
+      });
+      findAssignmentMs = performance.now() - tFindAssignmentStart;
       const latest = await tx.productionScheduleProgress.findUnique({ where: { csvDashboardRowId: row.id } });
       isCompleted = latest?.isCompleted === true;
       nextIsCompleted = drive.mode === 'toggle' ? !isCompleted : drive.intent === 'complete';
@@ -324,30 +326,21 @@ export async function upsertProductionScheduleNote(params: {
   }
 
   const trimmedNote = note.slice(0, 100).trim();
-  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
-  if (trimmedNote.length === 0) {
-    if (existing?.dueDate || (existing?.processingType && existing.processingType.trim().length > 0)) {
+  await runDueDateTransaction(async (tx) => {
+    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
+    if (!trimmedNote && !existing?.dueDate && !existing?.processingType?.trim()) {
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
+    } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         csvDashboardRowId: row.id,
-        note: '',
-        dueDate: existing?.dueDate ?? null,
-        processingType: existing?.processingType ?? null
-      });
-    } else {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
+        note: trimmedNote
+      }, tx);
     }
-    return { success: true, note: null };
-  }
-  await sharedScheduleFieldsRepository.upsertRowNote({
-    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    csvDashboardRowId: row.id,
-    note: trimmedNote,
-    dueDate: existing?.dueDate ?? null,
-    processingType: existing?.processingType ?? null
   });
 
-  return { success: true, note: trimmedNote };
+  return { success: true, note: trimmedNote || null };
 }
 
 export async function upsertProductionScheduleDueDate(params: {
@@ -369,6 +362,7 @@ export async function upsertProductionScheduleDueDate(params: {
       throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください');
     }
     const dueDate = dueDateValue ? new Date(`${dueDateValue}T00:00:00.000Z`) : null;
+    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
     const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
     const note = existing?.note?.trim() ?? '';
     const processingType = existing?.processingType ?? null;
@@ -377,7 +371,7 @@ export async function upsertProductionScheduleDueDate(params: {
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-        csvDashboardRowId: row.id, note, dueDate, processingType
+        csvDashboardRowId: row.id, dueDate
       }, tx);
     }
     await tx.productionScheduleDueDateAuditLog.create({ data: {
@@ -422,34 +416,21 @@ export async function upsertProductionScheduleProcessingType(params: {
     });
   }
 
-  const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id);
-
-  if (incomingType.length === 0) {
-    const existingNote = existing?.note?.trim() ?? '';
-    const existingDueDate = existing?.dueDate ?? null;
-    if (existingNote.length === 0 && !existingDueDate) {
-      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id);
+  await runDueDateTransaction(async (tx) => {
+    await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
+    const existing = await sharedScheduleFieldsRepository.findRowNoteByRowId(row.id, tx);
+    if (!incomingType && !existing?.note?.trim() && !existing?.dueDate) {
+      await sharedScheduleFieldsRepository.deleteRowNoteByRowId(row.id, tx);
     } else {
       await sharedScheduleFieldsRepository.upsertRowNote({
         csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
         csvDashboardRowId: row.id,
-        note: existingNote,
-        dueDate: existingDueDate,
-        processingType: null
-      });
+        processingType: incomingType || null
+      }, tx);
     }
-    return { success: true, processingType: null };
-  }
-
-  await sharedScheduleFieldsRepository.upsertRowNote({
-    csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
-    csvDashboardRowId: row.id,
-    note: existing?.note?.trim() ?? '',
-    dueDate: existing?.dueDate ?? null,
-    processingType: incomingType
   });
 
-  return { success: true, processingType: incomingType };
+  return { success: true, processingType: incomingType || null };
 }
 
 export async function upsertProductionScheduleOrder(params: {

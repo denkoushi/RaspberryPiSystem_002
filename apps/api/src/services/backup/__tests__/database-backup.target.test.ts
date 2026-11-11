@@ -8,6 +8,8 @@ const { spawnMock } = vi.hoisted(() => ({
   spawnMock: vi.fn(),
 }));
 
+vi.mock('dotenv', () => ({ config: vi.fn() }));
+
 vi.mock('child_process', () => ({
   spawn: spawnMock,
 }));
@@ -84,10 +86,38 @@ describe('DatabaseBackupTarget', () => {
 
     expect(result.success).toBe(true);
     expect(received).toContain('PostgreSQL database dump');
-    expect(spawnMock).toHaveBeenCalledWith(
-      'psql',
-      expect.arrayContaining(['-d', 'borrow_return']),
-      expect.objectContaining({ stdio: ['pipe', 'pipe', 'pipe'] })
+    expect(spawnMock.mock.calls[0][0]).toBe('psql');
+    expect(spawnMock.mock.calls[0][1]).toEqual(
+      expect.arrayContaining(['-d', 'borrow_return', '--no-psqlrc', '--single-transaction', '--file', '-', '--set', 'ON_ERROR_STOP=on'])
     );
+  });
+
+  it.each([
+    [3, 'NOTICE: restoring\nERROR: cannot drop table because other objects depend on it\n'],
+    [1, ''],
+    [null, ''],
+  ])('rejects psql exit %s and retains SQL diagnostics', async (code, diagnostics) => {
+    const child = createMockChild();
+    spawnMock.mockReturnValueOnce(child);
+    child.stdin.on('finish', () => {
+      child.stderr.write(diagnostics);
+      child.emit('close', code);
+    });
+    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@db:5432/borrow_return');
+    await expect(target.restore(Buffer.from('SELECT 1;'))).rejects.toThrow(
+      diagnostics || 'Database restore failed'
+    );
+  });
+
+  it('reports the SQL error when psql closes stdin early', async () => {
+    const child = createMockChild();
+    spawnMock.mockReturnValueOnce(child);
+    child.stdin.on('finish', () => {
+      child.stdin.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }));
+      child.stderr.write('ERROR: cannot drop table because other objects depend on it');
+      child.emit('close', 3);
+    });
+    const target = new DatabaseBackupTarget('postgresql://postgres:postgres@db:5432/borrow_return');
+    await expect(target.restore(Buffer.from('SELECT 1;'))).rejects.toThrow('ERROR: cannot drop table');
   });
 });

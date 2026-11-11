@@ -15,7 +15,7 @@ vi.mock('../policies/resource-category-policy.service.js', () => ({
   normalizeProductionScheduleResourceCd: (value: string) => value
 }));
 
-import { readPlanningSource } from '../grinding-planning-board/source.js';
+import { readPlanningSource, readRanks } from '../grinding-planning-board/source.js';
 import { fetchLeaderboardPlanningScopedParentRowIds } from '../leaderboard/leaderboard-row-selection.service.js';
 import { clearLeaderboardMaterializedWinnerCacheForTests } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { clearLeaderboardCanonicalRowCacheForTests } from '../leaderboard/leaderboard-canonical-row-cache.js';
@@ -104,5 +104,25 @@ describe('planning source bounded winner scope', () => {
     expect(queries.filter((q) => q.sql.includes('ORDER BY array_position'))).toHaveLength(3);
     // Other callers (including load summary) still receive the original complete baseWhere.
     expect(source.baseWhere.values).toContainEqual(allWinnerIds);
+  });
+});
+
+
+describe('shared site rank records', () => {
+  it('keeps location precedence, newest fallback and site isolation without re-reading shared records', async () => {
+    const findMany = vi.fn();
+    const client = { productionScheduleOrderAssignment: { findMany } } as unknown as Prisma.TransactionClient;
+    const records = [
+      { csvDashboardRowId: 'one', siteKey: 'A', location: 'B', orderNumber: 10, updatedAt: new Date('2026-11-10') },
+      { csvDashboardRowId: 'one', siteKey: 'B', location: 'A', orderNumber: 20, updatedAt: new Date('2026-11-08') },
+      { csvDashboardRowId: 'one', siteKey: 'A', location: 'A', orderNumber: 30, updatedAt: new Date('2026-11-09') },
+      { csvDashboardRowId: 'two', siteKey: 'B', location: 'B', orderNumber: 40, updatedAt: new Date('2026-11-10') },
+      { csvDashboardRowId: 'three', siteKey: 'C', location: 'C', orderNumber: 50, updatedAt: new Date('2026-11-10') }
+    ].map((row) => ({ ...row, resourceCd: '021' }));
+    const a = await readRanks(client, [], 'A', records);
+    const b = await readRanks(client, [], 'B', records);
+    expect([...a.rows].map(([id, row]) => [id, row.orderNumber])).toEqual([['one', 30]]);
+    expect([...b.rows].map(([id, row]) => [id, row.orderNumber])).toEqual([['one', 10], ['two', 40]]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

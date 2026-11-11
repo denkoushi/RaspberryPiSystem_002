@@ -24,12 +24,11 @@ import { buildPlanningBoardPlacementByPart, buildPlanningBoardProcessChipsByPart
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
 import { PlanningBoardSeibanDrawer } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardSeibanDrawer';
 import { PlanningBoardToolbar } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardToolbar';
-import {
-  resolveGrindingPlanningBoardResource,
-  sortGrindingPlanningBoardItems
-} from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
+import { planningBoardResourceMatches } from '../../features/kiosk/grindingPlanningBoard/planningBoardTwoMachine';
+import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
+import { usePlanningBoardAutoUnitSplit } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardAutoUnitSplit';
 import { usePlanningBoardCategory } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
 import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
@@ -223,17 +222,18 @@ export function PlanningBoardPage() {
   const { enqueue: enqueueWrite, hasPendingSeiban, acceptRefreshedState } = writeQueue;
   const queuedItems = useFrozenValue(writeQueue.items); const registeredFseibans = useFrozenValue(writeQueue.order); const uncheckedFseibans = useFrozenValue(writeQueue.uncheckedFseibans);
   const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !uncheckedFseibans.includes(fseiban))), [registeredFseibans, uncheckedFseibans]);
-  const onCompleted = useCallback((item: GrindingPlanningBoardItem) => {
+  const onCompleted = useCallback((item: GrindingPlanningBoardItem, opNo?: number) => {
     setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
       const next = new Set(ids); next.delete(item.itemId); return [key, next];
     })));
-    setCompletionNotice({ item });
+    setCompletionNotice({ item, opNo });
   }, [setCompletionNotice]);
   const onIncomplete = useCallback(() => setCompletionNotice(null), [setCompletionNotice]);
   const { displayItems: liveDisplayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
     data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
-    completePiece: pieceMutations.completion.mutateAsync, notify, onCompleted, onIncomplete
+    completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
+  usePlanningBoardAutoUnitSplit(() => offline.frozen || piecePendingRef.current || completionPendingRef.current.size > 0 || writeQueue.pending);
 
   const displayItems = useFrozenValue(liveDisplayItems);
 
@@ -653,7 +653,7 @@ export function PlanningBoardPage() {
   const pieceActions = usePlanningBoardPieceActions({
     createEnabled: data?.pieceCapabilities?.createEnabled === true,
     enabled: data?.pieceCapabilities?.includePieces === true,
-    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, completionPendingParentIds, onRemoved: onPieceRemoved,
+    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, completionPendingParentIds, onRemoved: onPieceRemoved, onOpCompletion: toggleCompletion,
     ready: bulkReady && !writeQueue.blocked && !rankConflict && !orderConflict && !orderPreview, blocked: writeBlocked || writeQueue.pending || completionPendingRef.current.size > 0,
     blockedMessage: refreshRequired ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', blockedIsError: refreshRequired
   });
@@ -684,7 +684,7 @@ export function PlanningBoardPage() {
         onToggleGantt={() => { setFocusedSeiban(null); setPinMode(false); setGanttEnabled((enabled) => !enabled); }}
         ganttScale={gantt.scale} onGanttScaleChange={gantt.changeScale}
         ganttMode={gantt.mode} onGanttModeChange={(mode) => { setPinMode(false); gantt.changeMode(mode); }}
-        lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => group.resource === gantt.singleResourceCd).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
+        lateCount={gantt.singleResourceCd ? ganttLayout.groups.filter((group) => planningBoardResourceMatches(gantt.singleResourceCd!, group.resource ?? '', gantt.singleResourceLanes)).flatMap((group) => group.rows.flatMap((row) => row.bars)).filter((bar) => bar.tone === 'late').length : ganttLayout.lateCount} onNextLate={gantt.scrollToNextLate}
         pinMode={pinMode} onTogglePinMode={() => { if (gate.attempt()) setPinMode((value) => !value); }}
         orderPreview={orderPreview} previewPending={writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict}
         onApplyOrder={applyResourceOrder} onCancelOrder={() => { if (gate.attempt()) setOrderPreview(null); }}
@@ -727,7 +727,7 @@ export function PlanningBoardPage() {
       {completionNotice && <div role="status" className="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-3 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">
         <span>完了にしました</span>
         <button type="button" className="min-h-7 rounded border border-emerald-300 px-2 disabled:opacity-60" disabled={interactionLocked || piecesWriting || completionPendingItemIds.has(completionNotice.item.itemId)}
-          onClick={() => { if (!gate.attempt()) return; void toggleCompletion(completionNotice.item, 'incomplete'); setCompletionNotice(null); }}>↶ 戻す</button>
+          onClick={() => { if (!gate.attempt()) return; void toggleCompletion(completionNotice.item, 'incomplete', completionNotice.opNo); setCompletionNotice(null); }}>↶ 戻す</button>
       </div>}
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className={`${data ? 'absolute z-50 ' : ''}p-5 text-sm text-rose-200`}>一覧を読み込めませんでした。</p> : null}

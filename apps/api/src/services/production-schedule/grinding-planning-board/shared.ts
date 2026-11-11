@@ -124,6 +124,7 @@ function todayJstYmd(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+const MAX_DUE_OFFSET_DAYS = 3650;
 export function resolvePlanningBoardDueRequest(params: {
   request: GrindingPlanningBoardDueRequest;
   currentEffectiveDueDate: string | null;
@@ -139,11 +140,14 @@ export function resolvePlanningBoardDueRequest(params: {
     }
     return dateFromYmd(params.request.date);
   }
-  if (!Number.isSafeInteger(params.request.days) || params.request.days <= 0) {
-    throw new ApiError(400, '延期日数は1以上の整数で指定してください', undefined, 'INVALID_DUE_OFFSET');
+  if (!Number.isSafeInteger(params.request.days) || params.request.days <= 0 || params.request.days > MAX_DUE_OFFSET_DAYS) {
+    throw new ApiError(400, `延期日数は1以上${MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
   }
   const base = dateFromYmd(params.currentEffectiveDueDate ?? params.originalDueDate ?? todayJstYmd());
   base.setUTCDate(base.getUTCDate() + params.request.days);
+  if (Number.isNaN(base.getTime())) {
+    throw new ApiError(400, `延期日数は1以上${MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
+  }
   return base;
 }
 

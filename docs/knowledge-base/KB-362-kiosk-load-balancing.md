@@ -14,6 +14,8 @@ superseded_by: ../guides/kiosk-production-schedule-load-balancing.md
 ## Vendor-aware Outsourcing (2026-11-07 · local implementation)
 
 業者の加工条件・月別受入上限を満たす外注試算へ変更。⚙から登録端末の `x-client-key` で設定する。
+計算前提データが変わると試算と「1つ戻す」の履歴を破棄し、同内容の再取得では保持する。
+設定読み込みでは存在しない業者への名指しと重複名指しを除外（最初の有効なものを保持）し、保存時は従来どおり拒否する。
 site設定が存在すれば空一覧も含めshared全体を置換し、業者IDで改名・並び替えを維持する。
 業者設定は能力・移管ルール同様にsourceキャッシュ外で毎回読み、結果キャッシュの設定キーへ含める。
 

@@ -26,6 +26,24 @@ describe('runSessakuPieceOperation', () => {
     expect(data).toMatchObject({ ...context(), outcome: 'success', httpStatus: 200, errorCode: null, resultVersion: 2, afterJson: { count: 2, quantities: [2, 3] } });
     expect(logger.info).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ event: 'sessaku_piece.split', requestId: 'req-1', action: 'split', outcome: 'success', httpStatus: 200, errorCode: null, siteKey: 'site', actorClientDeviceId: 'client', actorDeviceName: 'device', fseiban: 'S1', parentItemId: 'parent', pieceCount: 1, pieceIds: ['piece-1'], expectedVersion: 1, resultVersion: 2, requestedQuantities: [2, 3], totalMs: expect.any(Number), lockWaitMs: 0, beforeProjectionMs: 0, siteCount: 0, writeMs: 0, upsertCount: 0, afterProjectionMs: 0 }), 'Sessaku piece operation');
   });
+  it.each([false, true])('keeps only successful automatic audits in the supplied transaction (failure=%s)', async (failed) => {
+    const create = vi.fn();
+    const tx = { productionScheduleSessakuPieceAuditLog: { create } } as unknown as Prisma.TransactionClient;
+    const error = new ApiError(409, 'stale');
+    const operation = runSessakuPieceOperation({ ...context(), action: 'auto_unit_split_lot' }, async () => {
+      if (failed) throw error;
+      return 42;
+    }, { tx, successOnly: true });
+    if (failed) { await expect(operation).rejects.toBe(error); expect(create).not.toHaveBeenCalled(); }
+    else { await expect(operation).resolves.toBe(42); expect(create).toHaveBeenCalledOnce(); }
+    expect(prisma.productionScheduleSessakuPieceAuditLog.create).not.toHaveBeenCalled();
+    expect(logger.info).not.toHaveBeenCalled();
+  });
+  it('propagates transactional audit errors to the automatic lot SAVEPOINT', async () => {
+    const error = new Error('audit unavailable');
+    const tx = { productionScheduleSessakuPieceAuditLog: { create: vi.fn().mockRejectedValue(error) } } as unknown as Prisma.TransactionClient;
+    await expect(runSessakuPieceOperation(context(), async () => 42, { tx, successOnly: true })).rejects.toBe(error);
+  });
   it.each([400, 409, 500])('records rejection/failure %s and preserves the original error', async (status) => {
     const error = new ApiError(status, 'Safe domain message', undefined, 'PIECE_QUANTITY_CONFLICT');
     await expect(runSessakuPieceOperation(context(), async (audit) => {
