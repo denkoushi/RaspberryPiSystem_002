@@ -180,7 +180,10 @@ describe('production-schedule-command.service', () => {
     });
     expect(acquireProductionScheduleParentRowLockInTransaction).toHaveBeenCalledTimes(2);
     expect(prisma.$transaction).toHaveBeenNthCalledWith(1, expect.any(Function), {
-      isolationLevel: 'Serializable', maxWait: 5_000, timeout: 15_000
+      isolationLevel: 'ReadCommitted', maxWait: 5_000, timeout: 15_000
+    });
+    expect(prisma.$transaction).toHaveBeenNthCalledWith(2, expect.any(Function), {
+      isolationLevel: 'ReadCommitted', maxWait: 5_000, timeout: 15_000
     });
     for (const [, tx] of vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mock.calls) {
       expect(tx).toBeDefined();
@@ -233,6 +236,20 @@ describe('production-schedule-command.service', () => {
     expect(sharedScheduleFieldsRepository.upsertRowNote).not.toHaveBeenCalled();
     expect(vi.mocked(acquireProductionScheduleParentRowLockInTransaction).mock.invocationCallOrder[0])
       .toBeLessThan(vi.mocked(sharedScheduleFieldsRepository.updateRowNoteFields).mock.invocationCallOrder[0]);
+  });
+
+  it('納期監査のbeforeDueDateはロック取得後に読み取る', async () => {
+    vi.mocked(prisma.csvDashboardRow.findFirst).mockResolvedValue({ id: 'row', rowData: {} } as never);
+    const beforeDueDate = new Date('2026-11-19T00:00:00.000Z');
+    vi.mocked(acquireProductionScheduleParentRowLockInTransaction).mockImplementationOnce(async () => {
+      vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mockResolvedValue({ dueDate: beforeDueDate } as never);
+    });
+    await upsertProductionScheduleDueDate({ rowId: 'row', locationKey: 'site', dueDateText: '2026-11-20' });
+    expect(vi.mocked(acquireProductionScheduleParentRowLockInTransaction).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(sharedScheduleFieldsRepository.findRowNoteByRowId).mock.invocationCallOrder[0]);
+    expect(prisma.productionScheduleDueDateAuditLog.create).toHaveBeenCalledExactlyOnceWith({ data: expect.objectContaining({
+      beforeDueDate, afterDueDate: new Date('2026-11-20T00:00:00.000Z')
+    }) });
   });
 
   it('存在しない納期日を400で拒否する', async () => {
