@@ -4,9 +4,10 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 import { registerErrorHandler } from '../../../../plugins/error-handler.js';
 import { prisma } from '../../../../lib/prisma.js';
 import { ApiError } from '../../../../lib/errors.js';
-const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), autoSplit: vi.fn() }));
+const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), autoSplit: vi.fn(), wake: vi.fn() }));
 vi.mock('../../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split, mergeSessakuPieces: mocks.merge, setSessakuPieceCompletion: mocks.completion, setSessakuPieceOpCompletion: mocks.opCompletion }));
 vi.mock('../../../../services/production-schedule/sessaku-pieces/auto-unit-split.service.js', () => ({ autoSplitSessakuUnits: mocks.autoSplit }));
+vi.mock('../../../../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js', () => ({ wakeSessakuAutoUnitSplit: mocks.wake }));
 import { registerSessakuPiecesRoutes } from '../sessaku-pieces.js';
 vi.mock('../../../../lib/prisma.js', () => ({ prisma: { productionScheduleSessakuPieceAuditLog: { create: vi.fn() } } }));
 const base = '/kiosk/production-schedule/grinding-planning-board/pieces';
@@ -78,13 +79,14 @@ describe('sessaku piece routes', () => {
     expect((await instance.inject({ method: 'PUT', headers: { 'x-client-key': 'test-client' }, url: `${base}/${pieceId}/completion`, payload })).statusCode).toBe(200);
     expect(mocks.completion).toHaveBeenCalledWith({ ...payload, dueSource: 'excel', siteKey: 'server-site', pieceId, audit: expect.objectContaining({ action: 'uncomplete' }) }); await instance.close();
   });
-  it('authenticates automatic split and derives the site on the server', async () => {
+  it('returns an immediate stop response and wakes without splitting', async () => {
     const instance = await app();
     mocks.autoSplit.mockResolvedValue({ splitCount: 2, skippedCount: 1, hasMore: false });
     const response = await instance.inject({ method: 'POST', url: `${base}/auto-unit-split` });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ splitCount: 2, skippedCount: 1, hasMore: false });
-    expect(mocks.autoSplit).toHaveBeenCalledWith({ siteKey: 'server-site', audit: expect.objectContaining({ actorClientDeviceId: 'device-1' }) });
+    expect(response.json()).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
+    expect(mocks.autoSplit).not.toHaveBeenCalled();
+    expect(mocks.wake).toHaveBeenCalledOnce();
     expect((await instance.inject({ method: 'POST', url: `${base}/auto-unit-split`, payload: { limit: 9999 } })).statusCode).toBe(400);
     await instance.close();
     const denied = await app(false);

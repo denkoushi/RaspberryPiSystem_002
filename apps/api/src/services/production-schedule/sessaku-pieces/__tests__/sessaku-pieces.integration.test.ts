@@ -6,7 +6,7 @@ import { autoUnitSplitCandidateSql } from '../auto-unit-split-candidates.js';
 import { sessakuPieceSqlState } from '../piece-db-error.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../../grinding-planning-board-resource-capacity.service.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../../policies/resource-category-policy.service.js';
-import { autoUnitSplitCandidates, autoSplitSessakuUnits, AUTO_UNIT_SPLIT_MAX_LOTS } from '../auto-unit-split.service.js';
+import { autoUnitSplitCandidates, autoSplitSessakuUnits, AUTO_UNIT_SPLIT_BUDGET_MS, AUTO_UNIT_SPLIT_MAX_LOTS } from '../auto-unit-split.service.js';
 import { updateGrindingPlanningBoardResourcePartMinutes, getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource } from '../../grinding-planning-board-resource-minutes.service.js';
 import Fastify from 'fastify';
 import * as pieceOperations from '../sessaku-pieces.service.js';
@@ -123,6 +123,42 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
+  it.each(['partial', 'all'] as const)('keeps a %s manual merge held across automatic calls and permits manual split', async (mode) => {
+    await productionLot(seiban, 5);
+    expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 1 });
+    const current = (await board()).items.filter(item => item.sourceRowId === rowId && item.kind === 'piece');
+    const selected = mode === 'all' ? current : current.slice(0, 2);
+    await mergeSessakuPieces({ siteKey: site, parentItemId: current[0].parentItemId!,
+      expectedPieceSetVersion: current[0].pieceSetVersion!, pieceIds: selected.map(item => item.pieceId!),
+      itemRevisions: Object.fromEntries(selected.map(item => [item.itemId, item.itemRevision])) });
+    expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 0 });
+    let saved = (await readSessakuPieceSet(prisma, key()))!;
+    expect(saved.pieces.map(piece => piece.quantity)).toEqual(mode === 'all' ? [] : [2, 1, 1, 1]);
+    const heldAt = saved.autoUnitSplitHeldAt;
+    expect(heldAt).toBeInstanceOf(Date);
+    const editable = mode === 'all' ? await parent() : (await board()).items.find(item => item.sourceRowId === rowId && item.plannedQuantity === 2)!;
+    await splitSessakuPieces({ siteKey: site, parentItemId: mode === 'all' ? editable.itemId : editable.parentItemId!,
+      expectedPieceSetVersion: saved.version, itemRevision: editable.itemRevision,
+      targetPieceId: mode === 'all' ? undefined : editable.pieceId, quantities: mode === 'all' ? [2, 3] : [1, 1] });
+    await quantity(6);
+    saved = (await readSessakuPieceSet(prisma, key()))!;
+    expect(saved.autoUnitSplitHeldAt).toEqual(heldAt);
+    expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 0 });
+    const policy = await getResourceCategoryPolicy({ siteKey: site });
+    for (const includeInputVersion of [false, true]) {
+      expect(await prisma.$queryRaw(autoUnitSplitCandidateSql(site, [seiban], policy, [], [], { includeInputVersion }))).toEqual([]);
+    }
+  });
+  it.each(['quantity', 'resource'] as const)('discovers an existing lot after its %s becomes eligible', async (change) => {
+    await productionLot(seiban, change === 'quantity' ? 1 : 5);
+    if (change === 'resource') await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.create({ data: {
+      csvDashboardId: dashboardId, siteKey: site, resourceCd: '021', dailyHours: 8, unitSplitEnabled: false } });
+    expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 0 });
+    if (change === 'quantity') await quantity(5);
+    else await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.updateMany({ where: { siteKey: site, resourceCd: '021' }, data: { unitSplitEnabled: true } });
+    expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 1 });
+    expect((await readSessakuPieceSet(prisma, key()))!.pieces.map(piece => piece.quantity)).toEqual([1, 1, 1, 1, 1]);
+  });
   it('backfills deleted pre-feature manual keys from successful split/merge audits exactly and idempotently', async () => {
     const keys = [
       { fseiban: seiban, fhincd: '\t手動 品番\u3000', fsigencd: ' 021', fkojun: '０１０' },
@@ -845,10 +881,10 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       return original(...args);
     });
     try {
-      expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+      expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toEqual({ splitCount: operation === 'merge' ? 0 : 1, skippedCount: 0, hasMore: false });
     } finally { hook.mockRestore(); }
     expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 0 });
-    expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual([1, 1, 1, 1, 1]);
+    expect((await readSessakuPieceSet(prisma, key()))?.pieces.map((piece) => piece.quantity)).toEqual(operation === 'merge' ? [] : [1, 1, 1, 1, 1]);
   });
   it('invalidates unchanged neighbour ranks at both sites and rejects queued stale item writes', async () => {
     const neighbour = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
@@ -921,6 +957,12 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { statusCode: 409 } });
     await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits);
     const source = (await readSessakuPieceSet(prisma, key()))!;
+    if (operation === 'merge' && results[1].status === 'fulfilled') {
+      // A human merge is never split again automatically.
+      expect(source.autoUnitSplitHeldAt).not.toBeNull();
+      expect(source.pieces).toEqual([]);
+      return;
+    }
     expect(source.pieces.map((piece) => piece.quantity)).toEqual(Array(5).fill(1));
     expect(new Set(source.pieces.map((piece) => piece.id)).size).toBe(5);
     const later = await prisma.productionScheduleSessakuPieceSet.findMany({ where: { sourcePieceSetId: source.id }, include: { pieces: { orderBy: { position: 'asc' } } } });
@@ -1097,6 +1139,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         expect(await prisma.productionScheduleSessakuPieceHistory.count({ where: { fseiban: seiban } })).toBe(0);
         expect(await prisma.productionScheduleSessakuPieceAuditLog.count({ where: { requestId } })).toBe(0);
         vi.restoreAllMocks();
+        // Yielded lots remain retryable after the short hold; advance only the service clock.
+        if (first === 'automatic-first') vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 30000);
         expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 1 });
       } finally {
         release();
@@ -1121,7 +1165,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       pieceIds: current.map((item) => item.pieceId!), expectedPieceSetVersion: saved.version,
       itemRevisions: Object.fromEntries(current.map((item) => [item.itemId, item.itemRevision])) });
     expect((await readSessakuPieceSet(prisma, key()))?.pieces).toHaveLength(0);
-    expect((await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).splitCount).toBe(1);
+    expect((await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).splitCount).toBe(0);
   });
   it.each([2, 7])('uses the current quantity after CSV sync changes 5 to %i before shared locks', async (total) => {
     await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
@@ -1302,7 +1346,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       const originalRanks = projectionSource.readRanks;
       const ranksSpy = vi.spyOn(projectionSource, 'readRanks').mockImplementationOnce(async (...args) => {
         const ranks = await originalRanks(...args);
-        now.mockReturnValue(3000);
+        now.mockReturnValue(AUTO_UNIT_SPLIT_BUDGET_MS);
         return ranks;
       });
       try {
@@ -1313,7 +1357,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
           data: { rowData: { ...lots[0], FSIGENCD: '305', FKOJUN: '1', ProductNo: '124' } } });
         const changedPage = await prisma.$queryRaw<Array<{ id: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy, [], firstPage));
         expect(changedPage.map((row) => row.id)).toEqual(expect.arrayContaining(firstPage.map((row) => row.id)));
-        now.mockReturnValue(5000);
+        now.mockReturnValue(AUTO_UNIT_SPLIT_BUDGET_MS + 2000);
         expect(await autoSplitSessakuUnits({ siteKey: site })).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
         const beforePieceEdit = await prisma.$queryRaw<Array<{ id: string; parentId: string; inputVersion: string }>>(autoUnitSplitCandidateSql(site, [seiban], policy));
         const tailSet = (await readSessakuPieceSet(prisma, sessakuPieceKeyFromRow(tail)))!;

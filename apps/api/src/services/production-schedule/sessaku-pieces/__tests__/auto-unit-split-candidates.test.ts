@@ -6,6 +6,13 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { STRING_TRIM_CHARACTERS } from '../../grinding-planning-board/shared.js';
 
 describe('automatic candidate SQL contract', () => {
+  it.each([false, true])('excludes held sets in both SQL gates (fingerprints=%s)', includeInputVersion => {
+    const { sql } = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: [], cuttingExcludedResourceCds: [] },
+      [], [], { includeInputVersion });
+    const boundary = sql.indexOf('eligible AS MATERIALIZED');
+    expect(sql.slice(0, boundary)).toContain('s."autoUnitSplitHeldAt" IS NULL');
+    expect(sql.slice(boundary)).toContain('s."autoUnitSplitHeldAt" IS NULL');
+  });
   it.each([
     ['20', '010', true], ['010', '10', false], ['１０', '10', false], [' ２０\t', '１０', true],
     ['A', 'a', isLaterProcessOrder('A', 'a')], ['a', 'A', isLaterProcessOrder('a', 'A')], ['0x20', '10', true], ['2e1', '10', true], ['A', 'B', false], ['B', 'A', true], ['AA', 'A', true], ['', '10', false]
