@@ -166,16 +166,16 @@ have a default user of `10001:10001`. The static client Compose is the legacy re
 When enabled, NFC, barcode and torque run as `10001:10001`, drop all capabilities and use `no-new-privileges:true`, with no added
 capabilities. Host networking, service/profile selection, environment files, restart policies and health checks are unchanged.
 
-- NFC adds numeric groups `46` (plugdev) and `104` (input), permits character majors 189 (USB) and 13 (input), and binds `/dev/bus/usb`
+- NFC adds the host plugdev and input GIDs read during prepare, permits character majors 189 (USB) and 13 (input), and binds `/dev/bus/usb`
   and `/dev/input` read-only. It retains `/run/pcscd:ro` and mounts its named volume at both `/data` and `/app/nfc-agent/data` to preserve
   the relative queue-path default, including when using previous images.
-- Barcode adds group `20` (dialout), permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`. Serial nodes live directly in
+- Barcode adds the host dialout GID read during prepare, permits majors 166 (ttyACM) and 188 (ttyUSB), and binds `/dev:ro`. Serial nodes live directly in
   `/dev`; the parent bind supports unplugged startup, replacement nodes and `/dev/serial` links without container recreation.
-- Torque adds group `104` (input), permits major 13, and binds `/dev/input:ro`. Exact wrench udev rules add `GROUP="input", MODE="0660"`.
+- Torque adds the host input GID read during prepare, permits major 13, and binds `/dev/input:ro`. Exact wrench udev rules add `GROUP="input", MODE="0660"`.
   The root host guard uses group `10001` and runtime directory `root:10001`, mode `0770`, for non-root intent writes.
 - Device cgroup rules allow `rw` without `m`; read-only binds prevent directory changes while allowing permitted device I/O.
 
-The standard release automatically prepares terminals with `client_agents_hardened: true`: it checks the required numeric GIDs
+The standard release automatically prepares terminals with `client_agents_hardened: true`: it reads and validates the host plugdev/dialout/input GIDs
 and PC/SC socket access before stopping the kiosk, stops affected agents before migrating the old NFC queue (including SQLite
 sidecars) only when the volume has no queue, fixes existing NFC/torque volume ownership, and applies the hardened torque guard
 and udev rules before Compose recreation. Volumes are identified by Compose labels; repeated releases preserve existing queues.

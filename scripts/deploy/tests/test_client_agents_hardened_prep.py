@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 import subprocess
 import tarfile
 import tempfile
@@ -87,10 +88,61 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
     def test_group_checks_only_require_enabled_services(self):
         task = self.tasks[0]['block'][1]
         self.assertEqual(task['when'], 'item.services | intersect(release_kiosk_enabled_services) | length > 0')
-        self.assertEqual({item['name']: (item['gid'], item['services']) for item in task['loop']}, {
-            'plugdev': ('46', ['nfc-agent']), 'dialout': ('20', ['barcode-agent']),
-            'input': ('104', ['nfc-agent', 'torque-agent']),
+        self.assertEqual({item['name']: item['services'] for item in task['loop']}, {
+            'plugdev': ['nfc-agent'], 'dialout': ['barcode-agent'],
+            'input': ['nfc-agent', 'torque-agent'],
         })
+
+    def test_host_group_validation_and_gid_facts(self):
+        environment = Environment(undefined=StrictUndefined)
+        environment.tests['match'] = lambda value, pattern: re.match(pattern, value) is not None
+        environment.filters['combine'] = lambda left, right: {**left, **right}
+        tasks = self.tasks[0]['block']
+        check = next(task for task in tasks if 'ansible.builtin.assert' in task)
+        save = next(task for task in tasks if
+                    'release_kiosk_hardened_gids' in task.get('ansible.builtin.set_fact', {}))
+        self.assertLess(tasks.index(check), tasks.index(save))
+        self.assertEqual(save['loop'], check['loop'])
+        self.assertEqual(save['when'], check['when'])
+        conditions = [environment.compile_expression(condition)
+                      for condition in check['ansible.builtin.assert']['that']]
+
+        def valid(item):
+            return all(condition(item=item) for condition in conditions)
+
+        variables = {}
+        expression = save['ansible.builtin.set_fact']['release_kiosk_hardened_gids'].strip()[2:-2]
+        store = environment.compile_expression(expression)
+        for name, gid in [('plugdev', '64'), ('dialout', '24'), ('input', '996')]:
+            item = {'rc': 0, 'stdout': f'{name}:x:{gid}:', 'item': {'name': name}}
+            self.assertTrue(valid(item))
+            variables['release_kiosk_hardened_gids'] = store(item=item, **variables)
+        self.assertEqual(variables['release_kiosk_hardened_gids'], {
+            'plugdev': '64', 'dialout': '24', 'input': '996',
+        })
+        for rc, stdout in [(2, ''), (0, ''), (0, 'input:x'), (0, 'input:x::'),
+                           (0, 'input:x:abc:'), (0, 'input:x:996bad:'), (0, 'input:x:-1:')]:
+            with self.subTest(rc=rc, stdout=stdout):
+                self.assertFalse(valid({'rc': rc, 'stdout': stdout}))
+        skip = environment.compile_expression(save['when'])
+        self.assertFalse(skip(item={'skipped': True}))
+
+    def test_pcsc_socket_uses_host_supplementary_gids(self):
+        task = next(task for task in self.tasks[0]['block']
+                    if task['name'] == 'Require PC/SC socket access for the hardened NFC user')
+        environment = Environment(undefined=StrictUndefined)
+        expression = environment.compile_expression(task['ansible.builtin.assert']['that'][0])
+        for gid, expected in [(64, True), (996, True), (46, False), (104, False), (24, False)]:
+            with self.subTest(gid=gid):
+                self.assertEqual(expression(
+                    release_kiosk_hardened_gids={'plugdev': '64', 'input': '996'},
+                    release_kiosk_hardened_pcscd={'stat': {'exists': True, 'gid': gid}},
+                ), expected)
+        for stat in ({'exists': False}, {'exists': True, 'roth': True, 'woth': True}):
+            self.assertTrue(expression(
+                release_kiosk_hardened_gids={'plugdev': '64', 'input': '996'},
+                release_kiosk_hardened_pcscd={'stat': stat},
+            ))
 
     def run_storage(self, *, volumes=('actual-labeled-volume',), containers=('old-container',),
                     running=True, mounted=False, queue=True, service='nfc-agent',

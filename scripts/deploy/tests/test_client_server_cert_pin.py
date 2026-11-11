@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 import yaml
-from jinja2 import Environment, StrictUndefined
+from jinja2 import Environment, StrictUndefined, Undefined, UndefinedError
 
 ROOT = Path(__file__).resolve().parents[3]
 ANSIBLE = ROOT / 'infrastructure/ansible'
@@ -105,8 +105,15 @@ BUILDERS = [lambda path: status.build_tls_context({'TLS_CA_FILE': str(path), 'TL
 def template_environment():
     env = Environment(undefined=StrictUndefined, trim_blocks=True, keep_trailing_newline=True)
     env.filters.update(bool=lambda v: str(v).lower() in ('true', '1', 'yes', 'on'),
-                       to_json=json.dumps, ternary=lambda v, a, b: a if v else b)
+                       to_json=json.dumps, ternary=lambda v, a, b: a if v else b,
+                       mandatory=mandatory_filter)
     return env
+
+
+def mandatory_filter(value, msg=None):
+    if isinstance(value, Undefined):
+        raise UndefinedError(msg or 'Mandatory variable is undefined')
+    return value
 
 
 def inventory_hosts(document):
@@ -157,7 +164,8 @@ class ClientServerCertPinTests(unittest.TestCase):
                                 haizen_agent_api_base_url='https://127.0.0.1', torque_agent_api_base_url='https://127.0.0.1',
                                 torque_agent_client_key='fixture', torque_agent_hid_devices=[], ansible_user='fixture',
                                 release_kiosk_services=['torque-agent'], release_kiosk_compose_images={'torque-agent': 'fixture'},
-                                release_kiosk_project_dir='/opt/fixture')
+                                release_kiosk_project_dir='/opt/fixture',
+                                release_kiosk_hardened_gids={'plugdev': '46', 'dialout': '20', 'input': '996'})
                 template = env.from_string((ANSIBLE / relative).read_text())
                 for host, values in current.items():
                     self.assertFalse(values.get('client_server_cert_pin_enabled', False), host)
