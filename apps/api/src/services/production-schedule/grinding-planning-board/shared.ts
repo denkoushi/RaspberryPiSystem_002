@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
+import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
@@ -126,7 +126,6 @@ function todayJstYmd(): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-const MAX_DUE_OFFSET_DAYS = 3650;
 export function resolvePlanningBoardDueRequest(params: {
   request: GrindingPlanningBoardDueRequest;
   currentEffectiveDueDate: string | null;
@@ -142,13 +141,13 @@ export function resolvePlanningBoardDueRequest(params: {
     }
     return dateFromYmd(params.request.date);
   }
-  if (!Number.isSafeInteger(params.request.days) || params.request.days <= 0 || params.request.days > MAX_DUE_OFFSET_DAYS) {
-    throw new ApiError(400, `延期日数は1以上${MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
+  if (!Number.isSafeInteger(params.request.days) || params.request.days <= 0 || params.request.days > PLANNING_BOARD_MAX_DUE_OFFSET_DAYS) {
+    throw new ApiError(400, `延期日数は1以上${PLANNING_BOARD_MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
   }
   const base = dateFromYmd(params.currentEffectiveDueDate ?? params.originalDueDate ?? todayJstYmd());
   base.setUTCDate(base.getUTCDate() + params.request.days);
   if (Number.isNaN(base.getTime())) {
-    throw new ApiError(400, `延期日数は1以上${MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
+    throw new ApiError(400, `延期日数は1以上${PLANNING_BOARD_MAX_DUE_OFFSET_DAYS}以下の整数で指定してください`, undefined, 'INVALID_DUE_OFFSET');
   }
   return base;
 }

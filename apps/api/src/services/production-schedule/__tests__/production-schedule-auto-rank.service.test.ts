@@ -70,6 +70,34 @@ describe('atomic auto rank', () => {
     expect(writes.map(a => a.csvDashboardRowId)).toEqual(['a', 'b']);
   });
 
+  it('accepts the same request twice without more writes or events', async () => {
+    await autoRankProductionScheduleOrder(request);
+    const before = structuredClone(committed);
+    await expect(autoRankProductionScheduleOrder(request)).resolves.toMatchObject({ success: true });
+    expect(committed).toEqual(before);
+    expect(writes).toHaveLength(2);
+    expect(events).toHaveLength(2);
+  });
+
+  it('accepts matching legacy device assignments without normalizing or recording events', async () => {
+    committed = request.assignments.map(({ rowId, orderNumber }) => ({
+      csvDashboardRowId: rowId, orderNumber, resourceCd: '305', siteKey: '第2工場', location: '第2工場 - kioskA'
+    }));
+    const before = structuredClone(committed);
+    await expect(autoRankProductionScheduleOrder(request)).resolves.toMatchObject({ success: true });
+    expect(committed).toEqual(before);
+    expect(writes).toEqual([]);
+    expect(events).toEqual([]);
+  });
+
+  it('rejects a different resource even if the order number matches', async () => {
+    committed = [{ csvDashboardRowId: 'b', location: '第2工場 - kioskA', siteKey: '第2工場', resourceCd: 'other', orderNumber: 2 }];
+    const before = structuredClone(committed);
+    await expect(autoRankProductionScheduleOrder(request)).rejects.toMatchObject({ statusCode: 409, code: 'AUTO_RANK_ROW_ALREADY_ASSIGNED' });
+    expect(committed).toEqual(before);
+    expect(events).toEqual([]);
+  });
+
   it('rolls back earlier assignments and learning events when a later slot conflicts', async () => {
     committed = [
       { csvDashboardRowId: 'a', location: '別工場 - kioskA', siteKey: '別工場', resourceCd: '305', orderNumber: 4 },

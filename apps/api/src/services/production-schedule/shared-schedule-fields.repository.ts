@@ -42,9 +42,10 @@ export const sharedScheduleFieldsRepository = {
     });
   },
 
-  deleteRowNoteByRowId(csvDashboardRowId: string, client: Prisma.TransactionClient = prisma) {
-    return client.productionScheduleRowNote.deleteMany({
-      where: { csvDashboardRowId }
+  updateRowNoteFields(csvDashboardRowId: string, data: Pick<RowNoteUpsertInput, 'note' | 'dueDate' | 'processingType'>, client: Prisma.TransactionClient = prisma) {
+    return client.productionScheduleRowNote.updateMany({
+      where: { csvDashboardRowId },
+      data
     });
   },
 
