@@ -16,6 +16,7 @@ import {
   VIEWPORT_MIN_HEIGHT_FULL
 } from '../constants/viewportLayout';
 import { KIOSK_ASSEMBLY_CHECK_SHEETS_PATH, KIOSK_ASSEMBLY_MANUALS_PATH, KIOSK_ASSEMBLY_MANUALS_WORKSHOP_PATH } from '../features/assembly/assemblyRoutes';
+import { PLANNING_BOARD_BANNER_SLOT } from '../features/kiosk/grindingPlanningBoard/offline/PlanningBoardConnectivityBanner';
 import { useInventoryOutboxReplay } from '../features/kiosk/inventory/offline/useInventoryOutboxReplay';
 import { InventoryNfcRouter } from '../features/kiosk/InventoryNfcRouter';
 import {
@@ -268,6 +269,7 @@ export function KioskLayout() {
           : VIEWPORT_MIN_HEIGHT_FULL
       )}
     >
+      {planningBoardRoute && <div id={PLANNING_BOARD_BANNER_SLOT} className="relative z-[100] shrink-0" />}
       {/* 設定変更を監視してリダイレクト */}
       <KioskRedirect />
       <InventoryNfcRouter />

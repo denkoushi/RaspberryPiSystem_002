@@ -5,15 +5,17 @@ export async function getClientCapabilities(clientDeviceId: string): Promise<{
   shelfLayoutEditEnabled: boolean;
   haizenEdgeEnabled: boolean;
   procedureBoardEnabled: boolean;
+  planningBoardOfflineEnabled: boolean;
 }> {
   const device = await prisma.clientDevice.findUniqueOrThrow({
     where: { id: clientDeviceId },
-    select: { shelfLayoutEditEnabled: true, haizenEdgeEnabled: true, procedureBoardEnabled: true }
+    select: { shelfLayoutEditEnabled: true, haizenEdgeEnabled: true, procedureBoardEnabled: true, planningBoardOfflineEnabled: true }
   });
   return {
     shelfLayoutEditEnabled: device.shelfLayoutEditEnabled,
     haizenEdgeEnabled: device.haizenEdgeEnabled,
-    procedureBoardEnabled: device.procedureBoardEnabled === true
+    procedureBoardEnabled: device.procedureBoardEnabled === true,
+    planningBoardOfflineEnabled: device.planningBoardOfflineEnabled === true
   };
 }
 

@@ -1,6 +1,6 @@
 import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
-import { SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
+import { SESSAKU_PIECE_INCLUDE_SETUP_SQL, SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type {
   GrindingPlanningBoardResourceMinutesResponse,
@@ -55,6 +55,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
 };
 
 type LoadSummarySourceRow = {
+  includeSetup?: boolean;
   pieceId?: string | null; pieceQuantity?: number | null; quantityWarning?: string | null;
   id: string;
   fseiban: string | null;
@@ -86,6 +87,7 @@ type LoadSummaryOverrideBinding = {
 type LoadSummaryAggregateRow = {
   originalResourceCd: string | null;
   effectiveResourceCd: string | null;
+  includeSetup?: boolean;
   fhincd?: string | null; quantity?: number | null;
   itemCount: bigint;
   unknownItemCount: bigint;
@@ -183,7 +185,7 @@ function toSummaryRow(
       ? row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
       effectiveResourceCd,
       ...resolveRequiredMinutes({ originalMinutes: minutes, originalKnown: minutes != null,
-        quantity: row.pieceQuantity ?? null, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings), isCompleted: row.isCompleted };
+        quantity: row.pieceQuantity ?? null, includeSetup: row.includeSetup, effectiveResourceCd, fhincd: row.fhinCd ?? '' }, settings), isCompleted: row.isCompleted };
   }
   const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, parentItemId, originalResourceCd);
   return {
@@ -304,6 +306,7 @@ async function readAggregatedLoadSummary(params: {
           THEN (("CsvDashboardRow"."rowData"->>'FSIGENSHOYORYO'))::double precision
           ELSE NULL
         END AS "requiredMinutes",
+        ${SESSAKU_PIECE_INCLUDE_SETUP_SQL},
         "supplement"."plannedQuantity", pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
@@ -324,7 +327,7 @@ async function readAggregatedLoadSummary(params: {
     ),
     "items" AS (
       SELECT
-        b."id" AS "sourceRowId", b."pieceId",
+        b."id" AS "sourceRowId", b."pieceId", b."includeSetup",
         b."fseiban",
         b."productNo",
         b."fhincd",
@@ -379,7 +382,7 @@ async function readAggregatedLoadSummary(params: {
           ELSE "rowOverrides"."overrideResourceCd"
         END AS "effectiveResourceCd",
         "deduplicatedItems"."requiredMinutes",
-        "deduplicatedItems"."fhincd", "deduplicatedItems"."quantity"
+        "deduplicatedItems"."fhincd", "deduplicatedItems"."quantity", "deduplicatedItems"."includeSetup"
       FROM "deduplicatedItems"
       LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" "pieceOverrides"
         ON "pieceOverrides"."csvDashboardId" = ${params.dashboardId} AND "pieceOverrides"."siteKey" = ${params.siteKey}
@@ -396,12 +399,12 @@ async function readAggregatedLoadSummary(params: {
     SELECT
       "originalResourceCd",
       "effectiveResourceCd",
-      "fhincd", "quantity",
+      "fhincd", "quantity", "includeSetup",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
       SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
-    GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes"
+    GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes", "includeSetup"
   `);
 
   return aggregateRows.map((row) => {
@@ -409,7 +412,7 @@ async function readAggregatedLoadSummary(params: {
     const resolved = resolveRequiredMinutes({
       originalMinutes: row.requiredMinutesSum == null ? null : row.requiredMinutesSum / count,
       originalKnown: Number(row.unknownItemCount) === 0,
-      quantity: row.quantity ?? null, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
+      quantity: row.quantity ?? null, includeSetup: row.includeSetup, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
     }, params.resourceMinutes);
     return resolved.requiredMinutesSource === 'own'
       ? { ...row, requiredMinutesSum: resolved.requiredMinutes! * count, unknownItemCount: 0n } : row;
@@ -523,6 +526,7 @@ export async function readGrindingPlanningBoardLoadSummary(
           ELSE NULL
         END AS "requiredMinutes",
         (CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
+        ${SESSAKU_PIECE_INCLUDE_SETUP_SQL},
         pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning",
         "supplement"."plannedQuantity" AS "plannedQuantity"
       FROM "CsvDashboardRow"

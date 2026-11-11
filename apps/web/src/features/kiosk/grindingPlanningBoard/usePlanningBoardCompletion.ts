@@ -1,10 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useSetKioskProductionScheduleRowCompletion } from '../../../api/hooks';
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 import { reportSessakuPieceError } from '../errorTelemetry';
+
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
 import type { CompletionOverlay, FeedbackKind } from './planningBoardPageModel';
 import type { PlanningBoardStatus } from './types';
@@ -27,17 +29,22 @@ type Options = {
   piecePendingParentRef?: RefObject<string | null>;
   currentItemsRef: RefObject<GrindingPlanningBoardItem[]>;
   completePiece: (payload: SessakuPieceCompletionRequest & { pieceId: string }) => Promise<SessakuPiecesMutationResponse>;
+  completePieceOp?: (payload: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) => Promise<SessakuPiecesMutationResponse>;
   notify: (message: string, kind: FeedbackKind) => void;
-  onCompleted: (item: GrindingPlanningBoardItem) => void;
+  onCompleted: (item: GrindingPlanningBoardItem, opNo?: number) => void;
   onIncomplete: () => void;
 };
 
 export function usePlanningBoardCompletion({ data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending,
-  piecePending = false, piecePendingRef, piecePendingParentRef, currentItemsRef, completePiece, notify, onCompleted, onIncomplete }: Options) {
+  piecePending = false, piecePendingRef, piecePendingParentRef, currentItemsRef, completePiece, completePieceOp, notify, onCompleted, onIncomplete }: Options) {
+  const { gate, snapshot, enabled } = usePlanningBoardOffline();
+  useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setCompletionOverlay(new Map()); setCompletionPendingParentIds(new Set()); setCompletionPendingItemIds(new Set()); } }, [enabled, snapshot.phase]);
   const queryClient = useQueryClient();
   const { refetch } = boardQuery;
   const { mutateAsync: setCompletionAsync } = useSetKioskProductionScheduleRowCompletion();
   const [completionOverlay, setCompletionOverlay] = useState<ReadonlyMap<string, CompletionOverlay>>(new Map());
+  const completionOverlayRef = useRef(completionOverlay);
+  completionOverlayRef.current = completionOverlay;
   const writePendingRef = useRef(writePending);
   writePendingRef.current = writePending;
   const bulkReadyRef = useRef(bulkReady);
@@ -92,29 +99,41 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       return next.size === current.size && [...next].every(([key, value]) => current.get(key) === value) ? current : next;
     });
   }, [data, boardQuery.isPlaceholderData, completionPendingItemIds]);
-  const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => {
+  const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo?: number) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     const currentItem = currentItemsRef.current.find((candidate) => candidate.itemId === item.itemId) ?? item;
+    if (opNo != null && (currentItem.kind !== 'piece' || !completePieceOp || !currentItem.ops?.some((op) => op.opNo === opNo))) return;
     const parentId = currentItem.kind === 'piece' ? currentItem.parentItemId : undefined;
     if (interactionLocked || (piecePendingRef.current && currentItem.itemId === piecePendingParentRef?.current) || (currentItem.kind === 'piece' && (!bulkReadyRef.current || piecePendingRef.current || writePendingRef.current ||
       !currentItem.pieceId || currentItem.pieceSetVersion == null || !parentId)) || !data || currentItem.completionSource === 'import' ||
       completionPendingRef.current.has(item.itemId) || (parentId && pendingPieceParentsRef.current.has(parentId))) return;
+    const previousOverlay = completionOverlayRef.current.get(item.itemId);
     if (parentId) {
       pendingPieceParentsRef.current.add(parentId);
       setCompletionPendingParentIds(new Set(pendingPieceParentsRef.current));
     }
     completionPendingRef.current.add(item.itemId);
     setCompletionPendingItemIds(new Set(completionPendingRef.current));
+    let completedOpNos = currentItem.completedOpNos;
+    if (currentItem.ops?.length) {
+      if (opNo == null) completedOpNos = intent === 'complete' ? currentItem.ops.map((op) => op.opNo) : [];
+      else completedOpNos = intent === 'complete' ? [...new Set([...(completedOpNos ?? []), opNo])]
+        : (completedOpNos ?? []).filter((value) => value !== opNo);
+    }
+    const optimisticCompleted = opNo == null ? intent === 'complete' : currentItem.ops!.every((op) => completedOpNos!.includes(op.opNo));
     setCompletionOverlay((current) => new Map(current).set(item.itemId, {
-      isCompleted: intent === 'complete', completionSource: intent === 'complete' ? 'manual' : null,
-      item: currentItem, siteKey: data.siteKey,
+      isCompleted: optimisticCompleted, completionSource: optimisticCompleted ? 'manual' : null,
+      item: { ...currentItem, ...(currentItem.ops?.length ? { completedOpNos } : {}) }, siteKey: data.siteKey,
       category: data.resourceCategories?.[item.originalResourceCd ?? ''] ?? category,
       snapshotId: data.snapshotId
     }));
     try {
       let savedItem = currentItem;
       if (currentItem.kind === 'piece' && currentItem.pieceId && currentItem.pieceSetVersion != null) {
-        const response = await completePiece({ pieceId: currentItem.pieceId, intent,
-          expectedPieceSetVersion: currentItem.pieceSetVersion, itemRevision: currentItem.itemRevision });
+        const payload = { pieceId: currentItem.pieceId, intent,
+          expectedPieceSetVersion: currentItem.pieceSetVersion, itemRevision: currentItem.itemRevision };
+        const response = await gate.run(() => opNo != null && completePieceOp ? completePieceOp({ ...payload, opNo }) : completePiece(payload));
         savedItem = response.pieces.find((candidate) => candidate.itemId === item.itemId) ?? currentItem;
         const savedPieces = new Map(response.pieces.map((piece) => [piece.itemId, piece]));
         currentItemsRef.current = currentItemsRef.current.map((candidate) => savedPieces.get(candidate.itemId) ?? candidate);
@@ -129,20 +148,23 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
           }
           return next;
         });
-      } else await setCompletionAsync({ rowId: currentItem.sourceRowId, intent });
+      } else await gate.run(() => setCompletionAsync({ rowId: currentItem.sourceRowId, intent }));
       setCompletionOverlay((current) => {
         const overlay = current.get(item.itemId);
         return overlay ? new Map(current).set(item.itemId, { ...overlay, item: savedItem, saved: true }) : current;
       });
-      if (item.kind === 'piece') await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
+      if (item.kind === 'piece' || enabled) await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
       else void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
-      if (intent === 'complete') onCompleted(savedItem);
-      else onIncomplete();
+      if (generation !== gate.generation()) return;
+      if (opNo == null ? intent === 'complete' : savedItem.isCompleted) onCompleted(savedItem, opNo);
+      else if (intent === 'incomplete') onIncomplete();
     } catch (error) {
+      if (generation !== gate.generation()) return;
       if (currentItem.kind === 'piece') reportSessakuPieceError(intent === 'complete' ? 'complete' : 'uncomplete', currentItem, error);
       setCompletionOverlay((current) => {
         const next = new Map(current);
-        next.delete(item.itemId);
+        if (opNo != null && previousOverlay) next.set(item.itemId, previousOverlay);
+        else next.delete(item.itemId);
         return next;
       });
       const status = isAxiosError(error) ? error.response?.status : undefined;
@@ -151,14 +173,17 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
         : '完了状態を保存できませんでした。時間をおいて再試行してください。', 'error');
       if (item.kind === 'piece' && (status === 409 || status === 403)) await refetch();
     } finally {
+      if (generation !== gate.generation()) { completionPendingRef.current.delete(item.itemId); if (parentId) pendingPieceParentsRef.current.delete(parentId); }
+      else {
       if (parentId) {
         pendingPieceParentsRef.current.delete(parentId);
         setCompletionPendingParentIds(new Set(pendingPieceParentsRef.current));
       }
       completionPendingRef.current.delete(item.itemId);
       setCompletionPendingItemIds(new Set(completionPendingRef.current));
+      }
     }
-  }, [interactionLocked, data, category, setCompletionAsync, completePiece, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef]);
+  }, [interactionLocked, data, category, setCompletionAsync, completePiece, completePieceOp, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef, gate, enabled]);
   const clearPieceCompletion = useCallback((parentItemId: string) => {
     setCompletionOverlay((current) => new Map([...current].filter(([, overlay]) =>
       overlay.item.itemId !== parentItemId && (overlay.item.kind !== 'piece' || overlay.item.parentItemId !== parentItemId))));
@@ -179,7 +204,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       const savedPiece = item.kind === 'piece' && overlay.saved;
       if (savedPiece && (item.pieceSetVersion ?? 0) >= (overlay.item.pieceSetVersion ?? 0)) return item;
       if (item.completionSource === 'import' && !(savedPiece && (item.pieceSetVersion ?? 0) < (overlay.item.pieceSetVersion ?? 0))) return item;
-      return { ...item, ...(savedPiece ? { itemRevision: overlay.item.itemRevision, pieceSetVersion: overlay.item.pieceSetVersion } : {}), isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
+      return { ...item, ...(item.kind === 'piece' && overlay.item.ops?.length ? { completedOpNos: overlay.item.completedOpNos } : {}), ...(savedPiece ? { itemRevision: overlay.item.itemRevision, pieceSetVersion: overlay.item.pieceSetVersion } : {}), isCompleted: overlay.isCompleted, completionSource: overlay.completionSource };
     }).filter((item) => boardQuery.isPlaceholderData || status === 'all' || (status === 'incomplete' && item.quantityWarning) || item.isCompleted === (status === 'complete'));
     return { displayItems, pieces };
   }, [queuedItems, completionOverlay, applyArrival, data?.siteKey, category, status, boardQuery.isPlaceholderData]);

@@ -6,19 +6,20 @@ type Props = {
   resourceCd: string;
   currentMinutes: number | null;
   saving: boolean;
+  disabled?: boolean;
   error: string | null;
   onSave: (minutes: number) => void;
   onCancel: () => void;
 };
 
 /** 基準能力（月あたり H）をその場で入力する。保存は分に換算して送る */
-export function LoadBalancingCapacityEditor({ resourceCd, currentMinutes, saving, error, onSave, onCancel }: Props) {
+export function LoadBalancingCapacityEditor({ resourceCd, currentMinutes, saving, disabled, error, onSave, onCancel }: Props) {
   const [hoursText, setHoursText] = useState(currentMinutes == null ? '' : formatHours(currentMinutes));
   const hours = Number(hoursText);
   const valid = hoursText.trim().length > 0 && Number.isFinite(hours) && hours >= 0 && hours <= 10000;
 
   const submit = () => {
-    if (valid && !saving) onSave(Math.round(hours * 60));
+    if (valid && !saving && !disabled) onSave(Math.round(hours * 60));
   };
 
   return (
@@ -47,7 +48,7 @@ export function LoadBalancingCapacityEditor({ resourceCd, currentMinutes, saving
       <button
         type="submit"
         className="h-10 rounded-lg bg-emerald-600 px-4 font-bold text-white disabled:opacity-40"
-        disabled={!valid || saving}
+        disabled={!valid || saving || disabled}
       >
         {saving ? '保存中' : '保存'}
       </button>

@@ -2,6 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
 import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
@@ -15,6 +16,7 @@ import {
   PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
 } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
+import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
 import type { GanttBar, GanttRow } from './planningBoardGanttLayout';
 import type { GanttWindow } from './usePlanningBoardGanttWindow';
@@ -57,6 +59,7 @@ type Drag = { pointerId: number; x: number; y: number; moved: boolean; delta: nu
 const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
   bar, onHeldItem, start, dayWidth, today, selected, sibling, dimmed, disabled, pieceDisabled, showPieceQuantity, dragDisabled, onToggleItem, onDueDrop, onCompleteToggle, completionPendingItemIds, completionTargetId, onCompletionTarget, seibanColors, focusedSeiban = null
 }: BarProps) {
+  const { gate, frozen } = usePlanningBoardOffline();
   const pending = useRef<Drag | null>(null);
   const suppressClick = useRef(false);
   const tip = useRef<HTMLSpanElement>(null);
@@ -71,16 +74,18 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     if (tip.current) tip.current.hidden = true;
     if (drag.element.hasPointerCapture?.(drag.pointerId)) drag.element.releasePointerCapture(drag.pointerId);
   }, [onHeldItem]);
+  useEffect(() => gate.subscribeReadOnly(clear), [clear, gate]);
   useEffect(() => {
     window.addEventListener('blur', clear);
     return () => { window.removeEventListener('blur', clear); clear(); };
   }, [clear]);
-  useEffect(() => { clear(); }, [bar.due, clear, dayWidth, disabled, dragDisabled, start]);
+  useEffect(() => { clear(); }, [bar.due, clear, dayWidth, disabled, dragDisabled, frozen, start]);
 
   const move = (event: PointerEvent<HTMLButtonElement>) => {
     const drag = pending.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     if (Math.abs(event.clientX - drag.x) > 4 || Math.abs(event.clientY - drag.y) > 4) drag.moved = true;
+    if (drag.moved && !gate.canWrite()) { gate.attempt(); clear(); return; }
     if (!drag.moved || dragDisabled || bar.item.isCompleted || !bar.due) return;
     const date = shiftedDueDate(bar.due, Math.round((event.clientX - drag.x) / pageZoom() / dayWidth), today);
     drag.delta = dateToDay(date) - dateToDay(bar.due);
@@ -124,7 +129,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         suppressClick.current = drag.moved;
         const date = bar.due ? shiftedDueDate(bar.due, drag.delta, today) : null;
         clear();
-        if (!disabled && !dragDisabled && !bar.item.isCompleted && drag.moved && date && date !== bar.due) onDueDrop(bar.item, date);
+        if (!disabled && !dragDisabled && !bar.item.isCompleted && drag.moved && date && date !== bar.due && gate.attempt()) onDueDrop(bar.item, date);
       }}
       onPointerCancel={() => { suppressClick.current = true; clear(); }}
       onLostPointerCapture={() => { if (pending.current) { suppressClick.current = true; clear(); } }}
@@ -140,7 +145,9 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
       )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
-        {bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
+        {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={bar.start!} end={bar.end!} />}
+        {bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
+          : bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />

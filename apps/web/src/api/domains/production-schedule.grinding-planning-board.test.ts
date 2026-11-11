@@ -9,9 +9,21 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { autoUnitSplitKioskSessakuPieces, setKioskSessakuPieceOpCompletion, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
+  it('posts an empty body for bounded automatic unit splitting', async () => {
+    const data = { splitCount: 5, skippedCount: 2, hasMore: true };
+    post.mockResolvedValue({ data });
+    await expect(autoUnitSplitKioskSessakuPieces()).resolves.toEqual(data);
+    expect(post).toHaveBeenCalledExactlyOnceWith('/kiosk/production-schedule/grinding-planning-board/pieces/auto-unit-split', {});
+  });
+  it('puts operation completion with the encoded piece ID and existing concurrency fields', async () => {
+    const payload = { intent: 'complete' as const, expectedPieceSetVersion: 2, itemRevision: 'revision' };
+    const data = { pieces: [] }; put.mockResolvedValue({ data });
+    await expect(setKioskSessakuPieceOpCompletion('piece/id', 20, payload)).resolves.toEqual(data);
+    expect(put).toHaveBeenCalledExactlyOnceWith('/kiosk/production-schedule/grinding-planning-board/pieces/piece%2Fid/ops/20/completion', payload);
+  });
   it('separates board and snapshot piece requests while keeping one load cache key', () => {
     const params = { category: 'cutting' as const, view: 'resource' as const };
     expect(productionScheduleQueryKeys.grindingPlanningBoard(params)).not.toEqual(productionScheduleQueryKeys.grindingPlanningBoard({ ...params, includePieces: true }));

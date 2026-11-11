@@ -51,6 +51,7 @@ export function useClientMutations() {
         haizenEdgeEnabled?: boolean;
         shelfLayoutEditEnabled?: boolean;
         procedureBoardEnabled?: boolean;
+        planningBoardOfflineEnabled?: boolean;
         siteKey?: string | null;
         canProxyOtherDevices?: boolean;
         isSignage?: boolean;

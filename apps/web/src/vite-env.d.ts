@@ -1,6 +1,12 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
+  readonly VITE_PLANNING_BOARD_OFFLINE_ENABLED?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_LOSS_AFTER_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_PROBE_INTERVAL_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_PROBE_TIMEOUT_MS?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_RECOVERY_SUCCESSES?: string;
+  readonly VITE_PLANNING_BOARD_OFFLINE_RECOVERED_BANNER_MS?: string;
   readonly VITE_AGENT_WS_MODE?: string;
   readonly VITE_AGENT_WS_URL?: string;
   readonly VITE_API_BASE_URL?: string;

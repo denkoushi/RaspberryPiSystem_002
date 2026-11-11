@@ -83,6 +83,7 @@ export const updateClientSchema = z.object({
   haizenEdgeEnabled: z.boolean().optional(),
   shelfLayoutEditEnabled: z.boolean().optional(),
   procedureBoardEnabled: z.boolean().optional(),
+  planningBoardOfflineEnabled: z.boolean().optional(),
   /** 明示拠点（Site.key）。null で未設定（location 文字列からの推測）に戻す */
   siteKey: z.string().trim().min(1).max(50).optional().nullable(),
   isSignage: z.boolean().optional(),

@@ -34,7 +34,7 @@ export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, re
     return processPositions.get(key)!;
   });
   const processCount = processPositions.size;
-  return <div ref={ref} style={{ bottom }} data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="absolute inset-x-0 z-50 flex items-center gap-3 overflow-x-auto border-t border-slate-700 bg-slate-950 p-2 shadow-[0_-4px_12px_rgb(0_0_0/0.35)] text-xs text-slate-100">
+  return <div ref={ref} style={{ bottom }} data-testid="planning-gantt-chain-strip" role="region" aria-label="工程のつながり" className="absolute inset-x-0 z-50 flex items-center gap-3 overflow-x-auto border-t border-slate-700 bg-slate-950 p-2 text-xs text-slate-100">
     <div className="shrink-0">
       <strong className="text-base">{part.fhinmei || part.fhincd}</strong>
       <div className="text-sm text-white">{part.fseiban} · {part.fhincd} · {processCount}工程</div>

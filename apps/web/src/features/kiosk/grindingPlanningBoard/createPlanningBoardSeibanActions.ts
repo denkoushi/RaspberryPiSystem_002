@@ -1,6 +1,7 @@
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 
+import type { PlanningBoardWriteGate } from './offline/planningBoardWriteGate';
 import type { FeedbackKind } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
@@ -9,6 +10,7 @@ import type { GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { Dispatch, SetStateAction } from 'react';
 
 type Options = {
+  gate?: PlanningBoardWriteGate;
   data: GrindingPlanningBoardResponse | undefined;
   scopeReady: boolean;
   writeBlocked: boolean;
@@ -28,9 +30,10 @@ type Options = {
 export function createPlanningBoardSeibanActions({
   data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
   registeredFseibans, updateOrder, setOrderConflict, notify, boardQuery, setRankConflict,
-  acceptRefreshedState, setOpenFseibans
+  acceptRefreshedState, setOpenFseibans, gate
 }: Options) {
   const persistOrder = (nextOrder: string[], onAccepted?: () => void, onRejected?: () => void): Promise<boolean> => {
+    if (gate && !gate.attempt()) return Promise.resolve(false);
     if (!data || !scopeReady || writeBlocked || allocation === 'original') return Promise.resolve(false);
     if (nextOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
       setOrderRegistrationError(`登録上限${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件を超えるため保存できません。選択を減らしてください。`);
@@ -41,10 +44,11 @@ export function createPlanningBoardSeibanActions({
       const accepted = enqueueWrite({ label: '製番順', itemIds: [], seibans: [...new Set([...registeredFseibans, ...nextOrder])], order: true,
         apply: (display) => ({ ...display, order: nextOrder }),
         save: async (context) => {
-          const result = await updateOrder.mutateAsync({ sourceRevision: context.sourceRevision, fseibans: nextOrder });
+          const save = () => updateOrder.mutateAsync({ sourceRevision: context.sourceRevision, fseibans: nextOrder });
+          const result = await (gate ? gate.run(save) : save());
           return { sourceRevision: result.sourceRevision, order: result.seibanOrder, uncheckedFseibans: result.uncheckedFseibans };
         },
-        onSaved: () => resolve(true),
+        onSaved: () => resolve(true), onDiscarded: () => resolve(false),
         onFailed: (error) => {
           onRejected?.();
           resolve(false);

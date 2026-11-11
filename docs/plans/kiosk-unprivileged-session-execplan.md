@@ -36,8 +36,8 @@ existing operation. This mechanism change leaves every host disabled; enabling
   rollback is a PR that removes the flag. Zero 2W and Pi3 are excluded.
 - [x] Round 1 enabled (`kensaku-stonebase01`, `kensaku-02`). Deployed 2026-11-09 (#2676); on-site checks passed.
 - [x] Round 2 enabled (`sessaku-01`, `fjv60-80`, `robodrill01`). Deployed 2026-11-10 (#2680); on-site checks passed.
-- [ ] Round 3 enabled (`assembly-01`, `assembly-02`).
-- [ ] Round 4 enabled.
+- [x] Round 3 enabled (`assembly-01`, `assembly-02`). Deployed 2026-11-10 (#2692); on-site checks passed.
+- [ ] Round 4 enabled (`raspberrypi4`).
 
 ## Surprises & Discoveries
 

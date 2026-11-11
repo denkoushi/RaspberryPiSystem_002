@@ -1,6 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { productionFixture } from '../../features/kiosk/grindingPlanningBoard/__perf__/fixture';
+import { PlanningBoardGanttDisplay } from '../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttDisplay';
+import { buildPlanningBoardGanttLayout } from '../../features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttLayout';
 
 import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './production-schedule';
 
@@ -13,6 +17,7 @@ vi.mock('../client', async (importOriginal) => ({
   getKioskGrindingPlanningBoardResourceCapacity: mocks.get,
   updateKioskGrindingPlanningBoardResourceCapacity: mocks.put
 }));
+vi.mock('./machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const key = ['kiosk-planning-board-resource-capacity'];
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -70,4 +75,33 @@ describe('planning board resource capacity', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(client.getQueryData(key)).toEqual(previous);
   });
+});
+
+
+it.each([{ dailyHours: 8 as const }, { runsThroughBreaks: true }])('preserves enabled pair flags through an optimistic capacity change: %j', async patch => {
+  const { client, wrapper } = setup();
+  const flags = { '305': true, '306': true };
+  const previous = { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: flags };
+  client.setQueryData(key, previous);
+  let finish!: (value: GrindingPlanningBoardResourceCapacityResponse) => void;
+  mocks.put.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const fixture = productionFixture(1, 1);
+  const layout = buildPlanningBoardGanttLayout({ ...fixture.options, resources: ['305', '306'], mode: 'forward' });
+  function Board() {
+    const capacity = useKioskGrindingPlanningBoardResourceCapacity(true);
+    const mutation = useUpdateKioskGrindingPlanningBoardResourceCapacity();
+    return <PlanningBoardGanttDisplay layout={layout} singleResourceCd="305" resourceLanes={['305', '306']}
+      unitSplitEnabledByResource={capacity.data?.unitSplitEnabledByResource} capacityLoaded={capacity.data !== undefined}
+      scale={14} dailyHoursByResource={capacity.data?.dailyHoursByResource ?? {}} resourceNameMap={{}}
+      capacityPending={false} capacityError={false} disabled={false} dragDisabled={false} resourceView selectedItemIds={new Set()}
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()}
+      onCapacityChange={() => mutation.mutate({ resourceCd: '305', ...patch })} />;
+  }
+  render(<Board />, { wrapper });
+  expect(screen.getByRole('button', { name: '2台', exact: true })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: '8H' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith({ resourceCd: '305', ...patch }));
+  expect(client.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(key)?.unitSplitEnabledByResource).toEqual(flags);
+  expect(screen.getByRole('button', { name: '2台', exact: true })).toBeEnabled();
+  await act(async () => finish(previous));
 });

@@ -48,3 +48,30 @@ describe('usePersistedPlanningBoardSingleResource', () => {
     expect(result.current.resourceCd).toBeNull();
   });
 });
+
+it.each(['021', '022'])('persists and restores the pair, deselecting when %s disappears', (missing) => {
+  localStorage.clear();
+  const first = renderHook(() => usePersistedPlanningBoardSingleResource('site:cutting', ['021', '022']));
+  act(() => first.result.current.changeResource('021+022'));
+  expect(JSON.parse(localStorage.getItem(key('site:cutting'))!)).toEqual({ schemaVersion: 1, resourceCd: '021+022' });
+  first.unmount();
+  const { result, rerender } = renderHook(({ resources }) => usePersistedPlanningBoardSingleResource('site:cutting', resources),
+    { initialProps: { resources: ['021', '022'] } });
+  expect(result.current.resourceCd).toBe('021+022');
+  rerender({ resources: ['021', '022'].filter((resource) => resource !== missing) });
+  expect(result.current.resourceCd).toBeNull();
+});
+
+it.each(['021+022', '305+306', '306+305'])('reads an existing schema-1 selection %s without migration', selection => {
+  localStorage.clear();
+  localStorage.setItem(key('site:all'), JSON.stringify({ schemaVersion: 1, resourceCd: selection }));
+  const { result } = renderHook(() => usePersistedPlanningBoardSingleResource('site:all', ['021', '022', '305', '306']));
+  expect(result.current.resourceCd).toBe(selection);
+});
+
+
+it('restores a literal + resource code before considering a pair', () => {
+  localStorage.setItem(key('literal'), JSON.stringify({ schemaVersion: 1, resourceCd: '305+306' }));
+  const { result } = renderHook(() => usePersistedPlanningBoardSingleResource('literal', ['305+306']));
+  expect(result.current.resourceCd).toBe('305+306');
+});

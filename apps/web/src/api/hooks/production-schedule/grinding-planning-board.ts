@@ -11,7 +11,7 @@ import {
 import { normalizeLeaderboardContinueFailure } from '../../../features/kiosk/leaderOrderBoard/leaderboardContinueErrorPolicy';
 import { LEADER_BOARD_LEADER_PHASED_STALE_MS, LEADER_BOARD_SCHEDULE_REFETCH_MS } from '../../../features/kiosk/leaderOrderBoard/performance/leaderBoardRefetchPolicy';
 import {
-  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion,
+  splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, setKioskSessakuPieceOpCompletion,
   getKioskGrindingPlanningBoardDueDetail,
   getKioskGrindingPlanningBoardProcessChips,
   getKioskGrindingPlanningBoardResourceCapacity,
@@ -33,6 +33,8 @@ import {
   updateKioskGrindingPlanningBoardDueScope
 } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
+
+import { PLANNING_BOARD_SETTINGS_REFETCH_MS } from './grinding-planning-board-resource-minutes';
 
 import type {
   SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
@@ -499,7 +501,8 @@ export function useKioskGrindingPlanningBoardResourceCapacity(enabled: boolean) 
     queryKey: planningBoardCapacityKey,
     queryFn: getKioskGrindingPlanningBoardResourceCapacity,
     enabled,
-    staleTime: 10 * 60_000
+    staleTime: 10 * 60_000,
+    refetchInterval: PLANNING_BOARD_SETTINGS_REFETCH_MS
   });
 }
 
@@ -511,6 +514,7 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
       await queryClient.cancelQueries({ queryKey: planningBoardCapacityKey });
       const previous = queryClient.getQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey);
       queryClient.setQueryData<GrindingPlanningBoardResourceCapacityResponse>(planningBoardCapacityKey, {
+        ...previous,
         dailyHoursByResource: { ...previous?.dailyHoursByResource, ...(dailyHours !== undefined ? { [resourceCd]: dailyHours } : {}) },
         runsThroughBreaksResources: runsThroughBreaks === undefined ? previous?.runsThroughBreaksResources ?? []
           : [...(previous?.runsThroughBreaksResources ?? []).filter((resource) => resource !== resourceCd), ...(runsThroughBreaks ? [resourceCd] : [])]
@@ -520,7 +524,12 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
     onError: (_error, _variables, context) => {
       queryClient.setQueryData(planningBoardCapacityKey, context?.previous ?? { dailyHoursByResource: {}, runsThroughBreaksResources: [] });
     },
-    onSuccess: (response) => queryClient.setQueryData(planningBoardCapacityKey, response)
+    onSuccess: (response) => {
+      // A periodic fetch that started before this save would overwrite the saved value with an older one.
+      const refetching = queryClient.isFetching({ queryKey: planningBoardCapacityKey }) > 0;
+      queryClient.setQueryData(planningBoardCapacityKey, response);
+      if (refetching) void queryClient.invalidateQueries({ queryKey: planningBoardCapacityKey });
+    }
   });
 }
 
@@ -552,7 +561,9 @@ export function useKioskSessakuPieceMutations() {
   const merge = useMutation({ mutationFn: (payload: SessakuPiecesMergeRequest) => mergeKioskSessakuPieces(payload), retry: false, onSuccess });
   const completion = useMutation({ mutationFn: ({ pieceId, ...payload }: SessakuPieceCompletionRequest & { pieceId: string }) =>
     setKioskSessakuPieceCompletion(pieceId, payload), retry: false, onSuccess });
-  return { split, merge, completion };
+  const opCompletion = useMutation({ mutationFn: ({ pieceId, opNo, ...payload }: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) =>
+    setKioskSessakuPieceOpCompletion(pieceId, opNo, payload), retry: false, onSuccess });
+  return { split, merge, completion, opCompletion };
 }
 
 export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival() {

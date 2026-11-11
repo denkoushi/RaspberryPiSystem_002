@@ -105,6 +105,22 @@ describe('resource minutes UI', () => {
     await act(async () => vi.advanceTimersByTime(400));
     expect(save).toHaveBeenCalledWith({ resourceCd: '021', fhincd: 'OPS', perUnitMinutes: 14, setupMinutes: 5, expectedOpIds: [], ops: [{ opNo: 1, minutes: 10, setupMinutes: 0 }, { opNo: 2, minutes: 4, setupMinutes: 5 }] });
   });
+  it('shows operations by the unit split setting instead of the resource number', () => {
+    const view = render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: 'ON' })]} values={[]} disabled={false} />);
+    expect(screen.queryByRole('button', { name: '＋工程' })).not.toBeInTheDocument();
+    view.rerender(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: 'ON' })]} values={[]} disabled={false} unitSplitEnabledByResource={{ '305': true }} />);
+    expect(screen.getByRole('button', { name: '＋工程' })).toBeInTheDocument();
+    expect(screen.getByText('1工程')).toBeInTheDocument();
+  });
+  it('keeps 021 operations by default, hides them when its unit split is off, and keeps saved operations visible', () => {
+    const saved = [{ resourceCd: '021', fhincd: 'OFF', setupMinutes: 5, perUnitMinutes: 10, ops: [{ id: 'op-2', opNo: 2, minutes: 10, setupMinutes: 5 }] }];
+    const view = render(<PlanningBoardResourceMinutesSheet resourceCd="021" items={[item({ fhincd: 'OFF' })]} values={[]} disabled={false} />);
+    expect(screen.getByRole('button', { name: '＋工程' })).toBeInTheDocument();
+    view.rerender(<PlanningBoardResourceMinutesSheet resourceCd="021" items={[item({ fhincd: 'OFF' })]} values={[]} disabled={false} unitSplitEnabledByResource={{ '021': false }} />);
+    expect(screen.queryByRole('button', { name: '＋工程' })).not.toBeInTheDocument();
+    view.rerender(<PlanningBoardResourceMinutesSheet resourceCd="021" items={[item({ fhincd: 'OFF' })]} values={saved} disabled={false} unitSplitEnabledByResource={{ '021': false }} />);
+    expect(screen.getByText('2工程')).toBeInTheDocument();
+  });
   it('keeps a single remaining operation and adds after the greatest saved number', async () => {
     vi.useFakeTimers(); save.mockResolvedValue({ ownSourceResourceCds: [], values: [] });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
