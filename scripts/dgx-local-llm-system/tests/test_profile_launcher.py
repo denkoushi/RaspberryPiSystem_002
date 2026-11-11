@@ -38,7 +38,7 @@ class ProfileLauncherTests(unittest.TestCase):
             "DGX_RUNTIME_ENGINE": "control-server",
             "VLLM_TENSOR_PARALLEL_SIZE": "2", "VLLM_MAX_MODEL_LEN": "131072",
             "VLLM_MAX_NUM_SEQS": "4", "VLLM_MAX_NUM_BATCHED_TOKENS": "4096",
-            "VLLM_SCHEDULING_POLICY": "priority", "VLLM_GPU_MEMORY_UTILIZATION": "0.85",
+            "VLLM_SCHEDULING_POLICY": "priority", "VLLM_GPU_MEMORY_UTILIZATION": "0.87",
             "VLLM_KV_CACHE_DTYPE": "auto", "VLLM_ENABLE_PREFIX_CACHING": "true",
             "VLLM_ENABLE_CHUNKED_PREFILL": "true",
             "VLLM_SPECULATIVE_CONFIG": '{"method":"mtp","num_speculative_tokens":3,"draft_tensor_parallel_size":2}',

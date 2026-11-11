@@ -166,7 +166,7 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
                 "--speculative-config", env["VLLM_SPECULATIVE_CONFIG"], "--mm-encoder-tp-mode", "data",
                 "--safetensors-load-strategy", "eager", "--default-chat-template-kwargs", '{"enable_thinking":false}',
                 "--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_xml", "--enable-auto-tool-choice",
-                "--gpu-memory-utilization", "0.85", "--nnodes", "2", "--master-addr", env["BLUE_MASTER_ADDR"],
+                "--gpu-memory-utilization", "0.87", "--nnodes", "2", "--master-addr", env["BLUE_MASTER_ADDR"],
                 "--master-port", "29501", "--node-rank",
             ] + (["1", "--headless"] if node == "worker" else ["0", "--host", "127.0.0.1", "--port", "38083", "--scheduling-policy", "priority"]))
             self.assertIn(f"{self.model}:/models/qwen38fn:ro", args)
