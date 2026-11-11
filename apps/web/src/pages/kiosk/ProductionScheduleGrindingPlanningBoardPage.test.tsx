@@ -2250,6 +2250,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   });
 
   it('selects and restores two independent machine panes, totals their late bars and exits', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-11T00:00:00Z'));
     const data = fixture();
     data.resources = ['021', '022', '305'];
     data.resourceCategories = { '021': 'grinding', '022': 'grinding', '305': 'grinding' };
