@@ -268,7 +268,7 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
         {item.kind === 'piece' && ops.map((op, index) => {
           const completed = item.completedOpNos?.includes(op.opNo) ?? false;
           return <Fragment key={op.opNo}>
-            {index > 0 && isUnitPiece(item) && actions.createEnabled && <button type="button" aria-label={`工程${op.opNo}の前で分ける`}
+            {index > 0 && isUnitPiece(item) && !item.isLaterProcess && actions.createEnabled && <button type="button" aria-label={`工程${op.opNo}の前で分ける`}
               disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void runOps(op.opNo); }}
               className="h-8 rounded border border-dashed border-slate-600 bg-transparent text-slate-300 disabled:opacity-40">✂</button>}
             <button type="button" aria-label={`工程${op.opNo}を${completed ? '未完了' : '完了'}にする`} aria-pressed={completed}

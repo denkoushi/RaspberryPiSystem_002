@@ -3119,7 +3119,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toEqual(done);
       await quantity(2);
       expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ quantityWarning: null, pieces: [{ quantity: 1 }, { quantity: 1 }] });
-      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.find((piece) => piece.id === done.id)).toEqual(done);
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.find((piece) => piece.id === done.id)).toEqual({ ...done, opSplits: [] });
     });
     it('leaves unsplit later rows untouched on full merge', async () => {
       const r = await splitThree();
