@@ -1,6 +1,6 @@
 
 import { formatLoadBalancingMachineName } from './loadBalancingFormat';
-import { partKey, resolveNamedTarget } from './loadBalancingNamedTargets';
+import { namedTargetKey, partKey } from './loadBalancingNamedTargets';
 
 export { partKey } from './loadBalancingNamedTargets';
 
@@ -312,7 +312,7 @@ export function vendorRowUsage(row: ProductionScheduleLoadBalancingWorkspaceRow,
   return usage;
 }
 
-/** Always rebuild both ledgers from the effective final actions, never apply deltas. */
+/** Canonical aggregation from effective final actions, in original row/allocation order. */
 export function aggregateScenario(input: Pick<ScenarioInput, 'rows' | 'actions' | 'months' | 'today'>) {
   const byRow = indexActions(input.actions);
   const vendorUsage = new Map<string, Map<string, number>>();
@@ -380,26 +380,144 @@ function excessCells(input: ScenarioInput, matrix = aggregateScenario(input).mat
     return over > 0.5 ? [{ resourceCd: resource.resourceCd, bucket, over }] : [];
   })).sort((a, b) => b.over - a.over || compareId(a.resourceCd, b.resourceCd) || compareId(a.bucket, b.bucket));
 }
-function cellCandidates(input: ScenarioInput, cell: { resourceCd: string; bucket: string }) {
-  const acted = indexActions(input.actions);
-  return input.rows.filter((row) => row.resourceCd === cell.resourceCd && !acted.has(row.rowId) && isScenarioCandidate(row, input) &&
-    row.allocations.some((allocation) => allocation.bucket === cell.bucket && allocation.minutes > 0));
-}
 const cellMinutes = (row: ProductionScheduleLoadBalancingWorkspaceRow, bucket: string) =>
   row.allocations.filter((allocation) => allocation.bucket === bucket).reduce((sum, allocation) => sum + allocation.minutes, 0);
 const dueCompare = (a: ProductionScheduleLoadBalancingWorkspaceRow, b: ProductionScheduleLoadBalancingWorkspaceRow) =>
   compareId(a.effectiveDueDate, b.effectiveDueDate) || compareId(a.rowId, b.rowId);
 
+/** Selection-local indexes. Re-sum only changed cells, retaining canonical floating-point addition order. */
+function createSelectionLedger(input: ScenarioInput) {
+  const acted = indexActions(input.actions);
+  const rowIndexes = new Map(input.rows.map((row, index) => [row.rowId, index]));
+  type Contributions = { indexes: number[]; values: Array<number[] | undefined> };
+  const loadEntries = new Map<string, Map<string, Contributions>>();
+  const usageEntries = new Map<string, Map<string, Contributions>>();
+  const { matrix, vendorUsage } = aggregateScenario(input);
+  const setEntry = (entries: Map<string, Map<string, Contributions>>, id: string, month: string, index: number, values: number[]) => {
+    let months = entries.get(id);
+    if (!months) entries.set(id, months = new Map());
+    let rows = months.get(month);
+    if (!rows) months.set(month, rows = { indexes: [], values: [] });
+    if (rows.values[index] === undefined) {
+      // Keep original row order even when selections arrive in due/priority order.
+      let low = 0, high = rows.indexes.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (rows.indexes[middle]! < index) low = middle + 1;
+        else high = middle;
+      }
+      rows.indexes.splice(low, 0, index);
+    }
+    rows.values[index] = values;
+    return rows;
+  };
+  const placements = input.rows.map((row) => placeRow(row, acted.get(row.rowId), input.months));
+  placements.forEach((placed, index) => {
+    for (const item of placed) {
+      const values = loadEntries.get(item.resourceCd)?.get(item.bucket)?.values[index] ?? [];
+      values.push(item.minutes);
+      setEntry(loadEntries, item.resourceCd, item.bucket, index, values);
+    }
+    const row = input.rows[index]!;
+    const action = acted.get(row.rowId);
+    if (action?.type === 'outsource' && action.vendorId) {
+      for (const [month, minutes] of vendorRowUsage(row, input.months, input.today ?? '')) {
+        setEntry(usageEntries, action.vendorId, month, index, [minutes]);
+      }
+    }
+  });
+  const sum = (rows: Contributions) => {
+    let total = 0;
+    for (const index of rows.indexes) for (const minutes of rows.values[index]!) total += minutes;
+    return total;
+  };
+  const add = (actions: ScenarioAction[]) => {
+    const changedLoads = new Map<Contributions, { resourceCd: string; bucket: string }>();
+    const changedUsage = new Map<Contributions, { vendorId: string; month: string }>();
+    for (const action of actions) {
+      input.actions.push(action);
+      acted.set(action.rowId, action);
+      const index = rowIndexes.get(action.rowId)!;
+      const row = input.rows[index]!;
+      for (const placed of placements[index]!) {
+        const entries = setEntry(loadEntries, placed.resourceCd, placed.bucket, index, []);
+        changedLoads.set(entries, placed);
+      }
+      placements[index] = placeRow(row, action, input.months);
+      for (const placed of placements[index]!) {
+        const entries = setEntry(loadEntries, placed.resourceCd, placed.bucket, index,
+          [...(loadEntries.get(placed.resourceCd)?.get(placed.bucket)?.values[index] ?? []), placed.minutes]);
+        changedLoads.set(entries, placed);
+      }
+      if (action.type === 'outsource' && action.vendorId) {
+        for (const [month, minutes] of vendorRowUsage(row, input.months, input.today ?? '')) {
+          const entries = setEntry(usageEntries, action.vendorId, month, index, [minutes]);
+          changedUsage.set(entries, { vendorId: action.vendorId, month });
+        }
+      }
+    }
+    for (const [entries, { resourceCd, bucket }] of changedLoads) {
+      let months = matrix.get(resourceCd);
+      if (!months) matrix.set(resourceCd, months = new Map());
+      months.set(bucket, sum(entries));
+    }
+    for (const [entries, { vendorId, month }] of changedUsage) {
+      let months = vendorUsage.get(vendorId);
+      if (!months) vendorUsage.set(vendorId, months = new Map());
+      months.set(month, sum(entries));
+    }
+  };
+  return { acted, matrix, vendorUsage, add };
+}
+
+function createSelectionIndex(input: ScenarioInput, ledger: ReturnType<typeof createSelectionLedger>) {
+  const candidates = input.rows.filter((row) => isScenarioCandidate(row, input));
+  const cells = new Map<string, Map<string, typeof candidates>>();
+  const parts = new Map<string, typeof candidates>();
+  const matches = new Map(candidates.map((row) => [row, new Set((input.settings?.vendors ?? []).filter((vendor) => vendorMatches(vendor, row)))]));
+  for (const row of candidates) {
+    const key = partKey(row);
+    const group = parts.get(key) ?? [];
+    group.push(row);
+    parts.set(key, group);
+    let months = cells.get(row.resourceCd);
+    if (!months) cells.set(row.resourceCd, months = new Map());
+    for (const bucket of new Set(row.allocations.filter((allocation) => allocation.minutes > 0).map((allocation) => allocation.bucket))) {
+      const rows = months.get(bucket) ?? [];
+      rows.push(row);
+      months.set(bucket, rows);
+    }
+  }
+  const cellRows = (cell: { resourceCd: string; bucket: string }) =>
+    (cells.get(cell.resourceCd)?.get(cell.bucket) ?? []).filter((row) => !ledger.acted.has(row.rowId));
+  const option = (row: ProductionScheduleLoadBalancingWorkspaceRow, vendor: OutsourceVendor) => {
+    const matched = !ledger.acted.has(row.rowId) && Boolean(matches.get(row)?.has(vendor));
+    const unit = !matched ? [] : (input.settings?.mode === 'part'
+      ? parts.get(partKey(row))!.filter((other) => !ledger.acted.has(other.rowId) && matches.get(other)!.has(vendor))
+      : [row]).sort((a, b) => compareId(a.rowId, b.rowId));
+    const required = new Map<string, number>();
+    for (const other of unit) for (const [month, minutes] of vendorRowUsage(other, input.months, input.today ?? '')) {
+      required.set(month, (required.get(month) ?? 0) + minutes);
+    }
+    const used = ledger.vendorUsage.get(vendor.id);
+    return { matches: matched, unit, fits: matched && [...required].every(([month, minutes]) =>
+      vendor.monthlyCapacityMinutes === null || (used?.get(month) ?? 0) + minutes <= vendor.monthlyCapacityMinutes) };
+  };
+  return { cellRows, matches, option };
+}
+
 /** Explanations are derived from the final actions, including when a previous no-taker later gets placed. */
 export function collectNoTaker(input: ScenarioInput): NoTaker[] {
   const result = new Map<string, NoTaker>();
-  const { matrix, vendorUsage } = aggregateScenario(input);
+  const ledger = createSelectionLedger(input);
+  const index = createSelectionIndex(input, ledger);
+  const { matrix } = ledger;
   const rowsById = new Map(input.rows.map((row) => [row.rowId, row]));
   for (const cell of excessCells(input, matrix)) {
     let remaining = cell.over;
-    for (const row of cellCandidates(input, cell).sort(dueCompare)) {
+    for (const row of index.cellRows(cell).sort(dueCompare)) {
       if (remaining <= 0.5) break;
-      const options = (input.settings?.vendors ?? []).map((vendor) => outsourceOption(input, row, vendor, vendorUsage));
+      const options = (input.settings?.vendors ?? []).map((vendor) => index.option(row, vendor));
       if (options.some((option) => option.fits)) continue;
       result.set(row.rowId, { rowId: row.rowId, reason: options.some((option) => option.matches) ? '上限' : '条件' });
       remaining -= cellMinutes(row, cell.bucket);
@@ -412,36 +530,48 @@ export function collectNoTaker(input: ScenarioInput): NoTaker[] {
 export function selectNamedTargets(input: ScenarioInput): ScenarioResult {
   const actions = [...input.actions];
   const noTaker: NoTaker[] = [];
-  const acted = indexActions(actions);
+  const ledger = createSelectionLedger({ ...input, actions });
+  const { acted } = ledger;
+  const targets = new Map<string, NonNullable<OutsourceSettings['namedTargets']>[number]>();
+  for (const target of input.settings?.namedTargets ?? []) {
+    const key = JSON.stringify([target.kind, target.key]);
+    if (!targets.has(key)) targets.set(key, target);
+  }
   const vendors = new Map((input.settings?.vendors ?? []).map((vendor) => [vendor.id, vendor]));
   const candidates = input.rows.flatMap((row) => {
     if (acted.has(row.rowId) || !isScenarioCandidate(row, input)) return [];
-    const target = resolveNamedTarget(input.settings?.namedTargets ?? [], row);
+    const target = (['part', 'seiban', 'machine'] as const).map((kind) => targets.get(JSON.stringify([kind, namedTargetKey(kind, row)]))).find(Boolean);
     const vendor = target && vendors.get(target.vendorId);
     return vendor ? [{ row, vendor }] : [];
   }).sort((a, b) => a.vendor.priority - b.vendor.priority || dueCompare(a.row, b.row));
   for (const { row, vendor } of candidates) {
-    const used = aggregateScenario({ ...input, actions }).vendorUsage.get(vendor.id);
+    const used = ledger.vendorUsage.get(vendor.id);
     const fits = [...vendorRowUsage(row, input.months, input.today ?? '')].every(([month, minutes]) =>
       vendor.monthlyCapacityMinutes === null || (used?.get(month) ?? 0) + minutes <= vendor.monthlyCapacityMinutes);
-    if (fits) actions.push({ rowId: row.rowId, type: 'outsource', vendorId: vendor.id });
+    if (fits) ledger.add([{ rowId: row.rowId, type: 'outsource', vendorId: vendor.id }]);
     else noTaker.push({ rowId: row.rowId, reason: '上限' });
   }
   return { actions, noTaker };
 }
 
-/** All overloads, largest first. Every selection rebuilds loads and usage from the complete action set. */
+/** All overloads, largest first, with stable candidate order and selection-local ledgers. */
 export function autoSelect(initial: ScenarioInput, onlyCell?: { resourceCd: string; bucket: string }): ScenarioResult {
   const named = selectNamedTargets(initial);
   const input = { ...initial, settings: initial.settings ?? DEFAULT_OUTSOURCE_SETTINGS, actions: named.actions,
     excludedRowIds: new Set([...initial.excludedRowIds ?? [], ...named.noTaker.map((item) => item.rowId)]) };
+  const ledger = createSelectionLedger(input);
+  const index = createSelectionIndex(input, ledger);
+  const transferableResources = new Set(input.resources.filter((resource) => resource.classCode && input.rules.some((rule) =>
+    rule.fromClassCode === resource.classCode && Number.isFinite(rule.efficiencyRatio) && rule.efficiencyRatio > 0
+  )).map((resource) => resource.resourceCd));
+  const pairsByCell = new Map<string, { pairs: Array<{ row: ProductionScheduleLoadBalancingWorkspaceRow; vendor: OutsourceVendor }>; start: number }>();
   const processed = new Set<string>();
   let steps = 0;
   let activeCell: { resourceCd: string; bucket: string } | undefined;
   // Each step either acts on at least one untouched row or exhausts one resource/month cell.
   const MAX_STEPS = input.rows.length + input.resources.length * input.months.length + 1;
   while (steps < MAX_STEPS) {
-    const { matrix, vendorUsage } = aggregateScenario(input);
+    const { matrix } = ledger;
     const cells = excessCells(input, matrix);
     // Finish the chosen cell before moving to the next largest remaining excess.
     const cell = (activeCell && cells.find((item) => item.resourceCd === activeCell!.resourceCd && item.bucket === activeCell!.bucket)) ??
@@ -450,35 +580,50 @@ export function autoSelect(initial: ScenarioInput, onlyCell?: { resourceCd: stri
     if (!cell) break;
     activeCell = cell;
     steps += 1;
-    const candidates = cellCandidates(input, cell);
-    const bestFitOrder = [...candidates].sort((a, b) => {
+    const candidates = index.cellRows(cell);
+    const bestFitOrder = !transferableResources.has(cell.resourceCd) ? [] : [...candidates].sort((a, b) => {
       const am = cellMinutes(a, cell.bucket), bm = cellMinutes(b, cell.bucket);
       const af = am >= cell.over, bf = bm >= cell.over;
       return Number(bf) - Number(af) || (af ? am - bm : bm - am) || compareId(a.rowId, b.rowId);
     });
     let transferred = false;
     for (const row of bestFitOrder) {
-      const destination = transferOptions(input, row, cell.bucket, matrix).find((option) => option.fits);
+      const destination = listTransferDestinations({
+        sourceResourceCd: row.resourceCd, bucket: cell.bucket, rowMinutes: cellMinutes(row, cell.bucket),
+        resources: input.resources, rules: input.rules, matrix,
+        row: { ...row, allocations: row.allocations.filter((allocation) => input.months.includes(allocation.bucket) || allocation.bucket === LATE_BUCKET) }
+      }).find((option) => option.fits);
       if (!destination) continue;
-      input.actions.push({ rowId: row.rowId, type: 'transfer', toResourceCd: destination.resourceCd, efficiencyRatio: destination.efficiencyRatio });
+      ledger.add([{ rowId: row.rowId, type: 'transfer', toResourceCd: destination.resourceCd, efficiencyRatio: destination.efficiencyRatio }]);
       transferred = true;
       break;
     }
     if (transferred) continue;
-    const pairs = candidates.flatMap((row) => input.settings.vendors.filter((vendor) => vendorMatches(vendor, row)).map((vendor) => ({ row, vendor })));
-    pairs.sort((a, b) => {
-      for (const key of input.settings.order) {
-        const comparison = key === 'due' ? compareId(a.row.effectiveDueDate, b.row.effectiveDueDate)
-          : key === 'minutes' ? b.row.totalMinutes - a.row.totalMinutes : a.vendor.priority - b.vendor.priority;
-        if (comparison) return comparison;
-      }
-      return compareId(a.row.rowId, b.row.rowId) || compareId(a.vendor.id, b.vendor.id);
-    });
+    const cellKey = JSON.stringify([cell.resourceCd, cell.bucket]);
+    let cached = pairsByCell.get(cellKey);
+    if (!cached) {
+      const pairs = candidates.flatMap((row) => [...index.matches.get(row)!].map((vendor) => ({ row, vendor })));
+      pairs.sort((a, b) => {
+        for (const key of input.settings.order) {
+          const comparison = key === 'due' ? compareId(a.row.effectiveDueDate, b.row.effectiveDueDate)
+            : key === 'minutes' ? b.row.totalMinutes - a.row.totalMinutes : a.vendor.priority - b.vendor.priority;
+          if (comparison) return comparison;
+        }
+        return compareId(a.row.rowId, b.row.rowId) || compareId(a.vendor.id, b.vendor.id);
+      });
+      cached = { pairs, start: 0 };
+      pairsByCell.set(cellKey, cached);
+    }
+    // Only acted rows can be discarded permanently; a rejected part group may shrink later.
+    while (cached.start < cached.pairs.length && ledger.acted.has(cached.pairs[cached.start]!.row.rowId)) cached.start += 1;
     let outsourced = false;
-    for (const { row, vendor } of pairs) {
-      const next = applyOutsource(input, row.rowId, vendor.id, vendorUsage);
-      if (next === input.actions) continue;
-      input.actions = next;
+    for (let pairIndex = cached.start; pairIndex < cached.pairs.length; pairIndex += 1) {
+      const { row, vendor } = cached.pairs[pairIndex]!;
+      if (ledger.acted.has(row.rowId)) continue;
+      const option = index.option(row, vendor);
+      if (!option.fits) continue;
+      const groupId = JSON.stringify([vendor.id, option.unit.map((item) => item.rowId)]);
+      ledger.add(option.unit.map((item) => ({ rowId: item.rowId, type: 'outsource', vendorId: vendor.id, groupId })));
       outsourced = true;
       break;
     }

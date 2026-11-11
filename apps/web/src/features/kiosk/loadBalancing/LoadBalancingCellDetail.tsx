@@ -21,6 +21,7 @@ type Props = {
   capacityMinutes: number | null;
   cellRows: CellRow[];
   formattedMachineNames: Map<string, string>;
+  operationsDisabled?: boolean;
   canTransfer: boolean;
   editingCapacity: boolean;
   capacitySaving: boolean;
@@ -56,6 +57,7 @@ export function LoadBalancingCellDetail(props: Props) {
             resourceCd={resource.resourceCd}
             currentMinutes={resource.baseCapacityMinutes}
             saving={props.capacitySaving}
+            disabled={props.operationsDisabled}
             error={props.capacityError}
             onSave={props.onSaveCapacity}
             onCancel={props.onCancelCapacity}
@@ -63,7 +65,8 @@ export function LoadBalancingCellDetail(props: Props) {
         ) : isLate ? null : (
           <button
             type="button"
-            className="rounded-lg px-1 text-left hover:bg-slate-800"
+            className="rounded-lg px-1 text-left hover:bg-slate-800 disabled:opacity-30"
+            disabled={props.operationsDisabled}
             aria-label={`${resource.resourceCd} の能力を編集`}
             onClick={props.onEditCapacity}
           >
@@ -125,17 +128,19 @@ export function LoadBalancingCellDetail(props: Props) {
                       {item.row.resourceCd}から
                     </span>
                   ) : item.action ? (
-                    <ActionTag action={item.action} vendorName={item.action.type === 'outsource' ? props.vendors.find((vendor) => item.action?.type === 'outsource' && vendor.id === item.action.vendorId)?.name : undefined} onUndo={() => props.onUndo(item.row.rowId)} />
+                    <ActionTag disabled={props.operationsDisabled} action={item.action} vendorName={item.action.type === 'outsource' ? props.vendors.find((vendor) => item.action?.type === 'outsource' && vendor.id === item.action.vendorId)?.name : undefined} onUndo={() => props.onUndo(item.row.rowId)} />
                   ) : (
                     <div className="flex justify-end gap-1.5">
-                      <ActionButton type="outsource" onClick={() => { setTransferRowId(null); setOutsourceRowId(outsourceRowId === item.row.rowId ? null : item.row.rowId); }} />
+                      <ActionButton disabled={props.operationsDisabled} type="outsource" onClick={() => { setTransferRowId(null); setOutsourceRowId(outsourceRowId === item.row.rowId ? null : item.row.rowId); }} />
                       {props.canTransfer ? (
                         <ActionButton
+                          disabled={props.operationsDisabled}
                           type="transfer"
                           onClick={() => { setOutsourceRowId(null); setTransferRowId(transferRowId === item.row.rowId ? null : item.row.rowId); }}
                         />
                       ) : null}
                       <ActionButton
+                        disabled={props.operationsDisabled}
                         type="defer"
                         onClick={() => props.onAction({ rowId: item.row.rowId, type: 'defer', fromBucket: bucket })}
                       />
@@ -143,7 +148,8 @@ export function LoadBalancingCellDetail(props: Props) {
                   )}
                   {outsourceRowId === item.row.rowId ? (
                     <div className="absolute right-1 top-full z-10 min-w-60 rounded-lg border border-white/15 bg-slate-950 p-2 shadow-xl" onKeyDown={(event) => { if (event.key === 'Escape') setOutsourceRowId(null); }}>
-                      {props.listVendors(item.row).map((option) => <button type="button" key={option.vendor.id} disabled={!option.fits} className="flex w-full items-center justify-between gap-4 rounded p-3 text-left font-bold hover:bg-slate-800 disabled:opacity-30" onClick={() => {
+                      {props.listVendors(item.row).map((option) => <button type="button" key={option.vendor.id} disabled={props.operationsDisabled || !option.fits} className="flex w-full items-center justify-between gap-4 rounded p-3 text-left font-bold hover:bg-slate-800 disabled:opacity-30" onClick={() => {
+                        if (props.operationsDisabled) return;
                         setOutsourceRowId(null);
                         props.onAction({ rowId: item.row.rowId, type: 'outsource', vendorId: option.vendor.id });
                       }}>{option.vendor.name}<small className="text-white/55">{!option.matches ? '条件' : !option.fits ? '上限' : ''}</small></button>)}
@@ -152,9 +158,11 @@ export function LoadBalancingCellDetail(props: Props) {
                   ) : null}
                   {transferRowId === item.row.rowId ? (
                     <TransferMenu
+                      disabled={props.operationsDisabled}
                       destinations={props.listDestinations(item.row)}
                       resolveName={props.resolveName}
                       onPick={(destination) => {
+                        if (props.operationsDisabled) return;
                         setTransferRowId(null);
                         props.onAction({
                           rowId: item.row.rowId,
@@ -200,12 +208,13 @@ const ACTION_TAG = {
   defer: 'bg-fuchsia-950 text-fuchsia-200'
 } as const;
 
-function ActionButton({ type, onClick }: { type: ScenarioAction['type']; onClick: () => void }) {
+function ActionButton({ type, onClick, disabled }: { type: ScenarioAction['type']; onClick: () => void; disabled?: boolean }) {
   return (
     <button
       type="button"
-      className={`inline-flex h-9 items-center gap-1 rounded-lg bg-slate-800 px-2.5 text-sm font-extrabold ${ACTION_HOVER[type]}`}
-      onClick={onClick}
+      className={`inline-flex h-9 items-center gap-1 rounded-lg bg-slate-800 px-2.5 text-sm font-extrabold disabled:opacity-30 ${ACTION_HOVER[type]}`}
+      disabled={disabled}
+      onClick={() => { if (!disabled) onClick(); }}
     >
       <LoadBalancingActionIcon type={type} />
       {ACTION_LABEL[type]}{type === 'defer' ? '' : ' ▾'}
@@ -213,12 +222,12 @@ function ActionButton({ type, onClick }: { type: ScenarioAction['type']; onClick
   );
 }
 
-function ActionTag({ action, vendorName, onUndo }: { action: ScenarioAction; vendorName?: string; onUndo: () => void }) {
+function ActionTag({ action, vendorName, onUndo, disabled }: { action: ScenarioAction; vendorName?: string; onUndo: () => void; disabled?: boolean }) {
   return (
     <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1 text-sm font-extrabold ${ACTION_TAG[action.type]}`}>
       <LoadBalancingActionIcon type={action.type} />
       {action.type === 'transfer' ? `→ ${action.toResourceCd}` : action.type === 'outsource' ? `外注 ${vendorName ?? ''}` : ACTION_LABEL[action.type]}
-      <button type="button" className="ml-1 opacity-70 hover:opacity-100" aria-label="取り消す" onClick={onUndo}>
+      <button type="button" className="ml-1 opacity-70 hover:opacity-100 disabled:opacity-30" aria-label="取り消す" disabled={disabled} onClick={() => { if (!disabled) onUndo(); }}>
         ×
       </button>
     </span>
@@ -227,11 +236,13 @@ function ActionTag({ action, vendorName, onUndo }: { action: ScenarioAction; ven
 
 function TransferMenu({
   destinations,
+  disabled,
   resolveName,
   onPick,
   onClose
 }: {
   destinations: TransferDestination[];
+  disabled?: boolean;
   resolveName: (resourceCd: string) => string;
   onPick: (destination: TransferDestination) => void;
   onClose: () => void;
@@ -253,10 +264,10 @@ function TransferMenu({
             type="button"
             role="menuitem"
             className={`flex h-10 w-full items-center justify-between rounded-lg px-2.5 font-bold hover:bg-slate-800 ${
-              destination.fits ? '' : 'opacity-60'
+              disabled ? 'opacity-30' : destination.fits ? '' : 'opacity-60'
             }`}
-            disabled={!destination.fits}
-            onClick={() => onPick(destination)}
+            disabled={disabled || !destination.fits}
+            onClick={() => { if (!disabled) onPick(destination); }}
           >
             <span className="truncate">
               <span className="font-mono">{destination.resourceCd}</span>

@@ -420,3 +420,62 @@ describe('piece gantt scheduling', () => {
     expect(next.start).toBe(Math.max(...result.filter((bar) => bar.item.kind === 'piece').map((bar) => bar.end!)));
   });
 });
+
+describe('unit piece timing and setup', () => {
+  const unit = (id: string, fhincd = 'P1', extra: Partial<GrindingPlanningBoardItem> = {}) => item({
+    itemId: id, fseiban: `S-${id}`, kind: 'piece', parentItemId: `parent-${id}`, piecePosition: 1,
+    fhincd, requiredMinutes: 999, unitRequiredMinutes: 60, setupMinutes: 999,
+    ops: [{ opNo: 20, minutes: 30 }, { opNo: 10, minutes: 10 }], completedOpNos: [10], ...extra
+  });
+  const resourceMinutes = { ownSourceResourceCds: ['305'], values: ['P1', 'P2'].map(fhincd => ({ resourceCd: '305', fhincd, perUnitMinutes: 60, setupMinutes: fhincd === 'P1' ? 15 : 30 })) };
+  const options = { mode: 'forward' as const, view: 'resource' as const, now: new Date('2026-10-14T08:00:00+09:00'), resourceMinutes };
+  const minutes = (spans: { start: number; end: number }[] = []) => spans.reduce((sum, span) => sum + (span.end - span.start) * 1440, 0);
+  it.each(['forward', 'backward'] as const)('uses unit time, sorted proportional ops and completed appearance metadata in %s', (mode) => {
+    const bar = bars(layout([unit('a')], { ...options, mode }))[0]!;
+    const factor = mode === 'backward' ? 3 : 1; // Backward scales a working day of 8H into a calendar day.
+    expect(minutes(bar.setupSegments) / factor).toBeCloseTo(15);
+    expect(bar.opSegments?.map(op => [op.opNo, op.completed])).toEqual([[10, true], [20, false]]);
+    expect(minutes(bar.opSegments?.filter(op => op.opNo === 10)) / factor).toBeCloseTo(15);
+    expect(minutes(bar.opSegments?.filter(op => op.opNo === 20)) / factor).toBeCloseTo(45);
+    expect(bar.setupSegments![0]!.start).toBeCloseTo(bar.start!);
+    expect(bar.setupSegments![0]!.end).toBeCloseTo(bar.opSegments![0]!.start);
+  });
+  it('adds setup only at product changes in the actual lane order, including a return to a product', () => {
+    const values = [unit('a'), unit('b', 'P1', { processOrder: '20' }), unit('c', 'P2'), unit('d')];
+    const result = bars(layout(values, { ...options, laneOrder: { '305': ['a', 'b', 'c', 'd'] } }));
+    expect(result.map(bar => bar.item.itemId)).toEqual(['a', 'b', 'c', 'd']);
+    expect(result.map(bar => Math.round(minutes(bar.setupSegments)))).toEqual([15, 0, 30, 15]);
+    expect(result[1]!.start).toBeCloseTo(result[0]!.end!);
+  });
+  it('decides backward setup by due order in the lane, not display order', () => {
+    const values = [unit('a', 'P1', { originalDueDate: '2026-10-16' }), unit('b', 'P2', { originalDueDate: '2026-10-15' }), unit('c', 'P1', { originalDueDate: '2026-10-17' })];
+    for (const ordered of [values, [...values].reverse()]) {
+      const result = bars(layout(ordered, { ...options, mode: 'backward' }));
+      expect(Object.fromEntries(result.map(bar => [bar.item.itemId, Math.round(minutes(bar.setupSegments) / 3)]))).toEqual({ a: 15, b: 30, c: 0 });
+    }
+  });
+  it('uses actual reordered lane products rather than original item order', () => {
+    const result = bars(layout([unit('a'), unit('b'), unit('c', 'P2')], { ...options, laneOrder: { '305': ['c', 'b', 'a'] } }));
+    expect(result.map(bar => [bar.item.itemId, Math.round(minutes(bar.setupSegments))])).toEqual([['c', 30], ['b', 15], ['a', 0]]);
+  });
+  it.each([undefined, { ownSourceResourceCds: [], values: resourceMinutes.values }, { ownSourceResourceCds: ['305'], values: [] }])('omits setup without an own product value', resourceMinutes => {
+    const bar = bars(layout([unit('a')], { ...options, resourceMinutes }))[0]!;
+    expect(bar.setupSegments).toEqual([]);
+    expect(minutes(bar.segments)).toBeCloseTo(60);
+  });
+  it('keeps legacy rows and pieces without unit time unchanged even with ops and product values', () => {
+    for (const value of [item(), unit('a', 'P1', { unitRequiredMinutes: null, requiredMinutes: 480 })]) {
+      const bar = bars(layout([value], options))[0]!;
+      expect(minutes(bar.segments)).toBeCloseTo(480);
+      expect(bar.setupSegments).toBeUndefined(); expect(bar.opSegments).toBeUndefined();
+    }
+  });
+  it('splits operation and setup spans around working breaks without losing their minutes', () => {
+    const bar = bars(layout([unit('a')], { ...options, now: new Date('2026-10-14T09:55:00+09:00') }))[0]!;
+    expect(bar.setupSegments).toHaveLength(2);
+    expect(minutes(bar.setupSegments)).toBeCloseTo(15);
+    expect(minutes(bar.opSegments)).toBeCloseTo(60);
+    expect(bar.setupSegments![0]!.end).toBeCloseTo(dateToDay('2026-10-14') + 10 / 24);
+    expect(bar.setupSegments![1]!.start).toBeCloseTo(dateToDay('2026-10-14') + (10 * 60 + 10) / 1440);
+  });
+});

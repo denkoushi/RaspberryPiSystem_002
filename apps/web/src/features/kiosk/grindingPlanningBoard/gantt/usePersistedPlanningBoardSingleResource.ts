@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { planningBoardResourceAvailable } from '../planningBoardTwoMachine';
+
 function readResource(key: string): string | null {
   try {
     const value: unknown = JSON.parse(localStorage.getItem(key) ?? 'null');
@@ -13,7 +15,7 @@ export function usePersistedPlanningBoardSingleResource(scope: string, resources
   const key = `kiosk.planning-board.single-resource:${scope}`;
   const [saved, setSaved] = useState(() => ({ key, resourceCd: readResource(key) }));
   const stored = useMemo(() => saved.key === key ? saved.resourceCd : readResource(key), [key, saved]);
-  const resourceCd = stored && resources.includes(stored) ? stored : null;
+  const resourceCd = stored && planningBoardResourceAvailable(stored, resources) ? stored : null;
   const changeResource = useCallback((next: string | null) => {
     setSaved({ key, resourceCd: next });
     try {

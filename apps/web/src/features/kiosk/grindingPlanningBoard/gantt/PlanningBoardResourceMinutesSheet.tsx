@@ -2,6 +2,8 @@ import { isAxiosError } from 'axios';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../../../api/hooks/production-schedule';
+import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
 
@@ -39,6 +41,7 @@ const complete = (value: Value) => value.ops.length ? value.ops.every((op) => op
 function Stepper({ label, value, ghost, setup, disabled, invalid, draft, positive, max = 100000, onChange }: {
   label: string; value: number | null; ghost: number | null; setup?: boolean; disabled: boolean; invalid?: boolean; draft?: boolean; positive?: boolean; max?: number; onChange: (value: number | null, invalid?: boolean, cancelSave?: boolean) => void;
 }) {
+  const { gate } = usePlanningBoardOffline();
   const [editing, setEditing] = useState<string | null>(null);
   const valid = (raw: string) => {
     const next = Number(raw);
@@ -50,6 +53,7 @@ function Stepper({ label, value, ghost, setup, disabled, invalid, draft, positiv
   return <div className={`flex h-[52px] overflow-hidden rounded-lg border-2 bg-slate-950 ${inputInvalid ? 'border-red-400' : value !== null ? 'border-amber-800' : 'border-slate-700'} ${draft ? 'border-dashed' : ''}`}>
     <button type="button" className="h-full w-12 shrink-0 bg-slate-800 text-2xl" aria-label={`${label}を減らす`} disabled={disabled}
       onClick={() => {
+        if (!gate.attempt()) return;
         setEditing(null);
         if (value !== null && value - (setup ? 5 : 0.5) < (setup ? 0 : 0.5)) return;
         const next = normalize(value === null ? ghost ?? 0 : value - (setup ? 5 : 0.5));
@@ -57,16 +61,18 @@ function Stepper({ label, value, ghost, setup, disabled, invalid, draft, positiv
       }}>−</button>
     <input type="number" aria-label={label} aria-invalid={inputInvalid || undefined} min={0} max={100000} step={setup ? 5 : 0.5} inputMode="decimal" disabled={disabled}
       className="w-[72px] min-w-0 bg-transparent text-center font-mono text-[22px] font-bold text-amber-300 placeholder:font-normal placeholder:text-slate-500 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-      value={editing ?? value ?? ''} placeholder={ghost === null ? '' : String(ghost)} onBlur={() => { setEditing(null); if (editing !== null && editing !== '' && !valid(editing)) onChange(value); }}
-      onChange={(event) => { const raw = event.target.value; setEditing(raw); if (!raw) onChange(null); else if (valid(raw)) onChange(Number(raw)); else onChange(value, true); }} />
+      value={editing ?? value ?? ''} placeholder={ghost === null ? '' : String(ghost)} onBlur={() => { if (!gate.canWrite()) return; setEditing(null); if (editing !== null && editing !== '' && !valid(editing)) onChange(value); }}
+      onChange={(event) => { if (!gate.attempt()) return; const raw = event.target.value; setEditing(raw); if (!raw) onChange(null); else if (valid(raw)) onChange(Number(raw)); else onChange(value, true); }} />
     <button type="button" className="h-full w-12 shrink-0 bg-slate-800 text-2xl" aria-label={`${label}を増やす`} disabled={disabled}
-      onClick={() => { setEditing(null); onChange(normalize(value === null ? (setup ? 5 : ghost ?? 0.5) : value + (setup ? 5 : 0.5))); }}>＋</button>
+      onClick={() => { if (!gate.attempt()) return; setEditing(null); onChange(normalize(value === null ? (setup ? 5 : ghost ?? 0.5) : value + (setup ? 5 : 0.5))); }}>＋</button>
   </div>;
 }
 const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected, select, onOpsChange, hasOps }: {
   resourceCd: string; fhincd: string; items: GrindingPlanningBoardItem[]; saved?: Saved; disabled: boolean; columns: number[];
   selected: boolean; select: (fhincd: string) => void; onOpsChange: (fhincd: string, ops: number[] | undefined) => void; hasOps: boolean;
 }) {
+  const offline = usePlanningBoardOffline();
+  const { gate, frozen } = offline;
   const key = `${resourceCd}:${fhincd}`;
   const mutation = useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceCd, fhincd);
   const [draft, setDraft] = useState<Value | null>(() => drafts.get(key) ?? null);
@@ -76,11 +82,21 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pending = useRef<Value | null>(null);
   const queue = queueFor(key);
+  const wasFrozen = useRef(frozen);
+  useEffect(() => {
+    if (wasFrozen.current && !frozen) {
+      setDraft(null); setError(false); setInputVersion((version) => version + 1);
+      onOpsChange(fhincd, undefined);
+    }
+    wasFrozen.current = frozen;
+  }, [frozen, fhincd, onOpsChange]);
   const opsChange = useRef(onOpsChange);
   opsChange.current = onOpsChange;
   const persisted = useRef(Boolean(saved));
   const save = useRef<(next: Value) => void>(() => undefined);
   save.current = (next) => {
+    if (!gate.canWrite()) return;
+    const generation = gate.generation();
     if (drafts.get(key) !== next || next.saveBlocked || (!next.resetRow && !complete(next))) return;
     if (queue.saving) { queue.queued = () => save.current(next); return; }
     queue.saving = true;
@@ -88,7 +104,10 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
       resourceCd, fhincd, perUnitMinutes: unitOf(next), setupMinutes: setupOf(next), expectedOpIds: next.baseOpIds,
       ...(next.ops.length || next.clearOps || unitOf(next) === null ? { ops: next.ops.map((op) => ({ opNo: op.opNo, setupMinutes: op.setupMinutes, minutes: op.minutes! })) } : {})
     };
-    void mutation.mutateAsync(payload).then((response) => {
+    void gate.run(() => mutation.mutateAsync(payload)).then(async (response) => {
+      if (generation !== gate.generation()) return;
+      if (offline.enabled) await Promise.all(['board', 'load', 'resource-minutes'].map(offline.refreshRead));
+      if (generation !== gate.generation()) return;
       persisted.current = payload.perUnitMinutes !== null;
       queue.failed = false;
       const current = drafts.get(key);
@@ -102,6 +121,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
         queue.listeners.forEach((notify) => notify(next, false, true));
       } else queue.listeners.forEach((notify) => notify(next, false, false));
     }).catch((error: unknown) => {
+      if (generation !== gate.generation()) return;
       const discard = isAxiosError(error) && error.response?.status === 409 &&
         error.response.data?.errorCode === 'OPERATION_SET_CHANGED';
       if (discard) { drafts.delete(key); queue.queued = null; }
@@ -111,7 +131,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
       queue.saving = false;
       const nextQueued = queue.queued;
       queue.queued = null;
-      nextQueued?.();
+      if (generation === gate.generation() && gate.canWrite()) nextQueued?.();
     });
   };
   useEffect(() => {
@@ -140,7 +160,18 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
       } else if (pending.current) save.current(pending.current);
     };
   }, [key, fhincd]);
+  useEffect(() => {
+    const discard = () => {
+      if (timer.current) clearTimeout(timer.current);
+      pending.current = null;
+      queue.queued = null;
+      drafts.delete(key);
+    };
+    if (frozen) discard();
+    return gate.subscribeReadOnly(discard);
+  }, [frozen, gate, key, queue]);
   const change = (next: Value, reset = false, clearOps = false, cancelSave = false) => {
+    if (!gate.attempt()) return;
     next.baseOpIds = value.baseOpIds;
     next.baseOpNos = value.baseOpNos;
     next.usedOpNos = [...new Set([...value.usedOpNos, ...value.baseOpNos, ...next.ops.map((op) => op.opNo)])];
@@ -166,6 +197,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
   const touched = value.ops.length > 0 || value.setupMinutes !== null || value.perUnitMinutes !== null;
   const lot = touched && unit !== null ? setupOf(value) * count + unit * quantity : original;
   const reset = () => {
+    if (!gate.attempt()) return;
     if ((saved?.ops?.length ?? 0) > 0 && !window.confirm(`${fhincd} の工程を外して元の値に戻します。全ての片で全工程の完了記録が消えます`)) return;
     change(empty(), true, true);
   };
@@ -201,6 +233,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     } else change({ ...value, ops: [...value.ops, { opNo: first, setupMinutes: null, minutes: null }].sort((a, b) => a.opNo - b.opNo) });
   };
   const remove = (op: Op) => {
+    if (!gate.attempt()) return;
     if (saved?.ops?.some((entry) => entry.opNo === op.opNo) && !window.confirm(`${fhincd} の ${op.opNo}工程を外します。全ての片でこの工程の完了記録が消えます`)) return;
     const ops = value.ops.filter((entry) => entry.opNo !== op.opNo);
     change(ops.length ? { ...value, ops, invalidFields: value.invalidFields?.filter((field) => !field.startsWith(`${op.opNo}:`)) } : { ...empty(), perUnitMinutes: op.minutes, setupMinutes: op.minutes === null ? null : op.setupMinutes ?? 0 }, !ops.length && op.minutes === null && persisted.current, !ops.length);
@@ -235,8 +268,8 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     </div></td>
   </tr>;
 });
-export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, disabled }: {
-  resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean;
+export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, disabled, unitSplitEnabledByResource }: {
+  resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean; unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [opOverrides, setOpOverrides] = useState<Record<string, number[] | undefined>>({});
@@ -261,7 +294,7 @@ export function PlanningBoardResourceMinutesSheet({ resourceCd, items, values, d
     const nos = opOverrides[fhincd] ?? drafts.get(`${resourceCd}:${fhincd}`)?.ops.map((op) => op.opNo) ?? values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)?.ops?.map((op) => op.opNo) ?? [];
     nos.forEach((no) => used.add(no));
   }
-  const hasOps = resourceCd === '021' || resourceCd === '022' || used.size > 0;
+  const hasOps = isPlanningBoardUnitSplitEnabled(resourceCd, unitSplitEnabledByResource) || used.size > 0;
   const columnKey = used.size ? [...used].sort((a, b) => a - b).join(',') : '1';
   const columns = useMemo(() => columnKey.split(',').map(Number), [columnKey]);
   const header = 'sticky top-0 z-20 border-b border-slate-700 bg-slate-950 px-2 py-2 text-[15px] font-normal text-slate-400';

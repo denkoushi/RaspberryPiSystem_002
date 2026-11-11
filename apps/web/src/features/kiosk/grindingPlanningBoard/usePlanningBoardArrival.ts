@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { useUpdateKioskGrindingPlanningBoardArrival, useUpdateKioskGrindingPlanningBoardFirstProcessArrival } from '../../../api/hooks';
 import { usePersistedArrivalFilter } from '../usePersistedArrivalFilter';
 
+import { useFrozenValue, usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+
 import type { GrindingPlanningBoardFirstProcessState, GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 
 export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | undefined, nowMs: number, dueSource?: 'excel' | 'scaw') {
+  const { gate, snapshot, enabled, refreshRead } = usePlanningBoardOffline();
+  useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setOverlay(new Map()); setFirstProcessOverlay(new Map()); } }, [enabled, snapshot.phase]);
   const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('kiosk-planning-board-arrival-filter');
   const mutation = useUpdateKioskGrindingPlanningBoardArrival(dueSource);
   const firstProcessMutation = useUpdateKioskGrindingPlanningBoardFirstProcessArrival(dueSource);
@@ -41,36 +45,44 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
     });
   }, [data]);
   const changeFirstProcessArrival = async (item: GrindingPlanningBoardItem, state: GrindingPlanningBoardFirstProcessState) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     if (pending.current || !siteKey) return;
     pending.current = true;
     try {
-      const result = await firstProcessMutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
-        overrideVersion: item.version, state });
+      const result = await gate.run(() => firstProcessMutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
+        overrideVersion: item.version, state }));
+      if (generation !== gate.generation()) return;
       setFirstProcessOverlay((previous) => {
         const next = new Map(previous);
         next.set(item.itemId, { siteKey, state: result.firstProcessState });
         return next;
       });
+      if (enabled) void Promise.all([refreshRead('board'), refreshRead('load')]).catch(() => undefined);
     } catch {
       // The popover displays the mutation error next to the arrival controls.
     } finally { pending.current = false; }
   };
   const changeArrival = async (item: GrindingPlanningBoardItem, recorded: boolean) => {
+    if (!gate.attempt()) return;
+    const generation = gate.generation();
     if (pending.current || !siteKey) return;
     pending.current = true;
     try {
-      const result = await mutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
-        overrideVersion: item.version, recorded });
+      const result = await gate.run(() => mutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
+        overrideVersion: item.version, recorded }));
+      if (generation !== gate.generation()) return;
       setOverlay((previous) => {
         const next = new Map(previous);
         if (result.manualArrivalDate) next.set(item.itemId, { siteKey, date: result.manualArrivalDate });
         else next.delete(item.itemId);
         return next;
       });
+      if (enabled) void Promise.all([refreshRead('board'), refreshRead('load')]).catch(() => undefined);
     } catch {
       // The popover displays the mutation error next to the arrival controls.
     } finally { pending.current = false; }
   };
   return { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival,
-    arrivalPending: mutation.isPending || firstProcessMutation.isPending, arrivalError: mutation.isError || firstProcessMutation.isError };
+    arrivalPending: useFrozenValue(mutation.isPending || firstProcessMutation.isPending), arrivalError: useFrozenValue(mutation.isError || firstProcessMutation.isError) };
 }

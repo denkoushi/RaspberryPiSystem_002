@@ -73,10 +73,15 @@ describe('grinding-planning-board-projection', () => {
         overrideResourceCd: '022', overrideDueDate: null, alternateRank: null, version: 1
       }]]) });
     const items = projectGrindingPlanningBoard(params).items;
-    expect(items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    const placement = projectGrindingPlanningBoard({ ...params, placementOnly: true });
+    const orderingFields = (values: typeof items) => values.map(({ itemRevision, progress, ...item }) => item);
+    expect(orderingFields(placement.items)).toEqual(orderingFields(items));
+    expect(placement.items.every((item) => item.itemRevision === '')).toBe(true);
+    expect(placement.load).toEqual([]);
+    expect(items.map((item) => item.requiredMinutes)).toEqual([40, 20]);
     if (enabled) {
       expect(items.map((item) => item.unitRequiredMinutes)).toEqual([10, 20]);
-      expect(items.every((item) => item.setupMinutes === 30 && item.fhincd === 'P-001')).toBe(true);
+      expect(items.map((item) => item.setupMinutes)).toEqual([30, 0]);
       expect(items[0].ops).toEqual(ops);
       expect(items[0].completedOpNos).toEqual([2]);
     } else {
@@ -85,6 +90,32 @@ describe('grinding-planning-board-projection', () => {
     const original = projectGrindingPlanningBoard({ ...params,
       resourceMinutes: { ...params.resourceMinutes!, ownSourceResourceCds: [] } }).items;
     if (enabled) expect(original[0]).toMatchObject({ unitRequiredMinutes: 100 / 3, setupMinutes: 0 });
+  });
+  it.each([true, false])('charges setup on the minimum position including completed pieces (unitSplit=%s)', (enabled) => {
+    const source = sourceRow();
+    const key = sessakuPieceKeyFromRow(source.rowData);
+    const updatedAt = new Date('2026-11-09');
+    const set: SessakuPieceSet = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 30,
+      plannedQuantity: 10, quantityWarning: null, createdAt: updatedAt, updatedAt,
+      pieces: Array.from({ length: 10 }, (_, index) => ({ id: `unit-${index}`, pieceSetId: 'set', position: 5 + index * 2,
+        quantity: 1, sourcePieceId: null, isCompleted: false, completedAt: null, createdAt: updatedAt, updatedAt })).reverse() };
+    const params = baseParams({ includePieces: true, pieceSets: new Map([[encodeSessakuPieceKey(key), set]]),
+      details: new Map([['row-1', detail({ orderSupplements: [{ plannedQuantity: 10, plannedEndDate: null }] })]]),
+      resourceMinutes: { ownSourceResourceCds: ['G-01', 'G-02'], values: ['G-01', 'G-02'].map((resourceCd) =>
+        ({ resourceCd, fhincd: 'P-001', perUnitMinutes: 30, setupMinutes: 60 })) },
+      resourceCapacity: { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: { 'G-01': enabled } } });
+    const project = () => projectGrindingPlanningBoard(params);
+    const items = project().items;
+    expect(items.find((item) => item.piecePosition === 5)).toMatchObject({ requiredMinutes: 90, ownRequiredMinutes: 90 });
+    expect(items.filter((item) => item.piecePosition !== 5).every((item) => item.requiredMinutes === 30 && item.ownRequiredMinutes === 30)).toBe(true);
+    expect(project().load[0].requiredMinutes).toBe(360);
+    if (enabled) expect(items.filter((item) => item.piecePosition !== 5).every((item) => item.setupMinutes === 0)).toBe(true);
+    params.overrides.set('piece:unit-0', { overrideResourceCd: 'G-02', overrideDueDate: null, alternateRank: null, version: 1 });
+    expect(project().load.find((entry) => entry.resourceCd === 'G-02')?.requiredMinutes).toBe(90);
+    expect(project().load.find((entry) => entry.resourceCd === 'G-01')?.requiredMinutes).toBe(270);
+    set.pieces.find((piece) => piece.position === 5)!.isCompleted = true;
+    expect(project().items.filter((item) => !item.isCompleted).every((item) => item.requiredMinutes === 30)).toBe(true);
+    expect(project().load.find((entry) => entry.resourceCd === 'G-01')?.requiredMinutes).toBe(270);
   });
   it.each(['100', ''])('uses own minutes with CSV %j and the effective resource for rows and split bars', (csvMinutes) => {
     const source = sourceRow({ FSIGENSHOYORYO: csvMinutes, FHINCD: ' P-001 ' });
@@ -105,9 +136,9 @@ describe('grinding-planning-board-projection', () => {
     expect(parent).toMatchObject({ requiredMinutes: 60, ownRequiredMinutes: 60, requiredMinutesSource: 'own',
       originalRequiredMinutes: csvMinutes ? 100 : null });
     const result = projectGrindingPlanningBoard({ ...params, includePieces: true });
-    expect(result.items.map((item) => item.requiredMinutes)).toEqual([40, 50]);
+    expect(result.items.map((item) => item.requiredMinutes)).toEqual([40, 20]);
     expect(result.items.map((item) => item.originalRequiredMinutes)).toEqual(csvMinutes ? [100 / 3, 200 / 3] : [null, null]);
-    expect(result.load.find((entry) => entry.resourceCd === 'G-02')?.requiredMinutes).toBe(90);
+    expect(result.load.find((entry) => entry.resourceCd === 'G-02')?.requiredMinutes).toBe(60);
     const moved = projectGrindingPlanningBoard({ ...params, includePieces: true,
       overrides: new Map([...overrides, ['piece:own-0', { overrideResourceCd: 'G-03', overrideDueDate: null, alternateRank: null, version: 1 }]]) });
     expect(moved.items.find((item) => item.pieceId === 'own-0')).toMatchObject({

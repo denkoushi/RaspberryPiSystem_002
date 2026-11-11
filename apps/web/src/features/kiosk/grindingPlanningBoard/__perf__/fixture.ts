@@ -44,6 +44,13 @@ export function productionPiecesFixture() {
         quantityWarning: null, manualIsCompleted: false, completionSource: null };
     });
   });
+  let unitPieces = 0;
+  for (const item of items) {
+    if (item.kind !== 'piece' || unitPieces >= 50 || item.plannedQuantity !== 1) continue;
+    Object.assign(item, { unitRequiredMinutes: 50, setupMinutes: 15,
+      ops: [50, 10, 30, 20, 40].map(opNo => ({ opNo, minutes: 10 })), completedOpNos: [10, 30] });
+    unitPieces++;
+  }
   return { ...fixture, items, options: { ...fixture.options, items },
     pieceCapabilities: { createEnabled: true, includePieces: true } };
 }

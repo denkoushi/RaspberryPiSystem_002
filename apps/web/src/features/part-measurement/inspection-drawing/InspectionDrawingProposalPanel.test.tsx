@@ -72,7 +72,7 @@ describe('InspectionDrawingProposalPanel', () => {
   it('switches tabs and shows the armed placement state', () => {
     const { arm } = renderPanel();
     fireEvent.click(screen.getByRole('button', { name: '未配置 1' }));
-    expect(screen.getByText('同じ値が図面に見つからない')).toBeInTheDocument();
+    expect(screen.queryByText('同じ値が図面に見つからない')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '内径 を置く' }));
     expect(arm).toHaveBeenCalledWith(unplaced);
     expect(screen.getByRole('button', { name: '内径 を置く' })).toHaveAttribute('aria-pressed', 'true');

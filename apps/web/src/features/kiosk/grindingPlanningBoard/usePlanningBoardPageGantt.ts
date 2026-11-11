@@ -6,7 +6,9 @@ import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetri
 import { buildForwardPlanningBoardGanttLayout, planningBoardVisibleBars } from './gantt/planningBoardGanttLayout';
 import { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
+import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
+import { planningBoardResourceMatches } from './planningBoardTwoMachine';
 import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
 import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
@@ -77,15 +79,17 @@ export function usePlanningBoardPageGantt({
   setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict,
   orderConflict, updatePinsAsync
 }: Options) {
+  const { gate, enabled: offlineEnabled } = usePlanningBoardOffline();
+  const today = offlineEnabled ? new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date(nowMs)) : todayJst();
   const focusItems = useMemo(
     () => focusedFseiban ? sortedItemsBySeiban.get(focusedFseiban) ?? [] : [],
     [focusedFseiban, sortedItemsBySeiban]
   );
   const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
-  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+  const gantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
-    today: todayJst(), now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
+    today, now: ganttNow, preferenceScope: `${data?.siteKey ?? ''}:${category}` });
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
   const ganttLayout = useMemo(() => orderPreview
     ? buildForwardPlanningBoardGanttLayout({ ...orderPreview.options, scale: gantt.scale, laneOrder: orderPreview.proposal })
@@ -93,6 +97,7 @@ export function usePlanningBoardPageGantt({
   const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
   const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
     sourceItems = currentItemsRef.current) => {
+    if (!gate.attempt()) return false;
     const sourceById = new Map(sourceItems.map((item) => [item.itemId, item]));
     const items = snapshot.itemIds.map((id) => sourceById.get(id));
     if (!items.length || items.length > 500 || items.some((item) => !item || item.isCompleted ||
@@ -101,8 +106,8 @@ export function usePlanningBoardPageGantt({
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
     return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.map((item) => item.fseiban))], order: true,
       apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
-      save: (context) => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
-        items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) }),
+      save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
+        items: members.map((original) => { const item = context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) })),
       onSaved, onFailed
     });
   };
@@ -125,6 +130,7 @@ export function usePlanningBoardPageGantt({
 
   const moveResourceInGantt = (original: GrindingPlanningBoardItem, targetResource: string, targetItem: GrindingPlanningBoardItem | null,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
+    if (!gate.attempt()) return;
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
     if (!item || !data || !scopeReady || !rankMutationReady || writeBlocked || allocation !== 'alternate' || item.isCompleted || orderPreview || pinMode ||
       !data.resources.includes(targetResource) || !canMoveResource(item, targetResource) || hasPendingSeiban(item.fseiban, true)) return;
@@ -152,13 +158,14 @@ export function usePlanningBoardPageGantt({
       currentItemsRef.current.map((candidate) => candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate));
   };
   const sortResourceOrdersByDue = () => {
+    if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled) return;
     const id = ++resourceOrderHistoryId.current;
     const itemsByResource = new Map<string, GrindingPlanningBoardItem[]>();
     for (const item of orderItems) {
       if (item.isCompleted) continue;
       const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
-      if (gantt.singleResourceCd && resource !== gantt.singleResourceCd) continue;
+      if (gantt.singleResourceCd && !planningBoardResourceMatches(gantt.singleResourceCd, resource, gantt.singleResourceLanes)) continue;
       const members = itemsByResource.get(resource);
       if (members) members.push(item);
       else itemsByResource.set(resource, [item]);
@@ -179,10 +186,11 @@ export function usePlanningBoardPageGantt({
     }
   };
   const proposeResourceOrder = () => {
+    if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
     const options: GanttLayoutOptions = { items: ganttItems, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
-      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
-      today: todayJst(), scale: gantt.scale, now: ganttNow };
+      seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, resourceMinutes: gantt.resourceMinutes, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
+      today, scale: gantt.scale, now: ganttNow };
     const current = planningBoardLaneOrder(options);
     const visibleProposal = planningBoardAutoOrder({ ...options, items: orderItems }, new Set(orderItems.filter((item) => item.orderPinned).map((item) => item.itemId)));
     const proposal = Object.fromEntries(Object.entries(current).map(([resource, itemIds]) =>
@@ -197,6 +205,7 @@ export function usePlanningBoardPageGantt({
       after: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout({ ...options, laneOrder: proposal })) });
   };
   const applyResourceOrder = () => {
+    if (!gate.attempt()) return;
     if (!orderPreview || writeQueue.pending || writeQueue.blocked || rankConflict || orderConflict) return;
     const preview = orderPreview;
     const changed = Object.keys(preview.proposal).filter((resource) => preview.proposal[resource]!.some((id, index) => id !== preview.current[resource]?.[index]));
@@ -216,17 +225,19 @@ export function usePlanningBoardPageGantt({
     }
   };
   const togglePin = (original: GrindingPlanningBoardItem) => {
+    if (!gate.attempt()) return;
     if (!pinMode || orderActionsDisabled || original.isCompleted) return;
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
     if (!item) return;
     const pinned = !item.orderPinned;
     enqueueWrite({ label: pinned ? '固定' : '固定の解除', itemIds: [item.itemId], seibans: [item.fseiban],
       apply: (display) => ({ ...display, items: display.items.map((entry) => entry.itemId === item.itemId ? { ...entry, orderPinned: pinned } : entry) }),
-      save: (context) => { const current = context.item(item); return updatePinsAsync({ sourceRevision: context.sourceRevision, pinned,
-        items: [{ itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version }] }); }
+      save: (context) => { const current = context.item(item); return gate.run(() => updatePinsAsync({ sourceRevision: context.sourceRevision, pinned,
+        items: [{ itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version }] })); }
     });
   };
   const undoResourceOrder = () => {
+    if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || allocation !== 'alternate' || orderActionsDisabled || !lastResourceOrder) return;
     let restoredItems = currentItemsRef.current;
     if (lastResourceOrder.restoreResource) {

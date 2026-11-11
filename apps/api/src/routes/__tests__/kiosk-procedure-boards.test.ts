@@ -46,7 +46,7 @@ describe('Kiosk procedure board HTTP contract', () => {
     const capabilities = await vi.importActual<typeof import('../../services/mobile-placement/client-capabilities.service.js')>('../../services/mobile-placement/client-capabilities.service.js');
     for (const value of [null, false, true]) {
       mocks.device.findUniqueOrThrow.mockResolvedValue({ shelfLayoutEditEnabled: false, haizenEdgeEnabled: false, procedureBoardEnabled: value });
-      expect(await capabilities.getClientCapabilities('device-1')).toEqual({ shelfLayoutEditEnabled: false, haizenEdgeEnabled: false, procedureBoardEnabled: value === true });
+      expect(await capabilities.getClientCapabilities('device-1')).toEqual({ shelfLayoutEditEnabled: false, haizenEdgeEnabled: false, procedureBoardEnabled: value === true, planningBoardOfflineEnabled: false });
       if (value === true) await expect(capabilities.requireProcedureBoardEnabled('device-1')).resolves.toBeUndefined();
       else await expect(capabilities.requireProcedureBoardEnabled('device-1')).rejects.toMatchObject({ statusCode: 403, code: 'PROCEDURE_BOARD_FORBIDDEN' });
     }
