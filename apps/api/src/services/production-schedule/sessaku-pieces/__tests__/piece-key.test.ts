@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId } from '../piece-key.js';
+import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys } from '../piece-key.js';
 describe('piece identity and monotonic generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
@@ -11,14 +11,24 @@ describe('piece identity and monotonic generation', () => {
     const error = new Prisma.PrismaClientKnownRequestError('serialization', { code: 'P2034', clientVersion: 'test' });
     expect(() => sessakuPieceConflict(error, { preserveSerializationFailure: true })).toThrow(error);
   });
-  it('keeps plain piece reads scalar and loads operation records only for projection reads', async () => {
+  it('loads boundaries for mutation and projection while loading completions only for projection', async () => {
     const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1' };
     const findUnique = vi.fn().mockResolvedValue(null); const findMany = vi.fn().mockResolvedValue([]);
     const client = { productionScheduleSessakuPieceSet: { findUnique, findMany } } as never;
     await readSessakuPieceSet(client, key);
-    expect(findUnique.mock.calls[0][0].include).toEqual({ pieces: { orderBy: { position: 'asc' } } });
+    expect(findUnique.mock.calls[0][0].include).toEqual({ pieces: { orderBy: { position: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } });
     await readSessakuPieceSets(client, [{ rowData: { FSEIBAN: 'S', FHINCD: 'P', FSIGENCD: '021', FKOJUN: '1' } }]);
-    expect(findMany.mock.calls[0][0].include.pieces.include).toEqual({ opCompletions: { select: { opNo: true } } });
+    expect(findMany.mock.calls[0][0].include.pieces.include).toEqual({ opCompletions: { select: { opNo: true } }, opSplits: { orderBy: { fromOpNo: 'asc' } }, sourcePiece: { select: { opSplits: { select: { fromOpNo: true }, orderBy: { fromOpNo: 'desc' }, take: 1 } } } });
+  });
+  it('resolves all interval IDs to their original piece logical locks', async () => {
+    const key = { fseiban: 'S', fhincd: 'P', fsigencd: '021', fkojun: '1' };
+    const ids = sessakuPieceItemIds({ id: 'id', opSplits: [{ fromOpNo: 3 }, { fromOpNo: 5 }] });
+    expect(ids).toEqual(['piece:id', 'pieceops:id:3', 'pieceops:id:5']);
+    expect(ids.map(sessakuPieceIdFromItemId)).toEqual(['id', 'id', 'id']);
+    const findMany = vi.fn().mockResolvedValue([{ id: 'id', pieceSet: key }]);
+    const result = await resolveSessakuPieceItemKeys({ productionScheduleSessakuPiece: { findMany } } as never, ids);
+    expect([...result.values()]).toEqual([key, key, key]);
+    expect(findMany.mock.calls[0][0].where.id.in).toEqual(['id']);
   });
   it('preserves exact winner key strings across encoding', () => {
     const key = sessakuPieceKeyFromRow({ FSEIBAN: ' A ', FHINCD: 'part', FSIGENCD: '01', FKOJUN: 2, ProductNo: 'unrelated' });

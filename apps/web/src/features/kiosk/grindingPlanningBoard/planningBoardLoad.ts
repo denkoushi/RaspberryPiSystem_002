@@ -1,7 +1,8 @@
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardLoad } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardTestBar , GrindingPlanningBoardItem, GrindingPlanningBoardLoad } from '@raspi-system/shared-types';
 
-export function formatPlanningBoardItemMinutes(item: Pick<GrindingPlanningBoardItem, 'kind' | 'requiredMinutes'>): string {
+export function formatPlanningBoardItemMinutes(item: Pick<GrindingPlanningBoardItem, 'kind' | 'requiredMinutes'> | GrindingPlanningBoardTestBar): string {
+  if (item.kind === 'test') return `${item.minutes}分`;
   const minutes = item.requiredMinutes;
   return `${item.kind === 'piece' && minutes != null ? Number(minutes.toFixed(1)) : minutes}分`;
 }

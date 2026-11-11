@@ -532,7 +532,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
     if (!set?.pieces.length) return [parent];
     const external = params.details.get(parent.sourceRowId)?.productionScheduleExternalCompletion?.isExternallyCompleted === true;
     const firstPosition = Math.min(...set.pieces.map((piece) => piece.position));
-    return set.pieces.map((piece): GrindingPlanningBoardItem => {
+    return set.pieces.flatMap((piece): GrindingPlanningBoardItem[] => {
       const itemId = `piece:${piece.id}`;
       const inherited = params.overrides.get(parent.itemId);
       const own = params.overrides.get(itemId);
@@ -560,9 +560,10 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null,
         override
       });
-      return {
+      const base: GrindingPlanningBoardItem = {
         ...parent, itemId, kind: 'piece', parentItemId: parent.itemId, pieceId: piece.id,
-        ...(piece.sourcePieceId ? { sourcePieceId: piece.sourcePieceId } : {}),
+        ...(piece.sourcePieceId ? { sourcePieceId: piece.sourcePieceId,
+          sourceItemId: piece.sourcePiece?.opSplits?.length ? `pieceops:${piece.sourcePieceId}:${Math.max(...piece.sourcePiece.opSplits.map((split) => split.fromOpNo))}` : `piece:${piece.sourcePieceId}` } : {}),
         piecePosition: piece.position, pieceSetVersion: set.version, quantity: piece.quantity,
         parentPlannedQuantity: total, plannedQuantity: piece.quantity,
         quantityWarning: set.quantityWarning as GrindingPlanningBoardItem['quantityWarning'],
@@ -576,6 +577,39 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
           pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
           quantityWarning: set.quantityWarning, external, inherited, own })
       };
+      const splits = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo);
+      if (!splits.length) return [base];
+      const sourceResources = [splits[0].leadingSourceResourceCd ?? splits[0].sourceResourceCd, ...splits.map((split) => split.sourceResourceCd)];
+      const sourceDefinitions = sourceResources.map((resource) => minutesByPart.get(JSON.stringify([resource, parent.fhincd.trim()])));
+      const definedNos = sourceDefinitions.flatMap((definition) => definition?.ops?.map((op) => op.opNo) ?? []);
+      const firstOp = Math.min(...definedNos, splits[0].fromOpNo - 1);
+      const lastOp = Math.max(...definedNos, splits[splits.length - 1].fromOpNo);
+      return [firstOp, ...splits.map((split) => split.fromOpNo)].map((fromOpNo, index) => {
+        const rangeId = index === 0 ? itemId : `pieceops:${piece.id}:${fromOpNo}`;
+        const rangeOwn = params.overrides.get(rangeId);
+        const rangeOverride = rangeOwn ?? inherited;
+        const opRange = { fromOpNo, toOpNo: splits[index]?.fromOpNo != null ? splits[index].fromOpNo - 1 : lastOp };
+        const rangeOps = (sourceDefinitions[index]?.ops ?? [])
+          .filter((op) => op.opNo >= opRange.fromOpNo && op.opNo <= opRange.toOpNo);
+        const unitRequiredMinutes = rangeOps.length ? rangeOps.reduce((sum, op) => sum + op.minutes, 0) * piece.quantity : null;
+        const setupMinutes = piece.position === firstPosition ? rangeOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) : 0;
+        const completedOpNos = (piece.opCompletions ?? []).map((op) => op.opNo)
+          .filter((opNo) => rangeOps.some((op) => op.opNo === opNo)).sort((a, b) => a - b);
+        return { ...base, itemId: rangeId, opRange, ops: rangeOps, completedOpNos, unitRequiredMinutes, setupMinutes,
+          requiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
+          ownRequiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
+          originalRequiredMinutes: null, requiredMinutesKnown: unitRequiredMinutes !== null, requiredMinutesSource: 'own',
+          isCompleted: isCompleted || (rangeOps.length > 0 && rangeOps.every((op) => completedOpNos.includes(op.opNo))),
+          effectiveResourceCd: normalizeResourceCd(rangeOverride?.overrideResourceCd ?? parent.originalResourceCd),
+          effectiveDueDate: resolveGrindingPlanningBoardParentDueDate({
+            originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
+            plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null, override: rangeOverride }),
+          alternateRank: rangeOverride?.alternateRank ?? null, orderPinned: rangeOverride?.orderPinned ?? false,
+          specialDue: specialDueForOverride(rangeOverride), version: rangeOwn?.version ?? 0,
+          itemRevision: params.placementOnly ? '' : createItemRevision({ baseRevision: base.itemRevision, opRange, splits,
+            rangeOwn, inherited, rangeOps, completedOpNos })
+        };
+      });
     });
   });
 }
@@ -587,6 +621,9 @@ export function projectGrindingPlanningBoard(
   const progress = buildProgressProjection(progressRows);
   const parents = buildItems(params, progress);
   const pieces = expandSessakuPieces(params, parents);
+  const lastItemByPiece = new Map<string, string>();
+  for (const item of pieces) if (item.pieceId) lastItemByPiece.set(item.pieceId, item.itemId);
+  for (const item of pieces) if (item.sourcePieceId) item.sourceItemId = lastItemByPiece.get(item.sourcePieceId) ?? item.sourceItemId ?? `piece:${item.sourcePieceId}`;
   const allItems = params.includePieces ? pieces : parents;
   const sortedAllItems = sortGrindingPlanningBoardProjectionItems(
     allItems,

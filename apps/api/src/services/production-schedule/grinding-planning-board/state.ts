@@ -100,7 +100,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       select: { version: true, updatedAt: true }
     }),
     prisma.productionScheduleGrindingPlanningBoardOverride.aggregate({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }] },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, OR: [{ itemKey: { startsWith: 'row:' } }, { itemKey: { startsWith: 'piece:' } }, { itemKey: { startsWith: 'pieceops:' } }] },
       _count: { _all: true },
       _max: { updatedAt: true }
     }),

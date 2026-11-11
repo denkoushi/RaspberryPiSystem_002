@@ -102,7 +102,7 @@ describe('grinding-planning-board-load-summary', () => {
   });
 
   it('reduces materialized aggregate rows without changing the load payload contract', async () => {
-    const queryRaw = vi.fn()
+    const queryRaw = vi.fn().mockResolvedValue([])
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
         {
@@ -129,7 +129,8 @@ describe('grinding-planning-board-load-summary', () => {
       isResourceInCategory: (resourceCd, category) => category === 'grinding' && resourceCd.startsWith('G-')
     });
 
-    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw).toHaveBeenCalledTimes(3);
+    expect((queryRaw.mock.calls[2][0] as Prisma.Sql).sql).toContain('ProductionScheduleGrindingPlanningBoardTestBar');
     expect(result).toEqual({
       load: [
         {
@@ -167,7 +168,7 @@ describe('grinding-planning-board-load-summary', () => {
       resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: '1', requiredMinutes: 1,
       isCompleted: false, plannedQuantity: 3, quantityWarning: null
     };
-    const queryRaw = vi.fn().mockResolvedValueOnce([
+    const queryRaw = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
       { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
       { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02', requiredMinutes: 1.2345 }
@@ -183,7 +184,7 @@ describe('grinding-planning-board-load-summary', () => {
       expect.objectContaining({ resourceCd: 'G-01', originalItemCount: 2, requiredMinutes: 1 }),
       expect.objectContaining({ resourceCd: 'G-02', originalItemCount: 1, requiredMinutes: 1.2345 })
     ]);
-    const pieceOnlyQuery = vi.fn().mockResolvedValueOnce([
+    const pieceOnlyQuery = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 }
     ]).mockResolvedValueOnce([]);
     const pieceOnly = await readGrindingPlanningBoardLoadSummary({
@@ -198,7 +199,7 @@ describe('grinding-planning-board-load-summary', () => {
     const source = { id: 'source-1', fseiban: 'S1', fhinCd: 'H1', productNo: null,
       resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: minutes == null ? null : '0', requiredMinutes: minutes,
       isCompleted: false, plannedQuantity: 3, quantityWarning: null };
-    const queryRaw = vi.fn().mockResolvedValueOnce([
+    const queryRaw = vi.fn().mockResolvedValue([]).mockResolvedValueOnce([
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 },
       { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
       { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02' }
@@ -422,6 +423,52 @@ describe('own minutes in load summary paths', () => {
         ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
       expect(summary.load[0]).toMatchObject({ requiredMinutes: firstCompleted ? 270 : 360,
         unfinishedItemCount: firstCompleted ? 9 : 10 });
+    }
+  });
+
+  it.each([false, true])('uses each op bar source and excludes completed ranges (materialized=%s)', async (materialized) => {
+    const resourceMinutes = { ownSourceResourceCds: [], values: [
+      { resourceCd: 'G-01', fhincd: 'part', perUnitMinutes: 30, setupMinutes: 7,
+        ops: [{ opNo: 1, minutes: 10, setupMinutes: 3 }, { opNo: 2, minutes: 20, setupMinutes: 4 }] },
+      { resourceCd: 'G-02', fhincd: 'part', perUnitMinutes: 70, setupMinutes: 11,
+        ops: [{ opNo: 1, minutes: 30, setupMinutes: 5 }, { opNo: 2, minutes: 40, setupMinutes: 6 }] },
+      { resourceCd: 'G-03', fhincd: 'part', perUnitMinutes: 999, setupMinutes: 999,
+        ops: [{ opNo: 1, minutes: 999, setupMinutes: 999 }, { opNo: 2, minutes: 999, setupMinutes: 999 }] }
+    ] };
+    for (const tailCompleted of [false, true]) {
+      const sources = [0, 1].flatMap((pieceIndex) => [
+        { opBarFromOpNo: null, opBarToOpNo: 1, opBarSourceResourceCd: 'G-01' },
+        { opBarFromOpNo: 2, opBarToOpNo: null, opBarSourceResourceCd: 'G-02' }
+      ].map((range) => ({ id: 'row', fseiban: 'S1', fhinCd: 'part', productNo: '1',
+        resourceCd: 'G-01', processOrder: '1', requiredMinutesRaw: '100', requiredMinutes: 100,
+        plannedQuantity: 2, isCompleted: false, pieceId: `unit-${pieceIndex}`, pieceQuantity: 1,
+        includeSetup: pieceIndex === 0, completedOpNos: tailCompleted ? [2] : [], ...range })));
+      const queryRaw = vi.fn(async (query: Prisma.Sql) => {
+        if (query.sql.includes('effectiveItems')) {
+          expect(query.sql).toContain("ELSE 'pieceops:'");
+          return sources.map((source) => ({ ...source, originalResourceCd: 'G-01',
+            effectiveResourceCd: source.opBarFromOpNo == null ? 'G-01' : 'G-03', fhincd: 'part', quantity: 1,
+            itemCount: 1n, unknownItemCount: 0n, requiredMinutesSum: 50 }));
+        }
+        if (query.sql.includes('FROM "CsvDashboardRow"')) {
+          expect(query.sql).toContain('ProductionScheduleSessakuPieceOpSplit');
+          return sources;
+        }
+        if (query.sql.includes('SELECT "itemKey", "overrideResourceCd"')) return [0, 1].map((index) => ({
+          itemKey: `pieceops:unit-${index}:2`, overrideResourceCd: 'G-03'
+        }));
+        return [];
+      });
+      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+        siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes,
+        ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
+      expect(summary.unknownRequiredMinutesCount).toBe(0);
+      expect(summary.load).toEqual([
+        expect.objectContaining({ resourceCd: 'G-01', originalItemCount: tailCompleted ? 2 : 4,
+          requiredMinutes: 23, unfinishedItemCount: 2 }),
+        ...(!tailCompleted ? [expect.objectContaining({ resourceCd: 'G-03', requiredMinutes: 86,
+          unfinishedItemCount: 2 })] : [])
+      ]);
     }
   });
 

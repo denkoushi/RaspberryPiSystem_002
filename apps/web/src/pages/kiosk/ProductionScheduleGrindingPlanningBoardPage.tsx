@@ -20,6 +20,7 @@ import { PlanningBoardBulkEditDialog } from '../../features/kiosk/grindingPlanni
 import { PlanningBoardDuePanels } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardDuePanels';
 import { EMPTY_ITEMS, EMPTY_ORDER, todayJst, addUtcDays, displayedDue, defaultDueDateFor, applyOptimisticOverride } from '../../features/kiosk/grindingPlanningBoard/planningBoardPageModel';
 import { PlanningBoardPageView } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPageView';
+import { runPieceOpMutation, withPieceOpResult } from '../../features/kiosk/grindingPlanningBoard/planningBoardPieceOps';
 import { PieceOperationBlockedError, PlanningBoardPiecesContext, usePlanningBoardPieceActions, usePlanningBoardPieceFocus } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover';
 import { buildPlanningBoardPlacementByPart, buildPlanningBoardProcessChipsByPart, collectPlanningBoardProcessChipParts } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../../features/kiosk/grindingPlanningBoard/planningBoardProcessChips';
@@ -48,7 +49,7 @@ import type { OrderPreview, ResourceOrderSnapshot, ResourceOrderHistory, DueMode
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
-  GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
+  SessakuPiecesMutationResponse, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
   GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
@@ -123,7 +124,7 @@ export function PlanningBoardPage() {
   const { scawEnabled, toggleScawMode } = usePersistedPlanningBoardScawMode();
   const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const queryClient = useQueryClient();
-  const pieceMutations = useKioskSessakuPieceMutations(dueSource);
+  const pieceMutations = useKioskSessakuPieceMutations(dueSource); const [pieceMutationResult, setPieceMutationResult] = useState<SessakuPiecesMutationResponse | null>(null);
   const [piecePhase, setPiecePhase] = useState<'idle' | 'saving' | 'refreshing'>('idle'); const piecePending = piecePhase !== 'idle'; const piecePendingRef = useRef(false); const piecePendingParentRef = useRef<string | null>(null);
   const { boardQuery, loadQuery, candidateQuery, resourcesQuery, dueDetailQuery } = usePlanningBoardPageQueries(
     { scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
@@ -220,7 +221,7 @@ export function PlanningBoardPage() {
     onError: handleError
   });
   const { enqueue: enqueueWrite, hasPendingSeiban, acceptRefreshedState } = writeQueue;
-  const queuedItems = useFrozenValue(writeQueue.items); const registeredFseibans = useFrozenValue(writeQueue.order); const uncheckedFseibans = useFrozenValue(writeQueue.uncheckedFseibans);
+  const mutationItems = useMemo(() => withPieceOpResult(writeQueue.items, piecePending, pieceMutationResult), [writeQueue.items, piecePending, pieceMutationResult]); const queuedItems = useFrozenValue(mutationItems); const registeredFseibans = useFrozenValue(writeQueue.order); const uncheckedFseibans = useFrozenValue(writeQueue.uncheckedFseibans);
   const activeFseibans = useMemo(() => new Set(registeredFseibans.filter((fseiban) => !uncheckedFseibans.includes(fseiban))), [registeredFseibans, uncheckedFseibans]);
   const onCompleted = useCallback((item: GrindingPlanningBoardItem, opNo?: number) => {
     setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => {
@@ -329,16 +330,16 @@ export function PlanningBoardPage() {
   }, [category, scopeReady, gate]);
   const refetchBoard = boardQuery.refetch;
   const splitPieces = pieceMutations.split.mutateAsync; const mergePieces = pieceMutations.merge.mutateAsync;
-  const changePieces = useCallback(async (items: GrindingPlanningBoardItem[], quantities?: number[]) => {
+  const changePieces = useCallback(async (items: GrindingPlanningBoardItem[], quantities?: number[], opMutation?: { fromOpNo?: number }) => {
     if (!gate.attempt()) return; if (!bulkReady || refreshRequired || Boolean(orderPreview) || piecePendingRef.current || interactionLocked || writeBlocked || writeQueue.pending || completionPendingRef.current.size) {
       throw new PieceOperationBlockedError(refreshRequired
         ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', refreshRequired);
     }
     const generation = gate.generation();
-    piecePendingParentRef.current = items[0]?.parentItemId ?? items[0]?.itemId ?? null; piecePendingRef.current = true; setPiecePhase('saving');
+    setPieceMutationResult(null); piecePendingParentRef.current = items[0]?.parentItemId ?? items[0]?.itemId ?? null; piecePendingRef.current = true; setPiecePhase('saving');
     try {
       let target: { itemId: string; parentItemId: string }; let affectedItemIds: string[] = []; const item = items[0]; if (!item) throw new Error('Missing piece item'); const previousItems = currentItemsRef.current; const previousIds = new Set(previousItems.map((candidate) => candidate.itemId));
-      if (quantities) {
+      if (opMutation) { const result = await runPieceOpMutation({ item, fromOpNo: opMutation.fromOpNo, previousItems, run: (fn) => gate.run(fn), opSplit: pieceMutations.opSplit.mutateAsync, opMerge: pieceMutations.opMerge.mutateAsync }); ({ target, affectedItemIds } = result); setPieceMutationResult(result.response); } else if (quantities) {
         const response = await gate.run(() => splitPieces({ parentItemId: item.parentItemId ?? item.itemId,
           ...(item.kind === 'piece' ? { targetPieceId: item.pieceId } : {}), quantities,
           expectedPieceSetVersion: item.pieceSetVersion ?? 0, itemRevision: item.itemRevision }));
@@ -356,14 +357,14 @@ export function PlanningBoardPage() {
       // Saving owns the whole transition, even if a GET has already removed the popup.
       clearPieceCompletion(target.parentItemId); setCompletionNotice((current) => current && (current.item.itemId === target.parentItemId || current.item.parentItemId === target.parentItemId) ? null : current);
       const affectedIds = new Set([...affectedItemIds, target.parentItemId, ...items.map((piece) => piece.itemId), ...previousItems.concat(currentItemsRef.current).filter((piece) => piece.parentItemId === target.parentItemId).map((piece) => piece.itemId)]);
-      setSelectedItemIdsByCategory((current) => Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, new Set([...ids].filter((id) => !affectedIds.has(id)))])));
+      const kept = (key: string, ids: Iterable<string>) => new Set([...[...ids].filter((id) => !affectedIds.has(id)), ...(opMutation && key === category ? [target.itemId] : [])]); setSelectedItemIdsByCategory((current) => ({ ...Object.fromEntries(Object.entries(current).map(([key, ids]) => [key, kept(key, ids)])), ...(opMutation ? { [category]: kept(category, current[category] ?? []) } : {}) }));
       pieceFocusItemIdRef.current = target; pieceRefreshRef.current = refetchBoard; setPiecePhase('refreshing');
-    } catch (error) { if (generation !== gate.generation()) return; if (items[0]) reportSessakuPieceError(quantities ? 'split' : 'merge', items[0], error);
+    } catch (error) { if (generation !== gate.generation()) return; if (items[0]) reportSessakuPieceError(quantities || opMutation?.fromOpNo != null ? 'split' : 'merge', items[0], error);
       const conflict = isAxiosError(error) && (error.response?.status === 409 || (error.response?.status === 400 && error.response.data?.errorCode === 'PIECE_QUANTITY_CONFLICT')); const message = conflict ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
       pieceFocusItemIdRef.current = null; piecePendingRef.current = false; setPiecePhase('idle'); notify(message, 'error'); void refetchBoard().catch(() => undefined);
       throw new Error(message);
     }
-  }, [interactionLocked, writeBlocked, writeQueue.pending, completionPendingRef, notify, splitPieces, mergePieces, refetchBoard, pieceFocusItemIdRef, bulkReady, refreshRequired, orderPreview, clearPieceCompletion, setCompletionNotice, gate]);
+  }, [interactionLocked, writeBlocked, writeQueue.pending, completionPendingRef, notify, splitPieces, mergePieces, pieceMutations.opSplit, pieceMutations.opMerge, category, refetchBoard, pieceFocusItemIdRef, bulkReady, refreshRequired, orderPreview, clearPieceCompletion, setCompletionNotice, gate]);
   useEffect(() => {
     const generation = gate.generation(); if (piecePhase !== 'refreshing') return; const refresh = pieceRefreshRef.current; pieceRefreshRef.current = null; if (!refresh) return;
     // Run after the save's popup close has committed. Keep every piece gate until settle.
@@ -652,7 +653,7 @@ export function PlanningBoardPage() {
   const pieceActions = usePlanningBoardPieceActions({
     createEnabled: data?.pieceCapabilities?.createEnabled === true,
     enabled: data?.pieceCapabilities?.includePieces === true,
-    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, completionPendingParentIds, onRemoved: onPieceRemoved, onOpCompletion: toggleCompletion,
+    resourceCategories: data?.resourceCategories, selectedItems: selectedVisibleItems, changePieces, changePieceOps: (item, fromOpNo) => changePieces([item], undefined, { fromOpNo }), completionPendingParentIds, onRemoved: onPieceRemoved, onOpCompletion: toggleCompletion,
     ready: bulkReady && !writeQueue.blocked && !rankConflict && !orderConflict && !orderPreview, blocked: writeBlocked || writeQueue.pending || completionPendingRef.current.size > 0,
     blockedMessage: refreshRequired ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存中…', blockedIsError: refreshRequired
   });

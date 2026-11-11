@@ -14,9 +14,10 @@ const emptyGroups = new Map();
 
 /** Page-owned state and callbacks, with only network I/O replaced by the caller. */
 export function useDueSortHarness(fixture: ReturnType<typeof productionFixture>, save: PageOptions['updateResourceOrderBulkAsync'],
-  refresh: () => Promise<unknown>, observeWrite: (write: PlanningBoardWrite) => PlanningBoardWrite = (write) => write) {
+  refresh: () => Promise<unknown>, observeWrite: (write: PlanningBoardWrite) => PlanningBoardWrite = (write) => write,
+  pageOptions: Partial<PageOptions> = {}) {
   const queue = usePlanningBoardWriteQueue({ scope: 'perf:grinding', items: fixture.items, order: fixture.seibans,
-    sourceRevision: 'source-0', refresh, onStart: noop, onSuccess: noop, onError: noop });
+    sourceRevision: pageOptions.sourceRevision ?? 'source-0', refresh, onStart: noop, onSuccess: noop, onError: noop });
   const currentItemsRef = useRef(queue.items);
   currentItemsRef.current = queue.items;
   const [history, setHistory] = useState<ResourceOrderHistory[]>([]);
@@ -40,7 +41,8 @@ export function useDueSortHarness(fixture: ReturnType<typeof productionFixture>,
         : [...previous, { id, scope: 'perf:grinding', orders: [snapshot] }].slice(-10);
     }),
     setPinMode: noop, setOrderPreview: noop, sourceRevision: 'source-0', rankConflict: false, orderConflict: false,
-    updatePinsAsync: async () => { throw new Error('Pins are outside this harness'); }
+    updatePinsAsync: async () => { throw new Error('Pins are outside this harness'); },
+    ...pageOptions
   });
   return { page, queue, history };
 }

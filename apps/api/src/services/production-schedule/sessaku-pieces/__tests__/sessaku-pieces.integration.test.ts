@@ -204,6 +204,15 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(persisted).toMatchObject({ overrideDueDate: null, dueDateCleared: null, orderPinned: false, specialDueKind: null, specialDueExpiresAt: null });
     }
   });
+  it('cascades operation boundaries when a piece is deleted', async () => {
+    const set = await prisma.productionScheduleSessakuPieceSet.create({ data: { ...key(), csvDashboardId: dashboardId,
+      pieces: { create: { position: 1, quantity: 1 } } }, include: { pieces: true } });
+    const pieceId = set.pieces[0].id;
+    await prisma.productionScheduleSessakuPieceOpSplit.createMany({ data: [2, 3].map((fromOpNo) => ({ pieceId, fromOpNo, sourceResourceCd: '021' })) });
+    expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId } })).toBe(2);
+    await prisma.productionScheduleSessakuPiece.delete({ where: { id: pieceId } });
+    expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId } })).toBe(0);
+  });
   it.each(['partial', 'all'] as const)('keeps a %s manual merge held across automatic calls and permits manual split', async (mode) => {
     await productionLot(seiban, 5);
     expect(await autoSplitSessakuUnits({ siteKey: site }, correctnessSplitLimits)).toMatchObject({ splitCount: 1 });
@@ -3191,7 +3200,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(await prisma.productionScheduleSessakuPiece.findUnique({ where: { id: done.id } })).toEqual(done);
       await quantity(2);
       expect(await readSessakuPieceSet(prisma, key())).toMatchObject({ quantityWarning: null, pieces: [{ quantity: 1 }, { quantity: 1 }] });
-      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.find((piece) => piece.id === done.id)).toEqual(done);
+      expect((await readSessakuPieceSet(prisma, laterKey()))?.pieces.find((piece) => piece.id === done.id)).toEqual({ ...done, opSplits: [] });
     });
     it('leaves unsplit later rows untouched on full merge', async () => {
       const r = await splitThree();

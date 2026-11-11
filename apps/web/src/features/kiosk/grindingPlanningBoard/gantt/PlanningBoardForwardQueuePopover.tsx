@@ -222,21 +222,21 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     className={clsx(isPinned ? 'border-2 border-amber-400' : 'border border-slate-600', 'fixed z-[100] max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg bg-slate-900 p-2 text-slate-100 shadow-xl')}
     style={position} onPointerEnter={pin} onPointerLeave={(event) => { if (event.pointerType === 'mouse') hideSoon(); }}>
     <div ref={scroll} className="relative flex gap-1.5 overflow-x-auto p-1">
-      {cards.map(({ bar, position: queuePosition }) => <div key={bar.item.itemId} data-queue-position={queuePosition}
-        data-testid={`planning-forward-queue-card-${bar.item.itemId}`}
+      {cards.map(({ bar, position: queuePosition }) => { const item = bar.item; return <div key={item.itemId} data-queue-position={queuePosition}
+        data-testid={`planning-forward-queue-card-${item.itemId}`}
         className={clsx('relative min-h-11 w-[150px] shrink-0 touch-pan-x select-none rounded-lg border-l-[5px] bg-slate-950 p-2 text-xs tabular-nums',
           bar.arrivalPending ? 'border-slate-600 text-slate-500 [&_.text-slate-400]:text-slate-600' : bar.tone === 'late' ? 'border-rose-400' : 'border-sky-400',
-          bar.item.itemId === openBar.item.itemId && 'outline outline-2 outline-amber-400',
-          draggedItemId === bar.item.itemId && 'outline outline-2 outline-dashed outline-amber-400 [&>*]:opacity-30')}
+          item.itemId === openBar.item.itemId && 'outline outline-2 outline-amber-400',
+          draggedItemId === item.itemId && 'outline outline-2 outline-dashed outline-amber-400 [&>*]:opacity-30')}
         data-viewport-visible={isVisible(bar) || undefined}
         style={{ borderTop: isVisible(bar) ? '3px solid rgb(251 191 36)' : undefined }}
         onPointerDown={(event) => {
-          if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || bar.item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
+          if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
           if (!gate.attempt()) return;
           cancelHide();
           const element = event.currentTarget;
           drag.current = { bar, x: event.clientX, y: event.clientY, pointerId: event.pointerId, element, moved: false, ready: event.pointerType !== 'touch',
-            allowed: new Set(lanes.filter((lane) => lane.resource === bar.resource || canMoveResource?.(bar.item, lane.resource)).map((lane) => lane.resource)) };
+            allowed: new Set(lanes.filter((lane) => lane.resource === bar.resource || (item.kind !== 'test' && canMoveResource?.(item, lane.resource))).map((lane) => lane.resource)) };
           dragPointer.current = { x: event.clientX, y: event.clientY };
           if (event.pointerType === 'touch') longPress.current = setTimeout(() => {
             if (!drag.current) return;
@@ -255,40 +255,42 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           if (target?.queue) onResourceReorder?.(pending.bar.item, target.queue.bar.item, target.queue.placement);
           if (target?.gantt) {
             const destination = target.gantt;
-            if (destination.resource !== pending.bar.resource) onResourceMove?.(pending.bar.item, destination.resource, destination.bar?.item ?? null, destination.placement);
+            if (destination.resource !== pending.bar.resource && pending.bar.item.kind !== 'test' && destination.bar?.item.kind !== 'test') onResourceMove?.(pending.bar.item, destination.resource, destination.bar?.item ?? null, destination.placement);
             else if (destination.bar) onResourceReorder?.(pending.bar.item, destination.bar.item, destination.placement);
           }
           const rect = panel.current?.getBoundingClientRect();
           if (rect && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) hideSoon();
         }} onPointerCancel={() => { clearDrag(); hideSoon(); }} onLostPointerCapture={() => { if (drag.current) { clearDrag(); hideSoon(); } }}>
-        <div className="truncate text-slate-400">{[bar.item.fseiban, bar.unknown ? '所要不明' : formatPlanningBoardItemMinutes(bar.item)].filter((part) => part !== '').join(' · ')}</div>
-        <strong className="my-0.5 block truncate text-sm" title={bar.item.fhinmei || bar.item.fhincd}>{bar.item.fhinmei || bar.item.fhincd}</strong>
-        <div className="truncate text-slate-400">{[bar.item.fhincd, bar.item.kind === 'piece' ? `${bar.item.quantity ?? '—'}／${bar.item.parentPlannedQuantity ?? '—'}` : bar.item.plannedQuantity == null ? null : `${bar.item.plannedQuantity}個`].filter((part) => part != null && part !== '').join(' · ')}</div>
-        <div className="truncate text-slate-400">{normalizeMachineName(bar.item.machineName)}</div>
+        {item.kind === 'test' ? <><strong className="block text-sm text-violet-300">{item.name}</strong><div>{item.minutes}分</div></> : <>
+        <div className="truncate text-slate-400">{[item.fseiban, bar.unknown ? '所要不明' : formatPlanningBoardItemMinutes(item)].filter((part) => part !== '').join(' · ')}</div>
+        <strong className="my-0.5 block truncate text-sm" title={item.fhinmei || item.fhincd}>{item.fhinmei || item.fhincd}</strong>
+        <div className="truncate text-slate-400">{[item.fhincd, item.kind === 'piece' ? `${item.quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : item.plannedQuantity == null ? null : `${item.plannedQuantity}個`].filter((part) => part != null && part !== '').join(' · ')}</div>
+        <div className="truncate text-slate-400">{normalizeMachineName(item.machineName)}</div>
         {!bar.arrivalPending && forwardStartLabel(bar) && <div className="truncate text-slate-400">開始 {forwardStartLabel(bar)}</div>}
         {bar.due && <div className={clsx('truncate', !bar.arrivalPending && bar.tone === 'late' ? 'text-rose-300' : 'text-slate-400')}>納期 {forwardDueLabel(bar.due)}</div>}
-        {bar.item.isFirstProcess ? (
+        {item.isFirstProcess ? (
           <div className="mt-1 grid grid-cols-2 gap-1">
             {(['arrived', 'excluded'] as const).map((state) => <button key={state} type="button"
-              aria-pressed={bar.item.firstProcessState === state}
+              aria-pressed={item.firstProcessState === state}
               className={clsx('min-h-9 rounded border border-slate-500 disabled:opacity-50',
-                bar.item.firstProcessState === state ? 'bg-white text-slate-950' : 'text-slate-100')}
+                item.firstProcessState === state ? 'bg-white text-slate-950' : 'text-slate-100')}
               disabled={disabled || arrivalPending}
-              onClick={() => onFirstProcessArrivalChange?.(bar.item, bar.item.firstProcessState === state ? null : state)}>
+              onClick={() => onFirstProcessArrivalChange?.(item, item.firstProcessState === state ? null : state)}>
               {state === 'arrived' ? '着' : '外'}
             </button>)}
           </div>
         ) : bar.arrivalPending ? (
           <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
-            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, true)}>着</button>
+            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
         ) : <>
-          {bar.item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
-            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(bar.item, false)}>取り消し</button>}
+          {item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
+            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>取り消し</button>}
         </>}
 
-        {drop?.bar.item.itemId === bar.item.itemId && <span data-testid="planning-forward-queue-insertion"
+        </>}
+        {drop?.bar.item.itemId === item.itemId && <span data-testid="planning-forward-queue-insertion"
           className={clsx('pointer-events-none absolute inset-y-0 w-1 bg-emerald-300', drop.placement === 'before' ? '-left-1.5' : '-right-1')} />}
-      </div>)}
+      </div>; })}
     </div>
     {arrivalError && <div role="alert" className="px-1 text-xs text-rose-300">着の更新に失敗しました。</div>}
   </div>, document.body);

@@ -83,6 +83,57 @@ describe('resource minutes UI', () => {
     await act(async () => vi.advanceTimersByTime(400));
     expect(save.mock.calls[2][0]).toMatchObject({ expectedMinutes: { ...first, perUnitMinutes: readValue } });
   });
+  it.each([
+    { committed: true, closed: false }, { committed: true, closed: true },
+    { committed: false, closed: false }, { committed: false, closed: true }
+  ])('releases only a committed post-save read returning the pre-save value: %j', async ({ committed, closed }) => {
+    vi.useFakeTimers();
+    offline.enabled = true;
+    let finishRead!: (committed: boolean) => void;
+    const reading = new Promise<boolean>((resolve) => { finishRead = resolve; });
+    offline.refreshRead.mockImplementation((key) => key === 'resource-minutes' ? reading : Promise.resolve(false));
+    const part = `RETURNED-READ-${committed}-${closed}`;
+    const initial = { resourceCd: '305', fhincd: part, perUnitMinutes: 10, setupMinutes: 0 };
+    const savedMinutes = { perUnitMinutes: 12, setupMinutes: 0, ops: [] };
+    save.mockResolvedValue({ savedMinutes, savedOpIds: [], savedOpNos: [] });
+    const props = { resourceCd: '305', items: [item({ fhincd: part })], values: [initial], disabled: false };
+    const view = render(<PlanningBoardResourceMinutesSheet {...props} />);
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '12' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    // An older in-flight read must remain ignored until the post-save read commits.
+    view.rerender(<PlanningBoardResourceMinutesSheet {...props} values={[{ ...initial }]} />);
+    expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(12);
+    if (closed) view.unmount();
+    await act(async () => finishRead(committed));
+    if (!closed) expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(committed ? 10 : 12);
+    if (!closed) view.unmount();
+    render(<PlanningBoardResourceMinutesSheet {...props} />);
+    expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(committed ? 10 : 12);
+    expect(save).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '5' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(save.mock.calls[1][0]).toMatchObject({ expectedMinutes: committed ? { ...savedMinutes, perUnitMinutes: 10 } : savedMinutes });
+  });
+  it('keeps a newer edit when the post-save read commits', async () => {
+    vi.useFakeTimers();
+    offline.enabled = true;
+    let finishRead!: (committed: boolean) => void;
+    const reading = new Promise<boolean>((resolve) => { finishRead = resolve; });
+    offline.refreshRead.mockImplementation((key) => key === 'resource-minutes' ? reading : Promise.resolve(false));
+    const part = 'EDIT-AFTER-ACK';
+    const props = { resourceCd: '305', items: [item({ fhincd: part })],
+      values: [{ resourceCd: '305', fhincd: part, perUnitMinutes: 10, setupMinutes: 0 }], disabled: false };
+    save.mockResolvedValue({ savedMinutes: { perUnitMinutes: 12, setupMinutes: 0, ops: [] }, savedOpIds: [] });
+    const view = render(<PlanningBoardResourceMinutesSheet {...props} />);
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '12' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '14' } });
+    await act(async () => finishRead(true));
+    expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(14);
+    view.unmount();
+    render(<PlanningBoardResourceMinutesSheet {...props} />);
+    expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(14);
+  });
   it('saves sequentially after StrictMode effect replay and reopening', async () => {
     vi.useFakeTimers();
     const part = 'STRICT-QUEUE';

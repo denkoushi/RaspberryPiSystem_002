@@ -1550,6 +1550,7 @@ model CsvDashboard {
   grindingPlanningBoardResourceCapacities ProductionScheduleGrindingPlanningBoardResourceCapacity[]
   grindingPlanningBoardResourceMinutesSources ProductionScheduleGrindingPlanningBoardResourceMinutesSource[]
   grindingPlanningBoardResourcePartMinutes ProductionScheduleGrindingPlanningBoardResourcePartMinutes[]
+  grindingPlanningBoardTestBars ProductionScheduleGrindingPlanningBoardTestBar[]
   grindingPlanningBoardStates    ProductionScheduleGrindingPlanningBoardState[]
   grindingPlanningBoardOverrides ProductionScheduleGrindingPlanningBoardOverride[]
   grindingPlanningBoardDueScopes ProductionScheduleGrindingPlanningBoardDueScope[]
@@ -1998,6 +1999,27 @@ model ProductionScheduleManualOrderResourceAssignment {
   @@unique([csvDashboardId, deviceScopeKey, priority], map: "ps_mo_res_assign_device_priority_key")
   @@unique([csvDashboardId, deviceScopeKey, resourceCd], map: "ps_mo_res_assign_device_resource_cd_key")
   @@index([csvDashboardId, siteKey])
+}
+
+/// CSVの行から独立した、製番ボードのサイト共有テスト加工。
+model ProductionScheduleGrindingPlanningBoardTestBar {
+  id             String   @id(map: "PSGrindingPlanningTestBar_pkey") @default(uuid())
+  csvDashboardId String
+  siteKey        String   @db.VarChar(100)
+  sequence       Int
+  resourceCd     String   @db.VarChar(20)
+  minutes        Int
+  alternateRank  Int
+  version        Int      @default(1)
+  completedAt    DateTime?
+  deletedAt      DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSGrindingPlanningTestBar_dashboard_fkey")
+
+  @@unique([csvDashboardId, siteKey, sequence], map: "PSGrindingPlanningTestBar_site_sequence_key")
+  @@index([csvDashboardId, siteKey, resourceCd, deletedAt, completedAt], map: "PSGrindingPlanningTestBar_resource_idx")
 }
 
 /// キオスク研削順位ボード専用のサイト共有状態。既存順位ボードの順位・割当は変更しない。
@@ -6519,6 +6541,7 @@ model ProductionScheduleSessakuPiece {
   sourcePieceId String?
   sourcePiece ProductionScheduleSessakuPiece? @relation("LaterProcessPieces", fields: [sourcePieceId], references: [id], onDelete: NoAction, map: "PSSPiece_source_fk")
   opCompletions ProductionScheduleSessakuPieceOpCompletion[]
+  opSplits ProductionScheduleSessakuPieceOpSplit[]
   laterProcessPieces ProductionScheduleSessakuPiece[] @relation("LaterProcessPieces")
   @@index([sourcePieceId], map: "PSSPiece_source_idx")
   pieceSet ProductionScheduleSessakuPieceSet @relation(fields: [pieceSetId], references: [id], onDelete: Cascade, map: "PSSPiece_set_fk")
@@ -6670,4 +6693,15 @@ model ProductionScheduleSessakuPieceHistory {
   createdAt DateTime @default(now())
   csvDashboard CsvDashboard @relation(fields: [csvDashboardId], references: [id], onDelete: Cascade, map: "PSSPieceHistory_dashboard_fk")
   @@unique([csvDashboardId, fseiban, fhincd, fsigencd, fkojun], map: "PSSPieceHistory_logical_key")
+}
+
+model ProductionScheduleSessakuPieceOpSplit {
+  id String @id @default(uuid())
+  pieceId String
+  fromOpNo Int
+  sourceResourceCd String
+  leadingSourceResourceCd String?
+  createdAt DateTime @default(now())
+  piece ProductionScheduleSessakuPiece @relation(fields: [pieceId], references: [id], onDelete: Cascade, map: "PSSPieceOpSplit_piece_fk")
+  @@unique([pieceId, fromOpNo], map: "PSSPieceOpSplit_piece_op_key")
 }

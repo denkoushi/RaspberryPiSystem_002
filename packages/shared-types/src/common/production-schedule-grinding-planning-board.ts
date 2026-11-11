@@ -107,6 +107,8 @@ export interface GrindingPlanningBoardItem {
   parentItemId?: string;
   pieceId?: string;
   sourcePieceId?: string;
+  sourceItemId?: string;
+  opRange?: { fromOpNo: number; toOpNo: number } | null;
   isLaterProcess?: boolean;
   piecePosition?: number;
   pieceSetVersion?: number;
@@ -152,6 +154,47 @@ export interface GrindingPlanningBoardItem {
   placement?: { shelves: { shelfCodeRaw: string; label: string; placedAt: string }[] } | null;
 }
 
+/** CSV・製番・品番を持たない独立した加工棒。 */
+export interface GrindingPlanningBoardTestBar {
+  kind: 'test';
+  itemId: string;
+  itemRevision: string;
+  version: number;
+  sequence: number;
+  name: string;
+  resourceCd: string;
+  minutes: number;
+  alternateRank: number;
+  isCompleted: boolean;
+  completedAt: string | null;
+  deletedAt: string | null;
+}
+export type GrindingPlanningBoardBar = GrindingPlanningBoardItem | GrindingPlanningBoardTestBar;
+export interface GrindingPlanningBoardItemReference {
+  itemId: string;
+  itemRevision: string;
+  overrideVersion?: number;
+}
+export interface GrindingPlanningBoardTestBarCreateRequest {
+  sourceRevision: string;
+  dueSource?: 'excel' | 'scaw';
+  resourceCd: string;
+  minutes: number;
+  afterItem?: GrindingPlanningBoardItemReference;
+}
+export interface GrindingPlanningBoardTestBarMutationRequest {
+  dueSource?: 'excel' | 'scaw';
+  sourceRevision: string;
+  expectedVersion: number;
+}
+export interface GrindingPlanningBoardTestBarMutationResponse {
+  sourceRevision: string;
+  testBar: GrindingPlanningBoardTestBar;
+  testBars: GrindingPlanningBoardTestBar[];
+  items: GrindingPlanningBoardItem[];
+  nextTestBarSequence: number;
+}
+
 export interface GrindingPlanningBoardLoad {
   resourceCd: string;
   originalItemCount: number;
@@ -171,6 +214,7 @@ export interface GrindingPlanningBoardLoadResponse {
 }
 
 export interface GrindingPlanningBoardResponse {
+  dueSource?: 'excel' | 'scaw';
   pieceCapabilities?: { createEnabled: boolean; includePieces: boolean };
   siteKey: string;
   category: GrindingPlanningBoardCategory;
@@ -184,6 +228,8 @@ export interface GrindingPlanningBoardResponse {
   resources: string[];
   resourceCategories?: Record<string, 'grinding' | 'cutting'>;
   items: GrindingPlanningBoardItem[];
+  testBars?: GrindingPlanningBoardTestBar[];
+  nextTestBarSequence?: number;
   load: GrindingPlanningBoardLoad[];
   unknownRequiredMinutesCount: number;
   loadDeferred?: boolean;
@@ -262,6 +308,7 @@ export interface GrindingPlanningBoardResourceOrderBulkRequest {
 }
 
 export interface GrindingPlanningBoardResourceOrderResponse {
+  testBars?: GrindingPlanningBoardTestBar[];
   sourceRevision: string;
   items: GrindingPlanningBoardItem[];
 }
@@ -358,7 +405,19 @@ export interface SessakuPiecesMergeRequest {
   expectedPieceSetVersion: number;
   itemRevisions: Record<string, string>;
 }
+export interface SessakuPieceOpSplitRequest {
+  dueSource?: 'excel' | 'scaw';
+  itemId: string;
+  fromOpNo: number;
+  expectedPieceSetVersion: number;
+  itemRevision: string;
+}
+export type SessakuPieceOpMergeRequest = Omit<SessakuPieceOpSplitRequest, 'fromOpNo'>;
+export type SessakuPieceOpSplitResponse = SessakuPiecesMutationResponse;
+export type SessakuPieceOpMergeResponse = SessakuPiecesMutationResponse;
+
 export interface SessakuPieceCompletionRequest {
+  itemId?: string;
   dueSource?: 'excel' | 'scaw';
   intent: 'complete' | 'incomplete';
   expectedPieceSetVersion: number;

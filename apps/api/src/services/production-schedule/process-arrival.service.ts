@@ -105,7 +105,7 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
   }) : [];
   const arrival = buildProcessArrivalByRowId(rows, processes,
     (cd) => isProductionScheduleExcludedCuttingResourceCd(cd, policy), params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)), { includeFirstProcess: true });
-  const itemKey = (row: T) => row.id.startsWith('piece:') ? row.id : buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
+  const itemKey = (row: T) => (row.id.startsWith('piece:') || row.id.startsWith('pieceops:')) ? row.id : buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
   const overrides = params.includeSpecialDue ? await client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey ?? params.locationKey, itemKey: { in: rows.map(itemKey) } }
   }) : [];

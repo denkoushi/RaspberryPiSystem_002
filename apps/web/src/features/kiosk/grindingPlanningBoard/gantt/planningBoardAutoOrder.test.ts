@@ -6,7 +6,7 @@ import { planningBoardAutoOrder, planningBoardLaneOrder, planningBoardOrderMetri
 import { buildForwardPlanningBoardGanttLayout } from './planningBoardGanttLayout';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 const item = (id: string, rank: number, due: string | null, extra: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
   itemId: id, kind: 'row', itemRevision: id, version: 0, sourceRowId: id,
@@ -20,6 +20,18 @@ const options = (items: GrindingPlanningBoardItem[]): GanttLayoutOptions => ({ i
 const bars = (value: ReturnType<typeof buildForwardPlanningBoardGanttLayout>) => value.groups.flatMap((group) => group.rows.flatMap((row) => row.bars));
 
 describe('planningBoardAutoOrder', () => {
+  it('orders a mixed lane by special-due band before its per-band saved rank', () => {
+    const specialDue = { kind: 'today' as const, expiresAt: '2026-10-14T10:00:00Z' };
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:22a2ef84-772f-4822-b4e3-bc1c930a9c83',
+      itemRevision: 'test:r1', version: 1, sequence: 1, name: 'T', resourceCd: '305', minutes: 30,
+      alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null };
+    const input = { ...options([item('S1', 1, null, { specialDue }), item('S2', 2, null, { specialDue }),
+      item('A', 1, null), item('B', 3, null)]), testBars: [test] };
+    const expected = ['S1', 'S2', 'A', test.itemId, 'B'];
+    expect(planningBoardLaneOrder(input)['305']).toEqual(expected);
+    expect(bars(buildForwardPlanningBoardGanttLayout(input)).sort((a, b) => a.start! - b.start!).map((bar) => bar.item.itemId)).toEqual(expected);
+  });
+
   it('keeps special-due bands ahead of complete saved ranks', () => {
     const input = options([item('normal', 1, '2026-10-14'), item('special', 2, '2026-10-20', {
       specialDue: { kind: 'today', expiresAt: '2026-10-14T10:00:00Z' }

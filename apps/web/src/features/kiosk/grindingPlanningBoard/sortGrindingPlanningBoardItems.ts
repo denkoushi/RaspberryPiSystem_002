@@ -1,5 +1,5 @@
 import type { PlanningBoardAllocation } from './types';
-import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardCategory, GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 
 
 export function sortPlanningBoardResources(
@@ -33,16 +33,18 @@ export function compareProcessOrder(left: string, right: string): number {
 }
 
 export function resolveGrindingPlanningBoardResource(
-  item: GrindingPlanningBoardItem,
+  item: GrindingPlanningBoardBar,
   allocation: PlanningBoardAllocation
 ): string | null {
+  if (item.kind === 'test') return item.resourceCd;
   return allocation === 'alternate' ? (item.effectiveResourceCd ?? item.originalResourceCd) : item.originalResourceCd;
 }
 
 export function resolveGrindingPlanningBoardDueDate(
-  item: GrindingPlanningBoardItem,
+  item: GrindingPlanningBoardBar,
   allocation: PlanningBoardAllocation
 ): string | null {
+  if (item.kind === 'test') return null;
   return allocation === 'alternate' ? (item.effectiveDueDate ?? item.originalDueDate) : item.originalDueDate;
 }
 
@@ -51,6 +53,15 @@ export function resolveGrindingPlanningBoardRank(
   allocation: PlanningBoardAllocation
 ): number | null {
   return allocation === 'alternate' ? item.alternateRank : item.originalRank;
+}
+
+export function resolvePlanningBoardOrderBand(item: GrindingPlanningBoardBar): string | null {
+  return item.kind === 'test' ? null : item.specialDue?.expiresAt ?? null;
+}
+
+export function comparePlanningBoardBarOrder(left: GrindingPlanningBoardBar, right: GrindingPlanningBoardBar): number {
+  return compareNullableIsoDate(resolvePlanningBoardOrderBand(left), resolvePlanningBoardOrderBand(right)) ||
+    (left.alternateRank ?? Infinity) - (right.alternateRank ?? Infinity);
 }
 
 export function compareGrindingPlanningBoardItems(

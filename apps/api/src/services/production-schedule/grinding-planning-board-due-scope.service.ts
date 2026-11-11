@@ -1,4 +1,4 @@
-import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, readSessakuPieceSets, sessakuPieceItemIds, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { Prisma, type ProductionScheduleGrindingPlanningBoardDueScope, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
@@ -76,7 +76,7 @@ async function readScopeRows(client: DbClient, siteKey: string, fseiban: string)
 }
 
 async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: readonly TargetRow[], sets: ReadonlyMap<string, SessakuPieceSet>): Promise<ProductionScheduleGrindingPlanningBoardOverride[]> {
-  const itemKeys = rows.flatMap((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), ...(sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).map((piece) => `piece:${piece.id}`)]);
+  const itemKeys = rows.flatMap((row) => [buildGrindingPlanningBoardRowItemId(asRowData(row.rowData)), ...(sets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).flatMap(sessakuPieceItemIds)]);
   if (itemKeys.length === 0) return [];
   return client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: { in: itemKeys } },
@@ -218,7 +218,7 @@ function buildAlternateDetail(params: { pieceSets: ReadonlyMap<string, SessakuPi
       if (!sourceRow) return [undefined];
       const parent = overrideByItemKey.get(buildGrindingPlanningBoardRowItemId(asRowData(sourceRow.rowData)));
       const pieces = params.pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(sourceRow.rowData)))?.pieces ?? [];
-      return pieces.length ? pieces.map((piece) => overrideByItemKey.get(`piece:${piece.id}`) ?? parent) : [parent];
+      return pieces.length ? pieces.flatMap((piece) => sessakuPieceItemIds(piece).map((itemId) => overrideByItemKey.get(itemId) ?? parent)) : [parent];
     });
     const itemDates = processOverrides.map((override) => override?.overrideDueDate).filter((value): value is Date => value != null);
     // A part is an aggregate of several process rows. Apply an item override
@@ -339,7 +339,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
     const nextParentDate = targetDueForRow(row);
     if (nextParentDate === undefined) continue;
     const parentKey = buildGrindingPlanningBoardRowItemId(asRowData(row.rowData));
-    const keys = [parentKey, ...(pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).map((piece) => `piece:${piece.id}`)];
+    const keys = [parentKey, ...(pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).flatMap(sessakuPieceItemIds)];
     for (const key of keys) {
     const current = overrideMap.get(key);
     const base = noteMap.get(row.id)?.dueDate ?? supplementMap.get(row.id)?.plannedEndDate ?? null;

@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => {
     },
     productionScheduleGrindingPlanningBoardFirstProcessArrival: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
     productionScheduleGrindingPlanningBoardArrival: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn().mockResolvedValue(0) },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), aggregate: vi.fn(), upsert: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleResourceMaster: { findMany: vi.fn(), aggregate: vi.fn() },
@@ -196,6 +197,7 @@ function configurePersistence(): void {
   mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('leaderboard-generation-1');
   prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
     const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+    if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
     if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
     if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
     if (query.includes('effectiveItems')) return [{
@@ -643,7 +645,8 @@ describe('grinding planning board service orchestration', () => {
     expect(load).toEqual({ load: legacy.load, unknownRequiredMinutesCount: legacy.unknownRequiredMinutesCount });
     expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
-    expect(mocks.prisma.$queryRaw).not.toHaveBeenCalled();
+    expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(mocks.prisma.$queryRaw.mock.calls[0])).toContain('ProductionScheduleGrindingPlanningBoardTestBar');
   });
 
   it('reuses winner materialization across load requests until the leaderboard generation changes', async () => {
@@ -762,7 +765,7 @@ describe('grinding planning board service orchestration', () => {
           expect(response.load).toEqual([]);
           expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
           expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
-          expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(1);
+          expect(mocks.prisma.$queryRaw).toHaveBeenCalledTimes(2);
           expect(JSON.stringify(mocks.prisma.$queryRaw.mock.calls[0])).toContain('FSEZONO');
         }
         changeGeneration();
@@ -1295,6 +1298,7 @@ describe('grinding planning board service orchestration', () => {
 
     mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
       const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+      if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
       if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
       if (query.includes('effectiveItems')) return [{
@@ -1347,6 +1351,7 @@ describe('grinding planning board service orchestration', () => {
     };
     mocks.prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
       const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+      if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [mocks.state];
       if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
       if (query.includes('effectiveItems')) return [{
@@ -1530,6 +1535,7 @@ describe('bulk grinding resource order service', () => {
     const read = mocks.prisma.$queryRaw.getMockImplementation()!;
     mocks.prisma.$queryRaw.mockImplementation(async (...args) => {
       const query = Array.isArray(args[0]) ? args[0].join(' ') : JSON.stringify(args[0]);
+      if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
       const result = await read(...args);
       return query.includes('rowData') ? [...result, hiddenRow] : result;

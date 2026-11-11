@@ -4,7 +4,7 @@ import { planningBoardLaneOrder } from './planningBoardAutoOrder';
 import { ganttRequiredMinutes, isUnitPiece, unitSetupMinutesByResource } from './planningBoardUnitSegments';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type UnitOrderMethod = 'group' | 'round' | 'balance';
 export type UnitOrderResourceChange = { itemId: string; resourceCd: string; previousResourceCd: string | null };
@@ -19,11 +19,11 @@ type Constraints = {
 export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: readonly string[], method: UnitOrderMethod, constraints: Constraints) {
   const current = planningBoardLaneOrder(options);
   const proposal = Object.fromEntries(Object.entries(current).map(([resource, ids]) => [resource, [...ids]]));
-  const byId = new Map(options.items.map(item => [item.itemId, item]));
+  const byId = new Map<string, GrindingPlanningBoardBar>([...options.items, ...options.testBars ?? []].map(item => [item.itemId, item]));
   const lanes = resources.map(resource => (current[resource] ?? []).map(id => byId.get(id)!));
   const rank = new Map(lanes.flat().map((item, index) => [item.itemId, index]));
   const origin = new Map(lanes.flatMap((lane, index) => lane.map(item => [item.itemId, resources[index]!] as const)));
-  const movable = (item: GrindingPlanningBoardItem) => isUnitPiece(item) && !item.orderPinned && !item.specialDue && constraints.visibleItemIds.has(item.itemId);
+  const movable = (item: GrindingPlanningBoardBar): item is GrindingPlanningBoardItem => isUnitPiece(item) && !item.orderPinned && !item.specialDue && constraints.visibleItemIds.has(item.itemId);
   const due = (item: GrindingPlanningBoardItem) => resolveGrindingPlanningBoardDueDate(item, options.allocation) ?? '9999-12-31';
   const compare = (a: GrindingPlanningBoardItem, b: GrindingPlanningBoardItem) => due(a).localeCompare(due(b)) || rank.get(a.itemId)! - rank.get(b.itemId)!;
   const groups = (items: GrindingPlanningBoardItem[]) => {
@@ -41,13 +41,13 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
   const assigned = lanes.map(lane => lane.filter(movable));
   const resourceChanges: UnitOrderResourceChange[] = [];
   if (method === 'balance' && resources.length === 2) {
-    const transferable = (item: GrindingPlanningBoardItem) => movable(item) && !constraints.hasPendingSeiban(item.fseiban) &&
+    const transferable = (item: GrindingPlanningBoardBar): item is GrindingPlanningBoardItem => movable(item) && !constraints.hasPendingSeiban(item.fseiban) &&
       constraints.canMoveResource(item, resources[0] === origin.get(item.itemId) ? resources[1]! : resources[0]!);
     const loads = lanes.map((lane, index) => {
       let previousPart: string | undefined;
       return lane.reduce((sum, item) => {
         const setupMinutes = isUnitPiece(item) && previousPart !== item.fhincd ? setup.get(resources[index]!)?.get(item.fhincd) ?? 0 : 0;
-        previousPart = item.fhincd;
+        previousPart = item.kind === 'test' ? undefined : item.fhincd;
         return sum + (transferable(item) ? 0 : (ganttRequiredMinutes(item) ?? 0) + setupMinutes);
       }, 0);
     });

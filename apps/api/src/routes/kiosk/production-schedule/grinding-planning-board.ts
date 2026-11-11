@@ -1,3 +1,4 @@
+import { createPlanningTestBar, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
@@ -277,6 +278,37 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
     return result;
   });
+
+  app.post('/kiosk/production-schedule/grinding-planning-board/test-bars', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = z.object({ sourceRevision: sourceRevisionSchema, dueSource: grindingPlanningBoardDueSourceSchema,
+      resourceCd: z.string().trim().min(1).max(20), minutes: z.number().int().min(5).max(1440),
+      afterItem: z.object({ itemId: z.string().min(1).max(2000), itemRevision: z.string().min(1).max(200), overrideVersion: z.number().int().min(0).optional() }).optional()
+    }).parse(request.body);
+    const result = await createPlanningTestBar({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
+  });
+  for (const operation of [
+    { method: 'DELETE', suffix: '', action: 'delete' },
+    { method: 'POST', suffix: '/restore', action: 'restore' },
+    { method: 'PUT', suffix: '/completion', action: 'completion' }
+  ] as const) {
+    app.route({ method: operation.method, url: `/kiosk/production-schedule/grinding-planning-board/test-bars/:id${operation.suffix}`,
+      config: { rateLimit: false }, handler: async (request) => {
+        const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+        const scope = deps.resolveLocationScopeContext(clientDevice);
+        const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
+        const body = z.object({ dueSource: grindingPlanningBoardDueSourceSchema, sourceRevision: sourceRevisionSchema, expectedVersion: z.number().int().min(1),
+          intent: z.enum(['complete', 'incomplete']).optional() }).parse(request.body);
+        const action = operation.action === 'completion' ? z.enum(['complete', 'incomplete']).parse(body.intent) : operation.action;
+        const result = await mutatePlanningTestBar({ siteKey: scope.siteKey, id, ...body, action });
+        void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+        return result;
+      }
+    });
+  }
 
   app.put('/kiosk/production-schedule/grinding-planning-board/overrides', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);

@@ -2,12 +2,19 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 
 MODULE_DIR = Path(__file__).resolve().parents[1]
+if str(MODULE_DIR) not in sys.path:
+    sys.path.insert(0, str(MODULE_DIR))
+
+from model_profiles import validate_startable_profile  # noqa: E402
+from profile_launcher import launcher_env_for_profile  # noqa: E402
+
 PROFILE = "business_glm53_flash_fp4_tp2"
 QWEN = "business_qwen38_flash_next_nvfp4"
 
@@ -118,6 +125,128 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
             "sshTarget": target,
             "containerName": name,
         }))
+
+    def qwen_env(self):
+        fixture = MODULE_DIR / "tests/fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json"
+        body = json.loads(fixture.read_text())
+        # Simulate the operator merge with local fake model directories and enablement.
+        body["enabled"] = True
+        body["storageLocation"] = body["currentStorageLocation"] = str(self.model)
+        body["launcherHints"].update({
+            "blueModelDir": str(self.model), "blueWorkerModelDir": str(self.model),
+            "blueCacheDir": str(self.root / "cache ' dir"),
+        })
+        manifest = self.root / "registry" / body["modelProfileId"] / "manifest.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        manifest.write_text(json.dumps(body))
+        profile = validate_startable_profile(str(manifest.parent.parent), body["modelProfileId"])
+        self.assertFalse(profile.business_orchestration_eligible)
+        env = launcher_env_for_profile(profile)
+        env["EXPECTED_WORKER_SSH"] = body["launcherHints"]["blueWorkerSshTarget"]
+        return env
+
+    def test_private_qwen_manifest_launches_both_ranks_with_contracted_arguments(self):
+        env = self.qwen_env()
+        result = self.run_script("start-trtllm-server.sh", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        events = self.docker_events()
+        runs = [e for e in events if e["args"][0] == "run" and "--rm" not in e["args"]]
+        drops = [i for i, e in enumerate(events) if "drop_caches" in " ".join(e["args"])]
+        self.assertEqual([events[i]["node"] for i in drops], ["worker", "head"])
+        self.assertEqual([e["node"] for e in runs], ["worker", "head"])
+        self.assertLess(max(drops), min(events.index(e) for e in runs))
+        for event in runs:
+            args = event["args"]
+            node = event["node"]
+            self.assertEqual(args[args.index("serve"):], [
+                "serve", "/models/qwen38fn", "--served-model-name", "private-qwen38-flash-next",
+                "--tensor-parallel-size", "2", "--mamba-cache-mode", "align",
+                "--enable-prefix-caching", "--enable-chunked-prefill", "--kv-cache-dtype", "auto",
+                "--max-model-len", "131072", "--max-num-seqs", "4", "--max-num-batched-tokens", "4096",
+                "--speculative-config", env["VLLM_SPECULATIVE_CONFIG"], "--mm-encoder-tp-mode", "data",
+                "--safetensors-load-strategy", "eager", "--default-chat-template-kwargs", '{"enable_thinking":false}',
+                "--reasoning-parser", "qwen3", "--tool-call-parser", "qwen3_xml", "--enable-auto-tool-choice",
+                "--gpu-memory-utilization", "0.87", "--nnodes", "2", "--master-addr", env["BLUE_MASTER_ADDR"],
+                "--master-port", "29501", "--node-rank",
+            ] + (["1", "--headless"] if node == "worker" else ["0", "--host", "127.0.0.1", "--port", "38083", "--scheduling-policy", "priority"]))
+            self.assertIn(f"{self.model}:/models/qwen38fn:ro", args)
+            self.assertIn("dgx.profile=" + env["BLUE_MODEL_PROFILE_ID"], args)
+            self.assertEqual(args[args.index("--entrypoint") + 2], env["BLUE_SERVER_IMAGE"])
+            expected_env = {
+                "HF_HUB_OFFLINE=1", "MN_IF_NAME=enp1s0f0np0", "UCX_NET_DEVICES=enp1s0f0np0",
+                "NCCL_SOCKET_IFNAME=enp1s0f0np0", "NCCL_IB_HCA=rocep1s0f0,roceP2p1s0f0",
+                "NCCL_IB_DISABLE=0", "OMPI_MCA_btl_tcp_if_include=enp1s0f0np0",
+                "GLOO_SOCKET_IFNAME=enp1s0f0np0", "TP_SOCKET_IFNAME=enp1s0f0np0",
+                "NCCL_IGNORE_CPU_AFFINITY=1", "HEAD_IP=" + env["BLUE_MASTER_ADDR"], "MASTER_PORT=29501",
+                "CUTE_DSL_ARCH=sm_121a", "SAFETENSORS_FAST_GPU=1", "VLLM_ENABLE_ROCE_ALLREDUCE=1",
+                "VLLM_ROCE_ALLREDUCE_MAX_SIZE=2MB", "NCCL_BUFFSIZE=1048576", "NCCL_MAX_CTAS=8",
+                "VLLM_WORKER_MULTIPROC_METHOD=spawn", "VLLM_SSM_CONV_STATE_LAYOUT=DS",
+                "VLLM_USE_V2_MODEL_RUNNER=1", "VLLM_ENABLE_PCIE_ALLREDUCE=0", "VLLM_PLE_TABLE_MEMORY=shared",
+                "VLLM_HOST_IP=" + ("spark2.example" if node == "worker" else env["BLUE_MASTER_ADDR"]),
+            }
+            self.assertEqual({args[i + 1] for i, a in enumerate(args) if a == "-e"}, expected_env)
+            for forbidden in ("--load-format", "--quantization", "--attention-backend", "--moe-backend",
+                              "--linear-backend", "--block-size", "--dtype", "--limit-mm-per-prompt"):
+                self.assertNotIn(forbidden, args)
+        self.assertEqual(json.loads(self.marker.read_text()), {
+            "sshTarget": env["BLUE_WORKER_SSH_TARGET"], "containerName": "system-prod-trtllm-rank1",
+        })
+        result = self.run_script("stop-trtllm-server.sh", **env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.marker.exists())
+        self.assertFalse((self.root / "injected").exists())
+
+    def test_qwen_conflicting_runtime_values_fail_before_removal(self):
+        env = self.qwen_env()
+        for key, value in {
+            "VLLM_SAFETENSORS_LOAD_STRATEGY": "lazy", "VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS": '{"enable_thinking":true}',
+            "VLLM_MM_ENCODER_TP_MODE": "weights", "VLLM_REASONING_PARSER": "glm45",
+            "VLLM_TOOL_CALL_PARSER": "glm47", "VLLM_KV_CACHE_DTYPE": "fp8",
+            "VLLM_SPECULATIVE_CONFIG": '{}', "VLLM_MAX_NUM_SEQS": "8",
+            "VLLM_MAX_NUM_BATCHED_TOKENS": "8192", "VLLM_ENABLE_PREFIX_CACHING": "false",
+            "VLLM_ENABLE_CHUNKED_PREFILL": "false", "VLLM_MAX_MODEL_LEN": "262144",
+            "VLLM_GPU_MEMORY_UTILIZATION": "0.9",
+        }.items():
+            with self.subTest(key=key):
+                result = self.run_script("glm53-flash-tp2-adapter.sh", **{**env, key: value})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.events(), [])
+
+    def test_qwen_chat_kwargs_require_a_json_boolean(self):
+        env = self.qwen_env()
+        for raw in ('{"enable_thinking":0}', '[]', 'not json'):
+            with self.subTest(raw=raw):
+                result = self.run_script("glm53-flash-tp2-adapter.sh", **{
+                    **env, "VLLM_DEFAULT_CHAT_TEMPLATE_KWARGS": raw,
+                })
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.events(), [])
+
+    def test_qwen_cache_drop_failures_warn_and_continue_before_both_ranks(self):
+        result = self.run_script("start-trtllm-server.sh", **self.qwen_env(), FAIL_CACHE="1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("worker drop_caches failed", result.stderr)
+        self.assertIn("head drop_caches failed", result.stderr)
+        events = self.docker_events()
+        drops = [i for i, e in enumerate(events) if "drop_caches" in " ".join(e["args"])]
+        runs = [i for i, e in enumerate(events) if e["args"][0] == "run" and "--rm" not in e["args"]]
+        self.assertEqual(len(runs), 2)
+        self.assertLess(max(drops), min(runs))
+
+    def test_unknown_recipe_fails_before_side_effects(self):
+        result = self.run_script("glm53-flash-tp2-adapter.sh", BLUE_RUNTIME_RECIPE="unknown")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("unsupported BLUE_RUNTIME_RECIPE", result.stderr)
+        self.assertEqual(self.events(), [])
+
+    def test_empty_recipe_preserves_default_glm_arguments_and_order(self):
+        result = self.run_script("glm53-flash-tp2-adapter.sh")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = self.events()
+        self.events_path.write_text("")
+        result = self.run_script("glm53-flash-tp2-adapter.sh", BLUE_RUNTIME_RECIPE="")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.events(), expected)
 
     def test_start_orders_both_ranks_cache_drops_and_head_and_writes_marker(self):
         result = self.run_script("start-trtllm-server.sh", VLLM_SERVED_MODEL_NAME="test-alias")

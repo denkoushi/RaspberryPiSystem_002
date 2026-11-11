@@ -1,3 +1,4 @@
+import { OP_BAR_LOAD_JOINS_SQL, resolveOpBarMinutes, type OpBarSummaryFields, type LoadSummaryAggregateRow, resolveOpBarLoadAggregates } from './grinding-planning-board-op-bar-load.js';
 import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { SESSAKU_PIECE_INCLUDE_SETUP_SQL, SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
@@ -12,10 +13,9 @@ import type {
 import { ApiError } from '../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import type { GrindingPlanningBoardPerformance } from './grinding-planning-board-performance.js';
-import {
-  buildGrindingPlanningBoardRowItemId
-} from './grinding-planning-board-projection.js';
+import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
+import { addPlanningTestBarLoad } from './grinding-planning-board-load-test-bars.js';
 
 export type GrindingPlanningBoardLoadSummaryRow = {
   /** Stable logical item id. Duplicate rows with this id are counted once. */
@@ -54,7 +54,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   };
 };
 
-type LoadSummarySourceRow = {
+type LoadSummarySourceRow = OpBarSummaryFields & {
   includeSetup?: boolean;
   pieceId?: string | null; pieceQuantity?: number | null; quantityWarning?: string | null;
   id: string;
@@ -82,16 +82,6 @@ type LoadSummaryOverrideBinding = {
   resourceCd: string | null;
   processOrder: string | null;
   overrideResourceCd: string | null;
-};
-
-type LoadSummaryAggregateRow = {
-  originalResourceCd: string | null;
-  effectiveResourceCd: string | null;
-  includeSetup?: boolean;
-  fhincd?: string | null; quantity?: number | null;
-  itemCount: bigint;
-  unknownItemCount: bigint;
-  requiredMinutesSum: number | null;
 };
 
 const SOURCE_ROW_CHUNK_SIZE = 900;
@@ -179,8 +169,15 @@ function toSummaryRow(
   const rowData = buildSourceRowData(row);
   const parentItemId = buildGrindingPlanningBoardRowItemId(rowData);
   if (row.pieceId) {
-    const itemId = `piece:${row.pieceId}`;
+    const itemId = row.opBarSourceResourceCd && row.opBarFromOpNo != null
+      ? `pieceops:${row.pieceId}:${row.opBarFromOpNo}` : `piece:${row.pieceId}`;
     const effectiveResourceCd = resolveOverrideResource(overrideByItemKey, overrideByItemKey.has(itemId) ? itemId : parentItemId, originalResourceCd);
+    if (row.opBarSourceResourceCd) {
+      const resolved = resolveOpBarMinutes(row, row.pieceQuantity ?? null, row.fhinCd ?? '', settings);
+      return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd, effectiveResourceCd,
+        requiredMinutes: resolved.requiredMinutes, requiredMinutesKnown: resolved.requiredMinutes != null,
+        isCompleted: row.isCompleted || resolved.isCompleted };
+    }
     const minutes = row.plannedQuantity != null && row.plannedQuantity > 0 && row.quantityWarning !== 'INVALID_PLANNED_QUANTITY' && row.requiredMinutes != null && row.requiredMinutes > 0
       ? row.requiredMinutes * (row.pieceQuantity ?? 0) / row.plannedQuantity : null; return { itemId, sourceRowId: row.id, kind: 'piece', originalResourceCd,
       effectiveResourceCd,
@@ -307,6 +304,7 @@ async function readAggregatedLoadSummary(params: {
           ELSE NULL
         END AS "requiredMinutes",
         ${SESSAKU_PIECE_INCLUDE_SETUP_SQL},
+        op_bars.*,
         "supplement"."plannedQuantity", pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning"
       FROM "CsvDashboardRow"
       LEFT JOIN "ProductionScheduleProgress" AS "p"
@@ -321,6 +319,7 @@ async function readAggregatedLoadSummary(params: {
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
+      ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${params.leaderboardMaterializedBaseWhere}
         AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
           OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
@@ -328,7 +327,7 @@ async function readAggregatedLoadSummary(params: {
     "items" AS (
       SELECT
         b."id" AS "sourceRowId", b."pieceId", b."includeSetup",
-        b."fseiban",
+        b."opBarFromOpNo", b."opBarToOpNo", b."opBarSourceResourceCd", b."completedOpNos", b."fseiban",
         b."productNo",
         b."fhincd",
         b."processOrder",
@@ -343,6 +342,7 @@ async function readAggregatedLoadSummary(params: {
     "deduplicatedItems" AS (
       SELECT DISTINCT ON (
         "items"."pieceId",
+        "items"."opBarFromOpNo",
         COALESCE("items"."fseiban", ''),
         CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
         COALESCE("items"."fhincd", ''),
@@ -351,6 +351,7 @@ async function readAggregatedLoadSummary(params: {
       ) "items".*
       FROM "items"
       ORDER BY "items"."pieceId",
+        "items"."opBarFromOpNo",
         COALESCE("items"."fseiban", ''),
         CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
         COALESCE("items"."fhincd", ''),
@@ -374,6 +375,8 @@ async function readAggregatedLoadSummary(params: {
       SELECT
         "deduplicatedItems"."sourceRowId",
         "deduplicatedItems"."pieceId",
+        "deduplicatedItems"."opBarFromOpNo", "deduplicatedItems"."opBarToOpNo",
+        "deduplicatedItems"."opBarSourceResourceCd", "deduplicatedItems"."completedOpNos",
         "deduplicatedItems"."originalResourceCd",
         CASE
           WHEN "pieceOverrides"."itemKey" IS NOT NULL THEN COALESCE("pieceOverrides"."overrideResourceCd", "deduplicatedItems"."originalResourceCd")
@@ -386,7 +389,9 @@ async function readAggregatedLoadSummary(params: {
       FROM "deduplicatedItems"
       LEFT JOIN "ProductionScheduleGrindingPlanningBoardOverride" "pieceOverrides"
         ON "pieceOverrides"."csvDashboardId" = ${params.dashboardId} AND "pieceOverrides"."siteKey" = ${params.siteKey}
-          AND "pieceOverrides"."itemKey" = ('piece:' || "deduplicatedItems"."pieceId")
+          AND "pieceOverrides"."itemKey" = CASE WHEN "deduplicatedItems"."opBarFromOpNo" IS NULL
+            THEN 'piece:' || "deduplicatedItems"."pieceId"
+            ELSE 'pieceops:' || "deduplicatedItems"."pieceId" || ':' || "deduplicatedItems"."opBarFromOpNo"::text END
       LEFT JOIN "overrides" AS "rowOverrides"
         ON "deduplicatedItems"."itemKind" = 'row'
           AND "rowOverrides"."itemKind" = 'row'
@@ -400,23 +405,16 @@ async function readAggregatedLoadSummary(params: {
       "originalResourceCd",
       "effectiveResourceCd",
       "fhincd", "quantity", "includeSetup",
+      "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
       SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
     GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes", "includeSetup"
+      , "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos"
   `);
 
-  return aggregateRows.map((row) => {
-    const count = Number(row.itemCount);
-    const resolved = resolveRequiredMinutes({
-      originalMinutes: row.requiredMinutesSum == null ? null : row.requiredMinutesSum / count,
-      originalKnown: Number(row.unknownItemCount) === 0,
-      quantity: row.quantity ?? null, includeSetup: row.includeSetup, effectiveResourceCd: row.effectiveResourceCd, fhincd: row.fhincd ?? ''
-    }, params.resourceMinutes);
-    return resolved.requiredMinutesSource === 'own'
-      ? { ...row, requiredMinutesSum: resolved.requiredMinutes! * count, unknownItemCount: 0n } : row;
-  });
+  return resolveOpBarLoadAggregates(aggregateRows, params.resourceMinutes);
 }
 
 async function readMaterializedLoadAggregates(
@@ -500,13 +498,13 @@ export async function readGrindingPlanningBoardLoadSummary(
 ): Promise<GrindingPlanningBoardLoadSummary> {
   const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))].sort();
   if (params.leaderboardMaterializedBaseWhere === undefined && winnerRowIds.length === 0) {
-    return { load: [], unknownRequiredMinutesCount: 0 };
+    return addPlanningTestBarLoad({ load: [], unknownRequiredMinutesCount: 0 }, params);
   }
   const dashboardId = params.dashboardId ?? PRODUCTION_SCHEDULE_DASHBOARD_ID;
   const resourceMinutes = params.resourceMinutes ?? await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey });
   if (params.leaderboardMaterializedBaseWhere !== undefined) {
     const rows = await readMaterializedLoadAggregates({ ...params, resourceMinutes, leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere }, dashboardId);
-    return buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params);
+    return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummaryFromAggregates(rows, params), params);
   }
   const rows: LoadSummarySourceRow[] = [];
   const readSourceRows = async (where: Prisma.Sql) => {
@@ -527,6 +525,7 @@ export async function readGrindingPlanningBoardLoadSummary(
         END AS "requiredMinutes",
         (CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END OR COALESCE("ext"."isExternallyCompleted", FALSE)) AS "isCompleted",
         ${SESSAKU_PIECE_INCLUDE_SETUP_SQL},
+        op_bars.*,
         pc."id" AS "pieceId", pc."quantity" AS "pieceQuantity", ps."quantityWarning",
         "supplement"."plannedQuantity" AS "plannedQuantity"
       FROM "CsvDashboardRow"
@@ -542,6 +541,7 @@ export async function readGrindingPlanningBoardLoadSummary(
         AND (BTRIM(COALESCE("CsvDashboardRow"."rowData"->>'FSEIBAN', '')) <> '********'
           OR "supplement"."productNo" = ("CsvDashboardRow"."rowData"->>'ProductNo'))
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
+      ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${where}
         AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
           OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
@@ -569,7 +569,7 @@ export async function readGrindingPlanningBoardLoadSummary(
     if (originalResourceCd == null || !params.isResourceInCategory(originalResourceCd, params.category)) return [];
     return [toSummaryRow(row, overrideByItemKey, resourceMinutes, originalResourceCd)];
   });
-  return buildGrindingPlanningBoardLoadSummary(summaryRows);
+  return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummary(summaryRows), params);
 }
 
 function addMinutes(

@@ -25,7 +25,7 @@ const disabled = {
   stagedRead: (_key: string): unknown => undefined,
   reportRead: (_generation: number, _date: string | undefined): void => undefined,
   publishRead: (_generation: number): void => undefined,
-  refreshRead: async (_key: string): Promise<void> => undefined,
+  refreshRead: async (_key: string): Promise<boolean> => false,
   subscribeFreeze: (_listener: () => void): (() => void) => noop
 };
 const OfflineContext = createContext(disabled);
@@ -120,14 +120,19 @@ function EnabledProvider({ children, config }: { children: ReactNode; config: Bo
     if (generation === controller.getSnapshot().generation && identity.current === getResolvedClientKey()) setDisplayedAt(lastReadDate.current);
   }, [controller]);
   const refreshRead = useCallback(async (key: string) => {
-    if (!gate.canWrite()) return;
-    const participant = reads.current.get(key); if (!participant) return;
+    if (!gate.canWrite()) return false;
+    const participant = reads.current.get(key); if (!participant) return false;
     const generation = gate.generation(); const abort = new AbortController();
     activeReads.current.add(abort);
     const timeout = setTimeout(() => abort.abort(), config.lossAfterMs);
     try {
       const data = await participant.read(abort.signal);
-      if (!abort.signal.aborted && generation === gate.generation() && identity.current === getResolvedClientKey() && reads.current.get(key) === participant) participant.commit(data);
+      if (abort.signal.aborted || generation !== gate.generation() || identity.current !== getResolvedClientKey() || reads.current.get(key) !== participant) return false;
+      participant.commit(data);
+      return true;
+    } catch (error: unknown) {
+      if (abort.signal.aborted) return false;
+      throw error;
     } finally { clearTimeout(timeout); activeReads.current.delete(abort); }
   }, [gate, config.lossAfterMs]);
   const subscribeFreeze = useCallback((listener: () => void) => {

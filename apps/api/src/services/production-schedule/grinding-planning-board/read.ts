@@ -1,3 +1,4 @@
+import { readPlanningTestBars } from './test-bars.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
@@ -116,12 +117,15 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
     }
   })) : { load: [], unknownRequiredMinutesCount: 0 };
   const resources = await perf.measure('resources', () => readPlanningResourceCandidates(prisma, params.category, projection.policy));
+  const tests = await readPlanningTestBars(prisma, params.siteKey);
   const generation = await perf.measure('generationAfter', () => readPlanningSnapshotGenerationToken(params.siteKey));
   if (generation !== generationBeforeRead.generationToken) {
     throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
   }
   const orderedIds = filtered.map((item) => item.itemId);
   const payload: PlanningSnapshotPayload = {
+    testBars: tests.testBars.filter((item) => isCategoryResource(item.resourceCd, params.category, projection.policy)),
+    nextTestBarSequence: tests.nextTestBarSequence,
     items: filtered,
     load: loadSummary.load,
     unknownRequiredMinutesCount: loadSummary.unknownRequiredMinutesCount,
@@ -422,7 +426,10 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     seibanOrder: selected,
     resources: payload.resources,
     resourceCategories: payload.resourceCategories,
+    dueSource: params.dueSource ?? 'excel',
     items: pageWithMaterialArrival,
+    testBars: payload.testBars ?? [],
+    nextTestBarSequence: payload.nextTestBarSequence ?? 1,
     ...(includeLoad ? {} : { loadDeferred: true }),
     load: payload.load,
     unknownRequiredMinutesCount: payload.unknownRequiredMinutesCount,
