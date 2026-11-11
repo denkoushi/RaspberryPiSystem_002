@@ -28,7 +28,6 @@ import { planningBoardResourceMatches } from '../../features/kiosk/grindingPlann
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from '../../features/kiosk/grindingPlanningBoard/sortGrindingPlanningBoardItems';
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
-import { usePlanningBoardAutoUnitSplit } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardAutoUnitSplit';
 import { usePlanningBoardCategory } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
 import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
@@ -233,7 +232,6 @@ export function PlanningBoardPage() {
     data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
     completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
-  usePlanningBoardAutoUnitSplit(() => offline.frozen || piecePendingRef.current || completionPendingRef.current.size > 0 || writeQueue.pending);
 
   const displayItems = useFrozenValue(liveDisplayItems);
 

@@ -31,7 +31,6 @@ const network = vi.hoisted(() => {
   return { stores, mutateAsync, mutate, refetch, nextBoard: undefined as any,
     split: vi.fn(), merge: vi.fn(), completion: vi.fn() };
 });
-vi.mock('../usePlanningBoardAutoUnitSplit', () => ({ usePlanningBoardAutoUnitSplit: () => undefined }));
 vi.mock('../../../../api/hooks', async () => {
   const { useSyncExternalStore, useMemo } = await import('react');
   function useStore(key: string) {

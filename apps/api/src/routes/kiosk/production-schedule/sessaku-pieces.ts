@@ -1,4 +1,4 @@
-import { autoSplitSessakuUnits } from '../../../services/production-schedule/sessaku-pieces/auto-unit-split.service.js';
+import { wakeSessakuAutoUnitSplit } from '../../../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js';
 import { runSessakuPieceOperation, type PieceAuditContext } from '../../../services/production-schedule/sessaku-pieces/piece-audit.js';
 import { resolveDeviceName } from '../shared.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -23,12 +23,10 @@ export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: Ki
     });
   };
   app.post(`${base}/auto-unit-split`, { config: { rateLimit: false } }, async (request) => {
-    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
-    const siteKey = deps.resolveLocationScopeContext(clientDevice).siteKey;
+    await deps.requireClientDevice(request.headers['x-client-key']);
     z.object({}).strict().parse(request.body ?? {});
-    // The service starts auditing only after the gate and candidate exploration succeed.
-    return autoSplitSessakuUnits({ siteKey, audit: { action: 'auto_unit_split', siteKey, requestId: request.id,
-      actorClientDeviceId: clientDevice.id, actorDeviceName: resolveDeviceName(clientDevice) } });
+    wakeSessakuAutoUnitSplit();
+    return { splitCount: 0, skippedCount: 0, hasMore: false };
   });
   app.put(`${base}/:pieceId/ops/:opNo/completion`, { config: { rateLimit: false } }, async (request) => perform(request,
     sessakuPieceCompletionSchema.pick({ intent: true }).safeParse(request.body).data?.intent === 'incomplete' ? 'op_uncomplete' : 'op_complete', async (audit) => {

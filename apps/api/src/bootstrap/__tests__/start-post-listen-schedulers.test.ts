@@ -98,6 +98,8 @@ describe('start-post-listen-schedulers fail-closed group', () => {
 
   it('includes backup and csv-import in the registered scheduler group', () => {
     const names = listPostListenSchedulerNames();
+    expect(names).toContain('sessaku-auto-unit-split');
+    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some(step => step.name === 'sessaku-auto-unit-split')).toBe(true);
     expect(names).toContain('backup');
     expect(names).toContain('client-network-log-retention');
     expect(names).toContain('watch-camera-retention');
@@ -190,6 +192,7 @@ describe('start-post-listen-schedulers naming contract', () => {
       'signage-render',
       'part-measurement-drawing-dimension-map',
       'grinding-planning-board-startup-warmup',
+      'sessaku-auto-unit-split',
       'procedure-term-learning',
       'business-hermes-nightly',
       'security-review-nightly',

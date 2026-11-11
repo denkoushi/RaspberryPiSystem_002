@@ -6492,6 +6492,7 @@ model ProductionScheduleSessakuPieceSet {
   fkojun String
   version Int @default(1)
   nextPosition Int @default(1)
+  autoUnitSplitHeldAt DateTime?
   plannedQuantity Int?
   quantityWarning String? @db.VarChar(40)
   createdAt DateTime @default(now())
