@@ -500,6 +500,8 @@ all:
                   serialNumber: "702902S"
             raspi4-kensaku-02:
               # Kensaku-02 キオスク（Pi4 7台目）
+              # Pi5 証明書の固定(段階有効化の1回目)
+              client_server_cert_pin_enabled: true
               ansible_host: "{{ current_network.raspi4_kensaku_02_ip | default(local_network.raspi4_kensaku_02_ip) }}"
               ansible_user: raspi4-kensaku-02
               # 画面のセッションを sudo の無い専用ユーザーで動かす(切り替え1回目)
@@ -575,6 +577,8 @@ all:
           hosts:
             raspberrypi3:
               ansible_host: "{{ signage_ip }}"
+              # Pi5 証明書の固定(段階有効化の1回目)
+              client_server_cert_pin_enabled: true
               ansible_user: signageras3
               # Pi3 は負荷時に sudo 応答が遅れ、既定の become 待ちで UNREACHABLE になり得る
               ansible_become_timeout: 120
