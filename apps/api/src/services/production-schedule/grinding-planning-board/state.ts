@@ -172,11 +172,24 @@ export async function ensurePlanningBoardState(siteKey: string): Promise<void> {
   await getOrCreateState(siteKey, [], prisma);
 }
 
+/** A raw FOR UPDATE that waited behind a committed writer fails with 40001 under RR/Serializable. */
+function isRawSerializationFailure(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2010') return false;
+  const cause = (error.meta as { driverAdapterError?: { cause?: { originalCode?: string } } } | undefined)?.driverAdapterError?.cause;
+  return cause?.originalCode === '40001' || /\b40001\b/.test(error.message);
+}
+
 export async function lockState(client: Prisma.TransactionClient, siteKey: string): Promise<PlanningState> {
-  const rows = await client.$queryRaw<PlanningState[]>`
-    SELECT "id", "version", "seibanOrder", "uncheckedFseibans" FROM "ProductionScheduleGrindingPlanningBoardState"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey} FOR UPDATE
-  `;
+  let rows: PlanningState[];
+  try {
+    rows = await client.$queryRaw<PlanningState[]>`
+      SELECT "id", "version", "seibanOrder", "uncheckedFseibans" FROM "ProductionScheduleGrindingPlanningBoardState"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey} FOR UPDATE
+    `;
+  } catch (error) {
+    if (isRawSerializationFailure(error)) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
+    throw error;
+  }
   if (!rows[0]) throw new ApiError(409, 'ボード状態が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD');
   return rows[0];
 }
