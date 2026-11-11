@@ -15,6 +15,7 @@ import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttView as ControlledPlanningBoardGanttView } from './PlanningBoardGanttView';
 import { pieceNotchClipPath } from './planningBoardPieceNotch';
 import { buildSingleResourceWindows } from './planningBoardSingleResourceWindows';
+import { CHAIN_VIEW_STORAGE_KEY } from './usePersistedPlanningBoardChainView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -699,6 +700,7 @@ describe('PlanningBoardGanttView', () => {
 
 describe('forward PlanningBoardGanttView', () => {
   beforeEach(() => {
+    localStorage.removeItem(CHAIN_VIEW_STORAGE_KEY);
     vi.stubGlobal('PointerEvent', TestPointerEvent);
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => {
       const lane = document.querySelector('[data-gantt-lane-resource="305"]');
@@ -1184,7 +1186,51 @@ describe('forward PlanningBoardGanttView', () => {
     expect(buttons).toHaveLength(1);
     expect(screen.getByTestId('planning-gantt-chain-strip')).toContainElement(buttons[0]!);
   });
+  it('defaults to ordered piece arcs and toggles exclusively to persisted process links', () => {
+    const entries = [3, 1, 2].map((position) => item({ itemId: `piece:${position}`, kind: 'piece', parentItemId: 'parent',
+      piecePosition: position, processOrder: '10', requiredMinutes: 480 }));
+    entries.push(item({ itemId: 'next', processOrder: '20', requiredMinutes: 60 }));
+    render(<PlanningBoardGanttView {...forwardProps(entries)} />);
+    tap(screen.getAllByTestId('planning-gantt-bar-piece:1')[0]!);
+    const links = screen.getAllByTestId('planning-gantt-piece-link');
+    expect(links.map((link) => link.getAttribute('data-from-to'))).toEqual(['piece:1->piece:2', 'piece:2->piece:3']);
+    expect(screen.queryAllByTestId('planning-gantt-chain-link')).toHaveLength(0);
+    expect(screen.getByTestId('planning-gantt-chain-links').querySelector('circle')).toBeNull();
+    for (const [index, link] of links.entries()) {
+      const previous = screen.getAllByTestId(new RegExp(`^planning-gantt-bar-piece:${index + 1}(?:-segment-|$)`)).at(-1)!;
+      const next = screen.getAllByTestId(`planning-gantt-bar-piece:${index + 2}`)[0]!;
+      const x1 = 168 + parseFloat(previous.style.left) + parseFloat(previous.style.width) - 2;
+      const x2 = 168 + parseFloat(next.style.left) + 2;
+      expect(link).toHaveAttribute('d', `M ${x1} 3 C ${x1} -13, ${x2} -13, ${x2} 3`);
+      expect(link).toHaveAttribute('stroke', 'white');
+      expect(link).toHaveAttribute('stroke-width', '2');
+      expect(link).toHaveAttribute('stroke-linecap', 'round');
+      expect(link).not.toHaveAttribute('stroke-dasharray');
+    }
+    const toggle = screen.getByRole('button', { name: '線の表示を切り替える(今は分割)' });
+    expect(toggle).toHaveTextContent('分割');
+    expect(toggle).not.toHaveAttribute('aria-pressed');
+    expect(toggle.nextElementSibling).toHaveTextContent('× 閉じる');
+    fireEvent.click(toggle);
+    expect(screen.getAllByTestId('planning-gantt-chain-link')).toHaveLength(3);
+    expect(screen.queryAllByTestId('planning-gantt-piece-link')).toHaveLength(0);
+    expect(screen.getByRole('button', { name: '線の表示を切り替える(今は工順)' })).toHaveTextContent('工順');
+    expect(JSON.parse(localStorage.getItem(CHAIN_VIEW_STORAGE_KEY)!)).toEqual({ schemaVersion: 1, view: 'process' });
+    fireEvent.click(toggle);
+    expect(screen.getAllByTestId('planning-gantt-piece-link')).toHaveLength(2);
+    expect(screen.queryAllByTestId('planning-gantt-chain-link')).toHaveLength(0);
+    expect(toggle).toHaveTextContent('分割');
+  });
+  it.each(['pieces', 'process'])('shows process links without a toggle for an unsplit chain (saved=%s)', (view) => {
+    localStorage.setItem(CHAIN_VIEW_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, view }));
+    render(<PlanningBoardGanttView {...forwardProps(chainItems())} />);
+    tap(screen.getByTestId('planning-gantt-bar-a'));
+    expect(screen.queryByRole('button', { name: /線の表示を切り替える/ })).toBeNull();
+    expect(screen.getAllByTestId('planning-gantt-chain-link')).toHaveLength(1);
+    expect(screen.queryAllByTestId('planning-gantt-piece-link')).toHaveLength(0);
+  });
   it('connects adjacent processes across all sibling pieces without linking the siblings', () => {
+    localStorage.setItem(CHAIN_VIEW_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, view: 'process' }));
     const entries = [item({ itemId: 'P', processOrder: '10', requiredMinutes: 60 }),
       ...['A', 'B'].map((id) => item({ itemId: id, kind: 'piece', parentItemId: 'parent', processOrder: '20', requiredMinutes: 60 })),
       item({ itemId: 'N', processOrder: '30', requiredMinutes: 60 })];

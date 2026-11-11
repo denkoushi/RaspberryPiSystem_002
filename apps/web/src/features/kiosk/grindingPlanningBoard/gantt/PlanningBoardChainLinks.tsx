@@ -4,11 +4,13 @@ import { pageZoom } from '../pageZoom';
 
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 
-import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
+import type { NormalGanttBar as GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { GanttBarLocations } from './planningBoardSingleResourceWindows';
+import type { PlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import type { RefObject } from 'react';
 
 type Props = {
+  view?: PlanningBoardChainView;
   barLocations?: GanttBarLocations;
   bars: GanttBar[];
   content: RefObject<HTMLDivElement | null>;
@@ -22,7 +24,7 @@ type Props = {
 };
 type Link = { id: string; path: string; x: number; y: number };
 
-export function PlanningBoardChainLinks({ barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight }: Props) {
+export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight }: Props) {
   const [links, setLinks] = useState<Link[]>([]);
   useLayoutEffect(() => {
     const element = content.current;
@@ -50,6 +52,30 @@ export function PlanningBoardChainLinks({ barLocations, bars, content, rowElemen
       if (process) process.push(bar);
       else processes.set(key, [bar]);
     }
+    if (view === 'pieces') {
+      const pieceGroups = new Map<string, GanttBar[]>();
+      for (const bar of bars) {
+        if (bar.item.kind !== 'piece' || !bar.item.parentItemId) continue;
+        const group = pieceGroups.get(bar.item.parentItemId);
+        if (group) group.push(bar);
+        else pieceGroups.set(bar.item.parentItemId, [bar]);
+      }
+      setLinks([...pieceGroups.values()].flatMap((group) => {
+        group.sort((a, b) => (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity));
+        return group.slice(1).flatMap((bar, index) => {
+          const previousBar = group[index]!;
+          const previous = positions.get(previousBar.item.itemId)?.last;
+          const next = positions.get(bar.item.itemId)?.first;
+          if (!previous || !next) return [];
+          const x1 = previous.left + previous.width - 2;
+          const y1 = previous.top;
+          const x2 = next.left + 2;
+          const y2 = next.top;
+          return [{ id: `${previousBar.item.itemId}->${bar.item.itemId}`, path: `M ${x1} ${y1} C ${x1} ${y1 - 16}, ${x2} ${y2 - 16}, ${x2} ${y2}`, x: x2, y: y2 }];
+        });
+      }));
+      return;
+    }
     const groups = [...processes.values()];
     setLinks(groups.slice(1).flatMap((group, index) => groups[index]!.flatMap((previousBar) => group.flatMap((bar) => {
       const previous = positions.get(previousBar.item.itemId)?.last;
@@ -62,9 +88,11 @@ export function PlanningBoardChainLinks({ barLocations, bars, content, rowElemen
       const bend = Math.max(24, Math.abs(x2 - x1) / 2);
       return [{ id: `${previousBar.item.itemId}->${bar.item.itemId}`, path: `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`, x: x2, y: y2 }];
     }))));
-  }, [barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
+  }, [view, barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
   return <svg data-testid="planning-gantt-chain-links" aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 h-full w-full">
-    {links.map((link) => <g key={link.id}>
+    {links.map((link) => view === 'pieces'
+      ? <path key={link.id} data-from-to={link.id} data-testid="planning-gantt-piece-link" d={link.path} fill="none" stroke="white" strokeWidth={2} strokeLinecap="round" />
+      : <g key={link.id}>
       <path data-from-to={link.id} data-testid="planning-gantt-chain-link" d={link.path} fill="none" stroke="white" strokeWidth={2.5} strokeDasharray="6 4" />
       <circle cx={link.x} cy={link.y} r={4} fill="white" />
     </g>)}

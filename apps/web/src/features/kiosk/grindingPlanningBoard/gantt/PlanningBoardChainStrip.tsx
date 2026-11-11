@@ -8,6 +8,7 @@ import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 import { ganttResourceLabel } from './ganttResourceLabel';
 
 import type { NormalGanttBar as GanttBar } from './planningBoardGanttLayout';
+import type { PlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { Ref } from 'react';
 
@@ -24,8 +25,10 @@ type Props = {
   currentItemId: string | null;
   onStep: (bar: GanttBar) => void;
   onClose: () => void;
+  chainView?: PlanningBoardChainView;
+  onChainViewToggle?: () => void;
 };
-export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, resourceNameMap, currentItemId, onStep, onClose, onCompleteToggle, completionPendingItemIds, disabled, pieceDisabled }: Props) {
+export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, resourceNameMap, currentItemId, onStep, onClose, chainView, onChainViewToggle, onCompleteToggle, completionPendingItemIds, disabled, pieceDisabled }: Props) {
   const part = bars[0]!.item;
   const processPositions = new Map<string, number>();
   const positions = bars.map(({ item }) => {
@@ -51,6 +54,7 @@ export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, re
       {onCompleteToggle && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
         disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
     </Fragment>)}
+    {onChainViewToggle && <button type="button" aria-label={`線の表示を切り替える(今は${chainView === 'pieces' ? '分割' : '工順'})`} className="min-h-11 shrink-0 rounded border border-slate-700 px-3 text-xs" onClick={onChainViewToggle}>{chainView === 'pieces' ? '分割' : '工順'}</button>}
     <button type="button" aria-label="工程のつながりを閉じる" className="min-h-11 shrink-0 rounded border border-slate-700 px-3 text-xs" onClick={onClose}>× 閉じる</button>
   </div>;
 }
