@@ -50,7 +50,13 @@ export function KioskInspectionDrawingEditPage() {
   const [points, setPoints] = useState<InspectionDrawingPoint[]>([]);
   const [selectedPointId, setSelectedPointId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [messageState, setMessageState] = useState<{ text: string; autosave: boolean } | null>(null);
+  const message = messageState?.text;
+  const setMessage = useCallback((text: string | null) => {
+    setMessageState(text === null ? null : { text, autosave: false });
+  }, []);
+  const finalizingRef = useRef(false);
+  const pendingAutosaveRef = useRef<Promise<void> | null>(null);
   const { zoom, zoomIn, zoomOut, fitToView, resetZoom, fitGeneration } = useInspectionDrawingZoom();
 
   const drawingPath = sheet?.template?.visualTemplate?.drawingImageRelativePath;
@@ -93,7 +99,7 @@ export function KioskInspectionDrawingEditPage() {
     } finally {
       setBusy(false);
     }
-  }, [sheetId, clientKey, syncPointsFromSheet]);
+  }, [sheetId, clientKey, syncPointsFromSheet, setMessage]);
 
   useEffect(() => {
     void load();
@@ -155,7 +161,7 @@ export function KioskInspectionDrawingEditPage() {
         setMessage(err.response?.data?.message ?? '社員タグの反映に失敗しました。');
       }
     })();
-  }, [nfcEvent, sheet, readOnly, editAccess.allowed, patchSheet]);
+  }, [nfcEvent, sheet, readOnly, editAccess.allowed, patchSheet, setMessage]);
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
 
@@ -167,12 +173,8 @@ export function KioskInspectionDrawingEditPage() {
         templateItemId: pt.id,
         value: pt.testValue.trim() === '' ? null : pt.testValue.trim()
       }));
-      try {
-        const { sheet: updated } = await patchSheet(sheet.id, { quantity: 1, results });
-        setSheet(updated);
-      } catch {
-        /* 自動保存失敗は次回に委ねる */
-      }
+      const { sheet: updated } = await patchSheet(sheet.id, { quantity: 1, results });
+      setSheet(updated);
     },
     [sheet, readOnly, editAccess.allowed, patchSheet]
   );
@@ -180,26 +182,38 @@ export function KioskInspectionDrawingEditPage() {
   const scheduleSave = useCallback(
     (nextPoints: InspectionDrawingPoint[]) => {
       if (autosaveRef.current) clearTimeout(autosaveRef.current);
+      if (finalizingRef.current || !sheet || sheet.status !== 'DRAFT' || readOnly) return;
       autosaveRef.current = setTimeout(() => {
-        void flushSave(nextPoints);
+        if (finalizingRef.current) return;
+        pendingAutosaveRef.current = (pendingAutosaveRef.current ?? Promise.resolve()).then(() => {
+          if (finalizingRef.current) return;
+          return flushSave(nextPoints);
+        }).then(() => {
+          if (!finalizingRef.current) setMessageState((prev) => prev?.autosave ? null : prev);
+        }).catch((e: unknown) => {
+          if (finalizingRef.current) return;
+          const err = e as { response?: { data?: { message?: string } } };
+          setMessageState({ text: err.response?.data?.message ?? '保存に失敗しました。', autosave: true });
+        });
       }, AUTOSAVE_MS);
     },
-    [flushSave]
+    [flushSave, sheet, readOnly]
   );
 
   const updatePointValue = (id: string, testValue: string) => {
-    setPoints((prev) => {
-      const next = prev.map((p) => (p.id === id ? { ...p, testValue } : p));
-      scheduleSave(next);
-      return next;
-    });
+    if (finalizingRef.current || readOnly) return;
+    const next = points.map((p) => (p.id === id ? { ...p, testValue } : p));
+    setPoints(next);
+    scheduleSave(next);
   };
 
   const handleFinalize = async () => {
-    if (!sheet || !editAccess.allowed || sheet.status !== 'DRAFT') return;
+    if (!sheet || !editAccess.allowed || sheet.status !== 'DRAFT' || finalizingRef.current) return;
+    finalizingRef.current = true;
+    if (autosaveRef.current) clearTimeout(autosaveRef.current);
     setBusy(true);
     try {
-      if (autosaveRef.current) clearTimeout(autosaveRef.current);
+      await pendingAutosaveRef.current;
       await flushSave(points);
       const { sheet: finalized } = await finalizeSheet(sheet.id);
       setSheet(finalized);
@@ -208,6 +222,7 @@ export function KioskInspectionDrawingEditPage() {
       const err = e as { response?: { data?: { message?: string } } };
       setMessage(err.response?.data?.message ?? '確定に失敗しました。');
     } finally {
+      finalizingRef.current = false;
       setBusy(false);
     }
   };
@@ -320,7 +335,7 @@ export function KioskInspectionDrawingEditPage() {
         <aside className={inspectionDrawingSideAsideClassName}>
           <InspectionDrawingValuePanel
             point={selectedPoint}
-            readOnly={readOnly || sheet?.status !== 'DRAFT'}
+            readOnly={busy || readOnly || sheet?.status !== 'DRAFT'}
             onValueChange={(v) => {
               if (!selectedPoint) return;
               updatePointValue(selectedPoint.id, v);
