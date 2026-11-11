@@ -1,5 +1,5 @@
 import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
-import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
+import { readSessakuPieceGeneration, type SessakuPieceGenerationScope } from '../sessaku-pieces/piece-key.js';
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { ApiError } from '../../../lib/errors.js';
@@ -92,7 +92,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
     Array.isArray(payload.resources);
 }
 
-export async function readPlanningSnapshotGenerationDetails(siteKey: string): Promise<PlanningSnapshotGenerationDetails> {
+export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails> {
   const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
@@ -113,7 +113,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
-    readSessakuPieceGeneration(prisma),
+    Promise.resolve(pieceScope).then((scope) => readSessakuPieceGeneration(prisma, scope)),
     prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.aggregate({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
       _count: { _all: true }, _max: { updatedAt: true }
@@ -140,15 +140,14 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
       resourceUpdatedAt: resources._max.updatedAt?.toISOString() ?? '',
       machineNameCount: machineNames._count._all,
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
-      pieceSetCount: pieces.count,
-      pieceSetVersion: pieces.version,
+      pieceSetFingerprint: pieces,
       minuteSourceCount: minuteSources._count._all,
       minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
       partMinutesCount: partMinutes._count._all,
       partMinutesUpdatedAt: partMinutes._max.updatedAt?.toISOString() ?? '',
       capacityCount: capacity._count._all,
       capacityUpdatedAt: capacity._max.updatedAt?.toISOString() ?? '',
-      payloadFormat: 5
+      payloadFormat: 6
     }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,
@@ -156,8 +155,8 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string): Pr
   };
 }
 
-export async function readPlanningSnapshotGenerationToken(siteKey: string): Promise<string> {
-  return (await readPlanningSnapshotGenerationDetails(siteKey)).generationToken;
+export async function readPlanningSnapshotGenerationToken(siteKey: string, pieceScope?: SessakuPieceGenerationScope): Promise<string> {
+  return (await readPlanningSnapshotGenerationDetails(siteKey, pieceScope)).generationToken;
 }
 
 export function isPlanningStateAlignedWithGeneration(
