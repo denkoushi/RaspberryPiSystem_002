@@ -7,12 +7,12 @@ import { useFrozenValue, usePlanningBoardOffline } from './offline/PlanningBoard
 
 import type { GrindingPlanningBoardFirstProcessState, GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 
-export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | undefined, nowMs: number) {
+export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | undefined, nowMs: number, dueSource?: 'excel' | 'scaw') {
   const { gate, snapshot, enabled, refreshRead } = usePlanningBoardOffline();
   useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setOverlay(new Map()); setFirstProcessOverlay(new Map()); } }, [enabled, snapshot.phase]);
   const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('kiosk-planning-board-arrival-filter');
-  const mutation = useUpdateKioskGrindingPlanningBoardArrival();
-  const firstProcessMutation = useUpdateKioskGrindingPlanningBoardFirstProcessArrival();
+  const mutation = useUpdateKioskGrindingPlanningBoardArrival(dueSource);
+  const firstProcessMutation = useUpdateKioskGrindingPlanningBoardFirstProcessArrival(dueSource);
   const [firstProcessOverlay, setFirstProcessOverlay] = useState<ReadonlyMap<string, { siteKey: string; state: GrindingPlanningBoardFirstProcessState }>>(new Map());
   const pending = useRef(false);
   const [overlay, setOverlay] = useState<ReadonlyMap<string, { siteKey: string; date: string }>>(new Map());

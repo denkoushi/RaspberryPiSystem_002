@@ -3,6 +3,7 @@ import { act, fireEvent, render as renderComponent, screen, waitFor, within } fr
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import * as machineSignalApi from '../../api/domains/machine-signal';
+import * as apiHooks from '../../api/hooks';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import * as dialog from '../../components/ui/Dialog';
 import * as errorTelemetry from '../../features/kiosk/errorTelemetry';
@@ -70,11 +71,11 @@ vi.mock('../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover', 
 vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
 
 vi.mock('../../api/hooks', () => ({
-  useKioskSessakuPieceMutations: () => ({
+  useKioskSessakuPieceMutations: vi.fn(() => ({
     completion: useMutation({ mutationFn: (args: unknown) => mocks.pieceCompletion(args) }),
     split: useMutation({ mutationFn: (args: unknown) => mocks.pieceSplit(args) }),
     merge: useMutation({ mutationFn: (args: unknown) => mocks.pieceMerge(args) })
-  }),
+  })),
   useUpdateKioskGrindingPlanningBoardFirstProcessArrival: () => useMutation({ mutationFn: async (args: { itemId: string; state: string | null }) => ({ itemId: args.itemId, firstProcessState: args.state }) }),
   useUpdateKioskGrindingPlanningBoardArrival: () => useMutation({ mutationFn: (args: unknown) => mocks.arrival(args) }),
   useKioskGrindingPlanningBoardProcessChips: (...args: unknown[]) => mocks.processChips(...args),
@@ -123,7 +124,7 @@ vi.mock('../../api/hooks', () => ({
     };
   },
   useUpdateKioskGrindingPlanningBoardPins: () => ({ mutateAsync: mocks.pins, isPending: false }),
-  useUpdateKioskGrindingPlanningBoardOverrides: () => ({ mutateAsync: mocks.overrides, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardOverrides: vi.fn(() => ({ mutateAsync: mocks.overrides, isPending: false })),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk: () => ({ mutateAsync: mocks.resourceOrderBulk, isPending: false }),
@@ -1282,6 +1283,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
     fireEvent.click(screen.getByRole('button', { name: 'SCAW' }));
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'scaw' }), expect.anything());
+    expect(apiHooks.useUpdateKioskGrindingPlanningBoardOverrides).toHaveBeenLastCalledWith({ invalidateOnSuccess: false, dueSource: 'scaw' });
+    expect(apiHooks.useKioskSessakuPieceMutations).toHaveBeenLastCalledWith('scaw');
     fireEvent.click(screen.getByRole('button', { name: 'SCAW' }));
     expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.objectContaining({ dueSource: 'excel' }), expect.anything());
   });

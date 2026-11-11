@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../queryKeys/productionSchedule';
 
-import { useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgressive, useKioskSessakuPieceMutations } from './production-schedule/grinding-planning-board';
+import { useUpdateKioskGrindingPlanningBoardOverrides, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgressive, useKioskSessakuPieceMutations } from './production-schedule/grinding-planning-board';
 
 import type { GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), board: vi.fn(), load: vi.fn() }));
-vi.mock('../client', () => ({ splitKioskSessakuPieces: mocks.split, mergeKioskSessakuPieces: mocks.merge, setKioskSessakuPieceCompletion: mocks.completion, setKioskSessakuPieceOpCompletion: mocks.opCompletion, getKioskGrindingPlanningBoard: mocks.board, getKioskGrindingPlanningBoardLoad: mocks.load }));
+const mocks = vi.hoisted(() => ({ split: vi.fn(), merge: vi.fn(), completion: vi.fn(), opCompletion: vi.fn(), overrides: vi.fn(), board: vi.fn(), load: vi.fn() }));
+vi.mock('../client', () => ({ updateKioskGrindingPlanningBoardOverrides: mocks.overrides, splitKioskSessakuPieces: mocks.split, mergeKioskSessakuPieces: mocks.merge, setKioskSessakuPieceCompletion: mocks.completion, setKioskSessakuPieceOpCompletion: mocks.opCompletion, getKioskGrindingPlanningBoard: mocks.board, getKioskGrindingPlanningBoardLoad: mocks.load }));
 
 function setup() {
   const client = new QueryClient({ defaultOptions: { mutations: { retry: 3, retryDelay: 0 } } });
@@ -47,6 +47,23 @@ function setupProgressive() {
 
 describe('piece mutations', () => {
   beforeEach(() => { vi.resetAllMocks(); });
+  it('sends the displayed due source on overrides, piece and operation completion', async () => {
+    const client = new QueryClient();
+    const h = renderHook(() => ({ overrides: useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false, dueSource: 'scaw' }),
+      pieces: useKioskSessakuPieceMutations('scaw') }), {
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    });
+    mocks.overrides.mockResolvedValue({ items: [] }); mocks.completion.mockResolvedValue({ pieces: [] }); mocks.opCompletion.mockResolvedValue({ pieces: [] });
+    const overrides = { sourceRevision: 'r', items: [{ itemId: 'row:a', itemRevision: 'r1', resourceCd: '305' }] };
+    const completion = { pieceId: 'a', intent: 'complete' as const, expectedPieceSetVersion: 1, itemRevision: 'r2' };
+    await act(async () => { await h.result.current.overrides.mutateAsync(overrides); await h.result.current.pieces.completion.mutateAsync(completion);
+      await h.result.current.pieces.opCompletion.mutateAsync({ ...completion, opNo: 20 }); });
+    expect(mocks.overrides).toHaveBeenCalledWith({ ...overrides, dueSource: 'scaw' });
+    const { pieceId, ...payload } = completion;
+    expect(mocks.completion).toHaveBeenCalledWith(pieceId, { ...payload, dueSource: 'scaw' });
+    expect(mocks.opCompletion).toHaveBeenCalledWith(pieceId, 20, { ...payload, dueSource: 'scaw' });
+  });
+
   it('invalidates board, candidates, load, chips, arrivals and parent consumers after completion', async () => {
     const h = setup(); mocks.completion.mockResolvedValue({ pieces: [] });
     const payload = { pieceId: 'id', intent: 'complete' as const, expectedPieceSetVersion: 4, itemRevision: 'r' };

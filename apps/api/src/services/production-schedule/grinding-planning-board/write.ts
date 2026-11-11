@@ -45,7 +45,7 @@ async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<strin
   return sourceByItem;
 }
 
-async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?: boolean; client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride> } }): Promise<CurrentProjection> {
+async function resolveCurrentProjectionInTransaction(params: { dueSource?: 'excel' | 'scaw'; allowPieceParent?: boolean; client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride> } }): Promise<CurrentProjection> {
   const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
   const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const pieceSets = await readSessakuPieceSets(params.client, rows);
@@ -74,7 +74,7 @@ async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?
     if (fhincd.startsWith('MH') || fhincd.startsWith('SH') || (resourceCd != null && params.policy.cuttingExcludedResourceCds.includes(resourceCd))) return [];
     return [{ rowId: row.id, fseiban: valueAsString(data, 'FSEIBAN'), productNo: valueAsString(data, 'ProductNo'), fhincd: valueAsString(data, 'FHINCD'), isCompleted: Boolean(detail.productionScheduleProgress?.isCompleted || detail.productionScheduleExternalCompletion?.isExternallyCompleted) }];
   });
-  const common = { resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => id.startsWith('piece:')), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
+  const common = { dueSource: params.dueSource, resourceMinutes, rows, details, ranks, overrides, pieceSets, includePieces: !params.allowPieceParent || params.itemIds.some((id) => id.startsWith('piece:')), progressRows, seibanOrder: stateOrder(state), isResourceInCategory: (resourceCd: string, category: GrindingPlanningBoardCategory) => isCategoryResource(resourceCd, category, params.policy) };
   const grinding = projectGrindingPlanningBoard({ ...common, category: 'grinding' });
   const cutting = projectGrindingPlanningBoard({ ...common, category: 'cutting' });
   const byItemId = new Map<string, GrindingPlanningBoardItem>();
@@ -84,7 +84,7 @@ async function resolveCurrentProjectionInTransaction(params: { allowPieceParent?
     if (!item) throw new ApiError(409, '対象アイテムが消滅または工程区分が変わりました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
     if (!params.sourceRowIds.includes(item.sourceRowId)) throw new ApiError(409, 'CSVの勝者行が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
-  return { resourceMinutes, state, byItemId, overrides, rows, details, ranks, pieceSets, progressRows, policy: params.policy, masterResourceCds };
+  return { dueSource: params.dueSource, resourceMinutes, state, byItemId, overrides, rows, details, ranks, pieceSets, progressRows, policy: params.policy, masterResourceCds };
 }
 
 function assertItemRevision(expected: string, item: GrindingPlanningBoardItem, expectedVersion?: number): void {
@@ -116,7 +116,7 @@ async function readSpecialDueCalendarModes(siteKey: string, requests: readonly O
   return buildWorkCalendarModeMap(settings.items);
 }
 
-async function applyOverridesInTransaction(params: { pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
+async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw'; pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
   await acquireSessakuPieceLogicalLocks(params.client, params.pieceKeys);
   if (params.pieceKeys.length) await lockState(params.client, params.siteKey);
@@ -125,7 +125,7 @@ async function applyOverridesInTransaction(params: { pieceKeys: readonly Sessaku
     const locked = await params.client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
     if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
   }
-  const current = await resolveCurrentProjectionInTransaction({ client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
+  const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
   // Item mutations are guarded by the target itemRevision/overrideVersion only.
   // The board order version belongs to seiban-order mutations and must not make an
   // unrelated item edit fail after another terminal reorders the left pane.
@@ -199,7 +199,7 @@ async function applyOverridesInTransaction(params: { pieceKeys: readonly Sessaku
 
 function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>): Map<string, GrindingPlanningBoardItem> {
   const common = {
-    resourceMinutes: current.resourceMinutes,
+    dueSource: current.dueSource, resourceMinutes: current.resourceMinutes,
     rows: current.rows,
     pieceSets: current.pieceSets,
     includePieces: true,
@@ -219,7 +219,7 @@ function projectCurrentItems(current: CurrentProjection, overrides: ReadonlyMap<
 
 function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<string, ProductionScheduleGrindingPlanningBoardOverride>, itemId: string): GrindingPlanningBoardItem {
   const common = {
-    resourceMinutes: current.resourceMinutes,
+    dueSource: current.dueSource, resourceMinutes: current.resourceMinutes,
     rows: current.rows,
     pieceSets: current.pieceSets,
     includePieces: true,
@@ -239,11 +239,11 @@ function projectCurrentItem(current: CurrentProjection, overrides: ReadonlyMap<s
   return item;
 }
 
-export async function updateGrindingPlanningBoardPins(params: { siteKey: string; sourceRevision: string; items: Pick<OverrideRequest, 'itemId' | 'itemRevision' | 'overrideVersion'>[]; pinned: boolean }): Promise<GrindingPlanningBoardOverridesResponse> {
+export async function updateGrindingPlanningBoardPins(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; sourceRevision: string; items: Pick<OverrideRequest, 'itemId' | 'itemRevision' | 'overrideVersion'>[]; pinned: boolean }): Promise<GrindingPlanningBoardOverridesResponse> {
   return updateGrindingPlanningBoardOverrides({ ...params, items: params.items.map((item) => ({ ...item, orderPinned: params.pinned })) });
 }
 
-export async function updateGrindingPlanningBoardOverrides(params: { siteKey: string; sourceRevision: string; items: OverrideRequest[] }): Promise<GrindingPlanningBoardOverridesResponse> {
+export async function updateGrindingPlanningBoardOverrides(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; sourceRevision: string; items: OverrideRequest[] }): Promise<GrindingPlanningBoardOverridesResponse> {
   const itemIds = params.items.map((item) => item.itemId);
   if (new Set(itemIds).size !== itemIds.length) throw new ApiError(400, '対象アイテムが重複しています', undefined, 'DUPLICATE_ITEM');
   const sourceRowIds = await discoverSourceRows(itemIds);
@@ -257,7 +257,7 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
     // predicate lock on the small override table turning independent items
     // into a false serialization conflict.
     const result = await prisma.$transaction(async (client) => {
-      const applied = await applyOverridesInTransaction({ pieceKeys, client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy, workCalendarModeByResource });
+      const applied = await applyOverridesInTransaction({ dueSource: params.dueSource, pieceKeys, client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: params.items, sourceRowIds, policy, workCalendarModeByResource });
       const projectedItems = projectCurrentItems(applied.current, applied.overrides);
       const items = params.items.map((request) => {
         const item = projectedItems.get(request.itemId);
@@ -276,7 +276,7 @@ export async function updateGrindingPlanningBoardOverrides(params: { siteKey: st
   }
 }
 
-export async function updateGrindingPlanningBoardRank(params: { siteKey: string; sourceRevision: string; itemId: string; itemRevision: string; overrideVersion?: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> {
+export async function updateGrindingPlanningBoardRank(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; sourceRevision: string; itemId: string; itemRevision: string; overrideVersion?: number; alternateRank: number | null }): Promise<GrindingPlanningBoardRankResponse> {
   if (params.alternateRank != null && (!Number.isSafeInteger(params.alternateRank) || params.alternateRank < 1 || params.alternateRank > MAX_ALTERNATE_RANK)) throw new ApiError(400, '個別順位は1以上2147483647以下で指定してください', undefined, 'INVALID_ALTERNATE_RANK');
   const sourceRowIds = await discoverSourceRows([params.itemId]);
   await ensurePlanningBoardState(params.siteKey);
@@ -284,7 +284,7 @@ export async function updateGrindingPlanningBoardRank(params: { siteKey: string;
   const workCalendarModeByResource = new Map<string, WorkCalendarMode>();
   const pieceKeys = await readLivePieceKeys(prisma, [...sourceRowIds.values()]);
   try {
-    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ pieceKeys, client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy, workCalendarModeByResource }), { isolationLevel: pieceKeys.length ? Prisma.TransactionIsolationLevel.ReadCommitted : Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000, maxWait: 15000 });
+    const result = await prisma.$transaction((client) => applyOverridesInTransaction({ dueSource: params.dueSource, pieceKeys, client, siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [{ itemId: params.itemId, itemRevision: params.itemRevision, overrideVersion: params.overrideVersion, alternateRank: params.alternateRank }], sourceRowIds, policy, workCalendarModeByResource }), { isolationLevel: pieceKeys.length ? Prisma.TransactionIsolationLevel.ReadCommitted : Prisma.TransactionIsolationLevel.RepeatableRead, timeout: 30000, maxWait: 15000 });
     const item = projectCurrentItem(result.current, result.overrides, params.itemId);
     return {
       sourceRevision: boardRevision(result.state),
@@ -337,7 +337,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
       }
       const candidateRows = registeredRows.filter((row) => candidateIds.has(row.id));
       const registeredRowIds = candidateRows.map((row) => row.id).sort();
-      const beforeLock = await resolveCurrentProjectionInTransaction({
+      const beforeLock = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource,
         client,
         siteKey: params.siteKey,
         sourceRowIds: registeredRowIds,
@@ -471,7 +471,7 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
       let fullPane: CurrentProjection | undefined; let rankedItemIds = itemIds;
       if (params.scheduleSource && params.scheduleSource !== 'both') {
         const rows = await readWinnerRowsByFseibans(client, stateOrder(state));
-        fullPane = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rows.map((row) => row.id), itemIds, policy, preloaded: { rows, state, overrides: await readOverrides(client, params.siteKey) } });
+        fullPane = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rows.map((row) => row.id), itemIds, policy, preloaded: { rows, state, overrides: await readOverrides(client, params.siteKey) } });
         const first = fullPane.byItemId.get(itemIds[0]!);
         if (!first) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
         const category = isCategoryResource(first.originalResourceCd, 'grinding', policy) ? 'grinding' : 'cutting';
@@ -486,7 +486,7 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
         const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
         if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       }
-      const current = fullPane ?? await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
+      const current = fullPane ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
       const registered = new Set(stateOrder(state));
       for (const request of params.items) {
         const item = current.byItemId.get(request.itemId)!;
@@ -582,7 +582,7 @@ export async function updateGrindingPlanningBoardArrival(params: GrindingPlannin
     await acquireSessakuPieceLogicalLocks(client, pieceKeys);
     if (pieceKeys.length) await lockState(client, params.siteKey);
     await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
-    const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey,
+    const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey,
       sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy, allowPieceParent: true });
     const item = current.byItemId.get(params.itemId)!;
     assertItemRevision(params.itemRevision, item, params.overrideVersion);
@@ -613,7 +613,7 @@ export async function updateGrindingPlanningBoardFirstProcessArrival(params: Gri
     await acquireSessakuPieceLogicalLocks(client, pieceKeys);
     if (pieceKeys.length) await lockState(client, params.siteKey);
     await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
-    const current = await resolveCurrentProjectionInTransaction({ client, siteKey: params.siteKey,
+    const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey,
       sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy, allowPieceParent: true });
     const item = current.byItemId.get(params.itemId)!;
     assertItemRevision(params.itemRevision, item, params.overrideVersion);

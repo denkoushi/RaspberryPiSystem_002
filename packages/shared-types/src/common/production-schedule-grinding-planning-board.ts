@@ -207,17 +207,20 @@ export interface GrindingPlanningBoardOverrideItemRequest {
 }
 
 export interface GrindingPlanningBoardOverridesRequest {
+  dueSource?: 'excel' | 'scaw';
   sourceRevision: string;
   items: GrindingPlanningBoardOverrideItemRequest[];
 }
 
 export interface GrindingPlanningBoardPinsRequest {
+  dueSource?: 'excel' | 'scaw';
   sourceRevision: string;
   items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
   pinned: boolean;
 }
 
 export interface GrindingPlanningBoardRankRequest {
+  dueSource?: 'excel' | 'scaw';
   sourceRevision: string;
   itemId: string;
   itemRevision: string;
@@ -236,6 +239,7 @@ export interface GrindingPlanningBoardRankResponse {
 export type GrindingPlanningBoardResourceOrderPlacement = 'before' | 'after';
 
 export interface GrindingPlanningBoardResourceOrderRequest {
+  dueSource?: 'excel' | 'scaw';
   scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   itemId: string;
@@ -248,6 +252,7 @@ export interface GrindingPlanningBoardResourceOrderRequest {
 }
 
 export interface GrindingPlanningBoardResourceOrderBulkRequest {
+  dueSource?: 'excel' | 'scaw';
   scheduleSource?: GrindingPlanningBoardScheduleSource;
   sourceRevision: string;
   resourceCd: string;
@@ -313,6 +318,7 @@ export interface GrindingPlanningBoardResourceCapacityRequest {
 }
 
 export interface GrindingPlanningBoardArrivalRequest {
+  dueSource?: 'excel' | 'scaw';
   itemId: string;
   itemRevision: string;
   overrideVersion?: number;
@@ -336,6 +342,7 @@ export interface GrindingPlanningBoardArrivalResponse {
 
 export type SessakuPieceQuantityWarning = 'COMPLETED_QUANTITY_EXCEEDS_PLAN' | 'INVALID_PLANNED_QUANTITY';
 export interface SessakuPiecesSplitRequest {
+  dueSource?: 'excel' | 'scaw';
   parentItemId: string;
   targetPieceId?: string;
   quantities: number[];
@@ -343,12 +350,14 @@ export interface SessakuPiecesSplitRequest {
   itemRevision: string;
 }
 export interface SessakuPiecesMergeRequest {
+  dueSource?: 'excel' | 'scaw';
   parentItemId: string;
   pieceIds: string[];
   expectedPieceSetVersion: number;
   itemRevisions: Record<string, string>;
 }
 export interface SessakuPieceCompletionRequest {
+  dueSource?: 'excel' | 'scaw';
   intent: 'complete' | 'incomplete';
   expectedPieceSetVersion: number;
   itemRevision: string;

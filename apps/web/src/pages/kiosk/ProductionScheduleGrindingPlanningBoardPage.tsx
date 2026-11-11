@@ -123,18 +123,18 @@ export function PlanningBoardPage() {
   const { scawEnabled, toggleScawMode } = usePersistedPlanningBoardScawMode();
   const dueSource: 'excel' | 'scaw' = scawEnabled ? 'scaw' : 'excel';
   const queryClient = useQueryClient();
-  const pieceMutations = useKioskSessakuPieceMutations();
+  const pieceMutations = useKioskSessakuPieceMutations(dueSource);
   const [piecePhase, setPiecePhase] = useState<'idle' | 'saving' | 'refreshing'>('idle'); const piecePending = piecePhase !== 'idle'; const piecePendingRef = useRef(false); const piecePendingParentRef = useRef<string | null>(null);
   const { boardQuery, loadQuery, candidateQuery, resourcesQuery, dueDetailQuery } = usePlanningBoardPageQueries(
     { scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
     { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined, drawerOpen, showCompletedCandidates, dueDetailFseiban }
   );
-  const { mutateAsync: updatePinsAsync } = useUpdateKioskGrindingPlanningBoardPins({ invalidateOnSuccess: false });
-  const { mutateAsync: updateOverridesAsync } = useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false });
+  const { mutateAsync: updatePinsAsync } = useUpdateKioskGrindingPlanningBoardPins({ invalidateOnSuccess: false, dueSource });
+  const { mutateAsync: updateOverridesAsync } = useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false, dueSource });
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
-  const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank({ invalidateOnSuccess: false });
-  const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false });
-  const { mutateAsync: updateResourceOrderBulkAsync } = useUpdateKioskGrindingPlanningBoardResourceOrderBulk({ invalidateOnSuccess: false });
+  const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank({ invalidateOnSuccess: false, dueSource });
+  const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false, dueSource });
+  const { mutateAsync: updateResourceOrderBulkAsync } = useUpdateKioskGrindingPlanningBoardResourceOrderBulk({ invalidateOnSuccess: false, dueSource });
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder({ invalidateOnSuccess: false });
   const updateChecks = useUpdateKioskGrindingPlanningBoardSeibanChecks({ invalidateOnSuccess: false });
 
@@ -184,7 +184,7 @@ export function PlanningBoardPage() {
   }, [notify]);
 
   const data = usePlanningBoardQueryData(boardQuery.data);
-  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs);
+  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs, dueSource);
   const scopeReady = boardQuery.scopeReady;
   const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -198,7 +198,7 @@ export function PlanningBoardPage() {
     !boardQuery.isPlaceholderData
   );
   const writeQueue = usePlanningBoardWriteQueue({
-    scope: `${rankScopeKey}:${allocation}`,
+    scope: `${rankScopeKey}:${allocation}:${dueSource}`,
     items: data?.items ?? EMPTY_ITEMS,
     order: data?.registeredFseibans ?? EMPTY_ORDER,
     uncheckedFseibans: data?.uncheckedFseibans ?? data?.excelNonMachineFseibans ?? EMPTY_ORDER,

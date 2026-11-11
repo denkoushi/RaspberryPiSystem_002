@@ -389,10 +389,10 @@ export function useKioskGrindingPlanningBoardSeibanCandidates(
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalidateOnSuccess?: boolean }) {
+export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides(payload),
+    mutationFn: (payload: GrindingPlanningBoardOverridesRequest) => updateKioskGrindingPlanningBoardOverrides({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
@@ -400,10 +400,10 @@ export function useUpdateKioskGrindingPlanningBoardOverrides(options?: { invalid
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOnSuccess?: boolean }) {
+export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardPinsRequest) => updateKioskGrindingPlanningBoardPins(payload),
+    mutationFn: (payload: GrindingPlanningBoardPinsRequest) => updateKioskGrindingPlanningBoardPins({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
@@ -411,10 +411,10 @@ export function useUpdateKioskGrindingPlanningBoardPins(options?: { invalidateOn
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOnSuccess?: boolean }) {
+export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank(payload),
+    mutationFn: (payload: GrindingPlanningBoardRankRequest) => updateKioskGrindingPlanningBoardRank({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: (_result: GrindingPlanningBoardRankResponse) => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
@@ -422,10 +422,10 @@ export function useUpdateKioskGrindingPlanningBoardRank(options?: { invalidateOn
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { invalidateOnSuccess?: boolean }) {
+export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder(payload),
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
@@ -433,10 +433,10 @@ export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { inv
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardResourceOrderBulk(options?: { invalidateOnSuccess?: boolean }) {
+export function useUpdateKioskGrindingPlanningBoardResourceOrderBulk(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardResourceOrderBulkRequest) => updateKioskGrindingPlanningBoardResourceOrderBulk(payload),
+    mutationFn: (payload: GrindingPlanningBoardResourceOrderBulkRequest) => updateKioskGrindingPlanningBoardResourceOrderBulk({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
@@ -533,17 +533,17 @@ export function useUpdateKioskGrindingPlanningBoardResourceCapacity() {
   });
 }
 
-export function useUpdateKioskGrindingPlanningBoardArrival() {
+export function useUpdateKioskGrindingPlanningBoardArrival(dueSource?: 'excel' | 'scaw') {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardArrivalRequest & { recorded: boolean }) => updateKioskGrindingPlanningBoardArrival(payload),
+    mutationFn: (payload: GrindingPlanningBoardArrivalRequest & { recorded: boolean }) => updateKioskGrindingPlanningBoardArrival({ ...payload, ...(dueSource == null ? {} : { dueSource }) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
   });
 }
 
-export function useKioskSessakuPieceMutations() {
+export function useKioskSessakuPieceMutations(dueSource?: 'excel' | 'scaw') {
   const queryClient = useQueryClient();
   const onSuccess = () => {
     void Promise.all([
@@ -557,19 +557,19 @@ export function useKioskSessakuPieceMutations() {
       queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardDueDetail(null).slice(0, 1) })
     ]);
   };
-  const split = useMutation({ mutationFn: (payload: SessakuPiecesSplitRequest) => splitKioskSessakuPieces(payload), retry: false, onSuccess });
-  const merge = useMutation({ mutationFn: (payload: SessakuPiecesMergeRequest) => mergeKioskSessakuPieces(payload), retry: false, onSuccess });
+  const split = useMutation({ mutationFn: (payload: SessakuPiecesSplitRequest) => splitKioskSessakuPieces({ ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
+  const merge = useMutation({ mutationFn: (payload: SessakuPiecesMergeRequest) => mergeKioskSessakuPieces({ ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
   const completion = useMutation({ mutationFn: ({ pieceId, ...payload }: SessakuPieceCompletionRequest & { pieceId: string }) =>
-    setKioskSessakuPieceCompletion(pieceId, payload), retry: false, onSuccess });
+    setKioskSessakuPieceCompletion(pieceId, { ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
   const opCompletion = useMutation({ mutationFn: ({ pieceId, opNo, ...payload }: SessakuPieceCompletionRequest & { pieceId: string; opNo: number }) =>
-    setKioskSessakuPieceOpCompletion(pieceId, opNo, payload), retry: false, onSuccess });
+    setKioskSessakuPieceOpCompletion(pieceId, opNo, { ...payload, ...(dueSource == null ? {} : { dueSource }) }), retry: false, onSuccess });
   return { split, merge, completion, opCompletion };
 }
 
-export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival() {
+export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival(dueSource?: 'excel' | 'scaw') {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (payload: GrindingPlanningBoardFirstProcessArrivalRequest) => updateKioskGrindingPlanningBoardFirstProcessArrival(payload),
+    mutationFn: (payload: GrindingPlanningBoardFirstProcessArrivalRequest) => updateKioskGrindingPlanningBoardFirstProcessArrival({ ...payload, ...(dueSource == null ? {} : { dueSource }) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }
