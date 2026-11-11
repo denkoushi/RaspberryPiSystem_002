@@ -31,7 +31,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
   data: GrindingPlanningBoardResponse | undefined;
   items?: GrindingPlanningBoardItem[];
   enqueue: ReturnType<typeof usePlanningBoardWriteQueue>['enqueue'];
-  remember: (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore') => void;
+  remember: (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore', restoreAfterItemId?: string | null) => void;
   disabled: boolean;
 }): PlanningBoardTestBarControls {
   const { enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
@@ -52,7 +52,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     setOverlay((previous) => ({ siteKey: latest.current.data?.siteKey ?? '', stale: new Set([...previous?.stale ?? [], latest.current.data?.sourceRevision ?? '', previous?.revision ?? '']),
       revision: result.sourceRevision ?? '', bars: result.testBars!, next: result.nextTestBarSequence ?? previous?.next ?? data?.nextTestBarSequence ?? 1 }));
   };
-  const mutate = (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore' | 'complete' | 'incomplete', onSaved?: (result: GrindingPlanningBoardTestBarMutationResponse) => void) => {
+  const mutate = (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore' | 'complete' | 'incomplete', onSaved?: (result: GrindingPlanningBoardTestBarMutationResponse) => void, restoreAfterItemId?: string | null) => {
     if (disabled || isPendingPlanningTestBar(item)) return false;
     const id = ++pendingId.current;
     setPending((writes) => [...writes, { id, siteKey: data?.siteKey ?? '', apply: (bars) => action === 'delete'
@@ -63,7 +63,8 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     const queued = enqueue({ label: 'テスト加工', itemIds: [item.itemId], seibans: [], order: true, apply: (display) => display,
       save: async (context) => {
         const current = (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((candidate) => candidate.itemId === item.itemId) ?? item;
-        saved = await mutateKioskGrindingPlanningBoardTestBar(item.itemId, action, { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, expectedVersion: current.version });
+        saved = await mutateKioskGrindingPlanningBoardTestBar(item.itemId, action, { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, expectedVersion: current.version,
+          ...(action === 'restore' && restoreAfterItemId !== undefined ? { restoreAfterItemId } : {}) });
         return saved;
       }, onSaved: (result) => { clearPending(id); accept(result); if (saved) onSaved?.(saved); },
       onFailed: () => clearPending(id), onDiscarded: () => clearPending(id)
@@ -101,11 +102,19 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       if (!queued) clearPending(id);
       return queued;
     },
-    remove: (item) => { mutate(item, 'delete', (result) => { remember(result.testBar, 'restore'); setSelectedId(null); }); },
+    remove: (item) => {
+      const normal = sortGrindingPlanningBoardItems(items.filter((candidate) => !candidate.isCompleted && resolveGrindingPlanningBoardResource(candidate, 'alternate') === item.resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
+      const lane: GrindingPlanningBoardBar[] = [...normal, ...bars.filter((bar) => !bar.isCompleted && !bar.deletedAt && bar.resourceCd === item.resourceCd)];
+      lane.sort(comparePlanningBoardBarOrder);
+      const unbanded = lane.filter((bar) => resolvePlanningBoardOrderBand(bar) == null);
+      const at = unbanded.findIndex((bar) => bar.itemId === item.itemId);
+      const restoreAfterItemId = at < 0 ? undefined : unbanded[at - 1]?.itemId ?? null;
+      mutate(item, 'delete', (result) => { remember(result.testBar, 'restore', restoreAfterItemId); setSelectedId(null); });
+    },
     complete: (item, intent) => { mutate(item, intent); },
     undo: (entry, done) => {
       if (!entry.testBarUndo) return false;
-      return mutate(entry.testBarUndo.item, entry.testBarUndo.action, () => { setSelectedId(entry.testBarUndo!.action === 'restore' ? entry.testBarUndo!.item.itemId : null); done(); });
+      return mutate(entry.testBarUndo.item, entry.testBarUndo.action, () => { setSelectedId(entry.testBarUndo!.action === 'restore' ? entry.testBarUndo!.item.itemId : null); done(); }, entry.testBarUndo.restoreAfterItemId);
     }
   };
 }
