@@ -9,6 +9,8 @@
         torque_agent_hid_links: "{{ torque_agent_hid_links | default([]) }}"
       when: "'torque-agent' in release_kiosk_services"
 
+    # The hardened Compose file covers every enabled agent, so check all of them
+    # even when this release updates only some services.
     - name: Read numeric groups required by enabled agents
       ansible.builtin.command:
         argv: [getent, group, "{{ item.name }}"]
@@ -74,14 +76,18 @@
         volumes = docker('volume', 'ls', '--quiet',
                          '--filter', 'label=com.docker.compose.project=' + project,
                          '--filter', 'label=com.docker.compose.volume=' + service + '-data').decode().split()
+        containers = docker('ps', '--all', '--quiet',
+                            '--filter', 'label=com.docker.compose.project=' + project,
+                            '--filter', 'label=com.docker.compose.service=' + service).decode().split()
         if not volumes:
+            if containers:
+                # Release containers always mount this volume; anything else may hold
+                # data that Compose recreation would discard.
+                raise SystemExit('Existing ' + service + ' container has no Compose data volume; prepare it manually')
             raise SystemExit(0)
         if len(volumes) != 1:
             raise SystemExit('Expected exactly one Compose data volume for ' + service)
         volume = volumes[0]
-        containers = docker('ps', '--all', '--quiet',
-                            '--filter', 'label=com.docker.compose.project=' + project,
-                            '--filter', 'label=com.docker.compose.service=' + service).decode().split()
         if len(containers) > 1:
             raise SystemExit('Expected at most one existing container for ' + service)
         migrate = False
@@ -110,9 +116,10 @@
                     archive = copied.stdout
                     # Only migrate archives containing the main queue database.
                     with tarfile.open(fileobj=io.BytesIO(archive)) as source:
-                        migrate = any(
-                            member.isfile() and member.name.rsplit('/', 1)[-1] == 'nfc-agent-queue.db'
-                            for member in source)
+                        names = [member.name.rsplit('/', 1)[-1] for member in source if member.isfile()]
+                    migrate = 'nfc-agent-queue.db' in names
+                    if names and not migrate:
+                        raise SystemExit('Old nfc-agent data has files but no queue database; inspect before releasing')
         if migrate:
             copy_queue = """
         import io, os, sys, tarfile

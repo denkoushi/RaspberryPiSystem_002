@@ -94,7 +94,7 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
 
     def run_storage(self, *, volumes=('actual-labeled-volume',), containers=('old-container',),
                     running=True, mounted=False, queue=True, service='nfc-agent',
-                    cp_error=None):
+                    cp_error=None, stray=False):
         calls = []
         archive_buffer = io.BytesIO()
         with tarfile.open(fileobj=archive_buffer, mode='w') as archive:
@@ -103,6 +103,10 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
                 member = tarfile.TarInfo('data/nfc-agent-queue.db' + suffix)
                 member.size = len(content)
                 archive.addfile(member, io.BytesIO(content))
+            if stray:
+                member = tarfile.TarInfo('data/nfc-agent-queue.db-wal')
+                member.size = 3
+                archive.addfile(member, io.BytesIO(b'wal'))
         archive = archive_buffer.getvalue()
 
         def run(argv, **kwargs):
@@ -133,10 +137,18 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
         return calls
 
     def test_absent_volume_does_not_stop_or_create_anything(self):
-        calls = self.run_storage(volumes=())
-        self.assertEqual(len(calls), 1)
+        calls = self.run_storage(volumes=(), containers=())
+        self.assertEqual([argv[1] for argv, _ in calls], ['volume', 'ps'])
         self.assertIn('label=com.docker.compose.project=fixture-project', calls[0][0])
         self.assertIn('label=com.docker.compose.volume=nfc-agent-data', calls[0][0])
+
+    def test_absent_volume_with_existing_container_fails_before_stopping(self):
+        with self.assertRaisesRegex(SystemExit, 'no Compose data volume'):
+            self.run_storage(volumes=())
+
+    def test_old_data_without_queue_database_fails_before_volume_mutation(self):
+        with self.assertRaisesRegex(SystemExit, 'no queue database'):
+            self.run_storage(queue=False, stray=True)
 
     def test_ambiguous_volume_fails_before_stopping_writers(self):
         with self.assertRaisesRegex(SystemExit, 'exactly one Compose data volume'):
