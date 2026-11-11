@@ -10,6 +10,10 @@ const IDLE_INTERVAL_MS = 60000;
 // Rounds that report more work but split nothing (fast transient lot failures, a budget hit
 // before any lot is chosen, lots that keep exceeding the budget) back off exponentially.
 const ZERO_PROGRESS_FIRST_DELAY_MS = 2000;
+// Each split rewrites many planning-board rows, so a round that split something waits
+// PACING_FACTOR times its own duration. The job then holds the DB at most a quarter of the time.
+const PACING_FACTOR = 3;
+const MAX_PACING_DELAY_MS = 300000;
 // One lot per transaction gives every lot the full budget, and a flush/commit failure or
 // yield can only be caused by that lot, so the per-lot deferral always blames the right lot.
 const BACKGROUND_LIMITS = { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS };
@@ -28,6 +32,7 @@ export function createSessakuAutoUnitSplitScheduler() {
   let started = false;
   let wakeRequested = false;
   let backoffMs = 0;
+  let holding = false;
 
   const schedule = (delayMs: number) => {
     if (stopped) return;
@@ -43,8 +48,8 @@ export function createSessakuAutoUnitSplitScheduler() {
     timer.unref();
   };
   const wake = () => {
-    // Legacy pages must not defeat the zero-progress backoff by waking every round.
-    if (stopped || !started || backoffMs) return;
+    // Legacy pages must not defeat the pacing or the zero-progress backoff by waking every round.
+    if (stopped || !started || holding) return;
     if (running) wakeRequested = true;
     else schedule(ACTIVE_INTERVAL_MS);
   };
@@ -52,6 +57,7 @@ export function createSessakuAutoUnitSplitScheduler() {
     let hasMore = false;
     let delayed = false;
     let splitCount = 0;
+    const roundStarted = Date.now();
     try {
       const sites = await prisma.$queryRaw<Array<{ siteKey: string }>>(Prisma.sql`
         SELECT "siteKey" FROM "ProductionScheduleGrindingPlanningBoardState"
@@ -88,15 +94,23 @@ export function createSessakuAutoUnitSplitScheduler() {
     } finally {
       running = undefined;
       let delayMs: number;
+      holding = false;
       if (delayed) delayMs = IDLE_INTERVAL_MS;
       else if (hasMore && splitCount === 0) {
         backoffMs = Math.min(backoffMs ? backoffMs * 2 : ZERO_PROGRESS_FIRST_DELAY_MS, IDLE_INTERVAL_MS);
         delayMs = backoffMs;
+        holding = true;
         logger.info({ event: 'sessaku_piece.auto_unit_split_background_backoff', retryAfterMs: delayMs },
           'Automatic unit split made no progress; backing off');
       } else {
         backoffMs = 0;
         delayMs = hasMore || wakeRequested ? ACTIVE_INTERVAL_MS : IDLE_INTERVAL_MS;
+        if (splitCount > 0 && hasMore) {
+          delayMs = Math.min(Math.max(delayMs, (Date.now() - roundStarted) * PACING_FACTOR), MAX_PACING_DELAY_MS);
+          holding = true;
+          logger.info({ event: 'sessaku_piece.auto_unit_split_background_pacing', splitCount, retryAfterMs: delayMs },
+            'Automatic unit split pacing the next round');
+        }
       }
       wakeRequested = false;
       schedule(delayMs);
