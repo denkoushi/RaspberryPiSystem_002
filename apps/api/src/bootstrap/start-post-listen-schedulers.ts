@@ -1,3 +1,4 @@
+import { createSessakuAutoUnitSplitScheduler } from '../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js';
 import { getWatchCameraRetentionScheduler } from '../services/watch-camera/watch-camera-retention.scheduler.js';
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
@@ -115,6 +116,7 @@ export async function startSchedulerStepGroup(
 
 export function buildPostListenSchedulerDefinitions(app: FastifyInstance): SchedulerStepDefinition[] {
   const definitions: SchedulerStepDefinition[] = [];
+  const sessakuAutoUnitSplit = createSessakuAutoUnitSplitScheduler();
   const grindingPlanningBoardWarmup = createGrindingPlanningBoardStartupWarmup({
     enabled: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_ENABLED,
     delayMs: env.GRINDING_PLANNING_BOARD_STARTUP_WARMUP_DELAY_MS,
@@ -176,6 +178,7 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
     ...definitions,
     { name: 'grinding-planning-board-startup-warmup', start: () => grindingPlanningBoardWarmup.start(),
       stop: () => grindingPlanningBoardWarmup.stop() },
+    { name: 'sessaku-auto-unit-split', start: () => sessakuAutoUnitSplit.start(), stop: () => sessakuAutoUnitSplit.stop() },
     { name: 'procedure-term-learning', start: () => getProcedureTermLearningScheduler().start(),
       stop: () => getProcedureTermLearningScheduler().stop() },
     { name: 'advisory-check', start: () => getAdvisoryCheckScheduler().start(),
@@ -366,6 +369,7 @@ export function listPostListenSchedulerNames(): string[] {
     'signage-render',
     'part-measurement-drawing-dimension-map',
     'grinding-planning-board-startup-warmup',
+    'sessaku-auto-unit-split',
     'procedure-term-learning',
     'business-hermes-nightly',
     'security-review-nightly',

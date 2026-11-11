@@ -84,7 +84,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
     WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND r."rowData"->>'FSEIBAN' = ANY(${order}::text[])
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       AND q."plannedQuantity" BETWEEN 2 AND 50 AND s."sourcePieceSetId" IS NULL
-      AND s."quantityWarning" IS NULL
+      AND s."autoUnitSplitHeldAt" IS NULL AND s."quantityWarning" IS NULL
       AND NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id" AND p."sourcePieceId" IS NOT NULL)
       AND (NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id")
         OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id"
@@ -111,7 +111,7 @@ export function autoUnitSplitCandidateSql(siteKey: string, order: string[], poli
       AND ${resource} <> '' AND UPPER(${resource}) <> ALL(${[...policy.grindingResourceCds, ...policy.cuttingExcludedResourceCds]}::text[])
       ${exclusion}
       ${rejected}
-      AND s."sourcePieceSetId" IS NULL AND s."quantityWarning" IS NULL AND q."plannedQuantity" BETWEEN 2 AND 50
+      AND s."sourcePieceSetId" IS NULL AND s."autoUnitSplitHeldAt" IS NULL AND s."quantityWarning" IS NULL AND q."plannedQuantity" BETWEEN 2 AND 50
       AND ((NOT EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p WHERE p."pieceSetId" = s."id")
           AND COALESCE(c."unitSplitEnabled", ${effective} IN ('021', '022')))
         OR EXISTS (SELECT 1 FROM "ProductionScheduleSessakuPiece" p

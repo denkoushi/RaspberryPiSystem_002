@@ -460,7 +460,7 @@ export async function splitSessakuPieces(params: SessakuPiecesSplitRequest & { s
         ? c.current.pieces.find((item) => item.pieceId === params.targetPieceId)
         : c.current.parents.find((item) => item.itemId === params.parentItemId);
       const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
-      if (!item || !isUnitSplitEnabled(item.effectiveResourceCd, capacity)
+      if (c.set?.autoUnitSplitHeldAt || !item || !isUnitSplitEnabled(item.effectiveResourceCd, capacity)
         || !Number.isSafeInteger(c.plannedQuantity) || c.plannedQuantity! < 2 || c.plannedQuantity! > 50
         || !Number.isSafeInteger(item.plannedQuantity) || item.plannedQuantity! < 2 || item.plannedQuantity! > 50) {
         conflict('AUTO_UNIT_SPLIT_INELIGIBLE');
@@ -551,7 +551,7 @@ export async function mergeSessakuPieces(params: SessakuPiecesMergeRequest & { s
     await tx.productionScheduleSessakuPiece.deleteMany({ where: { id: { in: params.pieceIds } } });
     const id = randomUUID();
     if (!all) await tx.productionScheduleSessakuPiece.create({ data: { id, pieceSetId: c.set.id, position: Math.min(...selected.map((p) => p.position)), quantity: selected.reduce((n, p) => n + p.quantity, 0) } });
-    await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null } });
+    await tx.productionScheduleSessakuPieceSet.update({ where: { id: c.set.id }, data: { version: { increment: 1 }, quantityWarning: null, autoUnitSplitHeldAt: new Date() } });
     for (const site of c.sites) await replaceSiteItems(tx, c.key, before.get(site)!, site, params.pieceIds.map((p) => `piece:${p}`), [all ? params.parentItemId : `piece:${id}`], params.audit);
     await timed(params.audit, 'propagationMs', async () => replaceLaterPieces(tx, c.later, await readSessakuPieceSet(tx, c.key), c.sites, before, c.plannedQuantity, params.audit));
     await flushSiteItems(tx, before, params.audit);
