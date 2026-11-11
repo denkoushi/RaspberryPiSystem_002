@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
 
-const mocks = vi.hoisted(() => ({ transaction: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
+const mocks = vi.hoisted(() => ({ transaction: vi.fn(), winnerRows: vi.fn(), executeRaw: vi.fn(), queryRaw: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
   table: { findMany: vi.fn(), create: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
   state: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
@@ -13,7 +13,7 @@ vi.mock('../grinding-planning-board/state.js', () => ({
   ensurePlanningBoardState: vi.fn(), lockState: async () => ({ id: 'board', seibanOrder: ['lot'] }),
   assertBoardRevision: vi.fn(), stateOrder: () => ['lot'], boardRevision: () => 'r2'
 }));
-vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: async () => [], readOverrides: async () => new Map() }));
+vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: mocks.winnerRows, readOverrides: async () => new Map() }));
 vi.mock('../grinding-planning-board/write.js', () => ({
   resolveCurrentProjectionInTransaction: mocks.current, writeOverrideIfChanged: mocks.save, projectCurrentItems: mocks.project
 }));
@@ -39,6 +39,7 @@ const request = { siteKey: 'site', sourceRevision: 'r1' };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.winnerRows.mockResolvedValue([]);
   items = [normal('a1', 1, band), normal('a2', 2, band), normal('n1', 1), normal('n2', 2), normal('n3', 3)];
   rows = []; overrides = new Map();
   mocks.state.findUniqueOrThrow.mockResolvedValue({}); mocks.state.update.mockResolvedValue({});
@@ -46,7 +47,7 @@ beforeEach(() => {
   mocks.table.create.mockImplementation(async ({ data }) => { const row = { ...data, id: 'uuid', version: 1, completedAt: null, deletedAt: null }; rows.push(row); return row; });
   mocks.table.update.mockImplementation(async ({ where, data }) => { const row = rows.find((row) => row.id === where.id)!; Object.assign(row, { ...data, version: row.version + 1 }); return row; });
   mocks.table.findUniqueOrThrow.mockImplementation(async () => rows[0]);
-  mocks.transaction.mockImplementation(async (run) => run({ productionScheduleGrindingPlanningBoardTestBar: mocks.table, productionScheduleGrindingPlanningBoardState: mocks.state }));
+  mocks.transaction.mockImplementation(async (run) => run({ $executeRaw: mocks.executeRaw, $queryRaw: mocks.queryRaw, productionScheduleGrindingPlanningBoardTestBar: mocks.table, productionScheduleGrindingPlanningBoardState: mocks.state }));
   mocks.current.mockImplementation(async () => ({ state: { id: 'board' }, byItemId: new Map(items.map((item) => [item.itemId, item])), overrides, masterResourceCds: new Set(['761']) }));
   mocks.save.mockImplementation(async (_tx, _site, _id, _previous, data) => data);
   mocks.project.mockImplementation(() => new Map(items.map((item) => [item.itemId, item])));
@@ -84,4 +85,22 @@ describe('test bar special due bands', () => {
       .rejects.toMatchObject({ code: 'SPECIAL_DUE_ORDER_BAND_MISMATCH' });
     expect(mocks.save).not.toHaveBeenCalled(); expect(mocks.table.update).not.toHaveBeenCalled();
   });
+});
+
+it('locks the same sorted parent rows in two round trips regardless of board size, and skips empty boards', async () => {
+  for (const count of [0, 1, 400]) {
+    const ids = Array.from({ length: count }, (_, index) => `row-${String(index).padStart(4, '0')}`).reverse();
+    mocks.winnerRows.mockResolvedValue(ids.map((id) => ({ id })));
+    mocks.executeRaw.mockClear(); mocks.queryRaw.mockClear();
+    await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30 });
+    expect(mocks.executeRaw).toHaveBeenCalledTimes(count ? 1 : 0);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(count ? 1 : 0);
+    if (count) {
+      const [sql, lockedIds] = mocks.queryRaw.mock.calls[0];
+      expect(sql.join('?')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ANY(?::text[]) ORDER BY "id" FOR UPDATE');
+      expect(lockedIds).toEqual([...ids].sort((a, b) => a.localeCompare(b)));
+      expect(mocks.executeRaw.mock.calls[0][1]).toHaveLength(count);
+      expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder[0]);
+    }
+  }
 });

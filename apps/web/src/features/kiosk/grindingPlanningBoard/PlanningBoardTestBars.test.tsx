@@ -12,6 +12,7 @@ import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
 import { PlanningBoardTestBarDialog } from './PlanningBoardTestBarDialog';
 import { PlanningBoardTestBarStrip } from './PlanningBoardTestBarStrip';
 import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
+import { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 
 import type { PlanningBoardTestBarControls } from './usePlanningBoardTestBars';
 import type { PlanningBoardWrite } from './usePlanningBoardWriteQueue';
@@ -200,5 +201,88 @@ describe('テスト加工の順番と選択', () => {
     const { result, rerender } = renderHook(({ board, disabled }) => usePlanningBoardTestBars({ data: board, enqueue, remember, disabled }), { initialProps: { board: data, disabled: true } });
     await act(async () => { expect(await result.current.create('300', 30)).toBe(false); }); expect(enqueue).not.toHaveBeenCalled();
     rerender({ board: { ...data, siteKey: 'B', testBars: [] }, disabled: false }); expect(result.current.bars).toEqual([]);
+  });
+});
+
+function optimisticBoard(initialBars = [testBar()]) {
+  const f = fixture();
+  const data = { siteKey: 'site', sourceRevision: 'r1', items: f.items, seibanOrder: f.seibans,
+    testBars: initialBars, nextTestBarSequence: 5 } as unknown as GrindingPlanningBoardResponse;
+  return { f, data };
+}
+function useTestBoard(data: GrindingPlanningBoardResponse, onError = vi.fn()) {
+  const queue = usePlanningBoardWriteQueue({ scope: data.siteKey, items: data.items, order: data.seibanOrder, sourceRevision: data.sourceRevision,
+    refresh: async () => undefined, onStart: vi.fn(), onSuccess: vi.fn(), onError });
+  const controls = usePlanningBoardTestBars({ data, items: queue.items, enqueue: queue.enqueue, remember: vi.fn(), disabled: queue.pending });
+  return { controls, queue };
+}
+
+describe('テスト加工の楽観表示', () => {
+  it.each(['create', 'delete', 'complete', 'incomplete'] as const)('shows %s before saving and rolls back on failure', async (action) => {
+    let reject!: (error: Error) => void;
+    const saving = new Promise<never>((_resolve, fail) => { reject = fail; });
+    api.create.mockReturnValue(saving); api.mutate.mockReturnValue(saving);
+    const original = testBar({ isCompleted: action === 'incomplete', completedAt: action === 'incomplete' ? '2026-11-05' : null });
+    const { data } = optimisticBoard([original]); const onError = vi.fn();
+    const { result } = renderHook(() => useTestBoard(data, onError));
+    await act(async () => {
+      if (action === 'create') expect(await result.current.controls.create('300', 30)).toBe(true);
+      else if (action === 'delete') result.current.controls.remove(original);
+      else result.current.controls.complete(original, action);
+    });
+    if (action === 'create') {
+      const temporary = result.current.controls.bars.find((bar) => bar.itemId !== original.itemId)!;
+      expect(temporary).toMatchObject({ name: 'テスト5', itemId: expect.stringMatching(/^test:pending:/) });
+      act(() => { result.current.controls.select(temporary, true); result.current.controls.remove(temporary); result.current.controls.complete(temporary, 'complete'); });
+      expect(result.current.controls.selectedId).toBeNull(); expect(api.mutate).not.toHaveBeenCalled();
+    } else if (action === 'delete') expect(result.current.controls.bars).toEqual([]);
+    else expect(result.current.controls.bars[0]!.isCompleted).toBe(action === 'complete');
+    await act(async () => reject(new Error('save failed')));
+    expect(result.current.controls.bars).toEqual([original]);
+    expect(result.current.controls.nextSequence).toBe(5); expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it.each(['head', 'normal', 'test', 'band', 'unranked'] as const)('inserts at the server position for %s while saving', async (anchor) => {
+    api.create.mockReturnValue(new Promise(() => {}));
+    const { data, f } = optimisticBoard();
+    if (anchor === 'band') data.items[0] = { ...data.items[0]!, specialDue: { kind: 'today', expiresAt: '2099-01-01' } };
+    if (anchor === 'unranked') data.items = data.items.map((item) => ({ ...item, alternateRank: null }));
+    const { result } = renderHook(() => useTestBoard(data));
+    const after = anchor === 'test' ? data.testBars![0] : anchor === 'head' ? undefined : data.items[0];
+    await act(async () => { expect(await result.current.controls.create('300', 30, after)).toBe(true); });
+    const temporary = result.current.controls.bars.find((bar) => bar.name === 'テスト5')!;
+    const order = planningBoardLaneOrder({ items: result.current.queue.items, testBars: [...result.current.controls.bars], seibanOrder: f.seibans, allocation: 'alternate' })['300'];
+    expect(order).toEqual(anchor === 'test' ? [data.items[0]!.itemId, testBar().itemId, temporary.itemId, data.items[1]!.itemId]
+      : anchor === 'band' || anchor === 'normal' ? [data.items[0]!.itemId, temporary.itemId, testBar().itemId, data.items[1]!.itemId]
+      : anchor === 'unranked' ? [testBar().itemId, data.items[0]!.itemId, temporary.itemId, data.items[1]!.itemId]
+      : [temporary.itemId, data.items[0]!.itemId, testBar().itemId, data.items[1]!.itemId]);
+  });
+
+  it('closes the insertion dialog before saving and replaces the temporary id when confirmed', async () => {
+    let resolve!: (result: unknown) => void;
+    api.create.mockReturnValue(new Promise((done) => { resolve = done; }));
+    const { data, f } = optimisticBoard([]);
+    function Board() {
+      const { controls, queue } = useTestBoard(data);
+      return <PlanningBoardGanttDisplay {...ganttProps()} layout={buildPlanningBoardGanttLayout({ ...f.options, items: queue.items, testBars: [...controls.bars] })} testBarControls={controls} />;
+    }
+    render(<Board />);
+    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'テスト加工' })).not.toBeInTheDocument());
+    expect(document.querySelector('[data-testid^="planning-gantt-bar-test:pending:"]')).toBeInTheDocument();
+    const made = testBar({ sequence: 5, name: 'テスト5' });
+    await act(async () => resolve({ sourceRevision: 'r2', testBar: made, testBars: [made], nextTestBarSequence: 6, items: data.items }));
+    expect(document.querySelector('[data-testid^="planning-gantt-bar-test:pending:"]')).not.toBeInTheDocument();
+    expect(screen.getByTestId(`planning-gantt-bar-${made.itemId}`)).toBeInTheDocument();
+  });
+
+  it.each(['onDiscarded', 'rejected'] as const)('removes the temporary display when the offline queue is %s', async (mode) => {
+    const { data } = optimisticBoard([]); let write!: PlanningBoardWrite;
+    const enqueue = vi.fn((pending: PlanningBoardWrite) => { write = pending; return mode !== 'rejected'; });
+    const { result } = renderHook(() => usePlanningBoardTestBars({ data, enqueue, remember: vi.fn(), disabled: false }));
+    await act(async () => { expect(await result.current.create('300', 30)).toBe(mode !== 'rejected'); });
+    if (mode === 'onDiscarded') { expect(result.current.bars).toHaveLength(1); act(() => write.onDiscarded?.()); }
+    expect(result.current.bars).toEqual([]); expect(result.current.nextSequence).toBe(5);
   });
 });
