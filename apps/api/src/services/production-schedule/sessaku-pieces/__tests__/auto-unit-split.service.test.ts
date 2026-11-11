@@ -24,7 +24,7 @@ vi.mock('../piece-audit.js', async () => ({ runSessakuPieceOperation: mocks.audi
   pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage() }));
 import { autoSplitSessakuUnits, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS,
   AUTO_UNIT_SPLIT_BUDGET_MS, AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS, AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS,
-  AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS } from '../auto-unit-split.service.js';
+  AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS, AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS } from '../auto-unit-split.service.js';
 import { Prisma } from '@prisma/client';
 import { sessakuPieceConflict, sessakuPieceParentItemId } from '../piece-key.js';
 import { ApiError } from '../../../../lib/errors.js';
@@ -360,6 +360,150 @@ describe('automatic unit split', () => {
     expect(mocks.split).toHaveBeenCalledTimes(1);
     expect(mocks.mark).not.toHaveBeenCalled();
   });
+  it('retries a BUDGET lot once with an extended deadline, then tries the next lot on the third call', async () => {
+    mocks.items = [item(), item({ itemId: 'row:two', sourceRowId: 'two', fhincd: 'OTHER' })];
+    const rows = mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId, inputVersion: 'v1' }));
+    mocks.query.mockImplementation(async (sql) => {
+      const cached = sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('[{'))
+        .flatMap((value: string) => JSON.parse(value)) as { parentId: string; inputVersion: string }[];
+      return rows.filter((row) => !cached.some((entry) => entry.parentId === row.parentId && entry.inputVersion === row.inputVersion));
+    });
+    mocks.split.mockImplementation(async ({ parentItemId }) => {
+      if (parentItemId === 'row:one') throw new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET');
+      return { pieceSetVersion: 1 };
+    });
+    const params = { siteKey: 'repeated-budget' };
+    for (let call = 0; call < 2; call++) {
+      expect(await autoSplitSessakuUnits(params)).toEqual({ splitCount: 0, skippedCount: 1, hasMore: true });
+      expect(mocks.split).toHaveBeenCalledTimes(call + 1);
+    }
+    expect(await autoSplitSessakuUnits(params)).toEqual({ splitCount: 1, skippedCount: 0, hasMore: false });
+    expect(mocks.split.mock.calls.map(([params]) => params.parentItemId)).toEqual(['row:one', 'row:one', 'row:two']);
+    // The second attempt retries once with the runner deadline minus the flush reserve.
+    expect(mocks.split.mock.calls.map(([params]) => params.deadline)).toEqual([AUTO_UNIT_SPLIT_BUDGET_MS,
+      AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS - AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS - AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS, AUTO_UNIT_SPLIT_BUDGET_MS]);
+    expect(AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS - AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS - AUTO_UNIT_SPLIT_FLUSH_RESERVE_MS)
+      .toBeGreaterThan(AUTO_UNIT_SPLIT_BUDGET_MS * 2);
+    // Changed inputs bypass the rejection; its TTL remains three minutes.
+    rows[0].inputVersion = 'v2';
+    expect(await autoSplitSessakuUnits(params)).toMatchObject({ skippedCount: 1 });
+    rows[0].inputVersion = 'v1';
+    vi.mocked(performance.now).mockReturnValue(180000);
+    expect(await autoSplitSessakuUnits(params)).toMatchObject({ skippedCount: 1 });
+    expect(mocks.split.mock.calls.at(-1)![0].parentItemId).toBe('row:one');
+  });
+  it.each(['P2028', 'AUTO_UNIT_SPLIT_YIELD', '55P03'])(
+    'preserves the extended attempt across a batch rollback except for unrelated interruptions (%s)', async (code) => {
+      const allItems = [item(), item({ itemId: 'row:two', sourceRowId: 'two', fhincd: 'OTHER' })];
+      const rows = allItems.map((entry) => ({ id: entry.sourceRowId, fseiban: 'S', parentId: entry.itemId, inputVersion: 'v1' }));
+      mocks.query.mockImplementation(async (sql) => {
+        const cached = sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('[{'))
+          .flatMap((value: string) => JSON.parse(value)) as { parentId: string }[];
+        const selected = rows.filter((row) => !cached.some((entry) => entry.parentId === row.parentId));
+        mocks.items = allItems.filter((entry) => selected.some((row) => row.id === entry.sourceRowId));
+        return selected;
+      });
+      const params = { siteKey: `batch-rollback-${code}` };
+      mocks.split.mockRejectedValueOnce(new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET'))
+        .mockResolvedValue({ pieceSetVersion: 1 });
+      await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS });
+      const error = code === '55P03' ? Object.assign(new Error('lock conflict'), { meta: { code } })
+        : new ApiError(409, 'batch failed', undefined, code);
+      mocks.batch.mockImplementationOnce(async (_tx, _ids, work) => { await work(); throw error; });
+      expect(await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS }))
+        .toMatchObject({ splitCount: 0, hasMore: true });
+      expect(mocks.split.mock.calls[1][0]).toMatchObject({ parentItemId: 'row:one', deadline: 6500 });
+      await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS });
+      expect(mocks.split.mock.calls.map(([entry]) => entry.parentItemId))
+        .toEqual(['row:one', 'row:one', code === 'P2028' ? 'row:two' : 'row:one']);
+      expect(mocks.split.mock.calls[2][0].deadline).toBe(code === 'P2028' ? 3000 : 6500);
+      if (code !== 'P2028') {
+        // The interruption leaves the extension available; a later transaction timeout consumes it.
+        mocks.split.mockRejectedValueOnce(new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET'));
+        await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS });
+        mocks.batch.mockImplementationOnce(async (_tx, _ids, work) => {
+          await work(); throw new ApiError(409, 'expired runner', undefined, 'P2028');
+        });
+        await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS });
+        await autoSplitSessakuUnits(params, { maxLots: 1, budgetMs: AUTO_UNIT_SPLIT_BUDGET_MS });
+        expect(mocks.split.mock.calls.at(-1)![0].parentItemId).toBe('row:two');
+      }
+    });
+  it('does not consume a BUDGET retry for later lots with only the remaining request time', async () => {
+    const allItems = [item(), item({ itemId: 'row:two', sourceRowId: 'two', fhincd: 'OTHER' })];
+    mocks.items = allItems;
+    mocks.query.mockImplementation(async () => mocks.items.map((entry) => ({
+      id: entry.sourceRowId, fseiban: 'S', parentId: entry.itemId, inputVersion: 'v1'
+    })));
+    mocks.split.mockImplementation(async ({ parentItemId }) => {
+      if (parentItemId === 'row:one') { vi.mocked(performance.now).mockReturnValue(performance.now() + 2900); return { pieceSetVersion: 1 }; }
+      throw new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET');
+    });
+    const params = { siteKey: 'later-budget' };
+    await autoSplitSessakuUnits(params);
+    await autoSplitSessakuUnits(params);
+    expect(mocks.query.mock.calls[1][0].sql).not.toContain('JSONB_TO_RECORDSET');
+    mocks.items = [allItems[1]];
+    await autoSplitSessakuUnits(params);
+    expect(mocks.query.mock.calls[2][0].sql).not.toContain('JSONB_TO_RECORDSET');
+    expect(mocks.split.mock.calls.at(-1)![0].deadline).toBe(8800);
+    await autoSplitSessakuUnits(params);
+    expect(mocks.split.mock.calls.at(-1)![0].deadline).toBe(12300);
+  });
+  it.each([179999, 180000])('checks the BUDGET record TTL at lot selection after cleanup (%sms)', async (elapsed) => {
+    mocks.items = [item()];
+    mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'v1' }]);
+    mocks.split.mockRejectedValue(new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET'));
+    const params = { siteKey: `selection-ttl-${elapsed}` };
+    await autoSplitSessakuUnits(params);
+    vi.mocked(performance.now).mockReturnValue(179999);
+    mocks.ranks.mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(elapsed); return { rows: new Map() };
+    });
+    await autoSplitSessakuUnits(params);
+    expect(mocks.split.mock.calls[1][0].deadline).toBe(elapsed === 180000 ? 183000 : 186499);
+    await autoSplitSessakuUnits(params);
+    expect(mocks.query.mock.calls[2][0].sql.includes('JSONB_TO_RECORDSET')).toBe(elapsed < 180000);
+  });
+  it.each([3500, 4000, 7000])('keeps the normal first-lot budget when preprocessing leaves no room for extension (%sms)', async (elapsed) => {
+    mocks.items = [item()];
+    mocks.query.mockResolvedValue([{ id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'v1' }]);
+    mocks.split.mockRejectedValue(new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET'));
+    const params = { siteKey: `no-extension-room-${elapsed}` };
+    await autoSplitSessakuUnits(params);
+    mocks.ranks.mockImplementationOnce(async () => {
+      vi.mocked(performance.now).mockReturnValue(elapsed); return { rows: new Map() };
+    });
+    await autoSplitSessakuUnits(params);
+    expect(mocks.split.mock.calls[1][0].deadline).toBe(Math.min(9000, elapsed + 3000));
+    await autoSplitSessakuUnits(params);
+    expect(mocks.query.mock.calls[2][0].sql).not.toContain('JSONB_TO_RECORDSET');
+    expect(mocks.split.mock.calls[2][0].deadline).toBe(elapsed + 6500);
+  });
+  it.each(['input change', 'STALE', 'missing version', 'TTL'] as const)(
+    'does not combine non-consecutive BUDGETs across %s', async (interruption) => {
+      mocks.items = [item()];
+      const row = { id: 'source', fseiban: 'S', parentId: 'row:one', inputVersion: 'v1' as string | undefined };
+      mocks.query.mockImplementation(async () => [row]);
+      mocks.split.mockRejectedValue(new ApiError(409, 'budget', undefined, 'AUTO_UNIT_SPLIT_BUDGET'));
+      const params = { siteKey: `budget-interruption-${interruption}` };
+      await autoSplitSessakuUnits(params);
+      if (interruption === 'input change') row.inputVersion = 'v2';
+      if (interruption === 'missing version') row.inputVersion = undefined;
+      if (interruption === 'TTL') vi.mocked(performance.now).mockReturnValue(180000);
+      if (interruption === 'STALE') mocks.split.mockRejectedValueOnce(new ApiError(409, 'stale', undefined, 'STALE_SESSAKU_PIECES'));
+      await autoSplitSessakuUnits(params);
+      row.inputVersion = 'v1';
+      // Neither the second call nor the following discovery has a cached rejection.
+      await autoSplitSessakuUnits(params);
+      expect(mocks.query.mock.calls[1][0].sql).not.toContain('JSONB_TO_RECORDSET');
+      expect(mocks.query.mock.calls[2][0].sql).not.toContain('JSONB_TO_RECORDSET');
+      if (interruption === 'TTL') {
+        // The two post-expiry failures now form a new consecutive pair.
+        await autoSplitSessakuUnits(params);
+        expect(mocks.query.mock.calls[3][0].values).toContainEqual(expect.stringContaining('v1'));
+      }
+    });
   it.each(['AUTO_UNIT_SPLIT_ALREADY_TOUCHED', 'AUTO_UNIT_SPLIT_INELIGIBLE'])('does not request another call solely for %s', async (code) => {
     mocks.items = [item()];
     mocks.split.mockRejectedValueOnce(new ApiError(409, 'changed', undefined, code));
