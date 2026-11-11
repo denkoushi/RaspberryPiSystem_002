@@ -91,6 +91,12 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - Seiban-order writes still use the complete `registeredFseibans`. Resource drag and bulk requests carry the source; filtered rank writes merge the requested order into the complete resource order while preserving the slots of hidden items. Rank numbers can be normalized to preserve that global order; registration state is not replaced with a visible subset. Filtered responses contain only the requested/visible items.
 - Local verification: the isolated API source/order tests passed (8 tests). Web toolbar/preference/client tests had 64 passes and one existing single-resource picker accessible-name failure; the unchanged HEAD component/test reproduced the same failure. Page/progressive and API service tests could not collect because the installed Zod 3 lacks `guid()` used by existing shared types; route collection also hit a missing `@prisma/adapter-pg`. Shared-types build and web/API type checks failed against existing dependency/generated-type mismatches; changed-file ESLint could not start because `typescript-eslint` was absent. Full acceptance verification remains incomplete. No PostgreSQL integration tests, commit, push or deployment were performed.
 
+## Settings refresh across kiosks (2026-11-10)
+
+- **Symptom**: daily hours and per-part minutes edited on one kiosk did not reach a board left open on another kiosk (the queries had a 10-minute `staleTime` and no interval, and the board stays mounted for days).
+- **Fix**: both settings queries refetch every 60 seconds (`PLANNING_BOARD_SETTINGS_REFETCH_MS`). A capacity save that finishes while a fetch is in flight invalidates the query, so the older fetch cannot bring back the previous value.
+- **Not covered**: if a periodic fetch finishes while a capacity save is still in flight, the board can show the old value until the save returns.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.
