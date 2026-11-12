@@ -92,7 +92,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
     Array.isArray(payload.resources);
 }
 
-export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails> {
+export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails & { loadGenerationToken: string }> {
   const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
@@ -149,6 +149,18 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       capacityUpdatedAt: capacity._max.updatedAt?.toISOString() ?? '',
       payloadFormat: 6
     }),
+    // Only inputs to the persisted load aggregate, before category filtering.
+    loadGenerationToken: JSON.stringify({
+      leaderboardGeneration,
+      overrideCount: overrides._count._all,
+      overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? '',
+      pieceSetFingerprint: pieces,
+      minuteSourceCount: minuteSources._count._all,
+      minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
+      partMinutesCount: partMinutes._count._all,
+      partMinutesUpdatedAt: partMinutes._max.updatedAt?.toISOString() ?? '',
+      payloadFormat: 1
+    }),
     leaderboardGenerationToken: leaderboardGeneration,
     boardVersion,
     boardUpdatedAt
@@ -157,6 +169,10 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
 
 export async function readPlanningSnapshotGenerationToken(siteKey: string, pieceScope?: SessakuPieceGenerationScope): Promise<string> {
   return (await readPlanningSnapshotGenerationDetails(siteKey, pieceScope)).generationToken;
+}
+
+export async function readPlanningLoadGenerationToken(siteKey: string, pieceScope?: SessakuPieceGenerationScope): Promise<string> {
+  return (await readPlanningSnapshotGenerationDetails(siteKey, pieceScope)).loadGenerationToken;
 }
 
 export function isPlanningStateAlignedWithGeneration(

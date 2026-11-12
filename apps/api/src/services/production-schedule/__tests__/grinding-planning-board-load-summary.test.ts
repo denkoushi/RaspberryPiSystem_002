@@ -101,6 +101,28 @@ describe('grinding-planning-board-load-summary', () => {
     expect(result.unknownRequiredMinutesCount).toBe(0);
   });
 
+  it.each([true, false])('disables JIT on the aggregate transaction (root client: %s)', async (root) => {
+    const calls: string[] = [];
+    const tx = {
+      $executeRaw: vi.fn(async (sql: TemplateStringsArray) => { calls.push(sql.join('')); return 0; }),
+      $queryRaw: vi.fn(async () => { calls.push('aggregate'); return []; })
+    };
+    const transaction = vi.fn(async (read) => read(tx));
+    const client = root ? { $queryRaw: vi.fn().mockResolvedValue([]), $executeRaw: vi.fn(), $transaction: transaction } : tx;
+    await readGrindingPlanningBoardLoadSummary({
+      client: client as never, siteKey: 'site-a', category: 'grinding',
+      leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
+      resourceMinutes: { ownSourceResourceCds: [], values: [] },
+      isResourceInCategory: () => true
+    });
+    expect(calls).toEqual(root ? ['SET LOCAL jit = off', 'aggregate'] : ['aggregate', 'SET LOCAL jit = off', 'aggregate', 'aggregate']);
+    if (root) {
+      expect(transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { timeout: 120_000, maxWait: 15_000 });
+      expect(client.$executeRaw).not.toHaveBeenCalled();
+      expect((tx.$queryRaw.mock.calls[0] as unknown as [Prisma.Sql])[0].sql).toContain('effectiveItems');
+    } else expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('reduces materialized aggregate rows without changing the load payload contract', async () => {
     const queryRaw = vi.fn().mockResolvedValue([])
       .mockResolvedValueOnce([])
@@ -122,7 +144,7 @@ describe('grinding-planning-board-load-summary', () => {
       ]);
 
     const result = await readGrindingPlanningBoardLoadSummary({
-      client: { $queryRaw: queryRaw } as never,
+      client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
       siteKey: 'site-a',
       category: 'grinding',
       leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
@@ -175,7 +197,7 @@ describe('grinding-planning-board-load-summary', () => {
     ]).mockResolvedValueOnce([]);
 
     const result = await readGrindingPlanningBoardLoadSummary({
-      client: { $queryRaw: queryRaw } as never,
+      client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
       siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1', 'source-2'],
       isResourceInCategory: () => true
     });
@@ -188,7 +210,7 @@ describe('grinding-planning-board-load-summary', () => {
       { ...source, pieceId: 'piece-1', pieceQuantity: 1 }
     ]).mockResolvedValueOnce([]);
     const pieceOnly = await readGrindingPlanningBoardLoadSummary({
-      client: { $queryRaw: pieceOnlyQuery } as never,
+      client: { $executeRaw: vi.fn(), $queryRaw: pieceOnlyQuery } as never,
       siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1'],
       isResourceInCategory: () => true
     });
@@ -204,7 +226,7 @@ describe('grinding-planning-board-load-summary', () => {
       { ...source, pieceId: 'piece-2', pieceQuantity: 2 },
       { ...source, id: 'source-2', fhinCd: 'H2', resourceCd: 'G-02' }
     ]).mockResolvedValueOnce([]);
-    const result = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+    const result = await readGrindingPlanningBoardLoadSummary({ client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
       siteKey: 'site-a', category: 'grinding', winnerRowIds: ['source-1', 'source-2'], isResourceInCategory: () => true });
     expect(result.load).toEqual([
       expect.objectContaining({ resourceCd: 'G-01', originalItemCount: 2, requiredMinutes: null, unknownItemCount: 2 }),
@@ -216,7 +238,7 @@ describe('grinding-planning-board-load-summary', () => {
   it('selects unrounded piece minutes while leaving unsplit minutes unchanged in aggregate SQL', async () => {
     const queryRaw = vi.fn().mockResolvedValue([]);
     await readGrindingPlanningBoardLoadSummary({
-      client: { $queryRaw: queryRaw } as never,
+      client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
       siteKey: 'site-a', category: 'grinding', leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
       isResourceInCategory: () => true
     });
@@ -239,7 +261,8 @@ describe('materialized load aggregate cache', () => {
     const readGenerationToken = vi.fn().mockResolvedValue('generation-1');
     const measure = vi.fn<(phase: string) => void>();
     const params = {
-      client: { $queryRaw: queryRaw } as never,
+      client: { $executeRaw: vi.fn(), $queryRaw: queryRaw,
+        $transaction: vi.fn(async (read) => read({ $executeRaw: vi.fn(), $queryRaw: queryRaw })) } as never,
       siteKey: 'site-a', category: 'grinding' as const,
       leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${['row-2', 'row-1']}::text[])`,
       isResourceInCategory: (cd: string, category: GrindingPlanningBoardCategory) => cd.startsWith(category === 'grinding' ? 'G-' : 'C-'),
@@ -387,7 +410,7 @@ describe('own minutes in load summary paths', () => {
       if (query.sql.includes('FROM "CsvDashboardRow"')) return sources;
       return [];
     });
-    const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+    const summary = await readGrindingPlanningBoardLoadSummary({ client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
       siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes: settings,
       ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
     expect(summary.unknownRequiredMinutesCount).toBe(0);
@@ -418,7 +441,7 @@ describe('own minutes in load summary paths', () => {
         }
         return [];
       });
-      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
         siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes,
         ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
       expect(summary.load[0]).toMatchObject({ requiredMinutes: firstCompleted ? 270 : 360,
@@ -459,7 +482,7 @@ describe('own minutes in load summary paths', () => {
         }));
         return [];
       });
-      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $queryRaw: queryRaw } as never,
+      const summary = await readGrindingPlanningBoardLoadSummary({ client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
         siteKey: 'site-a', category: 'grinding', isResourceInCategory: () => true, resourceMinutes,
         ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] }) });
       expect(summary.unknownRequiredMinutesCount).toBe(0);

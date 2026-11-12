@@ -2,7 +2,7 @@ import { OP_BAR_LOAD_JOINS_SQL, resolveOpBarMinutes, type OpBarSummaryFields, ty
 import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { SESSAKU_PIECE_INCLUDE_SETUP_SQL, SESSAKU_PIECE_LOAD_JOINS_SQL } from './sessaku-pieces/piece-load.sql.js';
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import type {
   GrindingPlanningBoardResourceMinutesResponse,
   GrindingPlanningBoardCategory,
@@ -16,6 +16,7 @@ import type { GrindingPlanningBoardPerformance } from './grinding-planning-board
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 import { addPlanningTestBarLoad } from './grinding-planning-board-load-test-bars.js';
+import { readWithoutJit, type JitControlledClient, type JitControlledQueryClient } from './grinding-planning-board-load-without-jit.js';
 
 export type GrindingPlanningBoardLoadSummaryRow = {
   /** Stable logical item id. Duplicate rows with this id are counted once. */
@@ -33,7 +34,7 @@ export type GrindingPlanningBoardLoadSummaryRow = {
 
 export type GrindingPlanningBoardLoadSummary = GrindingPlanningBoardLoadResponse;
 
-export type GrindingPlanningBoardLoadSummaryDbClient = Pick<PrismaClient, '$queryRaw'>;
+export type GrindingPlanningBoardLoadSummaryDbClient = JitControlledClient;
 
 export type ReadGrindingPlanningBoardLoadSummaryParams = {
   resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
@@ -274,7 +275,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
 }
 
 async function readAggregatedLoadSummary(params: {
-  client: GrindingPlanningBoardLoadSummaryDbClient;
+  client: JitControlledQueryClient;
   dashboardId: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   overrideRows: readonly LoadSummaryOverrideRow[];
@@ -428,11 +429,11 @@ async function readMaterializedLoadAggregates(
       WHERE "csvDashboardId" = ${dashboardId}
         AND "siteKey" = ${params.siteKey}
     `);
-    return readAggregatedLoadSummary({
-      client: params.client, dashboardId, siteKey: params.siteKey,
-      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere,
-      overrideRows, resourceMinutes: params.resourceMinutes!
-    });
+    // The cache stays keyed by the root client; only the aggregate runs in the JIT-off transaction.
+    return readWithoutJit(params.client, (client) => readAggregatedLoadSummary({
+      client, dashboardId, siteKey: params.siteKey, overrideRows, resourceMinutes: params.resourceMinutes!,
+      leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
+    }));
   };
   const context = params.cache;
   if (!context) return compute();

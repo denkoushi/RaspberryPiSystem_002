@@ -126,6 +126,7 @@ function configurePersistence(): void {
   // Each test models an independent database generation for the in-process cache.
   databaseGeneration += 1;
   const { prisma, sourceRow, state } = mocks;
+  prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
   mocks.pieceSets = [];
   vi.mocked(readSessakuPieceGeneration).mockResolvedValue('empty-pieces');
   const details = {
@@ -188,6 +189,7 @@ function configurePersistence(): void {
     table.findMany.mockResolvedValue([]);
     table.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   }
+  prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: new Date(databaseGeneration) } });
   prisma.csvDashboardRow.findMany.mockResolvedValue([details]);
   prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([]);
   prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue([]);
@@ -684,6 +686,22 @@ describe('grinding planning board service orchestration', () => {
     expect(warm.items[0]).not.toHaveProperty('placement');
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(1);
     expect(mocks.prisma.orderPlacementBranchState.findMany).toHaveBeenCalledTimes(3);
+  });
+
+  it('reuses load aggregates across board-only writes on both read paths', async () => {
+    const params = { siteKey: 'site-a', category: 'grinding' as const };
+    const first = await getGrindingPlanningBoardLoad(params);
+    mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue({ ...mocks.state, version: 1 });
+    expect(await getGrindingPlanningBoardLoad(params)).toEqual(first);
+    await getGrindingPlanningBoard({ ...params, view: 'seiban' });
+    const calls = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('effectiveItems'));
+    expect(calls).toHaveLength(1);
+  });
+
+  it('accepts board-only generation changes during a load-only read', async () => {
+    mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique
+      .mockResolvedValueOnce(mocks.state).mockResolvedValue({ ...mocks.state, version: 1 });
+    await expect(getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding' })).resolves.toHaveProperty('load');
   });
 
   it('omits load SQL and keeps deferred and legacy snapshots separate', async () => {

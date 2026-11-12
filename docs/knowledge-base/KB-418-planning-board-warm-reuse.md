@@ -106,10 +106,33 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - **Fix**: both settings queries refetch every 60 seconds (`PLANNING_BOARD_SETTINGS_REFETCH_MS`). A capacity save that finishes while a fetch is in flight invalidates the query, so the older fetch cannot bring back the previous value.
 - **Not covered**: if a periodic fetch finishes while a capacity save is still in flight, the board can show the old value until the save returns.
 
+## Load aggregate rebuild cost and invalidation (2026-11-12)
+
+- **Symptom**: production `grinding-planning-board/load` took 4–5 s whenever the saved aggregate could not be reused. The API log showed 12 rebuilds in 33 minutes. Eight were startup warmup (two bursts of 4 sites after blue/green switches). The others were user requests next to page builds and board writes. Rebuilds that ended in 409 are not logged, so 12 is a lower bound.
+- **Cause 1, PostgreSQL 18 JIT**: the aggregate SQL has an estimated cost of about 622k, above `jit_above_cost` (100k) and `jit_optimize_above_cost` (500k). Production uses the same `pgvector/pgvector:pg18` image and default JIT settings. Locally, EXPLAIN ANALYZE showed 2.6 s of JIT time (inlining 0.25 s, optimization 1.4 s, emission 1.0 s) against about 0.8 s of execution. This is the same pattern as KB-452.
+- **Cause 2, over-broad invalidation**: the aggregate cache used the full board generation token. That token also changes on order, pin and rank writes (`boardVersion`/`boardUpdatedAt`), resource master, machine names and capacity. None of those affect the saved aggregate, because the category filter runs after the cache.
+- **Not a cause**: the page path (`includeLoad`) and `/load` already share one cache entry (same token, the web default `scheduleSource` is `both`), so they do not evict each other.
+- **Fix**:
+  - `readAggregatedLoadSummary` runs the aggregate inside a transaction that first runs `SET LOCAL jit = off`. The transaction has an explicit 120 s timeout and 15 s maxWait; Prisma's default of 5 s is too close to Pi5 times.
+  - The cache stays keyed by the root client. The SQL text and aggregation are unchanged.
+  - `readPlanningSnapshotGenerationDetails` adds `loadGenerationToken`. It covers the leaderboard generation, row/piece/pieceops overrides (count and max `updatedAt`), the piece set fingerprint, minute sources and part minutes.
+  - Both load call sites use `loadGenerationToken` for the cache key, the old-entry purge and the post-compute check. `/load` also uses it for its final 409 check.
+  - The page path keeps its full-token 409 check.
+- **Measurement (local)**:
+  - Setup: Postgres 18.6 in Docker on an M-series Mac. Synthetic data: 137k CsvDashboardRow (101k winners), 1,600 pieces with 836 op splits, and 1,847 overrides on the measured site.
+  - Method: the whole `readGrindingPlanningBoardLoadSummary` call, without cache. Old and new ran interleaved in one session, 3 × 6 runs each.
+  - Results: median 1.60 s → 0.67 s. Old ranged 1.28–2.80 s; new ranged 0.51–0.80 s. The output hash was identical.
+  - In earlier separate runs, old code with JIT on measured 2.6–4.1 s.
+- **Tests**:
+  - Unit tests: `SET LOCAL jit = off` runs on the same transaction client before the aggregate. Each kept input changes `loadGenerationToken`, and each dropped input does not.
+  - Integration tests (`TEST_DATABASE_URL`, skipped in CI): JIT is off during the aggregate and back on afterwards on the same connection. The new path matches the former direct query row for row.
+  - The other 13 integration tests in that file fail locally both with and without this change, because of fixture problems: the test-bar query is intercepted by the override stub, and a piece fixture violates `PSSPiece_position_positive`.
+- **Not measured**: production JIT settings and plan cost (the read-only production query was not permitted), Pi5 time with JIT off, and the production rebuild rate after the narrower token. The Pi5 rebuild may still be above 1 s; the remaining cost is scans, the DISTINCT ON sort spilling to disk, and the final group. Startup warmup rebuilds are unchanged.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.
-- When a new input is added to the board projection or the load aggregate, add it to the generation token. A missing input now stays stale for up to 12 hours instead of 5–10 minutes.
+- When a new input is added to the board projection or the load aggregate, add it to the generation token; inputs of the saved load aggregate also go into `loadGenerationToken` (`grinding-planning-board/state.ts`). A missing input now stays stale for up to 12 hours instead of 5–10 minutes.
 
 ## Open Items
 
