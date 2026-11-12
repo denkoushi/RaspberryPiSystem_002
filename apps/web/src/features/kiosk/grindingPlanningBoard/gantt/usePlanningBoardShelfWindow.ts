@@ -11,8 +11,11 @@ const OVERSCAN = 2;
 export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[], open: boolean,
   focusedSeiban: string | null, highlightedSeiban: string | null, highlightedItemId: string | null) {
   const viewport = useRef<HTMLDivElement>(null);
+  const latestColumns = useRef(columns);
+  useLayoutEffect(() => { latestColumns.current = columns; }, [columns]);
   const [window, setWindow] = useState({ start: 0, end: 0 });
   const measure = useCallback(() => {
+    const columns = latestColumns.current;
     const element = viewport.current;
     if (!element) return;
     const width = element.clientWidth || COLUMN_WIDTH;
@@ -22,7 +25,7 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
     const start = Math.min(columns.length, Math.max(0, Math.floor((left + SHELF_COLUMN_STRIDE - COLUMN_WIDTH) / SHELF_COLUMN_STRIDE) - OVERSCAN));
     const end = Math.min(columns.length, Math.ceil((left + width) / SHELF_COLUMN_STRIDE) + OVERSCAN);
     setWindow(current => current.start === start && current.end === end ? current : { start, end });
-  }, [columns.length]);
+  }, []);
   useLayoutEffect(() => {
     const element = viewport.current;
     if (!element) return;
@@ -42,10 +45,10 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
       observer?.disconnect();
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [open, measure]);
+  }, [open, columns.length, measure]);
   const reveal = useCallback((seiban: string | null) => {
     const element = viewport.current;
-    const index = columns.findIndex(column => column.seiban === seiban);
+    const index = latestColumns.current.findIndex(column => column.seiban === seiban);
     if (!element || index < 0) return;
     const left = PADDING + index * SHELF_COLUMN_STRIDE;
     const right = left + COLUMN_WIDTH;
@@ -53,8 +56,8 @@ export function usePlanningBoardShelfWindow(columns: readonly SeibanShelfColumn[
     if (left < element.scrollLeft + PADDING) element.scrollLeft = left - PADDING;
     else if (right > element.scrollLeft + width - PADDING) element.scrollLeft = right - width + PADDING;
     measure();
-  }, [columns, measure]);
-  // Run only when the focus/selection changes (or the strip reopens/filters), never on manual scrolling.
+  }, [measure]);
+  // Reveal only when focus/selection changes or the strip reopens.
   useLayoutEffect(() => { if (open) reveal(focusedSeiban); }, [open, focusedSeiban, reveal]);
   useLayoutEffect(() => { if (open) reveal(highlightedSeiban); }, [open, highlightedItemId, highlightedSeiban, reveal]);
   return { viewport, window, reveal };

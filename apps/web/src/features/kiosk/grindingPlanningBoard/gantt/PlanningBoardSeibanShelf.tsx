@@ -72,13 +72,25 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
   const { viewport: shelfViewport, window: shelfWindow, reveal: revealSeiban } = usePlanningBoardShelfWindow(visibleColumns, open, focusedSeiban, highlightedSeiban ?? null, highlightedItemId);
   type Placement = { ids: string[]; resource: string; targetId: string | null; placement: 'before' | 'after'; sawPending?: boolean; waiting?: { id: string; signature: string } };
   const pending = useRef<Placement | null>(null);
+  const placementFrame = useRef<number | null>(null);
+  const latestPlacement = useRef({ bars, writePending });
+  useLayoutEffect(() => { latestPlacement.current = { bars, writePending }; }, [bars, writePending]);
   const cancelPlacement = useCallback(() => {
     pending.current = null;
+    if (placementFrame.current !== null) cancelAnimationFrame(placementFrame.current);
+    placementFrame.current = null;
   }, []);
   useEffect(() => () => cancelPlacement(), [cancelPlacement]);
   useEffect(() => gate.subscribeReadOnly(cancelPlacement), [gate, cancelPlacement]);
   // A single existing write is issued at a time. The next uses the refreshed resource order/revisions,
   // after the write controls unlock; this preserves the write queue's acknowledgement and failure paths.
+  const atDestination = (bar: GanttBar, batch: Placement) => {
+    if (bar.resource !== batch.resource) return false;
+    const order = [...bars.values()].filter(value => value.resource === batch.resource && !value.item.isCompleted).sort((a, b) => comparePlanningBoardBarOrder(a.item, b.item));
+    const index = order.findIndex(value => value.item.itemId === bar.item.itemId);
+    const targetIndex = batch.targetId ? order.findIndex(value => value.item.itemId === batch.targetId) : -1;
+    return batch.targetId ? targetIndex >= 0 && index === targetIndex + (batch.placement === 'after' ? 1 : -1) : index === order.length - 1;
+  };
   const advance = () => {
     const batch = pending.current;
     if (!batch || !actions) return;
@@ -86,24 +98,23 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     if (writePending) { batch.sawPending = true; return; }
     if (batch.waiting) {
       const updated = bars.get(batch.waiting.id);
-      if (!updated || signature(updated) === batch.waiting.signature || updated.resource !== batch.resource) {
+      // Rank-only saves may keep itemRevision/version; verify the saved position after pending falls.
+      if (!updated || updated.resource !== batch.resource || signature(updated) === batch.waiting.signature && !(batch.sawPending && atDestination(updated, batch))) {
         if (batch.sawPending) cancelPlacement();
         return;
       }
       const id = batch.waiting.id;
       setSelected(current => { const next = new Set(current); next.delete(id); return next; });
       batch.waiting = undefined;
+      if (placementFrame.current !== null) cancelAnimationFrame(placementFrame.current);
+      placementFrame.current = null;
     }
     while (batch.ids.length) {
       const id = batch.ids.shift()!;
       const bar = bars.get(id);
       const target = batch.targetId ? bars.get(batch.targetId) : null;
       if (!bar || bar.item.kind === 'test' || bar.item.isCompleted || batch.targetId && !target) { cancelPlacement(); return; }
-      const order = [...bars.values()].filter(value => value.resource === batch.resource && !value.item.isCompleted).sort((a, b) => comparePlanningBoardBarOrder(a.item, b.item));
-      const index = order.findIndex(value => value.item.itemId === id);
-      const targetIndex = target ? order.findIndex(value => value.item.itemId === target.item.itemId) : -1;
-      const alreadyThere = bar.resource === batch.resource && (target ? index === targetIndex + (batch.placement === 'after' ? 1 : -1) : index === order.length - 1);
-      if (alreadyThere) { setSelected(current => { const next = new Set(current); next.delete(id); return next; }); continue; }
+      if (atDestination(bar, batch)) { setSelected(current => { const next = new Set(current); next.delete(id); return next; }); continue; }
       if (!gate.attempt()) { cancelPlacement(); return; }
       batch.waiting = { id, signature: signature(bar) };
       batch.sawPending = false;
@@ -112,6 +123,17 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
         actions.move(bar.item, batch.resource, target?.item ?? null, batch.placement);
       } else if (target && canReorderForwardBars(bar, target)) actions.reorder(bar.item, target.item, batch.placement);
       else cancelPlacement();
+      if (pending.current === batch) {
+        const waiting = batch.waiting;
+        // A guarded action can return without scheduling a write or causing another render.
+        placementFrame.current = requestAnimationFrame(() => {
+          placementFrame.current = null;
+          const latest = latestPlacement.current;
+          const updated = waiting && latest.bars.get(waiting.id);
+          if (pending.current === batch && batch.waiting === waiting && !batch.sawPending && !latest.writePending &&
+            (!updated || signature(updated) === waiting?.signature)) cancelPlacement();
+        });
+      }
       return;
     }
     cancelPlacement();
@@ -151,7 +173,10 @@ export const PlanningBoardSeibanShelf = memo(forwardRef<HTMLDivElement, Props>(f
     window.addEventListener('blur', cancel);
     return () => { cancel(); window.removeEventListener('blur', cancel); };
   }, [clearDrag]);
-  useEffect(() => { clearDrag(); }, [columns, disabled, frozen, writePending, open, clearDrag]);
+  useEffect(() => { clearDrag(); }, [disabled, frozen, writePending, open, clearDrag]);
+  useEffect(() => {
+    if (drag.current?.ids.some(id => !bars.has(id))) { suppressClick.current = true; clearDrag(); }
+  }, [bars, clearDrag]);
   useEffect(() => gate.subscribeReadOnly(clearDrag), [gate, clearDrag]);
   const startDrag = (event: PointerEvent<HTMLButtonElement>, id: string) => {
     suppressClick.current = false;

@@ -32,8 +32,9 @@ export function usePlanningBoardShelfInteraction(shared: SharedShelfInteraction 
   useLayoutEffect(() => { geometry.current = { lanes, start, dayWidth }; });
   const getDrop = useCallback<ShelfDropResolver>((x, y, source, allowed, moving) => {
     const current = geometry.current;
-    return findForwardDrop(x, y, source, allowed, forwardDropBoard(viewport.current), current.lanes.current,
+    const drop = findForwardDrop(x, y, source, allowed, forwardDropBoard(viewport.current), current.lanes.current,
       current.start, current.dayWidth, moving);
+    return drop?.bar?.item.kind === 'test' ? null : drop;
   }, [viewport]);
   useLayoutEffect(() => {
     if (!shared || !resource) return;

@@ -130,6 +130,39 @@ it.each([false, true])('waits for the existing write queue and retains unsaved s
   }
 });
 
+it.each([false, true])('settles rank-only reorders on the pending falling edge without losing failed selections (failed=%s)', async failed => {
+  const interactionRef = createRef<SeibanShelfHandle>();
+  const members = items.map((item, index) => ({ ...item, originalResourceCd: '021', alternateRank: index + 1, itemRevision: 'r1', version: 1 }));
+  const reorder = vi.fn();
+  const actions = { move: vi.fn(), reorder, canMove: () => true };
+  const getDrop = () => ({ resource: '021', bar: { item: members[2] } as GanttBar, placement: 'after' as const, left: 0 });
+  const draw = (order: string[], writePending = false) => <PlanningBoardSeibanShelf {...props}
+    columns={buildPlanningBoardSeibanShelf(members.map(item => ({ ...item, alternateRank: order.indexOf(item.itemId) + 1 })), [], ['021'], colors)}
+    interactionRef={interactionRef} getDrop={getDrop} actions={actions} resources={['021']} writePending={writePending} />;
+  const { rerender } = render(draw(['a', 'b', 'c']));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-b'));
+  act(() => { expect(interactionRef.current!.placeAt(10, 10)).toBe(true); });
+  expect(reorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: 'c' }), 'after');
+  rerender(draw(['a', 'c', 'b'], true));
+  await nextFrame();
+  expect(reorder).toHaveBeenCalledTimes(1);
+  expect(screen.getByText('2件')).toBeInTheDocument();
+  rerender(draw(failed ? ['a', 'b', 'c'] : ['a', 'c', 'b']));
+  expect(reorder).toHaveBeenCalledTimes(failed ? 1 : 2);
+  if (failed) {
+    expect(screen.getByText('2件')).toBeInTheDocument();
+    act(() => { expect(interactionRef.current!.placeAt(10, 10)).toBe(true); });
+    expect(reorder).toHaveBeenCalledTimes(2);
+  } else {
+    expect(reorder).toHaveBeenLastCalledWith(expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'c' }), 'after');
+    rerender(draw(['c', 'a', 'b'], true));
+    rerender(draw(['c', 'a', 'b']));
+    expect(screen.queryByText('1件')).not.toBeInTheDocument();
+    expect(screen.queryByText('2件')).not.toBeInTheDocument();
+  }
+});
+
 const manyItems = Array.from({ length: 12 }, (_, index) => ({ ...items[0]!, itemId: `item-${index}`, fseiban: `S${index}`, originalResourceCd: null }));
 const manyColors = new Map(manyItems.map(item => [item.fseiban, 'bg-sky-400']));
 const manyColumns = buildPlanningBoardSeibanShelf(manyItems, [], ['021'], manyColors);
@@ -181,6 +214,25 @@ it('reveals an offscreen focused seiban or highlighted bar, and leaves manual sc
   rerender(<PlanningBoardSeibanShelf {...manyProps} highlightedItemId="item-0" />);
   expect(strip.scrollLeft).toBe(0);
   expect(screen.getByTestId('planning-shelf-tile-item-0')).toHaveAttribute('data-highlighted');
+});
+
+it.each([
+  { focusedSeiban: 'S10', highlightedItemId: null, shorten: false },
+  { focusedSeiban: 'S10', highlightedItemId: null, shorten: true },
+  { focusedSeiban: null, highlightedItemId: 'item-10', shorten: false },
+  { focusedSeiban: null, highlightedItemId: 'item-10', shorten: true }
+])('preserves manual horizontal scroll across column refreshes ($focusedSeiban, $highlightedItemId, shorten=$shorten)', async ({ shorten, ...focus }) => {
+  measureShelf();
+  const { rerender } = render(<PlanningBoardSeibanShelf {...manyProps} {...focus} />);
+  const strip = screen.getByRole('group', { name: '製番の棚' });
+  expect(strip.scrollLeft).toBeGreaterThan(232);
+  strip.scrollLeft = 232;
+  fireEvent.scroll(strip);
+  await nextFrame();
+  const refreshed = (shorten ? manyItems.slice(0, -1) : manyItems).map(item => ({ ...item }));
+  rerender(<PlanningBoardSeibanShelf {...manyProps} {...focus} columns={buildPlanningBoardSeibanShelf(refreshed, [], ['021'], manyColors)} />);
+  expect(strip.scrollLeft).toBe(232);
+  expect(screen.getByTestId('planning-shelf-tile-item-1')).toBeInTheDocument();
 });
 
 it('rerenders only columns whose local selection, bar highlight or focus changes', () => {
