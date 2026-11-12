@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { isManufacturingOrderNo } from '@raspi-system/shared-types';
 import { parse } from 'csv-parse/sync';
 import { logger } from '../../lib/logger.js';
 import { ApiError } from '../../lib/errors.js';
@@ -197,7 +198,7 @@ export function calculateDataHash(normalized: NormalizedRowData, dedupKeyColumns
 
 export function validateProductionScheduleRow(normalized: NormalizedRowData, rowIndex: number): void {
   const productNo = String(normalized.ProductNo ?? '').trim();
-  if (!/^\d{10}$/.test(productNo)) {
+  if (!isManufacturingOrderNo(productNo)) {
     throw new ApiError(
       400,
       `ProductNoは10桁の数字である必要があります（行: ${rowIndex}）`
