@@ -5,6 +5,7 @@ import type { LocalLlmRuntimeUseCase } from '../runtime/local-llm-runtime-contro
 
 export type BusinessProfileIntentEnv = {
   businessDeepseekSwitchEnabled?: boolean;
+  businessQwen38SwitchEnabled?: boolean;
   businessRuntimeStartProfileId?: string;
   photoLabelRuntimeStartProfileId?: string;
   documentSummaryRuntimeStartProfileId?: string;

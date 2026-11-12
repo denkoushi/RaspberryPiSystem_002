@@ -140,6 +140,10 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
           !current.state.selectedBusinessProfileId || current.activeProfileId !== current.state.selectedBusinessProfileId) {
         throw new Error('LocalLlmRuntimeControl: selected business runtime is unavailable');
       }
+      if (current.state.selectedBusinessProfileId === 'business_qwen38_flash_next_orcarouter_fp8_tp2' &&
+          !this.deps.runtimeIntentEnv.businessQwen38SwitchEnabled) {
+        throw new Error('LocalLlmRuntimeControl: selected business Qwen runtime is disabled');
+      }
       assertRuntimeCapabilitiesForUseCase(current.state, useCase);
       return;
     }
@@ -172,6 +176,10 @@ export class HttpOnDemandLocalLlmRuntimeController implements LocalLlmRuntimeCon
       ? resolveRuntimeStartProfileIdForUseCase(useCase, this.deps.runtimeIntentEnv, this.deps.provider)
       : undefined;
     const sendProfile = shouldSendRuntimeStartProfileId(this.deps.runtimeIntentEnv, profileId);
+    if (profileId === 'business_qwen38_flash_next_orcarouter_fp8_tp2' &&
+        !(this.deps.runtimeIntentEnv.businessDeepseekSwitchEnabled && this.deps.runtimeIntentEnv.businessQwen38SwitchEnabled)) {
+      throw new Error('LocalLlmRuntimeControl: selected business Qwen runtime is disabled');
+    }
     const body = this.usesBusinessSelection(useCase) ? { reason: 'business-restore' }
       : buildRuntimeStartRequestBody({ useCase, sendProfile, profileId });
     const profileSource = this.deps.provider

@@ -1228,3 +1228,118 @@ class BusinessSwitchContractTests(unittest.TestCase):
             self.assertIn('stdout-tail', record['stdout'])
             for secret in ('runtime-token', 'hidden', 'unknown-token', 'never log command'):
                 self.assertNotIn(secret, line)
+
+
+class BusinessQwenSwitchTests(unittest.TestCase):
+    request = BusinessSwitchContractTests.request
+    state_value = BusinessSwitchContractTests.state_value
+
+    def setUp(self):
+        from unittest.mock import patch
+        BusinessSwitchContractTests.setUp(self)
+        self.qwen_flag = patch.dict('os.environ', {'BUSINESS_QWEN38_SWITCH_ENABLED': 'true'})
+        self.qwen_flag.start()
+        self.addCleanup(self.qwen_flag.stop)
+        self.qwen = 'business_qwen38_flash_next_orcarouter_fp8_tp2'
+        manifest = json.loads((MODULE_PATH.parent / 'tests/fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json').read_text())
+        manifest.update(modelProfileId=self.qwen, enabled=True, businessOrchestrationEligible=True,
+                        servedAlias='system-prod-primary')
+        manifest['runtimeProfile']['openaiModelId'] = 'system-prod-primary'
+        manifest['runtimeProfile'].pop('guaranteeLevel')
+        target = self.manifest.parent.parent / 'qwen/manifest.json'
+        target.parent.mkdir()
+        target.write_text(json.dumps(manifest))
+        self.qwen_prepared = patch('business_qwen38.check_prepared')
+        self.qwen_prepared_mock = self.qwen_prepared.start()
+        self.addCleanup(self.qwen_prepared.stop)
+        self.record = patch('business_qwen38.record_generation')
+        self.record_mock = self.record.start()
+        self.addCleanup(self.record.stop)
+
+    def test_unprepared_qwen_refuses_before_any_stop_or_selection_change(self):
+        before = self.state_value()
+        self.qwen_prepared_mock.side_effect = RuntimeError('business_qwen38_unprepared')
+        status, payload = self.request(modelProfileId=self.qwen, reason='business-model-selection')
+        self.assertEqual(status, 503)
+        self.assertIn('business_qwen38_unprepared', payload['message'])
+        self.assertEqual(self.calls, [])
+        self.assertEqual(self.state_value(), before)
+
+    def test_three_model_selection_and_stale_revision_refusal(self):
+        for profile in (self.deep, self.qwen, self.profile.id):
+            self.assertEqual(self.request(modelProfileId=profile, reason='business-model-selection')[0], 200)
+            self.assertEqual(self.state_value()['selectedBusinessProfileId'], profile)
+        self.assertEqual(self.state_value()['selectionRevision'], 3)
+        self.assertEqual(self.request(modelProfileId=self.qwen, selectionRevision=2, reason='business-restore')[0], 409)
+        self.record_mock.assert_called_once()
+
+    def test_resource_state_uses_qwen_rank_evidence_with_revision(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.qwen, reason='business-model-selection')
+        generation = self.state_value()['businessGeneration']
+        result = {'generation': generation, 'prepared': True,
+                  'ranks': [{'rank': r, 'generation': generation, 'running': True, 'gpuReleased': False} for r in (0, 1)],
+                  'launcherStopped': True, 'watchdogStopped': True, 'apiListenerClosed': False,
+                  'failureReason': None}
+        with patch('business_qwen38.runtime_status', return_value=result) as inspect, \
+                patch('resource_state.glm_business_runtime') as glm:
+            code, payload = self.request('/system/resource-state', method='GET')
+        self.assertEqual(code, 200)
+        self.assertEqual(payload['businessRuntime']['modelProfileId'], self.qwen)
+        self.assertEqual(payload['businessRuntime']['selectionRevision'], 1)
+        self.assertEqual(len(payload['businessRuntime']['ranks']), 2)
+        self.assertNotIn('privateSharingEvidence', payload['businessRuntime'])
+        inspect.assert_called_once()
+        glm.assert_not_called()
+
+    def test_qwen_probe_uses_fixed_localhost_and_thinking_disabled(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.qwen, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        for answer in ('content', 'reasoning_content', 'reasoning'):
+            value = self.state_value()
+            self.state.write_text(json.dumps({**value, 'businessTransition': 'loading'}))
+            requests = []
+            class Reply:
+                def __init__(self, value): self.value = value
+                def __enter__(self): return io.BytesIO(json.dumps(self.value).encode())
+                def __exit__(self, *args): return False
+            def reply(request, **kwargs):
+                requests.append(request)
+                return Reply({'data': [{'id': 'system-prod-primary'}]} if request.data is None else
+                             {'choices': [{'message': {answer: 'OK'}}]})
+            ready = {'prepared': True, 'failureReason': None, 'ranks': [{'running': True}, {'running': True}]}
+            with self.subTest(answer=answer), \
+                    patch.object(self.module.urllib.request, 'urlopen', side_effect=reply), \
+                    patch('business_qwen38.runtime_status', return_value=ready), \
+                    patch.object(self.module.time, 'sleep', side_effect=AssertionError('probe retried')):
+                self.monitor.temp_original(config, identity, profile)
+            self.assertEqual(self.state_value()['businessTransition'], 'ready')
+            self.assertEqual(requests[0].full_url, 'http://127.0.0.1:38083/v1/models')
+            body = json.loads(requests[1].data)
+            self.assertEqual(body['chat_template_kwargs'], {'enable_thinking': False})
+            self.assertNotIn('reasoning_effort', body)
+
+    def test_stale_qwen_generation_cannot_become_ready(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.qwen, reason='business-model-selection')
+        config, identity, profile = self.thread_mock.call_args.kwargs['args']
+        self.state.write_text(json.dumps({**self.state_value(), 'businessGeneration': 'new-generation'}))
+        with patch.object(self.module.urllib.request, 'urlopen') as probe:
+            self.monitor.temp_original(config, identity, profile)
+        probe.assert_not_called()
+        self.assertEqual(self.state_value()['businessTransition'], 'loading')
+
+    def test_persisted_qwen_flags_off_refuses_profileless_start_without_fallback(self):
+        from unittest.mock import patch
+        self.assertEqual(self.request(modelProfileId=self.qwen, reason='business-model-selection')[0], 200)
+        self.calls.clear()
+        self.assertEqual(self.module.resolve_start_profile(self.config, None, None).id, self.qwen)
+        for deepseek, qwen in (('false', 'false'), ('false', 'true'), ('true', 'false')):
+            with self.subTest(deepseek=deepseek, qwen=qwen), patch.dict('os.environ', {
+                    'BUSINESS_DEEPSEEK_SWITCH_ENABLED': deepseek,
+                    'BUSINESS_QWEN38_SWITCH_ENABLED': qwen}):
+                with self.assertRaises(self.module.BusinessRestoreUnavailableError):
+                    self.module.resolve_start_profile(self.config, None, None)
+                self.assertEqual(self.request()[0], 400 if deepseek == 'true' else 503)
+                self.assertEqual(self.calls, [])

@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 export const dgxResourceEnvShape = {
+  BUSINESS_QWEN38_SWITCH_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false', '1', '0']).default('false'))
+    .transform((v) => v === 'true' || v === '1'),
   BUSINESS_DEEPSEEK_SWITCH_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
     .transform((v) => v === 'true'),

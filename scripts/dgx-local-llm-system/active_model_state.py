@@ -19,11 +19,17 @@ from profile_capabilities import capabilities_to_api
 
 GLM_PROFILE = "business_glm53_flash_fp4_tp2"
 DEEPSEEK_PROFILE = "business_deepseek_v41_flash_tp2"
-BUSINESS_PROFILES = {GLM_PROFILE, DEEPSEEK_PROFILE}
+BUSINESS_QWEN38_PROFILE_ID = "business_qwen38_flash_next_orcarouter_fp8_tp2"
+BUSINESS_PROFILES = {GLM_PROFILE, DEEPSEEK_PROFILE, BUSINESS_QWEN38_PROFILE_ID}
 
 
 def business_switch_enabled() -> bool:
     return os.environ.get("BUSINESS_DEEPSEEK_SWITCH_ENABLED", "") in {"true", "1"}
+
+
+def business_qwen38_switch_enabled() -> bool:
+    return (business_switch_enabled()
+            and os.environ.get("BUSINESS_QWEN38_SWITCH_ENABLED", "") in {"true", "1"})
 
 
 def positive_env_seconds(name: str, default: float) -> float:

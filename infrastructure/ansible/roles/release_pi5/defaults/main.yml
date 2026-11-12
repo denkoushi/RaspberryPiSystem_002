@@ -1,4 +1,5 @@
 ---
+api_business_qwen38_switch_enabled: false
 release_sha: ""
 release_pi5_image_sha: "{{ release_sha }}"
 release_run_id: ""

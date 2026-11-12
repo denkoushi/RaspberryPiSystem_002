@@ -1591,3 +1591,141 @@ class BusinessRoutingContractTests(unittest.TestCase):
                 self.assertNotIn(secret, output.getvalue())
             if expected == 503:
                 self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+
+
+class BusinessQwenRoutingTests(unittest.TestCase):
+    request = BusinessRoutingContractTests.request
+
+    def setUp(self):
+        BusinessRoutingContractTests.setUp(self)
+        flags = patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
+            'BUSINESS_QWEN38_SWITCH_ENABLED': 'true'})
+        flags.start()
+        self.addCleanup(flags.stop)
+        self.value.update(modelProfileId=self.module.BUSINESS_QWEN38_PROFILE_ID,
+            selectedBusinessProfileId=self.module.BUSINESS_QWEN38_PROFILE_ID)
+        self.state.write_text(json.dumps(self.value))
+        self.runtime['modelProfileId'] = self.module.BUSINESS_QWEN38_PROFILE_ID
+
+    def test_fixed_route_alias_and_qwen_defaults_without_other_model_conversions(self):
+        payload = {'messages': [{'role': 'user', 'content': 'hello'}],
+            'response_format': {'type': 'json_object'}, 'guided_json': {'type': 'object'}}
+        status, body = self.request(payload=payload)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)['model'], 'system-prod-primary')
+        self.assertEqual([call[1] for call in self.calls], [
+            self.config.runtime_control_base_url + '/system/resource-state',
+            'http://127.0.0.1:38083/v1/models', 'http://127.0.0.1:38083/v1/chat/completions'])
+        self.assertEqual(self.calls[0][3], {'X-Runtime-Control-Token': 'control-key'})
+        sent = json.loads(self.calls[-1][2])
+        self.assertEqual(sent, {**payload, 'model': 'system-prod-primary',
+            'chat_template_kwargs': {'enable_thinking': False}})
+        self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_thinking_default_preserves_explicit_value_and_other_kwargs(self):
+        for kwargs, expected in (({}, {'enable_thinking': False}),
+                ({'other': 'value'}, {'other': 'value', 'enable_thinking': False}),
+                ({'enable_thinking': True}, {'enable_thinking': True})):
+            with self.subTest(kwargs=kwargs):
+                self.assertEqual(self.request(payload={'messages': [], 'chat_template_kwargs': kwargs})[0], 200)
+                self.assertEqual(json.loads(self.calls[-1][2])['chat_template_kwargs'], expected)
+
+    def test_both_flags_required_including_after_disabling_running_qwen(self):
+        for deepseek, qwen, expected in (('false', 'false', 503), ('true', 'false', 503),
+                ('false', 'true', 503), ('true', 'true', 200), ('1', '1', 200)):
+            with self.subTest(deepseek=deepseek, qwen=qwen), patch.dict(os.environ, {
+                    'BUSINESS_DEEPSEEK_SWITCH_ENABLED': deepseek,
+                    'BUSINESS_QWEN38_SWITCH_ENABLED': qwen}):
+                self.calls.clear()
+                for method, path in (('POST', '/v1/chat/completions'), ('GET', '/v1/models')):
+                    self.assertEqual(self.request(method, path)[0], expected)
+                if expected == 503:
+                    self.assertEqual(self.calls, [])
+
+    def test_private_alias_never_receives_business_request_or_stream(self):
+        def proxy(method, url, body, headers):
+            self.calls.append((method, url, body, headers))
+            if url.endswith('/system/resource-state'):
+                return 200, json.dumps({'businessRuntime': self.runtime}).encode(), 'application/json'
+            return 200, b'{"data":[{"id":"private-qwen38-flash-next"}]}', 'application/json'
+        self.handler = self.module.make_handler(self.config, proxy)
+        with patch.object(self.module, 'business_urlopen') as stream:
+            for method, path, payload in (('GET', '/v1/models', None),
+                    ('POST', '/v1/chat/completions', {'messages': []}),
+                    ('POST', '/v1/chat/completions', {'messages': [], 'stream': True})):
+                with self.subTest(method=method, payload=payload):
+                    self.assertEqual(self.request(method, path, payload)[0], 503)
+            stream.assert_not_called()
+        self.assertTrue(all(call[0] == 'GET' for call in self.calls))
+
+    def test_live_runtime_identity_revision_generation_and_both_ranks_required(self):
+        original = json.loads(json.dumps(self.runtime))
+        variants = [
+            {**original, 'modelProfileId': 'private_qwen38_flash_next_orcarouter_fp8_tp2'},
+            {**original, 'selectionRevision': 2}, {**original, 'selectionRevision': True},
+            {**original, 'generation': 'generation-old'}, {**original, 'prepared': False},
+            {**original, 'failureReason': 'business_rank_state_inconsistent'},
+            {**original, 'apiListenerClosed': True}, {**original, 'ranks': original['ranks'][:1]},
+            {**original, 'ranks': [original['ranks'][0], {**original['ranks'][1], 'running': False}]},
+            {**original, 'ranks': [original['ranks'][0], {**original['ranks'][1], 'generation': 'old'}]},
+            {**original, 'ranks': [original['ranks'][0], original['ranks'][0]]},
+        ]
+        for runtime in variants:
+            with self.subTest(runtime=runtime):
+                self.runtime = runtime
+                self.calls.clear()
+                self.assertEqual(self.request()[0], 503)
+                self.assertEqual(len(self.calls), 1)
+                self.assertTrue(self.calls[0][1].endswith('/system/resource-state'))
+
+    def test_selected_active_ready_and_generation_state_required(self):
+        for changes in ({'selectedBusinessProfileId': self.module.GLM_PROFILE},
+                {'modelProfileId': self.module.GLM_PROFILE}, {'businessTransition': 'loading'},
+                {'businessTransition': 'failed'}, {'businessGeneration': ''},
+                {'businessGeneration': 'old'}, {'selectionRevision': 2}):
+            with self.subTest(changes=changes):
+                self.state.write_text(json.dumps({**self.value, **changes}))
+                self.calls.clear()
+                self.assertEqual(self.request()[0], 503)
+                self.assertFalse(any(call[0] == 'POST' for call in self.calls))
+
+    def test_text_only_rejects_chat_and_responses_images_and_invalid_kwargs(self):
+        for image_type in ('image_url', 'input_image', 'image'):
+            part = {'type': image_type, 'image_url': {'url': 'data:private'}}
+            for path, payload in (('/v1/chat/completions', {'messages': [{'content': [part]}]}),
+                    ('/v1/responses', {'input': [{'content': [part]}]})):
+                with self.subTest(image_type=image_type, path=path):
+                    self.assertEqual(self.request(path=path, payload=payload)[0], 400)
+        self.assertEqual(self.request(path='/v1/images/generations', payload={'prompt': 'image'})[0], 400)
+        self.assertEqual(self.request(payload={'messages': [], 'chat_template_kwargs': None})[0], 400)
+        self.assertEqual(self.calls, [])
+
+    def test_qwen_private_sharing_refused_without_forwarding(self):
+        for shared in ('3:generation-3', ''):
+            with self.subTest(shared=shared):
+                self.assertEqual(self.request(shared=shared)[0], 409)
+        self.assertEqual(self.calls, [])
+
+    def test_models_filter_preserves_business_alias(self):
+        status, body = self.request('GET', '/v1/models')
+        self.assertEqual(status, 200)
+        self.assertEqual([model['id'] for model in json.loads(body)['data']], ['system-prod-primary'])
+
+    def test_sse_preserves_business_alias_and_qwen_defaults(self):
+        response = io.BytesIO()
+        response.status = 200
+        response.headers = {'Content-Type': 'text/event-stream'}
+        response.read1 = Mock(side_effect=[b'data: {"model":"internal","choices":[]}\n\ndata: [DONE]\n\n', b''])
+        with patch.object(self.module, 'business_urlopen', return_value=response) as upstream:
+            status, body = self.request(payload={'messages': [], 'stream': True,
+                'response_format': {'type': 'json_object'}})
+        self.assertEqual(status, 200)
+        self.assertIn(b'"model": "system-prod-primary"', body)
+        self.assertIn(b'data: [DONE]', body)
+        request = upstream.call_args.args[0]
+        self.assertEqual(request.full_url, 'http://127.0.0.1:38083/v1/chat/completions')
+        sent = json.loads(request.data)
+        self.assertEqual(sent['chat_template_kwargs'], {'enable_thinking': False})
+        self.assertEqual(sent['response_format'], {'type': 'json_object'})
+        self.assertNotIn('reasoning_effort', sent)
+        self.assertIsNone(request.get_header('Authorization'))

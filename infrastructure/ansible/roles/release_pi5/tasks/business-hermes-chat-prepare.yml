@@ -142,6 +142,7 @@
     - { key: INSPECTION_DRAWING_LAYOUT_PLACEMENT_ENABLED, value: "{{ inspection_drawing_layout_placement_enabled | default(true) | bool | ternary('true', 'false') }}" }
     # 業務LLMの GLM/DeepSeek 切り替え(既定 OFF)。inventory の値はここで渡さないと API に届かない
     - { key: BUSINESS_DEEPSEEK_SWITCH_ENABLED, value: "{{ api_business_deepseek_switch_enabled | default(false) | bool | ternary('true', 'false') }}" }
+    - { key: BUSINESS_QWEN38_SWITCH_ENABLED, value: "{{ api_business_qwen38_switch_enabled | default(false) | bool | ternary('true', 'false') }}" }
     # 製番ボードの切削の片の新規分割・再分割(既定 OFF)。inventory の値はここで渡さないと API に届かない
     - { key: SESSAKU_PIECES_CREATE_ENABLED, value: "{{ api_sessaku_pieces_create_enabled | default(false) | bool | ternary('true', 'false') }}" }
     - { key: TYPESAFE_API_KEY, value: "{{ hermes_search_typesafe_api_key | default('') }}" }

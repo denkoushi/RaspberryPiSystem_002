@@ -47,6 +47,7 @@ class ModelProfile:
     served_alias: str
     enabled: bool
     manifest_path: str
+    censored: bool = True
     description_ja: str | None = None
     source_model_ref: str | None = None
     source_kind: str | None = None
@@ -129,6 +130,7 @@ def load_model_profile_manifest(path: Path) -> ModelProfile:
         backend=backend,
         served_alias=served_alias,
         enabled=bool(body.get("enabled", True)),
+        censored=body.get("censored") is not False,
         manifest_path=str(path),
         description_ja=_string(body.get("descriptionJa")),
         source_model_ref=_string(body.get("sourceModelRef")),
@@ -156,11 +158,14 @@ def _load_model_profiles(registry_root: str) -> tuple[list[ModelProfile], dict[s
     root = Path(registry_root)
     if not root.exists():
         return [], {}
-    from active_model_state import business_switch_enabled, DEEPSEEK_PROFILE
+    from active_model_state import (business_switch_enabled, DEEPSEEK_PROFILE,
+                                    business_qwen38_switch_enabled, BUSINESS_QWEN38_PROFILE_ID)
     profiles: list[ModelProfile] = []
     errors: dict[str, str] = {}
     seen: set[str] = set()
     for manifest in sorted(root.glob("*/manifest.json")):
+        if manifest.parent.name == BUSINESS_QWEN38_PROFILE_ID and not business_qwen38_switch_enabled():
+            continue
         if manifest.parent.name == DEEPSEEK_PROFILE and not business_switch_enabled():
             continue
         profile_id = manifest.parent.name
@@ -179,6 +184,8 @@ def _load_model_profiles(registry_root: str) -> tuple[list[ModelProfile], dict[s
             errors[profile.id] = "ambiguous model profile id"
             print("model profile manifest ambiguous: " + manifest.parent.name + "/manifest.json", file=sys.stderr)
         seen.add(profile.id)
+        if profile.id == BUSINESS_QWEN38_PROFILE_ID and not business_qwen38_switch_enabled():
+            continue
         if profile.id == DEEPSEEK_PROFILE and not business_switch_enabled():
             continue
         profiles.append(profile)
@@ -226,6 +233,7 @@ def model_profile_to_api(profile: ModelProfile) -> dict[str, Any]:
         "recommended": profile.recommended,
         "businessOrchestrationEligible": profile.business_orchestration_eligible,
         "enabled": profile.enabled,
+        "censored": profile.censored,
         "canonicalNames": list(profile.canonical_names),
         "legacyNames": list(profile.legacy_names),
         "status": status,

@@ -14,7 +14,7 @@ function setup() {
   const stateStore = new DgxResourceStateStore(50);
   const profile = {
     id: 'model-a', displayNameJa: '業務モデル A', backend: 'blue', servedAlias: 'business',
-    enabled: true, status: 'available', businessOrchestrationEligible: true, recommended: true,
+    censored: true, enabled: true, status: 'available', businessOrchestrationEligible: true, recommended: true,
     runtimeProfile: { engine: 'vllm', vllm: { gpuMemoryUtilization: 0.5 } },
     deleteProtection: { canDelete: true, protected: false, reasons: [] },
   };
@@ -56,6 +56,7 @@ function setup() {
 
 const original = {
   BUSINESS_DEEPSEEK_SWITCH_ENABLED: env.BUSINESS_DEEPSEEK_SWITCH_ENABLED,
+  BUSINESS_QWEN38_SWITCH_ENABLED: env.BUSINESS_QWEN38_SWITCH_ENABLED,
   LOCAL_LLM_RUNTIME_MODE: env.LOCAL_LLM_RUNTIME_MODE,
   LOCAL_LLM_RUNTIME_CONTROL_START_URL: env.LOCAL_LLM_RUNTIME_CONTROL_START_URL,
   LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: env.LOCAL_LLM_RUNTIME_CONTROL_STOP_URL,
@@ -69,6 +70,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   Object.assign(env, {
     BUSINESS_DEEPSEEK_SWITCH_ENABLED: false,
+    BUSINESS_QWEN38_SWITCH_ENABLED: false,
     LOCAL_LLM_RUNTIME_MODE: 'on_demand',
     LOCAL_LLM_RUNTIME_CONTROL_START_URL: 'http://dgx.test/start',
     LOCAL_LLM_RUNTIME_CONTROL_STOP_URL: 'http://dgx.test/stop',
@@ -326,6 +328,46 @@ describe('business switch capability gate', () => {
     const call = test.fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/start'));
     expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reason: 'business-model-selection', modelProfileId });
     expect(getBusinessProfileIntentStore().getModelProfileId()).toBe('stale-env-glm');
+    expect(test.stateStore.getBusinessReturn().state).toBe('succeeded');
+  });
+});
+
+
+describe('business Qwen selection gate', () => {
+  const qwen = 'business_qwen38_flash_next_orcarouter_fp8_tp2';
+  it.each([[false, false], [false, true], [true, false]])('rejects Qwen with flags %s/%s', async (deepseek, qwenEnabled) => {
+    env.BUSINESS_DEEPSEEK_SWITCH_ENABLED = deepseek;
+    env.BUSINESS_QWEN38_SWITCH_ENABLED = qwenEnabled;
+    const test = setup(); test.profile.id = qwen;
+    expect((await test.svc.getOverview()).modelProfiles).toEqual([]);
+    await expect(test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: qwen })).rejects.toMatchObject({ statusCode: 409 });
+    expect(test.fetchImpl.mock.calls.some(([url]) => String(url).endsWith('/start'))).toBe(false);
+  });
+  it('rejects Qwen on old CP while keeping GLM/DeepSeek selectable', async () => {
+    env.BUSINESS_DEEPSEEK_SWITCH_ENABLED = true;
+    env.BUSINESS_QWEN38_SWITCH_ENABLED = true;
+    const test = setup(); test.profile.id = qwen; test.profile.censored = false;
+    test.upstream.profiles.push(...['business_glm53_flash_fp4_tp2', 'business_deepseek_v41_flash_tp2']
+      .map((id) => ({ ...test.profile, id, censored: true })));
+    const profiles = (await test.svc.getOverview()).modelProfiles;
+    expect(profiles.map((p) => [p.id, p.startable, p.censored])).toEqual([
+      [qwen, false, false], ['business_glm53_flash_fp4_tp2', true, true], ['business_deepseek_v41_flash_tp2', true, true],
+    ]);
+    await expect(test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: qwen })).rejects.toMatchObject({ statusCode: 409 });
+    expect(test.fetchImpl.mock.calls.some(([url]) => String(url).endsWith('/start'))).toBe(false);
+  });
+  it('selects Qwen only with both flags and CP support', async () => {
+    env.BUSINESS_DEEPSEEK_SWITCH_ENABLED = true;
+    env.BUSINESS_QWEN38_SWITCH_ENABLED = true;
+    const test = setup(); test.profile.id = qwen; test.profile.censored = false; test.upstream.activeProfileId = qwen;
+    const originalFetch = test.fetchImpl.getMockImplementation()!;
+    test.fetchImpl.mockImplementation(async (input, init) => String(input).endsWith('/system/business-model-switch-capability')
+      ? Response.json({ enabled: true, contractVersion: 1, supportedBusinessProfileIds: [qwen] }) : originalFetch(input, init));
+    expect((await test.svc.getOverview()).modelProfiles[0]).toMatchObject({ id: qwen, censored: false, startable: true });
+    await test.svc.executeAction({ type: 'RETURN_TO_BUSINESS', modelProfileId: qwen });
+    await vi.runAllTimersAsync();
+    const call = test.fetchImpl.mock.calls.find(([url]) => String(url).endsWith('/start'));
+    expect(JSON.parse(String(call?.[1]?.body))).toEqual({ reason: 'business-model-selection', modelProfileId: qwen });
     expect(test.stateStore.getBusinessReturn().state).toBe('succeeded');
   });
 });

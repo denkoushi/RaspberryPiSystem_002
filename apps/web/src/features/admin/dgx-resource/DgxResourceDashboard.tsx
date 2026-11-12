@@ -121,7 +121,7 @@ export function DgxResourceDashboard() {
           {error?.target === 'stop' && <p className="dgx-operation-error" role="alert">{error.message}</p>}
         </>} />
         <section className="dgx-models" aria-label="モデル">
-          <header><h2>モデル <small>{profiles.length} 件</small></h2><span className="dgx-cap">検閲なしは個人用のため非表示</span></header>
+          <header><h2>モデル <small>{profiles.length} 件</small></h2>{!profiles.some((profile) => profile.censored === false) && <span className="dgx-cap">検閲なしは個人用のため非表示</span>}</header>
           {!overview.modelProfilesAvailable && <p className="dgx-list-message" role="alert">モデル一覧を取得できません。少し待ってお試しください。</p>}
           {overview.businessReturn.state === 'failed' && <p className="dgx-list-message dgx-danger" role="alert">{overview.businessReturn.failureReasonJa ?? 'モデルを起動できませんでした。'}</p>}
           {overview.modelProfilesAvailable && profiles.length === 0 && <p className="dgx-list-message">業務用モデルが登録されていません。</p>}
