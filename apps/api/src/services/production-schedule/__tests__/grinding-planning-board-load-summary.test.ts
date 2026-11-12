@@ -247,7 +247,33 @@ describe('grinding-planning-board-load-summary', () => {
     expect(aggregateSql).toContain('WHEN b."pieceId" IS NULL THEN b."requiredMinutes"');
     expect(aggregateSql).toContain('THEN b."requiredMinutes" * b."pieceQuantity" / b."plannedQuantity" ELSE NULL');
     expect(aggregateSql).not.toMatch(/FLOOR\(|ROUND\(/i);
-    expect(aggregateSql).toContain('SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")');
+    expect(aggregateSql).toContain('SUM("requiredMinutes")');
+    expect(aggregateSql).not.toMatch(/SUM\([^)]*ORDER BY/i);
+  });
+
+  it('uses matching C-collated deduplication keys and keeps the original source row tie-breaker', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    await readGrindingPlanningBoardLoadSummary({
+      client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'grinding', leaderboardMaterializedBaseWhere: Prisma.sql`TRUE`,
+      isResourceInCategory: () => true
+    });
+
+    const aggregateSql = (queryRaw.mock.calls[1]?.[0] as Prisma.Sql).sql;
+    const deduplication = aggregateSql.match(/SELECT DISTINCT ON \(([\s\S]*?)\) "items"\.\*\s+FROM "items"\s+ORDER BY ([\s\S]*?)\s*\),\s*"overrides" AS/);
+    expect(deduplication).not.toBeNull();
+    const keys = [
+      `(COALESCE("items"."fseiban", '') COLLATE "C")`,
+      `(CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C")`,
+      `(COALESCE("items"."fhincd", '') COLLATE "C")`,
+      `(COALESCE("items"."processOrder", '') COLLATE "C")`,
+      `(COALESCE("items"."originalResourceCd", '') COLLATE "C")`,
+      '("items"."pieceId" COLLATE "C")',
+      '"items"."opBarFromOpNo"'
+    ].join(', ');
+    const normalizeWhitespace = (sql: string) => sql.replace(/\s+/g, ' ').trim();
+    expect(normalizeWhitespace(deduplication![1])).toBe(keys);
+    expect(normalizeWhitespace(deduplication![2])).toBe(`${keys}, "items"."sourceRowId"`);
   });
 });
 
