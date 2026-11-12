@@ -34,7 +34,7 @@ export const sessakuPieceOpsMergeSchema = sessakuPieceOpsSplitSchema.omit({ from
 
 export const sessakuPieceOpsConfigureSchema = sessakuPieceOpsMergeSchema.extend({
   resourceCd: resourceCdSchema,
-  minutes: z.array(z.number().finite().positive().max(100000).multipleOf(0.5)).min(1).max(6)
+  minutes: z.array(z.number().finite().positive().max(100000)).min(1).max(6)
     .refine((values) => values.reduce((sum, value) => sum + value, 0) <= 100000),
   expectedOpIds: z.array(z.string()).max(20),
   expectedMinutes: resourcePartMinutesExpectedSchema

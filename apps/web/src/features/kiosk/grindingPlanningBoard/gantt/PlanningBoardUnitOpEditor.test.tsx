@@ -70,6 +70,52 @@ describe('unit operation quantity dialog', () => {
     await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [10, 20], expectedOpIds: ['op-3', 'op-7'],
       expectedMinutes: { perUnitMinutes: 30, setupMinutes: 20, ops: [{ opNo: 3, minutes: 10, setupMinutes: 20 }, { opNo: 7, minutes: 20, setupMinutes: 0 }] } })));
   });
+  it('submits registered decimal minutes unchanged without editing', async () => {
+    const ops = [{ id: 'op-1', opNo: 1, minutes: 7.3, setupMinutes: 0 }, { id: 'op-2', opNo: 2, minutes: 2.1, setupMinutes: 0 }];
+    setup([{ resourceCd: '021', fhincd: 'PART', perUnitMinutes: 9.4, setupMinutes: 0, ops }]);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.getByRole('spinbutton', { name: '1工程 1台' })).toHaveValue(7.3);
+    expect(screen.getByRole('spinbutton', { name: '2工程 1台' })).toHaveValue(2.1);
+    const save = screen.getByRole('button', { name: '2工程にする' });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [7.3, 2.1],
+      expectedOpIds: ['op-1', 'op-2'], expectedMinutes: { perUnitMinutes: 9.4, setupMinutes: 0,
+        ops: ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes })) } })));
+    expect(ops.map((op) => op.minutes)).toEqual([7.3, 2.1]);
+  });
+  it.each([0.1, 0])('keeps equal divisions positive and saves when the original time is %s', async (unitRequiredMinutes) => {
+    setup([], { unitRequiredMinutes });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.getByRole('spinbutton', { name: '1工程 1台' })).toHaveValue(0.5);
+    expect(screen.getByRole('spinbutton', { name: '2工程 1台' })).toHaveValue(0.5);
+    const save = screen.getByRole('button', { name: '2工程にする' });
+    await waitFor(() => expect(save).toBeEnabled());
+    fireEvent.click(save);
+    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [0.5, 0.5] })));
+  });
+  it('keeps a small positive ghost above zero and saves it', async () => {
+    setup([], { unitRequiredMinutes: 0.1 });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    const first = screen.getByRole('spinbutton', { name: '1工程 1台' });
+    await waitFor(() => expect(first).toBeEnabled());
+    fireEvent.change(first, { target: { value: '0.05' } });
+    const second = screen.getByRole('spinbutton', { name: '2工程 1台' });
+    fireEvent.change(second, { target: { value: '' } });
+    expect(second).toHaveAttribute('placeholder', '0.5');
+    expect(screen.getByRole('button', { name: '2工程にする' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '2工程にする' }));
+    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [0.05, 0.5] })));
+  });
+  it('leaves unknown original minutes empty and blocks saving', async () => {
+    setup([], { unitRequiredMinutes: null, requiredMinutes: null });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    const first = screen.getByRole('spinbutton', { name: '1工程 1台' });
+    await waitFor(() => expect(first).toBeEnabled());
+    expect(first).toHaveValue(null);
+    expect(first).toHaveAttribute('placeholder', '');
+    expect(screen.getByRole('button', { name: '2工程にする' })).toBeDisabled();
+  });
   it('shows a short local error when an excluded piece still uses a removed boundary', async () => {
     mutation.mockRejectedValueOnce({ isAxiosError: true, response: { data: { errorCode: 'OPERATION_SPLIT_IN_USE' } } });
     setup(); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
@@ -89,7 +135,7 @@ describe('unit operation quantity dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: '2工程にする' }));
     await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [12, 18], expectedMinutes: null, expectedOpIds: [] })));
   });
-  it.each(['0', '-1', '0.2'])('blocks nonpositive or non-half-minute input %s', async (raw) => {
+  it.each(['0', '-1', '100001'])('blocks nonpositive or oversized input %s', async (raw) => {
     setup(); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     const first = screen.getByRole('spinbutton', { name: '1工程 1台' });
     await waitFor(() => expect(first).toBeEnabled()); fireEvent.change(first, { target: { value: raw } });
@@ -108,6 +154,9 @@ it('rounds equal divisions to half minutes and uses the remaining original time 
   expect(unitOpDraft(10, 3, [])).toEqual([3.5, 3.5, 3.5]);
   expect(unitOpGhost(30, [10, null, null])).toBe(10);
   expect(unitOpGhost(10, [15, null])).toBeNull();
+  expect(unitOpGhost(0, [null, null])).toBeNull();
+  expect(unitOpDraft(null, 2, [])).toEqual([null, null]);
+  expect(unitOpGhost(null, [null, null])).toBeNull();
 });
 it('connects shuffled intervals in unit then operation order, and leaves gaps only after each unit', () => {
   const pieces = [2, 1].flatMap((position) => [3, 1, 2].map((opNo) => ({ ...item,

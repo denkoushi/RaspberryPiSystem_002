@@ -207,6 +207,23 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(1);
   });
 
+  it('saves decimal minutes and accepts the saved snapshot on reconfiguration', async () => {
+    installDefinitionWrites(); settings.values = [];
+    await configureSessakuPieceOps(configuration([7.3, 2.1]));
+    const saved = structuredClone(settings.values[0]);
+    expect(saved.perUnitMinutes).toBeCloseTo(9.4);
+    expect(saved.ops?.map((op) => op.minutes)).toEqual([7.3, 2.1]);
+    const payload = configuration([7.3, 2.1]);
+    expect(payload.expectedOpIds).toEqual(saved.ops!.map((op) => op.id));
+    expect(payload.expectedMinutes).toEqual({ perUnitMinutes: saved.perUnitMinutes, setupMinutes: saved.setupMinutes,
+      ops: saved.ops!.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) });
+    // A persisted/read decimal total may differ from the binary floating-point sum.
+    payload.expectedMinutes!.perUnitMinutes = 9.4;
+    await configureSessakuPieceOps(payload);
+    expect(settings.values[0]).toEqual(saved);
+    expect(mocks.transaction).toHaveBeenCalledTimes(2);
+  });
+
   it('preserves existing operation numbers and setup by number, then replaces every existing boundary', async () => {
     installDefinitionWrites();
     settings.values[0].ops = [{ id: 'a', opNo: 3, minutes: 10, setupMinutes: 5 }, { id: 'b', opNo: 7, minutes: 20, setupMinutes: 10 }];

@@ -16,13 +16,14 @@ export const PlanningBoardUnitOpContext = createContext<{
 } | null>(null);
 
 const half = (value: number) => Math.round(value * 2) / 2;
-export function unitOpDraft(total: number, count: number, registered: readonly { minutes: number }[]) {
-  return registered.length === count ? registered.map((op) => op.minutes) : Array.from({ length: count }, () => half(total / count));
+export function unitOpDraft(total: number | null, count: number, registered: readonly { minutes: number }[]) {
+  return registered.length === count ? registered.map((op) => op.minutes) : Array.from({ length: count }, () => total !== null && Number.isFinite(total) ? Math.min(100000, Math.max(0.5, half(total / count))) : null);
 }
-export function unitOpGhost(original: number, values: readonly (number | null)[]) {
+export function unitOpGhost(original: number | null, values: readonly (number | null)[]) {
+  if (original === null) return null;
   const empty = values.filter((value) => value === null).length;
   const remainder = original - values.reduce<number>((sum, value) => sum + (value ?? 0), 0);
-  return empty && Number.isFinite(remainder) && remainder > 0 ? half(remainder / empty) : null;
+  return empty && Number.isFinite(remainder) && remainder > 0 ? Math.min(100000, Math.max(0.5, half(remainder / empty))) : null;
 }
 
 function unitOpFailureMessage(error: unknown) {
@@ -47,14 +48,14 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
   const [registered] = useState(() => [...(saved?.ops ?? [])].sort((a, b) => a.opNo - b.opNo));
   const siblings = context.items.filter((candidate) => candidate.pieceId === item.pieceId);
   const [original] = useState(() => item.opRange
-    ? siblings.reduce((sum, candidate) => sum + (candidate.unitRequiredMinutes ?? 0), 0)
-    : item.unitRequiredMinutes ?? Math.max(0, (item.requiredMinutes ?? 0) - (item.setupMinutes ?? 0)));
+    ? siblings.some((candidate) => candidate.unitRequiredMinutes != null) ? siblings.reduce((sum, candidate) => sum + (candidate.unitRequiredMinutes ?? 0), 0) : null
+    : item.unitRequiredMinutes ?? (item.requiredMinutes == null ? null : Math.max(0, item.requiredMinutes - (item.setupMinutes ?? 0))));
   const total = registered.length ? registered.reduce((sum, op) => sum + op.minutes, 0) : original;
   const [values, setValues] = useState<(number | null)[]>(() => unitOpDraft(total, registered.length || 2, registered));
   const [invalid, setInvalid] = useState<number[]>([]);
   const ghost = unitOpGhost(original, values);
   const resolved = values.map((value) => value ?? ghost);
-  const valid = !invalid.length && resolved.every((value) => value !== null && Number.isFinite(value) && value > 0 && Number.isInteger(value * 2)) &&
+  const valid = !invalid.length && resolved.every((value) => value !== null && Number.isFinite(value) && value > 0) &&
     resolved.reduce<number>((sum, value) => sum + (value ?? 0), 0) <= 100000;
   const hasSplits = Boolean(item.opRange) || context.items.some((candidate) => candidate.parentItemId === item.parentItemId && candidate.opRange);
   const run = async (scope?: 'piece' | 'set') => {
@@ -93,7 +94,7 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
           invalid={invalid.includes(index) || (value === null ? ghost === null || ghost <= 0 : value <= 0)}
           onChange={(next, bad) => {
             setValues((previous) => previous.map((current, i) => i === index ? next : current));
-            setInvalid((previous) => [...previous.filter((i) => i !== index), ...(bad || (next !== null && !Number.isInteger(next * 2)) ? [index] : [])]);
+            setInvalid((previous) => [...previous.filter((i) => i !== index), ...(bad ? [index] : [])]);
           }} />
       </div>)}
       <button type="button" disabled={disabled || !valid || values.length > 6 || !item.effectiveResourceCd} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run()}>{values.length}工程にする</button>
