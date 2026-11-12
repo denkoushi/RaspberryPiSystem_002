@@ -15,7 +15,7 @@ import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
+import { PlanningBoardChainLinks, planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
 import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
@@ -31,6 +31,7 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
@@ -265,30 +266,26 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     if (element) rowElements.current.set(key, element); else rowElements.current.delete(key);
   }, []);
   const barRows = useMemo(() => new Map([...barLocations].map(([id, locations]) => [id, locations.first.rowKey])), [barLocations]);
-  const [focusedPartKey, setFocusedPartKey] = useState<string | null>(null);
+  const sharedChain = useContext(TwoMachineChainContext);
+  const [localPartKey, setFocusedPartKey] = useState<string | null>(null);
+  const focusedPartKey = sharedChain ? sharedChain.partKey : localPartKey;
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const chain = useMemo(() => forward && focusedPartKey ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
     .filter(isNormalGanttBar).filter((bar) => bar.partKey === focusedPartKey)
     .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId)) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
   const { view: chainView, changeView: changeChainView } = usePersistedPlanningBoardChainView();
-  const hasPieceLinks = useMemo(() => {
-    const parents = new Set<string>();
-    return chain.some(({ item }) => {
-      if (item.kind !== 'piece' || !item.parentItemId) return false;
-      if (parents.has(item.parentItemId)) return true;
-      parents.add(item.parentItemId);
-      return false;
-    });
-  }, [chain]);
-  const effectiveChainView = hasPieceLinks ? chainView : 'process';
+  const linkBars = sharedChain?.bars ?? chain;
+  const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
+  const effectiveChainView = sharedChain?.view ?? (hasPieceLinks ? chainView : 'process');
+  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    return new Map(chain.map(({ item }) => {
+    return new Map((sharedChain && chainOwner !== singleResourceCd ? EMPTY_CHAIN : chain).map(({ item }) => {
       const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));
-  }, [chain]);
+  }, [chain, sharedChain, chainOwner, singleResourceCd]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
   const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
@@ -339,13 +336,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
-    onTestBarAnchorChange?.(keepOpen || focusedPartKey !== bar.partKey ? bar.item : null);
-    if (bar.item.kind === 'test') { setFocusedPartKey(null); setCurrentItemId(null); testBarControls?.select(bar.item, true); onChainFocus?.(bar.resource); return; }
+    const next = keepOpen || focusedPartKey !== bar.partKey || (sharedChain && chainOwner !== singleResourceCd) ? bar.partKey : null;
+    onTestBarAnchorChange?.(next ? bar.item : null);
+    if (bar.item.kind === 'test') { sharedChain?.focus(null, bar.resource); setFocusedPartKey(null); setCurrentItemId(null); testBarControls?.select(bar.item, true); onChainFocus?.(bar.resource); return; }
     if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false);
     if (singleResourceCd) onChainFocus?.(singleResourceCd);
-    setFocusedPartKey((current) => keepOpen || current !== bar.partKey ? bar.partKey : null);
+    if (sharedChain) sharedChain.focus(next, singleResourceCd); else setFocusedPartKey(next);
     setCurrentItemId(null);
-  }, [onTestBarAnchorChange, focusedPartKey, testBarControls, onChainFocus, singleResourceCd]);
+  }, [onTestBarAnchorChange, focusedPartKey, testBarControls, onChainFocus, singleResourceCd, sharedChain, chainOwner]);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
     if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
   }, [showChain]);
@@ -528,8 +526,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} disabled={testBarControls.disabled || interaction.pieceDisabled || interaction.disabled}
         onComplete={testBarControls.complete} onRemove={testBarControls.remove} onClose={() => testBarControls.select(selectedTest, false)} /> : <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
-        chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => changeChainView(chainView === 'pieces' ? 'process' : 'pieces') : undefined}
-        onStep={scrollToStep} onClose={() => { setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
+        chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => (sharedChain?.changeView ?? changeChainView)(effectiveChainView === 'pieces' ? 'process' : 'pieces') : undefined}
+        onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
@@ -599,7 +597,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
                 lanes={availableDragLanes}
                 draggedItemId={dragPreview && row.bars.some((bar) => bar.item.itemId === dragPreview.bar.item.itemId) ? dragPreview.bar.item.itemId : null}
                 insertionLeft={dragPreview?.drop && dragPreview.drop.resource === group.resource && (!folded || dragPreview.drop.rowKey === row.key) ? dragPreview.drop.left : null} onDragPreview={setDragPreview}
-                focusedPartKey={showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
+                focusedPartKey={sharedChain ? focusedPartKey : showChain ? focusedPartKey : null} chainPositions={chainPositions} onFocusChain={focusChain}
                 label={folded ? undefined : group.resource ? resourceLabels.get(group.resource)?.node : undefined} />;
             }) : group.rows.map((row) => <PlanningBoardGanttRow window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} start={layout.start} width={width} dayWidth={dayWidth}
               showPieceQuantity={layout.mode !== 'forward'} completionTargetId={completionTargetId} onCompletionTarget={toggleCompletionTarget} onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds}
@@ -611,7 +609,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {forward && !singleGroup && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth}
             onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
-          {showChain && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={chain} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
+          {(sharedChain ? linkBars.length > 0 : showChain) && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={linkBars} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}

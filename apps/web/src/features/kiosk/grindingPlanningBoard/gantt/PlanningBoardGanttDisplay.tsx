@@ -5,11 +5,15 @@ import { PlanningBoardSingleResourcePicker } from '../PlanningBoardSingleResourc
 import { PlanningBoardTestBarDialog } from '../PlanningBoardTestBarDialog';
 import { planningBoardPair, planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
+import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 
+import { planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { isNormalGanttBar, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
+import { PlanningBoardTwoMachineChainLinks, TwoMachineChainContext, type ChainPane } from './PlanningBoardTwoMachineChainLinks';
+import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
@@ -32,8 +36,15 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview,
     lanes: dragLanes, registerLanes: registerDragLanes }), [dragPreview, registerDragLanes]);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
+  const [partKey, setPartKey] = useState<string | null>(null);
+  const { view: chainView, changeView } = usePersistedPlanningBoardChainView();
+  const [panes, setPanes] = useState<ReadonlyMap<string, ChainPane>>(new Map());
+  const register = useCallback((resource: string, pane: ChainPane | null) => {
+    setPanes(current => { const next = new Map(current); if (pane) next.set(resource, pane); else next.delete(resource); return next; });
+  }, []);
+  const focus = useCallback((key: string | null, resource: string | null) => { setPartKey(key); if (resource) setChainOwner(resource); }, []);
   const selectedTestResource = props.testBarControls?.selectedBar?.resourceCd;
-  useEffect(() => { if (selectedTestResource) setChainOwner(selectedTestResource); }, [selectedTestResource, props.testBarControls?.selectedId]);
+  useEffect(() => { if (selectedTestResource) { setChainOwner(selectedTestResource); setPartKey(null); } }, [selectedTestResource, props.testBarControls?.selectedId]);
   const [chainTops, setChainTops] = useState<Record<string, { top: number | null; height: number }>>({});
   const onChainTopChange = useCallback((resource: string, top: number | null, height: number) => {
     setChainTops(current => current[resource]?.top === top && current[resource]?.height === height ? current : { ...current, [resource]: { top, height } });
@@ -57,6 +68,17 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     };
   }), [props.layout, resources]);
   const paneBars = useMemo(() => resourceLayouts.map(planningBoardVisibleBars), [resourceLayouts]);
+  const chainBars = useMemo(() => props.layout.mode === 'forward' && partKey && !props.pinMode && !selectedTestResource
+    ? paneBars.flat().filter(isNormalGanttBar).filter(bar => bar.partKey === partKey)
+      .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId)) : [],
+  [paneBars, partKey, props.layout.mode, props.pinMode, selectedTestResource]);
+  useEffect(() => {
+    if (partKey && !chainBars.some(bar => bar.resource === chainOwner)) { setPartKey(null); setChainOwner(null); }
+  }, [partKey, chainBars, chainOwner]);
+  const hasPieces = useMemo(() => planningBoardHasPieceLinks(chainBars), [chainBars]);
+  const effectiveView = hasPieces ? chainView : 'process';
+  const chainContext = useMemo(() => ({ partKey: chainBars.length ? partKey : null, focus, bars: chainBars, view: effectiveView, changeView, register }),
+    [chainBars, partKey, focus, effectiveView, changeView, register]);
   const seibanColors = useMemo(() => {
     if (!props.colorBySeiban) return undefined;
     const seibanOrder = props.seibanOrder ?? [];
@@ -121,7 +143,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     else next[picker!.index] = resource;
     return next.join('+');
   };
-  return <div ref={setContainer} data-testid="planning-two-machine" className="relative mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
+  return <TwoMachineChainContext.Provider value={chainContext}><div ref={setContainer} data-testid="planning-two-machine" className="relative mt-2 flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-700" style={{ height }}>
     <div ref={setValueSheetContainer} className="relative flex min-h-0 flex-1 flex-col">
       <div ref={setHeadContainer} className="shrink-0" />
       <div className="grid min-h-0 flex-1 grid-rows-2">
@@ -129,7 +151,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
         <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
         <div className="min-h-0 min-w-0 flex-1">
-          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onClearChain={() => setChainOwner(null)} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.filter(isNormalGanttBar).map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} sharedDrag={sharedDrag}
+          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onClearChain={() => { setChainOwner(null); setPartKey(null); }} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={props.resourceMinutesItems ?? props.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.filter(isNormalGanttBar).map(bar => bar.item)))} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} sharedDrag={sharedDrag}
             ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
             valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
             onNavigateBar={(bar) => {
@@ -150,9 +172,10 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         props.onSingleResourceChange?.(nextSelection(resource));
         setPicker(null);
       }} />}
+    <PlanningBoardTwoMachineChainLinks container={container} panes={panes} bars={chainBars} view={effectiveView} />
     {seibanColors && <PlanningBoardSeibanLegend seibanColors={seibanColors} focusedSeiban={focusedSeiban}
       onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
-  </div>;
+  </div></TwoMachineChainContext.Provider>;
 });
 
 export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Props>(function PlanningBoardGanttDisplay(props, ref) {
