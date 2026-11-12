@@ -53,7 +53,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   runsThroughBreaks?: ReadonlySet<string>;
-  onBreaksChange?: (resourceCds: string | readonly string[], runsThroughBreaks: boolean) => void;
+  onBreaksChange?: (resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) => void;
   colorBySeiban?: boolean;
   focusedSeiban: string | null;
   onFocusedSeibanChange: (seiban: string | null) => void;
@@ -66,7 +66,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   resourceNameMap: Record<string, string[]>;
   capacityPending: boolean; capacityError: boolean;
-  onCapacityChange: (resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours) => void;
+  onCapacityChange: (resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
   /** Device-local lane order key, shared with the resource list panes. */
   preferenceScope?: string;
 };

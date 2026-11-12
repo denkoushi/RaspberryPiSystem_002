@@ -109,9 +109,9 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   render(<QueryClientProvider client={new QueryClient()}><Board /></QueryClientProvider>);
   expect(screen.getAllByTestId('planning-single-resource-head')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '8H', exact: true }));
-  expect(values.onCapacityChange).toHaveBeenCalledWith(['021', '022'], 8);
+  expect(values.onCapacityChange).toHaveBeenCalledWith(['021', '022'], 8, false);
   fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
-  expect(onBreaks).toHaveBeenCalledWith(['021', '022'], true);
+  expect(onBreaks).toHaveBeenCalledWith(['021', '022'], true, 8);
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
   expect(onSource.mock.calls).toEqual([[[{ resourceCd: '021', source: 'own' }, { resourceCd: '022', source: 'own' }]]]);
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
@@ -458,7 +458,7 @@ it.each([0, 1])('changes pane %s from its label and writes capacity to both show
   expect(screen.getByRole('region', { name: '023' })).toBeInTheDocument();
   expect(screen.getAllByTestId('planning-single-resource-head')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '8H', exact: true }));
-  expect(values.onCapacityChange).toHaveBeenCalledWith(index === 0 ? ['023', '022'] : ['021', '023'], 8);
+  expect(values.onCapacityChange).toHaveBeenCalledWith(index === 0 ? ['023', '022'] : ['021', '023'], 8, false);
 });
 
 
@@ -510,22 +510,35 @@ it('shows the pair and 2台 on the common machine button while saving settings t
   expect(machine).toHaveTextContent('021+022');
   expect(machine).toHaveTextContent('2台');
   fireEvent.click(screen.getByRole('button', { name: '10H' }));
-  expect(values.onCapacityChange).toHaveBeenCalledWith(['021', '022'], 10);
+  expect(values.onCapacityChange).toHaveBeenCalledWith(['021', '022'], 10, false);
 });
 
-it.each([8, 10, 24] as const)('lines up the lower pane time rows with the upper pane after both machines get %sH', hours => {
-  // 022 が別の稼働時間のままだと下段だけ稼働時間の並びになる。2台へ同じ値を書いた後は上下段の行の区切りが一致する。
+it.each([
+  [8, true], [10, true], [24, true], [8, false], [10, false]
+] as const)('lines up the lower pane time rows with the upper pane after pressing %sH (upper pauses for breaks: %s)', (hours, upperPauses) => {
+  // 022 は別の稼働時間と逆の休憩設定のまま。2台へ同じ時間と休憩を書いた後は上下段の行の区切りが一致する。
   const values = props('forward');
-  const pauses = new Set<string>();
-  const { rerender } = render(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': 24, '022': 10 }} runsThroughBreaks={pauses} />);
+  const before = new Set(upperPauses ? ['022'] : ['021']);
+  const { rerender } = render(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': 24, '022': 10 }} runsThroughBreaks={before} />);
   const labels = (resource: string) => within(screen.getByRole('region', { name: resource })).getAllByText(/^\d+(:\d+)?[–-]\d+(:\d+)?時$/).map(node => node.textContent);
   expect(labels('022')).not.toEqual(labels('021'));
   fireEvent.click(screen.getByRole('button', { name: `${hours}H`, exact: true }));
-  const written = vi.mocked(values.onCapacityChange).mock.calls.at(-1)!;
-  expect(written).toEqual([['021', '022'], hours]);
-  rerender(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': hours, '022': hours }} runsThroughBreaks={pauses} />);
+  const [targets, written, runsThrough] = vi.mocked(values.onCapacityChange).mock.calls.at(-1)!;
+  expect(targets).toEqual(['021', '022']);
+  expect(written).toBe(hours);
+  expect(runsThrough).toBe(!upperPauses);
+  const after = new Set(runsThrough ? ['021', '022'] : []);
+  rerender(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': written, '022': written }} runsThroughBreaks={after} />);
   expect(labels('022').length).toBeGreaterThan(0);
   expect(labels('022')).toEqual(labels('021'));
+});
+
+it('writes the upper hours with the breaks toggle so both machines match', () => {
+  const values = props('forward');
+  const onBreaks = vi.fn();
+  render(<PlanningBoardGanttDisplay {...values} dailyHoursByResource={{ '021': 8, '022': 10 }} runsThroughBreaks={new Set(['022'])} onBreaksChange={onBreaks} />);
+  fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
+  expect(onBreaks).toHaveBeenCalledWith(['021', '022'], true, 8);
 });
 
 it('toggles the pane picker and focuses the selected enabled machine or the first enabled machine', () => {

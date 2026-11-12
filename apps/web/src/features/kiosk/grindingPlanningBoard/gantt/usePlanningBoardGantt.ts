@@ -90,7 +90,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
   // 2台表示では上下段の機械を同じ値にそろえるため、資源CDを複数受け取って順に書く。
-  const writeCapacity = useCallback((resourceCds: string | readonly string[], change: { dailyHours: GrindingPlanningBoardResourceDailyHours } | { runsThroughBreaks: boolean }) => {
+  const writeCapacity = useCallback((resourceCds: string | readonly string[], change: { dailyHours?: GrindingPlanningBoardResourceDailyHours; runsThroughBreaks?: boolean }) => {
     if (!gate.attempt() || isPending) return;
     const targets = typeof resourceCds === 'string' ? [resourceCds] : [...new Set(resourceCds)];
     if (targets.length === 0) return;
@@ -100,10 +100,11 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     void gate.run(writeAll).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
-  const changeCapacity = useCallback((resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours) =>
-    writeCapacity(resourceCds, { dailyHours }), [writeCapacity]);
-  const changeBreaks = useCallback((resourceCds: string | readonly string[], runsThroughBreaks: boolean) =>
-    writeCapacity(resourceCds, { runsThroughBreaks }), [writeCapacity]);
+  // 2台表示では押していない側の値も渡し、上下段の行の区切りを決める2つの値をまとめてそろえる。
+  const changeCapacity = useCallback((resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) =>
+    writeCapacity(resourceCds, runsThroughBreaks === undefined ? { dailyHours } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
+  const changeBreaks = useCallback((resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) =>
+    writeCapacity(resourceCds, dailyHours === undefined ? { runsThroughBreaks } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
   const changeUnitSplit = useCallback((resourceCd: string, unitSplitEnabled: boolean) => {
     if (!gate.attempt() || isPending) return;
     if (!offlineEnabled) capacityMutation.mutate({ resourceCd, unitSplitEnabled });
