@@ -28,6 +28,7 @@ type Props = {
   pinMode: boolean;
   togglePin: (item: GrindingPlanningBoardItem) => void;
   selectedItemIds: ReadonlySet<string>;
+  clearSelection: () => void;
   toggleItem: (item: GrindingPlanningBoardItem, selected: boolean) => void;
   toggleCompletion: (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete') => Promise<void>;
   completionPendingItemIds: ReadonlySet<string>;
@@ -70,7 +71,7 @@ type Props = {
 
 export function PlanningBoardPageView({
   data, ganttEnabled, focusedSeiban, setFocusedSeiban, colorBySeiban, registeredFseibans, gantt, ganttLayout,
-  view, orderPreview, category, resourcesQuery, pinMode, togglePin, selectedItemIds, toggleItem,
+  view, orderPreview, category, resourcesQuery, pinMode, togglePin, selectedItemIds, clearSelection, toggleItem,
   toggleCompletion, completionPendingItemIds, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
   canMoveResource, interactionLocked, writeQueue, allocation, writeBlocked, piecesWriting, rankMutationReady,
   focusedFseiban, focusItems, machineNames, returnFromFocus, toggleFocusAll, openEditorForItem,
@@ -106,6 +107,7 @@ export function PlanningBoardPageView({
           onArrivalChange={onArrivalChange} onFirstProcessArrivalChange={onFirstProcessArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && (Boolean(gantt.singleResourceCd) || view === 'resource') && pinMode} onTogglePin={togglePin}
           selectedItemIds={gantt.testBarControls?.selectedId ? new Set([...selectedItemIds, gantt.testBarControls.selectedId]) : selectedItemIds}
+          onClearSelection={clearSelection}
           onToggleItem={(item, selected) => { gantt.testBarControls?.select(item, selected); if (item.kind !== 'test') toggleItem(item, selected); }}
           onCompleteToggle={(item, intent) => { if (item.kind === 'test') gantt.testBarControls?.complete(item, intent); else void toggleCompletion(item, intent); }} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag}
           onResourceReorder={(item, target, placement) => { if (item.kind === 'test' || target.kind === 'test' || gantt.testBarControls?.bars.some((bar) => !bar.isCompleted && bar.resourceCd === (item.effectiveResourceCd ?? item.originalResourceCd))) gantt.testBarControls?.reorder?.(item, target, placement); else reorderResourceByDrag(item, target, placement); }}

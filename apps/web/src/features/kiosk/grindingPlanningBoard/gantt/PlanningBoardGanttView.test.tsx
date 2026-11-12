@@ -713,6 +713,90 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  function BlankBoard({ clear, mode = 'forward', pinMode = false }: { clear: () => void; mode?: 'forward' | 'backward'; pinMode?: boolean }) {
+    const items = [item({ requiredMinutes: 60 }), item({ itemId: 'b', processOrder: '20', requiredMinutes: 60 })];
+    const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+    return <PlanningBoardGanttView {...(mode === 'forward' ? forwardProps(items) : props(items))} singleResourceCd="305"
+      pinMode={pinMode} selectedItemIds={selected} onClearSelection={() => { clear(); setSelected(new Set()); }}
+      onToggleItem={(entry, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(entry.itemId); else next.delete(entry.itemId); return next; })} />;
+  }
+  const blankTap = (target: HTMLElement, delta = 0) => {
+    fireEvent.pointerDown(target, { button: 0, clientX: 100, clientY: 20 });
+    fireEvent.pointerUp(target, { button: 0, clientX: 100 + delta, clientY: 20 });
+    fireEvent.click(target);
+  };
+  it.each(['forward', 'backward'] as const)('clears selected and sibling outlines on blank taps (%s)', mode => {
+    const clear = vi.fn();
+    render(<BlankBoard clear={clear} mode={mode} />);
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    const visual = (id: string) => { const bar = screen.getAllByTestId(`planning-gantt-bar-${id}`)[0]!; return mode === 'backward' ? bar.firstElementChild! : bar; };
+    expect(visual('a')).toHaveClass('outline-emerald-300');
+    expect(visual('b')).toHaveClass('outline-white');
+    if (mode === 'forward') expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    blankTap(screen.getByLabelText('ガントの日付と工程'), 7);
+    expect(clear).toHaveBeenCalledOnce();
+    expect(visual('a')).not.toHaveClass('outline-emerald-300');
+    expect(visual('b')).not.toHaveClass('outline-white');
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(clear).toHaveBeenCalledOnce();
+  });
+  it.each(['distance', 'return', 'cancel', 'middle', 'button', 'strip', 'bar-start', 'bar-end', 'no-down'])(
+    'does not clear on %s gestures', reason => {
+      const clear = vi.fn();
+      render(<BlankBoard clear={clear} mode={reason === 'button' ? 'backward' : 'forward'} />);
+      const bar = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
+      fireEvent.click(bar);
+      const viewport = screen.getByLabelText('ガントの日付と工程');
+      const target = reason === 'button' ? screen.getByRole('button', { name: '2時間戻る' })
+        : reason === 'strip' ? screen.getByTestId('planning-gantt-chain-strip') : viewport;
+      if (reason !== 'no-down') fireEvent.pointerDown(reason === 'bar-start' ? bar : target, { button: reason === 'middle' ? 1 : 0, clientX: 100, clientY: 20 });
+      if (reason === 'return') fireEvent.pointerMove(target, { clientX: 108, clientY: 20 });
+      if (reason === 'cancel') fireEvent.pointerCancel(target);
+      fireEvent.pointerUp(reason === 'bar-end' ? bar : target, { button: reason === 'middle' ? 1 : 0, clientX: reason === 'distance' ? 108 : 100, clientY: 20 });
+      expect(clear).not.toHaveBeenCalled();
+      if (reason !== 'button') expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    }
+  );
+  it('deselects a test bar and closes its strip on blank taps', () => {
+    const test: import('@raspi-system/shared-types').GrindingPlanningBoardTestBar = {
+      kind: 'test', itemId: 'test:blank', itemRevision: 'r1', version: 1, sequence: 1,
+      name: 'テスト1', resourceCd: '305', minutes: 30, alternateRank: 1, isCompleted: false, completedAt: null, deletedAt: null
+    };
+    const select = vi.fn(); const anchor = vi.fn();
+    function Board() {
+      const [selected, setSelected] = useState(true);
+      return <PlanningBoardGanttView {...forwardProps()} singleResourceCd="305" onTestBarAnchorChange={anchor}
+        testBarControls={{ bars: [test], nextSequence: 2, selectedId: selected ? test.itemId : null, selectedBar: selected ? test : null,
+          select: (item, checked) => { select(item, checked); setSelected(checked); }, disabled: false,
+          create: vi.fn(), remove: vi.fn(), complete: vi.fn(), accept: vi.fn(), undo: vi.fn() }} />;
+    }
+    render(<Board />);
+    expect(screen.getByRole('button', { name: '消す' })).toBeInTheDocument();
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(select).toHaveBeenCalledExactlyOnceWith(test, false);
+    expect(anchor).toHaveBeenCalledExactlyOnceWith(null);
+    expect(screen.queryByRole('button', { name: '消す' })).not.toBeInTheDocument();
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(anchor).toHaveBeenCalledOnce();
+  });
+  it('does not clear while pinning', () => {
+    const clear = vi.fn();
+    render(<PlanningBoardGanttView {...forwardProps()} selectedItemIds={new Set(['a'])} pinMode onClearSelection={clear} />);
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(clear).not.toHaveBeenCalled();
+  });
+  it('only closes an open forward queue on the first blank tap', () => {
+    const clear = vi.fn();
+    render(<PlanningBoardGanttView {...forwardProps()} selectedItemIds={new Set(['a'])} onClearSelection={clear} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
+    expect(document.querySelector('[data-forward-queue]')).not.toBeNull();
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(document.querySelector('[data-forward-queue]')).toBeNull();
+    expect(clear).not.toHaveBeenCalled();
+    blankTap(screen.getByLabelText('ガントの日付と工程'));
+    expect(clear).toHaveBeenCalledOnce();
+  });
   it('keeps chain navigation on the current machine during an order preview without queuing a jump', () => {
     const values = forwardProps([item({ requiredMinutes: 60 }), item({ itemId: 'b', originalResourceCd: '306', processOrder: '20', requiredMinutes: 60 })]);
     const change = vi.fn(); const navigate = vi.fn();
