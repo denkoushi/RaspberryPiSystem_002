@@ -93,7 +93,7 @@ export async function createPartMeasurementSheet(
     scannedBarcodeRaw?: string | null;
     scheduleRowId?: string;
     allowAlternateResourceTemplate?: boolean;
-    sessionId?: string | null;
+    sessionId?: string;
   },
   clientKey?: string
 ): Promise<PartMeasurementSheetWithSession> {
@@ -147,10 +147,10 @@ export async function finalizePartMeasurementSheet(
 export async function patchInspectionDrawingEvaluationSheet(
   sheetId: string,
   body: {
-    quantity?: number | null;
+    quantity?: 1;
     employeeTagUid?: string | null;
     clearEmployee?: boolean;
-    results?: Array<{ pieceIndex: number; templateItemId: string; value?: string | number | null }>;
+    results?: Array<{ pieceIndex: 0; templateItemId: string; value?: string | number | null }>;
   },
   clientKey?: string
 ): Promise<PartMeasurementSheetWithSession> {
@@ -1017,6 +1017,10 @@ export async function reviseKioskInspectionDrawingTemplate(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
@@ -1057,6 +1061,10 @@ export async function createKioskInspectionDrawingTemplateGroup(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
@@ -1092,6 +1100,10 @@ export async function reviseKioskInspectionDrawingTemplateGroup(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
@@ -1354,6 +1366,10 @@ export async function createPartMeasurementTemplate(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
@@ -1386,6 +1402,10 @@ export async function createInspectionDrawingEvaluationTemplate(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
@@ -1427,6 +1447,7 @@ export async function revisePartMeasurementTemplate(
   templateId: string,
   body: {
     name: string;
+    detachFromSiblingGroup?: boolean;
     visualTemplateId?: string | null;
     candidateFhinmei?: string | null;
     selfInspectionMode?: 'full' | 'single' | 'first_last' | 'fixed_count' | 'sample';
@@ -1443,6 +1464,10 @@ export async function revisePartMeasurementTemplate(
       decimalPlaces?: number;
       markerXRatio?: number | null;
       markerYRatio?: number | null;
+      calloutTipXRatio?: number | null;
+      calloutTipYRatio?: number | null;
+      depthMode?: 'measured' | 'through';
+      valueKind?: 'numeric' | 'judgement';
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
