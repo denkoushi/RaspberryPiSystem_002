@@ -93,7 +93,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails & { loadGenerationToken: string }> {
-  const [leaderboardGeneration, state, overrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, loadOverrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -104,6 +104,14 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
+    prisma.$queryRaw<Array<{ fingerprint: string }>>(Prisma.sql`
+      SELECT md5(COALESCE(string_agg(
+        jsonb_build_array("itemKey", "overrideResourceCd")::text, ',' ORDER BY "itemKey" COLLATE "C"
+      ), '')) AS "fingerprint"
+      FROM "ProductionScheduleGrindingPlanningBoardOverride"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey}
+        AND ("itemKey" LIKE 'row:%' OR "itemKey" LIKE 'piece:%' OR "itemKey" LIKE 'pieceops:%')
+    `),
     prisma.productionScheduleResourceMaster.aggregate({
       _count: { _all: true },
       _max: { updatedAt: true }
@@ -152,8 +160,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
     // Only inputs to the persisted load aggregate, before category filtering.
     loadGenerationToken: JSON.stringify({
       leaderboardGeneration,
-      overrideCount: overrides._count._all,
-      overrideUpdatedAt: overrides._max.updatedAt?.toISOString() ?? '',
+      overrideResourceFingerprint: loadOverrides[0]?.fingerprint ?? '',
       pieceSetFingerprint: pieces,
       minuteSourceCount: minuteSources._count._all,
       minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
