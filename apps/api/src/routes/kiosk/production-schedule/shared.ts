@@ -12,15 +12,24 @@ export const ORDER_NUMBER_MAX = 10;
 export const PROCESSING_TYPES = ['塗装', 'カニゼン', 'LSLH', 'その他01', 'その他02'] as const;
 export const PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES = ['all', 'complete', 'incomplete'] as const;
 
-export const productionScheduleQuerySchema = z.object({
+const productionScheduleListFields = {
   dueSource: z.enum(['excel', 'scaw']).default('excel'),
-  productNo: z.string().min(1).max(100).optional(),
-  q: z.string().min(1).max(200).optional(),
-  productNos: z.string().min(1).max(4000).optional(),
-  resourceCds: z.string().min(1).max(400).optional(),
-  resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
-  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
-  machineName: z.string().min(1).max(200).optional(),
+  search: {
+    productNo: z.string().min(1).max(100).optional(),
+    q: z.string().min(1).max(200).optional(),
+    productNos: z.string().min(1).max(4000).optional(),
+    resourceCds: z.string().min(1).max(400).optional(),
+    resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
+    resourceCategory: z.enum(['grinding', 'cutting']).optional(),
+    machineName: z.string().min(1).max(200).optional()
+  },
+  completionFilter: z.enum(PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES).optional().default('all'),
+  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+};
+
+export const productionScheduleQuerySchema = z.object({
+  dueSource: productionScheduleListFields.dueSource,
+  ...productionScheduleListFields.search,
   hasNoteOnly: z
     .string()
     .optional()
@@ -35,9 +44,9 @@ export const productionScheduleQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
-  completionFilter: z.enum(PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES).optional().default('all'),
+  completionFilter: productionScheduleListFields.completionFilter,
   /** v2: Mac の一覧/usage 取得時に必須（サーバ側で検証） */
-  targetDeviceScopeKey: z.string().min(1).max(200).optional(),
+  targetDeviceScopeKey: productionScheduleListFields.targetDeviceScopeKey,
   /**
    * `leaderboard`: キオスク順位ボード向けに actual-hours 解決を省略しレイテンシを抑える。
    * 取得は「当該スコープの手動割当行」を優先し、`resourceCds` が1件の場合は同一製番の他資源行を含めない（カード単位）。複数資源指定時のみ従来の製番展開を行う。
@@ -60,7 +69,7 @@ export const productionScheduleLeaderboardPhasedQuerySchema = productionSchedule
 
 /** 順位ボード shell 続き取得の共通フィールド（単一資源 continue / 集約 continue で再利用） */
 export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.object({
-  dueSource: z.enum(['excel', 'scaw']).default('excel'),
+  dueSource: productionScheduleListFields.dueSource,
   /** shell 応答で返却された snapshot。付与時は continue が軽量経路になる。 */
   snapshotId: z.string().guid().optional(),
   /**
@@ -71,18 +80,12 @@ export const productionScheduleLeaderboardShellContinuationFieldsSchema = z.obje
   /** 移行期間のみ: snapshot が無い、または snapshot+cursor より古いクライアント向け（中身は親 UUID） */
   excludeRowIds: z.array(z.string().guid()).max(900).optional(),
   pageSize: z.coerce.number().int().min(1).max(160).optional(),
-  productNo: z.string().min(1).max(100).optional(),
-  q: z.string().min(1).max(200).optional(),
-  productNos: z.string().min(1).max(4000).optional(),
-  resourceCds: z.string().min(1).max(400).optional(),
-  resourceAssignedOnlyCds: z.string().min(1).max(400).optional(),
-  resourceCategory: z.enum(['grinding', 'cutting']).optional(),
-  machineName: z.string().min(1).max(200).optional(),
+  ...productionScheduleListFields.search,
   hasNoteOnly: z.boolean().optional(),
   hasDueDateOnly: z.boolean().optional(),
   allowResourceOnly: z.boolean().optional(),
-  completionFilter: z.enum(PRODUCTION_SCHEDULE_COMPLETION_FILTER_VALUES).optional().default('all'),
-  targetDeviceScopeKey: z.string().min(1).max(200).optional()
+  completionFilter: productionScheduleListFields.completionFilter,
+  targetDeviceScopeKey: productionScheduleListFields.targetDeviceScopeKey
 });
 
 /** 順位ボード shell 続き取得（POST・旧 excludeRowIds 全送は後方互換のみ） */
