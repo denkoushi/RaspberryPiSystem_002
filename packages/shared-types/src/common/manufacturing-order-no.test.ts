@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
   isManufacturingOrderNo,
@@ -70,5 +71,12 @@ describe.each([
 
   it.each([null, undefined, 2178005])('rejects non-string schema input %j', (value) => {
     expect(() => schema.parse(value)).toThrow();
+  });
+});
+
+describe('manufacturingOrderNoSchema issues', () => {
+  const legacy = z.string().length(10).regex(/^\d{10}$/);
+  it.each(['', '123', '12345678901', '123456789a', '１２３４５６７８９０', ' 1234567890'])('matches the previous inline schema for %j', (value) => {
+    expect(manufacturingOrderNoSchema.safeParse(value).error?.issues).toEqual(legacy.safeParse(value).error?.issues);
   });
 });

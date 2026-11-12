@@ -2,22 +2,29 @@ import { z } from 'zod';
 
 /** 製造オーダー番号（ProductNo）の桁数。 */
 export const MANUFACTURING_ORDER_DIGIT_LENGTH = 10;
-export const MANUFACTURING_ORDER_NO_PATTERN = /^\d{10}$/;
+export const MANUFACTURING_ORDER_NO_PATTERN = new RegExp(`^\\d{${MANUFACTURING_ORDER_DIGIT_LENGTH}}$`);
 
 export function isManufacturingOrderNo(value: string): boolean {
   return MANUFACTURING_ORDER_NO_PATTERN.test(value);
 }
 
-export const manufacturingOrderNoSchema = z.string().regex(MANUFACTURING_ORDER_NO_PATTERN);
+export const manufacturingOrderNoSchema = z
+  .string()
+  .length(MANUFACTURING_ORDER_DIGIT_LENGTH)
+  .regex(MANUFACTURING_ORDER_NO_PATTERN);
 
+/** 購買の注文番号の桁数。 */
 export const PURCHASE_ORDER_NO_DIGIT_LENGTH = 10;
-export const PURCHASE_ORDER_NO_PATTERN = /^\d{10}$/;
+export const PURCHASE_ORDER_NO_PATTERN = new RegExp(`^\\d{${PURCHASE_ORDER_NO_DIGIT_LENGTH}}$`);
 
 export function isPurchaseOrderNo(value: string): boolean {
   return PURCHASE_ORDER_NO_PATTERN.test(value);
 }
 
-export const purchaseOrderNoSchema = z.string().regex(PURCHASE_ORDER_NO_PATTERN);
+export const purchaseOrderNoSchema = z
+  .string()
+  .length(PURCHASE_ORDER_NO_DIGIT_LENGTH)
+  .regex(PURCHASE_ORDER_NO_PATTERN);
 
 /**
  * 移動票スキャン値を製造order番号へ正規化する。
