@@ -1,7 +1,7 @@
 import { resolveGrindingPlanningBoardDueDate } from '../sortGrindingPlanningBoardItems';
 
 import { planningBoardLaneOrder } from './planningBoardAutoOrder';
-import { ganttRequiredMinutes, isUnitPiece, unitSetupMinutesByResource } from './planningBoardUnitSegments';
+import { ganttRequiredMinutes, isUnitPiece, planningBoardUnitSetupMinutes, unitSetupMinutesByResource } from './planningBoardUnitSegments';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -37,6 +37,10 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
       due(a[0]!).localeCompare(due(b[0]!)) || Math.min(...a.map(item => rank.get(item.itemId)!)) - Math.min(...b.map(item => rank.get(item.itemId)!)));
   };
   const setup = unitSetupMinutesByResource(options.resourceMinutes);
+  const partSetup = (items: GrindingPlanningBoardItem[], resource: string) => items.reduce((sum, item, index) => {
+    const previous = items[index - 1];
+    return sum + planningBoardUnitSetupMinutes(item, previous?.fhincd, previous?.pieceId, setup.get(resource));
+  }, 0);
   const minutes = (items: GrindingPlanningBoardItem[]) => items.reduce((sum, item) => sum + (ganttRequiredMinutes(item) ?? 0), 0);
   const assigned = lanes.map(lane => lane.filter(movable));
   const resourceChanges: UnitOrderResourceChange[] = [];
@@ -45,8 +49,10 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
       constraints.canMoveResource(item, resources[0] === origin.get(item.itemId) ? resources[1]! : resources[0]!);
     const loads = lanes.map((lane, index) => {
       let previousPart: string | undefined;
+      let previousPieceId: string | undefined;
       return lane.reduce((sum, item) => {
-        const setupMinutes = isUnitPiece(item) && previousPart !== item.fhincd ? setup.get(resources[index]!)?.get(item.fhincd) ?? 0 : 0;
+        const setupMinutes = planningBoardUnitSetupMinutes(item, previousPart, previousPieceId, setup.get(resources[index]!));
+        previousPieceId = item.kind === 'piece' ? item.pieceId : undefined;
         previousPart = item.kind === 'test' ? undefined : item.fhincd;
         return sum + (transferable(item) ? 0 : (ganttRequiredMinutes(item) ?? 0) + setupMinutes);
       }, 0);
@@ -57,7 +63,7 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
     const remaining = lanes.map(lane => lane.filter(transferable).length);
     const candidates = groups(lanes.flat().filter(transferable));
     // With machine-specific setup times, use the larger setup for deterministic part priority.
-    const total = (part: GrindingPlanningBoardItem[]) => minutes(part) + Math.max(...resources.map(resource => setup.get(resource)?.get(part[0]!.fhincd) ?? 0));
+    const total = (part: GrindingPlanningBoardItem[]) => minutes(part) + Math.max(...resources.map(resource => partSetup(part, resource)));
     candidates.sort((a, b) => due(a[0]!).localeCompare(due(b[0]!)) || total(b) - total(a));
     for (const part of candidates) {
       part.forEach(item => {
@@ -76,7 +82,7 @@ export function planningBoardUnitOrder(options: GanttLayoutOptions, resources: r
         if (resources[index] !== origin.get(item.itemId)) resourceChanges.push({ itemId: item.itemId, resourceCd: resources[index]!, previousResourceCd: origin.get(item.itemId)! });
       }
       for (const index of new Set(part.map(item => target ?? resources.indexOf(origin.get(item.itemId)!)))) {
-        loads[index]! += setup.get(resources[index]!)?.get(part[0]!.fhincd) ?? 0;
+        loads[index]! += partSetup(part.filter(item => (target ?? resources.indexOf(origin.get(item.itemId)!)) === index), resources[index]!);
       }
     }
   }

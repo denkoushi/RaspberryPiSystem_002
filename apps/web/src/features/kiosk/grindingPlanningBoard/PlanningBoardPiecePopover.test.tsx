@@ -1,9 +1,15 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PlanningBoardUnitOpContext } from './gantt/PlanningBoardUnitOpEditor';
 import { PieceOperationBlockedError, PlanningBoardPiecePopover, PlanningBoardPiecesContext, usePlanningBoardPieceActions, usePlanningBoardPieceFocus } from './PlanningBoardPiecePopover';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+
+const clearOps = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+vi.mock('../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+  useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: clearOps, isPending: false })
+}));
 
 const row = { itemId: 'row:a', kind: 'row', fhinmei: '部品A', originalResourceCd: 'CUT-1', plannedQuantity: 5, isCompleted: false } as GrindingPlanningBoardItem;
 const piece = (id: string, quantity: number, extra: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
@@ -21,6 +27,39 @@ function setup(item = row, items = [item], selectedItemIds = new Set(items.map((
   return { ...view, value, onSplit, onMerge };
 }
 describe('PlanningBoardPiecePopover', () => {
+  it.each(['CUT-1', 'CUT-2'])('allows operation configuration only on the leading machine (later=%s)', (resourceCd) => {
+    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', unitRequiredMinutes: 10, opRange: { fromOpNo: 1, toOpNo: 1 } });
+    const later = { ...head, itemId: 'pieceops:unit:2', effectiveResourceCd: resourceCd, opRange: { fromOpNo: 2, toOpNo: 2 },
+      ops: [{ opNo: 2, minutes: 20 }] };
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}>
+      <PlanningBoardUnitOpContext.Provider value={{ items: [head, later], loading: false }}>
+        <PlanningBoardPiecePopover item={later} variant="gantt" />
+      </PlanningBoardUnitOpContext.Provider>
+    </PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '工程の数' }) !== null).toBe(resourceCd === 'CUT-1');
+    expect(screen.queryByRole('button', { name: /工程にする$/ }) !== null).toBe(resourceCd === 'CUT-1');
+    expect(screen.queryAllByRole('spinbutton', { name: /工程 1台/ }).length > 0).toBe(resourceCd === 'CUT-1');
+    expect(screen.getByRole('button', { name: 'まとめる' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '工程2を完了にする' })).toBeInTheDocument();
+  });
+  it.each([
+    { manualIsCompleted: true, isCompleted: true, unitRequiredMinutes: 30, visible: false },
+    { manualIsCompleted: false, isCompleted: false, unitRequiredMinutes: undefined, visible: false },
+    { manualIsCompleted: false, isCompleted: true, unitRequiredMinutes: 30, visible: true }
+  ])('shows configuration according to whole-piece completion and unit split eligibility (%j)', (state) => {
+    const item = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART',
+      ops: [{ opNo: 1, minutes: 10 }, { opNo: 2, minutes: 20 }], completedOpNos: [1], ...state });
+    const h = setup(item);
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={item} variant="gantt" /></PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '工程の数' }) !== null).toBe(state.visible);
+    expect(screen.queryByRole('button', { name: /工程にする$/ }) !== null).toBe(state.visible);
+    expect(screen.getByRole('button', { name: '工程1を未完了にする' })).toBeInTheDocument();
+  });
   it.each([false, true])('keeps the value and parent index stable across unrelated renders with 1000 rows (pieces=%s)', (withPieces) => {
     const readParent = vi.fn(() => withPieces ? 'parent' : undefined);
     const items = Array.from({ length: 1000 }, (_, index) => ({ ...row, itemId: `item:${index}`,
@@ -619,6 +658,8 @@ describe('piece operation boundaries', () => {
     expect(scissors.map(button => button.getAttribute('aria-label'))).toEqual(suffix ? ['工程30の前で分ける'] : ['工程20の前で分ける', '工程30の前で分ける']);
     for (const button of scissors) {
       expect(button).toHaveTextContent('✂');
+      expect(button).toHaveClass('h-8');
+      expect(button).not.toHaveClass('min-h-11');
       expect(button.previousElementSibling).toHaveAttribute('aria-pressed');
       expect(button.nextElementSibling).toHaveAttribute('aria-pressed');
     }
@@ -629,19 +670,19 @@ describe('piece operation boundaries', () => {
     setup(unit(extra)); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     expect(screen.queryByRole('button', { name: /の前で分ける/ })).not.toBeInTheDocument();
   });
-  it.each([false, true])('shows operation merge only for suffixes and hides quantity controls (suffix=%s)', async suffix => {
+  it.each([false, true])('clears all operation boundaries from either a head or suffix and hides quantity controls (suffix=%s)', async suffix => {
     const item = unit({ itemId: suffix ? 'pieceops:a:20' : 'piece:a', plannedQuantity: 5, opRange: { fromOpNo: suffix ? 20 : 10, toOpNo: 30 } });
     const h = setup(item, [item, piece('b', 2)]); const onOpMerge = vi.fn().mockResolvedValue(undefined); h.value.onOpMerge = onOpMerge;
     expect(h.value.selectedItemsByParent.size).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     expect(screen.queryByRole('group', { name: '分け数' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /片目の数量を/ })).not.toBeInTheDocument();
-    if (!suffix) expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
-    else {
-      const merge = screen.getByRole('button', { name: 'まとめる' });
-      await waitFor(() => expect(merge).toBeEnabled()); fireEvent.click(merge);
-      await waitFor(() => expect(onOpMerge).toHaveBeenCalledExactlyOnceWith(item));
-      expect(h.onMerge).not.toHaveBeenCalled();
-    }
+    clearOps.mockClear();
+    const merge = screen.getByRole('button', { name: 'まとめる' });
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
+    await waitFor(() => expect(merge).toBeEnabled()); fireEvent.click(merge);
+    await waitFor(() => expect(clearOps).toHaveBeenCalledExactlyOnceWith({ itemId: item.itemId,
+      itemRevision: item.itemRevision, expectedPieceSetVersion: item.pieceSetVersion, scope: 'piece' }));
+    expect(onOpMerge).not.toHaveBeenCalled(); expect(h.onMerge).not.toHaveBeenCalled();
   });
 });

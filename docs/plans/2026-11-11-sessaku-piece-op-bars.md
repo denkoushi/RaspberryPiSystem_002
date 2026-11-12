@@ -5,6 +5,8 @@
 Split a quantity-one cutting piece into independently placed operation intervals, then merge an interval into its predecessor. This stage delivers DB, API and shared contracts only; Web controls and connector rendering follow separately. A piece is one lot subdivision; an operation is a numbered ResourcePartOpMinutes entry; projection converts database records into board bars. Related history: [unit gantt](2026-11-10-sessaku-unit-gantt-pr2b.md) and [unit pieces](2026-11-09-sessaku-unit-split-ops-pr1.md).
 
 ## Progress
+- [x] (2026-11-12) Configure excludes completed pieces from disappearing-boundary conflicts and deletes their obsolete same-resource splits/overrides before saving; reconcile preserves completion and remaining boundaries.
+- [x] (2026-11-12) Equal division preserves total minutes with a final remainder or unrounded fallback; registered snapshots remain unchanged. Focused API 42 / Web 21 tests passed; added DB regression skipped without a dedicated test DB.
 
 - [x] (2026-11-11) Read rules and existing transaction, projection, setup and override paths; initial worktree clean.
 - [x] (2026-11-11) Add schema, additive migration, shared contracts and operation boundary projection.
@@ -80,3 +82,15 @@ The piece dialog inserts a 32px dashed scissors button between a unit bar's sort
 The API lint-only extraction moves operation mutation logic to sessaku-pieces/piece-op-splits.ts and interval load SQL/calculation to grinding-planning-board-op-bar-load.ts. Transaction, lock and response behavior is preserved; write.ts only folds the added item-ID loop. The original staged first-stage changes remain intact.
 
 Validation: API focused ESLint (the three existing files and two extracted files), API build typecheck, and the requested three API test files passed (79 cases). Web typecheck and six directly related Web test files passed (653 unique cases; 18 added for this stage). Tests use temporary configs with an empty envDir and a mocked dotenv loader for API, avoiding secret-file reads; temporary configs are removed after validation. Full suites, Web lint, browser checks, database integration, commit, push, PR, merge and deploy are outside this stage. Japanese delivery report: /tmp/sessaku-piece-op-bars-stage2-report-ja.md.
+
+## Unit Configuration Follow-up (2026-11-12, PR 2779)
+
+Configure now accepts operation completion evidence. Retained operation numbers keep their records; reconciliation runs after boundary replacement so obsolete source intervals cannot retain removed evidence or close a unit prematurely. Fully covered remaining operations close the unit through the existing reconciliation. Completed interval replacements copy placement using the existing operation-split pattern. Target selection, source-resource assignment and the outside-target boundary guard are unchanged.
+
+Setup uses the saved total, or the minimum-position unit head when unregistered. Equal counts preserve each operation setup; changed counts put the conserved total on the first operation. The dialog uses 300px width, 32px scissors and a 1px slate-700 divider. Both Gantt modes preserve the rounded head and square suffixes; no helper text was added.
+
+Validation: API build typecheck and Web `tsc -p tsconfig.json --noEmit` passed. The focused API service file passed 42 cases; the four requested Web files passed 423 cases across focused runs. Added dedicated-DB cases cover other-lot splits/overrides, OPERATION_SPLIT_IN_USE rollback and completion identity/removal/whole-unit closure. TEST_DATABASE_URL is absent: all 293 integration cases were collected and skipped, including the three additions. Temporary Vitest configurations outside the repository disable dotenv loading and use an empty envDir. No commit, push, merge or deploy was performed.
+
+## Standard Time Follow-up (2026-11-12, PR 2779)
+
+Part values are the machine-by-part standard time. Saving one (from the unit dialog or the part-value screen) also turns on the machine's own-value setting in the same transaction, so every lot of that part on that machine shows the saved time; boundaries are still created only for the pressed lot. Clearing a value leaves the setting; the manual toggle remains. Configure from a later operation bar whose machine differs from the head bar returns 409, and the dialog offers only the merge actions there.

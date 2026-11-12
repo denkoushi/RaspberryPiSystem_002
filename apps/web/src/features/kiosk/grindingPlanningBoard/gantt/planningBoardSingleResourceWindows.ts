@@ -69,7 +69,11 @@ export function clipSingleResourceBar(bar: GanttBar, window: SingleResourceWindo
   }));
   const segments = clip(bar.unknown && bar.start != null ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? []);
   if (!segments.length) return null;
-  return { ...bar, start: segments[0]!.start, end: segments[segments.length - 1]!.end, segments,
+  return { ...bar,
+    ...(bar.item.kind === 'piece' && bar.item.opRange ? {
+      opSplitLast: bar.opSplitLast !== false && bar.end! <= window.end + EPSILON,
+      opSplitContinuation: bar.start! < window.start - EPSILON
+    } : {}), start: segments[0]!.start, end: segments[segments.length - 1]!.end, segments,
     ...(bar.setupSegments ? { setupSegments: clip(bar.setupSegments) } : {}),
     ...(bar.opSegments ? { opSegments: clip(bar.opSegments) } : {}) };
 }

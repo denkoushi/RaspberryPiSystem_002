@@ -11,12 +11,16 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, en
 import { STRING_TRIM_CHARACTERS } from '../grinding-planning-board/shared.js';
 import { stateOrder } from '../grinding-planning-board/state.js';
 
+export async function readOperationDefinitionPieceKeys(tx: Prisma.TransactionClient, fhincd: string) {
+  return tx.$queryRaw<SessakuPieceLogicalKey[]>`
+    SELECT "fseiban", "fhincd", "fsigencd", "fkojun" FROM "ProductionScheduleSessakuPieceSet"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND BTRIM("fhincd", ${STRING_TRIM_CHARACTERS}) = ${fhincd.trim()}`;
+}
+
 /** Definition writers take the same critical -> logical -> board -> row order as piece edits, before the setting row. */
 export async function lockOperationDefinitionPieces(tx: Prisma.TransactionClient, fhincd: string) {
   await acquireFkojunstStatusMailCriticalTransactionLock(tx);
-  const keys = await tx.$queryRaw<SessakuPieceLogicalKey[]>`
-    SELECT "fseiban", "fhincd", "fsigencd", "fkojun" FROM "ProductionScheduleSessakuPieceSet"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND BTRIM("fhincd", ${STRING_TRIM_CHARACTERS}) = ${fhincd.trim()}`;
+  const keys = await readOperationDefinitionPieceKeys(tx, fhincd);
   if (!keys.length) return keys;
   const locked = await acquireSessakuPieceLogicalLocks(tx, keys);
   await acquireSessakuPieceBoardStateLocks(tx);
@@ -99,7 +103,7 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
 
 /** Keep completed pieces closed; aggregate remaining operation evidence for unfinished pieces. */
 export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionClient, params: { siteKey: string; resourceCd: string },
-  keys: SessakuPieceLogicalKey[], opNos: number[]) {
+  keys: SessakuPieceLogicalKey[], opNos: number[], previousOpNos: number[] = []) {
   if (!keys.length) return;
   const states = await tx.productionScheduleGrindingPlanningBoardState.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID }
@@ -169,7 +173,8 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
             if (siteKey === params.siteKey && resource === params.resourceCd) fill.add(opNo);
           }
         }
-        return [{ piece, retained, fill: onBoard ? [...fill] : [], onBoard }];
+        const rangeOf = (opNo: number) => resources.findIndex((resource, index) => resource === params.resourceCd && inRange(opNo, index));
+        return [{ piece, retained, fill: onBoard ? [...fill] : [], onBoard, rangeOf }];
       }
       const matches = (siteKey: string) => scopes.get(siteKey)?.has(set.fseiban.trim()) && effective(siteKey) === params.resourceCd;
       const partDefinitions = definitions.filter((definition) => definition.fhincd === set.fhincd.trim()
@@ -178,14 +183,14 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
         const retained = new Set(partDefinitions.filter((definition) => definition.resourceCd === effective(definition.siteKey))
           .flatMap((definition) => definition.ops.map((op) => op.opNo)));
         if (effective(params.siteKey) === params.resourceCd) for (const opNo of opNos) retained.add(opNo);
-        return [{ piece, retained, fill: matches(params.siteKey) ? opNos : [], onBoard: true }];
+        return [{ piece, retained, fill: matches(params.siteKey) ? opNos : [], onBoard: true, rangeOf: () => 0 }];
       }
       // Delete-only: keep numbers defined for any resource this piece is effectively on (at any site),
       // plus the replacement; never skip on resource mismatch, since the evidence may predate an override change.
       const resources = new Set([...siteKeys].map(effective));
       const retained = new Set([...partDefinitions.filter((definition) => resources.has(definition.resourceCd))
         .flatMap((definition) => definition.ops.map((op) => op.opNo)), ...opNos]);
-      return [{ piece, retained, fill: [] as number[], onBoard: false }];
+      return [{ piece, retained, fill: [] as number[], onBoard: false, rangeOf: () => -1 }];
     });
   });
   if (!targets.length) return;
@@ -198,6 +203,21 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
     }));
   }
   const existing = new Set(records.map((record) => `${record.pieceId}:${record.opNo}`));
+  // A removed operation merges into the preceding kept one; unfinished merged work reopens that operation.
+  const removedOpNos = previousOpNos.filter((opNo) => !opNos.includes(opNo));
+  const reopened = progressTargets.filter(({ piece }) => !piece.isCompleted).flatMap(({ piece, fill, rangeOf }) => {
+    const kept = [...fill].sort((a, b) => a - b);
+    return [...new Set(removedOpNos.flatMap((removed) => {
+      if (existing.has(`${piece.id}:${removed}`) || rangeOf(removed) < 0) return [];
+      const sameRange = kept.filter((opNo) => rangeOf(opNo) === rangeOf(removed));
+      const absorber = sameRange.filter((opNo) => opNo < removed).at(-1) ?? sameRange.find((opNo) => opNo > removed);
+      return absorber !== undefined && existing.has(`${piece.id}:${absorber}`) ? [absorber] : [];
+    }))].map((opNo) => ({ pieceId: piece.id, opNo }));
+  });
+  for (let start = 0; start < reopened.length; start += 300) {
+    await tx.productionScheduleSessakuPieceOpCompletion.deleteMany({ where: { OR: reopened.slice(start, start + 300) } });
+  }
+  for (const { pieceId, opNo } of reopened) existing.delete(`${pieceId}:${opNo}`);
   const deletionGroups = new Map<string, { pieceIds: string[]; opNos: number[]; onBoard: boolean }>();
   for (const { piece, retained, onBoard } of targets) {
     const opNos = [...retained].sort((a, b) => a - b);

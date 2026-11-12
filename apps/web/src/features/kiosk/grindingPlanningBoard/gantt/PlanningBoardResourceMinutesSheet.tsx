@@ -436,3 +436,5 @@ function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEn
       select={select} onOpsChange={onOpsChange} />)}</tbody></table></div>
   </>;
 }
+
+export { Stepper as PlanningBoardMinutesStepper };

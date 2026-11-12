@@ -47,6 +47,9 @@ function useUpdateMinutes<T extends Source | Value>(mutationFn: (payload: T) => 
     },
     onSuccess: (response, payload) => {
       client.setQueryData<Settings>(key, (current = empty) => mergeTarget(current, response, payload));
+      if ('perUnitMinutes' in payload && payload.perUnitMinutes !== null) {
+        client.setQueryData<Settings>(key, (current = empty) => mergeTarget(current, response, { resourceCd: payload.resourceCd, source: 'own' }));
+      }
       if (needsRefresh.has(client) || client.isFetching({ queryKey: key })) {
         needsRefresh.delete(client);
         void client.invalidateQueries({ queryKey: key });

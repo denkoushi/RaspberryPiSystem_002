@@ -1,7 +1,7 @@
 import { api } from '../../http';
 
 import type { GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse ,
-  SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
+  SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardFirstProcessArrivalResponse,
   GrindingPlanningBoardArrivalRequest,
@@ -278,4 +278,11 @@ export async function splitKioskSessakuPieceOps(payload: SessakuPieceOpSplitRequ
 export async function mergeKioskSessakuPieceOps(payload: SessakuPieceOpMergeRequest) {
   const { data } = await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/merge', payload);
   return data;
+}
+
+export async function configureKioskSessakuPieceOps(payload: SessakuPieceOpsConfigureRequest) {
+  return (await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/configure', payload)).data;
+}
+export async function clearKioskSessakuPieceOps(payload: SessakuPieceOpsClearRequest) {
+  return (await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/clear', payload)).data;
 }

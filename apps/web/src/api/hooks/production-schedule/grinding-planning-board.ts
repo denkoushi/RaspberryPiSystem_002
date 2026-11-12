@@ -32,12 +32,13 @@ import {
   type KioskGrindingPlanningBoardQuery,
   updateKioskGrindingPlanningBoardDueScope
 } from '../../client';
+import { configureKioskSessakuPieceOps, clearKioskSessakuPieceOps } from '../../domains/production-schedule/grinding-planning-board';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS } from './grinding-planning-board-resource-minutes';
 
 import type {
-  SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
+  SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardArrivalRequest,
   GrindingPlanningBoardProcessChipsRequest,
@@ -582,6 +583,30 @@ export function useUpdateKioskGrindingPlanningBoardFirstProcessArrival(dueSource
     mutationFn: (payload: GrindingPlanningBoardFirstProcessArrivalRequest) => updateKioskGrindingPlanningBoardFirstProcessArrival({ ...payload, ...(dueSource == null ? {} : { dueSource }) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
+}
+
+export function useConfigureKioskSessakuPieceOps(dueSource?: 'excel' | 'scaw') {
+  const client = useQueryClient();
+  return useMutation({ retry: false,
+    mutationFn: (payload: SessakuPieceOpsConfigureRequest | SessakuPieceOpsClearRequest) => 'minutes' in payload
+      ? configureKioskSessakuPieceOps({ ...payload, dueSource }) : clearKioskSessakuPieceOps({ ...payload, dueSource }),
+    // A stale board must refresh after a conflict, like the other piece operations.
+    onError: (error) => {
+      if (isAxiosError(error) && error.response?.status === 409) void Promise.all([
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll })
+      ]);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.scheduleAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.orderUsageAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.historyProgressAll })
+      ]);
     }
   });
 }

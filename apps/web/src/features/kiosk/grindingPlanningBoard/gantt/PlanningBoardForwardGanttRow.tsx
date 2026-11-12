@@ -11,12 +11,14 @@ import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
 import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
+import { operationSplitGap } from './planningBoardGanttGeometry';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import { PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
 import { PlanningBoardPinIcon } from './PlanningBoardPinIcon';
+import { operationSplitColor } from './planningBoardSeibanColor';
 import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
 import type { PlanningBoardPlacementByPart, PlanningBoardProcessChipsByPart } from '../planningBoardProcessChips';
@@ -276,13 +278,16 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         const test = bar.item.kind === 'test' ? bar.item : null;
         const normal = bar.item.kind !== 'test' ? bar.item : undefined;
         const color = bar.tone !== 'completed' && normal ? seibanColors?.get(normal.fseiban) : undefined;
+        const split = Boolean(normal?.opRange);
+        const opIndex = bar.opSplitIndex ?? 0;
+        const splitColor = operationSplitColor(color ?? (bar.tone === 'late' ? 'bg-rose-400' : undefined), opIndex);
         const selected = selectedItemIds.has(bar.item.itemId);
         const inChain = focusedPartKey === bar.partKey;
         const segments = bar.unknown && !foldedWindow ? [{ start: bar.start!, end: bar.end! }] : bar.segments ?? [];
         return <div key={bar.item.itemId}>
           {segments.map((segment, index) => {
-            const segmentWidth = bar.unknown && !foldedWindow ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - 2);
-            return <button key={index} type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
+            const segmentWidth = bar.unknown && !foldedWindow ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - operationSplitGap(bar, index === segments.length - 1));
+            return <div key={index}><button type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
               data-gantt-pinned={normal?.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={test ? `${test.name} ${test.minutes}分 ${bar.resource}` : `${normal?.fhinmei || normal?.fhincd} 工順${normal?.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
@@ -296,10 +301,13 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 focusedSeiban !== null ? focusedSeiban === normal?.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined,
                 draggedItemId === bar.item.itemId && '[&>*]:opacity-30',
                 normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
+                split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ top: foldedWindow ? 22 : undefined, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
-                clipPath: bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
+                borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
+                clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
+                ...(split && !bar.unknown && bar.tone !== 'completed' && draggedItemId !== bar.item.itemId ? { background: splitColor } : {}),
                 color: draggedItemId === bar.item.itemId ? 'rgb(148 163 184)' : test ? '#1e1b4b' : undefined,
                 outline: draggedItemId === bar.item.itemId ? '3px dashed rgb(251 191 36)' : undefined,
                 outlineOffset: draggedItemId === bar.item.itemId ? -3 : undefined,
@@ -342,12 +350,13 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {normal?.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
-              {inChain && chainPositions.has(bar.item.itemId) && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
+              {!split && inChain && chainPositions.has(bar.item.itemId) && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? '所要不明' : segmentWidth >= 48
-                ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}><b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>
-                  <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>
+                ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}>{(!split || opIndex === 0 && index === 0 && !bar.opSplitContinuation) && <b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>}
+                  {!split && <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
                 </span> : null}
-            </button>;
+            </button>{split && <span aria-hidden="true" data-gantt-unit-underline className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
+              style={{ top: foldedWindow ? 95 : 76, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
           {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={foldedWindow ? 75 : 56} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"

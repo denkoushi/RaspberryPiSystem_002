@@ -32,6 +32,7 @@ import { planningBoardSharedBottomInset, planningBoardSheetGeometry, planningBoa
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
+import { PlanningBoardUnitOpContext } from './PlanningBoardUnitOpEditor';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
@@ -529,6 +530,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => (sharedChain?.changeView ?? changeChainView)(effectiveChainView === 'pieces' ? 'process' : 'pieces') : undefined}
         onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
   return (
+    <PlanningBoardUnitOpContext.Provider value={{ minutes: resourceMinutes, items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item), loading: minutesPending || minutesError || !resourceMinutes }}>
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
@@ -624,6 +626,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.kind === 'test' ? dragPreview.bar.item.name : dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
       </div>, document.body)}
     </section>
-    </PlanningBoardPiecesContext.Provider>
+    </PlanningBoardPiecesContext.Provider></PlanningBoardUnitOpContext.Provider>
   );
 });

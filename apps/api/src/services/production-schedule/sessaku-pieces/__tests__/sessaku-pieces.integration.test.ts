@@ -205,6 +205,221 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(persisted).toMatchObject({ overrideDueDate: null, dueDateCleared: null, orderPinned: false, specialDueKind: null, specialDueExpiresAt: null });
     }
   });
+  describe('unit operation configuration', () => {
+    const otherLotSetIds: string[] = [];
+    afterEach(async () => {
+      await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { id: { in: otherLotSetIds.splice(0) } } });
+    });
+    async function units() {
+      await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.create({ data: {
+        csvDashboardId: dashboardId, siteKey: site, resourceCd: '1', dailyHours: 8, unitSplitEnabled: true
+      } });
+      await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '1', fhincd: 'PART-A',
+        perUnitMinutes: 40, setupMinutes: 15,
+        ops: [1, 2, 3, 4].map((opNo) => ({ opNo, minutes: 10, setupMinutes: opNo === 1 ? 15 : 0 })) });
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'own' });
+      const p = await parent();
+      return splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision,
+        expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: Array(5).fill(1) });
+    }
+    async function configure(itemId: string, minutes: number[]) {
+      const item = (await board()).items.find((bar) => bar.itemId === itemId)!;
+      const saved = (await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).values
+        .find((value) => value.resourceCd === '1' && value.fhincd === 'PART-A')!;
+      return pieceOperations.configureSessakuPieceOps({ siteKey: site, itemId, itemRevision: item.itemRevision,
+        expectedPieceSetVersion: item.pieceSetVersion!, resourceCd: '1', minutes,
+        expectedOpIds: saved.ops!.map((op) => op.id!),
+        expectedMinutes: { perUnitMinutes: saved.perUnitMinutes, setupMinutes: saved.setupMinutes,
+          ops: saved.ops!.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) } });
+    }
+    async function otherLot(fromOpNo: number) {
+      const lot = `${seiban}-other-lot`;
+      const set = await prisma.productionScheduleSessakuPieceSet.create({ data: {
+        ...key(), fseiban: lot, csvDashboardId: dashboardId, plannedQuantity: 1, nextPosition: 2,
+        pieces: { create: { quantity: 1, position: 1, opSplits: { create: {
+          fromOpNo, sourceResourceCd: '1', leadingSourceResourceCd: '1'
+        } } } }
+      }, include: { pieces: true } });
+      otherLotSetIds.push(set.id);
+      const row = await prisma.csvDashboardRow.create({ data: { csvDashboardId: dashboardId,
+        rowData: { ...rowData, FSEIBAN: lot }, occurredAt: new Date(), dataHash: `${site}-other-lot` } });
+      await prisma.productionScheduleOrderSupplement.create({ data: {
+        csvDashboardId: dashboardId, csvDashboardRowId: row.id, sourceCsvDashboardId: `${site}-other-lot`,
+        productNo: '123', resourceCd: '1', processOrder: '1', plannedQuantity: 1
+      } });
+      await prisma.productionScheduleGrindingPlanningBoardState.updateMany({ where: { siteKey: { in: [site, other] } },
+        data: { seibanOrder: [lot, seiban] } });
+      const ids = [`piece:${set.pieces[0].id}`, `pieceops:${set.pieces[0].id}:${fromOpNo}`];
+      await prisma.productionScheduleGrindingPlanningBoardOverride.createMany({ data: [site, other].flatMap((siteKey) =>
+        ids.map((itemKey, index) => ({ csvDashboardId: dashboardId, siteKey, itemKey,
+          overrideResourceCd: index === 0 ? '021' : '022', overrideDueDate: new Date('2026-12-05'),
+          orderPinned: true, alternateRank: index + 1 }))) });
+      return { pieceId: set.pieces[0].id, ids };
+    }
+    it('rejects configuration from a later bar moved to another machine without persisting any writes', async () => {
+      const result = await units();
+      await configure(result.pieces[0].itemId, [10, 20]);
+      const head = (await board()).items.find((item) => item.itemId === result.pieces[0].itemId)!;
+      const laterId = `pieceops:${head.pieceId}:2`;
+      await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({
+        where: { siteKey: site, itemKey: laterId }, data: { overrideResourceCd: '022' }
+      });
+      const later = (await board()).items.find((item) => item.itemId === laterId)!;
+      expect(later.effectiveResourceCd).toBe('022');
+      expect(head.effectiveResourceCd).toBe('1');
+      const snapshot = async () => ({
+        sets: await prisma.productionScheduleSessakuPieceSet.findMany({ where: { fseiban: seiban }, orderBy: { id: 'asc' },
+          include: { pieces: { orderBy: { id: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } } }),
+        minutes: await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany({
+          where: { siteKey: site }, orderBy: { id: 'asc' }, include: { ops: { orderBy: { opNo: 'asc' } } } }),
+        sources: await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.findMany({
+          where: { siteKey: site }, orderBy: { id: 'asc' } }),
+        overrides: await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+          where: { siteKey: { in: [site, other] } }, orderBy: { id: 'asc' } })
+      });
+      const before = await snapshot();
+      await expect(pieceOperations.configureSessakuPieceOps({ siteKey: site, itemId: laterId,
+        itemRevision: later.itemRevision, expectedPieceSetVersion: later.pieceSetVersion!, resourceCd: '022',
+        minutes: [12, 18], expectedOpIds: [], expectedMinutes: null })).rejects.toMatchObject({ statusCode: 409 });
+      expect(await snapshot()).toEqual(before);
+    });
+    it('enables an unselected machine on one-operation configure and projects 90 minutes plus setup in load', async () => {
+      const result = await units();
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).not.toContain('1');
+      await configure(result.pieces[0].itemId, [90]);
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).toContain('1');
+      const bars = (await board()).items.filter((item) => item.sourceRowId === rowId);
+      expect(bars).toHaveLength(5);
+      expect(bars.map((bar) => bar.requiredMinutes).sort((a, b) => a! - b!)).toEqual([90, 90, 90, 90, 105]);
+      const params = { client: prisma, siteKey: site, category: 'cutting' as const, isResourceInCategory: () => true };
+      const load = await readGrindingPlanningBoardLoadSummary({ ...params, winnerRowIds: [rowId] });
+      const sql = await readGrindingPlanningBoardLoadSummary({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${rowId}` });
+      expect(sql).toEqual(load);
+      expect(load.load[0].requiredMinutes).toBe(465);
+    });
+    it('enables an unselected machine on the part value screen save and changes the projected duration', async () => {
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).not.toContain('1');
+      await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '1', fhincd: 'PART-A', perUnitMinutes: 90, setupMinutes: 15 });
+      const settings = await getGrindingPlanningBoardResourceMinutes({ siteKey: site });
+      expect(settings.ownSourceResourceCds).toContain('1');
+      expect((await board()).items.find((item) => item.sourceRowId === rowId)?.requiredMinutes).toBe(465);
+    });
+    it('splits every selected-lot unit but keeps another lot bars whole with summed operation minutes and setup', async () => {
+      const result = await units();
+      const sibling = await otherLot(2);
+      await prisma.productionScheduleSessakuPieceOpSplit.deleteMany({ where: { pieceId: sibling.pieceId } });
+      await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { itemKey: { in: sibling.ids } } });
+      const siblingPiece = await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: sibling.pieceId } });
+      await prisma.productionScheduleSessakuPieceSet.update({ where: { id: siblingPiece.pieceSetId }, data: {
+        plannedQuantity: 5, nextPosition: 3, pieces: { update: { where: { id: sibling.pieceId }, data: { quantity: 2 } },
+          create: { quantity: 3, position: 2 } }
+      } });
+      await prisma.productionScheduleOrderSupplement.updateMany({ where: { sourceCsvDashboardId: `${site}-other-lot` }, data: { plannedQuantity: 5 } });
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      await configure(result.pieces[0].itemId, [12, 18]);
+      const bars = (await board()).items;
+      expect(bars.filter((bar) => bar.sourceRowId === rowId)).toHaveLength(10);
+      for (const piece of result.pieces) {
+        expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId: piece.pieceId! } })).toBe(1);
+      }
+      const siblingBars = bars.filter((bar) => bar.parentItemId && bar.pieceId && bar.sourceRowId !== rowId && bar.fseiban === `${seiban}-other-lot`);
+      expect(siblingBars).toHaveLength(2);
+      expect(siblingBars.map((bar) => bar.requiredMinutes).sort((a, b) => a! - b!)).toEqual([75, 90]);
+      expect(siblingBars.every((bar) => !bar.opRange)).toBe(true);
+      expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId: { in: siblingBars.map((bar) => bar.pieceId!) } } })).toBe(0);
+    });
+    it('preserves another lot operation boundaries and every placement override when configuring', async () => {
+      const result = await units();
+      const sibling = await otherLot(2);
+      const read = async () => ({
+        splits: await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: sibling.pieceId }, orderBy: { fromOpNo: 'asc' } }),
+        overrides: await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: { in: sibling.ids } }, orderBy: [{ siteKey: 'asc' }, { itemKey: 'asc' }] })
+      });
+      const before = await read();
+      expect(before.splits).toHaveLength(1); expect(before.overrides).toHaveLength(4);
+      await configure(result.pieces[0].itemId, [12, 18]);
+      expect(await read()).toEqual(before);
+      expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId: result.pieces[0].pieceId! } })).toBe(1);
+    });
+    it('rejects removal of another lot boundary and rolls back the part definition and target splits', async () => {
+      const result = await units();
+      await otherLot(3);
+      const read = async () => ({
+        part: await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.findUniqueOrThrow({
+          where: { csvDashboardId_siteKey_resourceCd_fhincd: { csvDashboardId: dashboardId, siteKey: site, resourceCd: '1', fhincd: 'PART-A' } },
+          include: { ops: { orderBy: { opNo: 'asc' } } }
+        }),
+        splits: await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: result.pieces[0].pieceId! } })
+      });
+      const before = await read();
+      await expect(configure(result.pieces[0].itemId, [12, 18])).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
+      expect(await read()).toEqual(before);
+    });
+    it('removes only obsolete completed boundaries and overrides while retaining completion evidence', async () => {
+      const result = await units();
+      const sibling = await otherLot(3);
+      const completedAt = new Date();
+      await prisma.productionScheduleSessakuPiece.update({ where: { id: sibling.pieceId }, data: { isCompleted: true, completedAt } });
+      await prisma.productionScheduleSessakuPieceOpSplit.create({ data: {
+        pieceId: sibling.pieceId, fromOpNo: 2, sourceResourceCd: '1', leadingSourceResourceCd: '1'
+      } });
+      await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: [1, 2, 3, 4].map((opNo) => ({ pieceId: sibling.pieceId, opNo })) });
+      const retainedSplit = await prisma.productionScheduleSessakuPieceOpSplit.findUniqueOrThrow({
+        where: { pieceId_fromOpNo: { pieceId: sibling.pieceId, fromOpNo: 2 } }
+      });
+      const retainedRecords = await prisma.productionScheduleSessakuPieceOpCompletion.findMany({
+        where: { pieceId: sibling.pieceId, opNo: { in: [1, 2] } }, orderBy: { opNo: 'asc' }
+      });
+      const headOverrides = await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+        where: { itemKey: sibling.ids[0] }, orderBy: { siteKey: 'asc' }
+      });
+      await configure(result.pieces[0].itemId, [12, 18]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: sibling.pieceId } }))
+        .toMatchObject({ isCompleted: true, completedAt });
+      expect(await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: sibling.pieceId } })).toEqual([retainedSplit]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: sibling.pieceId }, orderBy: { opNo: 'asc' } }))
+        .toEqual(retainedRecords);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.count({ where: { itemKey: sibling.ids[1] } })).toBe(0);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: sibling.ids[0] }, orderBy: { siteKey: 'asc' } }))
+        .toEqual(headOverrides);
+    });
+    it('retains completion identity, removes obsolete numbers after rewriting old source ranges, and keeps units with merged unfinished work open', async () => {
+      const result = await units();
+      const item = result.pieces[0];
+      const pieceId = item.pieceId!;
+      await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '2', fhincd: 'PART-A',
+        perUnitMinutes: 40, setupMinutes: 0, ops: [1, 2, 3, 4].map((opNo) => ({ opNo, minutes: 10, setupMinutes: 0 })) });
+      await prisma.productionScheduleSessakuPieceOpSplit.create({ data: {
+        pieceId, fromOpNo: 3, sourceResourceCd: '2', leadingSourceResourceCd: '1'
+      } });
+      await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: [1, 3].map((opNo) => ({ pieceId, opNo })) });
+      const retained = await prisma.productionScheduleSessakuPieceOpCompletion.findUniqueOrThrow({ where: { pieceId_opNo: { pieceId, opNo: 1 } } });
+      const changed = await configure(item.itemId, [12, 18]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([retained]);
+      expect(changed.pieces.filter((bar) => bar.pieceId === pieceId).map((bar) => [bar.opRange, bar.isCompleted])).toEqual([
+        [{ fromOpNo: 1, toOpNo: 1 }, true], [{ fromOpNo: 2, toOpNo: 2 }, false]
+      ]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false });
+      const reopened = await configure(item.itemId, [25]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false, completedAt: null });
+      expect(reopened.pieces.find((bar) => bar.pieceId === pieceId)).toMatchObject({ isCompleted: false });
+      expect(reopened.parentIsCompleted).toBe(false);
+    });
+    it('keeps a unit open with its bar when two operations with only the first completed become one', async () => {
+      const result = await units();
+      const item = result.pieces[0];
+      const pieceId = item.pieceId!;
+      await configure(item.itemId, [30, 60]);
+      await prisma.productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId, opNo: 1 } });
+      const merged = await configure(item.itemId, [90]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false });
+      expect(merged.pieces.filter((bar) => bar.pieceId === pieceId).map((bar) => bar.isCompleted)).toEqual([false]);
+    });
+  });
   it('cascades operation boundaries when a piece is deleted', async () => {
     const set = await prisma.productionScheduleSessakuPieceSet.create({ data: { ...key(), csvDashboardId: dashboardId,
       pieces: { create: { position: 1, quantity: 1 } } }, include: { pieces: true } });
@@ -1787,7 +2002,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       ops: opNos.map((opNo) => ({ opNo, minutes: 1 })) });
     await update([1, 2]);
     const result = await split();
-    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: result.pieces.map((piece) => ({ pieceId: piece.pieceId!, opNo: 1 })) });
+    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: result.pieces.flatMap((piece) => [1, 2].map((opNo) => ({ pieceId: piece.pieceId!, opNo }))) });
     const before = (await readSessakuPieceSet(prisma, key()))!;
     await update([1]);
     const saved = (await readSessakuPieceSet(prisma, key()))!;
