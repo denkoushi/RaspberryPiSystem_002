@@ -87,7 +87,7 @@ try {
   // No app config, proxy, .env loading, HMR, or development React instrumentation.
   const config = { configFile: false, envFile: false, envDir: false, root: here, base: '/',
     plugins: [react()], resolve: { alias: [
-      { find: /^.*\/api\/hooks(?:\/machine-signal|\/production-schedule\/d-schedule-minutes)?$/, replacement: resolve(here, 'hooks.jsx') }
+      { find: /^.*\/api\/hooks(?:\/machine-signal|\/production-schedule\/(?:d-schedule-minutes|grinding-planning-board))?$/, replacement: resolve(here, 'hooks.jsx') }
     ] }, css: { postcss: { plugins: [tailwind({ ...loadConfig(resolve(web, 'tailwind.config.ts')), content: [resolve(web, 'src/**/*.{ts,tsx}')] }), autoprefixer()] } }, build: { outDir, emptyOutDir: false, minify: process.env.PROFILE !== '1' }, logLevel: 'warn' };
   await build(config);
   // Serve built bytes via routing, so no listening socket or upstream server is needed.
@@ -109,6 +109,10 @@ try {
     // Fail closed: no requests to external servers or real APIs.
     await context.route('**/*', route => {
       const url = new URL(route.request().url());
+      // Kiosk shell capability probe outside the planning board; answer locally with defaults.
+      if (url.origin === origin && url.pathname === '/api/mobile-placement/client-capabilities') {
+        return route.fulfill({ body: '{}', contentType: 'application/json' });
+      }
       if (url.origin !== origin || url.pathname.startsWith('/api/')) {
         errors.push(`blocked request: ${url.origin}${url.pathname}`);
         return route.abort();
@@ -146,12 +150,30 @@ try {
       assert(dom.capabilities.monthlyUptime && dom.capabilities.processChips, 'fixture capabilities missing');
       assert(dom.scroll.scrollWidth > dom.scroll.width && dom.scroll.scrollHeight > dom.scroll.height, 'both scroll axes required');
     }
-    const button = label => page.locator('button').filter({ hasText: new RegExp(`^\\s*${label}\\s*$`) });
+    const button = label => page.getByRole('button', { name: label, exact: true });
     const point = async locator => {
       await locator.scrollIntoViewIfNeeded();
+      // Sticky lane labels can cover a bar even when scrollIntoView considers it visible.
+      if (await locator.evaluate(el => !!el.closest('[data-gantt-track]'))) {
+        await locator.evaluate(el => el.scrollIntoView({ block: 'center', inline: 'center' }));
+        await settle(page);
+      }
       const box = await locator.boundingBox();
       assert(box && box.width && box.height, 'target has no box');
-      return { x: box.x + Math.min(box.width / 2, 15), y: box.y + box.height / 2 };
+      const position = await locator.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const pane = el.closest('[aria-label="ガントの日付と工程"]')?.getBoundingClientRect();
+        const label = el.closest('[data-gantt-track]')?.previousElementSibling?.getBoundingClientRect();
+        const left = Math.max(rect.left, pane?.left ?? rect.left, label?.right ?? rect.left);
+        const right = Math.min(rect.right, pane?.right ?? rect.right);
+        const top = Math.max(rect.top, pane?.top ?? rect.top);
+        const bottom = Math.min(rect.bottom, pane?.bottom ?? rect.bottom);
+        const x = left + Math.min((right - left) / 2, 15), y = (top + bottom) / 2;
+        const at = document.elementFromPoint(x, y);
+        return { x, y, hit: right > left && bottom > top && el.contains(at), info: JSON.stringify({ x, y, rect: [rect.left, rect.top, rect.right, rect.bottom], vw: innerWidth, vh: innerHeight, at: at && (at.tagName + ' ' + (at.getAttribute('aria-label') ?? '') + ' ' + String(at.className).slice(0, 120)), el: el.getAttribute('aria-label') }) };
+      });
+      assert(position.hit, 'target is covered or outside the viewport ' + position.info);
+      return { x: position.x, y: position.y };
     };
     if (screenshotDir && iteration === 1) {
       await mkdir(screenshotDir, { recursive: true });
@@ -222,8 +244,8 @@ try {
       assert.equal(await bar.getAttribute('aria-pressed'), pressed);
     }
     const countBeforeArrival = await page.locator(bars).count();
-    await click('arrival_on', button('着'));
-    await click('arrival_off', button('着'));
+    await click('arrival_on', button('前工程が済んだものだけ表示'));
+    await click('arrival_off', button('前工程が済んだものだけ表示'));
     assert.equal(await page.locator(bars).count(), countBeforeArrival);
     assert.equal(await bar.getAttribute('data-drag-disabled'), 'false', 'bar dragging disabled');
     const startPoint = await point(bar);
@@ -269,9 +291,18 @@ try {
         await writeFile(resolve(dirname(output), 'switch.cpuprofile'), JSON.stringify(profile));
       }
     }
-    for (const [name, label, pressed] of [['cutting_on', '切削', 'true'], ['grinding_off', '研削', 'false'], ['grinding_on', '研削', 'true'], ['cutting_off', '切削', 'false']]) {
-      await click(name, button(label));
-      assert.equal(await button(label).getAttribute('aria-pressed'), pressed);
+    // The former independent category toggles are now one 工程 dropdown.
+    // Open outside timing; measure the same category transition on option input.
+    async function category(label, name) {
+      await button('工程').click();
+      const option = page.getByRole('group', { name: '工程', exact: true }).getByRole('button', { name: label, exact: true });
+      if (name) await click(name, option);
+      else { await option.click(); await settle(page); }
+      const selected = label === '両方' ? '切削・研削' : label;
+      assert.equal((await button('工程').textContent()).replace('▾', '').trim(), selected);
+    }
+    for (const [name, label] of [['cutting_on', '両方'], ['grinding_off', '切削'], ['grinding_on', '両方'], ['cutting_off', '研削']]) {
+      await category(label, name);
     }
     for (const key of ['board', 'chips', 'minutes', 'uptime']) {
       assert((await page.evaluate(() => window.perfHarness.listenerCounts()))[key] > 0, `${key} has no subscribers`);
@@ -281,11 +312,112 @@ try {
     const beforeNow = await page.locator('[data-testid="planning-gantt-now"]').first().getAttribute('style');
     await measure('now_tick_30s', () => page.clock.fastForward(30_000));
     assert.notEqual(await page.locator('[data-testid="planning-gantt-now"]').first().getAttribute('style'), beforeNow);
+    // Extra sequence uses the same 1,500 items, before switching to the piece fixture.
+    await category('切削');
+    await page.evaluate(() => window.perfHarness.enableTwoMachines());
+    await settle(page);
+    const pair = await page.evaluate(() => window.perfHarness.twoResources);
+    const fixtureCounts = await page.evaluate(resources => resources.map(cd => {
+      const board = window.perfHarness.board();
+      return { category: board.resourceCategories[cd], count: board.items.filter(item =>
+        (item.effectiveResourceCd ?? item.originalResourceCd) === cd).length };
+    }), pair);
+    assert(fixtureCounts.every(({ category, count }) => category === 'cutting' && count >= 50), 'two cutting resources need enough bars');
+    await button('1台').click();
+    await page.getByRole('group', { name: '1台の資源CD', exact: true }).getByRole('button')
+      .filter({ has: page.locator('b').filter({ hasText: new RegExp(`^${pair[0]}$`) }) }).click();
+    await settle(page);
+    const mode = value => page.getByRole('group', { name: '表示台数', exact: true }).getByRole('button', { name: `${value}台`, exact: true });
+    const two = page.getByTestId('planning-two-machine');
+    const upper = two.locator(`section[aria-label="${pair[0]}"]`);
+    const lower = two.locator(`section[aria-label="${pair[1]}"]`);
+    await click('two_initial', mode(2));
+    await two.waitFor();
+    assert.equal(await mode(2).getAttribute('aria-pressed'), 'true');
+    assert(await upper.locator(bars).count() > 0 && await lower.locator(bars).count() > 0, 'both panes need bars');
+    const upperBar = upper.locator(bars).first();
+    for (const [name, pressed] of [['two_select_on', 'true'], ['two_select_off', 'false']]) {
+      await click(name, upperBar);
+      assert.equal(await upperBar.getAttribute('aria-pressed'), pressed);
+    }
+    // Clicking a folded bar also opens its chain. Close it outside timed operations.
+    const closeChain = button('工程のつながりを閉じる');
+    if (await closeChain.count()) { await closeChain.click(); await settle(page); }
+    // The seiban shelf opens by default in place of the legend.
+    const shelf = two.getByTestId('planning-seiban-shelf');
+    assert.equal(await shelf.locator('[aria-label="製番の棚"]').count(), 1, 'shelf should be open by default');
+    // Selecting a bar scrolls the shelf to its column and the columns are windowed, so `.first()`
+    // would chase whichever column is rendered first. Rewind the shelf and pin targets by name.
+    await shelf.locator('[aria-label="製番の棚"]').evaluate(el => { el.scrollLeft = 0; });
+    await settle(page);
+    const headLabel = await shelf.locator('[aria-label="製番の棚"] > div > button').first().getAttribute('aria-label');
+    const shelfHead = shelf.locator('[aria-label="製番の棚"] > div > button').and(shelf.getByRole('button', { name: headLabel, exact: true }));
+    for (const [name, pressed] of [['two_shelf_head_on', 'true'], ['two_shelf_head_off', 'false']]) {
+      await click(name, shelfHead);
+      assert.equal(await shelfHead.getAttribute('aria-pressed'), pressed);
+    }
+    const tileId = await shelf.locator('[data-testid^="planning-shelf-tile-"]').first().getAttribute('data-testid');
+    const shelfTile = shelf.getByTestId(tileId);
+    for (const [name, pressed] of [['two_shelf_tile_on', 'true'], ['two_shelf_tile_off', 'false']]) {
+      await click(name, shelfTile);
+      assert.equal(await shelfTile.getAttribute('aria-pressed'), pressed);
+    }
+    await click('two_shelf_close', shelf.getByRole('button', { name: '製番の棚を畳む', exact: true }));
+    // With the shelf folded, the legend is the same component as before the shelf existed.
+    const twoLegend = two.locator(legend).first();
+    for (const [name, pressed] of [['two_legend_on', 'true'], ['two_legend_off', 'false']]) {
+      await click(name, twoLegend);
+      assert.equal(await twoLegend.getAttribute('aria-pressed'), pressed);
+    }
+    await click('two_shelf_open', shelf.getByRole('button', { name: '製番の棚を開く', exact: true }));
+    assert.equal(await shelf.locator('[aria-label="製番の棚"]').count(), 1);
+    assert.equal(await upperBar.getAttribute('data-drag-disabled'), 'false');
+    const twoStart = await point(upperBar);
+    await page.mouse.move(twoStart.x, twoStart.y);
+    await page.mouse.down();
+    await page.mouse.move(twoStart.x + 20, twoStart.y + 10);
+    await settle(page);
+    assert.equal(await page.getByTestId('planning-gantt-drag-ghost').count(), 1);
+    await measure('two_drag_move20', async () => {
+      for (let i = 0; i < 20; i++) {
+        await page.mouse.move(twoStart.x + 30 + i * 5, twoStart.y + 10 + (i % 5) * 18);
+        await settle(page);
+      }
+    });
+    assert.equal(await page.getByTestId('planning-gantt-drag-ghost').count(), 1);
+    await page.mouse.move(1, 1);
+    await settle(page);
+    await measure('two_drag_drop', () => page.mouse.up());
+    assert.equal(await page.getByTestId('planning-gantt-drag-ghost').count(), 0);
+    assert.equal(await page.evaluate(() => window.perfHarness.mutations.length), 0);
+    const upperViewport = upper.locator(viewport);
+    await upperViewport.evaluate(el => { el.scrollTop = 0; });
+    await settle(page);
+    assert(await upperViewport.evaluate(el => el.scrollHeight > el.clientHeight), 'two-machine pane needs vertical overflow');
+    await measure('two_scroll20', async () => {
+      for (let i = 1; i <= 20; i++) {
+        await upperViewport.evaluate((el, n) => { el.scrollTop = n * 10; }, i);
+        await settle(page);
+      }
+    });
+    assert(await upperViewport.evaluate(el => el.scrollTop > 0), 'two-machine scroll did not move');
+    await mode(1).click();
+    await settle(page);
+    await measure('toggle_one_two', async () => {
+      await mode(2).click();
+      await settle(page);
+      assert.equal(await two.count(), 1);
+      await mode(1).click();
+    });
+    assert.equal(await two.count(), 0);
+    assert.equal(await mode(1).getAttribute('aria-pressed'), 'true');
+    // Return to the all-resource gantt before the existing piece sequence.
+    await button(`${pair[0]} 1台表示をやめる`).click();
+    await settle(page);
     // Additional piece scenarios run after the unchanged, piece-free sequence.
     const targetId = await page.evaluate(() => window.perfHarness.enablePieces());
     await settle(page);
-    await button('切削').click();
-    await button('研削').click();
+    await category('切削');
     await button('ガント').click();
     await settle(page);
     const targetRow = page.getByTestId(`planning-board-item-${targetId}`);
@@ -322,7 +454,9 @@ try {
       'refetch clones the same hook-store payload; no HTTP, query-cache or server latency.',
       'Paint/CompositeLayers are sums of complete trace events across threads, may overlap. Zero means no matching events, not zero compositor work.',
       'DOM/CSS inventory is outside timed operations; CSS counts are declarations in computed styles, not measured cost.',
-      'drag_drop is pointer-up at (1,1), outside the board, with zero mutation calls asserted.'],
+      'drag_drop and two_drag_drop are pointer-up at (1,1), outside the board, with zero mutation calls asserted.',
+      'two_initial switches from one to two machines; two_select uses clicks on folded bars; two_scroll20 scrolls the upper pane vertically.',
+      'toggle_one_two measures one → two → one with two frames between switches; category dropdown opening is outside timing.'],
     unavailable: [], dom, medians, samples };
   await writeFile(output, JSON.stringify(result, null, 2) + '\n');
   console.log('| 操作 | 全体ms | Script | Style | Layout | Paint | DOM要素 |');

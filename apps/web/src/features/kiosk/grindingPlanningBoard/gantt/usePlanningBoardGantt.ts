@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
 import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
@@ -37,7 +37,9 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const [valueSheetResource, setValueSheetResource] = useState<string | null>(null);
   const capacity = useCapacity(enabled);
   const capacityMutation = useUpdateKioskGrindingPlanningBoardResourceCapacity({ invalidateOnSuccess: !offlineEnabled });
-  const { isPending, isError } = capacityMutation;
+  const { isPending, isError, mutate, mutateAsync } = capacityMutation;
+  const latestCapacityWrite = useRef({ gate, isPending, offlineEnabled, refreshRead });
+  useLayoutEffect(() => { latestCapacityWrite.current = { gate, isPending, offlineEnabled, refreshRead }; });
   const writeStatus = useFrozenValue({ capacityPending: isPending, capacityError: isError,
     minutesPending: sourceMutation.isPending || minutes.isPending || minutes.isError, minutesError: sourceMutation.isError || minutes.isError });
   const dailyHoursByResource = capacity.data?.dailyHoursByResource ?? DEFAULT_CAPACITY;
@@ -91,26 +93,28 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
   // 2台表示では上下段の機械を同じ値にそろえるため、資源CDを複数受け取って順に書く。
   const writeCapacity = useCallback((resourceCds: string | readonly string[], change: { dailyHours?: GrindingPlanningBoardResourceDailyHours; runsThroughBreaks?: boolean }) => {
+    const { gate, isPending, offlineEnabled, refreshRead } = latestCapacityWrite.current;
     if (!gate.attempt() || isPending) return;
     const targets = typeof resourceCds === 'string' ? [resourceCds] : [...new Set(resourceCds)];
     if (targets.length === 0) return;
-    if (!offlineEnabled && targets.length === 1) { capacityMutation.mutate({ resourceCd: targets[0]!, ...change }); return; }
-    const writeAll = async () => { for (const resourceCd of targets) await capacityMutation.mutateAsync({ resourceCd, ...change }); };
+    if (!offlineEnabled && targets.length === 1) { mutate({ resourceCd: targets[0]!, ...change }); return; }
+    const writeAll = async () => { for (const resourceCd of targets) await mutateAsync({ resourceCd, ...change }); };
     if (!offlineEnabled) { void writeAll().catch(() => undefined); return; }
     void gate.run(writeAll).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
-  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
+  }, [mutate, mutateAsync]);
   // 2台表示では押していない側の値も渡し、上下段の行の区切りを決める2つの値をまとめてそろえる。
   const changeCapacity = useCallback((resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) =>
     writeCapacity(resourceCds, runsThroughBreaks === undefined ? { dailyHours } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
   const changeBreaks = useCallback((resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) =>
     writeCapacity(resourceCds, dailyHours === undefined ? { runsThroughBreaks } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
   const changeUnitSplit = useCallback((resourceCd: string, unitSplitEnabled: boolean) => {
+    const { gate, isPending, offlineEnabled, refreshRead } = latestCapacityWrite.current;
     if (!gate.attempt() || isPending) return;
-    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, unitSplitEnabled });
-    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, unitSplitEnabled })).then(() =>
+    if (!offlineEnabled) mutate({ resourceCd, unitSplitEnabled });
+    else void gate.run(() => mutateAsync({ resourceCd, unitSplitEnabled })).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
-  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
+  }, [mutate, mutateAsync]);
   return { testBarControls: undefined as PlanningBoardTestBarControls | undefined,
     mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
     resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,

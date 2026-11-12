@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import { createRef, memo } from 'react';
+import { createRef, memo, useContext } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 import { productionFixture } from '../__perf__/fixture';
@@ -7,6 +7,7 @@ import { PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
 import { buildPlanningBoardGanttLayout, dayToDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { PlanningBoardUnitOpContext } from './PlanningBoardUnitOpEditor';
 
 import type { GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle } from './PlanningBoardGanttView';
@@ -14,11 +15,16 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const renders = vi.hoisted(() => [] as string[]);
+const contextValues = vi.hoisted(() => [] as unknown[]);
+const UnitOpProbe = memo(function UnitOpProbe() {
+  contextValues.push(useContext(PlanningBoardUnitOpContext));
+  return null;
+});
 vi.mock('./PlanningBoardForwardGanttRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./PlanningBoardForwardGanttRow')>();
   return { ...actual, PlanningBoardForwardGanttRow: memo(function CountedRow(props: ComponentProps<typeof actual.PlanningBoardForwardGanttRow>) {
     renders.push(props.row.key);
-    return <actual.PlanningBoardForwardGanttRow {...props} />;
+    return <><UnitOpProbe /><actual.PlanningBoardForwardGanttRow {...props} /></>;
   }) };
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); Reflect.deleteProperty(document, 'elementsFromPoint'); });
@@ -168,4 +174,21 @@ it('keeps the due mark of a selected bar whose body is outside the window', asyn
   await scroll(0);
   expect(screen.getByTestId('planning-gantt-due-item-0003')).toBeInTheDocument();
   expect(screen.queryByTestId('planning-gantt-bar-item-0002')).not.toBeInTheDocument();
+});
+
+
+it('keeps operation context stable on selection and updates its loading state', () => {
+  const fixture = productionFixture(2, 1);
+  const props = { layout: buildPlanningBoardGanttLayout({ ...fixture.options, mode: 'forward', scale: 2 }),
+    scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, resourceMinutes: { ownSourceResourceCds: [], values: [] }, capacityPending: false, capacityError: false,
+    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
+  const draw = (selectedItemIds: ReadonlySet<string>, minutesPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={selectedItemIds} minutesPending={minutesPending} />;
+  const { rerender } = render(draw(new Set()));
+  contextValues.length = 0;
+  rerender(draw(new Set(['outside-this-board'])));
+  expect(contextValues).toEqual([]);
+  rerender(draw(new Set(), true));
+  expect(contextValues.length).toBeGreaterThan(0);
+  expect(contextValues.every(value => (value as { loading: boolean }).loading)).toBe(true);
 });

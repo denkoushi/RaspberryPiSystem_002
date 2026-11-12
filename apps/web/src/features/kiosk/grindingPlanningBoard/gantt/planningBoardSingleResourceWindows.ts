@@ -88,6 +88,27 @@ export function foldSingleResourceRow(row: GanttRow, window: SingleResourceWindo
     }) };
 }
 
+/** Fold chronological, non-overlapping windows using a start-time index and active bars. */
+export function foldSingleResourceRows(row: GanttRow, windows: readonly SingleResourceWindow[], dayWidth: number): GanttRow[] {
+  const byStart = row.bars.flatMap((bar, order) => {
+    const segments = bar.unknown && bar.start != null ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? [];
+    const start = segments.reduce((value, segment) => Math.min(value, segment.start), Infinity);
+    const end = segments.reduce((value, segment) => Math.max(value, segment.end), -Infinity);
+    return start < end ? [{ bar, order, start, end }] : [];
+  }).sort((a, b) => a.start - b.start);
+  const byEnd = [...byStart].sort((a, b) => a.end - b.end);
+  const active = new Set<(typeof byStart)[number]>();
+  let nextStart = 0;
+  let nextEnd = 0;
+  return windows.map(window => {
+    while (nextStart < byStart.length && byStart[nextStart]!.start < window.end) active.add(byStart[nextStart++]!);
+    while (nextEnd < byEnd.length && byEnd[nextEnd]!.end <= window.start) active.delete(byEnd[nextEnd++]!);
+    // Keep scheduler order, even when segments start out of order or a bar spans several windows.
+    const bars = [...active].sort((a, b) => a.order - b.order).map(entry => entry.bar);
+    return foldSingleResourceRow({ ...row, bars }, window, dayWidth);
+  });
+}
+
 export type ForwardDragLane = { resource: string; bars: GanttBar[]; rowKey?: string; start?: number; end?: number };
 export type GanttBarLocation = { rowKey: string; bar: GanttBar; start: number };
 export type GanttBarLocations = ReadonlyMap<string, { first: GanttBarLocation; last: GanttBarLocation }>;

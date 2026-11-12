@@ -2467,6 +2467,7 @@ describe('forward PlanningBoardGanttView', () => {
       expect(strip.scrollLeft).toBe(6);
       frame();
       expect(strip.scrollLeft).toBe(0);
+      frame(); // Flush the final scroll preview batched into the next animation frame.
       const measure = vi.mocked(card.getBoundingClientRect);
       measure.mockClear();
       frame(2);
@@ -2476,6 +2477,7 @@ describe('forward PlanningBoardGanttView', () => {
       move(410);
       frame();
       expect(strip.scrollLeft).toBe(480);
+      frame(); // Flush the final scroll preview before checking the stationary clamp.
       measure.mockClear();
       frame(2);
       expect(strip.scrollLeft).toBe(480);

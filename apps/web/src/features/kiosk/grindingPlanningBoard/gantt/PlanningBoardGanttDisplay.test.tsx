@@ -117,9 +117,9 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   const sheet = screen.getByRole('region', { name: '品番の値' });
   expect(sheet.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
-  const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
-  expect(sheet.parentElement).not.toContainElement(legend);
-  expect(screen.getByTestId('planning-two-machine').lastElementChild).toBe(legend);
+  const shelf = screen.getByTestId('planning-seiban-shelf');
+  expect(sheet.parentElement).not.toContainElement(shelf);
+  expect(screen.getByTestId('planning-two-machine').lastElementChild).toBe(shelf);
   expect(sheet.parentElement).toHaveClass('flex-1', 'min-h-0', 'flex-col');
   expect(sheet.parentElement).toHaveClass('relative');
   expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
@@ -729,6 +729,8 @@ function seibanLegendBoard(mode: 'forward' | 'backward') {
 it.each(['forward', 'backward'] as const)('shows one seiban legend below the lower pane with both panes\' seibans (%s)', mode => {
   const Board = seibanLegendBoard(mode);
   render(<Board />);
+  const collapse = screen.queryByRole('button', { name: '製番の棚を畳む' });
+  if (collapse) fireEvent.click(collapse);
   const legends = screen.getAllByRole('group', { name: '製番の色分け凡例' });
   expect(legends).toHaveLength(1);
   const legend = legends[0]!;
@@ -743,11 +745,18 @@ it.each(['forward', 'backward'] as const)('shows one seiban legend below the low
 it.each(['forward', 'backward'] as const)('keeps the seiban focus on both panes when the seiban is only in one pane (%s)', mode => {
   const Board = seibanLegendBoard(mode);
   render(<Board />);
+  const collapse = screen.queryByRole('button', { name: '製番の棚を畳む' });
+  if (collapse) fireEvent.click(collapse);
   const legend = () => within(screen.getAllByRole('group', { name: '製番の色分け凡例' })[0]!);
   const surfaces = (id: string) => screen.getAllByTestId(new RegExp(`^planning-gantt-bar-${id}(-segment-\\d+)?$`))
     .map(bar => mode === 'backward' ? bar.firstElementChild! : bar);
   const focused = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass(mode === 'forward' ? 'ring-[3px]' : 'ring-2', 'ring-white'));
-  const dimmed = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('opacity-20'));
+  const dimmed = (id: string) => surfaces(id).forEach(surface => {
+    if (mode === 'forward' && surface.hasAttribute('data-seiban-unfocused')) {
+      expect(surface).toHaveAttribute('data-seiban-unfocused', 'bar');
+      expect(surface.closest('[data-seiban-focus]')).toHaveClass('[&[data-seiban-focus]_[data-seiban-unfocused]]:opacity-20', '[&[data-seiban-focus]_[data-seiban-unfocused=bar]]:saturate-[.3]');
+    } else expect(surface).toHaveClass('opacity-20');
+  });
   const clear = (id: string) => surfaces(id).forEach(surface => { expect(surface).not.toHaveClass('ring-2'); expect(surface).not.toHaveClass('ring-[3px]'); expect(surface).not.toHaveClass('opacity-20'); });
 
   fireEvent.click(legend().getByRole('button', { name: '26-1201' }));
@@ -787,6 +796,8 @@ it.each(['forward', 'backward'] as const)('scrolls each pane containing the sele
     Object.defineProperty(viewport, 'scrollTo', { value: scroll, configurable: true });
     return scroll;
   });
+  const collapse = screen.queryByRole('button', { name: '製番の棚を畳む' });
+  if (collapse) fireEvent.click(collapse);
   const legend = within(screen.getByRole('group', { name: '製番の色分け凡例' }));
   for (const [seiban, counts] of [['26-1201', [1, 0]], ['26-1202', [0, 1]], ['26-1203', [1, 1]]] as const) {
     scrolls.forEach(scroll => scroll.mockClear());
@@ -1145,6 +1156,22 @@ describe('two-machine forward dragging', () => {
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+  });
+
+  it('uses the final pointerup coordinates in the partner pane before the pending preview frame', () => {
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    begin(source, source);
+    pointAt(bar('item-0001'));
+    fireEvent.pointerMove(source, { clientX: 200, clientY: 430 });
+    // Do not advance rAF: the destination preview has not been published yet.
+    fireEvent.pointerUp(source, { clientX: 10000, clientY: 430 });
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), '022',
+      expect.objectContaining({ itemId: 'item-0001' }), 'after');
+    act(() => { vi.advanceTimersByTime(50); });
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
   });
 
   it('does not remeasure chain links for shared drag previews', () => {

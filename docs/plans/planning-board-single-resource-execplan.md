@@ -97,3 +97,12 @@ No new libraries. New endpoints are listed in Milestone A; their request/respons
 ## Revision Note
 
 2026-11-09: Recorded the Milestone A implementation, FHINCD sizing evidence, shared resolver and cache behavior, and local verification results. Milestones B/C and repository integration are intentionally left open because only the API milestone was authorized.
+
+
+## 製番の棚 (2026-11-12)
+
+- Design: [approved sorting tray, option A](../design-previews/planning-board-sorting-tray-preview.html).
+- In one/two-machine views the legend is replaced by a seiban shelf (columns per seiban, part rows, one tile per physical piece; `opRange` pieces render as joined tiles). The shelf can be folded back to the original legend; open/closed is stored per device (`kiosk-planning-board-seiban-shelf`, schemaVersion 1, default open).
+- Placing reuses the existing resource-move/reorder callbacks one item at a time and waits for the write queue; no new API. Tap-to-place goes through the existing blank-tap hook, drag goes through the shared rAF drag preview and insertion line.
+- Performance: shelf selection/filter/open state stays inside the memoized shelf; only horizontally visible columns (+2 each side) are mounted. Chromium (CPU x4, median Script ms, no shelf → shelf open): two_initial 120→134, two_select_on 49→59, two_drag_move20 98→113, toggle_one_two 173→223; shelf open 23, header focus 7, tile select 3. Folding the shelf restores the previous figures.
+- Not verified on a Raspberry Pi touch screen yet.

@@ -9,7 +9,7 @@ const TAP_SLOP = 8;
  * A short press on the chart's empty space (not a bar or a button) clears the green and white frames.
  * Drags, scrolls (pointercancel), other buttons and a press that only closes the queue panel do not count.
  */
-export function usePlanningBoardGanttBlankTap({ disabled, onBlankTap }: { disabled: boolean; onBlankTap: () => void }) {
+export function usePlanningBoardGanttBlankTap({ disabled, onBlankTap }: { disabled: boolean; onBlankTap: (event: PointerEvent<HTMLDivElement>) => void }) {
   const press = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const isBlank = (event: PointerEvent<HTMLDivElement>) =>
     event.currentTarget.contains(event.target as Node) && event.target instanceof Element && !event.target.closest(INTERACTIVE);
@@ -27,7 +27,7 @@ export function usePlanningBoardGanttBlankTap({ disabled, onBlankTap }: { disabl
       const started = press.current;
       const tapped = started !== null && started.pointerId === event.pointerId && event.button === 0 && !moved(event) && isBlank(event);
       clear();
-      if (tapped && !disabled) onBlankTap();
+      if (tapped && !disabled) onBlankTap(event);
     }
   };
 }
