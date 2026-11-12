@@ -13,12 +13,15 @@ export function PlanningBoardDragArrow({ preview, viewport }: {
   const [points, setPoints] = useState<{ x: number; y: number; tx: number; ty: number } | null>(null);
   useLayoutEffect(() => {
     const id = preview.bar.item.itemId;
+    const board = viewport.current?.closest('[data-testid="planning-two-machine"]');
+    const scope = board ?? viewport.current;
     const origin = preview.source === 'queue'
       ? document.querySelector<HTMLElement>(`[data-testid="planning-forward-queue-card-${id}"]`)
-      : (preview.rowKey ? Array.from(viewport.current?.querySelectorAll<HTMLElement>('[data-gantt-window-row]') ?? []).find((row) => row.dataset.ganttWindowRow === preview.rowKey) : viewport.current)?.querySelector<HTMLElement>(`[data-testid="planning-gantt-bar-${id}"]`);
+      : (preview.rowKey ? Array.from(scope?.querySelectorAll<HTMLElement>('[data-gantt-window-row]') ?? []).find((row) => row.dataset.ganttWindowRow === preview.rowKey
+        && (!board || row.dataset.resourceCode === preview.bar.resource)) : scope)?.querySelector<HTMLElement>(`[data-testid="planning-gantt-bar-${id}"]`);
     const from = origin?.getBoundingClientRect();
     const insertion = document.querySelector<HTMLElement>('[data-testid="planning-forward-queue-insertion"]') ??
-      viewport.current?.querySelector<HTMLElement>('[data-testid="planning-gantt-insertion"]');
+      scope?.querySelector<HTMLElement>('[data-testid="planning-gantt-insertion"]');
     const to = insertion?.getBoundingClientRect();
     if (!from || !to) { setPoints(null); return; }
     const zoom = pageZoom();

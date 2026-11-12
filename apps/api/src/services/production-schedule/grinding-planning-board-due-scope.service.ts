@@ -18,6 +18,7 @@ import { presentDueManagementSeibanDetail, type PartEffectiveDueDate, type Prese
 import { isValidDueDateText, listSeibanRowIdsForWriteback } from './due-date-writeback.service.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
+import { ensurePlanningBoardState, lockState } from './grinding-planning-board/state.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 
 type DbClient = Prisma.TransactionClient | typeof prisma;
@@ -378,13 +379,13 @@ export async function updateGrindingPlanningBoardDueScope(params: { siteKey: str
   const scope = normalizeScope(params.request.scope);
   if (!isValidDueDateText(params.request.dueDate)) throw new ApiError(400, '納期日はYYYY-MM-DD形式で入力してください', undefined, 'INVALID_DUE_DATE');
   const dueDate = dateValue(params.request.dueDate.trim());
+  await ensurePlanningBoardState(params.siteKey);
   try {
     await prisma.$transaction(async (client) => {
       const rowsToLock = await readTargetRows(client, fseiban);
       const setsToLock = [...(await readSessakuPieceSets(client, rowsToLock)).values()].filter((set) => set.pieces.length);
       await acquireSessakuPieceLogicalLocks(client, setsToLock);
-      if (setsToLock.length) await client.$queryRaw`SELECT "id" FROM "ProductionScheduleGrindingPlanningBoardState"
-        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${params.siteKey} FOR UPDATE`;
+      await lockState(client, params.siteKey);
       for (const row of rowsToLock) await acquireProductionScheduleParentRowLockInTransaction(client, row.id);
       const before = await readSnapshotParts({ client, siteKey: params.siteKey, fseiban, sourceGenerationToken: await readLeaderboardShellSnapshotGenerationToken() });
       if (before.sourceGenerationToken !== params.request.sourceGenerationToken || before.scopeRevision !== params.request.scopeRevision) throw new ApiError(409, '表示時点の納期設定が更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
