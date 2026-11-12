@@ -2002,7 +2002,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       ops: opNos.map((opNo) => ({ opNo, minutes: 1 })) });
     await update([1, 2]);
     const result = await split();
-    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: result.pieces.map((piece) => ({ pieceId: piece.pieceId!, opNo: 1 })) });
+    await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: result.pieces.flatMap((piece) => [1, 2].map((opNo) => ({ pieceId: piece.pieceId!, opNo }))) });
     const before = (await readSessakuPieceSet(prisma, key()))!;
     await update([1]);
     const saved = (await readSessakuPieceSet(prisma, key()))!;

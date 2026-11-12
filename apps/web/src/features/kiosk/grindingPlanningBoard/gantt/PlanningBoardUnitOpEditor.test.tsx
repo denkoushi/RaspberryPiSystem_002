@@ -29,8 +29,8 @@ function setup(values: GrindingPlanningBoardResourceMinutesResponse['values'] = 
 }
 beforeEach(() => mutation.mockClear());
 describe('unit operation quantity dialog', () => {
-  it('opens an unregistered unit even without unit projection fields and starts with two equal operation times', () => {
-    setup([], { unitRequiredMinutes: undefined });
+  it('opens an unregistered unit with unknown unit minutes and starts with two equal operation times', () => {
+    setup([], { unitRequiredMinutes: null });
     const quantity = screen.getByRole('button', { name: 'フランジの数量 1／5' });
     expect(quantity).toHaveTextContent('1／5 ▾'); fireEvent.click(quantity);
     expect(screen.getByRole('dialog', { name: '数量' })).toBeInTheDocument();
