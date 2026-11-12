@@ -358,14 +358,23 @@ describe('grinding planning board service orchestration', () => {
     } finally { source.mockRestore(); }
   });
 
-  it.each(['general', 'dCompany', 'both'] as const)('scopes the deferred load and its cache to %s', async (scheduleSource) => {
+  it.each((['general', 'dCompany', 'both'] as const).flatMap((scheduleSource) => [false, true].map((list) => ({ scheduleSource, list }))))('scopes load and its cache to $scheduleSource with C collation (list: $list)', async ({ scheduleSource, list }) => {
     mocks.listKinds.mockResolvedValue(new Map([['D', ['D_COMPANY']], ['GENERAL', ['INTERNAL']], ['DUAL', ['INTERNAL', 'D_COMPANY']]]));
     const summary = vi.spyOn(loadSummary, 'readGrindingPlanningBoardLoadSummary').mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });
     try {
-      await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding', scheduleSource });
+      if (list) {
+        await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban', scheduleSource });
+      } else {
+        await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding', scheduleSource });
+      }
       const params = summary.mock.lastCall![0];
       expect(params.cache?.scheduleSource).toBe(scheduleSource);
       const predicate = params.leaderboardMaterializedBaseWhere!;
+      expect(predicate.sql).toContain('"CsvDashboardRow"."id" COLLATE "C" = ANY(');
+      expect(predicate.sql).not.toContain('"id"::text');
+      expect(predicate.values).toContainEqual([mocks.sourceRow.id]);
+      const winnerQueries = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('ROW_NUMBER()') && !JSON.stringify(sql).includes('effectiveItems'));
+      expect(winnerQueries).toHaveLength(1);
       if (scheduleSource === 'both') {
         expect(mocks.listKinds).not.toHaveBeenCalled();
         expect(predicate.sql).not.toContain('NOT IN');

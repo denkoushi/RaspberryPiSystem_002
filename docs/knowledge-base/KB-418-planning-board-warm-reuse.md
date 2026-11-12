@@ -129,6 +129,13 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
   - The other 13 integration tests in that file fail locally both with and without this change, because of fixture problems: the test-bar query is intercepted by the override stub, and a piece fixture violates `PSSPiece_position_positive`.
 - **Not measured**: production JIT settings and plan cost (the read-only production query was not permitted), Pi5 time with JIT off, and the production rebuild rate after the narrower token. The Pi5 rebuild may still be above 1 s; the remaining cost is scans, the DISTINCT ON sort spilling to disk, and the final group. Startup warmup rebuilds are unchanged.
 
+### Row-id collation in the load aggregate (2026-11-12)
+
+- **Production breakdown** (read-only, site Mac, 16,539 output rows): the load aggregate took 4,162 ms. The winner filter `"id"::text = ANY(text[])` ran as the third key of the partial index `csv_dashboard_row_prod_schedule_resource_norm_idx` under the database collation (en_US.utf8), which compares the array in collation order. Writing it as `"id" COLLATE "C" = ANY(text[])` turns it into a hashed filter; the result is identical because equality under a deterministic collation is byte equality.
+- **Effect**: 4,162 ms → 3,035 ms with the same output (md5 `4228af14…` for every variant). Narrower source columns, `work_mem` 32MB and `COLLATE "C"` on the sort keys gave no further gain beyond noise (2,927–2,934 ms), so only the id collation was shipped.
+- **Scope**: only the load aggregate's base WHERE uses the C-collated predicate (`useCCollation` in `max-product-no-winner-materialization.ts`); other leaderboard SQL is unchanged until each is measured in production.
+- **Remaining cost** (after the change): DISTINCT ON sort about 580 ms, GROUP BY sort about 510 ms, row fetch about 520–670 ms with no buffer hits.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.

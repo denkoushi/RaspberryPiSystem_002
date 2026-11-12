@@ -48,12 +48,16 @@ export async function fetchMaxProductNoWinnerRowIdsForDashboard(params: {
  */
 export function buildMaterializedMaxProductNoWinnerInCondition(
   rowAlias: string,
-  winnerRowIds: readonly string[]
+  winnerRowIds: readonly string[],
+  options?: { useCCollation?: boolean }
 ): Prisma.Sql {
   if (winnerRowIds.length === 0) {
     return Prisma.sql`FALSE`;
   }
   const q = quoteSqlIdentifierOrThrow(rowAlias);
+  if (options?.useCCollation) {
+    return Prisma.sql`${Prisma.raw(`${q}."id"`)} COLLATE "C" = ANY(${[...winnerRowIds]}::text[])`;
+  }
   return Prisma.sql`${Prisma.raw(`${q}."id"`)}::text = ANY(${[...winnerRowIds]}::text[])`;
 }
 
@@ -63,11 +67,12 @@ export function buildMaterializedMaxProductNoWinnerInCondition(
  */
 export function buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
   csvDashboardId: string,
-  winnerRowIds: readonly string[]
+  winnerRowIds: readonly string[],
+  options?: { useCCollation?: boolean }
 ): Prisma.Sql {
   return Prisma.sql`
     "CsvDashboardRow"."csvDashboardId" = ${csvDashboardId}
-    AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', winnerRowIds)}
+    AND ${buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', winnerRowIds, options)}
   `;
 }
 
