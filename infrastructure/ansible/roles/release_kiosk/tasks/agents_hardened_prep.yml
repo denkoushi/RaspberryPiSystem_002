@@ -97,7 +97,21 @@
                 # Release containers always mount this volume; anything else may hold
                 # data that Compose recreation would discard.
                 raise SystemExit('Existing ' + service + ' container has no Compose data volume; prepare it manually')
-            raise SystemExit(0)
+            # Match Compose's default name and ownership labels. The version is
+            # informational; omit config-hash so Compose accepts the existing volume.
+            volume_key = service + '-data'
+            volume_name = project + '_' + volume_key
+            version = docker('compose', 'version', '--short').decode().strip()
+            docker('volume', 'create',
+                   '--label', 'com.docker.compose.project=' + project,
+                   '--label', 'com.docker.compose.volume=' + volume_key,
+                   '--label', 'com.docker.compose.version=' + version, volume_name)
+            # Docker create can return an existing, unrelated same-name volume.
+            labels = json.loads(docker('volume', 'inspect', volume_name))[0].get('Labels') or {}
+            if (labels.get('com.docker.compose.project') != project
+                    or labels.get('com.docker.compose.volume') != volume_key):
+                raise SystemExit('Conflicting Compose data volume name for ' + service)
+            volumes = [volume_name]
         if len(volumes) != 1:
             raise SystemExit('Expected exactly one Compose data volume for ' + service)
         volume = volumes[0]

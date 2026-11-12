@@ -183,9 +183,9 @@ Manual preparation is verification only: check actual USB/input/serial node acce
 verify the torque runtime directory is `root:10001`, mode `0770`, with exact wrench nodes in group `input`, mode `0660`.
 The repository does not provision numeric group IDs; resolve any reported mismatch before retrying the release.
 
-Open item before enabling more terminals: when a terminal has neither the agent data volume nor an existing agent container,
-release preparation does nothing and Compose creates the volume later, so its ownership is not set to `10001:10001`. Resolve this
-(create and chown the volume during preparation, or prove the image-provided ownership) before widening beyond the trial terminal.
+When a terminal has neither the agent data volume nor an existing agent container, release preparation creates
+`<project>_<service>-data` with Compose project, volume and version labels, then sets ownership to `10001:10001`
+before Compose recreation. A conflicting same-name volume is rejected before changing ownership.
 
 Enable only the trial terminal by setting `client_agents_hardened: true` in that terminal's inventory host vars. Follow the standard
 release procedure in [deployment.md](../guides/deployment.md), inspect its plan and limit the release to that exact host:

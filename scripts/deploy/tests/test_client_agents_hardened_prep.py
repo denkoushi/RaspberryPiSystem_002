@@ -147,7 +147,7 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
 
     def run_storage(self, *, volumes=('actual-labeled-volume',), containers=('old-container',),
                     running=True, mounted=False, queue=True, service='nfc-agent',
-                    cp_error=None, stray=False, record=None):
+                    cp_error=None, stray=False, record=None, created_labels=None):
         calls = [] if record is None else record
         archive_buffer = io.BytesIO()
         with tarfile.open(fileobj=archive_buffer, mode='w') as archive:
@@ -168,7 +168,17 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
             result = b''
             rc = 0
             if command == 'volume':
-                result = '\n'.join(volumes).encode()
+                if argv[2] == 'inspect':
+                    labels = created_labels if created_labels is not None else {
+                        'com.docker.compose.project': 'fixture-project',
+                        'com.docker.compose.volume': service + '-data',
+                        'com.docker.compose.version': '2.39.4',
+                    }
+                    result = json.dumps([{'Labels': labels}]).encode()
+                else:
+                    result = '\n'.join(volumes).encode()
+            elif command == 'compose':
+                result = b'2.39.4\n'
             elif command == 'ps':
                 result = '\n'.join(containers).encode()
             elif command == 'inspect':
@@ -189,11 +199,35 @@ class ClientAgentsHardenedPrepTest(unittest.TestCase):
                     raise
         return calls
 
-    def test_absent_volume_does_not_stop_or_create_anything(self):
-        calls = self.run_storage(volumes=(), containers=())
-        self.assertEqual([argv[1] for argv, _ in calls], ['volume', 'ps'])
-        self.assertIn('label=com.docker.compose.project=fixture-project', calls[0][0])
-        self.assertIn('label=com.docker.compose.volume=nfc-agent-data', calls[0][0])
+    def test_fresh_terminal_creates_compose_volume_before_chown(self):
+        for service in ('nfc-agent', 'torque-agent'):
+            with self.subTest(service=service):
+                calls = self.run_storage(volumes=(), containers=(), service=service)
+                volume = 'fixture-project_' + service + '-data'
+                self.assertEqual([argv[1] for argv, _ in calls],
+                                 ['volume', 'ps', 'compose', 'volume', 'volume', 'run'])
+                self.assertIn('label=com.docker.compose.project=fixture-project', calls[0][0])
+                self.assertIn('label=com.docker.compose.volume=' + service + '-data', calls[0][0])
+                self.assertEqual(calls[2][0], ['docker', 'compose', 'version', '--short'])
+                self.assertEqual(calls[3][0], ['docker', 'volume', 'create',
+                    '--label', 'com.docker.compose.project=fixture-project',
+                    '--label', 'com.docker.compose.volume=' + service + '-data',
+                    '--label', 'com.docker.compose.version=2.39.4', volume])
+                self.assertEqual(calls[4][0], ['docker', 'volume', 'inspect', volume])
+                self.assertEqual(calls[5][0], ['docker', 'run', '--rm', '--network', 'none',
+                    '--user', '0:0', '--mount', 'type=volume,src=' + volume + ',dst=/data',
+                    '--entrypoint', 'chown', 'fixture-candidate', '-R', '10001:10001', '/data'])
+
+    def test_fresh_terminal_rejects_conflicting_volume_before_chown(self):
+        for labels in ({}, {'com.docker.compose.project': 'other-project',
+                            'com.docker.compose.volume': 'nfc-agent-data'},
+                       {'com.docker.compose.project': 'fixture-project',
+                        'com.docker.compose.volume': 'other-data'}):
+            with self.subTest(labels=labels):
+                with self.assertRaisesRegex(SystemExit, 'Conflicting Compose data volume'):
+                    self.run_storage(volumes=(), containers=(), created_labels=labels,
+                                     record=(calls := []))
+                self.assertNotIn('run', [argv[1] for argv, _ in calls])
 
     def test_absent_volume_with_existing_container_fails_before_stopping(self):
         with self.assertRaisesRegex(SystemExit, 'no Compose data volume'):
