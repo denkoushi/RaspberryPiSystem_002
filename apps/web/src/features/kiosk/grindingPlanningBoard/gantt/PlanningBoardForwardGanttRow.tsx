@@ -304,7 +304,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
               style={{ top: foldedWindow ? 22 : undefined, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
-                borderRadius: split ? 0 : undefined,
+                borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
                 clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
                 ...(split && !bar.unknown && bar.tone !== 'completed' && draggedItemId !== bar.item.itemId ? { background: splitColor } : {}),

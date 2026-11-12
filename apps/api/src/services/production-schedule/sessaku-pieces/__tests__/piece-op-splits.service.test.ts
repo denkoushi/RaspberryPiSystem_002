@@ -10,15 +10,16 @@ const mocks = vi.hoisted(() => ({
     $queryRaw: vi.fn(), $executeRaw: vi.fn(),
     productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn(), updateMany: vi.fn() },
-    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), deleteMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
+    site: { findMany: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn(), findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartOpMinutes: { findMany: vi.fn(), createMany: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
     productionScheduleSessakuPieceHistory: { findUnique: vi.fn(), upsert: vi.fn() },
-    productionScheduleSessakuPieceSet: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn() },
-    productionScheduleSessakuPiece: { findMany: vi.fn(), update: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() },
+    productionScheduleSessakuPieceSet: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    productionScheduleSessakuPiece: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() },
     productionScheduleSessakuPieceOpSplit: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
     productionScheduleSessakuPieceOpCompletion: { findFirst: vi.fn(), findMany: vi.fn(), upsert: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() }
   },
@@ -164,6 +165,11 @@ describe('piece operation boundary mutations', () => {
         ops: (saved.ops ?? []).map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) } : null };
   }
   function installDefinitionWrites() {
+    mocks.transaction.mockImplementation(async (callback) => {
+      const before = structuredClone({ set, settings, overrides, completed });
+      try { return await callback(mocks.tx); }
+      catch (error) { ({ set, settings, overrides, completed } = before); throw error; }
+    });
     const parts = mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes;
     const ops = mocks.tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes;
     parts.findUnique.mockImplementation(async ({ where }) => {
@@ -177,11 +183,12 @@ describe('piece operation boundary mutations', () => {
       else Object.assign(value, update);
       return before ?? { ...value, id: 'part', ops: [] };
     });
-    parts.update.mockImplementation(async ({ data }) => Object.assign(settings.values[0], data));
-    ops.findMany.mockImplementation(async () => settings.values[0]?.ops ?? []);
-    ops.update.mockImplementation(async ({ where, data }) => Object.assign(settings.values[0].ops!.find((op) => op.id === where.id)!, data));
-    ops.deleteMany.mockImplementation(async ({ where }) => { settings.values[0].ops = settings.values[0].ops!.filter((op) => !where.id.in.includes(op.id)); });
-    ops.createMany.mockImplementation(async ({ data }) => { settings.values[0].ops!.push(...data.map((op: { opNo: number }) => ({ ...op, id: `new-${op.opNo}` }))); });
+    const configured = () => settings.values.find((value) => value.resourceCd === '021')!;
+    parts.update.mockImplementation(async ({ data }) => Object.assign(configured(), data));
+    ops.findMany.mockImplementation(async () => configured()?.ops ?? []);
+    ops.update.mockImplementation(async ({ where, data }) => Object.assign(configured().ops!.find((op) => op.id === where.id)!, data));
+    ops.deleteMany.mockImplementation(async ({ where }) => { configured().ops = configured().ops!.filter((op) => !where.id.in.includes(op.id)); });
+    ops.createMany.mockImplementation(async ({ data }) => { configured().ops!.push(...data.map((op: { opNo: number }) => ({ ...op, id: `new-${op.opNo}` }))); });
     mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mockImplementation(async ({ where }) => {
       set.pieces.find((piece) => piece.id === where.pieceId)!.opSplits = [];
     });
@@ -224,16 +231,16 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.transaction).toHaveBeenCalledTimes(2);
   });
 
-  it('preserves existing operation numbers and setup by number, then replaces every existing boundary', async () => {
+  it('preserves operation numbers and total setup across count changes, then replaces every boundary', async () => {
     installDefinitionWrites();
     settings.values[0].ops = [{ id: 'a', opNo: 3, minutes: 10, setupMinutes: 5 }, { id: 'b', opNo: 7, minutes: 20, setupMinutes: 10 }];
     settings.values[0].perUnitMinutes = 30; settings.values[0].setupMinutes = 15;
     await configureSessakuPieceOps(configuration([8, 12, 10]));
-    expect(settings.values[0].ops).toMatchObject([{ opNo: 3, setupMinutes: 5 }, { opNo: 7, setupMinutes: 10 }, { opNo: 8, setupMinutes: 0 }]);
+    expect(settings.values[0].ops).toMatchObject([{ opNo: 3, setupMinutes: 15 }, { opNo: 7, setupMinutes: 0 }, { opNo: 8, setupMinutes: 0 }]);
     expect(set.pieces[0].opSplits!.map((split) => split.fromOpNo)).toEqual([7, 8]);
     await configureSessakuPieceOps(configuration([30], barId(7)));
     expect(set.pieces[0].opSplits).toEqual([]);
-    expect(settings.values[0].ops).toMatchObject([{ opNo: 3, minutes: 30, setupMinutes: 5 }]);
+    expect(settings.values[0].ops).toMatchObject([{ opNo: 3, minutes: 30, setupMinutes: 15 }]);
   });
 
   it('clears every boundary of the pressed piece or the whole lot and keeps the registration', async () => {
@@ -278,26 +285,20 @@ describe('piece operation boundary mutations', () => {
     expect([overrides.get(headId()), overrides.get(barId(3))]).toEqual(placements);
     expect(unfinished.opSplits.map((split) => split.fromOpNo)).toEqual(action === 'configure' ? [2, 3] : []);
     expect(nonUnit.opSplits).toEqual([]);
-    if (action === 'configure') expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst).toHaveBeenLastCalledWith({
-      where: { pieceId: { in: [unfinished.id] } }, select: { pieceId: true }
-    });
-    else expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst).not.toHaveBeenCalled();
+    expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst).not.toHaveBeenCalled();
     const changedIds = mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mock.calls.map(([args]) => args.where.pieceId);
     expect(changedIds).toEqual(action === 'configure' ? [unfinished.id] : [unfinished.id, nonUnit.id]);
   });
 
-  it.each(['configure'] as const)('rejects operation evidence on another unfinished target during %s', async (action) => {
+  it('configures another unfinished target with completed operations without remapping its evidence', async () => {
     installDefinitionWrites();
     const sibling = { ...set.pieces[0], id: randomUUID(), position: 2, opCompletions: [{ opNo: 1 }], opSplits: [] };
     set.pieces.push(sibling);
     set.plannedQuantity = 2; detail.orderSupplements[0].plannedQuantity = 2;
-    mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst.mockImplementation(async ({ where }) =>
-      where.pieceId.in.includes(sibling.id) ? { pieceId: sibling.id } : null);
-    const operation = action === 'configure' ? configureSessakuPieceOps(configuration())
-      : clearSessakuPieceOps({ ...request(headId()), scope: 'set' });
-    await expect(operation).rejects.toMatchObject({ statusCode: 409, code: 'PIECE_OPERATION_COMPLETED' });
-    expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
-    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
+    await configureSessakuPieceOps(configuration());
+    expect(sibling.opSplits).toHaveLength(1);
+    expect(sibling.opCompletions).toEqual([{ opNo: 1 }]);
+    expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst).not.toHaveBeenCalled();
   });
 
   it.each(['piece', 'set'] as const)('clears %s boundaries while preserving operation completion evidence', async (scope) => {
@@ -331,6 +332,7 @@ describe('piece operation boundary mutations', () => {
       where.fromOpNo.in.includes(3) && !where.pieceId.notIn.includes(outside.id) ? { pieceId: outside.id } : null);
     const before = structuredClone({ set, values: settings.values });
     await expect(configureSessakuPieceOps(configuration())).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mock.calls[0][0].where.sourceResourceCd).toBe(configuration().resourceCd);
     expect({ set, values: settings.values }).toEqual(before);
     expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
@@ -379,24 +381,107 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('rejects stale piece-set versions, revisions and registration snapshots before writing', async () => {
+  it('rejects stale versions, revisions and registration snapshots without persisting changes', async () => {
     installDefinitionWrites();
     const payload = configuration();
     await expect(configureSessakuPieceOps({ ...payload, expectedPieceSetVersion: 0 })).rejects.toMatchObject({ statusCode: 409 });
     await expect(configureSessakuPieceOps({ ...payload, itemRevision: '0'.repeat(64) })).rejects.toMatchObject({ statusCode: 409 });
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
     await expect(configureSessakuPieceOps({ ...payload, expectedOpIds: [] })).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SET_CHANGED' });
     await expect(configureSessakuPieceOps({ ...payload, expectedMinutes: { ...payload.expectedMinutes!, perUnitMinutes: 99 } })).rejects.toMatchObject({ statusCode: 409, code: 'RESOURCE_MINUTES_CHANGED' });
     expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
-    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
+    expect(set.pieces[0].opSplits).toEqual([]);
   });
 
-  it.each(['configure'])('rejects completed operation evidence before %s without changing registration or cuts', async (action) => {
+  function installCompletionReconciliation() {
     installDefinitionWrites();
+    mocks.tx.$queryRaw.mockImplementation(async (sql) => String(sql).includes('SELECT "fseiban"') ? [key]
+      : String(sql).includes('FOR SHARE') ? [{ id: 'part' }] : []);
+    mocks.tx.productionScheduleSessakuPieceSet.findMany.mockImplementation(async () => [set]);
+    mocks.tx.productionScheduleGrindingPlanningBoardOverride.groupBy.mockResolvedValue([{ siteKey: 'site' }]);
+    mocks.tx.site.findMany.mockResolvedValue([]);
+    mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockImplementation(async () =>
+      settings.values.map((value) => ({ ...value, siteKey: 'site' })));
+    mocks.tx.productionScheduleSessakuPieceOpCompletion.deleteMany.mockImplementation(async ({ where }) => {
+      const obsolete = [...completed].filter((opNo) => !where.opNo?.notIn.includes(opNo));
+      obsolete.forEach((opNo) => completed.delete(opNo)); syncCompletionRecords(); return { count: obsolete.length };
+    });
+    mocks.tx.productionScheduleSessakuPiece.updateMany.mockImplementation(async ({ where, data }) => {
+      set.pieces.filter((piece) => where.id.in.includes(piece.id)).forEach((piece) => Object.assign(piece, data));
+    });
+    mocks.tx.productionScheduleSessakuPieceSet.updateMany.mockImplementation(async () => { set.version += 1; });
+  }
+
+  it.each([false, true])('retains completed numbers and removes obsolete evidence using the rewritten intervals (all remaining done=%s)', async (allDone) => {
+    installCompletionReconciliation();
+    // The old tail uses a different source which still defines op 4. Reconcile must see the NEW intervals.
+    set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '022', leadingSourceResourceCd: '021' }];
+    completed = new Set(allDone ? [1, 2, 4] : [1, 4]); syncCompletionRecords();
     mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst.mockResolvedValue({ pieceId: pieceId() });
-    const operation = action === 'configure' ? configureSessakuPieceOps(configuration()) : clearSessakuPieceOps({ ...request(headId()), scope: action as 'piece' | 'set' });
-    await expect(operation).rejects.toMatchObject({ statusCode: 409, code: 'PIECE_OPERATION_COMPLETED' });
-    expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
-    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
+    const response = await configureSessakuPieceOps(configuration([12, 18]));
+    expect([...completed]).toEqual(allDone ? [1, 2] : [1]);
+    expect(set.pieces[0].isCompleted).toBe(allDone);
+    expect(response.pieces.map((bar) => [bar.itemId, bar.isCompleted, bar.completedOpNos])).toEqual([
+      [headId(), true, [1]], [barId(2), allDone, allDone ? [2] : []]
+    ]);
+    expect(response.parentIsCompleted).toBe(allDone);
+    expect(settings.values[0].ops?.map((op) => op.minutes)).toEqual([12, 18]);
+  });
+
+  it('copies placement to completed bars created from a completed multi-operation interval', async () => {
+    installCompletionReconciliation();
+    set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }];
+    completed = new Set([1, 2]); syncCompletionRecords();
+    const due = new Date('2026-12-05');
+    overrides.set(sessakuPieceParentItemId(key), override(sessakuPieceParentItemId(key), { overrideResourceCd: '022' }));
+    overrides.set(headId(), override(headId(), { overrideResourceCd: '021', overrideDueDate: due, orderPinned: true, alternateRank: 5 }));
+    const response = await configureSessakuPieceOps(configuration([12, 18, 30]));
+    expect(response.pieces.find((bar) => bar.itemId === barId(2))).toMatchObject({
+      isCompleted: true, effectiveResourceCd: '021', effectiveDueDate: '2026-12-05', orderPinned: true
+    });
+    expect(overrides.get(barId(2))).toMatchObject({ overrideResourceCd: '021', overrideDueDate: due, orderPinned: true, alternateRank: 6 });
+    expect(response.pieces.find((bar) => bar.itemId === barId(3))).toMatchObject({ isCompleted: false });
+  });
+
+  it('edits the time of a completed operation without changing its completion record', async () => {
+    installDefinitionWrites();
+    completed = new Set([1]); syncCompletionRecords();
+    await configureSessakuPieceOps(configuration([11, 22, 33, 44]));
+    expect([...completed]).toEqual([1]);
+    expect(current(headId())).toMatchObject({ isCompleted: true, unitRequiredMinutes: 11 });
+    expect(current(barId(2))).toMatchObject({ isCompleted: false, unitRequiredMinutes: 22 });
+  });
+
+  it('keeps all 15 setup minutes when reducing three operations to two', async () => {
+    installDefinitionWrites();
+    settings.values[0].ops = [10, 0, 5].map((setupMinutes, index) => ({ id: `op-${index}`, opNo: index + 1, minutes: 10, setupMinutes }));
+    settings.values[0].setupMinutes = 15; settings.values[0].perUnitMinutes = 30;
+    await configureSessakuPieceOps(configuration([12, 18]));
+    expect(settings.values[0]).toMatchObject({ setupMinutes: 15, ops: [{ setupMinutes: 15 }, { setupMinutes: 0 }] });
+  });
+
+  it('registers setup from the minimum-position head even when pressing the second unit', async () => {
+    installDefinitionWrites();
+    settings.values = [{ resourceCd: '022', fhincd: 'PART', perUnitMinutes: 30, setupMinutes: 15,
+      ops: [{ opNo: 1, minutes: 10, setupMinutes: 15 }, { opNo: 2, minutes: 20, setupMinutes: 0 }] }];
+    const first = set.pieces[0];
+    first.opSplits = [{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '022' }];
+    const second = { ...first, id: randomUUID(), position: 2, opCompletions: [] };
+    set.pieces = [second, first]; set.plannedQuantity = 2; detail.orderSupplements[0].plannedQuantity = 2;
+    expect(current(`piece:${second.id}`).setupMinutes).toBe(0);
+    expect(current(`piece:${first.id}`).setupMinutes).toBe(15);
+    await configureSessakuPieceOps(configuration([10, 20], `piece:${second.id}`));
+    expect(settings.values.find((value) => value.resourceCd === '021')).toMatchObject({
+      setupMinutes: 15, ops: [{ setupMinutes: 15 }, { setupMinutes: 0 }]
+    });
+  });
+
+  it('keeps each registered operation setup unchanged when the count is unchanged', async () => {
+    installDefinitionWrites();
+    settings.values[0].ops = [{ id: 'a', opNo: 3, minutes: 10, setupMinutes: 10 }, { id: 'b', opNo: 7, minutes: 20, setupMinutes: 5 }];
+    settings.values[0].setupMinutes = 15; settings.values[0].perUnitMinutes = 30;
+    await configureSessakuPieceOps(configuration([12, 18]));
+    expect(settings.values[0]).toMatchObject({ setupMinutes: 15, ops: [{ opNo: 3, setupMinutes: 10 }, { opNo: 7, setupMinutes: 5 }] });
   });
 
   it('creates stable bar IDs, ranges and source operation durations and invalidates old writes', async () => {

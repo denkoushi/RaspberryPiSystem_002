@@ -1328,6 +1328,23 @@ describe('forward PlanningBoardGanttView', () => {
     expect(container.querySelectorAll('[data-gantt-unit-underline]')).toHaveLength(6);
     expect(second.style.background).toContain('78%'); expect(third.style.background).toContain('56%');
   });
+  it.each(['backward', 'forward'] as const)('rounds only the head operation bar in %s mode', (mode) => {
+    const entries = [3, 7].map((opNo, index) => item({ kind: 'piece',
+      itemId: index === 0 ? 'piece:unit' : 'pieceops:unit:7', parentItemId: 'parent', pieceId: 'unit', piecePosition: 1,
+      plannedQuantity: 1, opRange: { fromOpNo: opNo, toOpNo: opNo }, unitRequiredMinutes: 120, setupMinutes: 0 }));
+    const display = forwardProps(entries);
+    display.layout = buildPlanningBoardGanttLayout({ items: entries, mode, allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: { '305': 24 }, today: '2026-10-14',
+      now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 });
+    render(<PlanningBoardGanttView {...display} />);
+    const headButton = screen.getByTestId('planning-gantt-bar-piece:unit');
+    const suffixButton = screen.getByTestId('planning-gantt-bar-pieceops:unit:7');
+    const head = mode === 'backward' ? headButton.firstElementChild as HTMLElement : headButton;
+    const suffix = mode === 'backward' ? suffixButton.firstElementChild as HTMLElement : suffixButton;
+    expect(head).toHaveClass('rounded');
+    expect(head.style.borderRadius).toBe('');
+    expect(suffix.style.borderRadius).toBe('0');
+  });
   it('connects same-piece intervals by operation number and uses the final source interval for later processing', () => {
     const entry = item({ kind: 'piece', pieceId: 'p', parentItemId: 'parent', piecePosition: 1, processOrder: '10', unitRequiredMinutes: 30, setupMinutes: 0 });
     const entries = [item({ ...entry, itemId: 'pieceops:p:30', opRange: { fromOpNo: 30, toOpNo: 30 } }),

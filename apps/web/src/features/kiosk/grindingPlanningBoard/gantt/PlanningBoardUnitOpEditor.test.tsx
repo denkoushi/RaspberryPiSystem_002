@@ -40,6 +40,28 @@ describe('unit operation quantity dialog', () => {
     expect(screen.getByRole('button', { name: '2工程にする' })).toBeInTheDocument();
     expect(screen.queryByText('段取り')).not.toBeInTheDocument();
   });
+  it('edits time and count from a completed interval and separates completion from configuration', async () => {
+    const ops = [{ id: 'op-1', opNo: 1, minutes: 12, setupMinutes: 20 }, { id: 'op-2', opNo: 2, minutes: 18, setupMinutes: 0 }];
+    setup([{ resourceCd: '021', fhincd: 'PART', perUnitMinutes: 30, setupMinutes: 20, ops }], {
+      isCompleted: true, completedOpNos: [1], opRange: { fromOpNo: 1, toOpNo: 1 }, ops: [ops[0]]
+    });
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.firstElementChild).toHaveClass('!max-w-[300px]');
+    const separator = screen.getByRole('separator');
+    expect(separator).toHaveClass('h-px', 'bg-slate-700');
+    expect(separator.previousElementSibling).toBe(screen.getByRole('button', { name: '工程1を未完了にする' }));
+    expect(separator.nextElementSibling).toBe(screen.getByRole('group', { name: '工程の数' }));
+    const first = screen.getByRole('spinbutton', { name: '1工程 1台' });
+    await waitFor(() => expect(first).toBeEnabled());
+    fireEvent.change(first, { target: { value: '14' } });
+    fireEvent.click(screen.getByRole('button', { name: '2工程にする' }));
+    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [14, 18] })));
+  });
+  it('omits the divider when there are no operation completion buttons', () => {
+    setup(); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('separator')).not.toBeInTheDocument();
+  });
   it('initializes from the registered snapshot when its read finishes after the dialog opens', () => {
     const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
       resourceCategories: { '021': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));

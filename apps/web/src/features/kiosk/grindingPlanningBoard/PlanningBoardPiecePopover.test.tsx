@@ -624,6 +624,8 @@ describe('piece operation boundaries', () => {
     expect(scissors.map(button => button.getAttribute('aria-label'))).toEqual(suffix ? ['工程30の前で分ける'] : ['工程20の前で分ける', '工程30の前で分ける']);
     for (const button of scissors) {
       expect(button).toHaveTextContent('✂');
+      expect(button).toHaveClass('h-8');
+      expect(button).not.toHaveClass('min-h-11');
       expect(button.previousElementSibling).toHaveAttribute('aria-pressed');
       expect(button.nextElementSibling).toHaveAttribute('aria-pressed');
     }

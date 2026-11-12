@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -6,7 +7,7 @@ import { getGrindingPlanningBoardResourceMinutes, saveGrindingPlanningBoardResou
 import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
 import { sessakuPieceIdFromItemId, resolveSessakuPieceItemKeys, sessakuPieceParentItemId, sessakuPieceItemIds } from './piece-key.js';
 import { replaceSiteItems, flushSiteItems } from './piece-lane-writes.js';
-import { assertNoOperationCompletions, rememberPieceHistory } from './piece-op-splits.js';
+import { rememberPieceHistory } from './piece-op-splits.js';
 import { sessakuPieceOpsConfigureSchema, sessakuPieceOpsClearSchema } from './sessaku-pieces.schemas.js';
 import type { PieceOpSplitDependencies } from './sessaku-pieces.service.js';
 
@@ -40,12 +41,12 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     const targets = configure ? c.set.pieces.filter((candidate) => candidate.quantity === 1 && !candidate.isCompleted && (candidate.id === piece.id
       || c.current.pieces.find((bar) => bar.itemId === `piece:${candidate.id}`)?.effectiveResourceCd === ('resourceCd' in params ? params.resourceCd : null)))
       : 'scope' in params && params.scope === 'set' ? c.set.pieces.filter((candidate) => !candidate.isCompleted) : [piece];
-    if (configure) await assertNoOperationCompletions(tx, targets.map((candidate) => candidate.id));
     if (targets.some((candidate) => candidate.isCompleted)) conflict('COMPLETED_PIECE');
     if (configure && (!item.effectiveResourceCd || !('resourceCd' in params) || params.resourceCd !== item.effectiveResourceCd)) conflict();
     const removed = targets.flatMap(sessakuPieceItemIds);
     const before = await beforeProjections(tx, c.sites, c.key, removed, c.later, params.audit, params.dueSource);
     let opNos: number[] = [];
+    let definition: Parameters<typeof saveGrindingPlanningBoardResourcePartMinutes>[1] | undefined;
     if ('minutes' in params) {
       const settings = await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey }, tx);
       const previous = settings.values.find((value) => value.resourceCd === params.resourceCd && value.fhincd === item.fhincd.trim());
@@ -58,22 +59,24 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
       }
       const removedOpNos = previousOps.filter((op) => !opNos.includes(op.opNo)).map((op) => op.opNo);
       if (removedOpNos.length && await tx.productionScheduleSessakuPieceOpSplit.findFirst({ where: {
-        fromOpNo: { in: removedOpNos }, pieceId: { notIn: targets.map((target) => target.id) },
+        fromOpNo: { in: removedOpNos }, sourceResourceCd: params.resourceCd, pieceId: { notIn: targets.map((target) => target.id) },
         piece: { pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           fhincd: { in: [...new Set([c.key.fhincd, ...(c.definitionKeys ?? []).map((key) => key.fhincd)])] } } }
       }, select: { pieceId: true } })) {
         throw new ApiError(409, '別のロットや対象外の台が工程で分かれています。先にまとめてください', undefined, 'OPERATION_SPLIT_IN_USE');
       }
-      const setup = previous?.setupMinutes ?? item.setupMinutes ?? 0;
+      const firstPiece = [...c.set.pieces].sort((a, b) => a.position - b.position)[0];
+      const setup = previous?.setupMinutes ?? c.current.pieces.find((bar) => bar.itemId === `piece:${firstPiece?.id}`)?.setupMinutes ?? 0;
+      const sameCount = previousOps.length === params.minutes.length;
       const ops = params.minutes.map((minutes, index) => {
         const previousOp = previousOps.find((op) => op.opNo === opNos[index]);
-        return { opNo: opNos[index], minutes, setupMinutes: previousOps.length
-          ? previousOp ? previousOp.setupMinutes ?? null : 0 : index === 0 ? setup : 0 };
+        return { opNo: opNos[index], minutes, setupMinutes: sameCount
+          ? previousOp!.setupMinutes ?? null : index === 0 ? setup : 0 };
       });
-      await saveGrindingPlanningBoardResourcePartMinutes(tx, { siteKey: params.siteKey, resourceCd: params.resourceCd,
+      definition = { siteKey: params.siteKey, resourceCd: params.resourceCd,
         fhincd: item.fhincd, perUnitMinutes: params.minutes.reduce((sum, value) => sum + value, 0),
         setupMinutes: ops.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0), ops,
-        expectedOpIds: params.expectedOpIds, expectedMinutes: params.expectedMinutes }, c.definitionKeys);
+        expectedOpIds: params.expectedOpIds, expectedMinutes: params.expectedMinutes };
     }
     for (const target of targets) {
       const oldIds = sessakuPieceItemIds(target);
@@ -95,11 +98,27 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
               const boundary = boundaries.filter((split) => split.fromOpNo <= opNos[index]).at(-1);
               return (index === 0 || !boundary ? headId : `pieceops:${target.id}:${boundary.fromOpNo}`) === oldId;
             });
+            const original = state.pieces.find((bar) => bar.itemId === oldId);
+            const inherited = state.overrides.get(oldId) ?? state.overrides.get(sessakuPieceParentItemId(c.key));
             await replaceSiteItems(tx, c.key, state, site, [oldId], replacements, params.audit);
+            // Like operation split, completed intervals inherit placement outside the unfinished lane writer.
+            for (const [index, id] of replacements.entries()) if (original && !state.overrides.has(id)) {
+              const now = new Date();
+              state.overrides.set(id, { id: randomUUID(), csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+                siteKey: site, itemKey: id, overrideResourceCd: original.effectiveResourceCd,
+                overrideDueDate: inherited?.overrideDueDate ?? null, dueDateCleared: inherited?.dueDateCleared ?? null,
+                orderPinned: inherited?.orderPinned ?? false, specialDueKind: inherited?.specialDueKind ?? null,
+                specialDueExpiresAt: inherited?.specialDueExpiresAt ?? null,
+                alternateRank: original.alternateRank == null ? null : original.alternateRank + index,
+                version: 1, createdAt: now, updatedAt: now });
+              state.laneWrites.pending.add(id);
+            }
           }
         }
       }
     }
+    // Reconcile against the new intervals: old source ranges may retain obsolete evidence or close a unit too early.
+    if (definition) await saveGrindingPlanningBoardResourcePartMinutes(tx, definition, c.definitionKeys);
     // Completed bars/hidden sites may be outside the unfinished lane writer.
     const obsolete = removed.filter((id) => id.startsWith('pieceops:') && (!configure || !opNos.slice(1).some((opNo) => id.endsWith(`:${opNo}`))));
     if (obsolete.length) await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: {
