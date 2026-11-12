@@ -60,7 +60,6 @@ export type PlanningBoardItemTableProps = {
 };
 
 type PlanningBoardItemTableRowProps = {
-  rowIndex?: number;
   measureRow?: (element: HTMLTableRowElement | null) => void;
   item: GrindingPlanningBoardItem;
   processChips: readonly KioskResourceProgressProcessChip[] | undefined;
@@ -90,7 +89,7 @@ type PlanningBoardItemTableRowProps = {
 };
 
 const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
-  rowIndex, measureRow,
+  measureRow,
   item,
   processChips,
   allocation,
@@ -139,7 +138,6 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   return (
     <tr
       ref={measureRow}
-      data-index={rowIndex}
       key={item.itemId}
       data-testid={`planning-board-item-${item.itemId}`}
       data-planning-board-item-id={item.itemId}
@@ -477,7 +475,6 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
               <Fragment key={item.itemId}>
                 {paddingBefore > 0 && <tr aria-hidden="true"><td colSpan={columnCount} style={{ height: paddingBefore, padding: 0, border: 0 }} /></tr>}
                 <PlanningBoardItemTableRow
-                  rowIndex={measureRow ? index : undefined}
                   measureRow={measureRow}
                   seibanFocus={focusedSeiban === null ? null : focusedSeiban === item.fseiban ? 'match' : 'dim'}
                   item={rowItems.get(item.itemId)!}

@@ -1,5 +1,5 @@
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useLayoutEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
 import { pageZoom } from './pageZoom';
@@ -47,10 +47,33 @@ export function usePlanningBoardTableVirtualizer(
       ...(draggedIndex >= 0 ? [draggedIndex] : [])
     ])].sort((a, b) => a - b)
   });
+  // Rows read their index from the DOM so a reorder does not re-render unrelated memoized rows.
+  const indexById = useMemo(() => new Map(items.map((item, index) => [item.itemId, index])), [items]);
+  const indexByIdRef = useRef(indexById);
+  indexByIdRef.current = indexById;
+  const { measureElement } = virtualizer;
+  const measureRow = useCallback((element: HTMLTableRowElement | null) => {
+    const index = element ? indexByIdRef.current.get(element.dataset.planningBoardItemId ?? '') : undefined;
+    if (element && index !== undefined) element.dataset.index = String(index);
+    measureElement(element);
+  }, [measureElement]);
+  useLayoutEffect(() => {
+    if (!active) return;
+    rootRef.current?.querySelectorAll<HTMLTableRowElement>('tr[data-planning-board-item-id]').forEach((row) => {
+      const index = indexById.get(row.dataset.planningBoardItemId ?? '');
+      if (index !== undefined) row.dataset.index = String(index);
+    });
+  });
   useLayoutEffect(() => {
     if (!enabled || !focusedSeiban) return;
-    const index = items.findIndex((item) => item.fseiban === focusedSeiban);
-    if (index >= 0) virtualizer.scrollToIndex(index, { align: 'start' });
+    const scroll = rootRef.current?.closest<HTMLElement>('[data-resource-scroll]');
+    const row = rootRef.current?.querySelector<HTMLElement>('[data-seiban-focused="true"]');
+    // A rendered row keeps the original measured scroll; offscreen rows need the virtualizer first.
+    if (scroll && row) scroll.scrollTop += (row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) / pageZoom();
+    else {
+      const index = items.findIndex((item) => item.fseiban === focusedSeiban);
+      if (index >= 0) virtualizer.scrollToIndex(index, { align: 'start' });
+    }
     // A refresh must not move a pane the user has scrolled manually.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanFocusKey]);
@@ -65,7 +88,7 @@ export function usePlanningBoardTableVirtualizer(
   if (!rows.length) return {
     rows: items.slice(0, 7).map((_, index) => ({ index, paddingBefore: 0 })),
     bottomPadding: Math.max(0, items.length - 7) * 45,
-    measureRow: virtualizer.measureElement
+    measureRow
   };
-  return { rows, bottomPadding: Math.max(0, virtualizer.getTotalSize() - end), measureRow: virtualizer.measureElement };
+  return { rows, bottomPadding: Math.max(0, virtualizer.getTotalSize() - end), measureRow };
 }
