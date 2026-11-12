@@ -17,7 +17,8 @@ import type { LeaderboardShellSnapshotStore } from '../leaderboard/leaderboard-s
 import { findMaterialArrivalStatusByPart, materialArrivalLookupKey } from '../../purchase-order-lookup/material-arrival-status.service.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
 import { projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
-import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
+import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
+import { buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners } from '../row-resolver/max-product-no-winner-materialization.js';
 import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board-load-summary.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, planningBoardArrivalDate, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
@@ -107,10 +108,13 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
   const projection = await perf.measure('projection', () => projectCurrentBoard({ resourceMinutes, includePieces: params.includePieces, dueSource: params.dueSource, client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
   const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted || item.quantityWarning) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted || item.quantityWarning) : projection.items;
   // includeLoad always aggregates pieces, regardless of the board projection includePieces flag.
+  const loadWinners = includeLoad ? await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken: source.generationToken }) : undefined;
   const loadSummary = includeLoad ? await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     resourceMinutes,
     client: prisma,
-    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(source.baseWhere, excludedFseibans),
+    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+      PRODUCTION_SCHEDULE_DASHBOARD_ID, [...loadWinners!.winnerRowIds], { useCCollation: true }
+    ), excludedFseibans),
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy),
@@ -453,14 +457,16 @@ export async function getGrindingPlanningBoardLoad(params: {
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board/load');
   const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey));
   const generationBefore = generationBeforeRead.loadGenerationToken;
-  const [baseWhere, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
-    resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken: generationBeforeRead.leaderboardGenerationToken }),
+  const [winners, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
+    resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken: generationBeforeRead.leaderboardGenerationToken }),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
   const excludedFseibans = await readScheduleSourceExcludedFseibans(params.scheduleSource);
   const summary = await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     client: prisma,
-    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(baseWhere, excludedFseibans),
+    leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
+      PRODUCTION_SCHEDULE_DASHBOARD_ID, [...winners.winnerRowIds], { useCCollation: true }
+    ), excludedFseibans),
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy),

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   buildProductionScheduleDashboardBaseWhereWithCorrelatedMaxProductNoWinner,
+  buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners,
   buildMaterializedMaxProductNoWinnerInCondition,
   buildProductionScheduleLeaderboardMaterializedBaseWhere,
   buildProductionScheduleLeaderboardMaterializedWinners,
@@ -41,6 +42,23 @@ describe('fetchMaxProductNoWinnerRowIdsForDashboard (unit)', () => {
 });
 
 describe('buildMaterializedMaxProductNoWinnerInCondition (unit)', () => {
+  it('preserves the default SQL and opts into C collation explicitly', () => {
+    const ids = ['row-a', 'row-b'];
+    const defaultCondition = buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', ids);
+    expect(defaultCondition.strings).toEqual(['"CsvDashboardRow"."id"::text = ANY(', '::text[])']);
+    expect(defaultCondition.values).toEqual([ids]);
+    const condition = buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', ids, { useCCollation: true });
+    expect(condition.strings).toEqual(['"CsvDashboardRow"."id" COLLATE "C" = ANY(', '::text[])']);
+    expect(condition.values).toEqual(defaultCondition.values);
+  });
+
+  it.each([false, true])('forwards the collation option through the dashboard WHERE (%s)', (useCCollation) => {
+    const where = buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners('dashboard-test', ['row-a'], { useCCollation });
+    expect(where.sql).toContain(useCCollation ? '"id" COLLATE "C" = ANY(' : '"id"::text = ANY(');
+    expect(where.values).toEqual(['dashboard-test', ['row-a']]);
+    expect(buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', [], { useCCollation }).sql).toBe('FALSE');
+  });
+
   it('returns FALSE with no bind params when winnerRowIds is empty', () => {
     const frag = buildMaterializedMaxProductNoWinnerInCondition('CsvDashboardRow', []);
     const sql = prismaSqlToLiteralString(frag as { strings: readonly string[]; values: readonly unknown[] });
