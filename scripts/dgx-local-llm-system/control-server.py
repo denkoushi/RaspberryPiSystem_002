@@ -54,8 +54,8 @@ from dgx_llm_single_active_guard import (  # noqa: E402
     validate_both_backend_stops_configured,
 )
 from active_model_state import (active_model_state_to_api, read_active_model_state, write_active_model_state,
-    business_switch_enabled, business_selection_state, business_state_lock, replace_active_payload,
-    BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE, BusinessLockTimeout,
+    business_switch_enabled, business_qwen38_switch_enabled, business_selection_state, business_state_lock, replace_active_payload,
+    BUSINESS_PROFILES, DEEPSEEK_PROFILE, GLM_PROFILE, BUSINESS_QWEN38_PROFILE_ID, BusinessLockTimeout,
     business_force_drain, positive_env_seconds, control_command_timeout, control_request_budget,
     _control_request, request_timeout)  # noqa: E402
 from model_profiles import (  # noqa: E402
@@ -63,6 +63,7 @@ from model_profiles import (  # noqa: E402
     ModelProfileError,
     ModelProfile,
     validate_startable_profile,
+    find_model_profile,
 )
 from profile_launcher import launcher_env_for_profile  # noqa: E402
 from resource_state import infer_owner_from_profile, state_to_api, write_resource_state  # noqa: E402
@@ -241,9 +242,13 @@ def resolve_start_profile(
         try:
             state = read_active_model_state(config.active_model_state_path)
             if state is not None:
+                if state.model_profile_id == BUSINESS_QWEN38_PROFILE_ID and not business_qwen38_switch_enabled():
+                    raise BusinessRestoreUnavailableError("business Qwen switch is disabled")
                 profile = validate_startable_profile(config.model_registry_root, state.model_profile_id)
                 if profile.business_orchestration_eligible and profile.backend == state.backend:
                     return profile
+        except BusinessRestoreUnavailableError:
+            raise
         except (ModelProfileError, OSError, ValueError):
             pass
         return None
@@ -318,6 +323,10 @@ def business_runtime_status(config: ControlConfig) -> dict:
         result = runtime_status(generation, sharing=(
             os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") in {"true", "1"}
             and state["businessTransition"] == "ready" and not state.get("businessFailureReason")))
+    elif state["selectedBusinessProfileId"] == BUSINESS_QWEN38_PROFILE_ID:
+        from business_qwen38 import runtime_status as qwen_runtime_status
+        profile = find_model_profile(config.model_registry_root, BUSINESS_QWEN38_PROFILE_ID)
+        result = qwen_runtime_status(profile, generation, config.active_model_state_path)
     else:
         from resource_state import glm_business_runtime
         result = glm_business_runtime(generation)
@@ -344,7 +353,8 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
     deadline = time.monotonic() + 1200
     failure = "business_readiness_timeout"
     last_error = TimeoutError(failure)
-    base = "http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else glm_runtime_config()[2]
+    base = ("http://192.168.100.11:8889" if profile.id == DEEPSEEK_PROFILE else
+            "http://127.0.0.1:38083" if profile.id == BUSINESS_QWEN38_PROFILE_ID else glm_runtime_config()[2])
     headers = {}
     if profile.id == DEEPSEEK_PROFILE:
         key = os.environ.get("BUSINESS_DEEPSEEK_UPSTREAM_API_KEY", "").strip()
@@ -364,8 +374,10 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                 if not any(m.get("id") == "system-prod-primary" for m in models):
                     raise ValueError("alias mismatch")
                 body = {"model": "system-prod-primary", "messages": [{"role": "user", "content": "Reply OK."}], "max_tokens": 16, "temperature": 0}
-                if profile.id != DEEPSEEK_PROFILE:
+                if profile.id == GLM_PROFILE:
                     body["chat_template_kwargs"] = {"reasoning_effort": "low"}
+                elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                    body["chat_template_kwargs"] = {"enable_thinking": False}
                 request = urllib.request.Request(base + "/v1/chat/completions", data=json.dumps(body).encode(), headers={**headers, "Content-Type": "application/json"})
                 with urllib.request.urlopen(request, timeout=30) as response:
                     message = json.load(response)["choices"][0]["message"]
@@ -374,6 +386,11 @@ def monitor_business_ready(config: ControlConfig, identity: tuple, profile: Mode
                     raise ValueError("empty inference probe")
                 if profile.id == DEEPSEEK_PROFILE:
                     status = runtime_status(identity[2])
+                    if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
+                        raise ValueError("runtime not ready")
+                elif profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                    from business_qwen38 import runtime_status as qwen_runtime_status
+                    status = qwen_runtime_status(profile, identity[2], config.active_model_state_path)
                     if not status["prepared"] or status["failureReason"] or not all(r["running"] for r in status["ranks"]):
                         raise ValueError("runtime not ready")
             with business_state_lock(config.active_model_state_path):
@@ -699,6 +716,12 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                         check_prepared()
                     except RuntimeError as error:
                         raise BusinessRestoreUnavailableError(str(error)) from error
+                elif profile_id == BUSINESS_QWEN38_PROFILE_ID:
+                    from business_qwen38 import check_prepared as check_qwen_prepared
+                    try:
+                        check_qwen_prepared(profile)
+                    except RuntimeError as error:
+                        raise BusinessRestoreUnavailableError(str(error)) from error
                 # Duplicate UI clicks and keep-warm do not create a new generation.
                 if (profile_id == selected and state.get("modelProfileId") == selected
                         and (state["businessTransition"] == "loading" or (
@@ -717,7 +740,7 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
             replace_active_payload(config.active_model_state_path, state)
             try:
                 # Drain has completed under the shared gateway/lifecycle lock.
-                # Always stop blue too: GLM and DeepSeek share that backend.
+                # Always stop blue too: all business models share that backend.
                 run_command(resolve_command(config, "stop-force", "blue"))
                 if single_active_guard_enabled():
                     run_command(resolve_command(config, "stop-force", "green"))
@@ -725,6 +748,9 @@ def make_handler(config: ControlConfig, command_runner: CommandRunner = run_shel
                 if profile.business_orchestration_eligible:
                     start_env["DGX_BUSINESS_GENERATION"] = state["businessGeneration"]
                 run_command(resolve_command(config, "start", profile.backend), start_env)
+                if profile.id == BUSINESS_QWEN38_PROFILE_ID:
+                    from business_qwen38 import record_generation
+                    record_generation(profile, state["businessGeneration"], config.active_model_state_path)
                 ready_caps, vision_reason = assess_runtime_readiness(profile, start_env=start_env)
                 active = write_active_model_state(config.active_model_state_path, profile,
                     runtime_ready_capabilities=ready_caps, vision_ready_reason=vision_reason)

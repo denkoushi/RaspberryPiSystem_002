@@ -59,6 +59,7 @@ from glm_runtime_config import glm_runtime_config
 from business_diagnostics import log_business_failure  # noqa: E402
 from active_model_state import (active_model_state_to_api, read_active_model_state, business_switch_enabled,
     business_selection_state, business_state_lock, GLM_PROFILE, DEEPSEEK_PROFILE,
+    BUSINESS_QWEN38_PROFILE_ID, business_qwen38_switch_enabled,
     business_draining, positive_env_seconds, control_request_budget)
 from gateway_llm_auth import load_llm_shared_tokens_from_env, llm_shared_token_ok
 from model_profiles import UnknownModelProfileError, find_model_profile, load_model_profiles, model_profile_to_api
@@ -216,6 +217,20 @@ def resolve_backend_base_url(config: GatewayConfig) -> str:
     return config.green_backend_base_url or config.legacy_backend_base_url
 
 
+def business_routing_required(config: GatewayConfig) -> bool:
+    if business_switch_enabled():
+        return True
+    # Disabling the flags must fence a still-selected Qwen runtime instead of
+    # falling back to the legacy blue route on its shared private/business port.
+    try:
+        with open(config.active_model_state_path, encoding="utf-8") as source:
+            state = json.load(source)
+        return isinstance(state, dict) and BUSINESS_QWEN38_PROFILE_ID in {
+            state.get("modelProfileId"), state.get("activeProfileId"), state.get("selectedBusinessProfileId")}
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
     state = business_selection_state(config.active_model_state_path)
     profile = state.get("modelProfileId") or state.get("activeProfileId")
@@ -235,6 +250,8 @@ def business_route(config: GatewayConfig) -> tuple[str, dict[str, str], str]:
         if not key:
             raise ValueError("business_upstream_key_missing")
         return "http://192.168.100.11:8889", {"Authorization": "Bearer " + key}, profile
+    if profile == BUSINESS_QWEN38_PROFILE_ID and business_qwen38_switch_enabled():
+        return "http://127.0.0.1:38083", {}, profile
     raise ValueError("business_runtime_unavailable")
 
 
@@ -280,6 +297,13 @@ def business_has_image(value) -> bool:
             isinstance(part, dict) and part.get("type") in {"image_url", "input_image", "image"}
             for part in message["content"])
         for message in messages)
+
+
+def qwen_has_image(value) -> bool:
+    if isinstance(value, dict):
+        return value.get("type") in {"image_url", "input_image", "image"} or any(
+            qwen_has_image(part) for part in value.values())
+    return isinstance(value, list) and any(qwen_has_image(part) for part in value)
 
 
 def business_sse_alias(line: bytes) -> bytes:
@@ -1215,7 +1239,7 @@ def make_handler(
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
-                if business_switch_enabled():
+                if business_routing_required(config):
                     self._business_v1("GET", b"")
                     return
                 active_backend = resolve_active_backend(config)
@@ -1497,7 +1521,7 @@ def make_handler(
                 if not self._llm_auth_ok():
                     self._send_text(403, "forbidden")
                     return
-                if business_switch_enabled():
+                if business_routing_required(config):
                     self._business_v1("POST", body)
                     return
                 headers = {"Content-Type": self.headers.get("Content-Type", "application/json")}
@@ -1570,8 +1594,11 @@ def make_handler(
                                 raise ValueError("invalid_request")
                             if payload.get("model", "system-prod-primary") != "system-prod-primary":
                                 raise ValueError("unsupported_model")
-                            if profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path):
+                            if ((profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path))
+                                    or (profile == BUSINESS_QWEN38_PROFILE_ID and (qwen_has_image(payload) or "/images" in self.path))):
                                 raise ValueError("image_requests_unsupported")
+                            if profile == BUSINESS_QWEN38_PROFILE_ID and "chat_template_kwargs" in payload and not isinstance(payload["chat_template_kwargs"], dict):
+                                raise ValueError("invalid_chat_template_kwargs")
                         except (ValueError, UnicodeDecodeError) as error:
                             self._send_json(400, {"error": {"code": str(error)}})
                             return
@@ -1582,9 +1609,32 @@ def make_handler(
                         elif profile == DEEPSEEK_PROFILE and self.path.rstrip("/").endswith("/chat/completions"):
                             payload, json_mode = deepseek_json_request(payload)
                             body = json.dumps(payload, ensure_ascii=False).encode()
-                        if self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
-                            self._proxy_stream(base + self.path, body, headers, business=True)
-                            return
+                        elif profile == BUSINESS_QWEN38_PROFILE_ID and self.path.rstrip("/").endswith("/chat/completions"):
+                            payload.setdefault("chat_template_kwargs", {}).setdefault("enable_thinking", False)
+                            body = json.dumps(payload, ensure_ascii=False).encode()
+                    if profile == BUSINESS_QWEN38_PROFILE_ID:
+                        status, runtime_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                            {"X-Runtime-Control-Token": config.runtime_control_token})
+                        runtime = json.loads(runtime_body).get("businessRuntime", {}) if status == 200 else {}
+                        ranks = runtime.get("ranks", [])
+                        if (runtime.get("modelProfileId") != profile
+                                or type(runtime.get("selectionRevision")) is not int
+                                or runtime["selectionRevision"] != snapshot["selectionRevision"]
+                                or runtime.get("generation") != generation
+                                or runtime.get("prepared") is not True or runtime.get("failureReason")
+                                or runtime.get("apiListenerClosed") is True
+                                or not isinstance(ranks, list) or len(ranks) != 2
+                                or {rank.get("rank") for rank in ranks} != {0, 1}
+                                or any(rank.get("running") is not True or rank.get("generation") != generation for rank in ranks)):
+                            raise ValueError("business_runtime_unavailable")
+                        if self.path != "/v1/models":
+                            status, models_body, _ = proxy_impl("GET", base + "/v1/models", b"", headers)
+                            models = json.loads(models_body).get("data", []) if status == 200 else []
+                            if not any(isinstance(model, dict) and model.get("id") == "system-prod-primary" for model in models):
+                                raise ValueError("business_alias_unavailable")
+                    if method == "POST" and self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
+                        self._proxy_stream(base + self.path, body, headers, business=True)
+                        return
                     status, response, content_type = proxy_impl(method, base + self.path, body, headers)
                     if 200 <= status < 300:
                         if self.path == "/v1/models":

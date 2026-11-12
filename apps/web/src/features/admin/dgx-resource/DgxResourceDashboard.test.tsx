@@ -67,6 +67,16 @@ describe('DGX switch console', () => {
     expect(screen.getByText('検閲なしは個人用のため非表示')).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/internal-|業務モデル|RETURN_TO_BUSINESS|not_observed|insufficient_memory|DGX_RESOURCE_|Strict Ready|指紋|KB-/);
   });
+  it('shows the business Qwen row without a censorship chip', async () => {
+    const data = overview();
+    data.modelProfiles.push({ ...data.modelProfiles[1], id: 'business_qwen38_flash_next_orcarouter_fp8_tp2',
+      displayName: 'Qwen3.8', censored: false, supportsVision: false, quantizationLabel: 'FP8' });
+    mount(data); await loaded();
+    expect(row('Qwen3.8').getByRole('button', { name: '切り替える' })).toBeEnabled();
+    expect(row('Qwen3.8').queryByText('検閲あり')).not.toBeInTheDocument();
+    expect(row('Qwen3.8').queryByText('画像対応')).not.toBeInTheDocument();
+    expect(screen.queryByText('検閲なしは個人用のため非表示')).not.toBeInTheDocument();
+  });
   it('starts directly when stopped, with no stop control or stale active badge', async () => {
     const data = overview(); data.business.llm.state = 'down'; data.business.state = 'down';
     mount(data); await loaded();

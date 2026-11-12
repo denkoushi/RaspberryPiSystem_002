@@ -1,0 +1,66 @@
+{
+  "modelProfileId": "business_qwen38_flash_next_orcarouter_fp8_tp2",
+  "displayNameJa": "Qwen3.8 Flash Next FP8",
+  "descriptionJa": "2台のSparkで動作する業務用テキストモデル。",
+  "backend": "blue",
+  "servedAlias": "system-prod-primary",
+  "enabled": false,
+  "businessOrchestrationEligible": true,
+  "declaredCapabilities": [
+    "text"
+  ],
+  "visionRequiresMmproj": false,
+  "expectedColdStartSec": 900,
+  "sparkCount": 2,
+  "launcherHints": {
+    "blueServerAdapter": "glm53_flash_tp2",
+    "blueRuntimeRecipe": "qwen38_fp8_tp2",
+    "blueServerMode": "container",
+    "blueServerImage": "eugr/spark-vllm-b12x@sha256:03a956544e9f9b4b7ba91690469fbe7848bdbef29a7d2e0f5788368467bb3595",
+    "blueWorkerSshTarget": "user@spark2.example",
+    "blueModelDir": "/abs/head/model",
+    "blueWorkerModelDir": "/abs/worker/model",
+    "blueCacheDir": "/srv/dgx/system-prod/data/business-qwen38/cache",
+    "blueMasterAddr": "192.168.100.10"
+  },
+  "runtimeProfile": {
+    "engine": "control-server",
+    "coexistencePolicy": "exclusive_both_sparks",
+    "openaiModelId": "system-prod-primary",
+    "openaiBaseUrl": "http://127.0.0.1:38083/v1",
+    "vllm": {
+      "tensorParallelSize": 2,
+      "maxModelLen": 131072,
+      "maxNumSeqs": 4,
+      "maxNumBatchedTokens": 4096,
+      "schedulingPolicy": "priority",
+      "gpuMemoryUtilization": 0.87,
+      "kvCacheDtype": "auto",
+      "enablePrefixCaching": true,
+      "enableChunkedPrefill": true,
+      "speculativeConfig": {
+        "method": "mtp",
+        "num_speculative_tokens": 3,
+        "draft_tensor_parallel_size": 2
+      },
+      "safetensorsLoadStrategy": "eager",
+      "defaultChatTemplateKwargs": {
+        "enable_thinking": false
+      },
+      "mmEncoderTpMode": "data",
+      "reasoningParser": "qwen3",
+      "toolCallParser": "qwen3_xml"
+    }
+  },
+  "sourceKind": "huggingface",
+  "sourceModelRef": "orcarouter/Qwen3.8-Flash-Next-Uncensored-FP8@5638ef95592d5c0b6a83791f55b09051565cfd9b",
+  "modelFamily": "Qwen3.8-Flash-Next",
+  "format": "safetensors",
+  "quantization": "FP8",
+  "expectedSizeGb": 177,
+  "canonicalNames": [
+    "Qwen3.8-Flash-Next-Uncensored-FP8"
+  ],
+  "legacyNames": [],
+  "censored": false
+}

@@ -89,6 +89,9 @@ export type DgxResourceServiceDeps = {
 };
 
 function switchProfileAllowed(id: string): boolean {
+  if (id === 'business_qwen38_flash_next_orcarouter_fp8_tp2') {
+    return env.BUSINESS_DEEPSEEK_SWITCH_ENABLED && env.BUSINESS_QWEN38_SWITCH_ENABLED;
+  }
   return !env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ||
     id === 'business_glm53_flash_fp4_tp2' || id === 'business_deepseek_v41_flash_tp2';
 }
@@ -118,14 +121,16 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
     return fetchDgxModelProfilesOverview({
       baseUrl: config.baseUrl, sharedToken: config.sharedToken,
       businessDeepseekSwitchEnabled: env.BUSINESS_DEEPSEEK_SWITCH_ENABLED,
+      businessQwen38SwitchEnabled: env.BUSINESS_QWEN38_SWITCH_ENABLED,
       fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs,
     });
   };
-  const selectionAvailable = () => {
+  const selectionAvailable = (modelProfileId?: string) => {
+    if (modelProfileId === 'business_qwen38_flash_next_orcarouter_fp8_tp2' && !switchProfileAllowed(modelProfileId)) return Promise.resolve(false);
     if (!env.BUSINESS_DEEPSEEK_SWITCH_ENABLED) return Promise.resolve(true);
     const config = deps.getAdminLocalLlmRuntimeConfig();
     return fetchBusinessModelSwitchCapability({ baseUrl: config.baseUrl, sharedToken: config.sharedToken,
-      fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs });
+      fetchImpl: deps.fetchImpl, timeoutMs: deps.probeTimeoutMs, modelProfileId });
   };
   const fetchMetrics = async () => {
     const config = deps.getAdminLocalLlmRuntimeConfig();
@@ -195,7 +200,9 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
   return {
     getEvents: (limit) => store.getEvents(Math.min(limit, 20)),
     async getOverview() {
-      const [snapshot, metrics, canSelect] = await Promise.all([collect(), fetchMetrics(), selectionAvailable()]);
+      const [snapshot, metrics, canSelect, canSelectQwen] = await Promise.all([collect(), fetchMetrics(), selectionAvailable(),
+        env.BUSINESS_DEEPSEEK_SWITCH_ENABLED && env.BUSINESS_QWEN38_SWITCH_ENABLED
+          ? selectionAvailable('business_qwen38_flash_next_orcarouter_fp8_tp2') : Promise.resolve(false)]);
       const profiles = enrichDgxModelProfilesStartupFit(snapshot.modelProfiles, metrics);
       const intendedId = env.BUSINESS_DEEPSEEK_SWITCH_ENABLED ? profiles.activeRuntimeState?.selectedBusinessProfileId : resolveBusinessRuntimeStartProfile({
         businessRuntimeStartProfileId: env.INFERENCE_BUSINESS_RUNTIME_START_PROFILE_ID,
@@ -242,12 +249,12 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
           quantizationLabel: profile.quantization ?? profile.runtimeProfile?.vllm?.quantization ?? null,
           requiredBytes: profile.startupFit?.requiredGiB != null ? profile.startupFit.requiredGiB * 1024 ** 3 : null,
           fitAvailableBytes: profile.startupFit?.availableGiB != null ? profile.startupFit.availableGiB * 1024 ** 3 : null,
-          censored: true, unavailableKind: unavailableKind(profile),
+          censored: profile.censored ?? true, unavailableKind: unavailableKind(profile),
           supportsVision: profileDeclaresVision(profile), isActive: profiles.activeProfileId === profile.id,
           isRecommended: profile.recommended,
           startupFit: profile.startupFit?.status === 'fits' ? 'fits' as const
             : profile.startupFit?.status === 'insufficient' ? 'insufficient' as const : 'unknown' as const,
-          startable: canSelect && switchProfileAllowed(profile.id) && unavailableReason(profile) === null, unavailableReasonJa: unavailableReason(profile),
+          startable: canSelect && (profile.id !== 'business_qwen38_flash_next_orcarouter_fp8_tp2' || canSelectQwen) && switchProfileAllowed(profile.id) && unavailableReason(profile) === null, unavailableReasonJa: unavailableReason(profile),
           deletable: profile.deleteProtection?.canDelete === true && !profile.deleteProtection.protected && profiles.activeProfileId !== profile.id,
         })),
         modelProfilesAvailable: profiles.status === 'ok', businessReturn, alerts,
@@ -258,7 +265,7 @@ export function createDgxResourceService(deps: DgxResourceServiceDeps): DgxResou
       let backgroundOwnsLock = false;
       try {
         if (body.type === 'RETURN_TO_BUSINESS') {
-          if (!(await selectionAvailable())) {
+          if (!(await selectionAvailable(body.modelProfileId))) {
             throw new ApiError(409, 'DGX のモデル切替が利用できません。', undefined, 'DGX_BUSINESS_SWITCH_UNAVAILABLE');
           }
           const [catalog, metrics] = await Promise.all([fetchProfiles(), fetchMetrics()]);

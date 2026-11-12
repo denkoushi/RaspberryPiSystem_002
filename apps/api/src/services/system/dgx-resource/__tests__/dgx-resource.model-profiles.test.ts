@@ -270,3 +270,29 @@ describe('business switch contract', () => {
     expect(parseDgxActiveModelRuntimeState({ runtimeReadyCapabilities: ['text'] })).toEqual({ runtimeReadyCapabilities: ['text'], visionReadyReason: null });
   });
 });
+
+
+describe('business Qwen contract', () => {
+  const qwen = 'business_qwen38_flash_next_orcarouter_fp8_tp2';
+  it.each([[false, false], [false, true], [true, false], [true, true]])(
+    'requires both flags (DeepSeek=%s Qwen=%s)', async (deepseek, qwenEnabled) => {
+      const fetchImpl = vi.fn(async () => Response.json({ activeProfileId: qwen,
+        profiles: [{ id: qwen, displayNameJa: '業務 Qwen3.8', backend: 'blue', censored: false,
+          enabled: true, status: 'available', declaredCapabilities: ['text'] }],
+        state: { selectedBusinessProfileId: qwen, selectionRevision: 12, businessTransition: 'ready' } }));
+      const overview = await fetchDgxModelProfilesOverview({ baseUrl: 'http://cp.test', sharedToken: 't',
+        fetchImpl, timeoutMs: 1000, businessDeepseekSwitchEnabled: deepseek, businessQwen38SwitchEnabled: qwenEnabled });
+      expect(overview.available.map((p) => p.id)).toEqual(deepseek && qwenEnabled ? [qwen] : []);
+      expect(overview.activeRuntimeState).toMatchObject({ selectedBusinessProfileId: qwen, selectionRevision: 12 });
+      if (deepseek && qwenEnabled) expect(overview.available[0]).toMatchObject({ censored: false, declaredCapabilities: ['text'] });
+    });
+  it.each([undefined, [], ['business_glm53_flash_fp4_tp2'], [qwen], qwen])(
+    'requires advertised Qwen support: %j', async (supportedBusinessProfileIds) => {
+      const fetchImpl = vi.fn(async () => Response.json({ enabled: true, contractVersion: 1, supportedBusinessProfileIds }));
+      const input = { baseUrl: 'http://cp.test', sharedToken: 't', fetchImpl, timeoutMs: 1000 };
+      expect(await fetchBusinessModelSwitchCapability({ ...input, modelProfileId: qwen }))
+        .toBe(Array.isArray(supportedBusinessProfileIds) && supportedBusinessProfileIds.includes(qwen));
+      expect(await fetchBusinessModelSwitchCapability({ ...input, modelProfileId: 'business_glm53_flash_fp4_tp2' })).toBe(true);
+      expect(await fetchBusinessModelSwitchCapability({ ...input, modelProfileId: 'business_deepseek_v41_flash_tp2' })).toBe(true);
+    });
+});

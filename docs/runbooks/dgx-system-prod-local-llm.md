@@ -23,7 +23,7 @@ update-frequency: high
 - DGX Spark の `system-prod` を、Pi5 API が使う業務 LocalLLM（写真持出 VLM・要領書要約・管理 Chat など）として運用する
 - Pi5 API が期待する `/healthz`、`/v1/chat/completions`、`/start`、`/stop` の運用形を維持する
 
-## 業務 GLM / DeepSeek 切替（既定 off）
+## 業務 GLM / DeepSeek / Qwen3.8 切替（既定 off）
 
 `BUSINESS_DEEPSEEK_SWITCH_ENABLED=false` が既定。API / gateway / control-server と、その子のadapterへ同じ値を渡す。
 CP側は別の `DGX_BUSINESS_DEEPSEEK_SWITCH_ENABLED`。片側のみon、CP capabilityの404・不達・契約版違いでは管理画面の選択を受け付けない。
@@ -91,6 +91,21 @@ CP側は別の `DGX_BUSINESS_DEEPSEEK_SWITCH_ENABLED`。片側のみon、CP capa
 
 rollbackは両gateをonのまま停止証明→GLM明示選択→ready確認、その後 **CP flag off→業務flag off** の順。
 DeepSeek稼働中にflagを先に戻さない。privateの既存データは削除しない。
+
+業務 Qwen3.8 FP8 TP2 (`business_qwen38_flash_next_orcarouter_fp8_tp2`) は manifest `enabled=false`、
+`BUSINESS_QWEN38_SWITCH_ENABLED=false` が既定。`BUSINESS_DEEPSEEK_SWITCH_ENABLED`と
+新フラグの両方、および CP 側の両フラグが有効で、
+capability の `supportedBusinessProfileIds` に業務 Qwen ID がある場合だけ選択する（旧 CP では拒否）。
+Spark 1 `127.0.0.1:38083`、alias `system-prod-primary`、text のみ、cold start 900秒。
+private と同じ pinned image / recipe / 読み取り専用の重みを使い、両 Spark の cache は
+`/srv/dgx/system-prod/data/business-qwen38/cache/{vllm,flashinfer,triton,b12x}` に分離する。
+operator は配置先 manifest の head/worker model path、SSH target、master address を実機に合わせ、
+モデル config / shard index / 全 shard と pinned image、symlink でない業務 cache を両台に準備する。
+不備は旧モデル停止前に `business_qwen38_unprepared` で拒否する。所有 profile の変更では停止中も含め両 rank を再作成し、
+要求ログを有効にしない。gateway は選択・active・ready・世代と upstream の業務 alias を確認し、private alias のみなら拒否する。
+Qwen の `chat_template_kwargs.enable_thinking` は未指定なら false。GLM / DeepSeek の要求変換を適用しない。
+rollback はフラグを維持して停止証明→GLM 選択→ready 確認の後に CP / 業務フラグを無効にする。
+Qwen フラグを切る前に、画面で GLM か DeepSeek に切り替えておく（Qwen 選択のまま切ると業務 LLM は自動では戻らず 503 になる）。
 
 業務DeepSeek（tensorfold）は `response_format` / `guided_*` を受け付けない。gatewayは業務DeepSeek宛ての
 `/chat/completions` からこれらを外し、JSONオブジェクトだけで答える指示（schemaがあれば併記）をsystemに足す。

@@ -385,28 +385,76 @@ describe('HttpOnDemandLocalLlmRuntimeController', () => {
 
 
 describe('DGX business selection authority', () => {
-  it.each(['document_summary', 'photo_label'] as const)('restores selected DeepSeek for %s without a fixed profile', async (useCase) => {
+  it.each([
+    ['document_summary', 'business_glm53_flash_fp4_tp2', false],
+    ['document_summary', 'business_deepseek_v41_flash_tp2', false],
+    ['photo_label', 'business_deepseek_v41_flash_tp2', false],
+    ['document_summary', 'business_qwen38_flash_next_orcarouter_fp8_tp2', true],
+    ['photo_label', 'business_qwen38_flash_next_orcarouter_fp8_tp2', true],
+    ['document_summary', 'business_qwen38_flash_next_orcarouter_fp8_tp2', false],
+  ] as const)('restores %s selected %s with Qwen flag=%s', async (useCase, selected, qwenEnabled) => {
     resetMainLocalLlmRuntimeControlQueueForTests();
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
-      if (String(input).endsWith('/system/model-profiles')) return Response.json({ activeProfileId: 'business_deepseek_v41_flash_tp2',
-        state: { selectedBusinessProfileId: 'business_deepseek_v41_flash_tp2', selectionRevision: 9,
+      if (String(input).endsWith('/system/model-profiles')) return Response.json({ activeProfileId: selected,
+        state: { selectedBusinessProfileId: selected, selectionRevision: 9,
           businessTransition: 'ready', runtimeReadyCapabilities: ['text'] } });
       return new Response('ok', { status: 200 });
     });
     const deps = { fetchImpl, startUrl: 'http://cp.test/start', stopUrl: 'http://cp.test/stop', controlToken: 'ctrl',
       healthCheckBaseUrl: 'http://cp.test', llmToken: 'business', readyTimeoutMs: 1000, startRequestTimeoutMs: 1000,
       stopRequestTimeoutMs: 1000, healthPollIntervalMs: 1,
-      runtimeIntentEnv: { runtimeStartProfileEnabled: true, businessDeepseekSwitchEnabled: true,
+      runtimeIntentEnv: { runtimeStartProfileEnabled: true, businessDeepseekSwitchEnabled: true, businessQwen38SwitchEnabled: qwenEnabled,
         businessRuntimeStartProfileId: 'old-glm', photoLabelRuntimeStartProfileId: 'photo-glm' },
       provider: { ...testProvider, runtimeStartProfileId: 'provider-glm' } };
     // A new instance after API restart still restores the DGX-selected profile.
     for (let restart = 0; restart < 2; restart += 1) {
       const controller = new HttpOnDemandLocalLlmRuntimeController(deps);
-      if (useCase === 'photo_label') await expect(controller.ensureReady(useCase)).rejects.toThrow('lacks vision');
+      if (selected === 'business_qwen38_flash_next_orcarouter_fp8_tp2' && !qwenEnabled) {
+        await expect(controller.ensureReady(useCase)).rejects.toThrow('Qwen runtime is disabled');
+      } else if (useCase === 'photo_label') await expect(controller.ensureReady(useCase)).rejects.toThrow('lacks vision');
       else await controller.ensureReady(useCase);
     }
     const calls = fetchImpl.mock.calls.filter(([url]) => String(url).endsWith('/start'));
     expect(calls).toHaveLength(2);
+    expect(fetchImpl.mock.calls[0][0]).toBe('http://cp.test/start');
     for (const [, init] of calls) expect(JSON.parse(String(init?.body))).toEqual({ reason: 'business-restore' });
   });
+});
+
+
+describe('business Qwen fixed profile gate', () => {
+  it.each([false, true])('rejects fixed Qwen when DeepSeek is off, Qwen flag=%s', async (qwenEnabled) => {
+    resetMainLocalLlmRuntimeControlQueueForTests();
+    const fetchImpl = vi.fn(async () => new Response('ok'));
+    const controller = new HttpOnDemandLocalLlmRuntimeController({
+      fetchImpl, startUrl: 'http://cp.test/start', stopUrl: 'http://cp.test/stop', controlToken: 'ctrl',
+      healthCheckBaseUrl: 'http://cp.test', llmToken: 'business', readyTimeoutMs: 1000, startRequestTimeoutMs: 1000,
+      stopRequestTimeoutMs: 1000, healthPollIntervalMs: 1,
+      runtimeIntentEnv: { runtimeStartProfileEnabled: true, businessDeepseekSwitchEnabled: false,
+        businessQwen38SwitchEnabled: qwenEnabled, businessRuntimeStartProfileId: 'business_qwen38_flash_next_orcarouter_fp8_tp2' },
+      provider: testProvider,
+    });
+    await expect(controller.ensureReady('document_summary')).rejects.toThrow('Qwen runtime is disabled');
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('business restore without catalog preflight', () => {
+  it.each([{}, { state: {} }, { state: { selectedBusinessProfileId: 'unknown', selectionRevision: 1, businessTransition: 'ready' } }])(
+    'posts restore before checking a legacy catalog: %j', async (catalog) => {
+      resetMainLocalLlmRuntimeControlQueueForTests();
+      const fetchImpl = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => Response.json(catalog));
+      const controller = new HttpOnDemandLocalLlmRuntimeController({
+        fetchImpl, startUrl: 'http://cp.test/start', stopUrl: 'http://cp.test/stop', controlToken: 'ctrl',
+        healthCheckBaseUrl: 'http://cp.test', llmToken: 'business', readyTimeoutMs: 1000, startRequestTimeoutMs: 1000,
+        stopRequestTimeoutMs: 1000, healthPollIntervalMs: 1,
+        runtimeIntentEnv: { runtimeStartProfileEnabled: true, businessDeepseekSwitchEnabled: true, businessQwen38SwitchEnabled: false },
+        provider: testProvider,
+      });
+      await expect(controller.ensureReady('document_summary')).rejects.toThrow('selected business runtime is unavailable');
+      expect(fetchImpl.mock.calls[0][0]).toBe('http://cp.test/start');
+      expect(fetchImpl.mock.calls[0][1]?.method).toBe('POST');
+      expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual({ reason: 'business-restore' });
+    });
 });

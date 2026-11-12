@@ -8,6 +8,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "${BLUE_MODEL_PROFILE_ID:-}" == "business_deepseek_v41_flash_tp2" ]]; then
   exec "${SCRIPT_DIR}/tensorfold-2x-adapter.sh"
 fi
+if [[ "${BLUE_MODEL_PROFILE_ID:-}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+  if [[ "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-}" != true && "${BUSINESS_DEEPSEEK_SWITCH_ENABLED:-}" != 1 ]] ||
+     [[ "${BUSINESS_QWEN38_SWITCH_ENABLED:-}" != true && "${BUSINESS_QWEN38_SWITCH_ENABLED:-}" != 1 ]]; then
+    echo "business_qwen38_switch_disabled" >&2
+    exit 1
+  fi
+  if [[ "${BLUE_SERVER_ADAPTER:-}" != glm53_flash_tp2 ||
+        "${BLUE_RUNTIME_RECIPE:-}" != qwen38_fp8_tp2 ||
+        "${BLUE_CACHE_DIR:-}" != /srv/dgx/system-prod/data/business-qwen38/cache ||
+        "${VLLM_SERVED_MODEL_NAME:-}" != system-prod-primary ]]; then
+    echo "business_qwen38_unprepared" >&2
+    exit 1
+  fi
+fi
 CONTAINER_NAME="${BLUE_CONTAINER_NAME:-${TRTLLM_CONTAINER_NAME:-system-prod-trtllm}}"
 MODE="${BLUE_SERVER_MODE:-${TRTLLM_SERVER_MODE:-container}}"
 IMAGE="${BLUE_SERVER_IMAGE:-${TRTLLM_SERVER_IMAGE:-}}"
@@ -28,6 +42,9 @@ check_running_profile() {
     local running_profile
     running_profile="$(docker inspect --format '{{index .Config.Labels "dgx.profile"}}' "${CONTAINER_NAME}")" || exit 1
     if [[ -z "${running_profile}" || "${running_profile}" == "<no value>" ]]; then
+      if [[ "${BLUE_MODEL_PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+        return 1
+      fi
       if [[ "${BLUE_SERVER_ADAPTER:-}" != "glm53_flash_tp2" ]]; then
         return 0
       fi
@@ -35,6 +52,12 @@ check_running_profile() {
       exit 1
     fi
     if [[ "${running_profile}" != "${BLUE_MODEL_PROFILE_ID}" ]]; then
+      # Never reuse private conversation state when business owns these ports.
+      # The TP2 adapter removes both containers before creating either rank.
+      if [[ "${running_profile}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ||
+            "${BLUE_MODEL_PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+        return 1
+      fi
       echo "running container profile mismatch: running=${running_profile} requested=${BLUE_MODEL_PROFILE_ID}; stop before switching profiles" >&2
       exit 1
     fi
@@ -42,6 +65,7 @@ check_running_profile() {
       local worker_data worker_target worker_command worker_running
       if ! worker_data="$(python3 - "${BLUE_REMOTE_WORKER_MARKER_PATH:-/srv/dgx/system-prod/state/blue-remote-worker.json}" <<'PY'
 import json
+import os
 import re
 import shlex
 import sys
@@ -58,7 +82,11 @@ try:
 except (OSError, ValueError, KeyError, TypeError) as exc:
     raise SystemExit(f"cannot read worker marker: {exc}")
 print(target)
-print(shlex.join(["docker", "inspect", "--format", "{{.State.Running}}", name]))
+profile = os.environ.get("BLUE_MODEL_PROFILE_ID", "")
+fmt = "{{.State.Running}}"
+if profile == "business_qwen38_flash_next_orcarouter_fp8_tp2":
+    fmt += ' {{index .Config.Labels "dgx.profile"}}'
+print(shlex.join(["docker", "inspect", "--format", fmt, name]))
 PY
       )"; then
         echo "GLM TP2 worker marker unavailable; restarting head and worker" >&2
@@ -70,7 +98,11 @@ PY
         echo "GLM TP2 worker check failed at ${worker_target} (ssh/docker inspect); restarting head and worker" >&2
         return 1
       fi
-      if [[ "${worker_running}" != "true" ]]; then
+      local expected_worker="true"
+      if [[ "${BLUE_MODEL_PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+        expected_worker="true ${BLUE_MODEL_PROFILE_ID}"
+      fi
+      if [[ "${worker_running}" != "${expected_worker}" ]]; then
         echo "GLM TP2 worker is not running at ${worker_target}; restarting head and worker" >&2
         return 1
       fi
@@ -114,6 +146,9 @@ if [[ -n "${BLUE_SERVER_ADAPTER:-}" ]]; then
           if check_running_profile; then
             echo "trtllm-server already running container=${CONTAINER_NAME}"
             exit 0
+          fi
+          if [[ "${BLUE_MODEL_PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+            bash "${SCRIPT_DIR}/stop-trtllm-server.sh"
           fi
         fi
       fi
@@ -183,9 +218,11 @@ fi
 
 RUNNING_NAME="$(docker ps --filter "name=^/${CONTAINER_NAME}$" --format '{{.Names}}' | tr -d '\r')"
 if [[ "${RUNNING_NAME}" == "${CONTAINER_NAME}" ]]; then
-  check_running_profile
-  echo "trtllm-server already running container=${CONTAINER_NAME}"
-  exit 0
+  if check_running_profile; then
+    echo "trtllm-server already running container=${CONTAINER_NAME}"
+    exit 0
+  fi
+  bash "${SCRIPT_DIR}/stop-trtllm-server.sh"
 fi
 
 docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true

@@ -6,6 +6,7 @@ export type DgxBusinessModelProfile = {
   backend: 'green' | 'blue';
   servedAlias: string;
   recommended: boolean;
+  censored?: boolean;
   /** false のとき業務復帰 orchestration では選択不可（既定 true・DGX 未送信時も true） */
   businessOrchestrationEligible: boolean;
   enabled: boolean;
@@ -217,7 +218,7 @@ export function parseDgxActiveModelRuntimeState(state: unknown): DgxActiveModelR
   const selected = asString(state.selectedBusinessProfileId);
   const revision = state.selectionRevision;
   const transition = state.businessTransition;
-  const selection: Partial<DgxActiveModelRuntimeState> = (selected === 'business_glm53_flash_fp4_tp2' || selected === 'business_deepseek_v41_flash_tp2') && Number.isSafeInteger(revision) && (revision as number) >= 0 &&
+  const selection: Partial<DgxActiveModelRuntimeState> = (selected === 'business_glm53_flash_fp4_tp2' || selected === 'business_deepseek_v41_flash_tp2' || selected === 'business_qwen38_flash_next_orcarouter_fp8_tp2') && Number.isSafeInteger(revision) && (revision as number) >= 0 &&
     (transition === 'idle' || transition === 'loading' || transition === 'ready' || transition === 'failed')
     ? { selectedBusinessProfileId: selected, selectionRevision: revision as number, businessTransition: transition }
     : {};
@@ -242,6 +243,7 @@ export function normalizeDgxModelProfile(value: unknown): DgxBusinessModelProfil
     backend,
     servedAlias,
     recommended: value.recommended === true,
+    ...(typeof value.censored === 'boolean' ? { censored: value.censored } : {}),
     businessOrchestrationEligible: value.businessOrchestrationEligible !== false,
     enabled: value.enabled !== false,
     status: status === 'available' || status === 'unavailable' ? status : 'unknown',
@@ -308,6 +310,7 @@ export async function fetchDgxModelProfilesOverview(input: {
   fetchImpl: typeof fetch;
   timeoutMs: number;
   businessDeepseekSwitchEnabled?: boolean;
+  businessQwen38SwitchEnabled?: boolean;
 }): Promise<DgxModelProfilesOverview> {
   if (!input.baseUrl || !input.sharedToken) {
     return enrichModelProfilesOverview({
@@ -351,8 +354,11 @@ export async function fetchDgxModelProfilesOverview(input: {
     const profiles = Array.isArray(body.profiles)
       ? body.profiles.map(normalizeDgxModelProfile).filter((p): p is DgxBusinessModelProfile => p !== null)
       : [];
-    const visibleProfiles = input.businessDeepseekSwitchEnabled ? profiles
-      : profiles.filter((profile) => profile.id !== 'business_deepseek_v41_flash_tp2');
+    const visibleProfiles = profiles.filter((profile) =>
+      (profile.id !== 'business_deepseek_v41_flash_tp2' || input.businessDeepseekSwitchEnabled) &&
+      (profile.id !== 'business_qwen38_flash_next_orcarouter_fp8_tp2' ||
+        (input.businessDeepseekSwitchEnabled && input.businessQwen38SwitchEnabled)));
+
     const activeProfileId = asString(body.activeProfileId) ?? null;
     const activeStateBackend = parseActiveStateBackend(body.state);
     const activeRuntimeState = parseDgxActiveModelRuntimeState(body.state);
@@ -394,6 +400,7 @@ export async function fetchBusinessModelSwitchCapability(input: {
   sharedToken?: string;
   fetchImpl: typeof fetch;
   timeoutMs: number;
+  modelProfileId?: string;
 }): Promise<boolean> {
   if (!input.baseUrl || !input.sharedToken) return false;
   const { signal, cleanup } = createTimeoutSignal(input.timeoutMs);
@@ -403,7 +410,9 @@ export async function fetchBusinessModelSwitchCapability(input: {
     });
     if (!response.ok) return false;
     const value: unknown = await response.json();
-    return isRecord(value) && value.enabled === true && value.contractVersion === 1;
+    return isRecord(value) && value.enabled === true && value.contractVersion === 1 &&
+      (input.modelProfileId !== 'business_qwen38_flash_next_orcarouter_fp8_tp2' ||
+        asStringArray(value.supportedBusinessProfileIds).includes(input.modelProfileId));
   } catch {
     return false;
   } finally {
