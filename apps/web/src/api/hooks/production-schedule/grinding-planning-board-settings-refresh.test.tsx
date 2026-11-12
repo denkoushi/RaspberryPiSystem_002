@@ -4,19 +4,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
-import { useKioskGrindingPlanningBoard, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
+import { useConfigureKioskSessakuPieceOps, useKioskGrindingPlanningBoard, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS, useKioskGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes';
 
 import type { GrindingPlanningBoardResourceCapacityRequest, GrindingPlanningBoardResourceCapacityResponse as Capacity } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ minutes: vi.fn(), capacity: vi.fn(), updateCapacity: vi.fn(), board: vi.fn(), load: vi.fn() }));
+const mocks = vi.hoisted(() => ({ minutes: vi.fn(), capacity: vi.fn(), updateCapacity: vi.fn(), board: vi.fn(), load: vi.fn(), configure: vi.fn(), clear: vi.fn() }));
 vi.mock('../../client', () => ({
   getKioskGrindingPlanningBoard: mocks.board,
   getKioskGrindingPlanningBoardLoad: mocks.load,
   getKioskGrindingPlanningBoardResourceMinutes: mocks.minutes,
   getKioskGrindingPlanningBoardResourceCapacity: mocks.capacity,
   updateKioskGrindingPlanningBoardResourceCapacity: mocks.updateCapacity
+}));
+
+vi.mock('../../domains/production-schedule/grinding-planning-board', () => ({
+  configureKioskSessakuPieceOps: mocks.configure, clearKioskSessakuPieceOps: mocks.clear
 }));
 
 const capacityKey = productionScheduleQueryKeys.planningBoardResourceCapacityAll;
@@ -36,6 +40,23 @@ function wrapperFor(client: QueryClient) {
 describe('planning board settings refresh', () => {
   beforeEach(() => { vi.clearAllMocks(); });
   afterEach(() => { vi.useRealTimers(); });
+
+  it.each(['configure', 'clear'] as const)('invalidates the board and part minutes after a %s conflict', async (action) => {
+    const error = { isAxiosError: true, response: { status: 409 } };
+    mocks[action].mockRejectedValue(error);
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const hook = renderHook(() => useConfigureKioskSessakuPieceOps(), { wrapper: wrapperFor(client) });
+    const common = { itemId: 'piece:unit', itemRevision: 'revision', expectedPieceSetVersion: 1 };
+    await act(async () => {
+      await expect(hook.result.current.mutateAsync(action === 'configure'
+        ? { ...common, resourceCd: '021', minutes: [10, 20] } : { ...common, scope: 'piece' })).rejects.toEqual(error);
+    });
+    expect(mocks[action]).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll });
+    hook.unmount(); client.clear();
+  });
 
   it('re-reads minutes and capacity while the board stays open', async () => {
     vi.useFakeTimers();

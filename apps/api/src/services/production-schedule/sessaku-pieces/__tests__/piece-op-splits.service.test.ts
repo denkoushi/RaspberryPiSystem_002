@@ -198,6 +198,29 @@ describe('piece operation boundary mutations', () => {
     });
   }
 
+  it.each(['completed', 'unit split disabled'] as const)('rejects configure for %s before any writes', async (reason) => {
+    installDefinitionWrites();
+    if (reason === 'completed') {
+      set.pieces[0].isCompleted = true;
+      set.pieces.push({ ...set.pieces[0], id: randomUUID(), position: 2, isCompleted: false });
+    } else {
+      mocks.tx.productionScheduleGrindingPlanningBoardResourceCapacity.findMany.mockResolvedValue([
+        { resourceCd: '021', unitSplitEnabled: false, dailyHours: 8, runsThroughBreaks: false }
+      ]);
+    }
+    const before = structuredClone({ set, settings, overrides });
+    await expect(configureSessakuPieceOps(configuration([10, 20])))
+      .rejects.toMatchObject({ statusCode: 409, code: reason === 'completed' ? 'COMPLETED_PIECE' : 'PIECE_NOT_UNIT' });
+    expect({ set, settings, overrides }).toEqual(before);
+    for (const table of Object.values(mocks.tx)) {
+      if (typeof table === 'function') continue;
+      for (const [name, write] of Object.entries(table)) {
+        if (/^(create|update|upsert|delete)/.test(name)) expect(write).not.toHaveBeenCalled();
+      }
+    }
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it('rejects configuring a later bar on a different machine before any board or definition writes', async () => {
     installDefinitionWrites();
     await split(2);
@@ -436,6 +459,8 @@ describe('piece operation boundary mutations', () => {
     completed = new Set([1, 2, 3, 4]); syncCompletionRecords();
     overrides.set(barId(2), override(barId(2)));
     overrides.set(barId(3), override(barId(3)));
+    const unfinished = { ...done, id: randomUUID(), position: 2, isCompleted: false, completedAt: null, opSplits: [], opCompletions: [] };
+    set.pieces.push(unfinished);
     const retained = structuredClone(done.opSplits[0]);
     mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mockImplementation(async ({ where }) =>
       where.piece.isCompleted === done.isCompleted ? { pieceId: done.id } : null);
@@ -444,10 +469,11 @@ describe('piece operation boundary mutations', () => {
         && split.sourceResourceCd === where.sourceResourceCd && where.fromOpNo.in.includes(split.fromOpNo))
         .map((split) => ({ pieceId: done.id, fromOpNo: split.fromOpNo })));
     mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mockImplementation(async ({ where }) => {
+      if (!where.OR) return;
       done.opSplits = done.opSplits!.filter((split) => !where.OR.some((key: { pieceId: string; fromOpNo: number }) =>
         key.pieceId === done.id && key.fromOpNo === split.fromOpNo));
     });
-    await configureSessakuPieceOps(configuration([12, 18]));
+    await configureSessakuPieceOps(configuration([12, 18], `piece:${unfinished.id}`));
     expect(done).toMatchObject({ isCompleted: true, completedAt: now, opSplits: [retained] });
     expect([...completed]).toEqual([1, 2]);
     expect(overrides.has(barId(2))).toBe(true);
@@ -460,7 +486,7 @@ describe('piece operation boundary mutations', () => {
     installCompletionReconciliation();
     // The old tail uses a different source which still defines op 4. Reconcile must see the NEW intervals.
     set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '022', leadingSourceResourceCd: '021' }];
-    completed = new Set(allDone ? [1, 2, 4] : [1, 4]); syncCompletionRecords();
+    completed = new Set(allDone ? [1, 2, 3, 4] : [1, 4]); syncCompletionRecords();
     mocks.tx.productionScheduleSessakuPieceOpCompletion.findFirst.mockResolvedValue({ pieceId: pieceId() });
     const response = await configureSessakuPieceOps(configuration([12, 18]));
     expect([...completed]).toEqual(allDone ? [1, 2] : [1]);

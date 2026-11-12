@@ -207,7 +207,8 @@ export async function saveGrindingPlanningBoardResourcePartMinutes(
   const sameOpNos = (left: readonly { opNo: number }[], right: readonly { opNo: number }[]) =>
     left.map((op) => op.opNo).sort((x, y) => x - y).join(',') === right.map((op) => op.opNo).sort((x, y) => x - y).join(',');
   if (ops !== undefined && !sameOpNos(saved.ops, ops)) {
-    await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, nextOps.map((op) => op.opNo));
+    await reconcileOperationDefinitionPieces(tx, { siteKey: params.siteKey, resourceCd }, keys, nextOps.map((op) => op.opNo),
+      saved.ops.map((op) => op.opNo));
   }
   const savedOps = await tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany({
     where: { partMinutesId: saved.id }, select: { id: true, opNo: true }, orderBy: { opNo: 'asc' }

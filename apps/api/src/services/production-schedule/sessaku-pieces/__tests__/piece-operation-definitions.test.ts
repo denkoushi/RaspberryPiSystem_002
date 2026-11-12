@@ -54,7 +54,8 @@ beforeEach(() => {
   tx.productionScheduleSessakuPieceOpCompletion.createMany.mockImplementation(async ({ data }) => { records.push(...data); return { count: data.length }; });
   tx.productionScheduleSessakuPieceOpCompletion.deleteMany.mockImplementation(async ({ where }) => {
     const count = records.length;
-    records = records.filter((record) => !where.pieceId.in.includes(record.pieceId) || (where.opNo?.notIn.includes(record.opNo) ?? false));
+    records = where.OR ? records.filter((record) => !where.OR.some((match: { pieceId: string; opNo: number }) => match.pieceId === record.pieceId && match.opNo === record.opNo))
+      : records.filter((record) => !where.pieceId.in.includes(record.pieceId) || (where.opNo?.notIn.includes(record.opNo) ?? false));
     return { count: count - records.length };
   });
 });
@@ -198,6 +199,26 @@ describe('operation definition replacement', () => {
     await reconcile([1, 2]);
     expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
     expect(mocks.progress).not.toHaveBeenCalled();
+  });
+  it('reopens the kept operation that absorbs unfinished removed work instead of completing the piece', async () => {
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '021' }, [key], [1], [1, 2]);
+    expect(records).toEqual([]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
+    expect(mocks.progress).not.toHaveBeenCalled();
+  });
+  it('keeps the kept operation and completes the piece when every removed operation was finished', async () => {
+    records.push({ pieceId: 'p', opNo: 2 });
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '021' }, [key], [1], [1, 2]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { id: { in: ['p'] } }, data: { isCompleted: true, completedAt: expect.any(Date) }
+    });
+  });
+  it('keeps a completed piece closed with its evidence when operations are removed', async () => {
+    set.pieces[0].isCompleted = true;
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '021' }, [key], [1], [1, 2]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
   });
   it('requires the retained operations from other resources/sites too', async () => {
     tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([

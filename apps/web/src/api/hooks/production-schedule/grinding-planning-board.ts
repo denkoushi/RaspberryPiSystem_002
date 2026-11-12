@@ -594,7 +594,10 @@ export function useConfigureKioskSessakuPieceOps(dueSource?: 'excel' | 'scaw') {
       ? configureKioskSessakuPieceOps({ ...payload, dueSource }) : clearKioskSessakuPieceOps({ ...payload, dueSource }),
     // A stale board must refresh after a conflict, like the other piece operations.
     onError: (error) => {
-      if (isAxiosError(error) && error.response?.status === 409) void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+      if (isAxiosError(error) && error.response?.status === 409) void Promise.all([
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll }),
+        client.invalidateQueries({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll })
+      ]);
     },
     onSuccess: async () => {
       await Promise.all([

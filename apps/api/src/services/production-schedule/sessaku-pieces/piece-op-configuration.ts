@@ -3,6 +3,7 @@ import type { SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, Sess
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { getGrindingPlanningBoardResourceMinutes, saveGrindingPlanningBoardResourcePartMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { runSessakuPieceOperation, type PieceAuditContext } from './piece-audit.js';
 import { sessakuPieceIdFromItemId, resolveSessakuPieceItemKeys, sessakuPieceParentItemId, sessakuPieceItemIds } from './piece-key.js';
@@ -10,6 +11,7 @@ import { replaceSiteItems, flushSiteItems } from './piece-lane-writes.js';
 import { rememberPieceHistory } from './piece-op-splits.js';
 import { sessakuPieceOpsConfigureSchema, sessakuPieceOpsClearSchema } from './sessaku-pieces.schemas.js';
 import type { PieceOpSplitDependencies } from './sessaku-pieces.service.js';
+import { isUnitSplitEnabled } from './unit-split-policy.js';
 
 type Request = (SessakuPieceOpsConfigureRequest | SessakuPieceOpsClearRequest) & { siteKey: string; audit?: PieceAuditContext };
 
@@ -36,7 +38,12 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     if (!item || !piece || !c.set) conflict();
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.set.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
+    if (configure && piece.isCompleted) conflict('COMPLETED_PIECE');
     if (piece.quantity !== 1) conflict('PIECE_NOT_UNIT');
+    if (configure) {
+      const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
+      if (!piece.opSplits?.length && !isUnitSplitEnabled(item.effectiveResourceCd, capacity)) conflict('PIECE_NOT_UNIT');
+    }
     // A unit belongs to the machine of its leading bar; units whose later bars were moved here stay untouched.
     const targets = configure ? c.set.pieces.filter((candidate) => candidate.quantity === 1 && !candidate.isCompleted && (candidate.id === piece.id
       || c.current.pieces.find((bar) => bar.itemId === `piece:${candidate.id}`)?.effectiveResourceCd === ('resourceCd' in params ? params.resourceCd : null)))

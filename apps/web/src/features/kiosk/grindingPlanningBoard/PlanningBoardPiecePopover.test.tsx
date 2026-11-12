@@ -28,7 +28,7 @@ function setup(item = row, items = [item], selectedItemIds = new Set(items.map((
 }
 describe('PlanningBoardPiecePopover', () => {
   it.each(['CUT-1', 'CUT-2'])('allows operation configuration only on the leading machine (later=%s)', (resourceCd) => {
-    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', opRange: { fromOpNo: 1, toOpNo: 1 } });
+    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', unitRequiredMinutes: 10, opRange: { fromOpNo: 1, toOpNo: 1 } });
     const later = { ...head, itemId: 'pieceops:unit:2', effectiveResourceCd: resourceCd, opRange: { fromOpNo: 2, toOpNo: 2 },
       ops: [{ opNo: 2, minutes: 20 }] };
     const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
@@ -45,6 +45,20 @@ describe('PlanningBoardPiecePopover', () => {
     expect(screen.getByRole('button', { name: 'まとめる' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '工程2を完了にする' })).toBeInTheDocument();
+  });
+  it.each([
+    { manualIsCompleted: true, isCompleted: true, unitRequiredMinutes: 30, visible: false },
+    { manualIsCompleted: false, isCompleted: false, unitRequiredMinutes: undefined, visible: false },
+    { manualIsCompleted: false, isCompleted: true, unitRequiredMinutes: 30, visible: true }
+  ])('shows configuration according to whole-piece completion and unit split eligibility (%j)', (state) => {
+    const item = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART',
+      ops: [{ opNo: 1, minutes: 10 }, { opNo: 2, minutes: 20 }], completedOpNos: [1], ...state });
+    const h = setup(item);
+    h.rerender(<PlanningBoardPiecesContext.Provider value={h.value}><PlanningBoardPiecePopover item={item} variant="gantt" /></PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '工程の数' }) !== null).toBe(state.visible);
+    expect(screen.queryByRole('button', { name: /工程にする$/ }) !== null).toBe(state.visible);
+    expect(screen.getByRole('button', { name: '工程1を未完了にする' })).toBeInTheDocument();
   });
   it.each([false, true])('keeps the value and parent index stable across unrelated renders with 1000 rows (pieces=%s)', (withPieces) => {
     const readParent = vi.fn(() => withPieces ? 'parent' : undefined);

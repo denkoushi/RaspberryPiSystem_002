@@ -211,6 +211,9 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { id: { in: otherLotSetIds.splice(0) } } });
     });
     async function units() {
+      await prisma.productionScheduleGrindingPlanningBoardResourceCapacity.create({ data: {
+        csvDashboardId: dashboardId, siteKey: site, resourceCd: '1', dailyHours: 8, unitSplitEnabled: true
+      } });
       await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '1', fhincd: 'PART-A',
         perUnitMinutes: 40, setupMinutes: 15,
         ops: [1, 2, 3, 4].map((opNo) => ({ opNo, minutes: 10, setupMinutes: opNo === 1 ? 15 : 0 })) });
@@ -253,6 +256,33 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
           orderPinned: true, alternateRank: index + 1 }))) });
       return { pieceId: set.pieces[0].id, ids };
     }
+    it('rejects configuration from a later bar moved to another machine without persisting any writes', async () => {
+      const result = await units();
+      await configure(result.pieces[0].itemId, [10, 20]);
+      const head = (await board()).items.find((item) => item.itemId === result.pieces[0].itemId)!;
+      const laterId = `pieceops:${head.pieceId}:2`;
+      await prisma.productionScheduleGrindingPlanningBoardOverride.updateMany({
+        where: { siteKey: site, itemKey: laterId }, data: { overrideResourceCd: '022' }
+      });
+      const later = (await board()).items.find((item) => item.itemId === laterId)!;
+      expect(later.effectiveResourceCd).toBe('022');
+      expect(head.effectiveResourceCd).toBe('1');
+      const snapshot = async () => ({
+        sets: await prisma.productionScheduleSessakuPieceSet.findMany({ where: { fseiban: seiban }, orderBy: { id: 'asc' },
+          include: { pieces: { orderBy: { id: 'asc' }, include: { opSplits: { orderBy: { fromOpNo: 'asc' } } } } } }),
+        minutes: await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany({
+          where: { siteKey: site }, orderBy: { id: 'asc' }, include: { ops: { orderBy: { opNo: 'asc' } } } }),
+        sources: await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.findMany({
+          where: { siteKey: site }, orderBy: { id: 'asc' } }),
+        overrides: await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+          where: { siteKey: { in: [site, other] } }, orderBy: { id: 'asc' } })
+      });
+      const before = await snapshot();
+      await expect(pieceOperations.configureSessakuPieceOps({ siteKey: site, itemId: laterId,
+        itemRevision: later.itemRevision, expectedPieceSetVersion: later.pieceSetVersion!, resourceCd: '022',
+        minutes: [12, 18], expectedOpIds: [], expectedMinutes: null })).rejects.toMatchObject({ statusCode: 409 });
+      expect(await snapshot()).toEqual(before);
+    });
     it('enables an unselected machine on one-operation configure and projects 90 minutes plus setup in load', async () => {
       const result = await units();
       await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
@@ -355,7 +385,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: sibling.ids[0] }, orderBy: { siteKey: 'asc' } }))
         .toEqual(headOverrides);
     });
-    it('retains completion identity, removes obsolete numbers after rewriting old source ranges, and closes fully completed units', async () => {
+    it('retains completion identity, removes obsolete numbers after rewriting old source ranges, and keeps units with merged unfinished work open', async () => {
       const result = await units();
       const item = result.pieces[0];
       const pieceId = item.pieceId!;
@@ -372,11 +402,22 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         [{ fromOpNo: 1, toOpNo: 1 }, true], [{ fromOpNo: 2, toOpNo: 2 }, false]
       ]);
       expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false });
-      const closed = await configure(item.itemId, [25]);
-      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([retained]);
-      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: true, completedAt: expect.any(Date) });
-      expect(closed.pieces.find((bar) => bar.pieceId === pieceId)).toMatchObject({ isCompleted: true });
-      expect(closed.parentIsCompleted).toBe(false);
+      const reopened = await configure(item.itemId, [25]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false, completedAt: null });
+      expect(reopened.pieces.find((bar) => bar.pieceId === pieceId)).toMatchObject({ isCompleted: false });
+      expect(reopened.parentIsCompleted).toBe(false);
+    });
+    it('keeps a unit open with its bar when two operations with only the first completed become one', async () => {
+      const result = await units();
+      const item = result.pieces[0];
+      const pieceId = item.pieceId!;
+      await configure(item.itemId, [30, 60]);
+      await prisma.productionScheduleSessakuPieceOpCompletion.create({ data: { pieceId, opNo: 1 } });
+      const merged = await configure(item.itemId, [90]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId } })).toEqual([]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: pieceId } })).toMatchObject({ isCompleted: false });
+      expect(merged.pieces.filter((bar) => bar.pieceId === pieceId).map((bar) => bar.isCompleted)).toEqual([false]);
     });
   });
   it('cascades operation boundaries when a piece is deleted', async () => {
