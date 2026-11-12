@@ -288,6 +288,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           {segments.map((segment, index) => {
             const segmentWidth = bar.unknown && !foldedWindow ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - operationSplitGap(bar, index === segments.length - 1));
             return <div key={index}><button type="button" data-testid={`planning-gantt-bar-${bar.item.itemId}${index ? `-segment-${index}` : ''}`}
+              data-seiban-unfocused={focusedSeiban === null ? 'bar' : undefined}
               data-gantt-pinned={normal?.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={test ? `${test.name} ${test.minutes}分 ${bar.resource}` : `${normal?.fhinmei || normal?.fhincd} 工順${normal?.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
@@ -355,7 +356,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}>{(!split || opIndex === 0 && index === 0 && !bar.opSplitContinuation) && <b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>}
                   {!split && <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
                 </span> : null}
-            </button>{split && <span aria-hidden="true" data-gantt-unit-underline className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
+            </button>{split && <span aria-hidden="true" data-gantt-unit-underline data-seiban-unfocused={focusedSeiban === null ? 'underline' : undefined} className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
               style={{ top: foldedWindow ? 95 : 76, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
           {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={foldedWindow ? 75 : 56} />}

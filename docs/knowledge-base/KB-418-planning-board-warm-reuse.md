@@ -136,6 +136,17 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - **Scope**: only the load aggregate's base WHERE uses the C-collated predicate (`useCCollation` in `max-product-no-winner-materialization.ts`); other leaderboard SQL is unchanged until each is measured in production.
 - **Remaining cost** (after the change): DISTINCT ON sort about 580 ms, GROUP BY sort about 510 ms, row fetch about 520–670 ms with no buffer hits.
 
+## Gantt row reuse and folded windows (2026-11-12)
+
+- Scope: local web implementation for forward Gantt, especially the two-machine view; no API, text, scheduler, virtualization, or deployment changes.
+- Stable event bridges read current bars/revisions, focus callbacks and write-gate/pending state through layout-effect refs. Capacity callbacks depend on mutation functions rather than the mutation result object. Chain-position maps depend on ownership rather than the entire shared context.
+- Selection sets are derived from rendered rows, including folded date rows, and retain their identity when membership is unchanged. Rows receive the focused seiban only when they contain that seiban; parent CSS supplies the same dimming to other forward bars and operation underlines without rendering those rows. Existing ring classes remain unchanged.
+- Drag start/end remain synchronous; subsequent previews are coalesced per animation frame. A changed resource, row, target bar, placement or marker position publishes row state. Otherwise only the ghost position and arrow geometry update. Pointerup still hit-tests the final real coordinates synchronously, including cross-pane drops before a pending frame. End/cancel discards pending previews.
+- Single-resource header totals/value counts and the operation-editor context are memoized. Folded windows use sorted start/end indexes and an active bar set, preserving scheduler order; clipping still uses the original segment/metadata clipping function.
+- Regression coverage: folded/partner-row render counts, equal-revision refreshes, legend focus, preview batching/cancellation, cross-pane pointerup before rAF, operation-context identity and indexed/full-scan equality across seven scales, three capacities, both break settings and three pixel widths.
+- Validation: 12 relevant test files / 563 tests passed across the staged runs (15 added cases); final web type-check, changed-file ESLint and whitespace checks passed.
+- Browser boundary: bundled Chromium headless shell could not start under the local sandbox (`bootstrap_check_in` permission denied). Tailwind generated the intended opacity/saturation selectors; actual Chromium appearance and Pi timing remain unverified. No jsdom performance benchmark was run.
+
 ## Prevention
 
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.

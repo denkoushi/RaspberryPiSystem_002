@@ -1,10 +1,12 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
+import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
+import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ComponentProps } from 'react';
@@ -80,7 +82,7 @@ it('skips acknowledged rows with fresh equal contexts and uses the latest callba
   expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('aria-label', expect.stringContaining('変更後'));
 });
 
-it('renders only the source and lanes whose insertion marker changes during a drag', () => {
+it('renders only the source and lanes whose insertion marker changes during a drag', async () => {
   class TestPointerEvent extends MouseEvent {
     readonly pointerId = 1;
   }
@@ -104,10 +106,13 @@ it('renders only the source and lanes whose insertion marker changes during a dr
     expect(renders).toEqual(['305', '306']);
     expect(source).toHaveStyle({ outline: '3px dashed rgb(251 191 36)', zIndex: '9' });
     renders.length = 0;
-    fireEvent.pointerMove(source, { clientX: 121, clientY: 31 });
+    for (let i = 0; i < 20; i++) fireEvent.pointerMove(source, { clientX: 121 + i, clientY: 31 + i });
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
     expect(renders).toEqual([]);
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toHaveStyle({ left: '152px', top: '62px' });
     hit = [screen.getByTestId('planning-gantt-bar-c')];
     fireEvent.pointerMove(source, { clientX: 122, clientY: 32 });
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
     expect(renders).toEqual(['306', '307']);
     expect(screen.getAllByTestId('planning-gantt-insertion')).toHaveLength(1);
     expect(screen.getByTestId('planning-forward-lane-307')).toContainElement(screen.getByTestId('planning-gantt-insertion'));
@@ -121,4 +126,111 @@ it('renders only the source and lanes whose insertion marker changes during a dr
     if (originalHitTest) Object.defineProperty(document, 'elementsFromPoint', originalHitTest);
     else Reflect.deleteProperty(document, 'elementsFromPoint');
   }
+});
+
+
+it('keeps folded rows without the selected item memoized, including equal refreshes', () => {
+  const items = [item('first', '305'), { ...item('later', '305'), requiredMinutes: 6000 }];
+  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
+    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true, singleResourceCd: '305' };
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const draw = (selectedItemIds: ReadonlySet<string>, currentLayout = layout) => <PlanningBoardGanttView {...props} layout={currentLayout} selectedItemIds={selectedItemIds} />;
+  const { rerender } = render(draw(new Set()));
+  renders.length = 0;
+  rerender(draw(new Set(['first'])));
+  expect(renders).toHaveLength(1);
+  expect(screen.getByTestId('planning-gantt-bar-first')).toHaveAttribute('aria-pressed', 'true');
+  expect(renders[0]).toContain(':single:');
+  renders.length = 0;
+  rerender(draw(new Set(['first', 'elsewhere'])));
+  expect(renders).toEqual([]);
+  rerender(draw(new Set(['first']), { ...layout, groups: layout.groups.map(group => ({ ...group, rows: group.rows.map(row => ({ ...row, bars: row.bars.map(bar => ({ ...bar, item: { ...bar.item, itemRevision: 'new' } })) })) })) }));
+  expect(renders).toEqual([]);
+  rerender(draw(new Set()));
+  expect(renders).toHaveLength(1);
+});
+
+
+it.each([false, true])('only rerenders rows containing the legend seiban (folded=%s)', folded => {
+  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
+  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
+    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, onFocusedSeibanChange: vi.fn(), colorBySeiban: true, selectedItemIds: new Set<string>(),
+    singleResourceCd: folded ? '305' : null };
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const draw = (focusedSeiban: string | null) => <PlanningBoardGanttView {...props} layout={layout} focusedSeiban={focusedSeiban} />;
+  const { rerender } = render(draw(null));
+  renders.length = 0;
+  rerender(draw('26-1001'));
+  expect(renders).toHaveLength(1);
+  expect(renders[0]).toContain('305');
+  expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+  expect(screen.getByTestId('planning-board-gantt')).toHaveAttribute('data-seiban-focus');
+  if (!folded) expect(screen.getByTestId('planning-gantt-bar-b')).toHaveAttribute('data-seiban-unfocused', 'bar');
+  renders.length = 0;
+  rerender(draw('outside-this-board'));
+  expect(renders).toHaveLength(1);
+  expect(renders[0]).toContain('305');
+  renders.length = 0;
+  rerender(draw(null));
+  expect(renders).toEqual([]);
+  expect(screen.getByTestId('planning-board-gantt')).not.toHaveAttribute('data-seiban-focus');
+});
+
+
+it('keeps the partner pane and unrelated date rows memoized on selection and equal refresh', () => {
+  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
+  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
+    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true,
+    singleResourceCd: '305+306', resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true } };
+  const build = (items: GrindingPlanningBoardItem[]) => buildPlanningBoardGanttLayout({ items, resources: ['305', '306'],
+    allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05',
+    now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const layout = build(items);
+  const draw = (selectedItemIds: ReadonlySet<string>, currentLayout = layout, focusedSeiban: string | null = null) => <PlanningBoardGanttDisplay {...props} layout={currentLayout} selectedItemIds={selectedItemIds} focusedSeiban={focusedSeiban} />;
+  const { rerender } = render(draw(new Set()));
+  renders.length = 0;
+  rerender(draw(new Set(['a'])));
+  expect(renders).toHaveLength(1);
+  expect(renders[0]).toContain('305:single:');
+  renders.length = 0;
+  const acknowledged = build(items.map(item => ({ ...item, itemRevision: 'r2', version: 2 })));
+  rerender(draw(new Set(['a']), acknowledged));
+  expect(renders).toEqual([]);
+  rerender(draw(new Set(['a']), acknowledged, '26-1001'));
+  expect(renders).toHaveLength(1);
+  expect(renders[0]).toContain('305:single:');
+  renders.length = 0;
+  rerender(draw(new Set(['a']), acknowledged));
+  expect(renders).toHaveLength(1);
+  expect(renders[0]).toContain('305:single:');
+});
+
+it('batches move previews and publishes only a changed insertion target, cancelling pending moves on end', async () => {
+  const layout = buildPlanningBoardGanttLayout({ items: [item('a', '305'), item('b', '306')], resources: ['305', '306'],
+    allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', scale: 2, mode: 'forward' });
+  const bar = layout.groups[0]!.rows[0]!.bars[0]!;
+  const target = layout.groups[1]!.rows[0]!.bars[0]!;
+  let renderCount = 0;
+  const hook = renderHook(() => { renderCount++; return usePlanningBoardDragPreview(); });
+  const setPreview = hook.result.current[1];
+  const preview = { bar, x: 100, y: 100, allowed: new Set(['305', '306']),
+    drop: { resource: '306', bar: target, placement: 'before' as const, left: 10 } };
+  act(() => setPreview(preview));
+  const started = renderCount;
+  for (let i = 0; i < 20; i++) act(() => setPreview({ ...preview, x: i, y: i }));
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+  expect(renderCount).toBe(started);
+  for (let i = 0; i < 20; i++) act(() => setPreview({ ...preview, drop: { ...preview.drop, left: 20 + i } }));
+  expect(renderCount).toBe(started);
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+  expect(renderCount).toBe(started + 1);
+  expect(hook.result.current[0]?.drop?.left).toBe(39);
+  act(() => { setPreview(preview); setPreview(null); });
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+  expect(hook.result.current[0]).toBeNull();
 });

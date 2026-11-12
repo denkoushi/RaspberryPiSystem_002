@@ -747,7 +747,12 @@ it.each(['forward', 'backward'] as const)('keeps the seiban focus on both panes 
   const surfaces = (id: string) => screen.getAllByTestId(new RegExp(`^planning-gantt-bar-${id}(-segment-\\d+)?$`))
     .map(bar => mode === 'backward' ? bar.firstElementChild! : bar);
   const focused = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('ring-2', 'ring-white'));
-  const dimmed = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('opacity-20'));
+  const dimmed = (id: string) => surfaces(id).forEach(surface => {
+    if (mode === 'forward' && surface.hasAttribute('data-seiban-unfocused')) {
+      expect(surface).toHaveAttribute('data-seiban-unfocused', 'bar');
+      expect(surface.closest('[data-seiban-focus]')).toHaveClass('[&[data-seiban-focus]_[data-seiban-unfocused]]:opacity-20', '[&[data-seiban-focus]_[data-seiban-unfocused=bar]]:saturate-[.3]');
+    } else expect(surface).toHaveClass('opacity-20');
+  });
   const clear = (id: string) => surfaces(id).forEach(surface => { expect(surface).not.toHaveClass('ring-2'); expect(surface).not.toHaveClass('opacity-20'); });
 
   fireEvent.click(legend().getByRole('button', { name: '26-1201' }));
@@ -1145,6 +1150,22 @@ describe('two-machine forward dragging', () => {
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+  });
+
+  it('uses the final pointerup coordinates in the partner pane before the pending preview frame', () => {
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    begin(source, source);
+    pointAt(bar('item-0001'));
+    fireEvent.pointerMove(source, { clientX: 200, clientY: 430 });
+    // Do not advance rAF: the destination preview has not been published yet.
+    fireEvent.pointerUp(source, { clientX: 10000, clientY: 430 });
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), '022',
+      expect.objectContaining({ itemId: 'item-0001' }), 'after');
+    act(() => { vi.advanceTimersByTime(50); });
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
   });
 
   it('does not remeasure chain links for shared drag previews', () => {
