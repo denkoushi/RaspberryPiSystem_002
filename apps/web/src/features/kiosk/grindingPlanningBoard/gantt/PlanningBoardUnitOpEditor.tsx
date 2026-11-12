@@ -80,6 +80,9 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
       if (offline.enabled) await Promise.all(['board', 'load', 'resource-minutes'].map((key) => offline.refreshRead(key)));
       if (generation === gate.generation()) onClose();
     } catch (error) {
+      if (generation === gate.generation() && offline.enabled && isAxiosError(error) && error.response?.status === 409) {
+        await Promise.allSettled(['board', 'load', 'resource-minutes'].map((key) => offline.refreshRead(key)));
+      }
       if (generation === gate.generation()) onFailure({ message: unitOpFailureMessage(error), isError: true });
     } finally { if (generation === gate.generation()) onPending(false); }
   };

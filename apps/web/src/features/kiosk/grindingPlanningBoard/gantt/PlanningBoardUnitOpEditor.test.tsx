@@ -1,12 +1,16 @@
 import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useLayoutEffect } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { api } from '../../../../api/client';
+import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from '../offline/planningBoardOfflineConfig';
+import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { PlanningBoardPiecePopover, PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../PlanningBoardPiecePopover';
 
 import { planningBoardChainPairs } from './PlanningBoardChainLinks';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { buildPlanningBoardGanttLayout, isNormalGanttBar } from './planningBoardGanttLayout';
-import { PlanningBoardUnitOpContext, unitOpDraft, unitOpGhost } from './PlanningBoardUnitOpEditor';
+import { PlanningBoardUnitOpEditor, PlanningBoardUnitOpContext, unitOpDraft, unitOpGhost } from './PlanningBoardUnitOpEditor';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 
@@ -20,7 +24,7 @@ const item = { itemId: 'piece:a', kind: 'piece', pieceId: 'a', piecePosition: 1,
   unitRequiredMinutes: 30, requiredMinutes: 50, setupMinutes: 20, isCompleted: false,
   processOrder: '10', effectiveDueDate: '2026-11-12', originalDueDate: '2026-11-12' } as GrindingPlanningBoardItem;
 function setup(values: GrindingPlanningBoardResourceMinutesResponse['values'] = [], extra: Partial<GrindingPlanningBoardItem> = {}) {
-  const current = { ...item, ...extra };
+  const current = { ...item, opSplitSourceResourceCd: '021', ...extra };
   const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
     resourceCategories: { '021': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
   return render(<PlanningBoardUnitOpContext.Provider value={{ minutes: { ownSourceResourceCds: [], values }, items: [current], loading: false }}>
@@ -28,6 +32,7 @@ function setup(values: GrindingPlanningBoardResourceMinutesResponse['values'] = 
   </PlanningBoardUnitOpContext.Provider>);
 }
 beforeEach(() => mutation.mockClear());
+afterEach(() => vi.restoreAllMocks());
 describe('unit operation quantity dialog', () => {
   it('opens an unregistered unit with unknown unit minutes and starts with two equal operation times', () => {
     setup([], { unitRequiredMinutes: null });
@@ -214,4 +219,34 @@ it('connects shuffled intervals in unit then operation order, and leaves gaps on
     const setupLength = bar.setupSegments?.reduce((sum, segment) => sum + segment.end - segment.start, 0) ?? 0;
     expect(setupLength > 0).toBe(bar.item.kind !== 'test' && bar.item.piecePosition === 1);
   }
+});
+
+it('refreshes all three offline reads after a 409 and preserves its failure message', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ status: 200, data: { dailyHoursByResource: {}, runsThroughBreaksResources: [] } });
+  mutation.mockRejectedValueOnce({ isAxiosError: true, response: { status: 409, data: {} } });
+  let offline!: ReturnType<typeof usePlanningBoardOffline>;
+  const reads = ['board', 'load', 'resource-minutes'].map(() => vi.fn().mockResolvedValue({}));
+  const onFailure = vi.fn(); const onClose = vi.fn(); const onPending = vi.fn();
+  function Harness() {
+    offline = usePlanningBoardOffline();
+    const { registerRead } = offline;
+    useLayoutEffect(() => {
+      const unregister = ['board', 'load', 'resource-minutes'].map((key, index) =>
+        registerRead(key, { read: reads[index], commit: () => undefined }));
+      return () => unregister.forEach((remove) => remove());
+    }, [registerRead]);
+    return <PlanningBoardUnitOpEditor item={item} canConfigure disabled={false} onClose={onClose} onPending={onPending} onFailure={onFailure} />;
+  }
+  render(<PlanningBoardOfflineProvider config={{ ...DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG, enabled: true }}><Harness /></PlanningBoardOfflineProvider>);
+  await waitFor(() => expect(offline.snapshot.phase).toBe('online'));
+  const refresh = vi.spyOn(offline, 'refreshRead');
+  reads.forEach((read) => read.mockClear());
+  fireEvent.click(screen.getByRole('button', { name: '2工程にする' }));
+  await waitFor(() => expect(onFailure).toHaveBeenLastCalledWith({
+    message: '表示中のデータが更新されています。最新状態を取得してください。', isError: true
+  }));
+  expect(refresh.mock.calls.map(([key]) => key)).toEqual(['board', 'load', 'resource-minutes']);
+  reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1));
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onPending).toHaveBeenLastCalledWith(false);
 });

@@ -41,6 +41,8 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     if (configure && piece.isCompleted) conflict('COMPLETED_PIECE');
     if (piece.quantity !== 1) conflict('PIECE_NOT_UNIT');
     if (configure) {
+      const firstSplit = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo)[0];
+      if (firstSplit && (firstSplit.leadingSourceResourceCd ?? firstSplit.sourceResourceCd) !== ('resourceCd' in params ? params.resourceCd : null)) conflict();
       const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
       if (!piece.opSplits?.length && !isUnitSplitEnabled(item.effectiveResourceCd, capacity)) conflict('PIECE_NOT_UNIT');
     }

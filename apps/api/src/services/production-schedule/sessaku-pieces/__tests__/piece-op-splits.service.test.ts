@@ -221,6 +221,28 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('rejects a moved leading bar before any writes (all intervals moved=%s)', async (moveAll) => {
+    installDefinitionWrites();
+    set.pieces[0].opSplits = [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }];
+    overrides.set(headId(), override(headId(), { overrideResourceCd: '022' }));
+    if (moveAll) overrides.set(barId(3), override(barId(3), { overrideResourceCd: '022' }));
+    expect(current(headId()).opSplitSourceResourceCd).toBe('021');
+    const saved = settings.values.find((value) => value.resourceCd === '022')!;
+    const payload = { ...configuration(), resourceCd: '022', expectedOpIds: saved.ops!.map((op) => op.id!),
+      expectedMinutes: { perUnitMinutes: saved.perUnitMinutes, setupMinutes: saved.setupMinutes,
+        ops: saved.ops!.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) } };
+    const before = structuredClone({ set, settings, overrides });
+    await expect(configureSessakuPieceOps(payload)).rejects.toMatchObject({ statusCode: 409 });
+    expect({ set, settings, overrides }).toEqual(before);
+    for (const table of Object.values(mocks.tx)) {
+      if (typeof table === 'function') continue;
+      for (const [name, write] of Object.entries(table)) {
+        if (/^(create|update|upsert|delete)/.test(name)) expect(write).not.toHaveBeenCalled();
+      }
+    }
+    expect(mocks.tx.$executeRaw).not.toHaveBeenCalled();
+  });
+
   it('rejects configuring a later bar on a different machine before any board or definition writes', async () => {
     installDefinitionWrites();
     await split(2);
@@ -536,7 +558,7 @@ describe('piece operation boundary mutations', () => {
       ops: [{ opNo: 1, minutes: 10, setupMinutes: 15 }, { opNo: 2, minutes: 20, setupMinutes: 0 }] }];
     const first = set.pieces[0];
     first.opSplits = [{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '022' }];
-    const second = { ...first, id: randomUUID(), position: 2, opCompletions: [] };
+    const second = { ...first, id: randomUUID(), position: 2, opCompletions: [], opSplits: [] };
     set.pieces = [second, first]; set.plannedQuantity = 2; detail.orderSupplements[0].plannedQuantity = 2;
     expect(current(`piece:${second.id}`).setupMinutes).toBe(0);
     expect(current(`piece:${first.id}`).setupMinutes).toBe(15);
