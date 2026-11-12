@@ -582,10 +582,12 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       const set = (active: boolean) => {
         if (mode === 'orderPreview') {
           // Exercise the preview state while keeping quantity consumers mounted in the list.
-          act(() => setPreview(active ? { sourceRevision: data.sourceRevision, current: {}, proposal: {},
-            before: { lateCount: 0, waitMinutes: 0 }, after: { lateCount: 0, waitMinutes: 0 },
-            options: { items: data.items, seibanOrder: data.seibanOrder, resources: data.resources,
-              dailyHoursByResource: {}, today: '2026-09-11', scale: 2, allocation: 'alternate', view: 'resource' } } : null));
+          const options = { items: data.items, seibanOrder: data.seibanOrder, resources: data.resources,
+            dailyHoursByResource: {}, today: '2026-09-11', scale: 2, allocation: 'alternate' as const, view: 'resource' as const };
+          const proposal = {};
+          act(() => setPreview(active ? { sourceRevision: data.sourceRevision, current: {}, proposal,
+            before: { lateCount: 0, waitMinutes: 0 }, after: { lateCount: 0, waitMinutes: 0 }, options,
+            layout: { value: ganttLayout.buildForwardPlanningBoardGanttLayout({ ...options, laneOrder: proposal }), scale: 2, options, laneOrder: proposal } } : null));
         }
         else { ready = mode === 'ready' ? !active : true; blocked = mode === 'blocked' && active; page.rerender(<ProductionScheduleGrindingPlanningBoardPage />); }
       };
