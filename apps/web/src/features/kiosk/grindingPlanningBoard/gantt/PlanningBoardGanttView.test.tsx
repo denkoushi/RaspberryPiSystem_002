@@ -1005,7 +1005,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(firstRow).not.toBe(document.querySelector('[data-gantt-window-row]'));
     expect(screen.queryByTestId('planning-gantt-bar-pre')).toBeNull();
   });
-  it.each([false, true])('keeps two-machine drag within its pane (cross machine=%s)', (crossMachine) => {
+  it.each([false, true])('keeps two-machine drag within its pane when resource movement is disallowed (cross machine=%s)', (crossMachine) => {
     vi.useFakeTimers();
     const entries = [item({ originalResourceCd: '021', requiredMinutes: 60, alternateRank: 1 }),
       item({ itemId: 'b', originalResourceCd: crossMachine ? '022' : '021', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 }),
@@ -1013,7 +1013,7 @@ describe('forward PlanningBoardGanttView', () => {
     const values = forwardProps(entries);
     const onResourceMove = vi.fn();
     render(<PlanningBoardGanttDisplay {...values} scale={1} singleResourceCd="021+022"
-      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onResourceMove={onResourceMove} canMoveResource={() => false} />);
     const source = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
     const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!;
     vi.mocked(document.elementsFromPoint).mockReturnValue([target]);

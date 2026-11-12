@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef, useState } from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionFixture } from '../__perf__/fixture';
+import { PlanningBoardPageView } from '../PlanningBoardPageView';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
@@ -14,6 +15,7 @@ import { usePersistedPlanningBoardSingleResource } from './usePersistedPlanningB
 import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
+import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const capacityState = vi.hoisted(() => ({
@@ -802,4 +804,248 @@ it('passes unit split controls through the display and view in single and two-ma
   expect(screen.getByRole('button', { name: '1台ずつ' })).toBeDisabled();
   view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd="022" />);
   expect(screen.queryByRole('button', { name: '1台ずつ' })).not.toBeInTheDocument();
+});
+
+
+describe('two-machine forward dragging', () => {
+  class TestPointerEvent extends MouseEvent {
+    readonly pointerId = 1;
+    readonly pointerType = 'mouse';
+  }
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.stubGlobal('PointerEvent', TestPointerEvent);
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => []) });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const lower = this.closest('section[aria-label="022"]');
+      return new DOMRect(100, lower ? 400 : 100, 1000, 60);
+    });
+  });
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'elementsFromPoint');
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    localStorage.clear();
+  });
+  const bar = (id: string) => screen.getAllByTestId(`planning-gantt-bar-${id}`)[0]!;
+  const pointAt = (target: HTMLElement) => vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
+  const begin = (source: HTMLElement, target: HTMLElement, x = 100) => {
+    pointAt(target);
+    fireEvent.pointerDown(source, { button: 0, clientX: 150, clientY: 120 });
+    fireEvent.pointerMove(source, { clientX: x, clientY: 420 });
+  };
+  const end = (source: HTMLElement, x = 100) => fireEvent.pointerUp(source, { clientX: x, clientY: 420 });
+
+  it.each([
+    ['item-0000', 'item-0001', '022'],
+    ['item-0001', 'item-0000', '021']
+  ])('moves %s across panes before %s on %s, showing one arrow and ghost', (sourceId, targetId, resource) => {
+    const values = props('forward');
+    // Row keys can collide between panes; resource must also identify the lane and arrow origin.
+    values.layout.groups[1]!.rows[0]!.key = values.layout.groups[0]!.rows[0]!.key;
+    const onResourceMove = vi.fn();
+    const onResourceReorder = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    const source = bar(sourceId); const target = bar(targetId);
+    begin(source, target);
+    const insertion = screen.getByTestId('planning-gantt-insertion');
+    expect(insertion.closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
+    expect(insertion.style.left).toBe(target.style.left);
+    expect(target.closest('[data-gantt-lane-resource]')).toHaveStyle({ outline: '3px solid rgb(110 231 183)' });
+    const arrow = screen.getByTestId('planning-gantt-drag-arrow').querySelector('path[stroke]')!;
+    expect(arrow).toHaveAttribute('stroke', 'rgb(52 211 153)');
+    expect(arrow).toHaveAttribute('stroke-width', '3');
+    expect(arrow).toHaveAttribute('d', resource === '022' ? 'M600 130 Q600 95 600 430' : 'M600 430 Q600 95 600 130');
+    expect(screen.getAllByTestId('planning-gantt-drag-ghost')).toHaveLength(1);
+    end(source);
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: sourceId }), resource,
+      expect.objectContaining({ itemId: targetId }), 'before');
+    expect(onResourceReorder).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+  });
+
+  it('moves after a bar using the destination working window start', () => {
+    const fixture = productionFixture(2, 1);
+    const items = fixture.items.map((item, i) => ({ ...item, originalResourceCd: i ? '022' : '021', requiredMinutes: 60, specialDue: null }));
+    const dailyHoursByResource = { '021': 8, '022': 24 } as const;
+    const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'], scale: 1, dailyHoursByResource });
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} scale={1} dailyHoursByResource={dailyHoursByResource}
+      onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar(items[0]!.itemId); const target = bar(items[1]!.itemId);
+    begin(source, target, 10000);
+    const insertion = screen.getByTestId('planning-gantt-insertion');
+    expect(insertion.closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
+    expect(parseFloat(insertion.style.left)).toBeCloseTo(parseFloat(target.style.left) + parseFloat(target.style.width) + 2);
+    end(source, 10000);
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(items[0], '022', items[1], 'after');
+  });
+
+  it('moves to an empty partner pane', () => {
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward', true)} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    const lane = screen.getByRole('region', { name: '022' }).querySelector<HTMLElement>('[data-gantt-window-row]')!;
+    begin(source, lane);
+    expect(screen.getByTestId('planning-gantt-insertion').closest('[data-gantt-window-row]')).toBe(lane);
+    end(source);
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), '022', null, 'after');
+  });
+
+  it('keeps a test bar in its original pane', () => {
+    const values = props('forward');
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:drag', itemRevision: 'test:r1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '021', minutes: 30, alternateRank: 1, isCompleted: false, completedAt: null, deletedAt: null };
+    values.layout = buildPlanningBoardGanttLayout({ ...productionFixture().options,
+      items: values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test'),
+      resources: ['021', '022'], testBars: [test] });
+    const onResourceMove = vi.fn(); const onResourceReorder = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    const source = bar(test.itemId);
+    begin(source, bar('item-0001'));
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
+    end(source);
+    expect(onResourceMove).not.toHaveBeenCalled();
+    expect(onResourceReorder).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['pieceops:u:20', 'item-b', '022'],
+    ['item-b', 'pieceops:u:20', '021'],
+    ['piece:u', 'item-b', '022']
+  ])('moves operation interval bars across panes (%s before %s on %s)', (sourceId, targetId, resource) => {
+    const fixture = productionFixture(2, 1);
+    const pieceBase = { ...fixture.items[0]!, kind: 'piece' as const, pieceId: 'u', parentItemId: 'parent', piecePosition: 1,
+      quantity: 1, plannedQuantity: 1, parentPlannedQuantity: 1, originalResourceCd: '021', requiredMinutes: 60, specialDue: null };
+    // The suffix interval is placed first so it is the nearest drop target in its lane.
+    const items = [
+      { ...pieceBase, itemId: 'piece:u', opRange: { fromOpNo: 10, toOpNo: 19 }, alternateRank: 2 },
+      { ...pieceBase, itemId: 'pieceops:u:20', opRange: { fromOpNo: 20, toOpNo: 30 }, alternateRank: 1 },
+      { ...fixture.items[1]!, itemId: 'item-b', originalResourceCd: '022', requiredMinutes: 60, specialDue: null }
+    ];
+    const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] });
+    const onResourceMove = vi.fn(); const onResourceReorder = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} onResourceMove={onResourceMove}
+      onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    const source = bar(sourceId); const target = bar(targetId);
+    begin(source, target);
+    expect(screen.getByTestId('planning-gantt-insertion').closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
+    expect(screen.getAllByTestId('planning-gantt-drag-ghost')).toHaveLength(1);
+    end(source);
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: sourceId }), resource,
+      expect.objectContaining({ itemId: targetId }), 'before');
+    expect(onResourceReorder).not.toHaveBeenCalled();
+  });
+
+  it('does not insert a bar next to a test bar in the other pane', () => {
+    const values = props('forward');
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:target', itemRevision: 'test:r1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '022', minutes: 30, alternateRank: 1, isCompleted: false, completedAt: null, deletedAt: null };
+    values.layout = buildPlanningBoardGanttLayout({ ...productionFixture().options,
+      items: values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test'),
+      resources: ['021', '022'], testBars: [test] });
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    begin(source, bar(test.itemId));
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    end(source);
+    expect(onResourceMove).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('uses the existing resource guard for only the dragged unit piece (allowed=%s)', allowed => {
+    const fixture = productionFixture(3, 1);
+    const items = fixture.items.map((item, i) => ({ ...item, itemId: `piece:unit-${i}`, kind: 'piece' as const,
+      parentItemId: 'parent', pieceId: `unit-${i}`, piecePosition: i + 1, quantity: 1, plannedQuantity: 1, parentPlannedQuantity: 3,
+      originalResourceCd: i === 1 ? '022' : '021', requiredMinutes: 60, specialDue: null }));
+    const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] });
+    const canMoveResource = vi.fn((item, resource) => allowed && item.itemId === items[0]!.itemId && resource === '022');
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} canMoveResource={canMoveResource} onResourceMove={onResourceMove} />);
+    const source = bar(items[0]!.itemId);
+    begin(source, bar(items[1]!.itemId)); end(source);
+    expect(canMoveResource).toHaveBeenCalledWith(items[0], '022');
+    if (allowed) expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(items[0], '022', items[1], 'before');
+    else expect(onResourceMove).not.toHaveBeenCalled();
+  });
+
+  it.each(['021+022', '021'])('preserves same-pane reordering in %s mode', selection => {
+    const values = props('forward');
+    const onResourceReorder = vi.fn(); const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} onResourceReorder={onResourceReorder} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    begin(source, bar('item-0002'));
+    expect(screen.getByTestId('planning-gantt-insertion').closest('[data-gantt-window-row]')).toBe(bar('item-0002').closest('[data-gantt-window-row]'));
+    expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+    end(source);
+    expect(onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), expect.objectContaining({ itemId: 'item-0002' }), 'before');
+    expect(onResourceMove).not.toHaveBeenCalled();
+  });
+
+  it('starts at 8px and keeps a stationary 500ms long press as selection', () => {
+    const values = props('forward'); const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    const source = bar('item-0000'); pointAt(bar('item-0001'));
+    fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.pointerUp(source, { clientX: 100, clientY: 100 });
+    expect(values.onToggleItem).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'item-0000' }), true);
+    expect(onResourceMove).not.toHaveBeenCalled();
+    fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(source, { clientX: 107, clientY: 100 });
+    expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+    fireEvent.pointerMove(source, { clientX: 108, clientY: 100 });
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+    fireEvent.pointerCancel(source);
+    expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
+    expect(onResourceMove).not.toHaveBeenCalled();
+  });
+
+  it('moves a queue card across panes with the same insertion and arrow', () => {
+    const onResourceMove = vi.fn();
+    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    fireEvent.pointerEnter(bar('item-0000'));
+    const source = screen.getByTestId('planning-forward-queue-card-item-0000');
+    begin(source, bar('item-0001'), 0);
+    expect(screen.getByTestId('planning-gantt-insertion').closest('[data-resource-code]')).toHaveAttribute('data-resource-code', '022');
+    expect(screen.getByTestId('planning-gantt-drag-arrow')).toBeInTheDocument();
+    expect(screen.getAllByTestId('planning-gantt-drag-ghost')).toHaveLength(1);
+    end(source, 0);
+    expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), '022', expect.objectContaining({ itemId: 'item-0001' }), 'before');
+  });
+
+  it.each(['alternate', 'original'] as const)('honors the page allocation guard (%s)', allocation => {
+    const values = props('forward');
+    const items = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test');
+    const data: GrindingPlanningBoardResponse = { siteKey: 'site', category: 'cutting', view: 'resource', sourceRevision: 'r1', boardVersion: 1,
+      registeredFseibans: [], uncheckedFseibans: [], seibanOrder: [], resources: ['021', '022'], items, load: [],
+      unknownRequiredMinutesCount: 0, seibanProgress: {}, snapshotId: 'snapshot', nextCursor: null };
+    localStorage.setItem('kiosk.planning-board.single-resource:drag-guard', JSON.stringify({ schemaVersion: 1, resourceCd: '021+022' }));
+    const onResourceMove = vi.fn();
+    function Page() {
+      const gantt = usePlanningBoardGantt({ ...productionFixture().options, items, resources: data.resources, category: 'cutting',
+        allocation, enabled: true, preferenceScope: 'drag-guard' });
+      return <PlanningBoardPageView data={data} gantt={gantt} ganttLayout={gantt.layout} ganttEnabled view="resource" category="cutting"
+        allocation={allocation} focusedSeiban={null} setFocusedSeiban={vi.fn()} colorBySeiban={false} registeredFseibans={[]}
+        resourcesQuery={{}} pinMode={false} togglePin={vi.fn()} selectedItemIds={new Set()} toggleItem={vi.fn()}
+        toggleCompletion={vi.fn()} completionPendingItemIds={new Set()} moveDueByDrag={vi.fn()} reorderResourceByDrag={vi.fn()}
+        moveResourceInGantt={onResourceMove} canMoveResource={() => true} interactionLocked={false} writeQueue={{ pending: false }}
+        writeBlocked={false} piecesWriting={false} rankMutationReady orderPreview={null} focusedFseiban={null} focusItems={[]}
+        machineNames={new Map()} returnFromFocus={vi.fn()} toggleFocusAll={vi.fn()} openEditorForItem={vi.fn()} changeRank={vi.fn()}
+        rankDisabled={() => false} bulkReady activeFseibans={new Set()} itemsBySeiban={new Map()} paneActionsBySeiban={new Map()}
+        sortedItemsBySeiban={new Map()} openFseibans={new Set()} scanFocusKey={0} visibleItems={items} moveResourceByDrag={vi.fn()}
+        specialDueMode={null} updateSpecialDue={vi.fn()} nowMs={0} resourceDragDisabled={false} />;
+    }
+    render(<QueryClientProvider client={new QueryClient()}><Page /></QueryClientProvider>);
+    const source = bar('item-0000'); begin(source, bar('item-0001')); end(source);
+    if (allocation === 'alternate') expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'item-0000' }), '022', expect.objectContaining({ itemId: 'item-0001' }), 'before');
+    else {
+      expect(onResourceMove).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
+    }
+  });
 });
