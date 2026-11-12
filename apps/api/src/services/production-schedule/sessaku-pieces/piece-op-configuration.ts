@@ -36,8 +36,9 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     if (c.external) conflict('EXTERNALLY_COMPLETED_ITEM');
     if (c.set.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
     if (piece.quantity !== 1) conflict('PIECE_NOT_UNIT');
-    const targets = configure ? c.set.pieces.filter((candidate) => candidate.quantity === 1 && !candidate.isCompleted
-      && c.current.pieces.some((bar) => bar.pieceId === candidate.id && bar.effectiveResourceCd === ('resourceCd' in params ? params.resourceCd : null)))
+    // A unit belongs to the machine of its leading bar; units whose later bars were moved here stay untouched.
+    const targets = configure ? c.set.pieces.filter((candidate) => candidate.quantity === 1 && !candidate.isCompleted && (candidate.id === piece.id
+      || c.current.pieces.find((bar) => bar.itemId === `piece:${candidate.id}`)?.effectiveResourceCd === ('resourceCd' in params ? params.resourceCd : null)))
       : 'scope' in params && params.scope === 'set' ? c.set.pieces.filter((candidate) => !candidate.isCompleted) : [piece];
     if (configure) await assertNoOperationCompletions(tx, targets.map((candidate) => candidate.id));
     if (targets.some((candidate) => candidate.isCompleted)) conflict('COMPLETED_PIECE');

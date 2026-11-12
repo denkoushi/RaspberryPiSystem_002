@@ -332,6 +332,18 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).toHaveBeenCalledTimes(1);
   });
 
+  it('does not configure a unit whose leading bar is on another machine even when a later bar is here', async () => {
+    installDefinitionWrites();
+    const other = { ...set.pieces[0], id: randomUUID(), position: 2,
+      opSplits: [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }] };
+    set.pieces.push(other); set.plannedQuantity = 2; detail.orderSupplements[0].plannedQuantity = 2;
+    overrides.set(`piece:${other.id}`, override(`piece:${other.id}`, { overrideResourceCd: '022' }));
+    await configureSessakuPieceOps(configuration());
+    expect(set.pieces[0].opSplits!.map((split) => split.fromOpNo)).toEqual([2]);
+    expect(other.opSplits).toEqual([{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }]);
+    expect(overrides.get(`piece:${other.id}`)?.overrideResourceCd).toBe('022');
+  });
+
   it('keeps the placement of an existing moved operation interval when configuring', async () => {
     installDefinitionWrites(); await split(3);
     overrides.set(barId(3), override(barId(3), { overrideResourceCd: '022', overrideDueDate: new Date('2026-12-05'), orderPinned: true }));
