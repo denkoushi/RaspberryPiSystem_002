@@ -5,6 +5,8 @@ import { useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../..
 import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
+import { PLANNING_BOARD_SHEET_MAX_HEIGHT, PLANNING_BOARD_SHEET_RATIO } from './planningBoardSheetGeometry';
+
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
 
 type Op = { opNo: number; minutes: number | null; setupMinutes: number | null };
@@ -81,7 +83,7 @@ function Stepper({ label, value, ghost, setup, disabled, invalid, draft, positiv
   if (editing !== null && editing !== '' && valid(editing) && Number(editing) !== value) setEditing(null);
   const inputInvalid = invalid || (editing !== null && editing !== '' && !valid(editing));
   const normalize = (next: number) => Math.min(100000, Math.max(setup ? 0 : 0.5, setup ? Math.round(next / 5) * 5 : half(next)));
-  return <div className={`flex h-[52px] overflow-hidden rounded-lg border-2 bg-slate-950 ${inputInvalid ? 'border-red-400' : value !== null ? 'border-amber-800' : 'border-slate-700'} ${draft ? 'border-dashed' : ''}`}>
+  return <div className={`flex h-11 overflow-hidden rounded-lg border-2 bg-slate-950 ${inputInvalid ? 'border-red-400' : value !== null ? 'border-amber-800' : 'border-slate-700'} ${draft ? 'border-dashed' : ''}`}>
     <button type="button" className="h-full w-12 shrink-0 bg-slate-800 text-2xl" aria-label={`${label}を減らす`} disabled={disabled}
       onClick={() => {
         if (!gate.attempt()) return;
@@ -290,7 +292,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     next.baseOpIds = value.baseOpIds;
     next.baseOpNos = value.baseOpNos;
     next.usedOpNos = [...new Set([...value.usedOpNos, ...value.baseOpNos, ...next.ops.map((op) => op.opNo)])];
-    next.resetRow = reset;
+    next.resetRow = reset || (!next.ops.length && next.perUnitMinutes === null && Boolean(saved || persisted.current || queue.saving || queue.uncertain));
     next.saveBlocked = cancelSave || Boolean(next.invalidFields?.length);
     if (clearOps) next.clearOps = true;
     if (next.ops.length) next.clearOps = false;
@@ -353,13 +355,13 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     const ops = value.ops.filter((entry) => entry.opNo !== op.opNo);
     change(ops.length ? { ...value, ops, invalidFields: value.invalidFields?.filter((field) => !field.startsWith(`${op.opNo}:`)) } : { ...empty(), perUnitMinutes: op.minutes, setupMinutes: op.minutes === null ? null : op.setupMinutes ?? 0 }, !ops.length && op.minutes === null && persisted.current, !ops.length);
   };
-  const cell = 'border-b border-slate-700 px-2 py-1.5';
+  const cell = 'border-b border-slate-700 px-2 py-1';
   const bg = selected ? 'bg-[#13213a]' : 'bg-slate-900';
   return <tr onClick={() => select(fhincd)} onFocus={() => select(fhincd)} className={bg}>
     <td className={`${cell} sticky left-0 z-10 w-[170px] min-w-[170px] max-w-[170px] ${bg}`}><div className="font-mono text-lg font-bold">{fhincd}</div><div className="truncate text-[13px] text-slate-400">{items[0]?.fhinmei}</div>
       {error && <span role="alert" className="text-xs text-rose-200">保存できませんでした。</span>}</td>
-    <td className={`${cell} text-right text-lg`}>{quantity}{count > 1 && <small className="ml-1 text-xs text-slate-400">{count}件</small>}</td>
-    <td className={`${cell} text-right text-lg text-slate-400`}>{original !== null && quantity > 0 ? half(original / quantity) : '−'}</td>
+    <td className={`${cell} text-right text-lg`}>{quantity}個{count > 1 && <small className="ml-1 text-xs text-slate-400">{count}件</small>}</td>
+    <td className={`${cell} text-right text-lg text-slate-400`}>{original !== null && quantity > 0 ? `${half(original / quantity)}分` : '−'}</td>
     <td className={`${cell} text-right whitespace-nowrap`}>
       {complete(value) && original !== null && lot !== null && Math.abs(lot - original) > Math.max(0.5, quantity * 0.25) && <small className="mr-2 text-sm text-slate-400">{Math.round(original)}→</small>}
       <b className={`text-[22px] ${complete(value) ? '' : 'font-normal text-slate-400'}`}>{lot === null ? '−' : `${Math.round(lot)}分`}</b></td>
@@ -388,7 +390,7 @@ type SheetProps = {
   resourceCds?: readonly string[]; resourceNameMap?: Record<string, string[]>;
 };
 export function PlanningBoardResourceMinutesSheet({ resourceCds, resourceNameMap, ...props }: SheetProps) {
-  return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: 'min(56%, 520px)' }}>
+  return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: `min(${PLANNING_BOARD_SHEET_RATIO * 100}%, ${PLANNING_BOARD_SHEET_MAX_HEIGHT}px)` }}>
     {resourceCds && resourceCds.length > 1 ? <div className="min-h-0 overflow-auto">{resourceCds.map(resourceCd => <div key={resourceCd}>
       <div className="px-4 py-2 font-bold">{resourceCd}{resourceNameMap?.[resourceCd]?.length ? ` ${resourceNameMap[resourceCd]!.join(' / ')}` : ''}</div>
       <ResourceMinutesTable {...props} resourceCd={resourceCd} items={props.items.filter(item => (item.effectiveResourceCd ?? item.originalResourceCd) === resourceCd)} />
@@ -426,7 +428,7 @@ function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEn
   return <>
     {selected && <div className="px-4 py-2 break-words text-[17px]"><b className="mr-2 font-mono">{selected}</b>{groups.get(selected)?.[0]?.fhinmei}</div>}
     <div className="min-h-0 overflow-auto"><table className="w-max text-left"><thead><tr>
-      <th className={`${header} sticky left-0 z-30`}>品番</th><th className={`${header} text-right`}>数</th><th className={`${header} whitespace-nowrap text-right`}>元/台</th><th className={`${header} min-w-[150px] text-right`}>ロット</th>
+      <th className={`${header} sticky left-0 z-30`}>品番</th><th className={`${header} text-right`}>個数</th><th className={`${header} whitespace-nowrap text-right`}>元の1台</th><th className={`${header} min-w-[150px] text-right`}>合計</th>
       {columns.map((no) => <th key={no} colSpan={2} className={header}>{hasOps && <b className="mb-1 block border-b border-slate-700 pb-1 text-base text-sky-300">{no}工程</b>}<div className="grid grid-cols-[184px_220px]"><span>段取り</span><span>1台</span></div></th>)}
       <th className={`${header} sticky right-0 z-30`} aria-label="操作" />
     </tr></thead><tbody>{[...groups].map(([fhincd, members]) => <PartRow key={`${resourceCd}:${fhincd}`} resourceCd={resourceCd} fhincd={fhincd} items={members}
