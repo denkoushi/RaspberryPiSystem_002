@@ -11,7 +11,7 @@ import type { Dispatch, SetStateAction } from 'react';
 
 type Options = {
   gate?: PlanningBoardWriteGate;
-  data: GrindingPlanningBoardResponse | undefined;
+  data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
   scopeReady: boolean;
   writeBlocked: boolean;
   allocation: PlanningBoardAllocation;

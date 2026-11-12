@@ -28,7 +28,7 @@ export type PlanningBoardTestBarControls = {
   disabled: boolean;
 };
 export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqueue, remember, disabled }: {
-  data: GrindingPlanningBoardResponse | undefined;
+  data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
   items?: GrindingPlanningBoardItem[];
   enqueue: ReturnType<typeof usePlanningBoardWriteQueue>['enqueue'];
   remember: (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore', restoreAfterItemId?: string | null) => void;

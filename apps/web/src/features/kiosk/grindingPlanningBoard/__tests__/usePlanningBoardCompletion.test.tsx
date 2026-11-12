@@ -53,6 +53,16 @@ function setup(items = initialPieces()) {
 beforeEach(() => { mocks.rowCompletion.mockReset().mockResolvedValue({}); });
 
 describe('usePlanningBoardCompletion piece overlays', () => {
+  it('keeps the completion callback stable and captures the latest response snapshot', async () => {
+    const rows = [item('ordinary')];
+    const h = setup(rows);
+    const toggle = h.result.current.toggleCompletion;
+    h.rerender({ ...h.options, data: board(structuredClone(rows), 'latest') });
+    expect(h.result.current.toggleCompletion).toBe(toggle);
+    await act(async () => { await toggle(rows[0]!, 'complete'); });
+    expect(h.result.current.completionOverlay.get('ordinary')?.snapshotId).toBe('latest');
+  });
+
   it('blocks piece completion from any surface until bulkReady while keeping ordinary completion available', async () => {
     const rows = [...initialPieces(), item('ordinary')];
     const h = setup(rows);
