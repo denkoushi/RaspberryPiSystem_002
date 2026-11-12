@@ -22,7 +22,7 @@ import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, planningBoardArrivalDate, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 import { readOverrides, readPlanningResourceCandidates, readPlanningSource, readRanks } from './source.js';
-import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
+import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningLoadGenerationToken, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
 
 
 async function projectCurrentBoard(params: { resourceMinutes: GrindingPlanningBoardResourceMinutesResponse; includePieces?: boolean; dueSource?: BoardDueSource; client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
@@ -116,8 +116,8 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy),
     cache: {
       scheduleSource: params.scheduleSource ?? 'both',
-      generationToken: generationBeforeRead.generationToken,
-      readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey, pieceScope),
+      generationToken: generationBeforeRead.loadGenerationToken,
+      readGenerationToken: () => readPlanningLoadGenerationToken(params.siteKey, pieceScope),
       performance: perf
     }
   })) : { load: [], unknownRequiredMinutesCount: 0 };
@@ -452,7 +452,7 @@ export async function getGrindingPlanningBoardLoad(params: {
 }): Promise<GrindingPlanningBoardLoadResponse> {
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board/load');
   const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey));
-  const generationBefore = generationBeforeRead.generationToken;
+  const generationBefore = generationBeforeRead.loadGenerationToken;
   const [baseWhere, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
     resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma, { generationToken: generationBeforeRead.leaderboardGenerationToken }),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
@@ -467,11 +467,11 @@ export async function getGrindingPlanningBoardLoad(params: {
     cache: {
       scheduleSource: params.scheduleSource ?? 'both',
       generationToken: generationBefore,
-      readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey),
+      readGenerationToken: () => readPlanningLoadGenerationToken(params.siteKey),
       performance: perf
     }
   }));
-  const generationAfter = await perf.measure('generationAfter', () => readPlanningSnapshotGenerationToken(params.siteKey));
+  const generationAfter = await perf.measure('generationAfter', () => readPlanningLoadGenerationToken(params.siteKey));
   if (generationBefore !== generationAfter) {
     throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
   }
