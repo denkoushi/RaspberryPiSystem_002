@@ -1,0 +1,10 @@
+{
+  "ten-digit-regex": {
+    "src/routes/kiosk/purchase-order-lookup.ts": 1,
+    "src/routes/mobile-placement/order-trail.ts": 1,
+    "src/services/csv-dashboard/csv-dashboard-row-normalizer.ts": 1,
+    "src/services/mobile-placement/edge-scan.service.ts": 1,
+    "src/services/mobile-placement/mobile-placement-order-placement.service.ts": 1,
+    "src/services/purchase-order-lookup/purchase-order-lookup-sync.pipeline.ts": 1
+  }
+}

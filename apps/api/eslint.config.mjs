@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { copyPatternBudgetConfigs } from '../../scripts/ci/eslint-copy-pattern-budget.mjs';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import importPlugin from 'eslint-plugin-import';
@@ -10,6 +11,8 @@ import globals from 'globals';
 // already larger and are capped at their recorded size. Regenerate with
 // `node scripts/ci/max-lines-baseline.mjs update api` (it only lowers caps).
 const maxLinesBaseline = JSON.parse(fs.readFileSync(new URL('./eslint-max-lines-baseline.json', import.meta.url), 'utf8'));
+// Copy-pattern ratchet: recorded per-file counts may shrink but never grow.
+const copyPatternBaseline = JSON.parse(fs.readFileSync(new URL('./eslint-copy-pattern-baseline.json', import.meta.url), 'utf8'));
 const maxLinesOptions = { skipBlankLines: true, skipComments: true };
 const maxLinesOverrides = [
   {
@@ -118,6 +121,7 @@ export default tseslint.config(
       ]
     }
   },
+  ...copyPatternBudgetConfigs({ app: 'api', appDir: import.meta.dirname, baseline: copyPatternBaseline }),
   ...[
     ...maxLinesOverrides,
     {

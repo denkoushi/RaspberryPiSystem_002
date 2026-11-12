@@ -115,6 +115,9 @@ jobs:
       - name: Run lint
         run: pnpm lint --max-warnings=0
 
+      - name: Test copy-pattern lint rules
+        run: node --test scripts/ci/eslint-copy-pattern-budget.test.mjs
+
       - name: Build shared packages
         run: |
           pnpm --filter @raspi-system/shared-types build
