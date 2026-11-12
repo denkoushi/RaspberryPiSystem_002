@@ -5,6 +5,11 @@ import { PieceOperationBlockedError, PlanningBoardPiecePopover, PlanningBoardPie
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
+const clearOps = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+vi.mock('../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+  useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: clearOps, isPending: false })
+}));
+
 const row = { itemId: 'row:a', kind: 'row', fhinmei: '部品A', originalResourceCd: 'CUT-1', plannedQuantity: 5, isCompleted: false } as GrindingPlanningBoardItem;
 const piece = (id: string, quantity: number, extra: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
   ...row, itemId: `piece:${id}`, kind: 'piece', pieceId: id, parentItemId: row.itemId,
@@ -629,19 +634,19 @@ describe('piece operation boundaries', () => {
     setup(unit(extra)); fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     expect(screen.queryByRole('button', { name: /の前で分ける/ })).not.toBeInTheDocument();
   });
-  it.each([false, true])('shows operation merge only for suffixes and hides quantity controls (suffix=%s)', async suffix => {
+  it.each([false, true])('clears all operation boundaries from either a head or suffix and hides quantity controls (suffix=%s)', async suffix => {
     const item = unit({ itemId: suffix ? 'pieceops:a:20' : 'piece:a', plannedQuantity: 5, opRange: { fromOpNo: suffix ? 20 : 10, toOpNo: 30 } });
     const h = setup(item, [item, piece('b', 2)]); const onOpMerge = vi.fn().mockResolvedValue(undefined); h.value.onOpMerge = onOpMerge;
     expect(h.value.selectedItemsByParent.size).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
     expect(screen.queryByRole('group', { name: '分け数' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /片目の数量を/ })).not.toBeInTheDocument();
-    if (!suffix) expect(screen.queryByRole('button', { name: 'まとめる' })).not.toBeInTheDocument();
-    else {
-      const merge = screen.getByRole('button', { name: 'まとめる' });
-      await waitFor(() => expect(merge).toBeEnabled()); fireEvent.click(merge);
-      await waitFor(() => expect(onOpMerge).toHaveBeenCalledExactlyOnceWith(item));
-      expect(h.onMerge).not.toHaveBeenCalled();
-    }
+    clearOps.mockClear();
+    const merge = screen.getByRole('button', { name: 'まとめる' });
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
+    await waitFor(() => expect(merge).toBeEnabled()); fireEvent.click(merge);
+    await waitFor(() => expect(clearOps).toHaveBeenCalledExactlyOnceWith({ itemId: item.itemId,
+      itemRevision: item.itemRevision, expectedPieceSetVersion: item.pieceSetVersion, scope: 'piece' }));
+    expect(onOpMerge).not.toHaveBeenCalled(); expect(h.onMerge).not.toHaveBeenCalled();
   });
 });

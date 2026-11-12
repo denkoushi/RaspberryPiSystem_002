@@ -4,8 +4,8 @@ import { resolveDeviceName } from '../shared.js';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { classifyErrorResponse } from '../../../lib/error-response.js';
-import { splitSessakuPieces, mergeSessakuPieces, splitSessakuPieceOps, mergeSessakuPieceOps, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js';
-import { sessakuPiecesSplitSchema, sessakuPiecesMergeSchema, sessakuPieceCompletionSchema, sessakuPieceOpsSplitSchema, sessakuPieceOpsMergeSchema } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.schemas.js';
+import { configureSessakuPieceOps, clearSessakuPieceOps, splitSessakuPieces, mergeSessakuPieces, splitSessakuPieceOps, mergeSessakuPieceOps, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.service.js';
+import { sessakuPieceOpsConfigureSchema, sessakuPieceOpsClearSchema, sessakuPiecesSplitSchema, sessakuPiecesMergeSchema, sessakuPieceCompletionSchema, sessakuPieceOpsSplitSchema, sessakuPieceOpsMergeSchema } from '../../../services/production-schedule/sessaku-pieces/sessaku-pieces.schemas.js';
 import { sessakuPieceIdFromItemId } from '../../../services/production-schedule/sessaku-pieces/piece-key.js';
 import type { KioskRouteDeps } from './shared.js';
 
@@ -36,6 +36,16 @@ export async function registerSessakuPiecesRoutes(app: FastifyInstance, deps: Ki
       Object.assign(audit, { pieceIds: [pieceId], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision });
       return setSessakuPieceOpCompletion({ ...body, siteKey: audit.siteKey!, pieceId, opNo, audit });
     }));
+  app.post(`${base}/ops/configure`, { config: { rateLimit: false } }, async (request) => perform(request, 'op_configure', async (audit) => {
+    const body = sessakuPieceOpsConfigureSchema.parse(request.body);
+    Object.assign(audit, { pieceIds: [sessakuPieceIdFromItemId(body.itemId)!], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision });
+    return configureSessakuPieceOps({ ...body, siteKey: audit.siteKey!, audit });
+  }));
+  app.post(`${base}/ops/clear`, { config: { rateLimit: false } }, async (request) => perform(request, 'op_clear', async (audit) => {
+    const body = sessakuPieceOpsClearSchema.parse(request.body);
+    Object.assign(audit, { pieceIds: [sessakuPieceIdFromItemId(body.itemId)!], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision });
+    return clearSessakuPieceOps({ ...body, siteKey: audit.siteKey!, audit });
+  }));
   app.post(`${base}/ops/split`, { config: { rateLimit: false } }, async (request) => perform(request, 'op_split', async (audit) => {
     const body = sessakuPieceOpsSplitSchema.parse(request.body);
     Object.assign(audit, { pieceIds: [sessakuPieceIdFromItemId(body.itemId)!], expectedVersion: body.expectedPieceSetVersion, itemRevision: body.itemRevision,

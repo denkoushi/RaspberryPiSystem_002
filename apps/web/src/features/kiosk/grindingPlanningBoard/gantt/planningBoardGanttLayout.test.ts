@@ -518,7 +518,7 @@ describe('unit piece timing and setup', () => {
 describe('operation interval placement', () => {
   const head = () => item({ kind: 'piece', itemId: 'piece:p', pieceId: 'p', parentItemId: 'parent', piecePosition: 0, alternateRank: 1,
     opRange: { fromOpNo: 10, toOpNo: 19 }, unitRequiredMinutes: 30, setupMinutes: 7, ops: [{ opNo: 10, minutes: 30 }], completedOpNos: [10] });
-  it.each(['backward', 'forward'] as const)('preserves interval duration, operations and lane-transition setup in %s', mode => {
+  it.each(['backward', 'forward'] as const)('preserves interval duration, operations and each interval setup in %s', mode => {
     const entry = head(); const dayMinutes = mode === 'forward' ? 1440 : 480;
     for (const resource of ['305', '306']) {
       const values = [entry, { ...entry, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 30 }, setupMinutes: 11,
@@ -533,12 +533,33 @@ describe('operation interval placement', () => {
       expect(first.end! - first.start!).toBeCloseTo(37 / dayMinutes, 8);
       expect(first.setupSegments!.reduce((sum, segment) => sum + segment.end - segment.start, 0)).toBeCloseTo(7 / dayMinutes, 8);
       expect(first.opSegments!.map(op => [op.opNo, op.completed])).toEqual([[10, true]]);
-      expect(second.end! - second.start!).toBeCloseTo(50 / dayMinutes, 8);
-      expect(second.setupSegments).toEqual([]);
+      expect(second.end! - second.start!).toBeCloseTo(61 / dayMinutes, 8);
+      expect(second.setupSegments!.reduce((sum, segment) => sum + segment.end - segment.start, 0)).toBeCloseTo(11 / dayMinutes, 8);
       expect(second.opSegments!.map(op => op.opNo)).toEqual([20, 30]);
       const transition = bars(layout([item({ itemId: 'other', fhincd: 'OTHER', requiredMinutes: 1, alternateRank: 1 }), { ...values[1]!, effectiveResourceCd: resource }], { mode, resources: [resource], now: new Date('2026-10-14T08:00:00+09:00') })).find(bar => bar.item.itemId === 'pieceops:p:20')!;
       expect(transition.setupSegments!.reduce((sum, segment) => sum + segment.end - segment.start, 0)).toBeCloseTo(11 / dayMinutes, 8);
     }
+  });
+  it.each(['backward', 'forward'] as const)('omits setup between same-product lots but counts consecutive operations of one piece in %s', mode => {
+    const entry = head();
+    const values = [
+      entry,
+      { ...entry, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 20 }, setupMinutes: 11 },
+      { ...entry, itemId: 'piece:q', pieceId: 'q', parentItemId: 'other-lot', fseiban: 'OTHER', setupMinutes: 13 },
+      { ...entry, itemId: 'pieceops:q:20', pieceId: 'q', parentItemId: 'other-lot', fseiban: 'OTHER',
+        opRange: { fromOpNo: 20, toOpNo: 20 }, setupMinutes: 17 },
+      item({ itemId: 'row', requiredMinutes: 1 }),
+      { ...entry, itemId: 'pieceops:q:30', pieceId: 'q', parentItemId: 'other-lot', fseiban: 'OTHER',
+        opRange: { fromOpNo: 30, toOpNo: 30 }, setupMinutes: 19 },
+      item({ itemId: 'other-product', fhincd: 'OTHER', requiredMinutes: 1 }),
+      { ...entry, itemId: 'piece:r', pieceId: 'r', parentItemId: 'third-lot', fseiban: 'THIRD', setupMinutes: 23 }
+    ].map((value, index) => ({ ...value, alternateRank: index + 1, originalDueDate: `2026-10-${14 + index}` }));
+    const result = bars(layout(values, { mode, view: 'resource', now: new Date('2026-10-14T08:00:00+09:00'),
+      laneOrder: { '305': values.map(value => value.itemId) } }));
+    const dayMinutes = mode === 'forward' ? 1440 : 480;
+    expect(result.map(bar => bar.item.itemId)).toEqual(values.map(value => value.itemId));
+    expect(result.map(bar => Math.round((bar.setupSegments ?? []).reduce((sum, span) => sum + span.end - span.start, 0) * dayMinutes)))
+      .toEqual([7, 11, 0, 17, 0, 0, 0, 23]);
   });
   it('does not constrain interval order and starts subsequent processing at the last interval', () => {
     const leading = head(); const tail = { ...leading, itemId: 'pieceops:p:20', opRange: { fromOpNo: 20, toOpNo: 30 } };

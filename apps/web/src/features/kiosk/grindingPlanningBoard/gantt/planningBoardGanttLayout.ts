@@ -11,7 +11,7 @@ import {
   sortGrindingPlanningBoardItems
 } from '../sortGrindingPlanningBoardItems';
 
-import { buildUnitSegments, ganttRequiredMinutes, isUnitPiece, unitSetupMinutesByResource } from './planningBoardUnitSegments';
+import { buildUnitSegments, ganttRequiredMinutes, isUnitPiece, planningBoardUnitSetupMinutes, unitSetupMinutesByResource } from './planningBoardUnitSegments';
 
 import type { OpSegment } from './planningBoardUnitSegments';
 import type { PlanningBoardAllocation } from '../types';
@@ -69,11 +69,33 @@ export type GanttBar = {
   segments?: { start: number; end: number }[];
   setupSegments?: { start: number; end: number }[];
   opSegments?: OpSegment[];
+  opSplitIndex?: number;
+  opSplitLast?: boolean;
+  opSplitContinuation?: boolean;
   waitFrom?: number;
   predecessorEnd?: number;
   lateDays?: number;
   arrivalPending?: boolean;
 };
+function markOperationSplitBars(bars: GanttBar[], items: readonly GrindingPlanningBoardItem[]) {
+  const pieces = new Map<string, GrindingPlanningBoardItem[]>();
+  for (const item of items) {
+    if (item.kind !== 'piece' || !item.opRange || !item.pieceId) continue;
+    const group = pieces.get(item.pieceId) ?? [];
+    group.push(item); pieces.set(item.pieceId, group);
+  }
+  const positions = new Map<string, { index: number; last: boolean }>();
+  for (const group of pieces.values()) {
+    group.sort((a, b) => a.opRange!.fromOpNo - b.opRange!.fromOpNo);
+    group.forEach((item, index) => positions.set(item.itemId, {
+      index: index + (group[0]!.itemId.startsWith('pieceops:') ? 1 : 0), last: index === group.length - 1
+    }));
+  }
+  for (const bar of bars) {
+    const position = positions.get(bar.item.itemId);
+    if (position) { bar.opSplitIndex = position.index; bar.opSplitLast = position.last; }
+  }
+}
 export type NormalGanttBar = Omit<GanttBar, 'item'> & { item: GrindingPlanningBoardItem };
 export const isNormalGanttBar = (bar: GanttBar): bar is NormalGanttBar => bar.item.kind !== 'test';
 export type GanttRow = { key: string; label: string; detail: string; bars: GanttBar[]; flagged: boolean; connectors: { start: number; end: number }[] };
@@ -127,12 +149,14 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   let processCounts: Map<string, number> | undefined;
   const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
   const previousParts = new Map<string, string>();
+  const previousPieceIds = new Map<string, string | undefined>();
   const setupByItemId = new Map<string, number>();
   // Bars end at their own due date, so compare with the previous bar in lane time order, not display order.
   for (const { item, resource } of sorted.map((item) => ({ item, resource: resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定', due: resolveGrindingPlanningBoardDueDate(item, allocation) ?? '\uffff' }))
     .sort((a, b) => a.resource.localeCompare(b.resource) || a.due.localeCompare(b.due))) {
-    if (isUnitPiece(item) && previousParts.get(resource) !== item.fhincd) setupByItemId.set(item.itemId, (item.opRange ? item.setupMinutes ?? 0 : setupByResource.get(resource)?.get(item.fhincd) ?? 0));
+    setupByItemId.set(item.itemId, planningBoardUnitSetupMinutes(item, previousParts.get(resource), previousPieceIds.get(resource), setupByResource.get(resource)));
     previousParts.set(resource, item.fhincd);
+    previousPieceIds.set(resource, item.kind === 'piece' ? item.pieceId : undefined);
   }
   const bars = sorted.map((item): NormalGanttBar => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定';
@@ -202,6 +226,7 @@ export function buildPlanningBoardGanttLayout(options: GanttLayoutOptions): Gant
   // Bound DOM and scroll width while keeping today and the chosen scale in range.
   start = Math.max(start, today - (400 - scale - 3));
   end = Math.min(end, start + 400);
+  markOperationSplitBars(bars, options.items);
   return { groups, start, end, today, overlapCount };
 }
 
@@ -337,6 +362,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
   const scheduled = new Map<string, GanttBar>();
   const cursors = new Map<string, number>();
   const previousParts = new Map<string, string>();
+  const previousPieceIds = new Map<string, string | undefined>();
   const setupByResource = unitSetupMinutesByResource(options.resourceMinutes);
   const isReady = (item: GrindingPlanningBoardBar) => {
     for (const id of predecessors.get(item.itemId) ?? NO_PREDECESSORS) if (!scheduled.has(id)) return false;
@@ -353,10 +379,11 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
     const cursor = nextWorkingStart(cursors.get(resource) ?? now, hours, pausesForBreaks);
     const ready = readyAt(item);
     const unknown = requiredMinutesUnknown(item);
-    const setup = isUnitPiece(item) && previousParts.get(resource) !== item.fhincd ? (item.opRange ? item.setupMinutes ?? 0 : setupByResource.get(resource)?.get(item.fhincd) ?? 0) : 0;
+    const setup = planningBoardUnitSetupMinutes(item, previousParts.get(resource), previousPieceIds.get(resource), setupByResource.get(resource));
     const timing = placeForward(Math.max(cursor, ready), unknown ? 0 : ganttRequiredMinutes(item)! + setup, hours, pausesForBreaks);
     if (item.kind === 'test') previousParts.delete(resource);
     else previousParts.set(resource, item.fhincd);
+    previousPieceIds.set(resource, item.kind === 'piece' ? item.pieceId : undefined);
     const due = resolveGrindingPlanningBoardDueDate(item, allocation);
     const lateDays = due ? Math.max(0, Math.ceil(timing.end - dateToDay(due) - 1 - 1e-10)) : 0;
     scheduled.set(item.itemId, { item, resource, due, unknown, ...timing,
@@ -454,6 +481,7 @@ export function buildForwardPlanningBoardGanttLayout(options: GanttLayoutOptions
         rows: chains.map(([key, chain]) => row(key, chain[0]!.fhinmei || chain[0]!.fhincd,
           `${chain[0]!.fhincd} · ${processCounts?.get(key) ?? chain.length}工程`, chain.map((item) => scheduled.get(item.itemId)!))) }] : [];
     });
+  markOperationSplitBars([...bars, ...(forwardQueue ?? [])], options.items);
   return { groups, start: today, today, now, mode: 'forward', overlapCount: 0, forwardQueue,
     end: Math.min(today + 400, Math.max(today + scale + 2, ...bars.map((bar) => Math.ceil(bar.end!) + 1))),
     lateCount: bars.filter((bar) => bar.tone === 'late').length,

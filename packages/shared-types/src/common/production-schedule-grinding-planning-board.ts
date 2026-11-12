@@ -414,6 +414,17 @@ export interface SessakuPieceOpSplitRequest {
   itemRevision: string;
 }
 export type SessakuPieceOpMergeRequest = Omit<SessakuPieceOpSplitRequest, 'fromOpNo'>;
+export interface SessakuPieceOpsConfigureRequest extends SessakuPieceOpMergeRequest {
+  resourceCd: string;
+  minutes: number[];
+  expectedOpIds: string[];
+  expectedMinutes: Exclude<GrindingPlanningBoardResourcePartMinutesRequest['expectedMinutes'], undefined>;
+}
+export interface SessakuPieceOpsClearRequest extends SessakuPieceOpMergeRequest {
+  scope: 'piece' | 'set';
+}
+export type SessakuPieceOpsConfigureResponse = SessakuPiecesMutationResponse;
+export type SessakuPieceOpsClearResponse = SessakuPiecesMutationResponse;
 export type SessakuPieceOpSplitResponse = SessakuPiecesMutationResponse;
 export type SessakuPieceOpMergeResponse = SessakuPiecesMutationResponse;
 

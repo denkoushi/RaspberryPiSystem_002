@@ -1,9 +1,10 @@
+import { mutateSessakuPieceOperationConfiguration } from './piece-op-configuration.js';
 import { mutateSessakuPieceOps, rememberPieceHistory, assertNoOperationCompletions } from './piece-op-splits.js';
 import { autoUnitSplitMetrics, isAutoUnitSplitYield } from './auto-unit-split-transaction.js';
 import { createLaneWrites, replaceSiteItems, flushSiteItems, copyBatchProjections, type LaneReplacementState } from './piece-lane-writes.js';
 import { isAutoUnitSplitBusyError } from './piece-db-error.js';
 import { isFirstAutoUnitSplitProcess } from './auto-unit-split-candidates.js';
-import { readPieceOperationNumbers, syncWholePieceOperationCompletions } from './piece-operation-definitions.js';
+import { readOperationDefinitionPieceKeys, readPieceOperationNumbers, syncWholePieceOperationCompletions } from './piece-operation-definitions.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 import { getGrindingPlanningBoardResourceMinutes, resourcePartOpMinutesSchema } from '../grinding-planning-board-resource-minutes.service.js';
@@ -14,7 +15,7 @@ import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-st
 import { randomUUID } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma } from '@prisma/client';
-import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuPiecesMergeRequest, SessakuPiecesMutationResponse, SessakuPiecesSplitRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, SessakuPieceCompletionRequest, SessakuPiecesMergeRequest, SessakuPiecesMutationResponse, SessakuPiecesSplitRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest } from '@raspi-system/shared-types';
 import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -297,10 +298,10 @@ export async function runAutoUnitSplitLot<T>(work: () => Promise<T>): Promise<T>
   }
 }
 
-async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
+async function operate(params: { lockOperationDefinition?: boolean; dueSource?: 'excel' | 'scaw'; siteKey: string; parentItemId: string; expectedPieceSetVersion: number; audit?: PieceAuditContext; autoUnitSplit?: boolean; deadline?: number; discoverUnsplitLater?: boolean | ((set: Awaited<ReturnType<typeof readSessakuPieceSet>>) => boolean) }, action: (tx: Prisma.TransactionClient, context: {
   key: SessakuPieceLogicalKey; winner: NonNullable<Awaited<ReturnType<typeof findSessakuPieceWinner>>>;
   set: Awaited<ReturnType<typeof readSessakuPieceSet>>; current: Awaited<ReturnType<typeof projection>>;
-  external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
+  definitionKeys: SessakuPieceLogicalKey[]; external: boolean; plannedQuantity: number | null; sites: string[]; later: LaterProcess[];
 }) => Promise<void>): Promise<SessakuPiecesMutationResponse> {
   const batch = params.autoUnitSplit ? autoUnitSplitBatch.getStore() : undefined;
   const key = decodeSessakuPieceParentItemId(params.parentItemId);
@@ -348,13 +349,15 @@ async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; 
         await tx.$queryRaw`SELECT set_config('lock_timeout', ${`${Math.min(250, remainingMs)}ms`}, true),
           set_config('statement_timeout', ${`${remainingMs}ms`}, true)`;
       }
+      let definitionKeys: SessakuPieceLogicalKey[] = [];
       let lockedKeys: ReadonlySet<string> = new Set();
       const lockedRowIds = new Set<string>();
       if (!batch) await timed(params.audit, 'lockWaitMs', async () => {
         await acquireFkojunstStatusMailCriticalTransactionLock(tx);
-        const candidateRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [key.fseiban])).filter((row) => sessakuPieceKeyFromRow(row.rowData).fhincd === key.fhincd);
+        if (params.lockOperationDefinition) definitionKeys = await readOperationDefinitionPieceKeys(tx, key.fhincd);
+        const candidateRows = (await readWinnerRowsByLogicalKeyFseibans(tx, [...new Set([key.fseiban, ...definitionKeys.map((candidate) => candidate.fseiban)])])).filter((row) => sessakuPieceKeyFromRow(row.rowData).fhincd === key.fhincd);
         const candidates = candidateRows.map((row) => sessakuPieceKeyFromRow(row.rowData));
-        lockedKeys = await acquireSessakuPieceLogicalLocks(tx, [key, ...candidates, ...discoveredKeys.values()]);
+        lockedKeys = await acquireSessakuPieceLogicalLocks(tx, [key, ...definitionKeys, ...candidates, ...discoveredKeys.values()]);
         await acquireSessakuPieceBoardStateLocks(tx);
         for (const row of [...candidateRows].sort((a, b) => a.id.localeCompare(b.id))) {
           await acquireProductionScheduleParentRowLockInTransaction(tx, row.id);
@@ -396,7 +399,7 @@ async function operate(params: { dueSource?: 'excel' | 'scaw'; siteKey: string; 
       const batchProjectionMs = batch?.audit?.timing?.beforeProjectionMs ?? 0;
       const { saved, result } = await (async () => {
         try {
-          await action(tx, { key, winner, set, current, external: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, sites, later });
+          await action(tx, { key, winner, set, current, definitionKeys, external: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true, plannedQuantity: detail?.orderSupplements[0]?.plannedQuantity ?? null, sites, later });
           const saved = await readSessakuPieceSet(tx, key);
           const result = await reconcileSessakuPieceProgress(tx, key, { emptyIsIncomplete: true, source: params.autoUnitSplit ? {
             set: saved, rowId: winner.id, externallyCompleted: detail?.productionScheduleExternalCompletion?.isExternallyCompleted === true,
@@ -626,14 +629,13 @@ export async function setSessakuPieceOpCompletion(params: SessakuPieceCompletion
   });
 }
 
-export async function splitSessakuPieceOps(params: SessakuPieceOpSplitRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
-  return mutateSessakuPieceOps(params, false, { operate, assertCuttingPieceSet, assertRevision, conflict, beforeProjections, saveSiteVersions });
-}
-export async function mergeSessakuPieceOps(params: SessakuPieceOpMergeRequest & { siteKey: string; audit?: PieceAuditContext }): Promise<SessakuPiecesMutationResponse> {
-  return mutateSessakuPieceOps(params, true, { operate, assertCuttingPieceSet, assertRevision, conflict, beforeProjections, saveSiteVersions });
-}
+type PieceOpParams = { siteKey: string; audit?: PieceAuditContext };
+const pieceOpDeps = { operate, assertCuttingPieceSet, assertRevision, conflict, beforeProjections, saveSiteVersions };
+export const splitSessakuPieceOps = (params: SessakuPieceOpSplitRequest & PieceOpParams): Promise<SessakuPiecesMutationResponse> => mutateSessakuPieceOps(params, false, pieceOpDeps);
+export const mergeSessakuPieceOps = (params: SessakuPieceOpMergeRequest & PieceOpParams): Promise<SessakuPiecesMutationResponse> => mutateSessakuPieceOps(params, true, pieceOpDeps);
+export const configureSessakuPieceOps = (params: SessakuPieceOpsConfigureRequest & PieceOpParams): Promise<SessakuPiecesMutationResponse> => mutateSessakuPieceOperationConfiguration(params, pieceOpDeps);
+export const clearSessakuPieceOps = (params: SessakuPieceOpsClearRequest & PieceOpParams): Promise<SessakuPiecesMutationResponse> => mutateSessakuPieceOperationConfiguration(params, pieceOpDeps);
 export type PieceOpSplitContext = Parameters<Parameters<typeof operate>[1]>[1];
 export type PieceOpSplitDependencies = { operate: typeof operate;
   assertCuttingPieceSet: typeof assertCuttingPieceSet; assertRevision: typeof assertRevision; conflict: typeof conflict;
-  beforeProjections: typeof beforeProjections; saveSiteVersions: typeof saveSiteVersions;
-};
+  beforeProjections: typeof beforeProjections; saveSiteVersions: typeof saveSiteVersions };

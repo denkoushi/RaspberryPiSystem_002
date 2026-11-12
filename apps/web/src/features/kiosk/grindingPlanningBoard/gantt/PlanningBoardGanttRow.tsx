@@ -16,6 +16,7 @@ import {
   PlanningBoardLateStar, PlanningBoardLateStarDates, type PlanningBoardToggleSeiban, usePlanningBoardLateStars
 } from './planningBoardLateStars';
 import { PIECE_NOTCH_MIN_WIDTH, pieceNotchClipPath } from './planningBoardPieceNotch';
+import { operationSplitColor } from './planningBoardSeibanColor';
 import { PlanningBoardUnitBarSections } from './PlanningBoardUnitBarSections';
 
 import type { NormalGanttBar as GanttBar, GanttRow } from './planningBoardGanttLayout';
@@ -101,6 +102,8 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
     });
   };
   const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
+  const split = Boolean(bar.item.opRange);
+  const opIndex = bar.opSplitIndex ?? 0;
   const width = bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth);
   return (
     <>
@@ -144,12 +147,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
         bar.unknown && (seibanColors ? 'border border-dashed border-slate-200' : 'border border-dashed border-slate-200 bg-slate-800 text-slate-200'),
         selected ? 'outline outline-2 outline-offset-1 outline-emerald-300' : sibling && 'outline outline-2 outline-offset-1 outline-white',
         focusedSeiban !== null ? focusedSeiban === bar.item.fseiban ? 'ring-2 ring-white' : 'opacity-20 saturate-[.3]' : dimmed ? 'opacity-30' : undefined
-      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : undefined, clipPath: bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
+      )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : split && !bar.unknown && bar.tone !== 'completed' ? operationSplitColor(color ?? (bar.tone === 'late' ? 'bg-rose-400' : undefined), opIndex) : undefined, borderRadius: split ? 0 : undefined, borderLeft: split && opIndex > 0 ? '1px solid rgb(2 6 23 / .6)' : undefined, clipPath: !split && bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
         {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={bar.start!} end={bar.end!} />}
-        {bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
+        {split ? opIndex === 0 && width >= 48 ? <span className="relative">{bar.item.fhinmei || bar.item.fhincd}</span> : null : bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
           : bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
+      {split && <span aria-hidden="true" data-gantt-unit-underline className="pointer-events-none absolute right-0 top-[39px] h-[3px] rounded" style={{ width, background: operationSplitColor(color, 0) }} />}
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
     {onCompleteToggle && completionTargetId === bar.item.itemId && <div

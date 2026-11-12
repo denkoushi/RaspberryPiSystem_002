@@ -88,6 +88,32 @@ describe('planningBoardUnitOrder', () => {
     expect(run(input, 'balance').proposal).toMatchObject({ '021': ['fixed'], '022': ['a', 'b'] });
   });
 
+  it.each(['fixed', 'movable'] as const)('counts per-interval setup for %s operation-split pieces when balancing', (kind) => {
+    const fixed = kind === 'fixed';
+    const input = options([
+      piece('piece:p', 'P', { pieceId: 'p', orderPinned: fixed, unitRequiredMinutes: 1,
+        opRange: { fromOpNo: 1, toOpNo: 1 }, setupMinutes: 50 }),
+      piece('pieceops:p:2', 'P', { pieceId: 'p', orderPinned: fixed, unitRequiredMinutes: 1,
+        opRange: { fromOpNo: 2, toOpNo: 2 }, setupMinutes: 60 }),
+      piece('candidate', 'C', { unitRequiredMinutes: 20 }),
+      piece('fixed-other', 'F', { originalResourceCd: '022', kind: 'row', requiredMinutes: 30 })
+    ]);
+    // No own part values: split intervals use their projected setup, on either machine.
+    expect(run(input, 'balance').proposal).toMatchObject({ '021': ['piece:p', 'pieceops:p:2'], '022': ['fixed-other', 'candidate'] });
+  });
+
+  it('omits setup between same-product lots but includes each consecutive interval in the fixed load', () => {
+    const input = options([
+      piece('piece:p', 'P', { pieceId: 'p', orderPinned: true, unitRequiredMinutes: 1,
+        opRange: { fromOpNo: 1, toOpNo: 1 }, setupMinutes: 5 }),
+      piece('piece:q', 'P', { pieceId: 'q', orderPinned: true, unitRequiredMinutes: 1,
+        opRange: { fromOpNo: 1, toOpNo: 1 }, setupMinutes: 500 }),
+      piece('candidate', 'C', { unitRequiredMinutes: 10 }),
+      piece('fixed-other', 'F', { originalResourceCd: '022', kind: 'row', requiredMinutes: 20 })
+    ]);
+    expect(run(input, 'balance').proposal).toMatchObject({ '021': ['piece:p', 'piece:q', 'candidate'], '022': ['fixed-other'] });
+  });
+
   it('combines movable siblings from both machines into the same part assignment', () => {
     const input = options([piece('a1', 'A'), piece('b', 'B', { unitRequiredMinutes: 20 }), piece('a2', 'A', { originalResourceCd: '022' })]);
     expect(run(input, 'balance').proposal).toMatchObject({ '021': ['a1', 'a2'], '022': ['b'] });

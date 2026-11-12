@@ -2,6 +2,7 @@ import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useSta
 
 import { Dialog } from '../../../components/ui/Dialog';
 
+import { PlanningBoardUnitOpContext, PlanningBoardUnitOpEditor } from './gantt/PlanningBoardUnitOpEditor';
 import { isUnitPiece } from './gantt/planningBoardUnitSegments';
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
 
@@ -141,9 +142,10 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
     typeof quantity === 'number' && Number.isInteger(quantity) && quantity >= 2);
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
-  const canMergeOps = item.itemId.startsWith('pieceops:');
+  const canMergeOps = Boolean(item.opRange);
+  const canConfigureOps = variant === 'gantt' && item.kind === 'piece' && quantity === 1 && !item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && !item.isCompleted && !item.quantityWarning && item.fseiban?.trim() !== '********';
   const canCompleteOp = item.kind === 'piece' && Boolean(item.ops?.length) && item.completionSource !== 'import';
-  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps);
+  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps || canConfigureOps);
   if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>
@@ -180,8 +182,11 @@ function PiecePopoverControl(props: PiecePopoverControlProps) {
   </>;
 }
 
-function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, open, setOpen }: PiecePopoverControlProps) {
+function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, open, setOpen, variant }: PiecePopoverControlProps) {
   const { gate, frozen } = usePlanningBoardOffline();
+  const unitOpContext = useContext(PlanningBoardUnitOpContext);
+  const canConfigureOps = variant === 'gantt' && item.kind === 'piece' && item.plannedQuantity === 1 && !item.isLaterProcess && actions.createEnabled && actions.isCutting(item) && !item.isCompleted && !item.quantityWarning;
+  const showUnitEditor = Boolean((variant === 'gantt' && canConfigureOps) || item.opRange);
   const quantity = item.plannedQuantity;
   const [showSplit] = useState(canSplit);
   const [quantities, setQuantities] = useState(() => distributeQuantity(quantity ?? 0, 2));
@@ -239,14 +244,13 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
       if (generation === gate.generation()) setPending(false);
     }
   };
-  const runOps = async (fromOpNo?: number) => {
+  const runOps = async (fromOpNo: number) => {
     if (!gate.attempt()) return;
     const generation = gate.generation();
     if (pending || !backdropReady || !operable || actions.getBlocking().blocked) return;
     setPending(true); setFailure(null);
     try {
-      if (fromOpNo == null) await actions.onOpMerge?.(item);
-      else await actions.onOpSplit?.(item, fromOpNo);
+      await actions.onOpSplit?.(item, fromOpNo);
       if (generation === gate.generation()) setOpen(false);
     } catch (error) {
       if (generation !== gate.generation()) return;
@@ -263,14 +267,14 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
     try { await actions.onOpCompletion?.(item, completed ? 'incomplete' : 'complete', opNo); }
     finally { if (generation === gate.generation()) setPending(false); }
   };
-  return <PieceDialog actions={actions} showSplit={showSplit && !item.opRange && actions.createEnabled} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
+  return <PieceDialog actions={actions} showSplit={showSplit && !item.opRange && actions.createEnabled} showUnitEditor={showUnitEditor} pending={pending} disabled={!operable} failure={failure} backdropReady={backdropReady} onClose={close}>
       {(blocked) => <div className="flex flex-col gap-2">
         {item.kind === 'piece' && ops.map((op, index) => {
           const completed = item.completedOpNos?.includes(op.opNo) ?? false;
           return <Fragment key={op.opNo}>
             {index > 0 && isUnitPiece(item) && !item.isLaterProcess && actions.createEnabled && <button type="button" aria-label={`工程${op.opNo}の前で分ける`}
               disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void runOps(op.opNo); }}
-              className="h-8 rounded border border-dashed border-slate-600 bg-transparent text-slate-300 disabled:opacity-40">✂</button>}
+              className="min-h-11 rounded border border-dashed border-slate-600 bg-transparent text-slate-300 disabled:opacity-40">✂</button>}
             <button type="button" aria-label={`工程${op.opNo}を${completed ? '未完了' : '完了'}にする`} aria-pressed={completed}
             disabled={!backdropReady || pending || blocked || !operable} onClick={() => { void toggleOp(op.opNo, completed); }}
             className={`min-h-11 rounded border px-2 text-left tabular-nums disabled:opacity-40 ${completed ? 'border-slate-600 bg-slate-600 text-slate-300' : 'border-sky-400 bg-sky-900'}`}>
@@ -304,14 +308,15 @@ function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, ope
           </div>
           <button type="button" disabled={!backdropReady || pending || blocked || !operable || !validSplit} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(false)}>{count}つに分ける</button>
         </>}
-        {item.itemId.startsWith('pieceops:') && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void runOps()}>まとめる</button>}
+        {showUnitEditor && (!unitOpContext?.loading || item.opRange) && <PlanningBoardUnitOpEditor key={unitOpContext?.loading ? 'loading' : 'ready'} item={item} canConfigure={canConfigureOps && !unitOpContext?.loading} disabled={!backdropReady || pending || blocked || !operable}
+          onClose={close} onPending={setPending} onFailure={setFailure} />}
         {!item.opRange && mergeItems && <button type="button" disabled={!backdropReady || pending || blocked || !operable} className="min-h-11 rounded border border-emerald-400 disabled:opacity-40" onClick={() => void run(true)}>まとめる</button>}
       </div>}
     </PieceDialog>;
 }
 
-function PieceDialog({ actions, showSplit, pending, disabled, failure, backdropReady, onClose, children }: {
-  actions: PieceActions; showSplit: boolean; pending: boolean; disabled: boolean;
+function PieceDialog({ actions, showSplit, showUnitEditor = false, pending, disabled, failure, backdropReady, onClose, children }: {
+  actions: PieceActions; showSplit: boolean; showUnitEditor?: boolean; pending: boolean; disabled: boolean;
   failure: { message: string; isError: boolean } | null; backdropReady: boolean;
   onClose: () => void; children: (blocked: boolean) => React.ReactNode;
 }) {
@@ -321,7 +326,7 @@ function PieceDialog({ actions, showSplit, pending, disabled, failure, backdropR
   const message = failure ?? (blocked || pending ? { message: blocking.message, isError: blocking.isError } : null);
   return <Dialog isOpen onClose={onClose} closeOnBackdrop={backdropReady} ariaLabel="数量" size="sm" overlayZIndex={100}
     lockScroll={false} initialFocusRef={initialFocusRef} overlayClassName="overscroll-contain"
-    className={`${showSplit ? '!max-w-[300px]' : '!max-w-48'} !max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
+    className={`${showUnitEditor ? '!max-w-[320px]' : showSplit ? '!max-w-[300px]' : '!max-w-48'} !max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain !bg-slate-950 !text-white ${message?.isError ? '!border-red-500' : ''}`}>
     <div ref={initialFocusRef} tabIndex={-1} className="outline-none" data-planning-board-piece-dialog>{children(blocked)}</div>
     {message && <p role={message.isError ? 'alert' : 'status'} className="mt-2 text-sm">{message.message}</p>}
   </Dialog>;

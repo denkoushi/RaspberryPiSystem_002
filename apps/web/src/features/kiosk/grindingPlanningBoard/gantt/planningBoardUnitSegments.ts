@@ -17,6 +17,14 @@ export function unitSetupMinutesByResource(data?: GrindingPlanningBoardResourceM
   return result;
 }
 
+/** Match lane setup accounting in both layouts and machine balancing. */
+export function planningBoardUnitSetupMinutes(item: GrindingPlanningBoardBar, previousPart: string | undefined,
+  previousPieceId: string | undefined, setupByPart?: ReadonlyMap<string, number>) {
+  if (!isUnitPiece(item)) return 0;
+  if (previousPart === item.fhincd && !(item.opRange && item.pieceId && previousPieceId === item.pieceId)) return 0;
+  return item.opRange ? item.setupMinutes ?? 0 : setupByPart?.get(item.fhincd) ?? 0;
+}
+
 /** Slice cumulative working time so breaks and folded windows keep operation boundaries. */
 export function buildUnitSegments(item: GrindingPlanningBoardItem, segments: Segment[], setupMinutes: number) {
   const total = setupMinutes + item.unitRequiredMinutes!;

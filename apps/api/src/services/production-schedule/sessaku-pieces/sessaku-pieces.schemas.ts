@@ -1,3 +1,5 @@
+import { resourceCdSchema } from '../grinding-planning-board-resource-capacity.service.js';
+import { resourcePartMinutesExpectedSchema } from '../grinding-planning-board-resource-minutes.service.js';
 import { grindingPlanningBoardDueSourceSchema } from '../grinding-planning-board/shared.js';
 import { z } from 'zod';
 const version = z.number().int().min(0).max(2_147_483_647);
@@ -29,3 +31,12 @@ export const sessakuPieceOpsSplitSchema = z.object({
   expectedPieceSetVersion: version, itemRevision: revision
 });
 export const sessakuPieceOpsMergeSchema = sessakuPieceOpsSplitSchema.omit({ fromOpNo: true });
+
+export const sessakuPieceOpsConfigureSchema = sessakuPieceOpsMergeSchema.extend({
+  resourceCd: resourceCdSchema,
+  minutes: z.array(z.number().finite().positive().max(100000).multipleOf(0.5)).min(1).max(6)
+    .refine((values) => values.reduce((sum, value) => sum + value, 0) <= 100000),
+  expectedOpIds: z.array(z.string()).max(20),
+  expectedMinutes: resourcePartMinutesExpectedSchema
+});
+export const sessakuPieceOpsClearSchema = sessakuPieceOpsMergeSchema.extend({ scope: z.enum(['piece', 'set']) });

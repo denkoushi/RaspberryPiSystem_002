@@ -11,12 +11,16 @@ import { acquireSessakuPieceBoardStateLocks, acquireSessakuPieceLogicalLocks, en
 import { STRING_TRIM_CHARACTERS } from '../grinding-planning-board/shared.js';
 import { stateOrder } from '../grinding-planning-board/state.js';
 
+export async function readOperationDefinitionPieceKeys(tx: Prisma.TransactionClient, fhincd: string) {
+  return tx.$queryRaw<SessakuPieceLogicalKey[]>`
+    SELECT "fseiban", "fhincd", "fsigencd", "fkojun" FROM "ProductionScheduleSessakuPieceSet"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND BTRIM("fhincd", ${STRING_TRIM_CHARACTERS}) = ${fhincd.trim()}`;
+}
+
 /** Definition writers take the same critical -> logical -> board -> row order as piece edits, before the setting row. */
 export async function lockOperationDefinitionPieces(tx: Prisma.TransactionClient, fhincd: string) {
   await acquireFkojunstStatusMailCriticalTransactionLock(tx);
-  const keys = await tx.$queryRaw<SessakuPieceLogicalKey[]>`
-    SELECT "fseiban", "fhincd", "fsigencd", "fkojun" FROM "ProductionScheduleSessakuPieceSet"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND BTRIM("fhincd", ${STRING_TRIM_CHARACTERS}) = ${fhincd.trim()}`;
+  const keys = await readOperationDefinitionPieceKeys(tx, fhincd);
   if (!keys.length) return keys;
   const locked = await acquireSessakuPieceLogicalLocks(tx, keys);
   await acquireSessakuPieceBoardStateLocks(tx);

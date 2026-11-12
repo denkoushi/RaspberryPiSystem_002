@@ -19,6 +19,9 @@ import { CHAIN_VIEW_STORAGE_KEY } from './usePersistedPlanningBoardChainView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+  useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
+}));
 const uptimeQuery = vi.hoisted(() => vi.fn((): { data: { resources: Array<{ resourceCd: string; medianRunSeconds: number }> } | undefined } => ({ data: undefined })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
 
@@ -362,6 +365,24 @@ describe('PlanningBoardGanttView', () => {
     rerender(<PlanningBoardGanttView {...props([])} onCompleteToggle={onCompleteToggle} />);
     rerender(<PlanningBoardGanttView {...values} onCompleteToggle={onCompleteToggle} />);
     expect(screen.queryByRole('button', { name: '完了にする' })).not.toBeInTheDocument();
+  });
+
+  it.each(['backward', 'forward'] as const)('keeps late and unknown split-bar backgrounds in %s mode without seiban colors', (mode) => {
+    const entries = [item({ itemId: 'piece:late', kind: 'piece', pieceId: 'late', parentItemId: 'parent',
+      opRange: { fromOpNo: 1, toOpNo: 1 }, unitRequiredMinutes: 60, originalDueDate: '2026-10-13' }),
+      item({ itemId: 'piece:unknown', kind: 'piece', pieceId: 'unknown', parentItemId: 'other',
+        fhincd: 'UNKNOWN', opRange: { fromOpNo: 1, toOpNo: 1 }, requiredMinutesKnown: false, requiredMinutes: null })];
+    const layout = buildPlanningBoardGanttLayout({ items: entries, mode, allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2,
+      now: new Date('2026-10-14T08:00:00+09:00') });
+    render(<PlanningBoardGanttView {...props(entries)} layout={layout} scale={2} />);
+    const surface = (id: string) => {
+      const bar = screen.getByTestId(`planning-gantt-bar-piece:${id}`);
+      return (mode === 'backward' ? bar.firstElementChild : bar) as HTMLElement;
+    };
+    expect(surface('late')).toHaveStyle({ background: '#fb7185' });
+    expect(surface('unknown')).toHaveClass('border-dashed', 'bg-slate-800');
+    expect(surface('unknown').style.background).toBe('');
   });
 
   it.each(['backward', 'forward'] as const)('colors visible bars and split segments with a legend in %s mode without late badges or outlines', (mode) => {
@@ -1210,6 +1231,21 @@ describe('forward PlanningBoardGanttView', () => {
     rerender(draw(new Set()));
     expect(screen.getAllByRole('button', { name: /の数量/ }).every((button) => !button.hasAttribute('disabled'))).toBe(true);
   });
+  it.each(['pending', 'error'] as const)('offers both clear actions while minutes are %s', async (state) => {
+    const entry = item({ itemId: 'piece:a', kind: 'piece', pieceId: 'a', parentItemId: 'parent', plannedQuantity: 1,
+      parentPlannedQuantity: 2, pieceSetVersion: 1, opRange: { fromOpNo: 1, toOpNo: 2 }, unitRequiredMinutes: 60 });
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { '305': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}>
+      <PlanningBoardGanttView {...props([entry])} onCompleteToggle={vi.fn()} minutesPending={state === 'pending'} minutesError={state === 'error'} />
+    </PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-piece:a'));
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'まとめる' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeEnabled();
+    expect(screen.queryByRole('group', { name: '工程の数' })).not.toBeInTheDocument();
+  });
+
   it('opens the split popover from a clipped bar in single-resource mode and keeps the original item', async () => {
     const entry = item({ plannedQuantity: 6, requiredMinutes: 1200 });
     const changePieces = vi.fn().mockResolvedValue(undefined);
@@ -1269,6 +1305,28 @@ describe('forward PlanningBoardGanttView', () => {
     const buttons = screen.getAllByRole('button', { name: /の数量/ });
     expect(buttons).toHaveLength(1);
     expect(screen.getByTestId('planning-gantt-chain-strip')).toContainElement(buttons[0]!);
+  });
+  it('renders operation bars without stage text, with unit underlines and a gap only after the unit', () => {
+    const entries = [1, 2].flatMap((position) => [1, 2, 3].map((opNo) => item({ kind: 'piece',
+      itemId: opNo === 1 ? `piece:${position}` : `pieceops:${position}:${opNo}`, parentItemId: 'parent',
+      pieceId: String(position), piecePosition: position, processOrder: '10', plannedQuantity: 1,
+      opRange: { fromOpNo: opNo, toOpNo: opNo }, unitRequiredMinutes: 120, setupMinutes: 0 })));
+    const display = forwardProps(entries);
+    display.layout = buildPlanningBoardGanttLayout({ items: entries, mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: { '305': 24 }, today: '2026-10-14',
+      now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 });
+    const { container } = render(<PlanningBoardGanttView {...display} colorBySeiban seibanOrder={['26-1001']} />);
+    const first = screen.getByTestId('planning-gantt-bar-piece:1');
+    const second = screen.getByTestId('planning-gantt-bar-pieceops:1:2');
+    const third = screen.getByTestId('planning-gantt-bar-pieceops:1:3');
+    const nextUnit = screen.getByTestId('planning-gantt-bar-piece:2');
+    expect(parseFloat(first.style.left) + parseFloat(first.style.width)).toBeCloseTo(parseFloat(second.style.left));
+    expect(parseFloat(second.style.left) + parseFloat(second.style.width)).toBeCloseTo(parseFloat(third.style.left));
+    expect(parseFloat(nextUnit.style.left) - parseFloat(third.style.left) - parseFloat(third.style.width)).toBeCloseTo(8);
+    expect(second).toHaveTextContent(''); expect(third).toHaveTextContent('');
+    expect(second.style.clipPath).toBe('');
+    expect(container.querySelectorAll('[data-gantt-unit-underline]')).toHaveLength(6);
+    expect(second.style.background).toContain('78%'); expect(third.style.background).toContain('56%');
   });
   it('connects same-piece intervals by operation number and uses the final source interval for later processing', () => {
     const entry = item({ kind: 'piece', pieceId: 'p', parentItemId: 'parent', piecePosition: 1, processOrder: '10', unitRequiredMinutes: 30, setupMinutes: 0 });
