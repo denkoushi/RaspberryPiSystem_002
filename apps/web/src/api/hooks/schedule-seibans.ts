@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { getScheduleSeiban, getScheduleSeibans } from '../domains/schedule-seibans';
+import { getScheduleSeiban, getScheduleSeibans, type ScheduleSeibanView } from '../domains/schedule-seibans';
 
 export const scheduleSeibanQueryKey = ['mobile-placement', 'schedule-seibans'] as const;
 
-export function useScheduleSeibans() {
-  return useQuery({ queryKey: scheduleSeibanQueryKey, queryFn: getScheduleSeibans, refetchInterval: 60_000 });
+export function useScheduleSeibans(view: ScheduleSeibanView = { source: 'both', range: 'all' }) {
+  return useQuery({ queryKey: [...scheduleSeibanQueryKey, view], queryFn: () => getScheduleSeibans(view), refetchInterval: 60_000 });
 }
 
 export function useScheduleSeiban(fseiban?: string) {

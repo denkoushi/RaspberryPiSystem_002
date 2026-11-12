@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
+import { readScheduleSourceExcludedFseibans } from '../production-schedule/grinding-planning-board/schedule-source.js';
+import { resolveSeibanCandidateDateRange, shiftCalendarMonth, todayJstYmd } from '../production-schedule/grinding-planning-board-seiban-candidates.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 import { buildProductionScheduleEffectiveCompletedSql } from '../production-schedule/production-schedule-effective-completion.sql.js';
 import { buildMaxProductNoWinnerCondition } from '../production-schedule/row-resolver/index.js';
@@ -22,6 +24,10 @@ export type ScheduleSeibanSummary = {
   counts: Record<SchedulePartState, number>;
 };
 export type ScheduleSeibanDetail = ScheduleSeibanSummary & { parts: ScheduleSeibanPart[] };
+export type ScheduleSeibanView = {
+  source: 'general' | 'dCompany' | 'both';
+  range: 'all' | 'aroundMonth' | 'excludeOlderThanHalfYear';
+};
 const LIST_LIMIT = 200;
 type PartRow = { fseiban: string; productNo: string; fhincd: string | null; fhinmei: string | null; completed: boolean };
 type PlacementRow = { manufacturingOrderBarcodeRaw: string; shelfCodeRaw: string; slipKind: string; scheduleSnapshot: unknown; updatedAt: Date };
@@ -38,13 +44,26 @@ function tokenSql(column: Prisma.Sql): Prisma.Sql {
 }
 
 /** One batch per source, shared by list/detail; imported Excel rows are the only entry point. */
-async function aggregateScheduleSeibans(requestedFseiban?: string): Promise<ScheduleSeibanDetail[]> {
+async function aggregateScheduleSeibans(requestedFseiban?: string, view?: ScheduleSeibanView): Promise<ScheduleSeibanDetail[]> {
   const schedules = await prisma.productionScheduleDScheduleMinutes.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
     orderBy: [{ partsCompleteDate: { sort: 'asc', nulls: 'last' } }, { fseiban: 'asc' }],
     select: { fseiban: true, isAlias: true, aliasOf: true, partsCompleteDate: true, surfaceSendOutDates: true, outsourceMarks: true, memo: true }
   });
-  const roots = schedules.filter(row => !row.isAlias && (!requestedFseiban || row.fseiban === requestedFseiban));
+  let roots = schedules.filter(row => !row.isAlias && (!requestedFseiban || row.fseiban === requestedFseiban));
+  if (view && roots.length) {
+    const excluded = new Set(await readScheduleSourceExcludedFseibans(view.source, roots.map(row => row.fseiban)));
+    const today = todayJstYmd();
+    const { rangeStart, rangeEnd } = resolveSeibanCandidateDateRange(today);
+    const halfYearStart = shiftCalendarMonth(today, -6);
+    roots = roots.filter(row => {
+      if (excluded.has(row.fseiban)) return false;
+      const date = readScheduleDates(row).partsCompleteDate;
+      if (view.range === 'aroundMonth') return date !== null && date >= rangeStart && date <= rangeEnd;
+      if (view.range === 'excludeOlderThanHalfYear') return date === null || date >= halfYearStart;
+      return true;
+    });
+  }
   if (!roots.length) return [];
   const aliases = new Map(roots.map(row => [row.fseiban, schedules.filter(alias => alias.isAlias && alias.aliasOf === row.fseiban).map(alias => alias.fseiban)]));
   const seibans = [...new Set(roots.flatMap(row => [row.fseiban, ...(aliases.get(row.fseiban) ?? [])]))];
@@ -121,8 +140,8 @@ async function aggregateScheduleSeibans(requestedFseiban?: string): Promise<Sche
   });
 }
 
-export async function listScheduleSeibans(): Promise<{ seibans: ScheduleSeibanSummary[]; truncated: boolean }> {
-  const rows = (await aggregateScheduleSeibans()).filter(row => row.counts.shelf + row.counts.verified + row.counts.pending > 0);
+export async function listScheduleSeibans(view: ScheduleSeibanView = { source: 'both', range: 'all' }): Promise<{ seibans: ScheduleSeibanSummary[]; truncated: boolean }> {
+  const rows = (await aggregateScheduleSeibans(undefined, view)).filter(row => row.counts.shelf + row.counts.verified + row.counts.pending > 0);
   return { seibans: rows.slice(0, LIST_LIMIT).map(row => { const { parts, ...summary } = row; void parts; return summary; }), truncated: rows.length > LIST_LIMIT };
 }
 

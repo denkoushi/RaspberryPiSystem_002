@@ -31,7 +31,7 @@ const ymd = (value: Date): string => value.toISOString().slice(0, 10);
 const daysInMonth = (year: number, monthIndex: number): number =>
   new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
 
-const shiftCalendarMonth = (todayYmd: string, offset: number): string => {
+export const shiftCalendarMonth = (todayYmd: string, offset: number): string => {
   const [year, month, day] = todayYmd.split('-').map(Number);
   const target = new Date(Date.UTC(year, month - 1 + offset, 1));
   const clampedDay = Math.min(day, daysInMonth(target.getUTCFullYear(), target.getUTCMonth()));

@@ -29,7 +29,7 @@ export function HaizenScheduleDetail() {
   }
   const shelfFor = (code: string) => shelves.data?.shelves.find(shelf => shelf.shelfCodeRaw === code) ?? { shelfCodeRaw: code, isStructured: false, displayLabel: groups.get(code)?.[0]?.shelfLabel ?? code };
   const selected = selectedShelf ? shelfFor(selectedShelf) : null;
-  const partText = (part: ScheduleSeibanPart) => <><span className="break-all font-mono font-bold">{part.fhincd}</span><span className={`block break-words text-sm ${hp.muted}`}>{part.fhinmei}</span></>;
+  const partText = (part: ScheduleSeibanPart) => <><span className="break-all font-mono text-[20px] font-bold">{part.fhincd}</span><span className={`block break-words text-[18px] ${hp.muted}`}>{part.fhinmei}</span></>;
   return <section style={haizenPhoneStyle} className={hp.screen}>
     <div className={hp.content}>
       <HaizenHeader title={fseiban ?? '日程'} onBack={() => navigate('/kiosk/mobile-placement/schedule-seibans')} />
@@ -57,7 +57,6 @@ export function HaizenScheduleDetail() {
           : <button type="button" key={part.productNo} className="flex items-center gap-3 rounded-xl border border-[var(--hp-line)] bg-[var(--hp-panel)] p-3.5 text-left" onClick={() => navigate(scheduleVerifyPath(detail!.fseiban, part.productNo))}><span className="min-w-0 flex-1">{partText(part)}</span><span aria-hidden className={`text-2xl ${hp.muted}`}>›</span></button>)}
         {!query.isError && (state === 'shelf' ? groups.size === 0 : parts.length === 0) && <p className={hp.empty}>{query.isPending ? '読込中…' : '部品はありません'}</p>}
       </div>
-      {detail && detail.counts.pending + detail.counts.verified > 0 && <footer className={hp.dock}><button type="button" className={`${hp.primary} bg-[var(--hp-slip)]`} onClick={() => navigate(scheduleVerifyPath(detail.fseiban))}>照合</button></footer>}
     </div>
     {selected && selectedShelf && <HaizenShelfPhotoViewer shelf={selected} onClose={() => setSelectedShelf(null)}><div className="max-h-[40dvh] shrink-0 overflow-y-auto px-3.5">{groups.get(selectedShelf)?.map(part => <div key={part.productNo} className="border-t border-[var(--hp-line)] py-2">{partText(part)}</div>)}</div></HaizenShelfPhotoViewer>}
   </section>;
