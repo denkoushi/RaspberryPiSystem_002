@@ -4,7 +4,7 @@ import { productionFixture, productionPiecesFixture } from '../fixture';
 import { pieceSnapshot } from '../pieceSnapshots';
 
 const fixture = productionFixture();
-const stores = Object.fromEntries(['board', 'chips', 'minutes', 'uptime', 'capacity', 'resources', 'load', 'candidates', 'detail'].map(key => [key, { data: undefined, listeners: new Set() }]));
+const stores = Object.fromEntries(['board', 'chips', 'minutes', 'resourceMinutes', 'uptime', 'capacity', 'resources', 'load', 'candidates', 'detail'].map(key => [key, { data: undefined, listeners: new Set() }]));
 const items = fixture.items.map((item, index) => ({ ...item, arrived: index % 4 !== 0, orderPinned: false }));
 stores.board.data = { siteKey: 'perf-site', category: 'grinding', view: 'resource', sourceRevision: 'source-0', boardVersion: 1,
   registeredFseibans: fixture.seibans, seibanOrder: fixture.seibans, resources: fixture.resources,
@@ -18,6 +18,7 @@ stores.minutes.data = { rows: fixture.seibans.map((fseiban, i) => ({ fseiban, ou
   surfaceSendOutDates: i % 3 === 0 ? [{ date: '2026-11-06', note: null }, { date: '2026-11-10', note: null }] : [] })) };
 stores.uptime.data = { resources: fixture.resources.map((resourceCd, i) => ({ resourceCd, medianRunSeconds: 20000 + i * 100 })) };
 stores.capacity.data = { dailyHoursByResource: Object.fromEntries(fixture.resources.map(cd => [cd, 8])), runsThroughBreaksResources: [] };
+stores.resourceMinutes.data = { ownSourceResourceCds: [], values: [] };
 stores.resources.data = { resourceNameMap: Object.fromEntries(fixture.resources.map(cd => [cd, [`機械${cd}`]])) };
 stores.load.data = { load: [], unknownRequiredMinutesCount: 0 };
 stores.candidates.data = { today: '2026-11-05', candidates: [], completionFilter: 'incomplete' };
@@ -54,7 +55,13 @@ const enablePieces = () => {
   stores.board.listeners.forEach(listener => listener());
   return stores.board.data.items.find(item => item.kind === 'piece' && item.plannedQuantity === 3).itemId;
 };
-window.perfHarness = { refresh, swapPaged, enablePieces, board: () => stores.board.data, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
+window.perfHarness = { refresh, swapPaged, enablePieces,
+  enableTwoMachines: () => {
+    stores.capacity.data = { ...stores.capacity.data,
+      unitSplitEnabledByResource: Object.fromEntries(window.perfHarness.twoResources.map(cd => [cd, true])) };
+    refresh(['capacity']);
+  },
+  board: () => stores.board.data, mutations: [], listenerCounts: () => Object.fromEntries(Object.entries(stores).map(([key, store]) => [key, store.listeners.size])) };
 function useStore(key) {
   const store = stores[key];
   const data = useSyncExternalStore(listener => { store.listeners.add(listener); return () => store.listeners.delete(listener); }, () => store.data);
@@ -71,6 +78,7 @@ export function useKioskGrindingPlanningBoardProgressive(params) {
 }
 export const useKioskGrindingPlanningBoardProcessChips = () => useStore('chips');
 export const useKioskGrindingPlanningBoardResourceCapacity = () => useStore('capacity');
+export const useKioskGrindingPlanningBoardResourceMinutes = () => useStore('resourceMinutes');
 export const useKioskProductionScheduleResources = () => useStore('resources');
 export const useKioskGrindingPlanningBoardLoad = () => useStore('load');
 export const useKioskGrindingPlanningBoardSeibanCandidates = () => useStore('candidates');
@@ -86,6 +94,10 @@ export const useUpdateKioskGrindingPlanningBoardRank = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrder = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrderBulk = mutation;
 export const useUpdateKioskGrindingPlanningBoardSeibanOrder = mutation;
+export const useUpdateKioskGrindingPlanningBoardSeibanChecks = mutation;
+export const useUpdateKioskGrindingPlanningBoardResourceMinutesSource = mutation;
+export const useUpdateKioskGrindingPlanningBoardResourcePartMinutes = mutation;
+export const useConfigureKioskSessakuPieceOps = mutation;
 
 const pieceMutation = operation => ({ mutateAsync: async payload => {
   const { snapshot, response } = pieceSnapshot(stores.board.data, operation, payload);
@@ -97,3 +109,4 @@ const pieceMutations = { split: pieceMutation('split'), merge: pieceMutation('me
 export const useKioskSessakuPieceMutations = () => pieceMutations;
 
 export const useUpdateKioskGrindingPlanningBoardArrival = mutation;
+export const useUpdateKioskGrindingPlanningBoardFirstProcessArrival = mutation;

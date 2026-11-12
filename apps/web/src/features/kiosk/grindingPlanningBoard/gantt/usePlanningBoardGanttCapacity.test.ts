@@ -10,13 +10,13 @@ import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ mutate: vi.fn(), mutateAsync: vi.fn() }));
+const mocks = vi.hoisted(() => ({ mutate: vi.fn(), mutateAsync: vi.fn(), pending: false }));
 vi.mock('../../../../api/hooks', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../../api/hooks')>(),
   useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: undefined }),
   useUpdateKioskGrindingPlanningBoardResourceMinutesSource: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useKioskGrindingPlanningBoardResourceCapacity: () => ({ data: { dailyHoursByResource: { '021': 24, '022': 10 }, runsThroughBreaksResources: [] } }),
-  useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: mocks.mutate, mutateAsync: mocks.mutateAsync, isPending: false, isError: false })
+  useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: mocks.mutate, mutateAsync: mocks.mutateAsync, isPending: mocks.pending, isError: false })
 }));
 
 vi.mock('../offline/planningBoardOfflineQueries', () => ({
@@ -24,7 +24,7 @@ vi.mock('../offline/planningBoardOfflineQueries', () => ({
   useOfflineResourceCapacity: () => ({ data: { dailyHoursByResource: {}, runsThroughBreaksResources: [] } })
 }));
 
-beforeEach(() => { vi.clearAllMocks(); window.localStorage.clear(); });
+beforeEach(() => { vi.clearAllMocks(); mocks.pending = false; window.localStorage.clear(); });
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -105,4 +105,22 @@ it.each(['hours', 'breaks', 'unitSplit'] as const)('refreshes offline capacity r
   await waitFor(() => reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1)));
   reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1));
   expect(mocks.mutateAsync.mock.calls.map(([payload]) => payload.resourceCd)).toEqual(change === 'unitSplit' ? ['021'] : ['021', '022']);
+});
+
+it('keeps capacity callbacks stable across mutation objects while reading the latest pending state', () => {
+  const hook = setup();
+  const { changeCapacity, changeBreaks, changeUnitSplit } = hook.result.current;
+  hook.rerender();
+  expect(hook.result.current.changeCapacity).toBe(changeCapacity);
+  expect(hook.result.current.changeBreaks).toBe(changeBreaks);
+  expect(hook.result.current.changeUnitSplit).toBe(changeUnitSplit);
+  mocks.pending = true;
+  hook.rerender();
+  act(() => { changeCapacity('021', 8); changeBreaks('021', true); changeUnitSplit('021', true); });
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(mocks.mutateAsync).not.toHaveBeenCalled();
+  mocks.pending = false;
+  hook.rerender();
+  act(() => changeCapacity('021', 10));
+  expect(mocks.mutate).toHaveBeenCalledExactlyOnceWith({ resourceCd: '021', dailyHours: 10 });
 });

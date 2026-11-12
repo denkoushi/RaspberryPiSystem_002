@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildForwardPlanningBoardGanttLayout, dateToDay, workingPeriods } from './planningBoardGanttLayout';
-import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { buildSingleResourceWindows, foldSingleResourceRow, foldSingleResourceRows, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
@@ -77,5 +77,38 @@ it('clips and compresses setup and operation metadata across a six-hour window',
   for (const bar of folded) for (const segment of [...bar.setupSegments!, ...bar.opSegments!]) {
     expect(segment.start).toBeGreaterThanOrEqual(bar.start! - 1e-9);
     expect(segment.end).toBeLessThanOrEqual(bar.end! + 1e-9);
+  }
+});
+
+
+it.each([1, 2, 4, 7, 14, 28, 56])('matches the full-scan folding result at scale %s, including gaps, boundaries and unknown bars', scale => {
+  const item = { itemId: 'base', kind: 'row', fseiban: 'S', fhincd: 'P', processOrder: '10',
+    originalResourceCd: '305', requiredMinutes: 6000, requiredMinutesKnown: true } as GrindingPlanningBoardItem;
+  const layout = buildForwardPlanningBoardGanttLayout({ items: [item], allocation: 'alternate', view: 'resource', resources: ['305'],
+    seibanOrder: [], dailyHoursByResource: {}, today: '2026-11-09', now: new Date('2026-11-09T08:00:00+09:00'), scale });
+  const base = layout.groups[0]!.rows[0]!;
+  for (const hours of [8, 10, 24]) for (const pauses of [false, true]) for (const dayWidth of [10, 1440, 5000]) {
+    const windows = buildSingleResourceWindows(day, day + 60, scale, hours, pauses);
+    const first = windows[0]!;
+    const bar = base.bars[0]!;
+    const row = { ...base, connectors: [{ start: day - 1, end: day + 15 }], bars: [
+      // Deliberately keep scheduler order different from start order.
+      { ...bar, start: day + 8, end: day + 12, segments: [{ start: day + 8, end: day + 9 }, { start: day + 11, end: day + 12 }] },
+      bar,
+      { ...bar, item: { ...item, itemId: 'unknown' }, unknown: true, start: first.end - 35 / dayWidth, end: first.end - 35 / dayWidth },
+      { ...bar, start: day - 10, end: first.start, segments: [{ start: day - 10, end: first.start }] },
+      { ...bar, start: first.end, end: first.end + 1, segments: [{ start: first.end, end: first.end + 1 }] },
+      { ...bar, start: first.end - 1e-10, end: first.end + 1e-10, segments: [{ start: first.end - 1e-10, end: first.end + 1e-10 }] },
+      { ...bar, item: { ...item, kind: 'piece' as const, opRange: { fromOpNo: 10, toOpNo: 20 } },
+        setupSegments: [{ start: day + 8, end: day + 8.1 }],
+        opSegments: [{ opNo: 10, completed: false, start: day + 8.1, end: day + 9 }] },
+      { ...bar, segments: [], start: null, end: null }
+    ] };
+    const expected = windows.map(window => foldSingleResourceRow(row, window, dayWidth));
+    const actual = foldSingleResourceRows(row, windows, dayWidth);
+    expect(actual).toEqual(expected);
+    actual.forEach((folded, index) => folded.bars.forEach((clipped, barIndex) => {
+      expect(clipped.item).toBe(expected[index]!.bars[barIndex]!.item);
+    }));
   }
 });

@@ -12,7 +12,7 @@ export function forwardDropBoard(element: Element | null) {
 
 export function findForwardDrop(clientX: number, clientY: number, source: GanttBar,
   allowed: ReadonlySet<string> | undefined, board: Element | null | undefined,
-  lanes: readonly ForwardDragLane[], start: number, dayWidth: number
+  lanes: readonly ForwardDragLane[], start: number, dayWidth: number, moving?: ReadonlySet<string>
 ): ForwardDragPreview['drop'] {
   const hits = document.elementsFromPoint?.(clientX, clientY) ?? [];
   // Overlays may cover a lane but must never receive a Gantt drop.
@@ -29,12 +29,12 @@ export function findForwardDrop(clientX: number, clientY: number, source: GanttB
   const x = (clientX - targetTrack.getBoundingClientRect().left) / pageZoom();
   const centre = (bar: GanttBar) => (bar.start! - start) * dayWidth +
     (bar.unknown && !rowKey ? 70 : Math.max(2, ((bar.segments?.[0]?.end ?? bar.end!) - bar.start!) * dayWidth - 2)) / 2;
-  const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId).sort((a, b) => centre(a) - centre(b));
+  const others = targetLane.bars.filter((bar) => bar.item.itemId !== source.item.itemId && !moving?.has(bar.item.itemId)).sort((a, b) => centre(a) - centre(b));
   if (!others.length) {
     if (rowKey) {
       const index = lanes.indexOf(targetLane);
-      const next = lanes.slice(index + 1).filter((candidate) => candidate.resource === targetResource).flatMap((candidate) => candidate.bars).find((bar) => bar.item.itemId !== source.item.itemId);
-      const previous = lanes.slice(0, index).filter((candidate) => candidate.resource === targetResource).flatMap((candidate) => candidate.bars).filter((bar) => bar.item.itemId !== source.item.itemId).at(-1);
+      const next = lanes.slice(index + 1).filter((candidate) => candidate.resource === targetResource).flatMap((candidate) => candidate.bars).find((bar) => bar.item.itemId !== source.item.itemId && !moving?.has(bar.item.itemId));
+      const previous = lanes.slice(0, index).filter((candidate) => candidate.resource === targetResource).flatMap((candidate) => candidate.bars).filter((bar) => bar.item.itemId !== source.item.itemId && !moving?.has(bar.item.itemId)).at(-1);
       const bar = next ?? previous;
       if (bar && canReorderForwardBars(source, bar)) return { rowKey, resource: targetResource, bar, placement: next ? 'before' : 'after', left: 0 };
     }

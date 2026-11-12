@@ -111,7 +111,7 @@ export function PlanningBoardPageView({
           onToggleItem={(item, selected) => { gantt.testBarControls?.select(item, selected); if (item.kind !== 'test') toggleItem(item, selected); }}
           onCompleteToggle={(item, intent) => { if (item.kind === 'test') gantt.testBarControls?.complete(item, intent); else void toggleCompletion(item, intent); }} completionPendingItemIds={completionPendingItemIds} onDueDrop={moveDueByDrag}
           onResourceReorder={(item, target, placement) => { if (item.kind === 'test' || target.kind === 'test' || gantt.testBarControls?.bars.some((bar) => !bar.isCompleted && bar.resourceCd === (item.effectiveResourceCd ?? item.originalResourceCd))) gantt.testBarControls?.reorder?.(item, target, placement); else reorderResourceByDrag(item, target, placement); }}
-          onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
+          resourceOrderPending={writeQueue.pending} onResourceMove={moveResourceInGantt} canMoveResource={(item, resource) => data.resources.includes(resource) && canMoveResource(item, resource)}
           pieceDisabled={allocation === 'original' || writeBlocked || Boolean(specialDueMode)}
           disabled={interactionLocked || (pinMode && writeQueue.pending)} dragDisabled={allocation !== 'alternate' || writeBlocked || interactionLocked || !rankMutationReady} />
       ) : data && view === 'seiban' && focusedFseiban && focusItems.length > 0 ? (

@@ -1,5 +1,6 @@
 import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS } from '@raspi-system/shared-types';
 import clsx from 'clsx';
+import { useMemo } from 'react';
 
 import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 
@@ -7,7 +8,7 @@ import { PlanningBoardUnitSplitButton } from './PlanningBoardUnitSplitButton';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
-export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled, testMinutes = 0, machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, resourceCds = [resourceCd], names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable = false, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
+export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled, testMinutes = 0, machineModeButtonRef, machineSelectionLabel, machineSelectionLocked = false, resourceCd, resourceCds: incomingResourceCds, names, hours, pausesForBreaks, averageSeconds, disabled, pickerOpen, onOpenPicker, onCapacityChange, onBreaksChange, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable = false, items = [], minutes, onSourceChange, sheetOpen = false, onToggleSheet, minutesPending = false, machineMode = 1, twoMachineDisabled = false, onMachineModeChange }: {
   onTestBarAdd?: () => void;
   testMinutes?: number;
   unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
@@ -38,6 +39,12 @@ export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled,
   onCapacityChange: (resources: string | readonly string[], hours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
   onBreaksChange?: (resources: string | readonly string[], runsThroughBreaks: boolean, hours?: GrindingPlanningBoardResourceDailyHours) => void;
 }) {
+  const resourceCds = useMemo(() => incomingResourceCds ?? [resourceCd], [incomingResourceCds, resourceCd]);
+  const totals = useMemo(() => ({
+    original: testMinutes + items.reduce((sum, item) => sum + (item.originalRequiredMinutes ?? 0), 0),
+    own: testMinutes + items.reduce((sum, item) => sum + (item.ownRequiredMinutes ?? item.originalRequiredMinutes ?? 0), 0)
+  }), [items, testMinutes]);
+  const valueCount = useMemo(() => minutes?.values.filter((value) => resourceCds.includes(value.resourceCd)).length ?? 0, [minutes?.values, resourceCds]);
   const { frozen } = usePlanningBoardOffline();
   // 2台表示の稼働時間と休憩は、押していない側の値も含めて上下段の機械へそろえて書く。
   const pair = machineMode === 2;
@@ -69,9 +76,9 @@ export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled,
     <div className="flex shrink-0 rounded-md border border-slate-600" role="group" aria-label="所要時間の値">
       {(['original', 'own'] as const).map((source) => <button key={source} type="button" disabled={disabled || minutesPending} aria-disabled={frozen || undefined} aria-pressed={resourceCds.every((resource) => (minutes?.ownSourceResourceCds.includes(resource) ?? false) === (source === 'own'))}
         className={clsx('h-8 whitespace-nowrap px-3 text-sm font-bold disabled:opacity-40', resourceCds.every((resource) => (minutes?.ownSourceResourceCds.includes(resource) ?? false) === (source === 'own')) ? 'bg-amber-400 text-slate-950' : 'text-slate-300')}
-        onClick={() => onSourceChange?.(source)}>{source === 'original' ? '元の値' : '独自の値'} <span className="font-mono">{((testMinutes + items.reduce((sum, item) => sum + ((source === 'own' ? item.ownRequiredMinutes ?? item.originalRequiredMinutes : item.originalRequiredMinutes) ?? 0), 0)) / 60).toFixed(1)}h</span></button>)}
+        onClick={() => onSourceChange?.(source)}>{source === 'original' ? '元の値' : '独自の値'} <span className="font-mono">{(totals[source] / 60).toFixed(1)}h</span></button>)}
     </div>
-    <button type="button" aria-expanded={sheetOpen} onClick={onToggleSheet} className="h-8 shrink-0 whitespace-nowrap rounded-md border border-amber-500 px-3 text-sm font-bold text-amber-300">品番の値 {minutes?.values.filter((value) => resourceCds.includes(value.resourceCd)).length ?? 0} {sheetOpen ? '▼' : '▲'}</button>
+    <button type="button" aria-expanded={sheetOpen} onClick={onToggleSheet} className="h-8 shrink-0 whitespace-nowrap rounded-md border border-amber-500 px-3 text-sm font-bold text-amber-300">品番の値 {valueCount} {sheetOpen ? '▼' : '▲'}</button>
     {onTestBarAdd && <button type="button" aria-label="棒を差し込む" disabled={disabled || frozen || testBarDisabled} onClick={onTestBarAdd}
       className="h-8 w-11 shrink-0 rounded-lg border pb-0.5 text-[22px] font-extrabold leading-none disabled:opacity-40"
       style={{ borderColor: '#a78bfa', background: 'rgba(167,139,250,.15)', color: '#c4b5fd' }}>＋</button>}

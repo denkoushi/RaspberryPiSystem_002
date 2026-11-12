@@ -18,33 +18,30 @@ import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardChainLinks, planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
 import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
-import { PlanningBoardForwardGanttRow } from './PlanningBoardForwardGanttRow';
+import { PlanningBoardForwardGanttRow, type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
-import { PlanningBoardForwardQueuePopover } from './PlanningBoardForwardQueuePopover';
+import { PlanningBoardForwardQueuePopover, type ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
-import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBars } from './planningBoardGanttLayout';
+import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBars, type NormalGanttBar, type GanttBar, type GanttLayout } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
-import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
+import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry, planningBoardSheetHeight } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
-import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
+import { buildSingleResourceWindows, foldSingleResourceRows, singleResourceWindowTime, type GanttBarLocation, type GanttBarLocations } from './planningBoardSingleResourceWindows';
 import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { PlanningBoardUnitOpContext } from './PlanningBoardUnitOpEditor';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
-import { usePlanningBoardSharedDrag } from './usePlanningBoardSharedDrag';
+import { usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
+import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import { usePlanningBoardShelfInteraction, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
-import type { ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
-import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
-import type { NormalGanttBar, GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
-import type { GanttBarLocation, GanttBarLocations } from './planningBoardSingleResourceWindows';
-import type { SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import type { GrindingPlanningBoardBar , GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 export type { PlanningBoardGanttHandle } from './planningBoardGanttViewTypes';
@@ -73,8 +70,8 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag }>(function PlanningBoardGanttView({
-  sharedDrag, onClearSelection, onClearChain,
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag; sharedShelfInteraction?: SharedShelfInteraction }>(function PlanningBoardGanttView({
+  sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
@@ -167,15 +164,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
       || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
   [sourceLayout, laneResources, laneOrder.order]);
-  const previousRowSelections = useRef(new Map<string, ReadonlySet<string>>());
-  const rowSelections = useMemo(() => new Map(layout.groups.flatMap((group) => group.rows.map((row) => {
-    const next = new Set(row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.item.itemId));
-    const previous = previousRowSelections.current.get(row.key);
-    const selected = next.size === 0 ? EMPTY_SELECTION
-      : previous && next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
-    return [row.key, selected] as const;
-  }))), [layout, interaction.selectedItemIds]);
-  useLayoutEffect(() => { previousRowSelections.current = rowSelections; }, [rowSelections]);
   const { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown } = laneOrder;
   const laneHandle = useCallback((resource: string, text: string, className: string) => <button type="button" title={text}
     className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
@@ -210,13 +198,20 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const foldedWindows = useMemo(() => singleGroup ? buildSingleResourceWindows(layout.today,
     Math.min(layout.end, Math.max(layout.today + 3, ...singleGroup.rows.flatMap((row) => row.bars.map((bar) => Math.ceil(bar.end ?? layout.today) + 1)))),
     scale, singleHours, singlePauses).filter((window) => window.end > (layout.now ?? -Infinity) + 1e-9) : [], [singleGroup, layout.today, layout.end, layout.now, scale, singleHours, singlePauses]);
-  const foldedRows = useMemo(() => new Map(singleGroup?.rows.flatMap((row) => foldedWindows.map((window) => {
-    const folded = foldSingleResourceRow(row, window, dayWidth);
-    return [folded.key, { row: folded, window }] as const;
-  })) ?? []), [singleGroup, foldedWindows, dayWidth]);
+  const foldedRows = useMemo(() => new Map(singleGroup?.rows.flatMap((row) => foldSingleResourceRows(row, foldedWindows, dayWidth)
+    .map((folded, index) => [folded.key, { row: folded, window: foldedWindows[index]! }] as const)) ?? []), [singleGroup, foldedWindows, dayWidth]);
   // The scheduler still sees every resource. Only these render rows are folded/filtered.
   const renderedGroups = useMemo(() => singleGroup ? [{ ...singleGroup, rows: [...foldedRows.values()].map(({ row }) => row) }] : layout.groups,
     [singleGroup, foldedRows, layout.groups]);
+  const previousRowSelections = useRef(new Map<string, ReadonlySet<string>>());
+  const rowSelections = useMemo(() => new Map(renderedGroups.flatMap((group) => group.rows.map((row) => {
+    const next = new Set(row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.item.itemId));
+    const previous = previousRowSelections.current.get(row.key);
+    const selected = next.size === 0 ? EMPTY_SELECTION
+      : previous && next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
+    return [row.key, selected] as const;
+  }))), [renderedGroups, interaction.selectedItemIds]);
+  useLayoutEffect(() => { previousRowSelections.current = rowSelections; }, [rowSelections]);
   const barLocations = useMemo<GanttBarLocations>(() => {
     const result = new Map<string, { first: GanttBarLocation; last: GanttBarLocation }>();
     for (const group of renderedGroups) for (const row of group.rows) for (const bar of row.bars) {
@@ -226,22 +221,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     }
     return result;
   }, [renderedGroups, foldedRows, layout.start]);
-  const incomingColors = useMemo(() => {
-    if (!colorBySeiban) return undefined;
-    const seibans = [...new Set(planningBoardVisibleBars(layout).filter(isNormalGanttBar).map((bar) => bar.item.fseiban))];
-    // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
-    const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
-    seibans.sort((a, b) => rank(a) - rank(b));
-    return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
-  }, [colorBySeiban, layout, seibanOrder]);
-  const previousColors = useRef(incomingColors);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- previousColors is a ref read only to keep the prior identity.
-  const seibanColors = useMemo(() => JSON.stringify([...(incomingColors ?? [])]) === JSON.stringify([...(previousColors.current ?? [])]) && Boolean(incomingColors) === Boolean(previousColors.current)
-    ? previousColors.current : incomingColors, [incomingColors]);
-  useLayoutEffect(() => { previousColors.current = seibanColors; }, [seibanColors]);
+  const shelfResources = useMemo(() => singleResourceCd ? [singleResourceCd] : [], [singleResourceCd]);
+  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, Boolean(singleResourceCd && colorBySeiban && !sharedSeibanLegend));
+  const seibanColors = usePlanningBoardSeibanColors(layout, colorBySeiban, seibanOrder);
   useEffect(() => {
-    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend]);
+    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !(singleResourceCd && shelfColumns.some(column => column.seiban === focusedSeiban))) setFocusedSeiban(null);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend, singleResourceCd, shelfColumns]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
@@ -257,9 +242,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars, rowKey: row.key,
       start: foldedRows.get(row.key)!.window.start, end: foldedRows.get(row.key)!.window.end }))
       : [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [renderedGroups, singleGroup, foldedRows]);
-  const { dragPreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
+  const { dragPreview, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const { localShelf, shelfInteractionRef, shelfActions, getShelfDrop } = usePlanningBoardShelfInteraction(
+    sharedShelfInteraction, singleResourceCd, availableDragLanes, viewport, layout.start, dayWidth, rowActions);
   const startPan = usePlanningBoardGanttPan();
   const content = useRef<HTMLDivElement>(null);
   const rowElements = useRef(new Map<string, HTMLDivElement>());
@@ -279,16 +266,17 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
   const effectiveChainView = sharedChain?.view ?? (hasPieceLinks ? chainView : 'process');
   useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
+  const showChainPositions = !sharedChain || chainOwner === singleResourceCd;
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    return new Map((sharedChain && chainOwner !== singleResourceCd ? EMPTY_CHAIN : chain).map(({ item }) => {
+    return new Map((showChainPositions ? chain : EMPTY_CHAIN).map(({ item }) => {
       const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));
-  }, [chain, sharedChain, chainOwner, singleResourceCd]);
+  }, [chain, showChainPositions]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
-  const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
+  const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: (event) => { if (shelfInteractionRef.current?.placeAt(event.clientX, event.clientY)) return; if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
   const showChain = (chain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
@@ -336,7 +324,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   }, [singleResourceCd, onChainTopChange, showChain, chainTop, chainStripHeight]);
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
-  const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
+  const latestFocus = useRef({ focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain });
+  useLayoutEffect(() => { latestFocus.current = { focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain }; });
+  const focusChain = useCallback((original: GanttBar, keepOpen = false) => {
+    const { focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus } = latestFocus.current;
+    const bar = latest.current.currentBars.get(original.item.itemId) ?? original;
     const next = keepOpen || focusedPartKey !== bar.partKey || (sharedChain && chainOwner !== singleResourceCd) ? bar.partKey : null;
     onTestBarAnchorChange?.(next ? bar.item : null);
     if (bar.item.kind === 'test') { sharedChain?.focus(null, bar.resource); setFocusedPartKey(null); setCurrentItemId(null); testBarControls?.select(bar.item, true); onChainFocus?.(bar.resource); return; }
@@ -344,10 +336,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     if (singleResourceCd) onChainFocus?.(singleResourceCd);
     if (sharedChain) sharedChain.focus(next, singleResourceCd); else setFocusedPartKey(next);
     setCurrentItemId(null);
-  }, [onTestBarAnchorChange, focusedPartKey, testBarControls, onChainFocus, singleResourceCd, sharedChain, chainOwner]);
+  }, []);
   const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
-    if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
-  }, [showChain]);
+    if (!latestFocus.current.showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
+  }, []);
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
   const closeQueue = useCallback(() => queuePopover.current?.closeUnlessPinned(), []);
   const flaggedIndex = useRef(-1);
@@ -529,10 +521,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
         chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => (sharedChain?.changeView ?? changeChainView)(effectiveChainView === 'pieces' ? 'process' : 'pieces') : undefined}
         onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
+  const unitOpContext = useMemo(() => ({ minutes: resourceMinutes, items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item),
+    loading: minutesPending || minutesError || !resourceMinutes }), [resourceMinutes, resourceMinutesItems, currentBars, minutesPending, minutesError]);
   return (
-    <PlanningBoardUnitOpContext.Provider value={{ minutes: resourceMinutes, items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item), loading: minutesPending || minutesError || !resourceMinutes }}>
+    <PlanningBoardUnitOpContext.Provider value={unitOpContext}>
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
+    <section data-seiban-focus={focusedSeiban != null ? '' : undefined} aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900 [&[data-seiban-focus]_[data-seiban-unfocused]]:opacity-20 [&[data-seiban-focus]_[data-seiban-unfocused=bar]]:saturate-[.3]', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {resourceHead && (resourceHeadContainer === null ? null : resourceHeadContainer ? createPortal(resourceHead, resourceHeadContainer) : resourceHead)}
@@ -590,11 +584,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
               const folded = foldedRows.get(row.key);
               const rowStart = folded?.window.start ?? layout.start;
               const rowEnd = folded?.window.end ?? layout.end;
-              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={focusedSeiban} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={row.bars.some((bar) => bar.item.kind !== 'test' && bar.item.fseiban === focusedSeiban) ? focusedSeiban : null} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
-                selectedItemIds={folded ? interaction.selectedItemIds : rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
+                selectedItemIds={rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
                 pinMode={interaction.pinMode} resourceView={interaction.resourceView} {...rowActions}
                 lanes={availableDragLanes}
                 draggedItemId={dragPreview && row.bars.some((bar) => bar.item.itemId === dragPreview.bar.item.itemId) ? dragPreview.bar.item.itemId : null}
@@ -615,14 +609,18 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
-      {!sharedSeibanLegend && seibanColors && <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
-        focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />}
+      {!sharedSeibanLegend && seibanColors && (singleResourceCd
+        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
+          disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
+          highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
+        : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
+          focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} focusedSeiban={focusedSeiban} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
-      {dragPreview && ownsDragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} />}
+      {dragPreview && ownsDragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}
       {dragPreview && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
         className="pointer-events-none fixed z-[110] scale-105 rounded shadow-2xl border-2 border-amber-400 bg-slate-950 px-2 py-1 text-[13px] text-slate-100"
-        style={{ left: dragPreview.x / pageZoom() + 12, top: dragPreview.y / pageZoom() + 12 }}>
+        style={{ left: dragPointer.current.x / pageZoom() + 12, top: dragPointer.current.y / pageZoom() + 12 }}>
         <strong className="font-mono">{dragPreview.bar.resource}</strong> {dragPreview.bar.item.kind === 'test' ? dragPreview.bar.item.name : dragPreview.bar.item.fhinmei || dragPreview.bar.item.fhincd}
       </div>, document.body)}
     </section>
