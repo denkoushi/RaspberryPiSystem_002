@@ -35,10 +35,13 @@ export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled,
   testBarDisabled?: boolean;
   pickerOpen: boolean;
   onOpenPicker?: (anchor: HTMLElement) => void;
-  onCapacityChange: (resource: string, hours: GrindingPlanningBoardResourceDailyHours) => void;
-  onBreaksChange?: (resource: string, runsThroughBreaks: boolean) => void;
+  onCapacityChange: (resources: string | readonly string[], hours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
+  onBreaksChange?: (resources: string | readonly string[], runsThroughBreaks: boolean, hours?: GrindingPlanningBoardResourceDailyHours) => void;
 }) {
   const { frozen } = usePlanningBoardOffline();
+  // 2台表示の稼働時間と休憩は、押していない側の値も含めて上下段の機械へそろえて書く。
+  const pair = machineMode === 2;
+  const capacityTargets = pair ? [...new Set([resourceCd, ...resourceCds])] : resourceCd;
   const buttonClass = (pressed: boolean) => clsx('h-8 w-[52px] shrink-0 rounded-md border text-[15px] font-bold disabled:opacity-40 aria-disabled:opacity-40',
     pressed ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200');
   return <div data-testid="planning-single-resource-head" className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-slate-700 bg-slate-950 px-2 [scrollbar-width:none]">
@@ -52,9 +55,9 @@ export function PlanningBoardSingleResourceHead({ onTestBarAdd, testBarDisabled,
     </div>
     <div className="flex gap-1" role="group" aria-label={`${resourceCd}の1日の稼働時間`}>
       {GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS.map((value) => <button key={value} type="button" className={buttonClass(hours === value)}
-        aria-disabled={frozen || undefined} aria-pressed={hours === value} disabled={disabled} onClick={() => onCapacityChange(resourceCd, value)}>{value}H</button>)}
+        aria-disabled={frozen || undefined} aria-pressed={hours === value} disabled={disabled} onClick={() => pair ? onCapacityChange(capacityTargets, value, !pausesForBreaks) : onCapacityChange(resourceCd, value)}>{value}H</button>)}
       <button type="button" className={clsx(buttonClass(pausesForBreaks), 'w-[60px]')} aria-disabled={frozen || undefined} aria-pressed={pausesForBreaks} disabled={disabled || hours === 24}
-        onClick={() => onBreaksChange?.(resourceCd, pausesForBreaks)}>休憩</button>
+        onClick={() => pair ? onBreaksChange?.(capacityTargets, pausesForBreaks, hours) : onBreaksChange?.(resourceCd, pausesForBreaks)}>休憩</button>
     </div>
     {unitSplitAvailable && resourceCd !== '未設定' && <PlanningBoardUnitSplitButton resourceCd={resourceCd}
       flags={machineMode === 2 ? { [resourceCd]: true } : unitSplitEnabledByResource}

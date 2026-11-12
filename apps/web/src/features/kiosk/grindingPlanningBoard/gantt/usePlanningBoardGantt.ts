@@ -89,18 +89,22 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
   const viewRef = useRef<PlanningBoardGanttHandle>(null);
   const scrollToNextOverlap = useCallback(() => viewRef.current?.scrollToNextOverlap(), []);
   const scrollToNextLate = useCallback(() => viewRef.current?.scrollToNextLate(), []);
-  const changeCapacity = useCallback((resourceCd: string, dailyHours: GrindingPlanningBoardResourceDailyHours) => {
+  // 2台表示では上下段の機械を同じ値にそろえるため、資源CDを複数受け取って順に書く。
+  const writeCapacity = useCallback((resourceCds: string | readonly string[], change: { dailyHours?: GrindingPlanningBoardResourceDailyHours; runsThroughBreaks?: boolean }) => {
     if (!gate.attempt() || isPending) return;
-    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, dailyHours });
-    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, dailyHours })).then(() =>
+    const targets = typeof resourceCds === 'string' ? [resourceCds] : [...new Set(resourceCds)];
+    if (targets.length === 0) return;
+    if (!offlineEnabled && targets.length === 1) { capacityMutation.mutate({ resourceCd: targets[0]!, ...change }); return; }
+    const writeAll = async () => { for (const resourceCd of targets) await capacityMutation.mutateAsync({ resourceCd, ...change }); };
+    if (!offlineEnabled) { void writeAll().catch(() => undefined); return; }
+    void gate.run(writeAll).then(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
-  const changeBreaks = useCallback((resourceCd: string, runsThroughBreaks: boolean) => {
-    if (!gate.attempt() || isPending) return;
-    if (!offlineEnabled) capacityMutation.mutate({ resourceCd, runsThroughBreaks });
-    else void gate.run(() => capacityMutation.mutateAsync({ resourceCd, runsThroughBreaks })).then(() =>
-      Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
-  }, [gate, isPending, offlineEnabled, capacityMutation, refreshRead]);
+  // 2台表示では押していない側の値も渡し、上下段の行の区切りを決める2つの値をまとめてそろえる。
+  const changeCapacity = useCallback((resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) =>
+    writeCapacity(resourceCds, runsThroughBreaks === undefined ? { dailyHours } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
+  const changeBreaks = useCallback((resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) =>
+    writeCapacity(resourceCds, dailyHours === undefined ? { runsThroughBreaks } : { dailyHours, runsThroughBreaks }), [writeCapacity]);
   const changeUnitSplit = useCallback((resourceCd: string, unitSplitEnabled: boolean) => {
     if (!gate.attempt() || isPending) return;
     if (!offlineEnabled) capacityMutation.mutate({ resourceCd, unitSplitEnabled });
