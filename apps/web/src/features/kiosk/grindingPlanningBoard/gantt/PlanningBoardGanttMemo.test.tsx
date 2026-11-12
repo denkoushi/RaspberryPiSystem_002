@@ -196,7 +196,7 @@ it.each([false, true])('only rerenders rows containing the legend seiban (folded
   rerender(draw('26-1001'));
   expect(renders).toHaveLength(1);
   expect(renders[0]).toContain('305');
-  expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+  expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white');
   expect(screen.getByTestId('planning-board-gantt')).toHaveAttribute('data-seiban-focus');
   if (!folded) expect(screen.getByTestId('planning-gantt-bar-b')).toHaveAttribute('data-seiban-unfocused', 'bar');
   renders.length = 0;

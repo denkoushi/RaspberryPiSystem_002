@@ -33,8 +33,7 @@ type Props = {
   lanes: { readonly current: readonly ForwardDragLane[] };
   start: number;
   dayWidth: number;
-  labelWidth: number;
-  viewportWidth: number;
+  focusedSeiban?: string | null;
   onDragPreview: (preview: ForwardDragPreview | null) => void;
   draggedItemId: string | null;
   onResourceMove?: ForwardMove;
@@ -53,7 +52,7 @@ type Props = {
 };
 
 export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, Props>(function PlanningBoardForwardQueuePopover({
-  folded = false, viewport, lanes, start, dayWidth, labelWidth, viewportWidth, onDragPreview, draggedItemId, onResourceMove, canMoveResource,
+  viewport, lanes, start, dayWidth, focusedSeiban = null, onDragPreview, draggedItemId, onResourceMove, canMoveResource,
   layout, scale, resourceNameMap, disabled, dragDisabled, resourceView, onResourceReorder, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError
 }, ref) {
   const { gate, frozen } = usePlanningBoardOffline();
@@ -63,15 +62,6 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const pin = () => { pinned.current = true; setPinned(true); cancelHide(); };
   const scroll = useRef<HTMLDivElement>(null);
   const longPress = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [visibleRange, setVisibleRange] = useState({ left: 0, right: 0 });
-  useEffect(() => {
-    const element = viewport.current;
-    if (!element) return;
-    const measure = () => setVisibleRange({ left: element.scrollLeft, right: element.scrollLeft + (element.clientWidth || viewportWidth) - labelWidth });
-    measure();
-    element.addEventListener('scroll', measure, { passive: true });
-    return () => element.removeEventListener('scroll', measure);
-  }, [viewport, viewportWidth, labelWidth, layout]);
   const [position, setPosition] = useState({ left: 8, top: 8 });
   const [drop, setDrop] = useState<Drop | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -205,18 +195,6 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     onDragPreview({ source: 'queue', bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: ganttDrop });
     return { queue: next, gantt: ganttDrop };
   };
-  const isVisible = (bar: GanttBar) => {
-    if (folded) {
-      return Array.from(viewport.current?.querySelectorAll<HTMLElement>(`[data-testid="planning-gantt-bar-${bar.item.itemId}"]`) ?? []).some((element) => {
-        const bounds = element.getBoundingClientRect();
-        const view = viewport.current!.getBoundingClientRect();
-        return bounds.bottom > view.top && bounds.top < view.bottom;
-      });
-    }
-    if (bar.start == null || bar.end == null) return false;
-    const segments = bar.unknown ? [{ start: bar.start, end: bar.start + 70 / dayWidth }] : bar.segments ?? [{ start: bar.start, end: bar.end }];
-    return segments.some((segment) => (segment.start - start) * dayWidth < visibleRange.right && (segment.end - start) * dayWidth > visibleRange.left);
-  };
   const resourceLabel = ganttResourceLabel(openBar.resource, resourceNameMap[openBar.resource]);
   return createPortal(<div ref={panel} data-forward-queue data-pinned={isPinned} role="region" aria-label={`${resourceLabel} の次にやる順`}
     className={clsx(isPinned ? 'border-2 border-amber-400' : 'border border-slate-600', 'fixed z-[100] max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg bg-slate-900 p-2 text-slate-100 shadow-xl')}
@@ -224,12 +202,11 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     <div ref={scroll} className="relative flex gap-1.5 overflow-x-auto p-1">
       {cards.map(({ bar, position: queuePosition }) => { const item = bar.item; return <div key={item.itemId} data-queue-position={queuePosition}
         data-testid={`planning-forward-queue-card-${item.itemId}`}
-        className={clsx('relative min-h-11 w-[150px] shrink-0 touch-pan-x select-none rounded-lg border-l-[5px] bg-slate-950 p-2 text-xs tabular-nums',
-          bar.arrivalPending ? 'border-slate-600 text-slate-500 [&_.text-slate-400]:text-slate-600' : bar.tone === 'late' ? 'border-rose-400' : 'border-sky-400',
-          item.itemId === openBar.item.itemId && 'outline outline-2 outline-amber-400',
+        className={clsx('relative min-h-11 w-[150px] shrink-0 touch-pan-x select-none rounded-lg border-l-[5px] border-slate-950 bg-slate-950 p-2 text-xs tabular-nums',
+          bar.arrivalPending && 'text-slate-500 [&_.text-slate-400]:text-slate-600',
+          focusedSeiban !== null && item.kind !== 'test' && item.fseiban === focusedSeiban && 'shadow-[0_0_0_3px_#fff]',
+          item.itemId === openBar.item.itemId && clsx('outline outline-2 outline-amber-400', focusedSeiban !== null && item.kind !== 'test' && item.fseiban === focusedSeiban && 'outline-offset-[-3px]'),
           draggedItemId === item.itemId && 'outline outline-2 outline-dashed outline-amber-400 [&>*]:opacity-30')}
-        data-viewport-visible={isVisible(bar) || undefined}
-        style={{ borderTop: isVisible(bar) ? '3px solid rgb(251 191 36)' : undefined }}
         onPointerDown={(event) => {
           if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
           if (!gate.attempt()) return;

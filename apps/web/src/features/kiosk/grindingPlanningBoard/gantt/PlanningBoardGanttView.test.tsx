@@ -132,7 +132,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(button('26-1001 ★10/11 10/13'));
     expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'true');
     expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white', 'ring-offset-slate-950');
     expect(screen.getByTestId('planning-gantt-bar-other')).toHaveClass('opacity-20');
     fireEvent.click(button('OTHER ★10/12'));
     expect(button('26-1001 ★10/11 10/13')).toHaveAttribute('aria-pressed', 'false');
@@ -140,6 +140,12 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(button('OTHER ★10/12'));
     expect(button('OTHER ★10/12')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByTestId('planning-gantt-bar-a')).not.toHaveClass('opacity-20');
+    fireEvent.click(button('26-1001 ★10/11 10/13'));
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+    const focusedCard = screen.getByTestId('planning-forward-queue-card-a');
+    expect(focusedCard).toHaveClass('shadow-[0_0_0_3px_#fff]', 'outline-amber-400', 'outline-offset-[-3px]', 'border-slate-950');
+    expect(screen.getByTestId('planning-forward-queue-card-other')).not.toHaveClass('shadow-[0_0_0_3px_#fff]');
+    expect(screen.getByTestId('planning-forward-queue-card-other')).not.toHaveClass('border-rose-400');
   });
 
   it.each(['backward', 'forward'] as const)('jumps to the starred bar in the pressed machine row, not the seiban earliest bar, in %s mode', (mode) => {
@@ -493,7 +499,7 @@ describe('PlanningBoardGanttView', () => {
       expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'false');
       expect(screen.queryByRole('button', { name: 'すべて表示' })).not.toBeInTheDocument();
       for (const surface of [...surfaces('a'), ...surfaces('b')]) {
-        expect(surface).not.toHaveClass('ring-2');
+        expect(surface).not.toHaveClass(mode === 'forward' ? 'ring-[3px]' : 'ring-2');
         expect(surface).not.toHaveClass('opacity-20');
         expect(surface).not.toHaveClass('saturate-[.3]');
       }
@@ -507,7 +513,7 @@ describe('PlanningBoardGanttView', () => {
     expect(chip('26-1001')).toHaveAttribute('aria-pressed', 'true');
     expect(chip('26-1002')).toHaveAttribute('aria-pressed', 'false');
     for (const surface of [...surfaces('a'), ...surfaces('d')]) {
-      expect(surface).toHaveClass('ring-2', 'ring-white');
+      expect(surface).toHaveClass(mode === 'forward' ? 'ring-[3px]' : 'ring-2', 'ring-white');
       expect(surface).not.toHaveClass('opacity-20');
       expect(surface).not.toHaveClass('opacity-30');
     }
@@ -538,7 +544,7 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(chip('26-1001'));
     rerender(<PlanningBoardGanttView {...viewProps} colorBySeiban={false} />);
     expect(screen.queryByRole('group', { name: '製番の色分け凡例' })).not.toBeInTheDocument();
-    for (const surface of surfaces('a')) expect(surface).not.toHaveClass('ring-2');
+    for (const surface of surfaces('a')) expect(surface).not.toHaveClass(mode === 'forward' ? 'ring-[3px]' : 'ring-2');
     rerender(<PlanningBoardGanttView {...viewProps} />);
     expectClear();
     fireEvent.click(chip('26-1001'));
@@ -889,8 +895,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(panel).toHaveClass('border-2', 'border-amber-400');
     expect(within(panel).getAllByTestId(/planning-forward-queue-card-/)).toHaveLength(3);
     expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
-    expect(screen.getByTestId('planning-forward-queue-card-a')).toHaveAttribute('data-viewport-visible', 'true');
-    expect(screen.getByTestId('planning-forward-queue-card-b')).not.toHaveAttribute('data-viewport-visible');
+    expect(screen.getByTestId('planning-forward-queue-card-a').style.borderTop).toBe('');
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
     expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
     const viewport = screen.getByLabelText('ガントの日付と工程');
@@ -2152,7 +2157,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(cards[0]).not.toHaveTextContent('10分 · 1個');
     expect(within(cards[0]!).getByText('P0 · 1個')).toBeInTheDocument();
     expect(within(cards[7]!).getByText('P7 · 1個')).toBeInTheDocument();
-    expect(cards[5]).toHaveClass('outline-amber-400', 'border-rose-400');
+    expect(cards[5]).toHaveClass('outline-amber-400', 'border-slate-950');
+    expect(cards[5]).not.toHaveClass('border-rose-400');
     expect(cards[0]).not.toHaveClass('outline-amber-400');
     expect(cards[5]).toHaveTextContent('P5');
     expect(cards[0]).not.toHaveTextContent('4.');
@@ -2198,7 +2204,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
     const hidden = screen.getByTestId('planning-forward-queue-card-b');
-    expect(hidden).toHaveClass('border-slate-600', 'text-slate-500');
+    expect(hidden).toHaveClass('border-slate-950', 'text-slate-500');
     expect(hidden).not.toHaveTextContent('10/14(水)');
     fireEvent.pointerDown(hidden, { button: 0, pointerId: 1, clientX: 100 });
     fireEvent.pointerMove(hidden, { pointerId: 1, clientX: 400 });
