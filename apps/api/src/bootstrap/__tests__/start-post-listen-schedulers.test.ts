@@ -19,7 +19,6 @@ import {
 } from '../scheduler-errors.js';
 import {
   buildPostListenSchedulerDefinitions,
-  listPostListenSchedulerNames,
   startSchedulerStepGroup,
   stopSchedulerStepGroup,
   type SchedulerStepDefinition,
@@ -97,18 +96,10 @@ describe('start-post-listen-schedulers fail-closed group', () => {
   });
 
   it('includes backup and csv-import in the registered scheduler group', () => {
-    const names = listPostListenSchedulerNames();
-    expect(names).toContain('sessaku-auto-unit-split');
-    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some(step => step.name === 'sessaku-auto-unit-split')).toBe(true);
-    expect(names).toContain('backup');
-    expect(names).toContain('client-network-log-retention');
-    expect(names).toContain('watch-camera-retention');
-    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'watch-camera-retention')).toBe(true);
-    expect(names).toContain('csv-import');
-    expect(names).toContain('security-review-queue');
-    expect(names).toContain('advisory-check');
-    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some(step => step.name === 'advisory-check')).toBe(true);
-    expect(buildPostListenSchedulerDefinitions({} as FastifyInstance).some((step) => step.name === 'security-review-queue')).toBe(true);
+    const names = buildPostListenSchedulerDefinitions({} as FastifyInstance).map(step => step.name);
+    for (const name of ['sessaku-auto-unit-split', 'backup', 'client-network-log-retention', 'watch-camera-retention', 'csv-import', 'security-review-queue', 'advisory-check']) {
+      expect(names).toContain(name);
+    }
   });
 
   it('stops started steps in reverse order', async () => {
@@ -185,39 +176,69 @@ describe('start-post-listen-schedulers fail-closed group', () => {
   });
 });
 
+const CONDITIONAL_SCHEDULER_NAMES = ['hermes-knowledge', 'signage-render', 'part-measurement-drawing-dimension-map'];
+
+const EXPECTED_SCHEDULER_NAMES = [
+  'hermes-knowledge',
+  'signage-render',
+  'part-measurement-drawing-dimension-map',
+  'grinding-planning-board-startup-warmup',
+  'sessaku-auto-unit-split',
+  'procedure-term-learning',
+  'advisory-check',
+  'security-review-queue',
+  'security-review-nightly',
+  'business-hermes-nightly',
+  'fkojunst-mail-superseded-prune',
+  'file-storage-integrity-backfill',
+  'backup',
+  'csv-import',
+  'kiosk-document-gmail',
+  'procedure-video',
+  'kiosk-document-ocr',
+  'work-instruction-gmail',
+  'gmail-trash-cleanup',
+  'due-management-tuning',
+  'alerts-dispatcher',
+  'watch-camera-retention',
+  'client-network-log-retention',
+  'client-heartbeat-monitor',
+  'system-notice-evaluator',
+  'csv-feed-freshness-evaluator',
+  'alerts-ingestor',
+  'photo-tool-label',
+  'procedure-material-image-description',
+  'part-measurement-drawing-ocr',
+];
+
+function definedSchedulerNames(options: { conditionalEnabled: boolean }): string[] {
+  const mutableEnv = env as { SIGNAGE_RENDER_ENABLED: boolean };
+  const originalSignageRenderEnabled = mutableEnv.SIGNAGE_RENDER_ENABLED;
+  const flag = options.conditionalEnabled ? 'true' : 'false';
+  vi.stubEnv('HERMES_KNOWLEDGE_ENABLED', flag);
+  vi.stubEnv('PART_MEASUREMENT_DRAWING_DIMENSION_MAP_ENABLED', flag);
+  mutableEnv.SIGNAGE_RENDER_ENABLED = options.conditionalEnabled;
+  try {
+    return buildPostListenSchedulerDefinitions({} as FastifyInstance).map(step => step.name);
+  } finally {
+    mutableEnv.SIGNAGE_RENDER_ENABLED = originalSignageRenderEnabled;
+    vi.unstubAllEnvs();
+  }
+}
+
 describe('start-post-listen-schedulers naming contract', () => {
   it('keeps a stable ordered membership for Blue/Green stop guarantees', () => {
-    expect(listPostListenSchedulerNames()).toEqual([
-      'hermes-knowledge',
-      'signage-render',
-      'part-measurement-drawing-dimension-map',
-      'grinding-planning-board-startup-warmup',
-      'sessaku-auto-unit-split',
-      'procedure-term-learning',
-      'business-hermes-nightly',
-      'security-review-nightly',
-      'security-review-queue',
-      'advisory-check',
-      'fkojunst-mail-superseded-prune',
-      'file-storage-integrity-backfill',
-      'backup',
-      'csv-import',
-      'kiosk-document-gmail',
-      'procedure-video',
-      'kiosk-document-ocr',
-      'work-instruction-gmail',
-      'gmail-trash-cleanup',
-      'due-management-tuning',
-      'alerts-dispatcher',
-      'watch-camera-retention',
-      'client-network-log-retention',
-      'client-heartbeat-monitor',
-      'system-notice-evaluator',
-      'csv-feed-freshness-evaluator',
-      'alerts-ingestor',
-      'photo-tool-label',
-      'procedure-material-image-description',
-      'part-measurement-drawing-ocr',
-    ]);
+    expect(definedSchedulerNames({ conditionalEnabled: true })).toEqual(EXPECTED_SCHEDULER_NAMES);
+  });
+
+  it('omits only the environment-gated schedulers when their flags are off', () => {
+    expect(definedSchedulerNames({ conditionalEnabled: false })).toEqual(
+      EXPECTED_SCHEDULER_NAMES.filter(name => !CONDITIONAL_SCHEDULER_NAMES.includes(name))
+    );
+  });
+
+  it('registers each scheduler name once', () => {
+    const names = definedSchedulerNames({ conditionalEnabled: true });
+    expect(new Set(names).size).toBe(names.length);
   });
 });
