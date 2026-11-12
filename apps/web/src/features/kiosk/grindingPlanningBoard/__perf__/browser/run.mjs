@@ -169,9 +169,10 @@ try {
         const top = Math.max(rect.top, pane?.top ?? rect.top);
         const bottom = Math.min(rect.bottom, pane?.bottom ?? rect.bottom);
         const x = left + Math.min((right - left) / 2, 15), y = (top + bottom) / 2;
-        return { x, y, hit: right > left && bottom > top && el.contains(document.elementFromPoint(x, y)) };
+        const at = document.elementFromPoint(x, y);
+        return { x, y, hit: right > left && bottom > top && el.contains(at), info: JSON.stringify({ x, y, rect: [rect.left, rect.top, rect.right, rect.bottom], vw: innerWidth, vh: innerHeight, at: at && (at.tagName + ' ' + (at.getAttribute('aria-label') ?? '') + ' ' + String(at.className).slice(0, 120)), el: el.getAttribute('aria-label') }) };
       });
-      assert(position.hit, 'target is covered or outside the viewport');
+      assert(position.hit, 'target is covered or outside the viewport ' + position.info);
       return { x: position.x, y: position.y };
     };
     if (screenshotDir && iteration === 1) {
@@ -342,11 +343,34 @@ try {
     // Clicking a folded bar also opens its chain. Close it outside timed operations.
     const closeChain = button('工程のつながりを閉じる');
     if (await closeChain.count()) { await closeChain.click(); await settle(page); }
+    // The seiban shelf opens by default in place of the legend.
+    const shelf = two.getByTestId('planning-seiban-shelf');
+    assert.equal(await shelf.locator('[aria-label="製番の棚"]').count(), 1, 'shelf should be open by default');
+    // Selecting a bar scrolls the shelf to its column and the columns are windowed, so `.first()`
+    // would chase whichever column is rendered first. Rewind the shelf and pin targets by name.
+    await shelf.locator('[aria-label="製番の棚"]').evaluate(el => { el.scrollLeft = 0; });
+    await settle(page);
+    const headLabel = await shelf.locator('[aria-label="製番の棚"] > div > button').first().getAttribute('aria-label');
+    const shelfHead = shelf.locator('[aria-label="製番の棚"] > div > button').and(shelf.getByRole('button', { name: headLabel, exact: true }));
+    for (const [name, pressed] of [['two_shelf_head_on', 'true'], ['two_shelf_head_off', 'false']]) {
+      await click(name, shelfHead);
+      assert.equal(await shelfHead.getAttribute('aria-pressed'), pressed);
+    }
+    const tileId = await shelf.locator('[data-testid^="planning-shelf-tile-"]').first().getAttribute('data-testid');
+    const shelfTile = shelf.getByTestId(tileId);
+    for (const [name, pressed] of [['two_shelf_tile_on', 'true'], ['two_shelf_tile_off', 'false']]) {
+      await click(name, shelfTile);
+      assert.equal(await shelfTile.getAttribute('aria-pressed'), pressed);
+    }
+    await click('two_shelf_close', shelf.getByRole('button', { name: '製番の棚を畳む', exact: true }));
+    // With the shelf folded, the legend is the same component as before the shelf existed.
     const twoLegend = two.locator(legend).first();
     for (const [name, pressed] of [['two_legend_on', 'true'], ['two_legend_off', 'false']]) {
       await click(name, twoLegend);
       assert.equal(await twoLegend.getAttribute('aria-pressed'), pressed);
     }
+    await click('two_shelf_open', shelf.getByRole('button', { name: '製番の棚を開く', exact: true }));
+    assert.equal(await shelf.locator('[aria-label="製番の棚"]').count(), 1);
     assert.equal(await upperBar.getAttribute('data-drag-disabled'), 'false');
     const twoStart = await point(upperBar);
     await page.mouse.move(twoStart.x, twoStart.y);

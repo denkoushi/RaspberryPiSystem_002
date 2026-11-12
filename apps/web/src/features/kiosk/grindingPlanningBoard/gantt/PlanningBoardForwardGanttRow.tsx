@@ -31,7 +31,7 @@ import type { PointerEvent, ReactNode } from 'react';
 export type ForwardReorder = (item: GrindingPlanningBoardBar, target: GrindingPlanningBoardBar, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 export type ForwardMove = (item: GrindingPlanningBoardItem, resource: string, target: GrindingPlanningBoardItem | null, placement: GrindingPlanningBoardResourceOrderPlacement) => void;
 type Drop = { rowKey?: string; resource: string; bar: GanttBar | null; placement: GrindingPlanningBoardResourceOrderPlacement; left: number };
-export type ForwardDragPreview = { rowKey?: string; source?: 'queue'; bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
+export type ForwardDragPreview = { rowKey?: string; source?: 'queue' | 'shelf'; bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
   foldedWindow?: SingleResourceWindow;

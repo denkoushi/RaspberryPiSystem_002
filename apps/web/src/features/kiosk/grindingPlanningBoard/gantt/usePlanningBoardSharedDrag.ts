@@ -83,6 +83,6 @@ export function usePlanningBoardSharedDrag(sharedDrag: SharedForwardDrag | undef
     setDragPreview: sharedDrag?.setPreview ?? setLocalPreview,
     dragLanes: sharedDrag?.lanes ?? latestDragLanes,
     // Only the pane the bar came from draws the ghost and arrow, so they appear once.
-    ownsDragPreview: !sharedDrag || dragPreview?.bar.resource === resource
+    ownsDragPreview: !sharedDrag || (dragPreview?.source === 'shelf' ? sharedDrag.lanes.current[0]?.resource === resource : dragPreview?.bar.resource === resource)
   };
 }

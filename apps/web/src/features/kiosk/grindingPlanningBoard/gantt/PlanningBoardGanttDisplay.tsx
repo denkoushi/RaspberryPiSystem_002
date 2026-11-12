@@ -11,16 +11,20 @@ import { planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { isNormalGanttBar, planningBoardVisibleBars } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
-import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
+import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { PlanningBoardTwoMachineChainLinks, TwoMachineChainContext, type ChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
+import { usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import type { SharedShelfInteraction, ShelfDropResolver, ShelfPlacementActions, SeibanShelfHandle } from './usePlanningBoardShelfInteraction';
 import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
+
+const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 
 type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
 
@@ -36,6 +40,20 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   }, []);
   const sharedDrag = useMemo<SharedForwardDrag>(() => ({ preview: dragPreview, setPreview: setDragPreview, pointer: dragPointer, subscribe: subscribeDragPreview,
     lanes: dragLanes, registerLanes: registerDragLanes }), [dragPreview, setDragPreview, dragPointer, subscribeDragPreview, registerDragLanes]);
+  const shelfHandle = useRef<SeibanShelfHandle | null>(null);
+  const shelfResolvers = useRef(new Map<string, ShelfDropResolver>());
+  const shelfInteraction = useMemo<SharedShelfInteraction>(() => ({ shelf: shelfHandle, resolvers: shelfResolvers }), []);
+  const getShelfDrop = useCallback<ShelfDropResolver>((...args) => {
+    for (const resolve of shelfResolvers.current.values()) { const drop = resolve(...args); if (drop) return drop; }
+    return null;
+  }, []);
+  const latestProps = useRef(props);
+  useLayoutEffect(() => { latestProps.current = props; });
+  const shelfActions = useMemo<ShelfPlacementActions>(() => ({
+    move: (...args) => latestProps.current.onResourceMove?.(...args),
+    reorder: (...args) => latestProps.current.onResourceReorder?.(...args),
+    canMove: (...args) => latestProps.current.canMoveResource?.(...args) ?? false
+  }), []);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
   const [partKey, setPartKey] = useState<string | null>(null);
   const { view: chainView, changeView } = usePersistedPlanningBoardChainView();
@@ -90,11 +108,12 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
   }, [props.colorBySeiban, props.seibanOrder, paneBars]);
+  const shelfColumns = usePlanningBoardSeibanShelf(props.layout, resourceMinutesItems, resources, props.seibanOrder ?? EMPTY_SEIBAN_ORDER, Boolean(props.colorBySeiban));
   const { focusedSeiban, onFocusedSeibanChange } = props;
   useEffect(() => {
-    if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) onFocusedSeibanChange(null);
-  }, [focusedSeiban, seibanColors, onFocusedSeibanChange]);
-  const focusSeiban = (seiban: string) => {
+    if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !shelfColumns.some(column => column.seiban === focusedSeiban)) onFocusedSeibanChange(null);
+  }, [focusedSeiban, seibanColors, onFocusedSeibanChange, shelfColumns]);
+  const focusSeiban = useCallback((seiban: string) => {
     onFocusedSeibanChange(seiban);
     const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
     paneBars.forEach((bars, index) => {
@@ -102,7 +121,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         (earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
       if (first) handles.current.get(resources[index]!)?.scrollToItem(first.item.itemId);
     });
-  };
+  }, [onFocusedSeibanChange, paneBars, resources]);
   const overlapBars = useMemo(() => resourceLayouts.flatMap((layout) => layout.groups.flatMap((group) =>
     group.rows.filter((row) => row.flagged).flatMap((row) => planningBoardVisibleBars({ ...layout, groups: [{ ...group, rows: [row] }] }).slice(0, 1)))), [resourceLayouts]);
   useLayoutEffect(() => { nextLate.current = 0; nextOverlap.current = 0; }, [props.layout, resources]);
@@ -154,7 +173,7 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         className={`flex min-h-0 overflow-hidden bg-slate-900 ${index ? 'border-t-4 border-slate-500' : ''}`}>
         <button type="button" aria-label={`${resource}の機械を選ぶ`} aria-expanded={picker?.index === index} disabled={props.machineSelectionLocked} onClick={(event) => { const anchor = event.currentTarget; if (!props.machineSelectionLocked) setPicker(current => current?.index === index ? null : { anchor, index }); }} className="flex w-9 shrink-0 items-center gap-1.5 justify-center border-r border-slate-700 bg-[#0a1122] font-mono text-[22px] font-black tracking-[.1em] text-sky-300 [writing-mode:vertical-rl]">{resource}<span className="text-xs text-slate-400">▼</span></button>
         <div className="min-h-0 min-w-0 flex-1">
-          <PlanningBoardGanttView {...props} chainOwner={chainOwner} onClearChain={() => { setChainOwner(null); setPartKey(null); }} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={resourceMinutesItems} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} sharedDrag={sharedDrag}
+          <PlanningBoardGanttView {...props} sharedShelfInteraction={shelfInteraction} chainOwner={chainOwner} onClearChain={() => { setChainOwner(null); setPartKey(null); }} onChainFocus={setChainOwner} sharedChainTop={chainOwner ? chainTops[chainOwner]?.top : null} sharedChainHeight={chainOwner ? chainTops[chainOwner]?.height : 0} onChainTopChange={onChainTopChange} layout={resourceLayouts[index]!} fitPane singleResourceCd={resource} minutesResourceCds={resources} resourceMinutesItems={resourceMinutesItems} valueSheetContainer={valueSheetContainer} sharedSeibanLegend sharedValueSheetOpen={props.valueSheetResource === resources[0]} resourceHeadContainer={index === 0 ? headContainer : undefined} hideResourceHead={index !== 0} sharedDrag={sharedDrag}
             ref={(handle) => { if (handle) handles.current.set(resource, handle); else handles.current.delete(resource); }}
             valueSheetOpen={index === 0 && props.valueSheetResource === resource} onToggleValueSheet={() => props.onToggleValueSheet?.(resource)}
             onNavigateBar={(bar) => {
@@ -176,7 +195,8 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
         setPicker(null);
       }} />}
     <PlanningBoardTwoMachineChainLinks container={container} panes={panes} bars={chainBars} view={effectiveView} />
-    {seibanColors && <PlanningBoardSeibanLegend seibanColors={seibanColors} focusedSeiban={focusedSeiban}
+    {seibanColors && <PlanningBoardSeibanShelf interactionRef={shelfHandle} writePending={props.resourceOrderPending} onDragPreview={setDragPreview} getDrop={getShelfDrop} resources={resources} actions={shelfActions}
+      disabled={props.layout.mode !== 'forward' || props.disabled || props.dragDisabled || props.pieceDisabled || props.pinMode} columns={shelfColumns} highlightedItemId={[...props.selectedItemIds].at(-1) ?? null} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
       onFocusedSeibanChange={onFocusedSeibanChange} onFocusSeiban={focusSeiban} />}
   </div></TwoMachineChainContext.Provider>;
 });

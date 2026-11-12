@@ -14,6 +14,35 @@ import type { ComponentProps } from 'react';
 const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 28080 }] } })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
 
+const shelfRenders = vi.hoisted(() => [] as number[]);
+vi.mock('./PlanningBoardSeibanShelf', async importOriginal => {
+  const actual = await importOriginal<typeof import('./PlanningBoardSeibanShelf')>();
+  const { memo, forwardRef } = await import('react');
+  return { ...actual, PlanningBoardSeibanShelf: memo(forwardRef<HTMLDivElement, ComponentProps<typeof actual.PlanningBoardSeibanShelf>>(function CountedShelf(props, ref) {
+    shelfRenders.push(1);
+    return <actual.PlanningBoardSeibanShelf {...props} ref={ref} />;
+  })) };
+});
+
+const shelfColumnRenders = vi.hoisted(() => [] as string[]);
+vi.mock('./PlanningBoardSeibanShelfColumn', async importOriginal => {
+  const actual = await importOriginal<typeof import('./PlanningBoardSeibanShelfColumn')>();
+  const { memo } = await import('react');
+  return { ...actual, PlanningBoardSeibanShelfColumn: memo(function CountedColumn(props: ComponentProps<typeof actual.PlanningBoardSeibanShelfColumn>) {
+    shelfColumnRenders.push(props.column.seiban);
+    return <actual.PlanningBoardSeibanShelfColumn {...props} />;
+  }) };
+});
+
+const shelfBuilds = vi.hoisted(() => vi.fn());
+vi.mock('./planningBoardSeibanShelfData', async importOriginal => {
+  const actual = await importOriginal<typeof import('./planningBoardSeibanShelfData')>();
+  return { ...actual, buildPlanningBoardSeibanShelf: (...args: Parameters<typeof actual.buildPlanningBoardSeibanShelf>) => {
+    shelfBuilds(args[2]);
+    return actual.buildPlanningBoardSeibanShelf(...args);
+  } };
+});
+
 const renders = vi.hoisted(() => [] as string[]);
 vi.mock('./PlanningBoardForwardGanttRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./PlanningBoardForwardGanttRow')>();
@@ -233,4 +262,124 @@ it('batches move previews and publishes only a changed insertion target, cancell
   act(() => { setPreview(preview); setPreview(null); });
   await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
   expect(hook.result.current[0]).toBeNull();
+});
+
+
+it.each([false, true])('keeps Gantt rows memoized when shelf tiles, filters, and clear selection change (pair=%s)', pair => {
+  localStorage.clear();
+  const items = [item('a', '305'), item('b', '306')];
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const toggle = vi.fn();
+  render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
+    capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={toggle} onDueDrop={vi.fn()}
+    disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
+    colorBySeiban singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']} unitSplitEnabledByResource={{ '305': true, '306': true }} />);
+  renders.length = 0;
+  fireEvent.click(screen.getByTestId('planning-shelf-tile-a'));
+  expect(screen.getByText('1件')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '残り', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'すべて', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '選択を外す' }));
+  expect(renders).toEqual([]);
+  expect(toggle).not.toHaveBeenCalled();
+});
+
+it.each([false, true])('does not render the shelf when drag previews change (pair=%s)', async pair => {
+  localStorage.clear();
+  class TestPointerEvent extends MouseEvent { readonly pointerId = 1; }
+  vi.stubGlobal('PointerEvent', TestPointerEvent);
+  const original = Object.getOwnPropertyDescriptor(document, 'elementsFromPoint');
+  let hit: Element[] = [];
+  Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => hit });
+  try {
+    const items = [item('a', '305'), item('b', '306')];
+    const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+      dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+    render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
+      capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()}
+      disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
+      colorBySeiban canMoveResource={() => true} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']}
+      unitSplitEnabledByResource={{ '305': true, '306': true }} />);
+    const source = screen.getByTestId('planning-gantt-bar-a');
+    hit = [pair ? screen.getByTestId('planning-gantt-bar-b') : source];
+    shelfRenders.length = 0;
+    shelfColumnRenders.length = 0;
+    shelfBuilds.mockClear();
+    fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 10 });
+    fireEvent.pointerMove(source, { clientX: 120, clientY: 30 });
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+    expect(shelfRenders).toEqual([]);
+    expect(shelfColumnRenders).toEqual([]);
+    expect(shelfBuilds).not.toHaveBeenCalled();
+    hit = [source];
+    for (let i = 0; i < 20; i++) fireEvent.pointerMove(source, { clientX: 121 + i, clientY: 31 + i });
+    await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+    expect(shelfRenders).toEqual([]);
+    expect(shelfColumnRenders).toEqual([]);
+    expect(shelfBuilds).not.toHaveBeenCalled();
+    fireEvent.pointerCancel(source);
+    expect(shelfRenders).toEqual([]);
+    expect(shelfColumnRenders).toEqual([]);
+    expect(shelfBuilds).not.toHaveBeenCalled();
+  } finally {
+    if (original) Object.defineProperty(document, 'elementsFromPoint', original); else Reflect.deleteProperty(document, 'elementsFromPoint');
+    vi.unstubAllGlobals();
+  }
+});
+
+it.each([false, true])('rerenders only the affected shelf columns for Gantt bar selection (pair=%s)', pair => {
+  localStorage.clear();
+  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }, { ...item('c', '305'), fseiban: '26-1003' }];
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const props = { layout, resourceMinutesItems: items, scale: 2, dailyHoursByResource: {}, resourceNameMap: {},
+    capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(),
+    disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true,
+    singleResourceCd: pair ? '305+306' : '305', resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true } };
+  const draw = (ids: string[]) => <PlanningBoardGanttDisplay {...props} selectedItemIds={new Set(ids)} />;
+  const { rerender } = render(draw([]));
+  shelfColumnRenders.length = 0;
+  shelfBuilds.mockClear();
+  rerender(draw(['a']));
+  expect(shelfColumnRenders).toEqual(['26-1001']);
+  expect(screen.getByTestId('planning-shelf-tile-a')).toHaveAttribute('data-highlighted');
+  expect(shelfBuilds).not.toHaveBeenCalled();
+  shelfColumnRenders.length = 0;
+  rerender(draw(['a', 'b']));
+  expect(shelfColumnRenders).toEqual(['26-1001', '26-1002']);
+  expect(screen.getByTestId('planning-shelf-tile-b')).toHaveAttribute('data-highlighted');
+  expect(screen.getByTestId('planning-shelf-tile-a')).not.toHaveAttribute('data-highlighted');
+  shelfColumnRenders.length = 0;
+  rerender(draw(['a', 'b', 'outside']));
+  expect(shelfColumnRenders).toEqual(['26-1002']);
+  shelfColumnRenders.length = 0;
+  rerender(draw(['a', 'b', 'another-outside']));
+  expect(shelfColumnRenders).toEqual([]);
+  expect(shelfBuilds).not.toHaveBeenCalled();
+});
+
+it('builds one shelf projection per machine mode, without building unused pane shelves', () => {
+  localStorage.clear();
+  const items = [item('a', '305'), item('b', '306')];
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
+  const props = { layout, resourceMinutesItems: items, scale: 2, dailyHoursByResource: {}, resourceNameMap: {},
+    capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(),
+    disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(),
+    resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true }, selectedItemIds: new Set<string>() };
+  const draw = (singleResourceCd: string, colorBySeiban: boolean | undefined = true) => <PlanningBoardGanttDisplay {...props}
+    singleResourceCd={singleResourceCd} colorBySeiban={colorBySeiban} />;
+  shelfBuilds.mockClear();
+  const { rerender } = render(draw('305'));
+  expect(shelfBuilds.mock.calls).toEqual([[['305']]]);
+  shelfBuilds.mockClear();
+  rerender(draw('305+306'));
+  expect(shelfBuilds.mock.calls).toEqual([[['305', '306']]]);
+  shelfBuilds.mockClear();
+  rerender(draw('305'));
+  expect(shelfBuilds.mock.calls).toEqual([[['305']]]);
+  shelfBuilds.mockClear();
+  rerender(<PlanningBoardGanttDisplay {...props} singleResourceCd="305+306" />);
+  expect(shelfBuilds).not.toHaveBeenCalled();
 });

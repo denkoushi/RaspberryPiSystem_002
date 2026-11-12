@@ -1,0 +1,473 @@
+<title>製番ボード 振り分けモック</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* 1920×1080 の暗いキオスク画面を、表示幅に合わせて縮めて見せる。配色は製番ボードの slate 地と製番色に合わせる */
+:root{
+  --bg:#020617; --panel:#0f172a; --panel2:#1e293b; --line:#334155; --line2:#475569;
+  --fg:#e2e8f0; --mute:#94a3b8; --dim:#64748b; --em:#34d399; --sky:#38bdf8; --rose:#fb7185; --amber:#fbbf24; --now:#facc15;
+  --sans:"Hiragino Sans","Noto Sans JP",system-ui,sans-serif; --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:12px}
+.switch{display:flex;gap:0;margin:0 0 10px;border:1px solid var(--line2);border-radius:8px;overflow:hidden;width:max-content;max-width:100%}
+.switch button{background:none;border:0;color:var(--mute);font:700 14px var(--sans);padding:8px 16px;cursor:pointer}
+.switch button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+#fit{position:relative;width:100%;overflow:hidden;border:1px solid var(--line)}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;background:var(--bg);overflow:hidden;user-select:none;-webkit-user-select:none;font-size:14px}
+button{font-family:var(--sans);cursor:pointer}
+button:focus-visible{outline:2px solid #fff;outline-offset:1px}
+
+/* ツールバー(既存の1段) */
+.tb{height:66px;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel);white-space:nowrap}
+.b{height:46px;padding:0 14px;border-radius:8px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-weight:700;font-size:16px;display:inline-flex;align-items:center;gap:6px}
+.b.on{background:var(--em);border-color:var(--em);color:#022c22}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden;height:46px}
+.seg>span{padding:0 12px;display:flex;align-items:center;font-weight:700;font-size:15px;color:var(--mute)}
+.seg>span.on{background:var(--fg);color:var(--bg)}
+.gbox{display:flex;align-items:center;gap:6px;border:2px solid #0ea5e9;border-radius:10px;padding:3px 5px}
+.badge{background:var(--em);color:#022c22;border-radius:999px;font:700 13px var(--mono);padding:1px 7px}
+.late{color:var(--rose);font-weight:800;font-size:16px}
+.sp{flex:1}
+
+/* 1台表示の2行目 */
+.hd{height:40px;display:flex;align-items:center;gap:8px;padding:0 8px;border-bottom:1px solid var(--line);background:var(--bg);white-space:nowrap}
+.hb{height:32px;padding:0 10px;border-radius:6px;border:1px solid var(--line2);background:none;color:var(--fg);font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:6px}
+.hb.on{background:var(--fg);color:var(--bg)}
+.hb.amb{border-color:#f59e0b;color:#fcd34d}
+
+/* ガント */
+.pane-h{height:26px;display:flex;align-items:center;gap:10px;padding:0 8px;background:var(--panel);border-bottom:1px solid var(--line)}
+.pane-h b{font:800 17px var(--mono)}
+.pane-h .sum{color:var(--mute);font:700 13px var(--mono)}
+.later{margin-left:auto;height:22px;padding:0 10px;border-radius:5px;border:1px solid var(--line2);background:var(--panel2);color:var(--fg);font-weight:700;font-size:12px}
+.row{display:flex;height:76px;border-bottom:1px solid var(--line2)}
+.lab{width:120px;flex:none;display:flex;flex-direction:column;justify-content:center;gap:2px;padding-left:10px;border-right:1px solid var(--line);background:var(--panel)}
+.lab b{font:800 19px var(--mono)}
+.lab b.today{background:var(--em);color:var(--bg);border-radius:4px;padding:0 4px;width:max-content}
+.lab span{font:700 13px var(--mono);color:var(--mute)}
+.trk{position:relative;flex:1;overflow:hidden}
+.tick{position:absolute;top:0;bottom:0;border-left:1px solid rgba(51,65,85,.6);pointer-events:none}
+.tick i{white-space:nowrap;position:absolute;left:4px;top:2px;font:700 12px var(--sans);font-style:normal;color:var(--mute)}
+.nowl{position:absolute;top:0;bottom:0;border-left:2px solid var(--now);z-index:3;pointer-events:none}
+.bar{position:absolute;top:4px;height:66px;border-radius:4px;color:#020617;font-size:11px;font-weight:700;line-height:14px;padding:3px 6px;overflow:hidden;touch-action:none;cursor:grab;box-sizing:border-box;z-index:2}
+.bar.pc{clip-path:polygon(0 0,100% 0,100% 40%,calc(100% - 5px) 50%,100% 60%,100% 100%,0 100%,0 60%,5px 50%,0 40%)}
+.bar.s0{border-bottom:3px solid rgba(2,6,23,.55)}
+.bar.sx{border-radius:0;border-left:1px solid rgba(2,6,23,.6)}
+.bar small{display:block;font-weight:400;font-size:11px;white-space:nowrap}
+.bar .nm{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar.hl{box-shadow:inset 0 0 0 3px #fff}
+.bar.dim{opacity:.22}
+.bar.lt{outline:2px solid var(--rose);outline-offset:-2px}
+.bar.moving{opacity:.25}
+.ins{position:absolute;top:0;bottom:0;width:4px;margin-left:-2px;background:var(--em);border-radius:2px;z-index:5;pointer-events:none;box-shadow:0 0 0 2px rgba(2,6,23,.8)}
+.row.target .trk{background:rgba(52,211,153,.06)}
+
+/* 製番の棚 */
+.tray{position:absolute;left:0;right:0;bottom:0;border-top:2px solid var(--line2);background:var(--panel);display:flex;flex-direction:column}
+.tray-h{height:40px;flex:none;display:flex;align-items:center;gap:10px;padding:0 10px;border-bottom:1px solid var(--line)}
+.selc{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 4px 0 12px;border-radius:999px;background:#fff;color:var(--bg);font-weight:800;font-size:15px}
+.selc button{border:0;background:var(--bg);color:#fff;border-radius:999px;width:24px;height:24px;font-weight:800}
+.cols{flex:1;display:flex;gap:8px;padding:8px;overflow-x:auto;overflow-y:hidden;min-height:0}
+.col{width:224px;flex:none;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-height:0}
+.col.dim{opacity:.35}
+.ch{flex:none;display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;column-gap:6px;padding:6px 8px;border-radius:7px 7px 0 0;color:#020617;cursor:pointer;border:0;text-align:left}
+.ch b{font:800 18px var(--mono)}
+.ch .ct{font:800 14px var(--mono);align-self:center}
+.ch .md{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch .du{font:700 12px var(--mono);text-align:right}
+.ch .du.lt{background:var(--rose);color:#fff;border-radius:3px;padding:0 3px}
+.ch.focus{box-shadow:inset 0 0 0 3px #fff}
+.parts{flex:1;overflow-y:auto;padding:4px 6px 8px;display:flex;flex-direction:column;gap:6px;min-height:0}
+.part{display:flex;flex-direction:column;gap:3px}
+.pn{display:flex;align-items:baseline;gap:6px;background:none;border:0;color:var(--fg);padding:2px 0;text-align:left}
+.pn b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:112px}
+.pn span{font:12px var(--mono);color:var(--mute)}
+.pn em{font:700 12px var(--mono);color:var(--mute);font-style:normal;margin-left:auto}
+.tiles{display:flex;flex-wrap:wrap;gap:4px}
+.tg{display:flex;gap:1px}
+.tile{width:44px;height:36px;border-radius:5px;box-sizing:border-box;display:grid;place-items:center;font:800 12px var(--mono);touch-action:none;cursor:grab;position:relative}
+.tg .tile{width:30px}
+.tg .tile:not(:first-child){border-top-left-radius:0;border-bottom-left-radius:0}
+.tg .tile:not(:last-child){border-top-right-radius:0;border-bottom-right-radius:0}
+.tile.out{background:transparent;border:2px dashed var(--c);color:var(--c)}
+.tile.in{background:var(--c);color:#020617}
+.tile.sel{box-shadow:0 0 0 3px #fff;z-index:1}
+.tile.hl::after{content:"";position:absolute;inset:-5px;border:2px solid #fff;border-radius:7px;pointer-events:none}
+.tile.lt{color:var(--rose)}
+.tile.in.lt{background:var(--rose);color:#fff}
+.tile.moving{opacity:.3}
+
+/* 案B: 振り分け盤 */
+.bwrap{position:absolute;left:0;right:0;top:66px;bottom:0;display:flex}
+.bwrap .tray{position:static;flex:1;border-top:0;border-right:2px solid var(--line2)}
+.bwrap .cols{flex-wrap:wrap;overflow-y:auto;align-content:flex-start}
+.bwrap .col{width:262px;max-height:440px}
+.bwrap .tile{width:52px;height:40px}
+.bwrap .tg .tile{width:36px}
+.qs{display:flex;gap:8px;padding:8px;width:760px;flex:none}
+.q{flex:1;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-height:0}
+.q.target{border-color:var(--em)}
+.qh{flex:none;height:44px;display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--panel2);border-radius:8px 8px 0 0}
+.qh b{font:800 22px var(--mono)}
+.qh span{font:700 14px var(--mono);color:var(--mute)}
+.ql{flex:1;overflow-y:auto;padding:4px 6px 40px;position:relative;min-height:0}
+.qd{height:26px;display:flex;align-items:center;font:800 14px var(--mono);color:var(--mute);border-bottom:1px solid var(--line);margin-top:4px}
+.qd.over{color:var(--rose)}
+.qi{height:44px;display:grid;grid-template-columns:52px 1fr auto;align-items:center;gap:8px;padding:0 4px;border-bottom:1px solid rgba(51,65,85,.6);touch-action:none;cursor:grab;position:relative}
+.qi .t{font:700 14px var(--mono);color:var(--mute)}
+.qi .c{height:34px;border-radius:4px;color:#020617;padding:2px 8px;display:flex;flex-direction:column;justify-content:center;overflow:hidden;font-size:13px;font-weight:800;line-height:15px}
+.qi .c small{font:400 11px var(--mono)}
+.qi .m{font:700 13px var(--mono);color:var(--fg)}
+.qi.hl .c{box-shadow:inset 0 0 0 3px #fff}
+.qi.lt .t{color:var(--rose)}
+.qi.moving{opacity:.25}
+.qins{position:absolute;left:4px;right:4px;height:4px;margin-top:-2px;background:var(--em);border-radius:2px;pointer-events:none;z-index:5}
+
+.ghost{position:absolute;z-index:50;pointer-events:none;display:flex;gap:2px;padding:4px;border-radius:6px;background:rgba(2,6,23,.85);border:2px solid #fff;transform:translate(-50%,-120%)}
+.ghost i{width:16px;height:22px;border-radius:3px}
+.ghost b{color:#fff;font:800 15px var(--mono);padding:0 4px;align-self:center}
+@media (prefers-reduced-motion:no-preference){.tile,.bar,.qi{transition:opacity .12s}}
+</style>
+
+<div class="switch" role="group" aria-label="案">
+  <button type="button" id="vA" aria-pressed="true">案A 棚付きガント</button>
+  <button type="button" id="vB" aria-pressed="false">案B 振り分け盤</button>
+</div>
+<div id="fit"><div id="stage"></div></div>
+
+<script>
+(() => {
+const NOW = 140;           // 今日 10:20 (稼働 8:00–17:00 を 480分 とする)
+const DAYMIN = 480, SHOWDAYS = 3, PPM = 1800 / DAYMIN;
+const DAYS = ['11/12','11/13','11/16','11/17','11/18','11/19','11/20','11/24'];
+const WD = ['木','金','月','火','水','木','金','火'];
+const MACHINES = ['021','022'];
+const SEIBAN = [
+  {id:'26-1041', model:'MX-520', due:1, c:'#38bdf8'},
+  {id:'26-1042', model:'自動組立機 AX-200', due:3, c:'#fbbf24'},
+  {id:'26-1043', model:'搬送装置 CV-80', due:1, c:'#a78bfa'},
+  {id:'26-1044', model:'MX-520', due:4, c:'#4ade80'},
+  {id:'26-1047', model:'検査装置 IX-30', due:0, c:'#f472b6'},
+  {id:'26-1048', model:'MX-610', due:5, c:'#fb923c'},
+  {id:'26-1050', model:'自動組立機 AX-210', due:4, c:'#5eead4'},
+  {id:'26-1051', model:'搬送装置 CV-120', due:6, c:'#bef264'},
+];
+// [製番, 品番, 品名, 数量, 1台の分, 工程分け(分), 今の資源]
+const PARTS = [
+  [0,'MD00412163','フランジ',4,35,null,'503'],
+  [0,'MD00412170','シャフト',3,50,[30,20],'未設定'],
+  [1,'K0381','ブラケット',6,22,null,'584'],
+  [1,'K0390','ベースプレート',2,75,null,'503'],
+  [2,'FH0012','ハウジング',3,60,[40,20],'未設定'],
+  [2,'FH0015','カバー',4,18,null,'584'],
+  [3,'MD00412163','フランジ',2,35,null,'503'],
+  [3,'MH0021','ギアボックス',2,90,null,'未設定'],
+  [4,'P10233','スリーブ',5,20,null,'584'],
+  [5,'MH0044','アーム',3,45,null,'503'],
+  [5,'MH0045','アーム受け',3,30,null,'未設定'],
+  [6,'K0412','ローラー軸',4,28,null,'584'],
+  [7,'FH0101','ノズルブロック',2,55,null,'503'],
+  [7,'FH0102','ジョイント',6,15,null,'未設定'],
+];
+const P = {}; const ORDER = [];
+PARTS.forEach(([si,hin,name,qty,min,ops,res], pi) => {
+  for (let u = 1; u <= qty; u++) {
+    const secs = ops ? ops.map((m, s) => ({s, n: ops.length, m})) : [{s:0, n:1, m:min}];
+    secs.forEach(({s,n,m}) => {
+      const id = n > 1 ? `${pi}-${u}-${s}` : `${pi}-${u}`;
+      P[id] = {id, pi, si, hin, name, qty, u, s, n, min:m, res};
+      ORDER.push(id);
+    });
+  }
+});
+let Q = {
+  '021': ['2-1','2-2','2-3','4-1-0','4-1-1','0-1','0-2','5-1','5-2','1-1-0','1-1-1','6-1','6-2','7-1','10-1','10-2','4-2-0','4-2-1'],
+  '022': ['3-1','9-1','9-2','9-3','0-3','12-1','8-1','8-2','8-3','11-1','11-2','13-1','13-2','13-3','3-2','7-2'],
+};
+for (const m of MACHINES) for (const id of Q[m]) P[id].res = m;
+
+const st = { view:'A', sel:new Set(), hl:null, focus:null, filter:'all', undo:[] };
+const stage = document.getElementById('stage');
+const fit = document.getElementById('fit');
+let scale = 1;
+function fitStage(){ scale = Math.min(fit.clientWidth / 1920, 1); stage.style.transform = `scale(${scale})`; fit.style.height = (1080 * scale) + 'px'; }
+new ResizeObserver(fitStage).observe(fit);
+
+const color = p => SEIBAN[p.si].c;
+const secColor = p => p.s === 0 ? color(p) : `color-mix(in srgb, ${color(p)}, #fff ${Math.min(p.s*22,66)}%)`;
+const hm = t => { const m = Math.round(t % DAYMIN) + 480; return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; };
+const dayOf = t => Math.floor(t / DAYMIN);
+function schedule(list){ let t = NOW; return list.map(id => { const s = t; t += P[id].min; return {id, s, e:t}; }); }
+const SCHED = {};
+function recompute(){ for (const m of MACHINES) SCHED[m] = schedule(Q[m]); }
+function lateIds(){ const set = new Set(); for (const m of MACHINES) for (const b of SCHED[m]) if (dayOf(b.e - 0.001) > SEIBAN[P[b.id].si].due) set.add(b.id); return set; }
+function snapshot(){ st.undo.push({Q: JSON.parse(JSON.stringify(Q)), res: Object.fromEntries(ORDER.map(id => [id, P[id].res]))}); if (st.undo.length > 30) st.undo.shift(); }
+function undo(){ const s = st.undo.pop(); if (!s) return; Q = s.Q; for (const id of ORDER) P[id].res = s.res[id]; render(); }
+
+function moveTo(ids, m, idx){
+  snapshot();
+  const moving = new Set(ids);
+  for (const k of MACHINES) Q[k] = Q[k].filter(id => !moving.has(id));
+  const ordered = ORDER.filter(id => moving.has(id));
+  Q[m].splice(Math.min(idx, Q[m].length), 0, ...ordered);
+  for (const id of ordered) P[id].res = m;
+  st.sel.clear(); st.hl = ordered[0] ?? null;
+  render();
+}
+
+/* ---------- 描画 ---------- */
+function toolbar(){
+  const late = lateIds().size;
+  const gantt = st.view === 'A';
+  return `<div class="tb">
+    <button class="b" type="button">製番 <span class="badge">${SEIBAN.length}</span></button>
+    <button class="b" type="button">一般・D社 ▾</button>
+    <button class="b" type="button">切削・研削 ▾</button>
+    <button class="b" type="button">着</button>
+    <div class="seg"><span>製番</span><span class="on">資源CD</span></div>
+    <div class="gbox">
+      <button class="b ${gantt?'on':''}" type="button" data-act="gantt">ガント</button>
+      ${gantt ? `<span style="color:var(--mute);font-weight:700">並べ方</span><div class="seg"><span class="on">今日から</span><span>納期から</span></div>
+      <div class="seg"><span>1日</span><span>2日</span><span class="on">4日</span><span>⋯</span></div>
+      <button class="b" type="button">021・022 ✕</button>` : ''}
+    </div>
+    <button class="b" type="button">SCAW</button>
+    <span class="late">${late ? `遅れ ${late}` : '遅れなし'}</span>
+    <button class="b" type="button" data-act="undo" ${st.undo.length?'':'disabled style="opacity:.4"'}>↶ 戻す</button>
+    <span class="sp"></span>
+    <div class="seg"><span class="on">未完</span><span>両方</span><span>完了</span></div>
+    <button class="b" type="button">朝まで</button><button class="b" type="button">今日中</button>
+    <button class="b" type="button" style="background:#059669;border-color:#059669">一括変更</button>
+  </div>`;
+}
+
+function head(){
+  return `<div class="hd">
+    <button class="hb" type="button"><b style="font-family:var(--mono);font-size:17px">021・022</b> 2台 ▾</button>
+    <span style="display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden"><button class="hb" style="border:0;border-radius:0" type="button">1台</button><button class="hb on" style="border:0;border-radius:0" type="button">2台</button></span>
+    <button class="hb" type="button">8h</button><button class="hb on" type="button">休憩</button>
+    <button class="hb on" type="button">1台ずつ</button>
+    <span class="sp" style="flex:1"></span>
+    <button class="hb on" type="button">元の値</button><button class="hb" type="button">独自の値</button>
+    <button class="hb amb" type="button">品番の値 6 ▲</button>
+  </div>`;
+}
+
+function barLabel(p){
+  if (p.s > 0) return `<span class="nm">${p.s+1}工程</span><small>${p.min}分</small>`;
+  return `<span class="nm">${p.name}</span><small>${p.hin}</small><small>${p.u}／${p.qty}${p.n>1?` · 1工程`:''} · ${p.min}分</small>`;
+}
+
+function pane(m, late){
+  const sched = SCHED[m];
+  const later = sched.filter(b => b.s >= SHOWDAYS * DAYMIN).length;
+  const total = sched.reduce((a,b) => a + P[b.id].min, 0);
+  let rows = '';
+  for (let d = 0; d < SHOWDAYS; d++) {
+    let ticks = '';
+    for (let h = 0; h < 9; h++) ticks += `<span class="tick" style="left:${h*60*PPM}px">${`<i>${8+h}時</i>`}</span>`;
+    let bars = '';
+    for (const b of sched) {
+      const p = P[b.id];
+      const s = Math.max(b.s, d*DAYMIN), e = Math.min(b.e, (d+1)*DAYMIN);
+      if (e <= s) continue;
+      const cont = s > b.s;
+      const cls = ['bar', p.n === 1 ? 'pc' : (p.s === 0 ? 's0' : 'sx'),
+        st.hl === b.id ? 'hl' : '', st.focus != null && st.focus !== p.si ? 'dim' : '', late.has(b.id) ? 'lt' : ''].join(' ');
+      bars += `<div class="${cls}" data-bar="${b.id}" style="left:${(s - d*DAYMIN)*PPM}px;width:${(e-s)*PPM - 1}px;background:${secColor(p)}">${cont ? '<span class="nm">続き</span>' : barLabel(p)}</div>`;
+    }
+    const now = d === 0 ? `<span class="nowl" style="left:${NOW*PPM}px"></span>` : '';
+    rows += `<div class="row" data-row="${m}" data-day="${d}"><div class="lab"><b class="${d===0?'today':''}">${DAYS[d]}</b><span>${WD[d]} 8–17時</span></div><div class="trk">${ticks}${now}${bars}</div></div>`;
+  }
+  return `<div class="pane-h"><b>${m}</b><span class="sum">${sched.length}件 ${(total/60).toFixed(1)}h</span>${later ? `<button class="later" type="button">${m} の先の待ち ${later}</button>` : ''}</div>${rows}`;
+}
+
+function trayHTML(late){
+  const placed = new Set([...Q['021'], ...Q['022']]);
+  const cols = SEIBAN.map((s, si) => {
+    const parts = PARTS.map((p, pi) => [p, pi]).filter(([p]) => p[0] === si);
+    const ids = ORDER.filter(id => P[id].si === si);
+    const done = ids.filter(id => placed.has(id)).length;
+    if (st.filter === 'rest' && done === ids.length) return '';
+    const anyLate = ids.some(id => late.has(id));
+    const partHTML = parts.map(([p, pi]) => {
+      const pids = ORDER.filter(id => P[id].pi === pi);
+      if (st.filter === 'rest' && pids.every(id => placed.has(id))) return '';
+      let tiles = '';
+      for (let u = 1; u <= p[3]; u++) {
+        const uids = pids.filter(id => P[id].u === u);
+        if (st.filter === 'rest' && uids.every(id => placed.has(id))) continue;
+        const t = uids.map(id => {
+          const q = P[id], inn = placed.has(id);
+          const c = q.s === 0 ? s.c : `color-mix(in srgb, ${s.c}, #fff ${Math.min(q.s*22,66)}%)`;
+          const lab = inn ? q.res : (q.res === '未設定' ? '—' : q.res);
+          return `<div class="tile ${inn?'in':'out'} ${st.sel.has(id)?'sel':''} ${st.hl===id?'hl':''} ${late.has(id)?'lt':''}" data-tile="${id}" style="--c:${c}">${lab}</div>`;
+        }).join('');
+        tiles += uids.length > 1 ? `<div class="tg">${t}</div>` : t;
+      }
+      return `<div class="part"><button class="pn" type="button" data-part="${pi}"><b>${p[2]}</b><span>${p[1]}</span><em>×${p[3]}</em></button><div class="tiles">${tiles}</div></div>`;
+    }).join('');
+    return `<div class="col ${st.focus!=null && st.focus!==si?'dim':''}" data-col="${si}">
+      <button class="ch ${st.focus===si?'focus':''}" type="button" data-seiban="${si}" style="background:${s.c}">
+        <b>${s.id}</b><span class="ct">${done}/${ids.length}</span>
+        <span class="md">${s.model}</span><span class="du ${anyLate?'lt':''}">${DAYS[s.due]}</span>
+      </button>
+      <div class="parts">${partHTML}</div></div>`;
+  }).join('');
+  return `<div class="tray-h">
+      <div class="seg" style="height:30px"><span data-filter="all" class="${st.filter==='all'?'on':''}" style="cursor:pointer">すべて</span><span data-filter="rest" class="${st.filter==='rest'?'on':''}" style="cursor:pointer">残り</span></div>
+      ${st.sel.size ? `<span class="selc">${st.sel.size}件<button type="button" data-act="clear" aria-label="選択を外す">✕</button></span>` : ''}
+    </div><div class="cols">${cols}</div>`;
+}
+
+function queueHTML(m, late){
+  const sched = SCHED[m];
+  const total = sched.reduce((a,b) => a + P[b.id].min, 0);
+  let html = '', day = -1;
+  for (const b of sched) {
+    const d = dayOf(b.s);
+    if (d !== day) { day = d; html += `<div class="qd ${d>=SHOWDAYS?'over':''}">${DAYS[d] ?? '—'}(${WD[d] ?? ''})</div>`; }
+    const p = P[b.id];
+    html += `<div class="qi ${st.hl===b.id?'hl':''} ${late.has(b.id)?'lt':''}" data-qitem="${b.id}" data-q="${m}">
+      <span class="t">${hm(b.s)}</span>
+      <span class="c" style="background:${secColor(p)};${st.focus!=null&&st.focus!==p.si?'opacity:.22':''}">${p.s>0?`${p.name} ${p.s+1}工程`:p.name}<small>${SEIBAN[p.si].id} · ${p.hin} · ${p.u}／${p.qty}</small></span>
+      <span class="m">${p.min}分</span></div>`;
+  }
+  return `<div class="q" data-qbox="${m}"><div class="qh"><b>${m}</b><span>${sched.length}件 ${(total/60).toFixed(1)}h</span></div><div class="ql" data-qlist="${m}">${html}</div></div>`;
+}
+
+function render(){
+  recompute();
+  const late = lateIds();
+  const keep = [...stage.querySelectorAll('.cols, .parts, .ql')].map(el => [el.className + (el.dataset.qlist||''), el.scrollLeft, el.scrollTop]);
+  if (st.view === 'A') {
+    stage.innerHTML = toolbar() + head() + `<div id="gantt">${pane('021', late)}${pane('022', late)}</div>` + `<div class="tray" style="top:${66+40+2*(26+3*77)}px">${trayHTML(late)}</div>`;
+  } else {
+    stage.innerHTML = toolbar() + `<div class="bwrap"><div class="tray">${trayHTML(late)}</div><div class="qs">${queueHTML('021', late)}${queueHTML('022', late)}</div></div>`;
+  }
+  const now = [...stage.querySelectorAll('.cols, .parts, .ql')];
+  now.forEach((el, i) => { const k = keep[i]; if (k && k[0] === el.className + (el.dataset.qlist||'')) { el.scrollLeft = k[1]; el.scrollTop = k[2]; } });
+}
+
+/* ---------- 置き先の計算 ---------- */
+function local(ev){ const r = stage.getBoundingClientRect(); return {x:(ev.clientX - r.left)/scale, y:(ev.clientY - r.top)/scale}; }
+function targetAt(ev, moving){
+  const el = document.elementFromPoint(ev.clientX, ev.clientY);
+  if (!el) return null;
+  const row = el.closest('[data-row]');
+  if (row) {
+    const m = row.dataset.row, d = +row.dataset.day;
+    const trk = row.querySelector('.trk').getBoundingClientRect();
+    const t = d*DAYMIN + Math.max(0, (ev.clientX - trk.left)/scale) / PPM;
+    const list = Q[m].filter(id => !moving.has(id));
+    const sc = schedule(list);
+    let idx = sc.findIndex(b => (b.s + b.e)/2 > t); if (idx < 0) idx = list.length;
+    const at = idx < sc.length ? sc[idx].s : (sc.length ? sc[sc.length-1].e : NOW);
+    return {m, idx, at};
+  }
+  const ql = el.closest('[data-qbox]');
+  if (ql) {
+    const m = ql.dataset.qbox;
+    const items = [...ql.querySelectorAll('[data-qitem]')].filter(it => !moving.has(it.dataset.qitem));
+    let idx = items.findIndex(it => { const r = it.getBoundingClientRect(); return ev.clientY < r.top + r.height/2; });
+    if (idx < 0) idx = items.length;
+    return {m, idx, el: items[idx] ?? null, list: ql.querySelector('.ql')};
+  }
+  return null;
+}
+function drawMarker(tg){
+  stage.querySelectorAll('.ins, .qins').forEach(e => e.remove());
+  stage.querySelectorAll('.row.target').forEach(e => e.classList.remove('target'));
+  stage.querySelectorAll('.q.target').forEach(e => e.classList.remove('target'));
+  if (!tg) return;
+  if (st.view === 'A') {
+    const d = Math.min(dayOf(tg.at), SHOWDAYS - 1);
+    const row = stage.querySelector(`[data-row="${tg.m}"][data-day="${d}"]`);
+    if (!row) return;
+    row.classList.add('target');
+    const x = tg.at >= SHOWDAYS*DAYMIN ? 1800 - 2 : (tg.at - d*DAYMIN) * PPM;
+    row.querySelector('.trk').insertAdjacentHTML('beforeend', `<span class="ins" style="left:${x}px"></span>`);
+  } else {
+    stage.querySelector(`[data-qbox="${tg.m}"]`).classList.add('target');
+    const list = tg.list; const lr = list.getBoundingClientRect();
+    let y;
+    if (tg.el) y = (tg.el.getBoundingClientRect().top - lr.top)/scale + list.scrollTop;
+    else { const all = [...list.querySelectorAll('[data-qitem]:not(.moving)')]; const last = all[all.length-1]; y = last ? (last.getBoundingClientRect().bottom - lr.top)/scale + list.scrollTop : 30; }
+    list.insertAdjacentHTML('beforeend', `<span class="qins" style="top:${y}px"></span>`);
+  }
+}
+
+/* ---------- 押す・引っぱる ---------- */
+let drag = null;
+stage.addEventListener('pointerdown', ev => {
+  const tile = ev.target.closest('[data-tile]'), bar = ev.target.closest('[data-bar]'), qi = ev.target.closest('[data-qitem]');
+  const src = tile?.dataset.tile ?? bar?.dataset.bar ?? qi?.dataset.qitem;
+  if (!src) return;
+  const ids = tile && st.sel.has(src) ? [...st.sel] : [src];
+  drag = {src, kind: tile ? 'tile' : 'bar', ids, x:ev.clientX, y:ev.clientY, active:false, ghost:null, tg:null, pid:ev.pointerId};
+});
+window.addEventListener('pointermove', ev => {
+  if (!drag || ev.pointerId !== drag.pid) return;
+  if (!drag.active) {
+    if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 10) return;
+    drag.active = true;
+    const sw = drag.ids.slice(0, 6).map(id => `<i style="background:${secColor(P[id])}"></i>`).join('');
+    drag.ghost = document.createElement('div'); drag.ghost.className = 'ghost';
+    drag.ghost.innerHTML = sw + (drag.ids.length > 1 ? `<b>${drag.ids.length}</b>` : '');
+    stage.appendChild(drag.ghost);
+    for (const id of drag.ids) stage.querySelectorAll(`[data-tile="${id}"],[data-bar="${id}"],[data-qitem="${id}"]`).forEach(e => e.classList.add('moving'));
+  }
+  const p = local(ev);
+  drag.ghost.style.left = p.x + 'px'; drag.ghost.style.top = p.y + 'px';
+  drag.tg = targetAt(ev, new Set(drag.ids));
+  drawMarker(drag.tg);
+});
+window.addEventListener('pointerup', ev => {
+  if (!drag || ev.pointerId !== drag.pid) return;
+  const d = drag; drag = null;
+  if (d.active) {
+    d.ghost.remove(); drawMarker(null);
+    if (d.tg) moveTo(d.ids, d.tg.m, d.tg.idx); else render();
+    return;
+  }
+  // 押しただけ
+  if (d.kind === 'tile') {
+    st.sel.has(d.src) ? st.sel.delete(d.src) : st.sel.add(d.src);
+    st.hl = P[d.src].res === '021' || P[d.src].res === '022' ? d.src : null;
+    render(); return;
+  }
+  if (st.sel.size) { const tg = targetAt(ev, new Set(st.sel)); if (tg) { moveTo([...st.sel], tg.m, tg.idx); return; } }
+  st.hl = st.hl === d.src ? null : d.src; render();
+  const t = stage.querySelector(`[data-tile="${d.src}"]`); if (t) t.scrollIntoView({block:'nearest', inline:'nearest'});
+});
+window.addEventListener('pointercancel', () => { if (drag?.ghost) drag.ghost.remove(); drag = null; drawMarker(null); render(); });
+
+stage.addEventListener('click', ev => {
+  const a = ev.target.closest('[data-act]');
+  if (a) { const k = a.dataset.act;
+    if (k === 'undo') undo();
+    if (k === 'clear') { st.sel.clear(); render(); }
+    if (k === 'gantt') { st.view = st.view === 'A' ? 'B' : 'A'; syncSwitch(); render(); }
+    return; }
+  const f = ev.target.closest('[data-filter]'); if (f) { st.filter = f.dataset.filter; render(); return; }
+  const sb = ev.target.closest('[data-seiban]'); if (sb) { const si = +sb.dataset.seiban; st.focus = st.focus === si ? null : si; render(); return; }
+  const pn = ev.target.closest('[data-part]');
+  if (pn) { const pi = +pn.dataset.part; const placed = new Set([...Q['021'], ...Q['022']]);
+    const ids = ORDER.filter(id => P[id].pi === pi && !placed.has(id));
+    const all = ids.length && ids.every(id => st.sel.has(id));
+    ids.forEach(id => all ? st.sel.delete(id) : st.sel.add(id)); render(); return; }
+  // 選んだまま空いたレーンや待ち行列の下を押したら、そこへ置く
+  if (st.sel.size && !ev.target.closest('[data-bar],[data-qitem],[data-tile]')) {
+    const tg = targetAt(ev, new Set(st.sel)); if (tg) { moveTo([...st.sel], tg.m, tg.idx); return; }
+  }
+  if (!ev.target.closest('[data-bar],[data-qitem],[data-tile],button') && st.hl) { st.hl = null; render(); }
+});
+
+const vA = document.getElementById('vA'), vB = document.getElementById('vB');
+function syncSwitch(){ vA.setAttribute('aria-pressed', st.view === 'A'); vB.setAttribute('aria-pressed', st.view === 'B'); }
+vA.onclick = () => { st.view = 'A'; syncSwitch(); render(); };
+vB.onclick = () => { st.view = 'B'; syncSwitch(); render(); };
+
+fitStage(); render();
+})();
+</script>

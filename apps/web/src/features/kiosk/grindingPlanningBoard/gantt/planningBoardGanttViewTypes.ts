@@ -44,6 +44,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
   onSingleResourceChange?: (resource: string | null) => void;
   onResourceReorder?: ForwardReorder;
+  resourceOrderPending?: boolean;
   onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
   onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
   arrivalPending?: boolean;

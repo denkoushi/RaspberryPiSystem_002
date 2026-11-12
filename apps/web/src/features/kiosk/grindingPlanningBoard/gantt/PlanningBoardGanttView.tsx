@@ -26,8 +26,8 @@ import { isNormalGanttBar , dayLabel, dayToDate, jstDay, planningBoardVisibleBar
 import { GANTT_FORWARD_LABEL_WIDTH, GANTT_LABEL_WIDTH, PlanningBoardGanttRow, type PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
-import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
+import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry, planningBoardSheetHeight } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRows, singleResourceWindowTime, type GanttBarLocation, type GanttBarLocations } from './planningBoardSingleResourceWindows';
@@ -37,7 +37,9 @@ import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardC
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
+import { usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import { usePlanningBoardShelfInteraction, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GrindingPlanningBoardBar , GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -68,8 +70,8 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
   return null;
 }
 
-export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag }>(function PlanningBoardGanttView({
-  sharedDrag, onClearSelection, onClearChain,
+export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag; sharedShelfInteraction?: SharedShelfInteraction }>(function PlanningBoardGanttView({
+  sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
@@ -219,22 +221,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     }
     return result;
   }, [renderedGroups, foldedRows, layout.start]);
-  const incomingColors = useMemo(() => {
-    if (!colorBySeiban) return undefined;
-    const seibans = [...new Set(planningBoardVisibleBars(layout).filter(isNormalGanttBar).map((bar) => bar.item.fseiban))];
-    // The legend follows the left pane's seiban priority; seibans outside it keep their first-seen order at the end.
-    const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
-    seibans.sort((a, b) => rank(a) - rank(b));
-    return new Map(seibans.map((seiban) => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
-  }, [colorBySeiban, layout, seibanOrder]);
-  const previousColors = useRef(incomingColors);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- previousColors is a ref read only to keep the prior identity.
-  const seibanColors = useMemo(() => JSON.stringify([...(incomingColors ?? [])]) === JSON.stringify([...(previousColors.current ?? [])]) && Boolean(incomingColors) === Boolean(previousColors.current)
-    ? previousColors.current : incomingColors, [incomingColors]);
-  useLayoutEffect(() => { previousColors.current = seibanColors; }, [seibanColors]);
+  const shelfResources = useMemo(() => singleResourceCd ? [singleResourceCd] : [], [singleResourceCd]);
+  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, Boolean(singleResourceCd && colorBySeiban && !sharedSeibanLegend));
+  const seibanColors = usePlanningBoardSeibanColors(layout, colorBySeiban, seibanOrder);
   useEffect(() => {
-    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban)) setFocusedSeiban(null);
-  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend]);
+    if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !(singleResourceCd && shelfColumns.some(column => column.seiban === focusedSeiban))) setFocusedSeiban(null);
+  }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend, singleResourceCd, shelfColumns]);
   useEffect(() => {
     if (focusedSeiban === null) return;
     const clear = (event: KeyboardEvent) => { if (event.key === 'Escape' && !document.querySelector('[role="dialog"], [data-planning-board-popover], [data-forward-queue], [data-planning-board-value-sheet]')) setFocusedSeiban(null); };
@@ -253,6 +245,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const { dragPreview, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const { localShelf, shelfInteractionRef, shelfActions, getShelfDrop } = usePlanningBoardShelfInteraction(
+    sharedShelfInteraction, singleResourceCd, availableDragLanes, viewport, layout.start, dayWidth, rowActions);
   const startPan = usePlanningBoardGanttPan();
   const content = useRef<HTMLDivElement>(null);
   const rowElements = useRef(new Map<string, HTMLDivElement>());
@@ -282,7 +276,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     }));
   }, [chain, showChainPositions]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
-  const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
+  const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: (event) => { if (shelfInteractionRef.current?.placeAt(event.clientX, event.clientY)) return; if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
   const showChain = (chain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
@@ -615,8 +609,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}
-      {!sharedSeibanLegend && seibanColors && <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
-        focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />}
+      {!sharedSeibanLegend && seibanColors && (singleResourceCd
+        ? <PlanningBoardSeibanShelf ref={legend} interactionRef={localShelf} writePending={resourceOrderPending} onDragPreview={setDragPreview} getDrop={getShelfDrop} resources={shelfResources} actions={shelfActions}
+          disabled={!forward || interaction.disabled || interaction.dragDisabled || interaction.pieceDisabled || interaction.pinMode} columns={shelfColumns} seibanColors={seibanColors} focusedSeiban={focusedSeiban}
+          highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
+        : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
+          focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
       {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} labelWidth={labelWidth} viewportWidth={viewportWidth} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
       {dragPreview && ownsDragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}

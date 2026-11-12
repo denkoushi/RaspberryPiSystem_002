@@ -1,0 +1,2163 @@
+{
+  "status": "complete",
+  "environment": {
+    "node": "v24.3.0",
+    "chromium": "151.0.7922.34",
+    "cpu": "Apple M3",
+    "platform": "darwin",
+    "cpuRate": 4,
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "warmups": 1,
+    "repetitions": 3,
+    "traceEnabled": true,
+    "react": "production Vite build",
+    "date": "2026-11-05T08:00:00+09:00"
+  },
+  "fixture": {
+    "items": 1500,
+    "seibans": 80,
+    "resources": 20,
+    "processChipsPerPart": 6
+  },
+  "notes": [
+    "wallMs includes Playwright/CDP transport and two requestAnimationFrames; not a physical display presentation timestamp.",
+    "initial_display includes navigation, local asset loading and mount; new context each sequence, OS cache not cleared.",
+    "item_selection includes intentional 550ms hold; drag_hover_20 and scroll_20 include two frames per move.",
+    "refetch clones the same hook-store payload; no HTTP, query-cache or server latency.",
+    "Paint/CompositeLayers are sums of complete trace events across threads, may overlap. Zero means no matching events, not zero compositor work.",
+    "DOM/CSS inventory is outside timed operations; CSS counts are declarations in computed styles, not measured cost.",
+    "drag_drop and two_drag_drop are pointer-up at (1,1), outside the board, with zero mutation calls asserted.",
+    "two_initial switches from one to two machines; two_select uses clicks on folded bars; two_scroll20 scrolls the upper pane vertically.",
+    "toggle_one_two measures one → two → one with two frames between switches; category dropdown opening is outside timing."
+  ],
+  "unavailable": [],
+  "dom": {
+    "bodyElements": 4055,
+    "ganttElements": 3970,
+    "testIds": [
+      [
+        "planning-gantt-bar-item-#",
+        226
+      ],
+      [
+        "planning-gantt-chips-item-#",
+        148
+      ],
+      [
+        "planning-gantt-break",
+        60
+      ],
+      [
+        "planning-forward-lane-#",
+        20
+      ],
+      [
+        "planning-gantt-now",
+        20
+      ]
+    ],
+    "ownedDescendants": [
+      [
+        "planning-gantt-chips-item-#",
+        1184
+      ],
+      [
+        "planning-board-gantt",
+        1137
+      ],
+      [
+        "planning-gantt-bar-item-#",
+        793
+      ],
+      [
+        "planning-forward-lane-#",
+        776
+      ],
+      [
+        "planning-gantt-break",
+        60
+      ],
+      [
+        "planning-gantt-now",
+        20
+      ]
+    ],
+    "css": {
+      "boxShadow": 0,
+      "filter": 148,
+      "mask": 60,
+      "backdropFilter": 0,
+      "sticky": 42,
+      "transform": 816,
+      "largeTransform": 0
+    },
+    "scroll": {
+      "width": 1894,
+      "height": 935,
+      "scrollWidth": 234904,
+      "scrollHeight": 2156
+    },
+    "capabilities": {
+      "monthlyUptime": true,
+      "processChips": true,
+      "sendOutStars": false
+    }
+  },
+  "medians": {
+    "initial_display": {
+      "wallMs": 619.3772080000017,
+      "ScriptDuration": 352.616,
+      "RecalcStyleDuration": 34.069,
+      "LayoutDuration": 110.03,
+      "TaskDuration": 593.25,
+      "paintMs": 18.86499999999999,
+      "compositeMs": 0,
+      "paintEvents": 45,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "gantt_off": {
+      "wallMs": 1329.9782500000001,
+      "ScriptDuration": 443.69000000000005,
+      "RecalcStyleDuration": 175.791,
+      "LayoutDuration": 317.341,
+      "TaskDuration": 1330.643,
+      "paintMs": 177.77300000000002,
+      "compositeMs": 0,
+      "paintEvents": 3,
+      "compositeEvents": 0,
+      "nodes": 46952
+    },
+    "gantt_on": {
+      "wallMs": 414.7990829999908,
+      "ScriptDuration": 237.24599999999995,
+      "RecalcStyleDuration": 23.891999999999996,
+      "LayoutDuration": 37.929000000000045,
+      "TaskDuration": 400.28700000000003,
+      "paintMs": 19.467,
+      "compositeMs": 0,
+      "paintEvents": 50,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "focus_seiban_on": {
+      "wallMs": 78.10687500000495,
+      "ScriptDuration": 23.948999999999998,
+      "RecalcStyleDuration": 14.018999999999975,
+      "LayoutDuration": 1.1859999999999649,
+      "TaskDuration": 60.20899999999996,
+      "paintMs": 7.673999999999991,
+      "compositeMs": 0,
+      "paintEvents": 203,
+      "compositeEvents": 0,
+      "nodes": 4056
+    },
+    "focus_seiban_off": {
+      "wallMs": 79.5133330000026,
+      "ScriptDuration": 37.990999999999886,
+      "RecalcStyleDuration": 4.559000000000007,
+      "LayoutDuration": 1.0789999999999966,
+      "TaskDuration": 66.53400000000032,
+      "paintMs": 6.538999999999992,
+      "compositeMs": 0,
+      "paintEvents": 203,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "item_selection_on": {
+      "wallMs": 605.7657920000056,
+      "ScriptDuration": 36.19400000000006,
+      "RecalcStyleDuration": 1.4480000000000048,
+      "LayoutDuration": 2.332999999999974,
+      "TaskDuration": 64.75100000000023,
+      "paintMs": 2.425,
+      "compositeMs": 0,
+      "paintEvents": 4,
+      "compositeEvents": 0,
+      "nodes": 4056
+    },
+    "item_selection_off": {
+      "wallMs": 590.3361250000016,
+      "ScriptDuration": 25.38400000000007,
+      "RecalcStyleDuration": 1.6180000000000083,
+      "LayoutDuration": 1.2780000000000014,
+      "TaskDuration": 43.07200000000044,
+      "paintMs": 2.4939999999999998,
+      "compositeMs": 0,
+      "paintEvents": 3,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "arrival_on": {
+      "wallMs": 173.8225420000017,
+      "ScriptDuration": 102.05399999999986,
+      "RecalcStyleDuration": 7.588999999999957,
+      "LayoutDuration": 10.765999999999998,
+      "TaskDuration": 157.23399999999987,
+      "paintMs": 24.258999999999993,
+      "compositeMs": 0,
+      "paintEvents": 46,
+      "compositeEvents": 0,
+      "nodes": 3651
+    },
+    "arrival_off": {
+      "wallMs": 174.922040999998,
+      "ScriptDuration": 92.90100000000012,
+      "RecalcStyleDuration": 8.872000000000046,
+      "LayoutDuration": 11.873999999999995,
+      "TaskDuration": 154.33800000000008,
+      "paintMs": 25.30999999999999,
+      "compositeMs": 0,
+      "paintEvents": 46,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "drag_start": {
+      "wallMs": 62.82954099999915,
+      "ScriptDuration": 13.740000000000085,
+      "RecalcStyleDuration": 1.5240000000000253,
+      "LayoutDuration": 2.754999999999952,
+      "TaskDuration": 38.10499999999983,
+      "paintMs": 6.690999999999998,
+      "compositeMs": 0,
+      "paintEvents": 24,
+      "compositeEvents": 0,
+      "nodes": 4057
+    },
+    "drag_hover_20": {
+      "wallMs": 715.8784159999996,
+      "ScriptDuration": 94.98699999999994,
+      "RecalcStyleDuration": 2.880999999999967,
+      "LayoutDuration": 13.636000000000092,
+      "TaskDuration": 192.2379999999997,
+      "paintMs": 8.741999999999999,
+      "compositeMs": 0,
+      "paintEvents": 14,
+      "compositeEvents": 0,
+      "nodes": 4058
+    },
+    "drag_drop": {
+      "wallMs": 45.795083000004524,
+      "ScriptDuration": 9.94000000000006,
+      "RecalcStyleDuration": 0.5830000000000002,
+      "LayoutDuration": 1.1200000000000099,
+      "TaskDuration": 26.324999999999932,
+      "paintMs": 6.494999999999999,
+      "compositeMs": 0,
+      "paintEvents": 22,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "scroll_20": {
+      "wallMs": 712.7622910000064,
+      "ScriptDuration": 57.95499999999998,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 250.0770000000001,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "cutting_on": {
+      "wallMs": 190.17079199999716,
+      "ScriptDuration": 134.8269999999998,
+      "RecalcStyleDuration": 0.35400000000002096,
+      "LayoutDuration": 1.607000000000025,
+      "TaskDuration": 168.20599999999962,
+      "paintMs": 23.284,
+      "compositeMs": 0,
+      "paintEvents": 48,
+      "compositeEvents": 0,
+      "nodes": 4059
+    },
+    "grinding_off": {
+      "wallMs": 190.4284170000028,
+      "ScriptDuration": 134.23399999999995,
+      "RecalcStyleDuration": 0.8549999999999947,
+      "LayoutDuration": 1.2039999999999829,
+      "TaskDuration": 166.20599999999985,
+      "paintMs": 23.488000000000014,
+      "compositeMs": 0,
+      "paintEvents": 46,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "grinding_on": {
+      "wallMs": 190.13612500000454,
+      "ScriptDuration": 137.13700000000006,
+      "RecalcStyleDuration": 0.14999999999998348,
+      "LayoutDuration": 1.2190000000000811,
+      "TaskDuration": 166.4620000000001,
+      "paintMs": 23.385999999999992,
+      "compositeMs": 0,
+      "paintEvents": 48,
+      "compositeEvents": 0,
+      "nodes": 4059
+    },
+    "cutting_off": {
+      "wallMs": 174.37783399999898,
+      "ScriptDuration": 130.0570000000003,
+      "RecalcStyleDuration": 0.4409999999999692,
+      "LayoutDuration": 0.9730000000000016,
+      "TaskDuration": 158.73500000000007,
+      "paintMs": 21.040999999999997,
+      "compositeMs": 0,
+      "paintEvents": 46,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "refetch_board": {
+      "wallMs": 57.210040999998455,
+      "ScriptDuration": 20.312999999999803,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 35.675000000000345,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "refetch_chips": {
+      "wallMs": 49.29991699999664,
+      "ScriptDuration": 14.368000000000158,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 22.339999999999804,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "refetch_minutes": {
+      "wallMs": 19.262917000000016,
+      "ScriptDuration": 0.7380000000001274,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 1.314999999999955,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "refetch_uptime": {
+      "wallMs": 21.48924999999872,
+      "ScriptDuration": 3.125999999999962,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 3.493999999999886,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "refetch_all": {
+      "wallMs": 61.0300419999985,
+      "ScriptDuration": 19.970000000000265,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 33.99000000000019,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "now_tick_30s": {
+      "wallMs": 116.90991699999722,
+      "ScriptDuration": 67.72500000000025,
+      "RecalcStyleDuration": 6.728999999999985,
+      "LayoutDuration": 4.248999999999947,
+      "TaskDuration": 110.49300000000085,
+      "paintMs": 19.42400000000008,
+      "compositeMs": 0,
+      "paintEvents": 494,
+      "compositeEvents": 0,
+      "nodes": 4055
+    },
+    "two_initial": {
+      "wallMs": 319.187208000003,
+      "ScriptDuration": 133.93699999999998,
+      "RecalcStyleDuration": 37.93800000000003,
+      "LayoutDuration": 67.83300000000003,
+      "TaskDuration": 301.774,
+      "paintMs": 23.89,
+      "compositeMs": 0,
+      "paintEvents": 3,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_select_on": {
+      "wallMs": 156.90733299999556,
+      "ScriptDuration": 59.28099999999992,
+      "RecalcStyleDuration": 15.396999999999995,
+      "LayoutDuration": 11.581000000000063,
+      "TaskDuration": 127.91499999999978,
+      "paintMs": 26.768999999999938,
+      "compositeMs": 0,
+      "paintEvents": 243,
+      "compositeEvents": 0,
+      "nodes": 7465
+    },
+    "two_select_off": {
+      "wallMs": 61.68495900000562,
+      "ScriptDuration": 13.468000000000035,
+      "RecalcStyleDuration": 1.6390000000000016,
+      "LayoutDuration": 1.5100000000000113,
+      "TaskDuration": 34.271999999999636,
+      "paintMs": 3.119,
+      "compositeMs": 0,
+      "paintEvents": 3,
+      "compositeEvents": 0,
+      "nodes": 7464
+    },
+    "two_shelf_head_on": {
+      "wallMs": 78.3404589999991,
+      "ScriptDuration": 6.872999999999685,
+      "RecalcStyleDuration": 16.934000000000005,
+      "LayoutDuration": 1.1300000000000754,
+      "TaskDuration": 55.40400000000112,
+      "paintMs": 10.544,
+      "compositeMs": 0,
+      "paintEvents": 2,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_shelf_head_off": {
+      "wallMs": 63.204999999987194,
+      "ScriptDuration": 5.430000000000046,
+      "RecalcStyleDuration": 6.0589999999999815,
+      "LayoutDuration": 0.6950000000000012,
+      "TaskDuration": 39.02400000000128,
+      "paintMs": 11.258,
+      "compositeMs": 0,
+      "paintEvents": 2,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_shelf_tile_on": {
+      "wallMs": 46.50154199999815,
+      "ScriptDuration": 3.09500000000007,
+      "RecalcStyleDuration": 0.5479999999999929,
+      "LayoutDuration": 2.534999999999954,
+      "TaskDuration": 17.293000000000447,
+      "paintMs": 6.286,
+      "compositeMs": 0,
+      "paintEvents": 2,
+      "compositeEvents": 0,
+      "nodes": 7421
+    },
+    "two_shelf_tile_off": {
+      "wallMs": 30.317207999993116,
+      "ScriptDuration": 2.1379999999999733,
+      "RecalcStyleDuration": 0.5020000000000024,
+      "LayoutDuration": 0.9069999999999911,
+      "TaskDuration": 12.82899999999998,
+      "paintMs": 5.7170000000000005,
+      "compositeMs": 0,
+      "paintEvents": 2,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_shelf_close": {
+      "wallMs": 94.5039159999942,
+      "ScriptDuration": 37.44400000000026,
+      "RecalcStyleDuration": 3.251999999999977,
+      "LayoutDuration": 9.014000000000078,
+      "TaskDuration": 83.29200000000014,
+      "paintMs": 10.095000000000002,
+      "compositeMs": 0,
+      "paintEvents": 12,
+      "compositeEvents": 0,
+      "nodes": 6974
+    },
+    "two_legend_on": {
+      "wallMs": 77.66283299999486,
+      "ScriptDuration": 13.956000000000301,
+      "RecalcStyleDuration": 8.491999999999999,
+      "LayoutDuration": 1.3039999999999718,
+      "TaskDuration": 49.72200000000093,
+      "paintMs": 6.855999999999991,
+      "compositeMs": 0,
+      "paintEvents": 222,
+      "compositeEvents": 0,
+      "nodes": 6448
+    },
+    "two_legend_off": {
+      "wallMs": 62.36124999999447,
+      "ScriptDuration": 8.446000000000176,
+      "RecalcStyleDuration": 5.541999999999991,
+      "LayoutDuration": 0.9820000000000384,
+      "TaskDuration": 40.268999999998556,
+      "paintMs": 7.8589999999999876,
+      "compositeMs": 0,
+      "paintEvents": 222,
+      "compositeEvents": 0,
+      "nodes": 6447
+    },
+    "two_shelf_open": {
+      "wallMs": 109.32862499999464,
+      "ScriptDuration": 23.141999999999996,
+      "RecalcStyleDuration": 4.461999999999966,
+      "LayoutDuration": 9.751999999999983,
+      "TaskDuration": 81.02300000000007,
+      "paintMs": 23.387999999999987,
+      "compositeMs": 0,
+      "paintEvents": 240,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_drag_move20": {
+      "wallMs": 709.2049580000021,
+      "ScriptDuration": 112.9199999999999,
+      "RecalcStyleDuration": 2.3819999999999952,
+      "LayoutDuration": 9.434000000000054,
+      "TaskDuration": 234.1949999999997,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 7421
+    },
+    "two_drag_drop": {
+      "wallMs": 42.9653330000001,
+      "ScriptDuration": 8.529999999999927,
+      "RecalcStyleDuration": 0.9859999999999869,
+      "LayoutDuration": 0.7709999999999662,
+      "TaskDuration": 23.23900000000023,
+      "paintMs": 2.739,
+      "compositeMs": 0,
+      "paintEvents": 2,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "two_scroll20": {
+      "wallMs": 895.7817499999946,
+      "ScriptDuration": 42.27399999999992,
+      "RecalcStyleDuration": 0,
+      "LayoutDuration": 0,
+      "TaskDuration": 419.9570000000001,
+      "paintMs": 0,
+      "compositeMs": 0,
+      "paintEvents": 0,
+      "compositeEvents": 0,
+      "nodes": 7419
+    },
+    "toggle_one_two": {
+      "wallMs": 643.9817919999987,
+      "ScriptDuration": 223.344,
+      "RecalcStyleDuration": 48.21500000000001,
+      "LayoutDuration": 103.024,
+      "TaskDuration": 597.8779999999997,
+      "paintMs": 36.763999999999996,
+      "compositeMs": 0,
+      "paintEvents": 5,
+      "compositeEvents": 0,
+      "nodes": 4132
+    },
+    "pieces_popup_open": {
+      "wallMs": 149.70712500000081,
+      "ScriptDuration": 13.485999999999443,
+      "RecalcStyleDuration": 2.3929999999999785,
+      "LayoutDuration": 4.974000000000034,
+      "TaskDuration": 105.01600000000089,
+      "paintMs": 5.0040000000000004,
+      "compositeMs": 0,
+      "paintEvents": 4,
+      "compositeEvents": 0,
+      "nodes": 53957
+    },
+    "pieces_split_success": {
+      "wallMs": 940.608916000012,
+      "ScriptDuration": 181.4840000000002,
+      "RecalcStyleDuration": 112.30500000000009,
+      "LayoutDuration": 114.67200000000011,
+      "TaskDuration": 932.4860000000008,
+      "paintMs": 183.76600000000008,
+      "compositeMs": 0,
+      "paintEvents": 21,
+      "compositeEvents": 0,
+      "nodes": 53941
+    },
+    "pieces_piece_complete": {
+      "wallMs": 791.5912080000053,
+      "ScriptDuration": 238.14400000000012,
+      "RecalcStyleDuration": 123.17199999999995,
+      "LayoutDuration": 139.945,
+      "TaskDuration": 748.1660000000012,
+      "paintMs": 192.22999999999993,
+      "compositeMs": 0,
+      "paintEvents": 22,
+      "compositeEvents": 0,
+      "nodes": 53910
+    }
+  },
+  "samples": {
+    "initial_display": [
+      {
+        "wallMs": 619.3772080000017,
+        "ScriptDuration": 355.86600000000004,
+        "RecalcStyleDuration": 34.069,
+        "LayoutDuration": 110.03,
+        "TaskDuration": 599.147,
+        "paintMs": 19.582999999999995,
+        "compositeMs": 0,
+        "paintEvents": 45,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 620.3458749999991,
+        "ScriptDuration": 352.616,
+        "RecalcStyleDuration": 34.838,
+        "LayoutDuration": 110.536,
+        "TaskDuration": 593.25,
+        "paintMs": 17.735,
+        "compositeMs": 0,
+        "paintEvents": 45,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 604.2644589999982,
+        "ScriptDuration": 346.906,
+        "RecalcStyleDuration": 32.577000000000005,
+        "LayoutDuration": 106.794,
+        "TaskDuration": 581.803,
+        "paintMs": 18.86499999999999,
+        "compositeMs": 0,
+        "paintEvents": 45,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "gantt_off": [
+      {
+        "wallMs": 1329.9782500000001,
+        "ScriptDuration": 461.652,
+        "RecalcStyleDuration": 180.608,
+        "LayoutDuration": 317.341,
+        "TaskDuration": 1330.643,
+        "paintMs": 177.77300000000002,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 46952
+      },
+      {
+        "wallMs": 1341.945832999998,
+        "ScriptDuration": 443.69000000000005,
+        "RecalcStyleDuration": 175.791,
+        "LayoutDuration": 325.19100000000003,
+        "TaskDuration": 1350.246,
+        "paintMs": 198.212,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 46952
+      },
+      {
+        "wallMs": 1279.0281670000113,
+        "ScriptDuration": 439.973,
+        "RecalcStyleDuration": 174.761,
+        "LayoutDuration": 316.318,
+        "TaskDuration": 1280.851,
+        "paintMs": 174.118,
+        "compositeMs": 0,
+        "paintEvents": 1,
+        "compositeEvents": 0,
+        "nodes": 46952
+      }
+    ],
+    "gantt_on": [
+      {
+        "wallMs": 430.3468750000029,
+        "ScriptDuration": 250.027,
+        "RecalcStyleDuration": 23.859999999999992,
+        "LayoutDuration": 39.76499999999999,
+        "TaskDuration": 415.60200000000026,
+        "paintMs": 19.467,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 414.0275419999962,
+        "ScriptDuration": 235.5719999999999,
+        "RecalcStyleDuration": 23.891999999999996,
+        "LayoutDuration": 37.929000000000045,
+        "TaskDuration": 400.1859999999997,
+        "paintMs": 17.482,
+        "compositeMs": 0,
+        "paintEvents": 50,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 414.7990829999908,
+        "ScriptDuration": 237.24599999999995,
+        "RecalcStyleDuration": 24.508000000000003,
+        "LayoutDuration": 37.110000000000035,
+        "TaskDuration": 400.28700000000003,
+        "paintMs": 19.867000000000008,
+        "compositeMs": 0,
+        "paintEvents": 50,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "focus_seiban_on": [
+      {
+        "wallMs": 78.94862500000454,
+        "ScriptDuration": 23.948999999999998,
+        "RecalcStyleDuration": 14.018999999999975,
+        "LayoutDuration": 1.4959999999999973,
+        "TaskDuration": 62.112999999999644,
+        "paintMs": 6.968999999999994,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4056
+      },
+      {
+        "wallMs": 78.10687500000495,
+        "ScriptDuration": 24.523000000000074,
+        "RecalcStyleDuration": 14.089999999999991,
+        "LayoutDuration": 1.1859999999999649,
+        "TaskDuration": 60.20899999999996,
+        "paintMs": 8.389999999999997,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4056
+      },
+      {
+        "wallMs": 78.09116700000595,
+        "ScriptDuration": 23.44299999999988,
+        "RecalcStyleDuration": 13.770000000000005,
+        "LayoutDuration": 0.8630000000000027,
+        "TaskDuration": 55.89300000000019,
+        "paintMs": 7.673999999999991,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4056
+      }
+    ],
+    "focus_seiban_off": [
+      {
+        "wallMs": 85.8272500000021,
+        "ScriptDuration": 32.44199999999986,
+        "RecalcStyleDuration": 6.209999999999994,
+        "LayoutDuration": 1.2270000000000336,
+        "TaskDuration": 75.18899999999995,
+        "paintMs": 9.122999999999987,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 79.5133330000026,
+        "ScriptDuration": 38.62699999999997,
+        "RecalcStyleDuration": 4.203000000000012,
+        "LayoutDuration": 1.0789999999999966,
+        "TaskDuration": 66.53400000000032,
+        "paintMs": 6.538999999999992,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 77.42541599999822,
+        "ScriptDuration": 37.990999999999886,
+        "RecalcStyleDuration": 4.559000000000007,
+        "LayoutDuration": 0.8179999999999854,
+        "TaskDuration": 64.84900000000016,
+        "paintMs": 6.409000000000002,
+        "compositeMs": 0,
+        "paintEvents": 203,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "item_selection_on": [
+      {
+        "wallMs": 606.1356670000023,
+        "ScriptDuration": 36.22600000000009,
+        "RecalcStyleDuration": 1.4480000000000048,
+        "LayoutDuration": 2.4170000000000025,
+        "TaskDuration": 64.75100000000023,
+        "paintMs": 2.425,
+        "compositeMs": 0,
+        "paintEvents": 4,
+        "compositeEvents": 0,
+        "nodes": 4056
+      },
+      {
+        "wallMs": 605.7657920000056,
+        "ScriptDuration": 36.19400000000006,
+        "RecalcStyleDuration": 2.788999999999986,
+        "LayoutDuration": 2.1460000000000368,
+        "TaskDuration": 65.09500000000034,
+        "paintMs": 2.108,
+        "compositeMs": 0,
+        "paintEvents": 4,
+        "compositeEvents": 0,
+        "nodes": 4056
+      },
+      {
+        "wallMs": 589.9003749999974,
+        "ScriptDuration": 30.125999999999877,
+        "RecalcStyleDuration": 1.1980000000000324,
+        "LayoutDuration": 2.332999999999974,
+        "TaskDuration": 51.05899999999997,
+        "paintMs": 3.184,
+        "compositeMs": 0,
+        "paintEvents": 4,
+        "compositeEvents": 0,
+        "nodes": 4056
+      }
+    ],
+    "item_selection_off": [
+      {
+        "wallMs": 590.3361250000016,
+        "ScriptDuration": 30.426000000000066,
+        "RecalcStyleDuration": 1.6180000000000083,
+        "LayoutDuration": 1.336999999999977,
+        "TaskDuration": 49.51799999999995,
+        "paintMs": 1.4689999999999999,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 590.4434590000019,
+        "ScriptDuration": 25.38400000000007,
+        "RecalcStyleDuration": 1.7530000000000046,
+        "LayoutDuration": 1.1510000000000131,
+        "TaskDuration": 43.07200000000044,
+        "paintMs": 2.606,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 590.3207910000056,
+        "ScriptDuration": 24.47699999999986,
+        "RecalcStyleDuration": 0.5370000000000097,
+        "LayoutDuration": 1.2780000000000014,
+        "TaskDuration": 37.25299999999976,
+        "paintMs": 2.4939999999999998,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "arrival_on": [
+      {
+        "wallMs": 189.34241699999984,
+        "ScriptDuration": 102.96600000000011,
+        "RecalcStyleDuration": 7.588999999999957,
+        "LayoutDuration": 11.407999999999973,
+        "TaskDuration": 161.6369999999998,
+        "paintMs": 24.636999999999993,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 3651
+      },
+      {
+        "wallMs": 173.8225420000017,
+        "ScriptDuration": 102.05399999999986,
+        "RecalcStyleDuration": 7.653999999999995,
+        "LayoutDuration": 10.765999999999998,
+        "TaskDuration": 157.23399999999987,
+        "paintMs": 24.258999999999993,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 3651
+      },
+      {
+        "wallMs": 158.74979200000234,
+        "ScriptDuration": 90.26299999999998,
+        "RecalcStyleDuration": 6.91799999999998,
+        "LayoutDuration": 10.068000000000021,
+        "TaskDuration": 140.73899999999995,
+        "paintMs": 21.135999999999992,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 3651
+      }
+    ],
+    "arrival_off": [
+      {
+        "wallMs": 174.922040999998,
+        "ScriptDuration": 98.23099999999995,
+        "RecalcStyleDuration": 8.931000000000022,
+        "LayoutDuration": 12.493000000000032,
+        "TaskDuration": 166.17799999999949,
+        "paintMs": 29.62599999999999,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 175.3452910000051,
+        "ScriptDuration": 92.90100000000012,
+        "RecalcStyleDuration": 8.872000000000046,
+        "LayoutDuration": 11.421000000000014,
+        "TaskDuration": 154.33800000000008,
+        "paintMs": 25.219999999999995,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 158.1952089999977,
+        "ScriptDuration": 88.58699999999997,
+        "RecalcStyleDuration": 7.552000000000003,
+        "LayoutDuration": 11.873999999999995,
+        "TaskDuration": 149.43799999999996,
+        "paintMs": 25.30999999999999,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "drag_start": [
+      {
+        "wallMs": 62.82954099999915,
+        "ScriptDuration": 14.690000000000092,
+        "RecalcStyleDuration": 2.1990000000000065,
+        "LayoutDuration": 2.754999999999952,
+        "TaskDuration": 41.59600000000019,
+        "paintMs": 8.782999999999998,
+        "compositeMs": 0,
+        "paintEvents": 24,
+        "compositeEvents": 0,
+        "nodes": 4057
+      },
+      {
+        "wallMs": 76.60599999999977,
+        "ScriptDuration": 13.740000000000085,
+        "RecalcStyleDuration": 1.5240000000000253,
+        "LayoutDuration": 2.5640000000000107,
+        "TaskDuration": 38.10499999999983,
+        "paintMs": 6.690999999999998,
+        "compositeMs": 0,
+        "paintEvents": 24,
+        "compositeEvents": 0,
+        "nodes": 4057
+      },
+      {
+        "wallMs": 62.41670799998974,
+        "ScriptDuration": 13.325999999999949,
+        "RecalcStyleDuration": 0.3190000000000137,
+        "LayoutDuration": 3.638999999999948,
+        "TaskDuration": 36.312000000000566,
+        "paintMs": 5.730999999999996,
+        "compositeMs": 0,
+        "paintEvents": 24,
+        "compositeEvents": 0,
+        "nodes": 4057
+      }
+    ],
+    "drag_hover_20": [
+      {
+        "wallMs": 715.8784159999996,
+        "ScriptDuration": 120.39299999999997,
+        "RecalcStyleDuration": 4.7159999999999975,
+        "LayoutDuration": 15.338000000000074,
+        "TaskDuration": 249.10799999999966,
+        "paintMs": 8.741999999999999,
+        "compositeMs": 0,
+        "paintEvents": 14,
+        "compositeEvents": 0,
+        "nodes": 4058
+      },
+      {
+        "wallMs": 720.9882500000022,
+        "ScriptDuration": 94.98699999999994,
+        "RecalcStyleDuration": 2.880999999999967,
+        "LayoutDuration": 13.636000000000092,
+        "TaskDuration": 192.2379999999997,
+        "paintMs": 9.031,
+        "compositeMs": 0,
+        "paintEvents": 14,
+        "compositeEvents": 0,
+        "nodes": 4058
+      },
+      {
+        "wallMs": 703.6234160000022,
+        "ScriptDuration": 90.67099999999995,
+        "RecalcStyleDuration": 1.998999999999973,
+        "LayoutDuration": 11.947000000000042,
+        "TaskDuration": 183.643,
+        "paintMs": 7.347,
+        "compositeMs": 0,
+        "paintEvents": 14,
+        "compositeEvents": 0,
+        "nodes": 4058
+      }
+    ],
+    "drag_drop": [
+      {
+        "wallMs": 58.50933400000213,
+        "ScriptDuration": 12.29900000000006,
+        "RecalcStyleDuration": 1.46099999999999,
+        "LayoutDuration": 1.1200000000000099,
+        "TaskDuration": 30.978000000000172,
+        "paintMs": 6.494999999999999,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 45.70704200000182,
+        "ScriptDuration": 9.94000000000006,
+        "RecalcStyleDuration": 0.23099999999998122,
+        "LayoutDuration": 1.414999999999944,
+        "TaskDuration": 24.76500000000037,
+        "paintMs": 6.189999999999998,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 45.795083000004524,
+        "ScriptDuration": 9.711999999999943,
+        "RecalcStyleDuration": 0.5830000000000002,
+        "LayoutDuration": 0.9480000000000599,
+        "TaskDuration": 26.324999999999932,
+        "paintMs": 6.991999999999999,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "scroll_20": [
+      {
+        "wallMs": 764.9464589999989,
+        "ScriptDuration": 57.95499999999998,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 250.0770000000001,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 670.9855000000025,
+        "ScriptDuration": 51.53399999999997,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 234.1850000000001,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 712.7622910000064,
+        "ScriptDuration": 61.27799999999994,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 278.77500000000043,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "cutting_on": [
+      {
+        "wallMs": 191.35041700000147,
+        "ScriptDuration": 133.24899999999994,
+        "RecalcStyleDuration": 0.4990000000000272,
+        "LayoutDuration": 1.9290000000000695,
+        "TaskDuration": 164.59099999999972,
+        "paintMs": 23.284,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      },
+      {
+        "wallMs": 190.17079199999716,
+        "ScriptDuration": 134.8269999999998,
+        "RecalcStyleDuration": 0.20999999999998797,
+        "LayoutDuration": 0.8610000000000007,
+        "TaskDuration": 168.20599999999962,
+        "paintMs": 22.794,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      },
+      {
+        "wallMs": 189.53370800000266,
+        "ScriptDuration": 136.48499999999996,
+        "RecalcStyleDuration": 0.35400000000002096,
+        "LayoutDuration": 1.607000000000025,
+        "TaskDuration": 170.78400000000028,
+        "paintMs": 23.70399999999999,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      }
+    ],
+    "grinding_off": [
+      {
+        "wallMs": 190.4284170000028,
+        "ScriptDuration": 133.7140000000001,
+        "RecalcStyleDuration": 0.8549999999999947,
+        "LayoutDuration": 1.2750000000000261,
+        "TaskDuration": 166.86399999999946,
+        "paintMs": 22.36400000000001,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 191.03820799999812,
+        "ScriptDuration": 134.23399999999995,
+        "RecalcStyleDuration": 0.12499999999998623,
+        "LayoutDuration": 0.8100000000000884,
+        "TaskDuration": 163.49199999999973,
+        "paintMs": 25.031000000000002,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 187.58237499999814,
+        "ScriptDuration": 135.9999999999999,
+        "RecalcStyleDuration": 1.627000000000045,
+        "LayoutDuration": 1.2039999999999829,
+        "TaskDuration": 166.20599999999985,
+        "paintMs": 23.488000000000014,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "grinding_on": [
+      {
+        "wallMs": 190.13612500000454,
+        "ScriptDuration": 137.49100000000024,
+        "RecalcStyleDuration": 0.14500000000000624,
+        "LayoutDuration": 1.2190000000000811,
+        "TaskDuration": 166.4620000000001,
+        "paintMs": 22.901000000000003,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      },
+      {
+        "wallMs": 190.04000000000087,
+        "ScriptDuration": 135.17599999999996,
+        "RecalcStyleDuration": 1.1280000000000179,
+        "LayoutDuration": 0.9980000000000544,
+        "TaskDuration": 166.1399999999995,
+        "paintMs": 25.820999999999998,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      },
+      {
+        "wallMs": 190.61708300000464,
+        "ScriptDuration": 137.13700000000006,
+        "RecalcStyleDuration": 0.14999999999998348,
+        "LayoutDuration": 1.3959999999999528,
+        "TaskDuration": 168.76599999999974,
+        "paintMs": 23.385999999999992,
+        "compositeMs": 0,
+        "paintEvents": 48,
+        "compositeEvents": 0,
+        "nodes": 4059
+      }
+    ],
+    "cutting_off": [
+      {
+        "wallMs": 174.37783399999898,
+        "ScriptDuration": 130.0570000000003,
+        "RecalcStyleDuration": 0.4409999999999692,
+        "LayoutDuration": 0.9730000000000016,
+        "TaskDuration": 158.73500000000007,
+        "paintMs": 21.040999999999997,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 173.6655000000028,
+        "ScriptDuration": 127.63999999999997,
+        "RecalcStyleDuration": 0.11899999999998023,
+        "LayoutDuration": 0.8000000000000229,
+        "TaskDuration": 155.58899999999997,
+        "paintMs": 19.743,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 189.92149999999674,
+        "ScriptDuration": 136.5919999999998,
+        "RecalcStyleDuration": 0.7310000000000372,
+        "LayoutDuration": 1.1720000000000619,
+        "TaskDuration": 168.00700000000023,
+        "paintMs": 24.564999999999998,
+        "compositeMs": 0,
+        "paintEvents": 46,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "refetch_board": [
+      {
+        "wallMs": 57.210040999998455,
+        "ScriptDuration": 21.599000000000146,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 39.680999999999855,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 60.07974999999715,
+        "ScriptDuration": 20.312999999999803,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 34.6870000000008,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 57.05641699999978,
+        "ScriptDuration": 19.17499999999972,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 35.675000000000345,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "refetch_chips": [
+      {
+        "wallMs": 45.59154200000194,
+        "ScriptDuration": 16.199999999999992,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 24.582000000000548,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 49.29991699999664,
+        "ScriptDuration": 14.261999999999997,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 21.131000000000455,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 51.69920899999852,
+        "ScriptDuration": 14.368000000000158,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 22.339999999999804,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "refetch_minutes": [
+      {
+        "wallMs": 19.262917000000016,
+        "ScriptDuration": 0.8110000000001172,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 2.1799999999991826,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 18.424041999998735,
+        "ScriptDuration": 0.09500000000040032,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 0.7120000000000459,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 35.455457999996725,
+        "ScriptDuration": 0.7380000000001274,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 1.314999999999955,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "refetch_uptime": [
+      {
+        "wallMs": 21.48924999999872,
+        "ScriptDuration": 2.7770000000000294,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 3.493999999999886,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 21.201750000000175,
+        "ScriptDuration": 3.125999999999962,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 3.4850000000004044,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 35.42487499999697,
+        "ScriptDuration": 3.6719999999998976,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 4.7079999999999345,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "refetch_all": [
+      {
+        "wallMs": 61.0300419999985,
+        "ScriptDuration": 20.775999999999684,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 34.718999999999944,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 50.34595799999806,
+        "ScriptDuration": 19.0210000000004,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 33.09800000000074,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 62.67079200000444,
+        "ScriptDuration": 19.970000000000265,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 33.99000000000019,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "now_tick_30s": [
+      {
+        "wallMs": 116.90991699999722,
+        "ScriptDuration": 67.72500000000025,
+        "RecalcStyleDuration": 6.655999999999995,
+        "LayoutDuration": 4.248999999999947,
+        "TaskDuration": 110.49300000000085,
+        "paintMs": 19.42400000000008,
+        "compositeMs": 0,
+        "paintEvents": 494,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 103.5370000000039,
+        "ScriptDuration": 66.28300000000031,
+        "RecalcStyleDuration": 6.888000000000005,
+        "LayoutDuration": 4.058000000000006,
+        "TaskDuration": 103.86199999999945,
+        "paintMs": 17.897000000000077,
+        "compositeMs": 0,
+        "paintEvents": 494,
+        "compositeEvents": 0,
+        "nodes": 4055
+      },
+      {
+        "wallMs": 119.22608399999444,
+        "ScriptDuration": 70.06000000000023,
+        "RecalcStyleDuration": 6.728999999999985,
+        "LayoutDuration": 4.3079999999999785,
+        "TaskDuration": 116.17500000000014,
+        "paintMs": 19.996000000000063,
+        "compositeMs": 0,
+        "paintEvents": 494,
+        "compositeEvents": 0,
+        "nodes": 4055
+      }
+    ],
+    "two_initial": [
+      {
+        "wallMs": 335.00224999999773,
+        "ScriptDuration": 135.6099999999998,
+        "RecalcStyleDuration": 40.09700000000005,
+        "LayoutDuration": 68.56700000000005,
+        "TaskDuration": 310.0769999999997,
+        "paintMs": 24.975,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 302.15941600000224,
+        "ScriptDuration": 112.36900000000017,
+        "RecalcStyleDuration": 37.93800000000003,
+        "LayoutDuration": 66.77200000000005,
+        "TaskDuration": 274.2559999999994,
+        "paintMs": 23.265,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 319.187208000003,
+        "ScriptDuration": 133.93699999999998,
+        "RecalcStyleDuration": 37.456999999999965,
+        "LayoutDuration": 67.83300000000003,
+        "TaskDuration": 301.774,
+        "paintMs": 23.89,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_select_on": [
+      {
+        "wallMs": 155.67579199999454,
+        "ScriptDuration": 59.28099999999992,
+        "RecalcStyleDuration": 15.396999999999995,
+        "LayoutDuration": 12.352999999999948,
+        "TaskDuration": 127.05599999999961,
+        "paintMs": 24.262999999999895,
+        "compositeMs": 0,
+        "paintEvents": 243,
+        "compositeEvents": 0,
+        "nodes": 7465
+      },
+      {
+        "wallMs": 158.9310420000038,
+        "ScriptDuration": 57.310000000000194,
+        "RecalcStyleDuration": 16.012999999999998,
+        "LayoutDuration": 11.36499999999996,
+        "TaskDuration": 127.91499999999978,
+        "paintMs": 28.471000000000004,
+        "compositeMs": 0,
+        "paintEvents": 243,
+        "compositeEvents": 0,
+        "nodes": 7465
+      },
+      {
+        "wallMs": 156.90733299999556,
+        "ScriptDuration": 64.75099999999978,
+        "RecalcStyleDuration": 15.073000000000004,
+        "LayoutDuration": 11.581000000000063,
+        "TaskDuration": 138.2619999999992,
+        "paintMs": 26.768999999999938,
+        "compositeMs": 0,
+        "paintEvents": 243,
+        "compositeEvents": 0,
+        "nodes": 7465
+      }
+    ],
+    "two_select_off": [
+      {
+        "wallMs": 61.68495900000562,
+        "ScriptDuration": 12.313999999999936,
+        "RecalcStyleDuration": 1.564999999999983,
+        "LayoutDuration": 1.755000000000062,
+        "TaskDuration": 34.271999999999636,
+        "paintMs": 2.358,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7464
+      },
+      {
+        "wallMs": 78.29241600000387,
+        "ScriptDuration": 18.696999999999964,
+        "RecalcStyleDuration": 2.1469999999999545,
+        "LayoutDuration": 1.5100000000000113,
+        "TaskDuration": 48.229000000000966,
+        "paintMs": 3.484,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7464
+      },
+      {
+        "wallMs": 61.671000000002095,
+        "ScriptDuration": 13.468000000000035,
+        "RecalcStyleDuration": 1.6390000000000016,
+        "LayoutDuration": 1.1159999999998949,
+        "TaskDuration": 32.95899999999996,
+        "paintMs": 3.119,
+        "compositeMs": 0,
+        "paintEvents": 3,
+        "compositeEvents": 0,
+        "nodes": 7464
+      }
+    ],
+    "two_shelf_head_on": [
+      {
+        "wallMs": 79.3684160000048,
+        "ScriptDuration": 6.872999999999685,
+        "RecalcStyleDuration": 16.72499999999999,
+        "LayoutDuration": 1.1300000000000754,
+        "TaskDuration": 48.332999999999515,
+        "paintMs": 9.673,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 78.33208300000115,
+        "ScriptDuration": 7.537000000000127,
+        "RecalcStyleDuration": 18.562999999999995,
+        "LayoutDuration": 0.5239999999999689,
+        "TaskDuration": 56.528000000000134,
+        "paintMs": 12.309,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 78.3404589999991,
+        "ScriptDuration": 6.34900000000016,
+        "RecalcStyleDuration": 16.934000000000005,
+        "LayoutDuration": 1.2530000000000596,
+        "TaskDuration": 55.40400000000112,
+        "paintMs": 10.544,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_shelf_head_off": [
+      {
+        "wallMs": 63.62420899999415,
+        "ScriptDuration": 4.793999999999965,
+        "RecalcStyleDuration": 6.0589999999999815,
+        "LayoutDuration": 0.6950000000000012,
+        "TaskDuration": 36.289000000000016,
+        "paintMs": 11.258,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 63.08270800000173,
+        "ScriptDuration": 5.443999999999782,
+        "RecalcStyleDuration": 6.3389999999999835,
+        "LayoutDuration": 0.4509999999999792,
+        "TaskDuration": 39.02400000000128,
+        "paintMs": 11.375,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 63.204999999987194,
+        "ScriptDuration": 5.430000000000046,
+        "RecalcStyleDuration": 5.9830000000000165,
+        "LayoutDuration": 1.1809999999999876,
+        "TaskDuration": 39.73599999999955,
+        "paintMs": 10.815999999999999,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_shelf_tile_on": [
+      {
+        "wallMs": 46.50154199999815,
+        "ScriptDuration": 2.7680000000001037,
+        "RecalcStyleDuration": 0.23600000000001398,
+        "LayoutDuration": 2.534999999999954,
+        "TaskDuration": 16.009000000000384,
+        "paintMs": 5.486000000000001,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7421
+      },
+      {
+        "wallMs": 46.614042000001064,
+        "ScriptDuration": 4.4880000000002696,
+        "RecalcStyleDuration": 0.6010000000000182,
+        "LayoutDuration": 2.2520000000000318,
+        "TaskDuration": 17.293000000000447,
+        "paintMs": 6.286,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7421
+      },
+      {
+        "wallMs": 45.06354200000351,
+        "ScriptDuration": 3.09500000000007,
+        "RecalcStyleDuration": 0.5479999999999929,
+        "LayoutDuration": 2.817999999999987,
+        "TaskDuration": 18.20599999999928,
+        "paintMs": 7.612,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7421
+      }
+    ],
+    "two_shelf_tile_off": [
+      {
+        "wallMs": 30.787875000001804,
+        "ScriptDuration": 1.92699999999979,
+        "RecalcStyleDuration": 0.12499999999998623,
+        "LayoutDuration": 1.4379999999999393,
+        "TaskDuration": 12.82899999999998,
+        "paintMs": 6.337,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 30.317207999993116,
+        "ScriptDuration": 2.3480000000000167,
+        "RecalcStyleDuration": 0.5020000000000024,
+        "LayoutDuration": 0.8939999999999504,
+        "TaskDuration": 12.811000000001016,
+        "paintMs": 5.7170000000000005,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 30.31645800000115,
+        "ScriptDuration": 2.1379999999999733,
+        "RecalcStyleDuration": 0.5310000000000037,
+        "LayoutDuration": 0.9069999999999911,
+        "TaskDuration": 13.809000000000182,
+        "paintMs": 5.638,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_shelf_close": [
+      {
+        "wallMs": 94.5039159999942,
+        "ScriptDuration": 37.45699999999985,
+        "RecalcStyleDuration": 4.346000000000016,
+        "LayoutDuration": 8.908000000000026,
+        "TaskDuration": 83.65700000000054,
+        "paintMs": 10.321000000000002,
+        "compositeMs": 0,
+        "paintEvents": 12,
+        "compositeEvents": 0,
+        "nodes": 6974
+      },
+      {
+        "wallMs": 95.11262500000885,
+        "ScriptDuration": 33.82599999999991,
+        "RecalcStyleDuration": 3.145999999999982,
+        "LayoutDuration": 9.014000000000078,
+        "TaskDuration": 79.2900000000003,
+        "paintMs": 10.095000000000002,
+        "compositeMs": 0,
+        "paintEvents": 12,
+        "compositeEvents": 0,
+        "nodes": 6974
+      },
+      {
+        "wallMs": 93.53787500000908,
+        "ScriptDuration": 37.44400000000026,
+        "RecalcStyleDuration": 3.251999999999977,
+        "LayoutDuration": 9.811000000000014,
+        "TaskDuration": 83.29200000000014,
+        "paintMs": 9.446,
+        "compositeMs": 0,
+        "paintEvents": 12,
+        "compositeEvents": 0,
+        "nodes": 6974
+      }
+    ],
+    "two_legend_on": [
+      {
+        "wallMs": 77.66283299999486,
+        "ScriptDuration": 13.14800000000016,
+        "RecalcStyleDuration": 7.950000000000013,
+        "LayoutDuration": 1.3039999999999718,
+        "TaskDuration": 48.954999999999416,
+        "paintMs": 6.582999999999996,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6448
+      },
+      {
+        "wallMs": 79.05508299999929,
+        "ScriptDuration": 13.956000000000301,
+        "RecalcStyleDuration": 8.675000000000043,
+        "LayoutDuration": 1.7049999999999566,
+        "TaskDuration": 49.72200000000093,
+        "paintMs": 6.855999999999991,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6448
+      },
+      {
+        "wallMs": 77.48154100000102,
+        "ScriptDuration": 15.46000000000003,
+        "RecalcStyleDuration": 8.491999999999999,
+        "LayoutDuration": 1.21899999999997,
+        "TaskDuration": 58.575000000001154,
+        "paintMs": 8.847000000000012,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6448
+      }
+    ],
+    "two_legend_off": [
+      {
+        "wallMs": 62.36124999999447,
+        "ScriptDuration": 7.728000000000179,
+        "RecalcStyleDuration": 5.541999999999991,
+        "LayoutDuration": 1.1110000000000841,
+        "TaskDuration": 35.35500000000091,
+        "paintMs": 7.8589999999999876,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6447
+      },
+      {
+        "wallMs": 61.817957999999635,
+        "ScriptDuration": 8.446000000000176,
+        "RecalcStyleDuration": 5.446000000000007,
+        "LayoutDuration": 0.9820000000000384,
+        "TaskDuration": 40.268999999998556,
+        "paintMs": 5.534999999999982,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6447
+      },
+      {
+        "wallMs": 76.31016700000328,
+        "ScriptDuration": 10.411999999999644,
+        "RecalcStyleDuration": 7.530000000000037,
+        "LayoutDuration": 0.7770000000000277,
+        "TaskDuration": 53.0829999999991,
+        "paintMs": 8.143000000000006,
+        "compositeMs": 0,
+        "paintEvents": 222,
+        "compositeEvents": 0,
+        "nodes": 6447
+      }
+    ],
+    "two_shelf_open": [
+      {
+        "wallMs": 109.3692910000027,
+        "ScriptDuration": 23.141999999999996,
+        "RecalcStyleDuration": 4.461999999999966,
+        "LayoutDuration": 9.526999999999951,
+        "TaskDuration": 81.02300000000007,
+        "paintMs": 24.876000000000015,
+        "compositeMs": 0,
+        "paintEvents": 240,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 93.98329200000444,
+        "ScriptDuration": 16.990000000000283,
+        "RecalcStyleDuration": 4.230999999999985,
+        "LayoutDuration": 9.751999999999983,
+        "TaskDuration": 64.59800000000016,
+        "paintMs": 20.321999999999914,
+        "compositeMs": 0,
+        "paintEvents": 240,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 109.32862499999464,
+        "ScriptDuration": 23.894000000000304,
+        "RecalcStyleDuration": 4.8719999999999875,
+        "LayoutDuration": 10.35799999999998,
+        "TaskDuration": 81.11900000000105,
+        "paintMs": 23.387999999999987,
+        "compositeMs": 0,
+        "paintEvents": 240,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_drag_move20": [
+      {
+        "wallMs": 695.481375000003,
+        "ScriptDuration": 106.20399999999997,
+        "RecalcStyleDuration": 1.9140000000000268,
+        "LayoutDuration": 9.434000000000054,
+        "TaskDuration": 216.4040000000007,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7421
+      },
+      {
+        "wallMs": 712.1400830000057,
+        "ScriptDuration": 112.9199999999999,
+        "RecalcStyleDuration": 2.3819999999999952,
+        "LayoutDuration": 8.889999999999954,
+        "TaskDuration": 234.1949999999997,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7421
+      },
+      {
+        "wallMs": 709.2049580000021,
+        "ScriptDuration": 131.64799999999977,
+        "RecalcStyleDuration": 2.8040000000000287,
+        "LayoutDuration": 12.201000000000018,
+        "TaskDuration": 267.2220000000003,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7421
+      }
+    ],
+    "two_drag_drop": [
+      {
+        "wallMs": 42.9653330000001,
+        "ScriptDuration": 7.939000000000362,
+        "RecalcStyleDuration": 0.9859999999999869,
+        "LayoutDuration": 0.9930000000000216,
+        "TaskDuration": 22.205999999998838,
+        "paintMs": 2.414,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 56.32062500000757,
+        "ScriptDuration": 11.887999999999899,
+        "RecalcStyleDuration": 1.7590000000000106,
+        "LayoutDuration": 0.540000000000096,
+        "TaskDuration": 28.114999999999668,
+        "paintMs": 2.739,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 41.61091600000509,
+        "ScriptDuration": 8.529999999999927,
+        "RecalcStyleDuration": 0.6869999999999932,
+        "LayoutDuration": 0.7709999999999662,
+        "TaskDuration": 23.23900000000023,
+        "paintMs": 2.838,
+        "compositeMs": 0,
+        "paintEvents": 2,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "two_scroll20": [
+      {
+        "wallMs": 881.8106669999979,
+        "ScriptDuration": 42.27399999999992,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 419.9570000000001,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 895.7817499999946,
+        "ScriptDuration": 39.88799999999992,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 418.4139999999985,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7419
+      },
+      {
+        "wallMs": 927.262917,
+        "ScriptDuration": 48.650000000000304,
+        "RecalcStyleDuration": 0,
+        "LayoutDuration": 0,
+        "TaskDuration": 450.0649999999986,
+        "paintMs": 0,
+        "compositeMs": 0,
+        "paintEvents": 0,
+        "compositeEvents": 0,
+        "nodes": 7419
+      }
+    ],
+    "toggle_one_two": [
+      {
+        "wallMs": 643.9817919999987,
+        "ScriptDuration": 223.344,
+        "RecalcStyleDuration": 47.04700000000006,
+        "LayoutDuration": 101.39199999999992,
+        "TaskDuration": 597.8779999999997,
+        "paintMs": 36.763999999999996,
+        "compositeMs": 0,
+        "paintEvents": 5,
+        "compositeEvents": 0,
+        "nodes": 4132
+      },
+      {
+        "wallMs": 574.5368750000052,
+        "ScriptDuration": 194.97400000000022,
+        "RecalcStyleDuration": 48.21500000000001,
+        "LayoutDuration": 103.024,
+        "TaskDuration": 486.4359999999994,
+        "paintMs": 36.259,
+        "compositeMs": 0,
+        "paintEvents": 5,
+        "compositeEvents": 0,
+        "nodes": 4132
+      },
+      {
+        "wallMs": 700.4387500000012,
+        "ScriptDuration": 248.6670000000002,
+        "RecalcStyleDuration": 51.53099999999999,
+        "LayoutDuration": 112.29,
+        "TaskDuration": 650.2529999999992,
+        "paintMs": 41.711,
+        "compositeMs": 0,
+        "paintEvents": 5,
+        "compositeEvents": 0,
+        "nodes": 4132
+      }
+    ],
+    "pieces_popup_open": [
+      {
+        "wallMs": 152.0127500000017,
+        "ScriptDuration": 13.485999999999443,
+        "RecalcStyleDuration": 2.063000000000037,
+        "LayoutDuration": 4.874000000000045,
+        "TaskDuration": 102.04799999999992,
+        "paintMs": 3.639,
+        "compositeMs": 0,
+        "paintEvents": 4,
+        "compositeEvents": 0,
+        "nodes": 53957
+      },
+      {
+        "wallMs": 144.7137090000033,
+        "ScriptDuration": 12.52999999999993,
+        "RecalcStyleDuration": 2.3929999999999785,
+        "LayoutDuration": 4.974000000000034,
+        "TaskDuration": 110.81999999999859,
+        "paintMs": 14.103,
+        "compositeMs": 0,
+        "paintEvents": 15,
+        "compositeEvents": 0,
+        "nodes": 53957
+      },
+      {
+        "wallMs": 149.70712500000081,
+        "ScriptDuration": 16.000999999999266,
+        "RecalcStyleDuration": 2.618999999999927,
+        "LayoutDuration": 5.114000000000063,
+        "TaskDuration": 105.01600000000089,
+        "paintMs": 5.0040000000000004,
+        "compositeMs": 0,
+        "paintEvents": 4,
+        "compositeEvents": 0,
+        "nodes": 53957
+      }
+    ],
+    "pieces_split_success": [
+      {
+        "wallMs": 983.7261670000007,
+        "ScriptDuration": 182.08100000000016,
+        "RecalcStyleDuration": 116.53999999999998,
+        "LayoutDuration": 116.65999999999998,
+        "TaskDuration": 960.8849999999993,
+        "paintMs": 186.65300000000002,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 53941
+      },
+      {
+        "wallMs": 940.608916000012,
+        "ScriptDuration": 181.4840000000002,
+        "RecalcStyleDuration": 112.30500000000009,
+        "LayoutDuration": 114.67200000000011,
+        "TaskDuration": 932.4860000000008,
+        "paintMs": 162.486,
+        "compositeMs": 0,
+        "paintEvents": 21,
+        "compositeEvents": 0,
+        "nodes": 53941
+      },
+      {
+        "wallMs": 926.9322500000126,
+        "ScriptDuration": 172.86999999999964,
+        "RecalcStyleDuration": 102.01000000000005,
+        "LayoutDuration": 111.58599999999996,
+        "TaskDuration": 869.7679999999988,
+        "paintMs": 183.76600000000008,
+        "compositeMs": 0,
+        "paintEvents": 21,
+        "compositeEvents": 0,
+        "nodes": 53941
+      }
+    ],
+    "pieces_piece_complete": [
+      {
+        "wallMs": 791.5912080000053,
+        "ScriptDuration": 238.14400000000012,
+        "RecalcStyleDuration": 123.17199999999995,
+        "LayoutDuration": 139.945,
+        "TaskDuration": 748.1660000000012,
+        "paintMs": 192.22999999999993,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 53910
+      },
+      {
+        "wallMs": 725.4985420000012,
+        "ScriptDuration": 213.88500000000033,
+        "RecalcStyleDuration": 110.55399999999993,
+        "LayoutDuration": 107.03099999999988,
+        "TaskDuration": 672.3250000000007,
+        "paintMs": 174.67500000000004,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 53910
+      },
+      {
+        "wallMs": 916.5254999999888,
+        "ScriptDuration": 293.87200000000036,
+        "RecalcStyleDuration": 135.38700000000003,
+        "LayoutDuration": 174.8160000000001,
+        "TaskDuration": 874.140999999998,
+        "paintMs": 208.40399999999997,
+        "compositeMs": 0,
+        "paintEvents": 22,
+        "compositeEvents": 0,
+        "nodes": 53910
+      }
+    ]
+  }
+}
