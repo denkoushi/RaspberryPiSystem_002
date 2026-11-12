@@ -53,18 +53,23 @@ async function preparePlanningPayload(params: PlanningPayloadRequest, perf: Retu
   // state fields in the generation token. A final token after the source/load
   // work still rejects CSV, state, or override updates during the request.
   const stateForRead = await perf.measure('state', () => getOrCreateState(params.siteKey, [], prisma));
-  const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey));
-  if (!isPlanningStateAlignedWithGeneration(stateForRead, generationBeforeRead)) {
-    throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
-  }
   const order = stateOrder(stateForRead);
   const requestedFseibans = params.fseibans && params.fseibans.length > 0 ? uniqueFseibans(params.fseibans) : undefined;
   const requested = requestedFseibans ? new Set(requestedFseibans) : undefined;
-  const excludedFseibans = await readScheduleSourceExcludedFseibans(params.scheduleSource, params.includeLoad === false ? order : undefined);
-  const excluded = new Set(excludedFseibans);
-  const selected = order.filter((value) => (!requested || requested.has(value)) && !excluded.has(value));
   const completionFilter = params.completionFilter ?? 'all';
   const includeLoad = params.includeLoad !== false;
+  // Capture the other source generations while resolving the selected piece parents,
+  // so a schedule-source update during selection still invalidates the final token.
+  const selection = readScheduleSourceExcludedFseibans(params.scheduleSource, includeLoad ? undefined : order).then((excludedFseibans) => {
+    const excluded = new Set(excludedFseibans);
+    const selected = order.filter((value) => (!requested || requested.has(value)) && !excluded.has(value));
+    return { excludedFseibans, selected, pieceScope: includeLoad ? undefined : { fseibans: selected } };
+  });
+  const generationBeforeRead = await perf.measure('generationBefore', () => readPlanningSnapshotGenerationDetails(params.siteKey, selection.then(({ pieceScope }) => pieceScope)));
+  const { excludedFseibans, selected, pieceScope } = await selection;
+  if (!isPlanningStateAlignedWithGeneration(stateForRead, generationBeforeRead)) {
+    throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
+  }
   const filterFingerprint = JSON.stringify({ scheduleSource: params.scheduleSource ?? 'both', excludedFseibans, dueSource: params.dueSource ?? 'excel', siteKey: params.siteKey, category: params.category, view: params.view, fseibans: selected, completionFilter, includeLoad, includePieces: params.includePieces ?? false });
   const store = params.snapshotStore ?? fallbackPlanningSnapshotStore;
   let reusablePayloads = reusablePlanningPayloads.get(store);
@@ -73,24 +78,24 @@ async function preparePlanningPayload(params: PlanningPayloadRequest, perf: Retu
     reusablePlanningPayloads.set(store, reusablePayloads);
   }
   const request: ReusablePlanningPayload['request'] = { scheduleSource: params.scheduleSource ?? 'both', dueSource: params.dueSource ?? 'excel', category: params.category, view: params.view, requestedFseibans, completionFilter, includeLoad, includePieces: params.includePieces ?? false };
-  return { params, perf, stateForRead, generationBeforeRead, order, selected, excludedFseibans, completionFilter, includeLoad, filterFingerprint, store, reusablePayloads, request };
+  return { params, perf, stateForRead, generationBeforeRead, pieceScope, order, selected, excludedFseibans, completionFilter, includeLoad, filterFingerprint, store, reusablePayloads, request };
 }
 
 type PlanningPayloadContext = Awaited<ReturnType<typeof preparePlanningPayload>>;
 
 async function findReusablePlanningPayload(context: PlanningPayloadContext): Promise<ReusablePlanningPayload | undefined> {
-  const { params, perf, reusablePayloads, filterFingerprint, generationBeforeRead } = context;
+  const { params, perf, reusablePayloads, filterFingerprint, generationBeforeRead, pieceScope } = context;
   const candidate = reusablePayloads.get(filterFingerprint);
   if (candidate && candidate.siteKey === params.siteKey && candidate.expiresAtMs > Date.now() &&
     candidate.generationToken === generationBeforeRead.generationToken) {
-    const generation = await perf.measure('generationSnapshot', () => readPlanningSnapshotGenerationToken(params.siteKey));
+    const generation = await perf.measure('generationSnapshot', () => readPlanningSnapshotGenerationToken(params.siteKey, pieceScope));
     if (candidate.generationToken === generation) return candidate;
   }
   return undefined;
 }
 
 async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ orderedIds: readonly string[]; payload: PlanningSnapshotPayload }> {
-  const { params, perf, stateForRead, generationBeforeRead, order, selected, excludedFseibans, completionFilter, includeLoad } = context;
+  const { params, perf, stateForRead, generationBeforeRead, order, selected, excludedFseibans, completionFilter, includeLoad, pieceScope } = context;
   const source = await perf.measure('source', () => readPlanningSource({
     siteKey: params.siteKey,
     category: params.category,
@@ -112,13 +117,13 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
     cache: {
       scheduleSource: params.scheduleSource ?? 'both',
       generationToken: generationBeforeRead.generationToken,
-      readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey),
+      readGenerationToken: () => readPlanningSnapshotGenerationToken(params.siteKey, pieceScope),
       performance: perf
     }
   })) : { load: [], unknownRequiredMinutesCount: 0 };
   const resources = await perf.measure('resources', () => readPlanningResourceCandidates(prisma, params.category, projection.policy));
   const tests = await readPlanningTestBars(prisma, params.siteKey);
-  const generation = await perf.measure('generationAfter', () => readPlanningSnapshotGenerationToken(params.siteKey));
+  const generation = await perf.measure('generationAfter', () => readPlanningSnapshotGenerationToken(params.siteKey, pieceScope));
   if (generation !== generationBeforeRead.generationToken) {
     throw new ApiError(409, '一覧の元データが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_SNAPSHOT');
   }

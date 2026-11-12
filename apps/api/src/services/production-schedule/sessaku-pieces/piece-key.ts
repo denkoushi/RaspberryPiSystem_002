@@ -128,13 +128,40 @@ export function sessakuPieceConflict(error: unknown, options: { preserveSerializ
   throw error;
 }
 
-/** Keep the monotonic sum as a decimal string; a Number loses information above 2^53. */
-export async function readSessakuPieceGeneration(client: Pick<SessakuPieceClient, '$queryRaw'>) {
-  const [row] = await client.$queryRaw<Array<{ count: bigint; version: bigint }>>`
-    SELECT COUNT(*)::bigint AS "count", COALESCE(SUM("version"), 0)::bigint AS "version"
-    FROM "ProductionScheduleSessakuPieceSet" WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-  `;
-  return { count: row.count.toString(), version: row.version.toString() };
+/** Undefined covers the whole load population; an empty list covers no parents. */
+export type SessakuPieceGenerationScope = { fseibans: readonly string[] };
+
+export async function readSessakuPieceGeneration(client: Pick<SessakuPieceClient, '$queryRaw'>, scope?: SessakuPieceGenerationScope): Promise<string> {
+  // Progress reads all processes of the selected seibans, regardless of display category.
+  // Winner selection preserves logical-key partitions, so DISTINCT raw keys avoids ranking/hydration.
+  const parentScope = scope ? Prisma.sql`AND s."fseiban" = ANY(${[...scope.fseibans]}::text[])
+    AND (s."fseiban", s."fhincd", s."fsigencd", s."fkojun") IN (
+    SELECT DISTINCT COALESCE(r."rowData"->>'FSEIBAN', ''), COALESCE(r."rowData"->>'FHINCD', ''),
+      COALESCE(r."rowData"->>'FSIGENCD', ''), COALESCE(r."rowData"->>'FKOJUN', '')
+    FROM "CsvDashboardRow" r
+    WHERE r."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND r."rowData"->>'FSEIBAN' = ANY(${[...scope.fseibans]}::text[])
+  )` : Prisma.empty;
+  const referencedSets = scope ? Prisma.sql`
+      UNION SELECT "sourcePieceSetId" FROM parents WHERE "sourcePieceSetId" IS NOT NULL
+      UNION SELECT source."pieceSetId" FROM "ProductionScheduleSessakuPiece" piece
+        JOIN parents ON parents."id" = piece."pieceSetId"
+        JOIN "ProductionScheduleSessakuPiece" source ON source."id" = piece."sourcePieceId"
+  ` : Prisma.empty;
+  // Hash in Postgres so the whole-load generation never transfers every piece set to the API.
+  const [row] = await client.$queryRaw<Array<{ fingerprint: string }>>(Prisma.sql`
+    WITH parents AS (
+      SELECT s."id", s."sourcePieceSetId" FROM "ProductionScheduleSessakuPieceSet" s
+      WHERE s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} ${parentScope}
+    ), dependencies AS (
+      SELECT "id" FROM parents
+      ${referencedSets}
+    )
+    SELECT md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."id", s."version")::text, ',' ORDER BY s."id" COLLATE "C"), '')) AS "fingerprint"
+    FROM "ProductionScheduleSessakuPieceSet" s JOIN dependencies d ON d."id" = s."id"
+    WHERE s."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+  `);
+  return row?.fingerprint ?? '';
 }
 
 /** ID replacement/removal touches overrides across sites, including ranks of other parents. */

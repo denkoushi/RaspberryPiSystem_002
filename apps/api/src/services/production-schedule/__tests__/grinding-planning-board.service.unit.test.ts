@@ -1,4 +1,5 @@
-vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceGeneration: vi.fn().mockResolvedValue({ count: '0', version: '0' }) }));
+vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceGeneration: vi.fn().mockResolvedValue('empty-pieces') }));
+import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { createHash } from 'node:crypto';
 
@@ -45,6 +46,7 @@ const mocks = vi.hoisted(() => {
   };
   return {
     prisma,
+    pieceSets: [] as Array<{ fseiban: string; fhincd: string; fsigencd: string; fkojun: string; id: string; version: number }>,
     listKinds: vi.fn(),
     findMaterialArrivalStatusByPart: vi.fn(),
     sourceRow,
@@ -124,6 +126,8 @@ function configurePersistence(): void {
   // Each test models an independent database generation for the in-process cache.
   databaseGeneration += 1;
   const { prisma, sourceRow, state } = mocks;
+  mocks.pieceSets = [];
+  vi.mocked(readSessakuPieceGeneration).mockResolvedValue('empty-pieces');
   const details = {
     id: sourceRow.id,
     updatedAt: sourceRow.updatedAt,
@@ -197,6 +201,11 @@ function configurePersistence(): void {
   mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('leaderboard-generation-1');
   prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
     const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
+    if (query.includes('WITH parents AS')) {
+      const scope = (strings as { values: unknown[] }).values.find(Array.isArray) as string[] | undefined;
+      const sets = mocks.pieceSets.filter((set) => scope === undefined || scope.includes(set.fseiban));
+      return [{ fingerprint: JSON.stringify([...sets].sort((a, b) => a.id.localeCompare(b.id))) }];
+    }
     if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
     if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
     if (query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [];
@@ -214,6 +223,68 @@ function configurePersistence(): void {
 }
 
 describe('grinding planning board service orchestration', () => {
+  async function usePieceGenerations() {
+    const actual = await vi.importActual<typeof import('../sessaku-pieces/piece-key.js')>('../sessaku-pieces/piece-key.js');
+    vi.mocked(readSessakuPieceGeneration).mockImplementation(actual.readSessakuPieceGeneration);
+  }
+
+  const pieceSet = (fseiban: string) => ({ fseiban, fhincd: 'PART-A', fsigencd: '305', fkojun: '1', id: `set-${fseiban}`, version: 1 });
+
+  it('keeps paging and reusing A after unrelated B changes, but rejects A updates, deletion and recreation', async () => {
+    await usePieceGenerations();
+    mocks.pieceSets = [pieceSet('ORDER-A'), pieceSet('ORDER-B')];
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const,
+      includeLoad: false, includePieces: true, snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) };
+    const first = await getGrindingPlanningBoard(params);
+    mocks.pieceSets[1]!.version += 1;
+    await expect(getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1 })).resolves.toBeDefined();
+    const projections = mocks.projectGrindingPlanningBoard.mock.calls.length;
+    const reused = await getGrindingPlanningBoard(params);
+    expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(projections);
+    expect(reused.sourceRevision).toBe(first.sourceRevision);
+    for (const change of ['update', 'delete', 'recreate'] as const) {
+      const baseline = await getGrindingPlanningBoard(params);
+      if (change === 'update') mocks.pieceSets[0]!.version += 1;
+      if (change === 'delete') mocks.pieceSets.shift();
+      if (change === 'recreate') mocks.pieceSets.unshift({ ...pieceSet('ORDER-A'), id: 'recreated-a' });
+      await expect(getGrindingPlanningBoard({ ...params, snapshotId: baseline.snapshotId, cursor: 1 }))
+        .rejects.toMatchObject({ statusCode: 409, code: 'STALE_PLANNING_BOARD_SNAPSHOT' });
+    }
+  });
+
+  it.each(['ORDER-A', 'ORDER-B'])('handles a %s update during list construction with the same scope', async (fseiban) => {
+    await usePieceGenerations();
+    mocks.pieceSets = [pieceSet('ORDER-A'), pieceSet('ORDER-B')];
+    const projection = mocks.projectGrindingPlanningBoard.getMockImplementation()!();
+    mocks.projectGrindingPlanningBoard.mockImplementationOnce(() => {
+      mocks.pieceSets.find((set) => set.fseiban === fseiban)!.version += 1;
+      return projection;
+    });
+    const read = getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban', includeLoad: false,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) });
+    if (fseiban === 'ORDER-A') await expect(read).rejects.toMatchObject({ statusCode: 409 });
+    else await expect(read).resolves.toBeDefined();
+  });
+
+  it.each([true, false])('invalidates the global load population for B updates (list: %s)', async (list) => {
+    await usePieceGenerations();
+    mocks.pieceSets = [pieceSet('ORDER-A'), pieceSet('ORDER-B')];
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'seiban' as const, includeLoad: true,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) };
+    if (list) {
+      const first = await getGrindingPlanningBoard(params);
+      mocks.pieceSets[1]!.version += 1;
+      await expect(getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1 })).rejects.toMatchObject({ statusCode: 409 });
+    } else {
+      const summary = vi.spyOn(loadSummary, 'readGrindingPlanningBoardLoadSummary').mockImplementationOnce(async () => {
+        mocks.pieceSets[1]!.version += 1;
+        return { load: [], unknownRequiredMinutesCount: 0 };
+      });
+      try { await expect(getGrindingPlanningBoardLoad(params)).rejects.toMatchObject({ statusCode: 409 }); }
+      finally { summary.mockRestore(); }
+    }
+  });
+
   it('batches code-based and manual LSLH identification for all response items', async () => {
     const base = mocks.projectGrindingPlanningBoard().items[0];
     mocks.projectGrindingPlanningBoard.mockReturnValue({

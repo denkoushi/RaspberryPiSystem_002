@@ -11,17 +11,21 @@ import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } fro
 import { readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans } from '../grinding-planning-board/source.js';
 import { ensurePlanningBoardState, stateOrder } from '../grinding-planning-board/state.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd } from '../policies/resource-category-policy.service.js';
-import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput } from './auto-unit-split-candidates.js';
+import { autoUnitSplitCandidateSql, isFirstAutoUnitSplitProcess, type AutoUnitSplitRejectedInput, type AutoUnitSplitCursor } from './auto-unit-split-candidates.js';
 import { runSessakuPieceOperation, pieceTimingStage, type PieceAuditContext } from './piece-audit.js';
 import { sessakuPieceItemIds, sessakuPieceKeyFromRow, sessakuPieceParentItemId, readSessakuPieceSets } from './piece-key.js';
 import { runAutoUnitSplitBatch, runAutoUnitSplitLot, splitSessakuPieces } from './sessaku-pieces.service.js';
 import { isUnitSplitEnabled } from './unit-split-policy.js';
 
 export const AUTO_UNIT_SPLIT_MAX_LOTS = 3;
+export const AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS = 8;
 export const AUTO_UNIT_SPLIT_BUDGET_MS = 20000;
 export const AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS = 1000;
 export const AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS = AUTO_UNIT_SPLIT_BUDGET_MS + AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS + 6000;
+
+// Keep traversal independent of rejection TTLs and scheduler backoff. Wrap after reaching the tail.
+const candidateCursors = new Map<string, AutoUnitSplitCursor>();
 
 const REJECTED_INPUT_TTL_MS = 3 * 60 * 1000;
 const staleInputs = new Map<string, { inputVersion: string; reason: 'stale'; expiresAt: number }>();
@@ -59,6 +63,7 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
   const started = performance.now();
   const metrics: AutoUnitSplitMetrics = { writtenRowCount: 0, lockHeldMs: 0, yieldReason: null, completedParentItemIds: [] };
   let committed = false;
+  let previousCursor: { value: AutoUnitSplitCursor | undefined } | undefined;
   let previousStale: typeof staleInputs | undefined;
   let previousRejected: typeof rejectedInputs | undefined;
   const deadline = performance.now() + limits.budgetMs;
@@ -81,6 +86,7 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
       // KB-452: JIT compilation ignores statement_timeout. Production row counts can push plan costs
       // past jit_above_cost, so keep this transaction (and only this one) out of JIT.
       await raw.$executeRaw`SET LOCAL jit = off`;
+      previousCursor = { value: candidateCursors.get(params.siteKey) };
       previousStale = new Map(staleInputs);
       previousRejected = new Map(rejectedInputs);
       result = await autoSplitLocked(runner, params, Math.min(deadline, runnerDeadline), runnerDeadline, result, limits, started, raw);
@@ -91,6 +97,10 @@ export async function autoSplitSessakuUnits(params: { siteKey: string; audit?: P
     for (const parentId of metrics.completedParentItemIds ?? []) deferredLots.delete(JSON.stringify([params.siteKey, parentId]));
     return saved;
   } catch (error) {
+    if (previousCursor) {
+      if (previousCursor.value) candidateCursors.set(params.siteKey, previousCursor.value);
+      else candidateCursors.delete(params.siteKey);
+    }
     metrics.errorCode = (error as { code?: string })?.code ?? 'error';
     metrics.errorMessage = error instanceof Error ? error.message : String(error);
     metrics.failedParentItemId = metrics.currentParentItemId ?? null;
@@ -171,12 +181,31 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
   for (const [key, stale] of staleInputs) if (stale.expiresAt <= now) staleInputs.delete(key);
   let attempted = 0;
   let retryNeeded = false;
+  let hasUnlockedCandidates = false;
+  const cursor = candidateCursors.get(params.siteKey);
+  const after = cursor && order.includes(cursor.fseiban) ? cursor : undefined;
+  let lockedCandidates: AutoUnitSplitCursor[] = [];
+  let firstRetryIndex: number | undefined;
+  let lastLockedCandidate: AutoUnitSplitCursor | undefined;
+  const finishWindow = () => {
+    if (firstRetryIndex !== undefined) {
+      const preceding = firstRetryIndex === 0 ? after : lockedCandidates[firstRetryIndex - 1];
+      if (preceding) candidateCursors.set(params.siteKey, preceding);
+      else candidateCursors.delete(params.siteKey);
+    } else if (hasUnlockedCandidates && lastLockedCandidate) candidateCursors.set(params.siteKey, lastLockedCandidate);
+    else candidateCursors.delete(params.siteKey);
+    return { ...result, hasMore: retryNeeded || hasUnlockedCandidates || after !== undefined };
+  };
   return runSessakuPieceOperation({ ...params.audit, action: 'auto_unit_split', siteKey: params.siteKey }, (batchAudit) =>
     runAutoUnitSplitBatch(runner, async () => {
       await setPreprocessingStatementTimeout(runner, runnerDeadline);
-      const rows = await runner.$queryRaw<Array<{ parentId: string }>>(Prisma.sql`SELECT "parentId" FROM (${autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections, { includeInputVersion: false })}) AS lock_candidates`);
-      return rows.map((row) => row.parentId);
-    }, async () => {
+      const rows = await runner.$queryRaw<AutoUnitSplitCursor[]>(Prisma.sql`SELECT "id", "fseiban", "parentId" FROM (${autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections, { includeInputVersion: false, after })}) AS lock_candidates LIMIT ${AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS + 1}`);
+      hasUnlockedCandidates = rows.length > AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS;
+      const selected = rows.slice(0, AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS);
+      lockedCandidates = selected;
+      lastLockedCandidate = selected.at(-1);
+      return selected.map((row) => row.parentId);
+    }, async (parentIds) => {
       while (true) {
         const pageDeadline = excludedParentIds.size ? Math.min(deadline, runnerDeadline) : runnerDeadline;
         if (result.splitCount > 0 && performance.now() >= deadline) return { ...result, hasMore: true };
@@ -186,7 +215,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         let page;
         try {
           page = await (async () => {
-            const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections);
+            const candidateSql = autoUnitSplitCandidateSql(params.siteKey, order, policy, [...excludedParentIds], cachedRejections, { parentIds });
             if (!await setPreprocessingStatementTimeout(runner, pageDeadline, preserveCompletedLots)) return;
             let candidateRows: Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>;
             const candidateStarted = performance.now();
@@ -277,8 +306,8 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           return { ...result, hasMore: true };
         }
         if (preserveCompletedLots) await runner.$executeRaw`RELEASE SAVEPOINT auto_unit_split_page`;
-        if (page.empty) return { ...result, hasMore: retryNeeded };
-        const { candidateRows, items, candidates, metrics } = page;
+        if (page.empty) return finishWindow();
+        const { candidateRows, candidates, metrics } = page;
         // Rejections expire or are invalidated by any changed eligibility input.
         const rememberRejection = (parentId: string) => {
           const row = candidateRows.find((row) => row.parentId === parentId);
@@ -288,14 +317,15 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
           });
         };
         for (const row of candidateRows) {
-          const projected = items.find((item) => item.sourceRowId === row.id);
-          if (projected && !isFirstAutoUnitSplitProcess(projected, items)) rememberRejection(row.parentId);
+          // Fingerprints cover temporary eligibility too, so invalid heads cannot occupy
+          // every bounded window forever. Changed inputs become eligible again.
+          if (!candidates.some((item) => (item.parentItemId ?? item.itemId) === row.parentId)) rememberRejection(row.parentId);
         }
         // All other exclusions last only for this request. History never gates discovery.
         const previousExcludedCount = excludedParentIds.size;
         for (const row of candidateRows) excludedParentIds.add(row.parentId);
         if (!candidates.length) {
-          if (candidateRows.length <= limits.maxLots) return { ...result, hasMore: retryNeeded };
+          if (candidateRows.length <= limits.maxLots) return finishWindow();
           if (excludedParentIds.size === previousExcludedCount) return { ...result, hasMore: true };
           continue;
         }
@@ -368,6 +398,10 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
               deferLot(params.siteKey, parentItemId, code ?? 'error');
             }
             if (!reloadable) rememberRejection(parentItemId);
+            else if (code !== 'AUTO_UNIT_SPLIT_BUDGET') {
+              const index = lockedCandidates.findIndex((row) => row.parentId === parentItemId);
+              if (index >= 0 && (firstRetryIndex === undefined || index < firstRetryIndex)) firstRetryIndex = index;
+            }
             retryNeeded ||= Boolean(reloadable);
             logger.warn({
               event: 'sessaku_piece.auto_unit_split_skipped', siteKey: params.siteKey, parentItemId,
@@ -392,7 +426,7 @@ async function autoSplitLocked(runner: Prisma.TransactionClient, params: { siteK
         if (stopped || performance.now() >= deadline || performance.now() >= runnerDeadline || result.splitCount >= limits.maxLots) {
           return { ...result, hasMore: true };
         }
-        if (candidateRows.length <= limits.maxLots) return { ...result, hasMore: retryNeeded };
+        if (candidateRows.length <= limits.maxLots) return finishWindow();
         if (excludedParentIds.size === previousExcludedCount) return { ...result, hasMore: true };
       }
     }, batchAudit, raw), { tx: runner, successOnly: true });
