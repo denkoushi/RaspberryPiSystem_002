@@ -3,7 +3,6 @@
   "src/services/assembly/assembly-procedure-document.service.ts": 658,
   "src/services/assembly/assembly-template.service.ts": 971,
   "src/services/assembly/assembly-work-session.service.ts": 761,
-  "src/services/backup/gmail-api-client.ts": 639,
   "src/services/business-hermes/business-hermes-consultation.service.ts": 1667,
   "src/services/business-hermes/business-hermes-mcp.service.ts": 1893,
   "src/services/business-hermes/business-hermes.service.ts": 741,
