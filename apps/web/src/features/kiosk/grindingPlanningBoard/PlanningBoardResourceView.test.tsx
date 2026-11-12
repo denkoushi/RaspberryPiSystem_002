@@ -342,7 +342,8 @@ describe('PlanningBoardResourceView pane layout', () => {
     expect(first.textContent).toBe('↧');
     expect(screen.getByRole('button', { name: '資源CD 584を縮小' })).toHaveAttribute('aria-expanded', 'true');
     expect(scroller.scrollTop).toBe(120);
-    expect(scroller.querySelectorAll('tbody tr')).toHaveLength(10);
+    expect(scroller.querySelectorAll('tbody tr[data-planning-board-item-id]').length).toBeLessThanOrEqual(10);
+    expect(screen.getByTestId('planning-board-item-0')).toBeInTheDocument();
     expect(order()).toEqual(props.resources);
   });
 
@@ -423,6 +424,7 @@ describe('PlanningBoardResourceView height measurement', () => {
     vi.stubGlobal('ResizeObserver', class {
       constructor(callback: () => void) { observerCallbacks.push(callback); }
       observe() {}
+      unobserve() {}
       disconnect() {}
     });
     const innerHeight = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800);

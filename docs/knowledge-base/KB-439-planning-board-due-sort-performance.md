@@ -449,3 +449,12 @@ APIは `pnpm exec vitest run src/services/production-schedule/__tests__/grinding
 - 同スクリプトの `explain`: 重複除去の推定90,000行、実際34,640行。row override は Hash Left Join、実行234.455ms。Nested Loop と Rows Removed by Join Filter は出ていない。計測前に ANALYZE は実行せず、元 DB への書込みも行っていない。
 - 検証用 DB は元 DB のスキーマだけを複製した `grinding_load_sql_test_20261108`。負荷集計の統合20件・ユニット16件が成功。対象 ESLint と `git diff --check` も成功。指定 typecheck は既存 tsconfig の `rootDir: src` と src 外の include による TS6059 で失敗（設定は変更しない）。
 - 指定のボード・片の統合テストは、既存 workspace 依存のビルドと migration の raw revision 初期行を専用 DB に準備して実行し、177件中176件成功（40.31秒）。残る1件は `keeps an override on a same-logical-key winner and ignores legacy record changes` の snapshotId 一致チェック（1114行）。変更前の load-summary モジュールを `git show HEAD:...` から一時 Vite transform で読み込んだ単独テストでも同じ失敗を確認した（1.24秒）。今回の集計変更では修正しない。
+
+## 2026-11-13 機械ごとの表の行仮想化
+
+- `PlanningBoardItemTable` の既定オフの `virtualize` を機械ごとの表だけで有効化。既存の `[data-resource-scroll]` と `itemId` を使い、`measureElement` で可変高の行を実測する。製番ごと・絞り込み表示は全行描画を維持する。
+- 通常範囲の前後3行に加えて、ペイン高さ算出用の先頭7行と pointer capture 中のドラッグ元を保持する。離れた範囲の間は `tbody > tr > td` のスペーサーで埋め、高さ計算では実データ行だけを測る。
+- 製番スキャンは配列の最初の一致位置へ `scrollToIndex` する。再取得だけでは移動しない。印刷イベントと print media の間は全件描画し、終了後に仮想化へ戻す。選択集合と一括操作は親で保持する。
+- ブラウザ性能測定の行取得は、未描画の場合に対象資源のスクロール領域を順に進めてから行の既存 testid を参照する。
+- 実ブラウザでの可変高・ズーム・印刷結果・ドラッグの目視確認と性能測定は未実施。
+- 検証: 表・資源ビュー・利用ページの関連9ファイル176テスト成功（追加8件）、Web の tsc と対象 ESLint 成功。

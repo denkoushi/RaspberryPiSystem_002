@@ -172,6 +172,7 @@ export function PlanningBoardResourceView({
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardResourceViewProps) {
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
   const { gate } = usePlanningBoardOffline(); const pendingResourceDragRef = useRef<PendingResourceDrag | null>(null);
   const suppressedResourceClickPointerIdRef = useRef<number | null>(null);
   const validResources = useMemo(() => new Set(resources), [resources]);
@@ -290,6 +291,7 @@ export function PlanningBoardResourceView({
     drag.buttonElement.style.opacity = drag.originalButtonOpacity;
     drag.ghostElement?.remove();
     pendingResourceDragRef.current = null;
+    setDraggedItemId(null);
     if (drag.buttonElement.hasPointerCapture?.(pointerId)) {
       try {
         drag.buttonElement.releasePointerCapture(pointerId);
@@ -369,6 +371,7 @@ export function PlanningBoardResourceView({
       originalButtonOpacity: buttonElement.style.opacity,
       sourceRow: null, sourceOutline: '', sourceOutlineOffset: '', sourceBackground: ''
     };
+    setDraggedItemId(item.itemId);
     buttonElement.setPointerCapture?.(event.pointerId);
     event.stopPropagation();
   }, [gate]);
@@ -477,15 +480,6 @@ export function PlanningBoardResourceView({
   const orderedResources = useMemo(() => sortPlanningBoardResources(paneOrder.order, category, resourceCategories), [paneOrder.order, category, resourceCategories]);
   const groupsByResource = useMemo(() => new Map(groups), [groups]);
   const gridRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    if (!focusedSeiban) return;
-    gridRef.current?.querySelectorAll<HTMLElement>('[data-resource-scroll]').forEach((scroll) => {
-      const row = scroll.querySelector<HTMLElement>('[data-seiban-focused="true"]');
-      if (row) scroll.scrollTop += (row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) / pageZoom();
-    });
-    // Scroll only when a new scan lands, not on every data refresh.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scanFocusKey]);
   const [expanded, setExpanded] = useState<ReadonlyMap<string, { layer: number; height: number }>>(new Map());
   const topLayerRef = useRef(0);
   const [heights, setHeights] = useState({ normal: 361, expanded: 722 });
@@ -500,7 +494,7 @@ export function PlanningBoardResourceView({
     const measure = () => {
       // Measure only the first seven rows, and leave short panes the same height.
       const bodyHeight = Math.max(315, ...tables.map((table) => {
-        const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr')].slice(0, 7);
+        const rows = [...table.querySelectorAll<HTMLTableRowElement>('tbody tr[data-planning-board-item-id]')].slice(0, 7);
         return rows.reduce((height, row) => height + row.getBoundingClientRect().height / pageZoom(), 0) + (7 - rows.length) * 45;
       }));
       const normal = Math.ceil(bodyHeight) + 46;
@@ -610,6 +604,9 @@ export function PlanningBoardResourceView({
                 </header>
                 <div className="min-h-0 flex-1 overflow-y-auto" style={{ scrollbarGutter: 'stable' }} data-resource-scroll>
                   <PlanningBoardItemTable
+                    virtualize
+                    scanFocusKey={scanFocusKey}
+                    draggedItemId={draggedItemId}
                     items={resourceItems}
                     focusedSeiban={focusedSeiban}
                     allocation={allocation}
