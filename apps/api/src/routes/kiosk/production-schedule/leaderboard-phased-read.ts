@@ -29,6 +29,7 @@ import {
   toLegacyLocationKeyFromDeviceScope,
   type KioskRouteDeps
 } from './shared.js';
+import { parseLeaderboardBoardListParamsBase, parseLeaderboardListParams } from './leaderboard-list-params.js';
 import { resolveProductionScheduleAssignmentLocationKey } from './resolve-assignment-location-key.js';
 
 const LEADERBOARD_SHELL_PAGE_SIZE_CAP = 160;
@@ -89,24 +90,12 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app.get('/kiosk/production-schedule/leaderboard-shell', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const query = productionScheduleLeaderboardPhasedQuerySchema.parse(request.query);
     const page = query.page ?? 1;
     const requestedPageSize = query.pageSize ?? LEADERBOARD_SHELL_PAGE_SIZE_CAP;
     const pageSize = Math.min(requestedPageSize, LEADERBOARD_SHELL_PAGE_SIZE_CAP);
-    const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
-    const productNos = parseCsvList(query.productNos);
-    const machineName = query.machineName?.trim();
-    const resourceCds = parseCsvList(query.resourceCds);
-    const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
-    const resourceCategory = query.resourceCategory;
-
-    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
-      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
-      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
-      targetDeviceScopeKey: query.targetDeviceScopeKey
-    });
+    const listParams = await parseLeaderboardListParams(query, locationScopeContext);
     const { generationToken, processChangeResidualMaterialization } =
       await resolveKioskLeaderboardProcessChangeResidualContext();
 
@@ -114,19 +103,7 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
       {
         page,
         pageSize,
-        queryText: rawQueryText,
-        productNos,
-        machineName: machineName && machineName.length > 0 ? machineName : undefined,
-        resourceCds,
-        assignedOnlyCds,
-        resourceCategory,
-        hasNoteOnly: query.hasNoteOnly === true,
-        hasDueDateOnly: query.hasDueDateOnly === true,
-        allowResourceOnly: query.allowResourceOnly === true,
-        completionFilter: query.completionFilter,
-        dueSource: query.dueSource,
-        locationKey: assignmentLocationKey,
-        siteKey: locationScopeContext.siteKey,
+        ...listParams,
         processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
         processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys
       },
@@ -137,40 +114,16 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app.post('/kiosk/production-schedule/leaderboard-shell/continue', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const body = productionScheduleLeaderboardShellContinuationBodySchema.parse(request.body ?? {});
     const chunkSize = Math.min(body.pageSize ?? LEADERBOARD_SHELL_PAGE_SIZE_CAP, LEADERBOARD_SHELL_PAGE_SIZE_CAP);
-    const rawQueryText = (body.q ?? body.productNo)?.trim() ?? '';
-    const productNos = parseCsvList(body.productNos);
-    const machineName = body.machineName?.trim();
-    const resourceCds = parseCsvList(body.resourceCds);
-    const assignedOnlyCds = parseCsvList(body.resourceAssignedOnlyCds);
-    const resourceCategory = body.resourceCategory;
-
-    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
-      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
-      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
-      targetDeviceScopeKey: body.targetDeviceScopeKey
-    });
+    const listParams = await parseLeaderboardListParams(body, locationScopeContext);
     const { generationToken, processChangeResidualMaterialization } =
       await resolveKioskLeaderboardProcessChangeResidualContext();
 
     return listLeaderboardShellContinuationProductionScheduleRows(
       {
-        locationKey: assignmentLocationKey,
-        siteKey: locationScopeContext.siteKey,
-        queryText: rawQueryText,
-        productNos,
-        machineName: machineName && machineName.length > 0 ? machineName : undefined,
-        resourceCds,
-        assignedOnlyCds,
-        resourceCategory,
-        hasNoteOnly: body.hasNoteOnly === true,
-        hasDueDateOnly: body.hasDueDateOnly === true,
-        allowResourceOnly: body.allowResourceOnly === true,
-        completionFilter: body.completionFilter,
-        dueSource: body.dueSource,
+        ...listParams,
         excludeRowIds: body.excludeRowIds ?? [],
         cursor: body.cursor,
         chunkSize,
@@ -185,37 +138,13 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app.get('/kiosk/production-schedule/leaderboard-total', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const query = productionScheduleLeaderboardPhasedQuerySchema.parse(request.query);
-    const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
-    const productNos = parseCsvList(query.productNos);
-    const machineName = query.machineName?.trim();
-    const resourceCds = parseCsvList(query.resourceCds);
-    const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
-    const resourceCategory = query.resourceCategory;
-
-    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
-      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
-      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
-      targetDeviceScopeKey: query.targetDeviceScopeKey
-    });
+    const listParams = await parseLeaderboardListParams(query, locationScopeContext);
     const { processChangeResidualMaterialization } = await resolveKioskLeaderboardProcessChangeResidualContext();
 
     const total = await countProductionScheduleDashboardVisibleRowsFromListFilters({
-      queryText: rawQueryText,
-      productNos,
-      machineName: machineName && machineName.length > 0 ? machineName : undefined,
-      resourceCds,
-      assignedOnlyCds,
-      resourceCategory,
-      hasNoteOnly: query.hasNoteOnly === true,
-      hasDueDateOnly: query.hasDueDateOnly === true,
-      allowResourceOnly: query.allowResourceOnly === true,
-      completionFilter: query.completionFilter,
-      dueSource: query.dueSource,
-      locationKey: assignmentLocationKey,
-      siteKey: locationScopeContext.siteKey,
+      ...listParams,
       processChangeResidualMode: KIOSK_LEADERBOARD_PROCESS_CHANGE_RESIDUAL_MODE,
       processChangeResidualStrongEvidenceKeys: processChangeResidualMaterialization.keys
     });
@@ -290,7 +219,6 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app.get('/kiosk/production-schedule/leaderboard-board', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const query = productionScheduleLeaderboardBoardQuerySchema.parse(request.query);
     const boardResourceCds = parseCsvList(query.boardResourceCds);
@@ -305,34 +233,11 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     const page = query.page ?? 1;
     const requestedPageSize = query.pageSize ?? LEADERBOARD_SHELL_PAGE_SIZE_CAP;
     const pageSize = Math.min(requestedPageSize, LEADERBOARD_SHELL_PAGE_SIZE_CAP);
-    const rawQueryText = (query.q ?? query.productNo)?.trim() ?? '';
-    const productNos = parseCsvList(query.productNos);
-    const machineName = query.machineName?.trim();
-    const assignedOnlyCds = parseCsvList(query.resourceAssignedOnlyCds);
-    const resourceCategory = query.resourceCategory;
-
-    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
-      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
-      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
-      targetDeviceScopeKey: query.targetDeviceScopeKey
-    });
+    const listParamsBase = await parseLeaderboardBoardListParamsBase(query, locationScopeContext);
 
     return fetchLeaderboardCompositeBoardShell(
       {
-        listParamsBase: {
-          queryText: rawQueryText,
-          productNos,
-          machineName: machineName && machineName.length > 0 ? machineName : undefined,
-          assignedOnlyCds,
-          resourceCategory,
-          hasNoteOnly: query.hasNoteOnly === true,
-          hasDueDateOnly: query.hasDueDateOnly === true,
-          allowResourceOnly: query.allowResourceOnly === true,
-          completionFilter: query.completionFilter,
-          dueSource: query.dueSource,
-          locationKey: assignmentLocationKey,
-          siteKey: locationScopeContext.siteKey
-        },
+        listParamsBase,
         boardResourceCds,
         page,
         pageSize,
@@ -352,7 +257,6 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
   app.post('/kiosk/production-schedule/leaderboard-board/continue', { config: { rateLimit: false } }, async (request, reply) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const locationScopeContext = deps.resolveLocationScopeContext(clientDevice);
-    const deviceScopeKey = locationScopeContext.deviceScopeKey;
 
     const body = productionScheduleLeaderboardBoardContinueBodySchema.parse(request.body ?? {});
     const boardResourceCds = parseCsvList(body.boardResourceCds);
@@ -365,34 +269,11 @@ export async function registerProductionScheduleLeaderboardPhasedReadRoutes(
     }
 
     const chunkSize = Math.min(body.pageSize ?? LEADERBOARD_SHELL_PAGE_SIZE_CAP, LEADERBOARD_SHELL_PAGE_SIZE_CAP);
-    const rawQueryText = (body.q ?? body.productNo)?.trim() ?? '';
-    const productNos = parseCsvList(body.productNos);
-    const machineName = body.machineName?.trim();
-    const assignedOnlyCds = parseCsvList(body.resourceAssignedOnlyCds);
-    const resourceCategory = body.resourceCategory;
-
-    const assignmentLocationKey = await resolveProductionScheduleAssignmentLocationKey({
-      actorDeviceScopeKey: toLegacyLocationKeyFromDeviceScope(deviceScopeKey),
-      actorCanProxyOtherDevices: locationScopeContext.canProxyOtherDevices,
-      targetDeviceScopeKey: body.targetDeviceScopeKey
-    });
+    const listParamsBase = await parseLeaderboardBoardListParamsBase(body, locationScopeContext);
 
     return continueLeaderboardCompositeBoard(
       {
-        listParamsBase: {
-          queryText: rawQueryText,
-          productNos,
-          machineName: machineName && machineName.length > 0 ? machineName : undefined,
-          assignedOnlyCds,
-          resourceCategory,
-          hasNoteOnly: body.hasNoteOnly === true,
-          hasDueDateOnly: body.hasDueDateOnly === true,
-          allowResourceOnly: body.allowResourceOnly === true,
-          completionFilter: body.completionFilter,
-          dueSource: body.dueSource,
-          locationKey: assignmentLocationKey,
-          siteKey: locationScopeContext.siteKey
-        },
+        listParamsBase,
         boardResourceCds,
         resourceSlices: body.resourceSlices,
         chunkSize,

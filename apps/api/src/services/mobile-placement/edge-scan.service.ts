@@ -1,3 +1,5 @@
+import { isManufacturingOrderNo } from '@raspi-system/shared-types';
+
 import { ApiError } from '../../lib/errors.js';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
@@ -26,7 +28,7 @@ export async function registerEdgeScan(input: EdgeScanInput) {
       throw new ApiError(422, '棚スキャナに棚が割り当てられていません。', undefined, 'EDGE_SHELF_NOT_ASSIGNED');
     }
     const orderNumber = input.orderNumber.trim();
-    if (!/^\d{10}$/.test(orderNumber)) {
+    if (!isManufacturingOrderNo(orderNumber)) {
       throw new ApiError(422, '番号は前後の空白を除いて10桁の数字で読み取ってください。', undefined, 'EDGE_ORDER_NOT_FOUND');
     }
 

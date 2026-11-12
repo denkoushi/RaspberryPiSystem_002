@@ -2,7 +2,7 @@ import type { GrindingPlanningBoardCategory } from '@raspi-system/shared-types';
 import { randomUUID } from 'node:crypto';
 
 import { Prisma } from '@prisma/client';
-import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { GrindingPlanningBoardProjectionOverride, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection.js';
 import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
@@ -240,6 +240,70 @@ describeIntegration('grinding planning board lightweight load summary integratio
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it('disables JIT on the aggregate connection and restores it after the root transaction', async () => {
+    const fixture = await createFixture();
+    const { createPrismaClient } = await import('../../../lib/prisma-client.js');
+    const singleUrl = new URL(testDatabaseUrl);
+    singleUrl.searchParams.set('connection_limit', '1');
+    const single = createPrismaClient(singleUrl.toString());
+    const settings = async (client: Prisma.TransactionClient) =>
+      (await client.$queryRaw<Array<{ pid: number; jit: string }>>`SELECT pg_backend_pid() AS pid, current_setting('jit') AS jit`)[0]!;
+    const transaction = single.$transaction.bind(single);
+    let during: { pid: number; jit: string } | undefined;
+    const spy = vi.spyOn(single, '$transaction').mockImplementationOnce(((read: (tx: Prisma.TransactionClient) => Promise<unknown>, options: object) =>
+      transaction(async (tx) => {
+        const query = tx.$queryRaw.bind(tx);
+        const querySpy = vi.spyOn(tx, '$queryRaw').mockImplementation((async (...args: Parameters<typeof tx.$queryRaw>) => {
+          if ('sql' in args[0] && args[0].sql.includes('effectiveItems')) during = await settings(tx);
+          return query(...args);
+        }) as typeof tx.$queryRaw);
+        try { return await read(tx); } finally { querySpy.mockRestore(); }
+      }, options)) as typeof single.$transaction);
+    try {
+      await single.$executeRaw`SET jit = on`;
+      const before = await settings(single);
+      expect(before.jit).toBe('on');
+      await summaryReader()({ client: single, siteKey: fixture.siteKey, category: 'grinding',
+        resourceMinutes: { ownSourceResourceCds: [], values: [] },
+        leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${fixture.rowIds}::text[])`,
+        isResourceInCategory: () => true });
+      expect(during).toEqual({ pid: before.pid, jit: 'off' });
+      expect(await settings(single)).toEqual(before);
+    } finally { spy.mockRestore(); await single.$disconnect(); }
+  });
+
+  it('matches the former direct-query aggregate and full response with identical data', async () => {
+    const fixture = await createFixture();
+    const params = { siteKey: fixture.siteKey, category: 'grinding' as const,
+      resourceMinutes: { ownSourceResourceCds: [], values: [] },
+      leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ANY(${fixture.rowIds}::text[])`,
+      isResourceInCategory: () => true };
+    let aggregateSql: Prisma.Sql | undefined;
+    let directRows: unknown;
+    // Reproduce the former execution: no transaction and a direct $queryRaw.
+    const directClient = {
+      $executeRaw: (async () => 0) as PrismaClient['$executeRaw'],
+      async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
+        const rows = await db().$queryRaw<T>(query, ...values);
+        if ('sql' in query && query.sql.includes('effectiveItems')) { aggregateSql = query; directRows = rows; }
+        return rows;
+      }
+    };
+    const direct = await summaryReader()({ ...params, client: directClient });
+    const current = await summaryReader()({ ...params, client: db() });
+    expect(current).toEqual(direct);
+    expect(current.load.length).toBeGreaterThan(0);
+    expect(aggregateSql).toBeDefined();
+    const transactionRows = await db().$transaction(async (tx) => {
+      await tx.$executeRaw`SET LOCAL jit = off`;
+      return tx.$queryRaw(aggregateSql!);
+    }, { timeout: 120_000, maxWait: 15_000 });
+    // GROUP BY has no ordering contract; retain duplicate rows when comparing.
+    const ordered = (rows: unknown[]) => rows.map((row) => JSON.stringify(row, (_key, value) =>
+      typeof value === 'bigint' ? value.toString() : value)).sort();
+    expect(ordered(transactionRows as unknown[])).toEqual(ordered(directRows as unknown[]));
+  });
+
   it.each([
     { name: 'row match', fseiban: 'ORDER', productNo: 'P1', overrideProductNo: 'other', split: false, resources: ['G-02'], movedCount: 1 },
     { name: 'masked order product match', fseiban: '********', productNo: 'P1', overrideProductNo: 'P1', split: false, resources: ['G-02'], movedCount: 1 },
@@ -289,6 +353,8 @@ describeIntegration('grinding planning board lightweight load summary integratio
       { itemKey: spec.split ? rowItemKey : splitItemKey, overrideResourceCd: spec.split ? null : 'G-99' }
     ];
     const client = {
+      $executeRaw: db().$executeRaw.bind(db()),
+      $transaction: db().$transaction.bind(db()),
       async $queryRaw<T = unknown>(query: TemplateStringsArray | Prisma.Sql, ...values: unknown[]): Promise<T> {
         if ('sql' in query && !query.sql.includes('"effectiveItems"')) return overrideRows as T;
         return db().$queryRaw<T>(query, ...values);

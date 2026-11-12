@@ -1,3 +1,4 @@
+import { isManufacturingOrderNo } from '@raspi-system/shared-types';
 import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
@@ -37,7 +38,7 @@ export function KioskHaizenTrailPage() {
       </div>
       <span className="w-[76px] shrink-0 text-[13px] tabular-nums text-inv-faint">{records.dataUpdatedAt ? `${time(records.dataUpdatedAt)} 更新` : '読込中…'}</span>
     </div>
-    {/^\d{10}$/.test(text) && (records.isError ? <p role="alert" className="py-12 text-center text-inv-muted">足取りを取得できません</p> : records.isPending ? <p className="py-12 text-center text-inv-muted">読込中…</p> : !trail ? <p className="py-12 text-center text-inv-muted">一致する品物はありません</p> : <div className="grid min-h-0 flex-1 items-start gap-5 overflow-y-auto lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
+    {isManufacturingOrderNo(text) && (records.isError ? <p role="alert" className="py-12 text-center text-inv-muted">足取りを取得できません</p> : records.isPending ? <p className="py-12 text-center text-inv-muted">読込中…</p> : !trail ? <p className="py-12 text-center text-inv-muted">一致する品物はありません</p> : <div className="grid min-h-0 flex-1 items-start gap-5 overflow-y-auto lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)]">
       <div className="flex min-w-0 flex-col gap-4 lg:sticky lg:top-0">
         <div className={`${invPanel} flex flex-col gap-3 p-5`}>
           <div><p className="text-sm text-inv-muted">製造オーダー</p><p className="font-mono text-3xl font-black">{trail.orderNo}</p></div>
