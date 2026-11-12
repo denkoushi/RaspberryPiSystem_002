@@ -362,42 +362,6 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
   ];
 }
 
-export function listPostListenSchedulerNames(): string[] {
-  // Names only — used by unit tests to assert Backup/CSV membership without starting jobs.
-  return [
-    'hermes-knowledge',
-    'signage-render',
-    'part-measurement-drawing-dimension-map',
-    'grinding-planning-board-startup-warmup',
-    'sessaku-auto-unit-split',
-    'procedure-term-learning',
-    'business-hermes-nightly',
-    'security-review-nightly',
-    'security-review-queue',
-    'advisory-check',
-    'fkojunst-mail-superseded-prune',
-    'file-storage-integrity-backfill',
-    'backup',
-    'csv-import',
-    'kiosk-document-gmail',
-    'procedure-video',
-    'kiosk-document-ocr',
-    'work-instruction-gmail',
-    'gmail-trash-cleanup',
-    'due-management-tuning',
-    'alerts-dispatcher',
-    'watch-camera-retention',
-    'client-network-log-retention',
-    'client-heartbeat-monitor',
-    'system-notice-evaluator',
-    'csv-feed-freshness-evaluator',
-    'alerts-ingestor',
-    'photo-tool-label',
-    'procedure-material-image-description',
-    'part-measurement-drawing-ocr',
-  ];
-}
-
 /**
  * listen 完了後のバックグラウンドジョブ起動を一箇所に集約。
  * 起動失敗時は既に開始したジョブを逆順停止し、停止も曖昧なら fail-closed 用エラーにする。
