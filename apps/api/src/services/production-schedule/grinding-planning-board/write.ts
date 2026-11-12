@@ -10,7 +10,7 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
-import { acquireProductionScheduleParentRowLockInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
+import { acquireProductionScheduleParentRowLockInTransaction, acquireProductionScheduleParentRowLocksInTransaction } from '../order-assignment/production-schedule-parent-row-lock.service.js';
 import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sortGrindingPlanningBoardProjectionItems, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
@@ -478,11 +478,10 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
         if (pane.filter((item) => requested.has(item.itemId)).length !== itemIds.length) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
       }
       const rowsToLock = [...new Set(fullPane ? rankedItemIds.map((id) => fullPane!.byItemId.get(id)!.sourceRowId) : sourceRows.values())].sort();
-      for (const sourceRowId of rowsToLock) {
-        await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
-        const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
-        if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-      }
+      await acquireProductionScheduleParentRowLocksInTransaction(client, rowsToLock);
+      const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "id" = ANY(${rowsToLock}::text[]) ORDER BY "id" FOR UPDATE`;
+      const lockedIds = new Set(locked.map((row) => row.id));
+      if (rowsToLock.some((id) => !lockedIds.has(id))) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
       const current = fullPane ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
       const registered = new Set(stateOrder(state));
       for (const request of params.items) {

@@ -1,5 +1,6 @@
 vi.mock('../sessaku-pieces/piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../sessaku-pieces/piece-key.js')>(), readSessakuPieceGeneration: vi.fn().mockResolvedValue('empty-pieces') }));
 import { readSessakuPieceGeneration } from '../sessaku-pieces/piece-key.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { createHash } from 'node:crypto';
 
@@ -84,7 +85,8 @@ vi.mock('../policies/resource-category-policy.service.js', () => ({
   isProductionScheduleCuttingResourceCd: mocks.isProductionScheduleCuttingResourceCd,
   normalizeProductionScheduleResourceCd: mocks.normalizeProductionScheduleResourceCd
 }));
-vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', () => ({
+vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../order-assignment/production-schedule-parent-row-lock.service.js')>(),
   acquireProductionScheduleParentRowLockInTransaction: mocks.acquireParentRowLock
 }));
 vi.mock('../seiban-machine-display-names.service.js', () => ({
@@ -1643,7 +1645,7 @@ describe('bulk grinding resource order service', () => {
       if (query.includes('ProductionScheduleGrindingPlanningBoardTestBar')) return [];
       if (query.includes('ProductionScheduleGrindingPlanningBoardState')) return [state];
       const result = await read(...args);
-      return query.includes('rowData') ? [...result, hiddenRow] : result;
+      return query.includes('rowData') || (query.includes('CsvDashboardRow') && query.includes('FOR UPDATE')) ? [...result, hiddenRow] : result;
     });
     const project = mocks.projectGrindingPlanningBoard.getMockImplementation()!;
     mocks.projectGrindingPlanningBoard.mockImplementation((params) => ({
@@ -1709,7 +1711,36 @@ describe('bulk grinding resource order service', () => {
     expect(result.items.map((item) => item.alternateRank)).toEqual([1, 2]);
     expect(result.items.every((item) => item.version === 1 && item.itemRevision.startsWith('saved-'))).toBe(true);
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenCalledTimes(2);
-    expect(mocks.acquireParentRowLock.mock.calls.map((call) => call[1])).toEqual(['source-row-1', 'source-row-2']);
+    expect(mocks.acquireParentRowLock).not.toHaveBeenCalled();
+  });
+  it('locks multiple parents with exactly two SQL calls in sorted row order', async () => {
+    await updateGrindingPlanningBoardResourceOrderBulk(request());
+    expect(mocks.prisma.$executeRaw).toHaveBeenCalledTimes(1);
+    const [advisorySql, lockIds] = mocks.prisma.$executeRaw.mock.calls[0]!;
+    expect(advisorySql.join(' ')).toContain('pg_advisory_xact_lock');
+    expect(lockIds).toEqual(['source-row-1', 'source-row-2'].map((id) => createHash('sha256').update(id).digest().readBigInt64BE(0)));
+    const parentLocks = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => Array.isArray(sql) && sql.join(' ').includes('FOR UPDATE') && sql.join(' ').includes('CsvDashboardRow'));
+    expect(parentLocks).toHaveLength(1);
+    const [sql, dashboardId, rowIds] = parentLocks[0]!;
+    expect(sql.join(' ')).toBe('SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" =   AND "id" = ANY( ::text[]) ORDER BY "id" FOR UPDATE');
+    expect(dashboardId).toBe(PRODUCTION_SCHEDULE_DASHBOARD_ID);
+    expect(rowIds).toEqual(['source-row-1', 'source-row-2']);
+    const stateLockIndex = mocks.prisma.$queryRaw.mock.calls.findIndex(([query]) => Array.isArray(query) && query.join(' ').includes('FOR UPDATE') && query.join(' ').includes('ProductionScheduleGrindingPlanningBoardState'));
+    const stateLockOrder = mocks.prisma.$queryRaw.mock.invocationCallOrder[stateLockIndex]!;
+    expect(stateLockOrder).toBeLessThan(mocks.prisma.$executeRaw.mock.invocationCallOrder[0]!);
+    expect(mocks.prisma.$executeRaw.mock.invocationCallOrder[0]!).toBeLessThan(mocks.prisma.$queryRaw.mock.invocationCallOrder[mocks.prisma.$queryRaw.mock.calls.indexOf(parentLocks[0]!)]!);
+  });
+  it.each(['source-row-1', 'source-row-2'])('returns the existing 409 when parent %s disappears before locking', async (missingId) => {
+    const read = mocks.prisma.$queryRaw.getMockImplementation()!;
+    mocks.prisma.$queryRaw.mockImplementation(async (...args) => {
+      const rows = await read(...args);
+      const query = Array.isArray(args[0]) ? args[0].join(' ') : JSON.stringify(args[0]);
+      return query.includes('CsvDashboardRow') && query.includes('FOR UPDATE') ? rows.filter((row: { id: string }) => row.id !== missingId) : rows;
+    });
+    await expect(updateGrindingPlanningBoardResourceOrderBulk(request())).rejects.toMatchObject({
+      statusCode: 409, code: 'STALE_PLANNING_BOARD_ITEM', message: '元行が消滅しています。再読み込みしてください'
+    });
+    expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
   });
   it.each(['resource', 'itemRevision', 'overrideVersion', 'sourceRevision', 'completed'] as const)('rejects %s before any rank is written', async (failure) => {
     const payload = request();
