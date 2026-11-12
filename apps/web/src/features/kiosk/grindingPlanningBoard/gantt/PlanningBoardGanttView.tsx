@@ -32,6 +32,7 @@ import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './pl
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
+import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import { usePlanningBoardSharedDrag } from './usePlanningBoardSharedDrag';
@@ -71,7 +72,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag }>(function PlanningBoardGanttView({
-  sharedDrag,
+  sharedDrag, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
@@ -289,6 +290,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     }));
   }, [chain]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
+  const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
+    if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
   const showChain = (chain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
@@ -535,7 +538,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
       {resourceHead && (resourceHeadContainer === null ? null : resourceHeadContainer ? createPortal(resourceHead, resourceHeadContainer) : resourceHead)}
       <div ref={viewport} data-gantt-viewport onScroll={() => { queuePopover.current?.closeUnlessPinned(); updateWindow(); }} className={clsx('relative overflow-auto', fitPane ? 'min-h-0 flex-1 overscroll-contain' : 'min-h-48')}
         style={{ height: fitPane ? undefined : viewportHeight ?? undefined, overflowAnchor: 'none', scrollPaddingBottom: `${bottomInset}px` }} tabIndex={0} aria-label="ガントの日付と工程"
-        onPointerDown={startPan}
+        {...blankTap} onPointerDown={startPan}
         onAuxClick={(event) => { if (event.button === 1) event.preventDefault(); }}>
         <div ref={content} className="relative isolate" style={{ width: labelWidth + width, paddingBottom: bottomInset }}>
           {!singleGroup && <div className="sticky top-0 z-30 flex h-9 border-b border-slate-700 bg-slate-950">

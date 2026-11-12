@@ -46,6 +46,37 @@ function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttP
     focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
 }
 
+it.each(['021', '022'])('clears both panes from blank space in %s', resource => {
+  class Pointer extends MouseEvent { readonly pointerId = 1; }
+  vi.stubGlobal('PointerEvent', Pointer);
+  try {
+    const values = props('forward');
+    const clear = vi.fn();
+    function Board() {
+      const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+      return <PlanningBoardGanttDisplay {...values} selectedItemIds={selected}
+        onToggleItem={(item) => setSelected(new Set([item.itemId]))}
+        onClearSelection={() => { clear(); setSelected(new Set()); }} />;
+    }
+    render(<Board />);
+    const upper = within(screen.getByRole('region', { name: '021' }));
+    const bar = upper.getByTestId('planning-gantt-bar-item-0000');
+    fireEvent.click(bar);
+    expect(bar).toHaveClass('outline-emerald-300');
+    expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
+    const blank = within(screen.getByRole('region', { name: resource })).getByLabelText('ガントの日付と工程');
+    fireEvent.pointerDown(blank, { button: 0, clientX: 100, clientY: 20 });
+    fireEvent.pointerUp(blank, { button: 0, clientX: 100, clientY: 20 });
+    expect(clear).toHaveBeenCalledOnce();
+    expect(bar).not.toHaveClass('outline-emerald-300');
+    expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
+    screen.getAllByTestId(/^planning-gantt-bar-/).forEach(item => expect(item).not.toHaveClass('outline-white'));
+    // A new focus must not revive the cleared upper pane.
+    fireEvent.click(within(screen.getByRole('region', { name: '022' })).getAllByTestId(/^planning-gantt-bar-/)[0]!);
+    expect(screen.getAllByTestId('planning-gantt-chain-strip')).toHaveLength(1);
+  } finally { vi.unstubAllGlobals(); }
+});
+
 it.each(['forward', 'backward'] as const)('keeps 022 empty with its resource header (%s)', mode => {
   render(<PlanningBoardGanttDisplay {...props(mode, true)} />);
   const upper = within(screen.getByRole('region', { name: '021' }));

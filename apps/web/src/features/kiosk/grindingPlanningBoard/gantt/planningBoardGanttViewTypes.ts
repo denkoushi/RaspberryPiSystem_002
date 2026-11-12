@@ -9,6 +9,8 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   testBarCreationEnabled?: boolean;
   onTestBarAdd?: () => void;
   onTestBarAnchorChange?: (item: GrindingPlanningBoardBar | null) => void;
+  onClearSelection?: () => void;
+  onClearChain?: () => void;
   onToggleItem: (item: GrindingPlanningBoardBar, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardBar, intent: 'complete' | 'incomplete') => void;
   resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
