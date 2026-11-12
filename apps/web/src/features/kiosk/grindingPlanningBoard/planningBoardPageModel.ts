@@ -1,7 +1,7 @@
 import { resolveGrindingPlanningBoardDueDate } from './sortGrindingPlanningBoardItems';
 
 import type { PlanningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
-import type { GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
+import type { GanttLayout, GanttLayoutOptions } from './gantt/planningBoardGanttLayout';
 import type { UnitOrderMethod, UnitOrderResourceChange } from './gantt/planningBoardUnitOrder';
 import type { PlanningBoardAllocation } from './types';
 import type { PlanningBoardDisplayItem } from './usePlanningBoardWriteQueue';
@@ -23,6 +23,7 @@ export type CompletionOverlay = {
 
 export type ResourceOrderSnapshot = { resourceCd: string; itemIds: string[] };
 export type OrderPreview = { options: GanttLayoutOptions; sourceRevision: string; current: Record<string, string[]>;
+  layout: { value: GanttLayout; scale: number; options: GanttLayoutOptions; laneOrder: Record<string, string[]> };
   proposal: Record<string, string[]>; method?: UnitOrderMethod; resourceChanges?: UnitOrderResourceChange[]; before: PlanningBoardOrderMetrics; after: PlanningBoardOrderMetrics };
 
 export type ResourceOrderHistory = { testBarUndo?: { item: import('@raspi-system/shared-types').GrindingPlanningBoardTestBar; action: 'delete' | 'restore'; restoreAfterItemId?: string | null }; id: number; scope: string; orders: ResourceOrderSnapshot[];

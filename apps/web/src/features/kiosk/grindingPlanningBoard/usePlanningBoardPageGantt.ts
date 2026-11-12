@@ -120,9 +120,12 @@ export function usePlanningBoardPageGantt({
     return { resourceCd: resource, itemIds: mixed.map((item) => item.itemId) };
   };
   const orderActionsDisabled = !bulkReady || !rankMutationReady || writeBlocked || writeQueue.pending || gantt.capacityPending;
-  const ganttLayout = useMemo(() => orderPreview
-    ? buildForwardPlanningBoardGanttLayout({ ...orderPreview.options, scale: gantt.scale, laneOrder: orderPreview.proposal })
-    : gantt.layout, [orderPreview, gantt.scale, gantt.layout]);
+  const ganttLayout = useMemo(() => {
+    if (!orderPreview) return gantt.layout;
+    const { layout, options, proposal } = orderPreview;
+    return layout.scale === gantt.scale && layout.options === options && layout.laneOrder === proposal
+      ? layout.value : buildForwardPlanningBoardGanttLayout({ ...options, scale: gantt.scale, laneOrder: proposal });
+  }, [orderPreview, gantt.scale, gantt.layout]);
   const lastResourceOrder = resourceOrderHistory.filter((entry) => entry.scope === historyScope).at(-1);
   const enqueueResourceOrder = (snapshot: ResourceOrderSnapshot, label: string, onSaved: () => void, preview?: OrderPreview, onFailed?: () => void,
     sourceItems = currentItemsRef.current) => {
@@ -225,7 +228,7 @@ export function usePlanningBoardPageGantt({
       resources.includes(resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定')) ? method : undefined;
     if (unitMethod === 'balance' && resources.length !== 2) return;
     if (unitMethod) {
-      const base = previous ? { ...previous.options, items: ganttItems } : options;
+      const base = previous ? { ...previous.options, items: ganttItems, scale: gantt.scale } : options;
       const current = previous?.current ?? planningBoardLaneOrder(base);
       const { proposal, resourceChanges } = planningBoardUnitOrder(base, resources, unitMethod, {
         visibleItemIds: new Set(orderItems.map(item => item.itemId)), canMoveResource,
@@ -239,11 +242,12 @@ export function usePlanningBoardPageGantt({
         const change = changes.get(item.itemId);
         return change ? applyOptimisticOverride(item, { ...change, itemRevision: item.itemRevision }) : item;
       }) };
+      const layout = buildForwardPlanningBoardGanttLayout({ ...previewOptions, laneOrder: proposal });
       setPinMode(false);
-      setOrderPreview({ options: previewOptions, sourceRevision: previous?.sourceRevision ?? sourceRevision,
+      setOrderPreview({ layout: { value: layout, scale: gantt.scale, options: previewOptions, laneOrder: proposal }, options: previewOptions, sourceRevision: previous?.sourceRevision ?? sourceRevision,
         current, proposal, method: unitMethod, resourceChanges,
         before: previous?.before ?? planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout(base), true),
-        after: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout({ ...previewOptions, laneOrder: proposal }), true) });
+        after: planningBoardOrderMetrics(layout, true) });
       return;
     }
     const current = planningBoardLaneOrder(options);
@@ -255,9 +259,10 @@ export function usePlanningBoardPageGantt({
     if (changed.some((resource) => proposal[resource]!.length > 500)) {
       notify('並べ替える対象は資源ごとに500件までです。表示を確認してください。', 'error'); return;
     }
+    const layout = buildForwardPlanningBoardGanttLayout({ ...options, laneOrder: proposal });
     setPinMode(false);
-    setOrderPreview({ options, sourceRevision, current, proposal, before: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout(options)),
-      after: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout({ ...options, laneOrder: proposal })) });
+    setOrderPreview({ layout: { value: layout, scale: gantt.scale, options, laneOrder: proposal }, options, sourceRevision, current, proposal, before: planningBoardOrderMetrics(buildForwardPlanningBoardGanttLayout(options)),
+      after: planningBoardOrderMetrics(layout) });
   };
   const applyResourceOrder = () => {
     if (!gate.attempt()) return;

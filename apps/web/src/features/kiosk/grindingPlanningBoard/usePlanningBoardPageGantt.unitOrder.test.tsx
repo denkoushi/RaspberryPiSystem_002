@@ -3,7 +3,7 @@ import { useRef, useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionFixture } from './__perf__/fixture';
-import { planningBoardLaneOrder } from './gantt/planningBoardAutoOrder';
+import { planningBoardLaneOrder, planningBoardOrderMetrics } from './gantt/planningBoardAutoOrder';
 import { buildForwardPlanningBoardGanttLayout } from './gantt/planningBoardGanttLayout';
 import { applyOptimisticOverride } from './planningBoardPageModel';
 import { resolveGrindingPlanningBoardResource, resolvePlanningBoardOrderBand, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
@@ -16,17 +16,20 @@ import type { PlanningBoardWriteResult } from './usePlanningBoardWriteQueue';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 type Options = Parameters<typeof usePlanningBoardPageGantt>[0];
-const selection = vi.hoisted(() => ({ resource: '021' as string | null }));
+const selection = vi.hoisted(() => ({ resource: '021' as string | null, scale: 14 }));
 const api = vi.hoisted(() => ({ create: vi.fn(), mutate: vi.fn() }));
 vi.mock('../../../api/domains/production-schedule/grinding-planning-board', () => ({
   createKioskGrindingPlanningBoardTestBar: api.create, mutateKioskGrindingPlanningBoardTestBar: api.mutate
 }));
-vi.mock('./gantt/usePlanningBoardGantt', () => ({ usePlanningBoardGantt: (options: Parameters<typeof usePlanningBoardGantt>[0]) => ({
-  mode: 'forward', scale: 14, capacityPending: false, dailyHoursByResource: {}, runsThroughBreaks: new Set(),
+vi.mock('./gantt/planningBoardGanttLayout', { spy: true });
+vi.mock('./gantt/usePlanningBoardGantt', async () => {
+  const actual = await vi.importActual<typeof import('./gantt/planningBoardGanttLayout')>('./gantt/planningBoardGanttLayout');
+  return { usePlanningBoardGantt: (options: Parameters<typeof usePlanningBoardGantt>[0]) => ({
+  mode: 'forward', scale: selection.scale, capacityPending: false, dailyHoursByResource: {}, runsThroughBreaks: new Set(),
   singleResourceCd: selection.resource, singleResourceLanes: ['021', '022', '023'], resourceMinutes: undefined,
-  layout: buildForwardPlanningBoardGanttLayout({ items: options.items, testBars: options.testBars, seibanOrder: options.seibanOrder,
-    resources: ['021', '022', '023'], allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, today: '2026-11-11', scale: 14 })
-}) }));
+  layout: actual.buildForwardPlanningBoardGanttLayout({ items: options.items, testBars: options.testBars, seibanOrder: options.seibanOrder,
+    resources: ['021', '022', '023'], allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, today: '2026-11-11', scale: selection.scale })
+}) }; });
 const noop = () => {};
 function fixture(count = 30) {
   const value = productionFixture(count, 1);
@@ -102,7 +105,7 @@ function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanning
       }), setPinMode: noop, setOrderPreview: setPreview, sourceRevision: 'source-0', rankConflict: false, orderConflict: false,
       updatePinsAsync: vi.fn()
     });
-    return { page, queue, preview, history };
+    return { page, queue, preview, history, setPreview };
   });
   const acknowledge = async (index: number) => {
     const call = calls[index]!;
@@ -119,9 +122,69 @@ function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanning
   };
   return { ...hook, calls, saveOrder, saveOverrides, enqueueOverrides, acknowledge, notify };
 }
-beforeEach(() => { selection.resource = '021'; vi.clearAllMocks(); });
+beforeEach(() => { selection.resource = '021'; selection.scale = 14; vi.clearAllMocks(); });
 
 describe('unit order preview and writes', () => {
+  it.each(['round', 'balance'] as const)('shares the initial layout and metrics without a third build (%s)', method => {
+    selection.resource = '021+022';
+    const h = setup(bandFixture());
+    vi.mocked(buildForwardPlanningBoardGanttLayout).mockClear();
+    act(() => h.result.current.page.changeOrderMethod(method));
+    expect(buildForwardPlanningBoardGanttLayout).toHaveBeenCalledTimes(2);
+    const preview = h.result.current.preview!;
+    const calls = vi.mocked(buildForwardPlanningBoardGanttLayout).mock.calls;
+    const results = vi.mocked(buildForwardPlanningBoardGanttLayout).mock.results;
+    expect(calls[0]![0]).toEqual({ ...preview.options, laneOrder: preview.proposal });
+    expect(calls[1]![0].laneOrder).toBeUndefined();
+    expect(preview.before).toEqual(planningBoardOrderMetrics(results[1]!.value, true));
+    expect(preview.after).toEqual(planningBoardOrderMetrics(results[0]!.value, true));
+    expect(h.result.current.page.ganttLayout).toBe(preview.layout.value);
+    h.rerender();
+    expect(buildForwardPlanningBoardGanttLayout).toHaveBeenCalledTimes(2);
+    h.unmount();
+  });
+
+  it('rebuilds at the latest scale, keeps before on method switches, and cancels without writes', () => {
+    selection.resource = '021+022';
+    const h = setup();
+    act(() => h.result.current.page.changeOrderMethod('round'));
+    const preview = h.result.current.preview!;
+    vi.mocked(buildForwardPlanningBoardGanttLayout).mockClear();
+    selection.scale = 7;
+    h.rerender();
+    expect(buildForwardPlanningBoardGanttLayout).toHaveBeenCalledExactlyOnceWith({ ...preview.options, scale: 7, laneOrder: preview.proposal });
+    expect(h.result.current.page.ganttLayout).not.toBe(preview.layout.value);
+    vi.mocked(buildForwardPlanningBoardGanttLayout).mockClear();
+    act(() => h.result.current.page.changeOrderMethod('balance'));
+    expect(buildForwardPlanningBoardGanttLayout).toHaveBeenCalledTimes(1);
+    expect(h.result.current.preview!.before).toBe(preview.before);
+    expect(h.result.current.preview!.options.scale).toBe(7);
+    expect(h.result.current.page.ganttLayout).toBe(h.result.current.preview!.layout.value);
+    vi.mocked(buildForwardPlanningBoardGanttLayout).mockClear();
+    act(() => h.result.current.setPreview(null));
+    expect(h.result.current.page.ganttLayout).toBe(h.result.current.page.gantt.layout);
+    expect(buildForwardPlanningBoardGanttLayout).not.toHaveBeenCalled();
+    expect(h.saveOrder).not.toHaveBeenCalled();
+    expect(h.saveOverrides).not.toHaveBeenCalled();
+    h.unmount();
+  });
+
+  it.each(['options', 'proposal'] as const)('rebuilds when preview %s changes at the same scale', field => {
+    const h = setup();
+    act(() => h.result.current.page.changeOrderMethod('round'));
+    const preview = h.result.current.preview!;
+    vi.mocked(buildForwardPlanningBoardGanttLayout).mockClear();
+    act(() => h.result.current.setPreview({ ...preview, ...(field === 'options'
+      ? { options: { ...preview.options, dailyHoursByResource: { '021': 4 } } }
+      : { proposal: { ...preview.proposal, '021': [...preview.proposal['021']!].reverse() } }) }));
+    expect(buildForwardPlanningBoardGanttLayout).toHaveBeenCalledExactlyOnceWith({
+      ...h.result.current.preview!.options, scale: selection.scale, laneOrder: h.result.current.preview!.proposal
+    });
+    expect(h.result.current.page.ganttLayout).toBe(vi.mocked(buildForwardPlanningBoardGanttLayout).mock.results[0]!.value);
+    expect(h.result.current.page.ganttLayout).not.toEqual(preview.layout.value);
+    h.unmount();
+  });
+
   it.each(['group', 'round', 'balance'] as const)('keeps special-due bands and test slots in preview, saved orders and undo (%s)', async method => {
     const input = bandFixture();
     if (method === 'balance') {
