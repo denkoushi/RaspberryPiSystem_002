@@ -16,6 +16,7 @@ describe('mobile schedule seibans routes', () => {
     try {
       const list = await app.inject({ url: '/mobile-placement/schedule-seibans', headers: { 'x-client-key': 'key' } });
       expect(list.statusCode).toBe(200); expect(list.json()).toEqual({ seibans: [{ fseiban: 'BA1' }], truncated: false });
+      expect(mocks.list).toHaveBeenCalledWith({ source: 'both', range: 'all' });
       expect(list.headers['cache-control']).toBe('no-store');
       const detail = await app.inject({ url: '/mobile-placement/schedule-seibans/BA1', headers: { 'x-client-key': 'key' } });
       expect(detail.statusCode).toBe(200); expect(detail.json()).toEqual({ fseiban: 'BA1', parts: [] });
@@ -37,4 +38,24 @@ describe('mobile schedule seibans routes', () => {
       expect(mocks.list).not.toHaveBeenCalled(); expect(mocks.detail).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
+});
+
+it('passes validated source and range to the list service', async () => {
+  const app = Fastify();
+  await registerMobilePlacementScheduleSeibansRoutes(app, { requireClientDevice: vi.fn() });
+  mocks.list.mockResolvedValue({ seibans: [], truncated: false });
+  try {
+    expect((await app.inject({ url: '/mobile-placement/schedule-seibans?source=dCompany&range=aroundMonth' })).statusCode).toBe(200);
+    expect(mocks.list).toHaveBeenCalledWith({ source: 'dCompany', range: 'aroundMonth' });
+  } finally { await app.close(); }
+});
+it.each(['source=unknown', 'range=month', 'source=', 'range='])('rejects invalid query %s before reading data', async query => {
+  const app = Fastify();
+  // The application error handler maps ZodError to HTTP 400.
+  app.setErrorHandler((error, _request, reply) => reply.code(error.name === 'ZodError' ? 400 : 500).send());
+  await registerMobilePlacementScheduleSeibansRoutes(app, { requireClientDevice: vi.fn() });
+  try {
+    expect((await app.inject({ url: `/mobile-placement/schedule-seibans?${query}` })).statusCode).toBe(400);
+    expect(mocks.list).not.toHaveBeenCalled();
+  } finally { await app.close(); }
 });

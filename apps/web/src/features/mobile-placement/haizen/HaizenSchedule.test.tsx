@@ -8,9 +8,9 @@ import { formatScheduleDate, scheduleDateColor } from './scheduleDisplay';
 
 import type { ScheduleSeibanDetail } from '../../../api/domains/schedule-seibans';
 
-const mocks = vi.hoisted(() => ({ detail: null as ScheduleSeibanDetail | null }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), detail: null as ScheduleSeibanDetail | null }));
 vi.mock('../../../api/hooks/schedule-seibans', () => ({
-  useScheduleSeibans: () => ({ data: { seibans: [mocks.detail, { ...mocks.detail, fseiban: 'READY', counts: { shelf: 2, verified: 0, pending: 0, done: 1 } }], truncated: false }, isPending: false }),
+  useScheduleSeibans: (view: unknown) => { mocks.list(view); return ({ data: { seibans: [mocks.detail, { ...mocks.detail, fseiban: 'READY', counts: { shelf: 2, verified: 0, pending: 0, done: 1 } }], truncated: false }, isPending: false }); },
   useScheduleSeiban: () => ({ data: mocks.detail, isPending: false })
 }));
 vi.mock('../useRegisteredShelves', () => ({ useRegisteredShelves: () => ({ data: { shelves: [{ shelfCodeRaw: 'A', displayLabel: '北の棚', isStructured: false }] } }) }));
@@ -27,6 +27,8 @@ function mount(path: string) {
 }
 
 beforeEach(() => {
+  localStorage.clear();
+  vi.clearAllMocks();
   mocks.detail = {
     fseiban: 'S001', aliasFseibans: ['S002'], partsCompleteDate: '2026-11-06', sendOutDate: '2026-11-05', outsourceMarks: ['X', 'Y'], memo: 'メモ', machineName: '機種A',
     counts: { shelf: 4, verified: 1, pending: 1, done: 1 },
@@ -77,11 +79,11 @@ describe('製番詳細', () => {
     fireEvent.click(screen.getByRole('button', { name: /未照合品番/ }));
     expect(screen.getByRole('status')).toHaveTextContent('/kiosk/mobile-placement?scheduleFseiban=S001&scheduleProductNo=P6');
   });
-  it('製番から照合へ製番だけを渡す', () => {
+  it('画面下の照合ボタンを表示せず、部品の文字を拡大する', () => {
     mount('/kiosk/mobile-placement/schedule-seibans/S001');
-    fireEvent.click(screen.getByRole('button', { name: '照合', exact: true }));
-    expect(screen.getByRole('status')).toHaveTextContent('/kiosk/mobile-placement?scheduleFseiban=S001');
-    expect(screen.getByRole('status')).not.toHaveTextContent('scheduleProductNo');
+    expect(screen.queryByRole('button', { name: '照合', exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText('未照合品番')).toHaveClass('text-[20px]');
+    expect(screen.getByText('未照合部品')).toHaveClass('text-[18px]');
   });
 });
 
@@ -93,4 +95,39 @@ it('日付の3日・7日境界を共通定数で判定し、JSTの曜日を表�
   expect(scheduleDateColor('2026-11-12', now)).toBe('var(--hp-ink)');
   expect(formatScheduleDate(null)).toBe('—');
   expect(formatScheduleDate('2026-11-06')).toBe('11/6 金');
+});
+
+it('区分と範囲を保存し、再表示で復元して一覧queryへ渡す', () => {
+  const first = mount('/kiosk/mobile-placement/schedule-seibans');
+  expect(mocks.list).toHaveBeenLastCalledWith({ source: 'both', range: 'all' });
+  fireEvent.click(screen.getByRole('button', { name: '区分', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'D社', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '範囲', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: '前後1ヶ月', exact: true }));
+  expect(JSON.parse(localStorage.getItem('haizen-schedule-view')!)).toEqual({ schemaVersion: 1, source: 'dCompany', range: 'aroundMonth' });
+  first.unmount();
+  mount('/kiosk/mobile-placement/schedule-seibans');
+  expect(screen.getByRole('button', { name: '区分', exact: true })).toHaveTextContent('D社');
+  expect(screen.getByRole('button', { name: '範囲', exact: true })).toHaveTextContent('前後1ヶ月');
+  expect(mocks.list).toHaveBeenLastCalledWith({ source: 'dCompany', range: 'aroundMonth' });
+});
+it.each(['{', 'null', '{"schemaVersion":2,"source":"general","range":"all"}', '{"schemaVersion":1,"source":"unknown","range":"all"}', '{"schemaVersion":1,"source":"general","range":"unknown"}'])('壊れた保存値 %s は既定値へ戻す', saved => {
+  localStorage.setItem('haizen-schedule-view', saved);
+  mount('/kiosk/mobile-placement/schedule-seibans');
+  expect(screen.getByRole('button', { name: '区分', exact: true })).toHaveTextContent('一般・D社');
+  expect(screen.getByRole('button', { name: '範囲', exact: true })).toHaveTextContent('全期間');
+  expect(mocks.list).toHaveBeenLastCalledWith({ source: 'both', range: 'all' });
+});
+
+it('localStorageの読み書きが禁止されても既定値で開き、選択を変更できる', () => {
+  const read = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('blocked'); });
+  const write = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('blocked'); });
+  try {
+    mount('/kiosk/mobile-placement/schedule-seibans');
+    expect(mocks.list).toHaveBeenLastCalledWith({ source: 'both', range: 'all' });
+    fireEvent.click(screen.getByRole('button', { name: '区分', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: '一般', exact: true }));
+    expect(mocks.list).toHaveBeenLastCalledWith({ source: 'general', range: 'all' });
+    expect(screen.getByRole('button', { name: '区分', exact: true })).toHaveTextContent('一般');
+  } finally { read.mockRestore(); write.mockRestore(); }
 });

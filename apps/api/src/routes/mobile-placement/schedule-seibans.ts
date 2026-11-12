@@ -10,7 +10,11 @@ export async function registerMobilePlacementScheduleSeibansRoutes(app: FastifyI
   app.get('/mobile-placement/schedule-seibans', { config: { rateLimit: false } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);
     reply.header('Cache-Control', 'no-store');
-    return listScheduleSeibans();
+    const query = z.object({
+      source: z.enum(['general', 'dCompany', 'both']).default('both'),
+      range: z.enum(['all', 'aroundMonth', 'excludeOlderThanHalfYear']).default('all')
+    }).parse(request.query);
+    return listScheduleSeibans(query);
   });
   app.get('/mobile-placement/schedule-seibans/:fseiban', { config: { rateLimit: false } }, async (request, reply) => {
     await deps.requireClientDevice(request.headers['x-client-key']);

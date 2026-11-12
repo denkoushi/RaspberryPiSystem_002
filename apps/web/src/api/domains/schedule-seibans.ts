@@ -21,8 +21,13 @@ export type ScheduleSeiban = {
 };
 export type ScheduleSeibanDetail = ScheduleSeiban & { parts: ScheduleSeibanPart[] };
 
-export async function getScheduleSeibans() {
-  const { data } = await api.get<{ seibans: ScheduleSeiban[]; truncated: boolean }>('/mobile-placement/schedule-seibans');
+export type ScheduleSeibanView = {
+  source: 'general' | 'dCompany' | 'both';
+  range: 'all' | 'aroundMonth' | 'excludeOlderThanHalfYear';
+};
+
+export async function getScheduleSeibans(view: ScheduleSeibanView = { source: 'both', range: 'all' }) {
+  const { data } = await api.get<{ seibans: ScheduleSeiban[]; truncated: boolean }>('/mobile-placement/schedule-seibans', { params: view });
   return data;
 }
 

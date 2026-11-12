@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ findMany: vi.fn(), query: vi.fn(), machineNames: vi.fn() }));
+const mocks = vi.hoisted(() => ({ findMany: vi.fn(), query: vi.fn(), machineNames: vi.fn(), kinds: vi.fn() }));
+vi.mock('../../production-schedule/d-schedule-minutes/kind-membership.js', () => ({ listDScheduleMinutesKinds: mocks.kinds }));
 vi.mock('../../production-schedule/seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: mocks.machineNames }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { productionScheduleDScheduleMinutes: { findMany: mocks.findMany }, $queryRaw: mocks.query } }));
 import { getScheduleSeiban, listHaizenUnplacedParts, listScheduleSeibans } from '../schedule-seiban-status.service.js';
@@ -13,7 +14,7 @@ const placement = (productNo: string, shelfCodeRaw: string, extra = {}) => ({ ma
 function batch(parts: unknown[], records: unknown[] = [], branches: unknown[] = [], haizen: unknown[] = [], shelves: unknown[] = []) {
   mocks.query.mockResolvedValueOnce(parts).mockResolvedValueOnce(records).mockResolvedValueOnce(branches).mockResolvedValueOnce(haizen).mockResolvedValueOnce(shelves);
 }
-beforeEach(() => { vi.resetAllMocks(); mocks.findMany.mockResolvedValue([schedule('BA1')]); mocks.query.mockResolvedValue([]); mocks.machineNames.mockResolvedValue({ machineNames: { BA1: '機種', BA3: '機種名未登録' } }); });
+beforeEach(() => { vi.resetAllMocks(); mocks.kinds.mockResolvedValue(new Map()); mocks.findMany.mockResolvedValue([schedule('BA1')]); mocks.query.mockResolvedValue([]); mocks.machineNames.mockResolvedValue({ machineNames: { BA1: '機種', BA3: '機種名未登録' } }); });
 
 describe('schedule seiban status', () => {
   it('includes aliases, completion precedence, verified without shelf, purchases and Zero2W in fixed batches', async () => {
@@ -77,5 +78,40 @@ describe('schedule seiban status', () => {
   it('uses only purchases with the same seiban and normalized part code', async () => {
     batch([part('1')], [], [placement('purchase:9', 'wrong', { slipKind: 'purchase_order', scheduleSnapshot: { FSEIBAN: 'OTHER', FHINCD: 'MD1-002' } })]);
     expect((await getScheduleSeiban('BA1'))?.parts[0].state).toBe('pending');
+  });
+});
+
+afterEach(() => vi.useRealTimers());
+
+describe('schedule list filters', () => {
+  it.each([['general', ['INTERNAL', 'DUAL', 'UNKNOWN']], ['dCompany', ['D_COMPANY', 'DUAL', 'UNKNOWN']]] as const)('filters %s and retains unknown and dual memberships', async (source, expected) => {
+    mocks.kinds.mockResolvedValue(new Map([['INTERNAL', ['INTERNAL']], ['D_COMPANY', ['D_COMPANY']], ['DUAL', ['INTERNAL', 'D_COMPANY']]]));
+    mocks.findMany.mockResolvedValue(['INTERNAL', 'D_COMPANY', 'DUAL', 'UNKNOWN'].map(f => schedule(f)));
+    batch(expected.map(f => part(f, { fseiban: f })));
+    const result = await listScheduleSeibans({ source, range: 'all' });
+    expect(result.seibans.map(row => row.fseiban)).toEqual(expected);
+    expect(mocks.machineNames).toHaveBeenCalledWith(expected);
+  });
+  it.each([
+    ['aroundMonth', ['2026-10-12', '2026-12-12']],
+    ['excludeOlderThanHalfYear', ['2026-05-12', '2026-10-11', '2026-10-12', '2026-12-12', '2026-12-13', null]]
+  ] as const)('filters %s inclusively using the JST calendar day and handles missing dates', async (range, expected) => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-11-11T15:01:00Z'));
+    const dates = ['2026-05-11', '2026-05-12', '2026-10-11', '2026-10-12', '2026-12-12', '2026-12-13', null];
+    mocks.findMany.mockResolvedValue(dates.map(d => schedule(String(d), { partsCompleteDate: d ? new Date(d) : null })));
+    batch(dates.map(d => part(String(d), { fseiban: String(d) })));
+    const result = await listScheduleSeibans({ source: 'both', range });
+    expect(result.seibans.map(row => row.partsCompleteDate)).toEqual(expected);
+    expect(mocks.machineNames).toHaveBeenCalledWith(expected.map(String));
+  });
+  it('clamps month boundaries and applies filters before the limit and truncation', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-03-31T03:00:00Z'));
+    const excluded = Array.from({ length: 201 }, (_, i) => schedule(`OLD${i}`, { partsCompleteDate: new Date('2026-02-27') }));
+    mocks.findMany.mockResolvedValue([...excluded, schedule('LOW', { partsCompleteDate: new Date('2026-02-28') }), schedule('HIGH', { partsCompleteDate: new Date('2026-04-30') })]);
+    batch([part('low', { fseiban: 'LOW' }), part('high', { fseiban: 'HIGH' })]);
+    const result = await listScheduleSeibans({ source: 'both', range: 'aroundMonth' });
+    expect(result.seibans.map(row => row.fseiban)).toEqual(['LOW', 'HIGH']);
+    expect(result.truncated).toBe(false);
+    expect(mocks.machineNames).toHaveBeenCalledWith(['LOW', 'HIGH']);
   });
 });

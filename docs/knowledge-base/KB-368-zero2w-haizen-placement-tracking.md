@@ -39,6 +39,14 @@ category: knowledge-base
 - **`haizenEdgeEnabled` の端末**の担当棚は、**棚マスタ `/kiosk/mobile-placement/shelf-master`** の「Zero2W 担当棚」で **登録済み構造化棚**に割り当てる（旧 `/kiosk/mobile-placement/zero2w-assignment` は棚マスタへリダイレクト）。
 - メイン画面と一覧画面では **選択棚は共有しない**（一覧は既定で全棚の最新数十件。必要なら画面内更新や製造 order で確認）。
 
+### 日程の区分・範囲（2026-11-12）
+
+- 一覧 API `GET /api/mobile-placement/schedule-seibans` は `source=general|dCompany|both`（既定 `both`）、`range=all|aroundMonth|excludeOlderThanHalfYear`（既定 `all`）を Zod で検証する。区分は製番ボードの kind 判定を共用し、不明な製番は残す。
+- 範囲は JST の暦日を基準に、前後1か月は両端を含めて日付なしを除外、半年より前の除外は日付なしを残す。月末は対象月の末日に丸める。部品取得前に root 製番を絞り、未完了製番の200件上限と `truncated` は絞り込み後に判定する。個別 API は変更しない。
+- スマホの選択は `haizen-schedule-view` に `{schemaVersion:1, source, range}` で保存する。不正値は既定値へ戻し、ストレージ利用不可でも画面内の選択は使える。区分・範囲・状態フィルターは1行で、その行だけ横スクロールする。
+- 一覧カードは2行とし、個別画面の下部「照合」は削除する。品番20px・品名18pxは棚のまとまり・棚写真内も共通。部品押下の照合遷移と照合後の自動復帰は維持する。
+- 対応テスト: `schedule-seiban-status.service.test.ts`、`mobile-placement-schedule-seibans.test.ts`、`HaizenSchedule.test.tsx`、`api/hooks/schedule-seibans.test.tsx`。ローカル実装のみで、commit・push・本番反映は未実施。
+
 ## エッジエージェント
 
 - **`clients/haizen-agent/`**: `evdev` または stdin フォールバック、分配番号ゲート、分類、HTTP POST。Ansible は **`roles/client/tasks/haizen-agent.yml`**（`haizen_agent_enabled`）で **unit + `/etc/raspi-haizen-agent.conf`** を配布。
