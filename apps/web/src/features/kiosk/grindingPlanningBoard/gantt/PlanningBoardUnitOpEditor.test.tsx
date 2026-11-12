@@ -106,15 +106,15 @@ describe('unit operation quantity dialog', () => {
         ops: ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes })) } })));
     expect(ops.map((op) => op.minutes)).toEqual([7.3, 2.1]);
   });
-  it.each([0.1, 0])('keeps equal divisions positive and saves when the original time is %s', async (unitRequiredMinutes) => {
+  it.each([0.1])('keeps equal divisions positive and saves when the original time is %s', async (unitRequiredMinutes) => {
     setup([], { unitRequiredMinutes });
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
-    expect(screen.getByRole('spinbutton', { name: '1工程 1台' })).toHaveValue(0.5);
-    expect(screen.getByRole('spinbutton', { name: '2工程 1台' })).toHaveValue(0.5);
+    expect(screen.getByRole('spinbutton', { name: '1工程 1台' })).toHaveValue(0.05);
+    expect(screen.getByRole('spinbutton', { name: '2工程 1台' })).toHaveValue(0.05);
     const save = screen.getByRole('button', { name: '2工程にする' });
     await waitFor(() => expect(save).toBeEnabled());
     fireEvent.click(save);
-    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [0.5, 0.5] })));
+    await waitFor(() => expect(mutation).toHaveBeenCalledWith(expect.objectContaining({ minutes: [0.05, 0.05] })));
   });
   it('keeps a small positive ghost above zero and saves it', async () => {
     setup([], { unitRequiredMinutes: 0.1 });
@@ -172,8 +172,24 @@ describe('unit operation quantity dialog', () => {
     expect(screen.getByRole('button', { name: '2工程にする' })).toBeDisabled();
   });
 });
+it.each([
+  { total: 1, count: 3, expected: [1 / 3, 1 / 3, 1 / 3] },
+  { total: 10, count: 3, expected: [3.5, 3.5, 3] },
+  { total: 7, count: 2, expected: [3.5, 3.5] }
+])('preserves the total when dividing $total minutes into $count operations', ({ total, count, expected }) => {
+  const draft = unitOpDraft(total, count, []);
+  expect(draft).toEqual(expected);
+  expect(draft.reduce<number>((sum, value) => sum + value!, 0)).toBe(total);
+});
+it('keeps a zero total and blocks configuration', () => {
+  setup([], { unitRequiredMinutes: 0 });
+  fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+  expect(screen.getByRole('spinbutton', { name: '1工程 1台' })).toHaveValue(0);
+  expect(screen.getByRole('spinbutton', { name: '2工程 1台' })).toHaveValue(0);
+  expect(screen.getByRole('button', { name: '2工程にする' })).toBeDisabled();
+});
 it('rounds equal divisions to half minutes and uses the remaining original time for blanks', () => {
-  expect(unitOpDraft(10, 3, [])).toEqual([3.5, 3.5, 3.5]);
+  expect(unitOpDraft(10, 3, [])).toEqual([3.5, 3.5, 3]);
   expect(unitOpGhost(30, [10, null, null])).toBe(10);
   expect(unitOpGhost(10, [15, null])).toBeNull();
   expect(unitOpGhost(0, [null, null])).toBeNull();

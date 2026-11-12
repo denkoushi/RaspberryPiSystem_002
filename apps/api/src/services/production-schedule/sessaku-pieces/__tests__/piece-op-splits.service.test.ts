@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
     productionScheduleSessakuPieceHistory: { findUnique: vi.fn(), upsert: vi.fn() },
     productionScheduleSessakuPieceSet: { findUnique: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     productionScheduleSessakuPiece: { findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() },
-    productionScheduleSessakuPieceOpSplit: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
+    productionScheduleSessakuPieceOpSplit: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), delete: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
     productionScheduleSessakuPieceOpCompletion: { findFirst: vi.fn(), findMany: vi.fn(), upsert: vi.fn(), createMany: vi.fn(), deleteMany: vi.fn() }
   },
   transaction: vi.fn(), readSet: vi.fn(), winner: vi.fn(), rows: vi.fn(), details: vi.fn(), sets: vi.fn(),
@@ -98,6 +98,7 @@ describe('piece operation boundary mutations', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => {
     vi.resetAllMocks(); vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+    mocks.tx.productionScheduleSessakuPieceOpSplit.findMany.mockResolvedValue([]);
     completed = new Set(); overrides = new Map();
     set = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 2, plannedQuantity: 1, quantityWarning: null,
       sourcePieceSetId: null, createdAt: now, updatedAt: now, pieces: [{ id: randomUUID(), pieceSetId: 'set', quantity: 1, position: 1,
@@ -316,9 +317,9 @@ describe('piece operation boundary mutations', () => {
     expect(mocks.tx.productionScheduleSessakuPieceOpCompletion.deleteMany).not.toHaveBeenCalled();
   });
 
-  it.each(['other lot', 'completed', 'other machine', 'non-unit'])('rejects a disappearing boundary used by %s before any writes', async (kind) => {
+  it.each(['other lot', 'other machine', 'non-unit'])('rejects a disappearing boundary used by %s before any writes', async (kind) => {
     installDefinitionWrites();
-    const outside = { ...set.pieces[0], id: randomUUID(), position: 2, isCompleted: kind === 'completed',
+    const outside = { ...set.pieces[0], id: randomUUID(), position: 2, isCompleted: false,
       quantity: kind === 'non-unit' ? 2 : 1, opSplits: [{ fromOpNo: 3, sourceResourceCd: '021' }] };
     if (kind !== 'other lot') {
       set.pieces.push(outside); set.plannedQuantity += outside.quantity;
@@ -329,7 +330,7 @@ describe('piece operation boundary mutations', () => {
       }
     }
     mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mockImplementation(async ({ where }) =>
-      where.fromOpNo.in.includes(3) && !where.pieceId.notIn.includes(outside.id) ? { pieceId: outside.id } : null);
+      where.piece.isCompleted === outside.isCompleted && where.fromOpNo.in.includes(3) && !where.pieceId.notIn.includes(outside.id) ? { pieceId: outside.id } : null);
     const before = structuredClone({ set, values: settings.values });
     await expect(configureSessakuPieceOps(configuration())).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mock.calls[0][0].where.sourceResourceCd).toBe(configuration().resourceCd);
@@ -411,6 +412,34 @@ describe('piece operation boundary mutations', () => {
     });
     mocks.tx.productionScheduleSessakuPieceSet.updateMany.mockImplementation(async () => { set.version += 1; });
   }
+
+  it('removes disappearing completed boundaries and overrides before reconciliation without reopening the piece', async () => {
+    installCompletionReconciliation();
+    const done = set.pieces[0];
+    done.isCompleted = true; done.completedAt = now;
+    done.opSplits = [2, 3].map((fromOpNo) => ({ fromOpNo, sourceResourceCd: '021', leadingSourceResourceCd: '021' }));
+    completed = new Set([1, 2, 3, 4]); syncCompletionRecords();
+    overrides.set(barId(2), override(barId(2)));
+    overrides.set(barId(3), override(barId(3)));
+    const retained = structuredClone(done.opSplits[0]);
+    mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mockImplementation(async ({ where }) =>
+      where.piece.isCompleted === done.isCompleted ? { pieceId: done.id } : null);
+    mocks.tx.productionScheduleSessakuPieceOpSplit.findMany.mockImplementation(async ({ where }) =>
+      done.opSplits!.filter((split) => where.piece.isCompleted === done.isCompleted
+        && split.sourceResourceCd === where.sourceResourceCd && where.fromOpNo.in.includes(split.fromOpNo))
+        .map((split) => ({ pieceId: done.id, fromOpNo: split.fromOpNo })));
+    mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mockImplementation(async ({ where }) => {
+      done.opSplits = done.opSplits!.filter((split) => !where.OR.some((key: { pieceId: string; fromOpNo: number }) =>
+        key.pieceId === done.id && key.fromOpNo === split.fromOpNo));
+    });
+    await configureSessakuPieceOps(configuration([12, 18]));
+    expect(done).toMatchObject({ isCompleted: true, completedAt: now, opSplits: [retained] });
+    expect([...completed]).toEqual([1, 2]);
+    expect(overrides.has(barId(2))).toBe(true);
+    expect(overrides.has(barId(3))).toBe(false);
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mock.invocationCallOrder[0])
+      .toBeLessThan(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert.mock.invocationCallOrder[0]);
+  });
 
   it.each([false, true])('retains completed numbers and removes obsolete evidence using the rewritten intervals (all remaining done=%s)', async (allDone) => {
     installCompletionReconciliation();

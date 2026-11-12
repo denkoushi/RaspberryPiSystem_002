@@ -60,10 +60,26 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
       const removedOpNos = previousOps.filter((op) => !opNos.includes(op.opNo)).map((op) => op.opNo);
       if (removedOpNos.length && await tx.productionScheduleSessakuPieceOpSplit.findFirst({ where: {
         fromOpNo: { in: removedOpNos }, sourceResourceCd: params.resourceCd, pieceId: { notIn: targets.map((target) => target.id) },
-        piece: { pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+        piece: { isCompleted: false, pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           fhincd: { in: [...new Set([c.key.fhincd, ...(c.definitionKeys ?? []).map((key) => key.fhincd)])] } } }
       }, select: { pieceId: true } })) {
         throw new ApiError(409, '別のロットや対象外の台が工程で分かれています。先にまとめてください', undefined, 'OPERATION_SPLIT_IN_USE');
+      }
+      if (removedOpNos.length) {
+        const obsoleteCompletedSplits = await tx.productionScheduleSessakuPieceOpSplit.findMany({ where: {
+          fromOpNo: { in: removedOpNos }, sourceResourceCd: params.resourceCd,
+          piece: { isCompleted: true, pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            fhincd: { in: [...new Set([c.key.fhincd, ...(c.definitionKeys ?? []).map((key) => key.fhincd)])] } } }
+        }, select: { pieceId: true, fromOpNo: true } });
+        if (obsoleteCompletedSplits.length) {
+          await tx.productionScheduleSessakuPieceOpSplit.deleteMany({ where: {
+            OR: obsoleteCompletedSplits.map(({ pieceId, fromOpNo }) => ({ pieceId, fromOpNo }))
+          } });
+          await tx.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: {
+            csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
+            itemKey: { in: obsoleteCompletedSplits.map(({ pieceId, fromOpNo }) => `pieceops:${pieceId}:${fromOpNo}`) }
+          } });
+        }
       }
       const firstPiece = [...c.set.pieces].sort((a, b) => a.position - b.position)[0];
       const setup = previous?.setupMinutes ?? c.current.pieces.find((bar) => bar.itemId === `piece:${firstPiece?.id}`)?.setupMinutes ?? 0;

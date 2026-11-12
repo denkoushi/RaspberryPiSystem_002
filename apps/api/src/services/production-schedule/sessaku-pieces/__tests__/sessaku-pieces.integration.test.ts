@@ -280,6 +280,34 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
       await expect(configure(result.pieces[0].itemId, [12, 18])).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
       expect(await read()).toEqual(before);
     });
+    it('removes only obsolete completed boundaries and overrides while retaining completion evidence', async () => {
+      const result = await units();
+      const sibling = await otherLot(3);
+      const completedAt = new Date();
+      await prisma.productionScheduleSessakuPiece.update({ where: { id: sibling.pieceId }, data: { isCompleted: true, completedAt } });
+      await prisma.productionScheduleSessakuPieceOpSplit.create({ data: {
+        pieceId: sibling.pieceId, fromOpNo: 2, sourceResourceCd: '1', leadingSourceResourceCd: '1'
+      } });
+      await prisma.productionScheduleSessakuPieceOpCompletion.createMany({ data: [1, 2, 3, 4].map((opNo) => ({ pieceId: sibling.pieceId, opNo })) });
+      const retainedSplit = await prisma.productionScheduleSessakuPieceOpSplit.findUniqueOrThrow({
+        where: { pieceId_fromOpNo: { pieceId: sibling.pieceId, fromOpNo: 2 } }
+      });
+      const retainedRecords = await prisma.productionScheduleSessakuPieceOpCompletion.findMany({
+        where: { pieceId: sibling.pieceId, opNo: { in: [1, 2] } }, orderBy: { opNo: 'asc' }
+      });
+      const headOverrides = await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({
+        where: { itemKey: sibling.ids[0] }, orderBy: { siteKey: 'asc' }
+      });
+      await configure(result.pieces[0].itemId, [12, 18]);
+      expect(await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: sibling.pieceId } }))
+        .toMatchObject({ isCompleted: true, completedAt });
+      expect(await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: sibling.pieceId } })).toEqual([retainedSplit]);
+      expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: sibling.pieceId }, orderBy: { opNo: 'asc' } }))
+        .toEqual(retainedRecords);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.count({ where: { itemKey: sibling.ids[1] } })).toBe(0);
+      expect(await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { itemKey: sibling.ids[0] }, orderBy: { siteKey: 'asc' } }))
+        .toEqual(headOverrides);
+    });
     it('retains completion identity, removes obsolete numbers after rewriting old source ranges, and closes fully completed units', async () => {
       const result = await units();
       const item = result.pieces[0];

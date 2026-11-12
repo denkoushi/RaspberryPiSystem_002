@@ -5,6 +5,8 @@
 Split a quantity-one cutting piece into independently placed operation intervals, then merge an interval into its predecessor. This stage delivers DB, API and shared contracts only; Web controls and connector rendering follow separately. A piece is one lot subdivision; an operation is a numbered ResourcePartOpMinutes entry; projection converts database records into board bars. Related history: [unit gantt](2026-11-10-sessaku-unit-gantt-pr2b.md) and [unit pieces](2026-11-09-sessaku-unit-split-ops-pr1.md).
 
 ## Progress
+- [x] (2026-11-12) Configure excludes completed pieces from disappearing-boundary conflicts and deletes their obsolete same-resource splits/overrides before saving; reconcile preserves completion and remaining boundaries.
+- [x] (2026-11-12) Equal division preserves total minutes with a final remainder or unrounded fallback; registered snapshots remain unchanged. Focused API 42 / Web 21 tests passed; added DB regression skipped without a dedicated test DB.
 
 - [x] (2026-11-11) Read rules and existing transaction, projection, setup and override paths; initial worktree clean.
 - [x] (2026-11-11) Add schema, additive migration, shared contracts and operation boundary projection.

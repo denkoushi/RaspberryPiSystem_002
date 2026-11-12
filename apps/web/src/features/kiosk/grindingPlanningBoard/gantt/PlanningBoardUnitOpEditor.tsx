@@ -17,7 +17,11 @@ export const PlanningBoardUnitOpContext = createContext<{
 
 const half = (value: number) => Math.round(value * 2) / 2;
 export function unitOpDraft(total: number | null, count: number, registered: readonly { minutes: number }[]) {
-  return registered.length === count ? registered.map((op) => op.minutes) : Array.from({ length: count }, () => total !== null && Number.isFinite(total) ? Math.min(100000, Math.max(0.5, half(total / count))) : null);
+  if (registered.length === count) return registered.map((op) => op.minutes);
+  if (total === null || !Number.isFinite(total)) return Array.from({ length: count }, () => null);
+  const minutes = Math.max(0.5, half(total / count));
+  const last = total - minutes * (count - 1);
+  return Array.from({ length: count }, (_, index) => last <= 0 ? total / count : index === count - 1 ? last : minutes);
 }
 export function unitOpGhost(original: number | null, values: readonly (number | null)[]) {
   if (original === null) return null;
