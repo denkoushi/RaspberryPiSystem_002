@@ -146,8 +146,7 @@ it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open
   expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
   const strip = screen.getByRole('region', { name: '工程のつながり' });
   expect(within(strip).getAllByRole('button', { name: new RegExp(`工順.*${second}`) }).length).toBeGreaterThan(0);
-  expect(within(screen.getByRole('region', { name: first })).getByTestId('planning-board-gantt'))
-    .toHaveClass('[&_[data-testid^=planning-gantt-chain-badge-]]:hidden');
+  expect(within(screen.getByRole('region', { name: first })).queryByTestId(/^planning-gantt-chain-badge-/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
   expect(strip.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
@@ -880,6 +879,90 @@ describe('two-machine chain links', () => {
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
     expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
     expect(bar(1 - selected)).not.toHaveClass('outline-white');
+  });
+
+  const controls = (): NonNullable<PlanningBoardGanttProps['testBarControls']> => ({
+    bars: [], nextSequence: 1, selectedId: null, selectedBar: null, disabled: false,
+    select: vi.fn(), create: vi.fn(async () => true), remove: vi.fn(), complete: vi.fn(), accept: vi.fn(), undo: vi.fn()
+  });
+  const expectCleared = () => {
+    expect(screen.queryByRole('region', { name: '工程のつながり' })).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-chain-link')).toBeNull();
+    for (const element of screen.getAllByTestId(/^planning-gantt-bar-piece:/)) expect(element).not.toHaveClass('outline-white');
+  };
+
+  it.each([0, 1])('clears focus after the last owner bar moves away (owner %s)', owner => {
+    const values = pieces();
+    const view = render(<PlanningBoardGanttDisplay {...values} />);
+    fireEvent.click(bar(owner));
+    expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+    const partner = owner === 0 ? '022' : '021';
+    view.rerender(<PlanningBoardGanttDisplay {...pieces([partner, partner])} />);
+    expectCleared();
+    view.rerender(<PlanningBoardGanttDisplay {...values} />);
+    expectCleared();
+  });
+
+  it.each([0, 1])('clears focus after replacing the owner machine (owner %s)', owner => {
+    const values = { ...pieces(), resourceLanes: ['021', '022', '023'] };
+    const view = render(<PlanningBoardGanttDisplay {...values} />);
+    fireEvent.click(bar(owner));
+    expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+    view.rerender(<PlanningBoardGanttDisplay {...values} singleResourceCd={owner === 0 ? '023+022' : '021+023'} />);
+    expectCleared();
+    view.rerender(<PlanningBoardGanttDisplay {...values} />);
+    expectCleared();
+  });
+
+  it.each([0, 1])('clears shared outlines and links on a non-owner blank tap (owner %s)', owner => {
+    class Pointer extends MouseEvent { readonly pointerId = 1; }
+    vi.stubGlobal('PointerEvent', Pointer);
+    try {
+      render(<PlanningBoardGanttDisplay {...pieces()} />);
+      fireEvent.click(bar(owner));
+      expect(bar(0)).toHaveClass('outline-white');
+      expect(bar(1)).toHaveClass('outline-white');
+      expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+      const blank = within(screen.getByRole('region', { name: owner === 0 ? '022' : '021' })).getByLabelText('ガントの日付と工程');
+      fireEvent.pointerDown(blank, { button: 0, clientX: 500, clientY: 420 });
+      fireEvent.pointerUp(blank, { button: 0, clientX: 500, clientY: 420 });
+      expectCleared();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
+  it.each([0, 1])('keeps the insertion anchor when transferring the same part (owner %s)', async owner => {
+    const testControls = controls();
+    render(<PlanningBoardGanttDisplay {...pieces()} testBarCreationEnabled testBarControls={testControls} />);
+    fireEvent.click(bar(owner));
+    fireEvent.click(bar(1 - owner));
+    expect(screen.getByRole('region', { name: '工程のつながり' })).toBeInTheDocument();
+    expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+    expect(within(screen.getByRole('region', { name: owner === 0 ? '021' : '022' })).queryByTestId(/^planning-gantt-chain-badge-/)).toBeNull();
+    expect(within(screen.getByRole('region', { name: owner === 0 ? '022' : '021' })).getByTestId(/^planning-gantt-chain-badge-/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    const dialog = screen.getByRole('dialog', { name: 'テスト加工' });
+    expect(within(dialog).getByRole('button', { name: owner === 0 ? '022' : '021', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: '差し込む' })); });
+    expect(testControls.create).toHaveBeenCalledExactlyOnceWith(owner === 0 ? '022' : '021', 30, expect.objectContaining({ itemId: `piece:p${1 - owner}` }));
+    fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+    expectCleared();
+  });
+
+  it('clears shared outlines and links when selecting a test bar', () => {
+    const values = pieces();
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:focus', itemRevision: 'test:r1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '022', minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null };
+    const items = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test');
+    values.layout = buildPlanningBoardGanttLayout({ ...productionFixture().options, items, resources: ['021', '022'], testBars: [test] });
+    const testControls = { ...controls(), bars: [test] };
+    render(<PlanningBoardGanttDisplay {...values} testBarControls={testControls} />);
+    fireEvent.click(bar(0));
+    expect(bar(1)).toHaveClass('outline-white');
+    expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('planning-gantt-bar-test:focus'));
+    expect(testControls.select).toHaveBeenCalledWith(test, true);
+    expectCleared();
   });
 
   it('clears shared focus when entering pin mode without restoring it on exit', () => {

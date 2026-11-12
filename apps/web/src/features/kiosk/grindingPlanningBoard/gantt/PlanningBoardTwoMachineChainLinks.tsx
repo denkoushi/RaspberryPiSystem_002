@@ -1,4 +1,4 @@
-import { createContext, useId, useLayoutEffect, useState } from 'react';
+import { createContext, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import { pageZoom } from '../pageZoom';
 
@@ -38,7 +38,17 @@ export function PlanningBoardTwoMachineChainLinks({ container, panes, bars, view
 }) {
   const clipId = useId();
   const [drawing, setDrawing] = useState<{ links: ChainLink[]; clips: Clip[] }>({ links: [], clips: [] });
+  const drawingRef = useRef(drawing);
   useLayoutEffect(() => {
+    const updateDrawing = (next: typeof drawing) => {
+      const previous = drawingRef.current;
+      if (previous.links.length === next.links.length && previous.clips.length === next.clips.length
+        && previous.links.every((link, index) => { const other = next.links[index]!; return link.id === other.id && link.path === other.path && link.x === other.x && link.y === other.y; })
+        && previous.clips.every((clip, index) => { const other = next.clips[index]!; return clip.x === other.x && clip.y === other.y && clip.width === other.width && clip.height === other.height; })) return;
+      drawingRef.current = next;
+      setDrawing(next);
+    };
+    if (!bars.length) { updateDrawing({ links: [], clips: [] }); return; }
     if (!container) return;
     let frame: number | null = null;
     const measure = () => {
@@ -85,7 +95,7 @@ export function PlanningBoardTwoMachineChainLinks({ container, panes, bars, view
         return from && to && from.resource !== to.resource
           ? [planningBoardChainLink(previous, next, from.position.last, to.position.first, view)] : [];
       });
-      setDrawing({ links, clips });
+      updateDrawing({ links, clips });
     };
     const schedule = () => { if (frame === null) frame = requestAnimationFrame(measure); };
     measure();

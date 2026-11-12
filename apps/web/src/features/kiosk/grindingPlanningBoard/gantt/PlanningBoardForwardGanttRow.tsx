@@ -147,10 +147,10 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         const bounds = viewport.getBoundingClientRect();
         const { x, y } = dragPointer.current;
         // In the two-machine view, pointing at the other pane must not scroll the pane the bar came from.
-        const overOtherPane = (document.elementsFromPoint?.(x, y) ?? [])
+        const delta = y > bounds.bottom - 40 ? 12 : y < bounds.top + 40 ? -12 : 0;
+        const overOtherPane = delta !== 0 && (document.elementsFromPoint?.(x, y) ?? [])
           .some((element) => { const hit = element.closest('[data-gantt-viewport]'); return hit !== null && hit !== viewport; });
-        const delta = overOtherPane ? 0 : y > bounds.bottom - 40 ? 12 : y < bounds.top + 40 ? -12 : 0;
-        if (delta && bounds.height > 0) {
+        if (delta && !overOtherPane && bounds.height > 0) {
           const previous = viewport.scrollTop;
           viewport.scrollTop += delta;
           if (viewport.scrollTop !== previous) onDragPreview({ rowKey: row.key, bar: pending.bar, x, y, allowed: pending.allowed,
@@ -342,7 +342,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {normal?.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
-              {inChain && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
+              {inChain && chainPositions.has(bar.item.itemId) && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? '所要不明' : segmentWidth >= 48
                 ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}><b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>
                   <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>

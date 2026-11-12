@@ -72,7 +72,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
     ? paneBars.flat().filter(isNormalGanttBar).filter(bar => bar.partKey === partKey)
       .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId)) : [],
   [paneBars, partKey, props.layout.mode, props.pinMode, selectedTestResource]);
-  useEffect(() => { if (partKey && !chainBars.length) setPartKey(null); }, [partKey, chainBars]);
+  useEffect(() => {
+    if (partKey && !chainBars.some(bar => bar.resource === chainOwner)) { setPartKey(null); setChainOwner(null); }
+  }, [partKey, chainBars, chainOwner]);
   const hasPieces = useMemo(() => planningBoardHasPieceLinks(chainBars), [chainBars]);
   const effectiveView = hasPieces ? chainView : 'process';
   const chainContext = useMemo(() => ({ partKey: chainBars.length ? partKey : null, focus, bars: chainBars, view: effectiveView, changeView, register }),

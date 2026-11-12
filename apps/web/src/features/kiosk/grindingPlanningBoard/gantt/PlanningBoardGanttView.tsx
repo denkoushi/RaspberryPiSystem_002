@@ -280,12 +280,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    return new Map(chain.map(({ item }) => {
+    return new Map((sharedChain && chainOwner !== singleResourceCd ? EMPTY_CHAIN : chain).map(({ item }) => {
       const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));
-  }, [chain]);
+  }, [chain, sharedChain, chainOwner, singleResourceCd]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
   const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
@@ -336,11 +336,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
   const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
-    onTestBarAnchorChange?.(keepOpen || focusedPartKey !== bar.partKey ? bar.item : null);
+    const next = keepOpen || focusedPartKey !== bar.partKey || (sharedChain && chainOwner !== singleResourceCd) ? bar.partKey : null;
+    onTestBarAnchorChange?.(next ? bar.item : null);
     if (bar.item.kind === 'test') { sharedChain?.focus(null, bar.resource); setFocusedPartKey(null); setCurrentItemId(null); testBarControls?.select(bar.item, true); onChainFocus?.(bar.resource); return; }
     if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false);
     if (singleResourceCd) onChainFocus?.(singleResourceCd);
-    const next = keepOpen || focusedPartKey !== bar.partKey || (sharedChain && chainOwner !== singleResourceCd) ? bar.partKey : null;
     if (sharedChain) sharedChain.focus(next, singleResourceCd); else setFocusedPartKey(next);
     setCurrentItemId(null);
   }, [onTestBarAnchorChange, focusedPartKey, testBarControls, onChainFocus, singleResourceCd, sharedChain, chainOwner]);
@@ -530,7 +530,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
   return (
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
-    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', sharedChain && chainOwner !== singleResourceCd && '[&_[data-testid^=planning-gantt-chain-badge-]]:hidden', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
+    <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
       {capacityError && <p role="alert" className="absolute right-0 top-0 z-40 px-2 py-1 text-xs text-rose-200">稼働時間を保存できませんでした。</p>}
       {resourceHead && (resourceHeadContainer === null ? null : resourceHeadContainer ? createPortal(resourceHead, resourceHeadContainer) : resourceHead)}
