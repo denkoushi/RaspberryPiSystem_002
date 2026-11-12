@@ -29,6 +29,37 @@ import {
 import { prepareProductionScheduleDashboardFilters } from './filters.js';
 import type { ProductionScheduleListParams, ProductionScheduleListResult, ProductionScheduleRow } from './types.js';
 
+type LeaderboardFilterParams = Pick<ProductionScheduleListParams,
+  | 'queryText' | 'productNos' | 'machineName' | 'resourceCds' | 'assignedOnlyCds'
+  | 'resourceCategory' | 'hasNoteOnly' | 'hasDueDateOnly' | 'allowResourceOnly' | 'locationKey' | 'siteKey'
+>;
+
+function toLeaderboardFilterParams(params: LeaderboardFilterParams) {
+  return {
+    queryText: params.queryText,
+    productNos: params.productNos,
+    machineName: params.machineName,
+    resourceCds: params.resourceCds,
+    assignedOnlyCds: params.assignedOnlyCds,
+    resourceCategory: params.resourceCategory,
+    hasNoteOnly: params.hasNoteOnly,
+    hasDueDateOnly: params.hasDueDateOnly,
+    allowResourceOnly: params.allowResourceOnly ?? false,
+    locationKey: params.locationKey,
+    siteKey: params.siteKey
+  };
+}
+
+function buildLeaderboardFilterFingerprint(
+  params: LeaderboardFilterParams & Pick<ProductionScheduleListParams, 'dueSource' | 'completionFilter'>
+): string {
+  return buildLeaderboardShellFilterFingerprint({
+    ...toLeaderboardFilterParams(params),
+    dueSource: params.dueSource,
+    completionFilter: params.completionFilter
+  });
+}
+
 /** 順位ボード phased read（shell / continue）の共通レスポンス形（snapshotId は shell・正常 continue で付与） */
 export type LeaderboardShellPhasedReadResult = Pick<ProductionScheduleListResult, 'page' | 'pageSize' | 'rows'> & {
   snapshotId?: string;
@@ -62,19 +93,7 @@ export async function listLeaderboardShellProductionScheduleRows(
 ): Promise<LeaderboardShellPhasedReadResult> {
   const { page, pageSize, locationKey } = params;
 
-  const filters = await prepareProductionScheduleDashboardFilters({
-    queryText: params.queryText,
-    productNos: params.productNos,
-    machineName: params.machineName,
-    resourceCds: params.resourceCds,
-    assignedOnlyCds: params.assignedOnlyCds,
-    resourceCategory: params.resourceCategory,
-    hasNoteOnly: params.hasNoteOnly,
-    hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false,
-    locationKey,
-    siteKey: params.siteKey
-  });
+  const filters = await prepareProductionScheduleDashboardFilters(toLeaderboardFilterParams(params));
 
   if (filters.kind === 'blocked_empty_search') {
     return { page, pageSize, rows: [] };
@@ -174,21 +193,7 @@ export async function listLeaderboardShellProductionScheduleRows(
     });
   }
 
-  const filterFingerprint = buildLeaderboardShellFilterFingerprint({
-    dueSource: params.dueSource,
-    locationKey,
-    siteKey: params.siteKey,
-    queryText: params.queryText,
-    productNos: params.productNos,
-    machineName: params.machineName,
-    resourceCds: params.resourceCds,
-    assignedOnlyCds: params.assignedOnlyCds,
-    resourceCategory: params.resourceCategory,
-    hasNoteOnly: params.hasNoteOnly,
-    hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false,
-    completionFilter: params.completionFilter
-  });
+  const filterFingerprint = buildLeaderboardFilterFingerprint(params);
 
   const snapshotId = options.snapshotStore.create({
     orderedRowIds,
@@ -227,39 +232,13 @@ export async function listLeaderboardShellContinuationProductionScheduleRows(
   const excludeRowIds = params.excludeRowIds ?? [];
   const appliedChunk = Math.min(160, Math.max(1, Math.floor(params.chunkSize)));
 
-  const filters = await prepareProductionScheduleDashboardFilters({
-    queryText: params.queryText,
-    productNos: params.productNos,
-    machineName: params.machineName,
-    resourceCds: params.resourceCds,
-    assignedOnlyCds: params.assignedOnlyCds,
-    resourceCategory: params.resourceCategory,
-    hasNoteOnly: params.hasNoteOnly,
-    hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false,
-    locationKey,
-    siteKey: params.siteKey
-  });
+  const filters = await prepareProductionScheduleDashboardFilters(toLeaderboardFilterParams(params));
 
   if (filters.kind === 'blocked_empty_search') {
     return { page, pageSize: appliedChunk, rows: [] };
   }
 
-  const filterFingerprint = buildLeaderboardShellFilterFingerprint({
-    dueSource: params.dueSource,
-    locationKey,
-    siteKey: params.siteKey,
-    queryText: params.queryText,
-    productNos: params.productNos,
-    machineName: params.machineName,
-    resourceCds: params.resourceCds,
-    assignedOnlyCds: params.assignedOnlyCds,
-    resourceCategory: params.resourceCategory,
-    hasNoteOnly: params.hasNoteOnly,
-    hasDueDateOnly: params.hasDueDateOnly,
-    allowResourceOnly: params.allowResourceOnly ?? false,
-    completionFilter: params.completionFilter
-  });
+  const filterFingerprint = buildLeaderboardFilterFingerprint(params);
 
   const snapshotId = params.snapshotId?.trim();
 
