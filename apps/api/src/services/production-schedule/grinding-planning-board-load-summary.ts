@@ -287,8 +287,8 @@ async function readAggregatedLoadSummary(params: {
     return binding == null ? [] : [binding];
   });
 
-  // DISTINCT ON keeps the same first source row per logical item without the
-  // ROW_NUMBER() = 1 selectivity underestimate that caused items × overrides scans.
+  // DISTINCT ON keeps the first sourceRowId per item (no ROW_NUMBER() underestimate). C keys keep the
+  // groups (deterministic collation equality is byte equality); SUM needs no ORDER BY (GROUP BY key).
   const aggregateRows = await params.client.$queryRaw<LoadSummaryAggregateRow[]>(Prisma.sql`
     WITH "baseRows" AS (
       SELECT
@@ -342,22 +342,22 @@ async function readAggregatedLoadSummary(params: {
     ),
     "deduplicatedItems" AS (
       SELECT DISTINCT ON (
-        "items"."pieceId",
-        "items"."opBarFromOpNo",
-        COALESCE("items"."fseiban", ''),
-        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
-        COALESCE("items"."fhincd", ''),
-        COALESCE("items"."processOrder", ''),
-        COALESCE("items"."originalResourceCd", '')
+        (COALESCE("items"."fseiban", '') COLLATE "C"),
+        (CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C"),
+        (COALESCE("items"."fhincd", '') COLLATE "C"),
+        (COALESCE("items"."processOrder", '') COLLATE "C"),
+        (COALESCE("items"."originalResourceCd", '') COLLATE "C"),
+        ("items"."pieceId" COLLATE "C"),
+        "items"."opBarFromOpNo"
       ) "items".*
       FROM "items"
-      ORDER BY "items"."pieceId",
+      ORDER BY (COALESCE("items"."fseiban", '') COLLATE "C"),
+        (CASE WHEN "items"."fseiban" = '********' THEN (COALESCE("items"."productNo", '') COLLATE "C") ELSE '' END COLLATE "C"),
+        (COALESCE("items"."fhincd", '') COLLATE "C"),
+        (COALESCE("items"."processOrder", '') COLLATE "C"),
+        (COALESCE("items"."originalResourceCd", '') COLLATE "C"),
+        ("items"."pieceId" COLLATE "C"),
         "items"."opBarFromOpNo",
-        COALESCE("items"."fseiban", ''),
-        CASE WHEN "items"."fseiban" = '********' THEN COALESCE("items"."productNo", '') ELSE '' END,
-        COALESCE("items"."fhincd", ''),
-        COALESCE("items"."processOrder", ''),
-        COALESCE("items"."originalResourceCd", ''),
         "items"."sourceRowId"
     ),
     "overrides" AS MATERIALIZED (
@@ -409,7 +409,7 @@ async function readAggregatedLoadSummary(params: {
       "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos",
       COUNT(*)::bigint AS "itemCount",
       COUNT(*) FILTER (WHERE "requiredMinutes" IS NULL)::bigint AS "unknownItemCount",
-      SUM("requiredMinutes" ORDER BY "sourceRowId", "pieceId")::double precision AS "requiredMinutesSum"
+      SUM("requiredMinutes")::double precision AS "requiredMinutesSum"
     FROM "effectiveItems"
     GROUP BY "originalResourceCd", "effectiveResourceCd", "fhincd", "quantity", "requiredMinutes", "includeSetup"
       , "opBarFromOpNo", "opBarToOpNo", "opBarSourceResourceCd", "completedOpNos"

@@ -141,6 +141,13 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - Unit tests cover reuse across the 5-minute store lifetime, token change, the 12-hour limit and LRU eviction (`grinding-planning-board.service.unit.test.ts`); delete-only token changes are covered in `leaderboard-shell-snapshot-generation` tests.
 - When a new input is added to the board projection or the load aggregate, add it to the generation token; inputs of the saved load aggregate also go into `loadGenerationToken` (`grinding-planning-board/state.ts`). A missing input now stays stale for up to 12 hours instead of 5–10 minutes.
 
+### Load aggregate sort keys (2026-11-12)
+
+- **Production measurement** (read-only, site Mac, 16,537 rows, with the C-collated id filter): 2,809 ms. The largest steps were the DISTINCT ON sorts (Incremental Sort about 710–757 ms with about 38,900 temp blocks, then sorts of about 535–633 ms and 424–456 ms).
+- **Change**: the DISTINCT ON / ORDER BY keys now start with the text keys, put `pieceId` and `opBarFromOpNo` after them, and compare the text keys with `COLLATE "C"`. `sourceRowId` stays last in its original collation, so each group keeps the same row. `SUM("requiredMinutes")` drops its `ORDER BY` because `requiredMinutes` is a GROUP BY key and every value in a group is equal.
+- **Effect**: 2,809 ms → 1,977 ms (EXPLAIN 2,190 / 1,798 ms); the output was identical for all variants (md5 of sorted rows `e846e948…`). `work_mem` 32MB with parallel workers off was slower (2,517 ms) and was not adopted.
+- **Settings seen**: shared_buffers 128MB, work_mem 4MB, effective_cache_size 4GB; `CsvDashboardRow` heap about 837 MB with about 328k dead tuples. About 30k blocks are read from outside shared buffers on each run; any change there needs a separate decision.
+
 ## Open Items
 
 - The first open after CSV imports, process restart, cache expiry or a filter outside the three rewarm candidates still requires a cold build. Board writes now schedule rewarm, but the Pi5 latency benefit has not yet been measured in production. The `/load` generation contract is unchanged.
