@@ -31,7 +31,7 @@ import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
 import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
-import { TwoMachineChainContext } from './PlanningBoardTwoMachineChainLinks';
+import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
@@ -277,12 +277,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const linkBars = sharedChain?.bars ?? chain;
   const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
   const effectiveChainView = sharedChain?.view ?? (hasPieceLinks ? chainView : 'process');
-  const registerChainPane = sharedChain?.register;
-  useLayoutEffect(() => {
-    if (!registerChainPane || !singleResourceCd || !viewport.current) return;
-    registerChainPane(singleResourceCd, { bars: linkBars, content, viewport: viewport.current, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
-    return () => registerChainPane(singleResourceCd, null);
-  }, [registerChainPane, singleResourceCd, linkBars, singleGroup, barLocations, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
+  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
     return new Map(chain.map(({ item }) => {

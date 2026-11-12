@@ -7,6 +7,7 @@ import { planningBoardChainLink, PlanningBoardChainLinkPaths, planningBoardChain
 import type { ChainBarPosition, ChainLink, ChainLinkGeometry } from './PlanningBoardChainLinks';
 import type { NormalGanttBar } from './planningBoardGanttLayout';
 import type { PlanningBoardChainView } from './usePersistedPlanningBoardChainView';
+import type { RefObject } from 'react';
 
 export type ChainPane = ChainLinkGeometry & { viewport: HTMLDivElement; headerHeight: number };
 export const TwoMachineChainContext = createContext<{
@@ -17,6 +18,16 @@ export const TwoMachineChainContext = createContext<{
   changeView: (view: PlanningBoardChainView) => void;
   register: (resource: string, pane: ChainPane | null) => void;
 } | null>(null);
+
+type PaneGeometry = Omit<ChainPane, 'viewport'>;
+export function useTwoMachineChainPane(register: ((resource: string, pane: ChainPane | null) => void) | undefined, resource: string | null | undefined, viewport: RefObject<HTMLDivElement | null>, geometry: PaneGeometry) {
+  const { bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight } = geometry;
+  useLayoutEffect(() => {
+    if (!register || !resource || !viewport.current) return;
+    register(resource, { bars, content, viewport: viewport.current, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
+    return () => register(resource, null);
+  }, [register, resource, viewport, bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
+}
 
 type Clip = { x: number; y: number; width: number; height: number };
 export function PlanningBoardTwoMachineChainLinks({ container, panes, bars, view }: {
