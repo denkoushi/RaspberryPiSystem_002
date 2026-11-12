@@ -52,19 +52,91 @@ export type AssemblyProcedureDocumentSummary = Omit<AssemblyProcedureDocumentRec
   manualAssignments: { modelCode: string; modelCodeKey: string; processId: string; processName: string }[];
 };
 
+const markerReferenceInUseMessage = 'マーカー参照で使用中の手順書は公開取り消しできません';
+
+const referenceUsageDefinitions = [
+  {
+    key: 'inProcedureOrder',
+    countQuery: (db, id) => db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: '旧形式テンプレートの互換手順書列で使用中の手順書は公開取り消しできません',
+    priority: 2
+  },
+  {
+    key: 'inTemplatePrimary',
+    countQuery: (db, id) => db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
+    inUseMessage: 'テンプレートで使用中の手順書は公開取り消しできません',
+    priority: 8
+  },
+  {
+    key: 'inActiveTemplatePrimary',
+    countQuery: (db, id) => db.assemblyTemplate.count({ where: { procedureDocumentId: id, isActive: true } }),
+    inUseMessage: '有効なテンプレートで使用中の手順書は公開取り消しできません',
+    priority: 7
+  },
+  {
+    key: 'inTemplateProcedureSequence',
+    countQuery: (db, id) => db.assemblyTemplateProcedureItem.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: 'テンプレートの文書順で使用中の手順書は公開取り消しできません',
+    priority: 5
+  },
+  {
+    key: 'inActiveTemplateProcedureSequence',
+    countQuery: (db, id) => db.assemblyTemplateProcedureItem.count({
+      where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
+    }),
+    inUseMessage: '有効なテンプレートの文書順で使用中の手順書は公開取り消しできません',
+    priority: 3
+  },
+  {
+    key: 'inTemplateProcedureStep',
+    countQuery: (db, id) => db.assemblyTemplateProcedureStep.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: 'テンプレートの表示ステップで使用中の手順書は公開取り消しできません',
+    priority: 6
+  },
+  {
+    key: 'inActiveTemplateProcedureStep',
+    countQuery: (db, id) => db.assemblyTemplateProcedureStep.count({
+      where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
+    }),
+    inUseMessage: '有効なテンプレートの表示ステップで使用中の手順書は公開取り消しできません',
+    priority: 4
+  },
+  {
+    key: 'inBoltPageRef',
+    countQuery: (db, id) => db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: markerReferenceInUseMessage,
+    priority: 9
+  },
+  {
+    key: 'inCheckPageRef',
+    countQuery: (db, id) => db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: markerReferenceInUseMessage,
+    priority: 9
+  },
+  {
+    key: 'inRevisionHistory',
+    countQuery: (db, id) => db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } }),
+    inUseMessage: '版履歴で使用中の手順書は削除できません',
+    priority: 10
+  },
+  {
+    key: 'inProcedureManualAssignment',
+    countQuery: (db, id) => db.procedureManualAssignment.count({ where: { assemblyProcedureDocumentId: id } }),
+    inUseMessage: '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません',
+    priority: 1
+  }
+] as const satisfies ReadonlyArray<{
+  key: string;
+  countQuery: (db: Prisma.TransactionClient, id: string) => Promise<number>;
+  inUseMessage: string;
+  priority: number;
+}>;
+
 export type AssemblyProcedureDocumentReferenceUsage = {
-  inProcedureManualAssignment: boolean;
-  inProcedureOrder: boolean;
-  inTemplatePrimary: boolean;
-  inActiveTemplatePrimary: boolean;
-  inTemplateProcedureSequence: boolean;
-  inActiveTemplateProcedureSequence: boolean;
-  inTemplateProcedureStep: boolean;
-  inActiveTemplateProcedureStep: boolean;
-  inBoltPageRef: boolean;
-  inCheckPageRef: boolean;
-  inRevisionHistory: boolean;
+  [Key in typeof referenceUsageDefinitions[number]['key']]: boolean;
 };
+
+const referenceUsageByPriority = [...referenceUsageDefinitions].sort((a, b) => a.priority - b.priority);
 
 export type AssemblyProcedureAssetMetadata = {
   kind?: 'SOURCE' | 'OVERLAY_IMAGE';
@@ -473,39 +545,12 @@ export class AssemblyProcedureDocumentService {
     tx?: Prisma.TransactionClient
   ): Promise<AssemblyProcedureDocumentReferenceUsage> {
     const db = tx ?? prisma;
-    const [
-      orderCount,
-      templateCount,
-      activeTemplateCount,
-      templateSequenceCount,
-      activeTemplateSequenceCount,
-      templateStepCount,
-      activeTemplateStepCount,
-      boltRefCount,
-      checkRefCount,
-      revisionChildCount,
-      manualAssignmentCount
-    ] = await Promise.all([
-      db.assemblyProcedureOrderItem.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplate.count({ where: { procedureDocumentId: id } }),
-      db.assemblyTemplate.count({ where: { procedureDocumentId: id, isActive: true } }),
-      db.assemblyTemplateProcedureItem.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplateProcedureItem.count({
-        where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
-      }),
-      db.assemblyTemplateProcedureStep.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplateProcedureStep.count({
-        where: { assemblyProcedureDocumentId: id, template: { isActive: true } }
-      }),
-      db.assemblyTemplateBolt.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyTemplateCheckItem.count({ where: { assemblyProcedureDocumentId: id } }),
-      db.assemblyProcedureDocumentRevision.count({ where: { supersedesDocumentId: id } }),
-      db.procedureManualAssignment.count({ where: { assemblyProcedureDocumentId: id } })
-    ]);
+    const counts = await Promise.all(referenceUsageDefinitions.map(({ countQuery }) => countQuery(db, id)));
+    // Every declared key has exactly one count in the same order.
+    const usage = Object.fromEntries(referenceUsageDefinitions.map(({ key }, index) => [key, counts[index] > 0])) as AssemblyProcedureDocumentReferenceUsage;
     // Protect the published revision currently shown by an assigned root, while
     // allowing older revisions to retain the existing cleanup policy.
-    let inProcedureManualAssignment = manualAssignmentCount > 0;
-    if (!inProcedureManualAssignment) {
+    if (!usage.inProcedureManualAssignment) {
       const revision = await db.assemblyProcedureDocumentRevision.findUnique({
         where: { documentId: id }, select: { revisionRootId: true }
       });
@@ -515,67 +560,22 @@ export class AssemblyProcedureDocumentService {
           orderBy: { revisionNumber: 'desc' }, select: { documentId: true }
         });
         if (latest?.documentId === id) {
-          inProcedureManualAssignment = await db.procedureManualAssignment.count({
+          usage.inProcedureManualAssignment = await db.procedureManualAssignment.count({
             where: { assemblyProcedureDocumentId: revision.revisionRootId }
           }) > 0;
         }
       }
     }
-    return {
-      inProcedureManualAssignment,
-      inProcedureOrder: orderCount > 0,
-      inTemplatePrimary: templateCount > 0,
-      inActiveTemplatePrimary: activeTemplateCount > 0,
-      inTemplateProcedureSequence: templateSequenceCount > 0,
-      inActiveTemplateProcedureSequence: activeTemplateSequenceCount > 0,
-      inTemplateProcedureStep: templateStepCount > 0,
-      inActiveTemplateProcedureStep: activeTemplateStepCount > 0,
-      inBoltPageRef: boltRefCount > 0,
-      inCheckPageRef: checkRefCount > 0,
-      inRevisionHistory: revisionChildCount > 0
-    };
+    return usage;
   }
 
   isReferenced(usage: AssemblyProcedureDocumentReferenceUsage): boolean {
-    return (
-      usage.inProcedureManualAssignment ||
-      usage.inProcedureOrder ||
-      usage.inTemplatePrimary ||
-      usage.inActiveTemplatePrimary ||
-      usage.inTemplateProcedureSequence ||
-      usage.inActiveTemplateProcedureSequence ||
-      usage.inTemplateProcedureStep ||
-      usage.inActiveTemplateProcedureStep ||
-      usage.inBoltPageRef ||
-      usage.inCheckPageRef ||
-      usage.inRevisionHistory
-    );
+    return referenceUsageDefinitions.some(({ key }) => usage[key]);
   }
 
   buildInUseMessage(usage: AssemblyProcedureDocumentReferenceUsage): string {
-    if (usage.inProcedureManualAssignment) {
-      return '要領書の機種×工程割り当てで使用中の手順書は削除・公開取消できません';
-    }
-    if (usage.inProcedureOrder) {
-      return '旧形式テンプレートの互換手順書列で使用中の手順書は公開取り消しできません';
-    }
-    if (usage.inActiveTemplateProcedureSequence) {
-      return '有効なテンプレートの文書順で使用中の手順書は公開取り消しできません';
-    }
-    if (usage.inActiveTemplateProcedureStep) {
-      return '有効なテンプレートの表示ステップで使用中の手順書は公開取り消しできません';
-    }
-    if (usage.inTemplateProcedureSequence) {
-      return 'テンプレートの文書順で使用中の手順書は公開取り消しできません';
-    }
-    if (usage.inTemplateProcedureStep) {
-      return 'テンプレートの表示ステップで使用中の手順書は公開取り消しできません';
-    }
-    if (usage.inActiveTemplatePrimary) return '有効なテンプレートで使用中の手順書は公開取り消しできません';
-    if (usage.inTemplatePrimary) return 'テンプレートで使用中の手順書は公開取り消しできません';
-    if (usage.inBoltPageRef || usage.inCheckPageRef) return 'マーカー参照で使用中の手順書は公開取り消しできません';
-    if (usage.inRevisionHistory) return '版履歴で使用中の手順書は削除できません';
-    return '使用中の手順書は公開取り消しできません';
+    return referenceUsageByPriority.find(({ key }) => usage[key])?.inUseMessage
+      ?? '使用中の手順書は公開取り消しできません';
   }
 
   async deleteIfUnused(id: string, actor: AssemblyProcedureEditActor = {}): Promise<'deleted' | 'not_found' | 'in_use'> {
