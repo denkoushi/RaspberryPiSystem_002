@@ -97,7 +97,7 @@
                 # Release containers always mount this volume; anything else may hold
                 # data that Compose recreation would discard.
                 raise SystemExit('Existing ' + service + ' container has no Compose data volume; prepare it manually')
-            # Match Compose's default name and ownership labels. The version is
+            # Match the Compose default name and ownership labels. The version is
             # informational; omit config-hash so Compose accepts the existing volume.
             volume_key = service + '-data'
             volume_name = project + '_' + volume_key
