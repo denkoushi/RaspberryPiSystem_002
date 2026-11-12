@@ -9,7 +9,7 @@ import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';
-import { findForwardDrop } from './planningBoardForwardDrop';
+import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { forwardItemDetails } from './planningBoardForwardQueue';
 import { dayLabel, dateToDay, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_FORWARD_LABEL_WIDTH } from './PlanningBoardGanttRow';
@@ -134,7 +134,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, frozen, pinMode, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
     return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
-      track.current?.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth);
+      forwardDropBoard(track.current), lanes.current, start, dayWidth);
   };
   useEffect(() => {
     if (!foldedWindow || !heldItemId) return;
@@ -151,7 +151,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
           const previous = viewport.scrollTop;
           viewport.scrollTop += delta;
           if (viewport.scrollTop !== previous) onDragPreview({ rowKey: row.key, bar: pending.bar, x, y, allowed: pending.allowed,
-            drop: findForwardDrop(x, y, pending.bar, pending.allowed, viewport.closest('[data-testid="planning-board-gantt"]'), lanes.current, start, dayWidth) });
+            drop: findForwardDrop(x, y, pending.bar, pending.allowed, forwardDropBoard(viewport), lanes.current, start, dayWidth) });
         }
       }
       frame = requestAnimationFrame(scroll);

@@ -1049,6 +1049,79 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(await db().productionScheduleGrindingPlanningBoardOverride.count({ where: { siteKey: fixture.siteKey } })).toBe(0);
   });
 
+  it('serializes a piece-free save behind a resource reorder without losing override values', async () => {
+    const fixture = await createFixture();
+    const rowIds = await addRows(fixture, ['A', 'B', 'C'].map((suffix, index) => ({
+      fseiban: `${fixture.prefix}-${suffix}`, processOrder: String(index + 1),
+      dueDate: `2026-09-${11 + index}`
+    })));
+    const initial = await boardFor(fixture, { view: 'resource' });
+    const [target, edited, source] = rowIds.map((id) => boardItem(initial, (item) => item.sourceRowId === id));
+    expect(edited!.itemId).toMatch(/^row:/);
+    const projectionSource = await import('../grinding-planning-board/source.js');
+    const originalRead = projectionSource.readOverrides;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let reorderPid = 0;
+    const spy = vi.spyOn(projectionSource, 'readOverrides').mockImplementation(async (client, siteKey, itemIds) => {
+      const overrides = await originalRead(client, siteKey, itemIds);
+      if (siteKey === fixture.siteKey && !reorderPid) {
+        const [backend] = await client.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        reorderPid = backend!.pid;
+        await gate;
+      }
+      return overrides;
+    });
+    const reorder = service().updateGrindingPlanningBoardResourceOrder({
+      siteKey: fixture.siteKey, sourceRevision: initial.sourceRevision,
+      itemId: source!.itemId, itemRevision: source!.itemRevision,
+      targetItemId: target!.itemId, targetItemRevision: target!.itemRevision, placement: 'before'
+    });
+    // Attach a rejection handler immediately, including when waiting for the barrier fails.
+    const reordered = Promise.allSettled([reorder]);
+    let saveSettled = false;
+    let blocked = false;
+    let save: ReturnType<typeof updateItem> | undefined;
+    try {
+      await vi.waitFor(() => expect(reorderPid).toBeGreaterThan(0), { timeout: 5000 });
+      save = updateItem(fixture, edited!, {
+        resourceCd: '581', due: { kind: 'date', date: '2026-10-01' }, specialDue: 'today'
+      }, initial.sourceRevision);
+      void save.then(() => { saveSettled = true; }, () => { saveSettled = true; });
+      await vi.waitFor(async () => {
+        const [waiting] = await db().$queryRaw<Array<{ blocked: boolean }>>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE ${reorderPid} = ANY(pg_blocking_pids(pid))
+              AND query LIKE '%ProductionScheduleGrindingPlanningBoardState%'
+          ) AS blocked`;
+        blocked = waiting!.blocked;
+        expect(blocked || saveSettled).toBe(true);
+      }, { timeout: 5000, interval: 20 });
+    } finally {
+      release();
+      await reordered;
+      spy.mockRestore();
+    }
+    const [reorderResult] = await reordered;
+    expect(reorderResult!.status).toBe('fulfilled');
+    const [saveResult] = await Promise.allSettled([save!]);
+    const persisted = await db().productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({
+      where: { csvDashboardId_siteKey_itemKey: {
+        csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: fixture.siteKey, itemKey: edited!.itemId
+      } }
+    });
+    if (saveResult!.status === 'fulfilled') {
+      expect(persisted).toMatchObject({ overrideResourceCd: '581', specialDueKind: 'today', dueDateCleared: false });
+      expect(persisted.overrideDueDate?.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+      expect(persisted.specialDueExpiresAt).not.toBeNull();
+    } else {
+      expect(saveResult!.reason).toMatchObject({ statusCode: 409 });
+      expect(persisted).toMatchObject({ overrideResourceCd: null, overrideDueDate: null, specialDueKind: null });
+    }
+    expect(blocked).toBe(true);
+  });
+
   it('serializes the same item to one success and one conflict, while distinct items both succeed', async () => {
     const fixture = await createFixture();
     const [sameRow] = await addRows(fixture, [{ fseiban: `${fixture.prefix}-CONCURRENT`, processOrder: '1' }]);

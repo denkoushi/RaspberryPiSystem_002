@@ -146,7 +146,15 @@ def signage_options(environment):
                           env=env, text=True, capture_output=True)
 
 
-PIN_ENABLED_HOSTS = {'raspi4-kensaku-02', 'raspberrypi3'}
+PIN_ENABLED_HOSTS = {
+    'raspi4-kensaku-02',
+    'raspberrypi3',
+    'raspberrypi4',
+    'raspi4-robodrill01',
+    'raspi4-fjv60-80',
+    'raspi4-sessaku-01',
+    'raspi4-assembly-02',
+}
 
 
 class ClientServerCertPinTests(unittest.TestCase):

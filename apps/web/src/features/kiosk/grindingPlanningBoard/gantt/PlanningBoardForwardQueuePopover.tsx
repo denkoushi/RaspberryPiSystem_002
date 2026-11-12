@@ -8,7 +8,7 @@ import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
-import { findForwardDrop } from './planningBoardForwardDrop';
+import { findForwardDrop, forwardDropBoard } from './planningBoardForwardDrop';
 import { canReorderForwardBars, forwardDueLabel, forwardQueueWindow, forwardStartLabel } from './planningBoardForwardQueue';
 
 import type { ForwardDragPreview, ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
@@ -30,7 +30,7 @@ export type ForwardQueueHandle = {
 type Props = {
   folded?: boolean;
   viewport: RefObject<HTMLDivElement | null>;
-  lanes: readonly ForwardDragLane[];
+  lanes: { readonly current: readonly ForwardDragLane[] };
   start: number;
   dayWidth: number;
   labelWidth: number;
@@ -201,7 +201,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     const next = inQueue ? findDrop(event.clientX, pending.bar) : null;
     setDrop(next);
     const ganttDrop = inQueue ? null : findForwardDrop(event.clientX, event.clientY, pending.bar, pending.allowed,
-      viewport.current?.closest('[data-testid="planning-board-gantt"]'), lanes, start, dayWidth);
+      forwardDropBoard(viewport.current), lanes.current, start, dayWidth);
     onDragPreview({ source: 'queue', bar: pending.bar, x: event.clientX, y: event.clientY, allowed: pending.allowed, drop: ganttDrop });
     return { queue: next, gantt: ganttDrop };
   };
@@ -236,7 +236,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           cancelHide();
           const element = event.currentTarget;
           drag.current = { bar, x: event.clientX, y: event.clientY, pointerId: event.pointerId, element, moved: false, ready: event.pointerType !== 'touch',
-            allowed: new Set(lanes.filter((lane) => lane.resource === bar.resource || (item.kind !== 'test' && canMoveResource?.(item, lane.resource))).map((lane) => lane.resource)) };
+            allowed: new Set(lanes.current.filter((lane) => lane.resource === bar.resource || (item.kind !== 'test' && canMoveResource?.(item, lane.resource))).map((lane) => lane.resource)) };
           dragPointer.current = { x: event.clientX, y: event.clientY };
           if (event.pointerType === 'touch') longPress.current = setTimeout(() => {
             if (!drag.current) return;

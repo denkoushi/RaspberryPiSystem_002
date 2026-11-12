@@ -28,7 +28,7 @@ import { prisma } from '../../../../lib/prisma.js';
 import { ApiError } from '../../../../lib/errors.js';
 import { createPrismaClient } from '../../../../lib/prisma-client.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID as dashboardId } from '../../constants.js';
-import { getGrindingPlanningBoard, updateGrindingPlanningBoardArrival, updateGrindingPlanningBoardRank, updateGrindingPlanningBoardResourceOrder } from '../../grinding-planning-board.service.js';
+import { getGrindingPlanningBoard, updateGrindingPlanningBoardOverrides, updateGrindingPlanningBoardArrival, updateGrindingPlanningBoardRank, updateGrindingPlanningBoardResourceOrder } from '../../grinding-planning-board.service.js';
 import { createInMemoryLeaderboardShellSnapshotStore } from '../../leaderboard/leaderboard-shell-snapshot.store.js';
 import { splitSessakuPieces, mergeSessakuPieces, setSessakuPieceCompletion, setSessakuPieceOpCompletion } from '../sessaku-pieces.service.js';
 import { encodeSessakuPieceKey, acquireSessakuPieceLogicalLocks, sessakuPieceKeyFromRow, readSessakuPieceSet, readSessakuPieceSets, findSessakuPieceWinner } from '../piece-key.js';
@@ -123,6 +123,87 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
+  it('preserves a piece-free sibling save across a ReadCommitted split lane rewrite', async () => {
+    const siblingRow = await prisma.csvDashboardRow.create({ data: {
+      csvDashboardId: dashboardId, rowData: { ...rowData, FHINCD: 'PART-S' },
+      occurredAt: new Date(), dataHash: `${site}-sibling`
+    } });
+    await prisma.productionScheduleOrderSupplement.create({ data: {
+      csvDashboardId: dashboardId, csvDashboardRowId: siblingRow.id, sourceCsvDashboardId: `${site}-sibling`,
+      productNo: '123', resourceCd: '1', processOrder: '1', plannedQuantity: 5
+    } });
+    const initial = await board();
+    const p = initial.items.find((item) => item.sourceRowId === rowId)!;
+    const sibling = initial.items.find((item) => item.sourceRowId === siblingRow.id)!;
+    expect(sibling.itemId).toMatch(/^row:/);
+    expect(sibling.effectiveResourceCd).toBe(p.effectiveResourceCd);
+    expect(sibling.pieceSetVersion ?? 0).toBe(0);
+    const originalReplace = laneWrites.replaceSiteItems;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let splitPid = 0;
+    // beforeProjections has read all lane overrides; pause before replacement/flush.
+    const spy = vi.spyOn(laneWrites, 'replaceSiteItems').mockImplementation(async (tx, key, before, targetSite, ...args) => {
+      if (targetSite === site && !splitPid) {
+        expect(before.pieces.some((item) => item.itemId === sibling.itemId && !item.isCompleted)).toBe(true);
+        expect(before.overrides.has(sibling.itemId)).toBe(false);
+        const [backend] = await tx.$queryRaw<Array<{ pid: number; isolation: string }>>`
+          SELECT pg_backend_pid() AS pid, current_setting('transaction_isolation') AS isolation`;
+        expect(backend!.isolation).toBe('read committed');
+        splitPid = backend!.pid;
+        await gate;
+      }
+      return originalReplace(tx, key, before, targetSite, ...args);
+    });
+    const splitting = Promise.allSettled([splitSessakuPieces({
+      siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision,
+      expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [2, 3]
+    })]);
+    let saveSettled = false;
+    let blocked = false;
+    let saving: Promise<PromiseSettledResult<Awaited<ReturnType<typeof updateGrindingPlanningBoardOverrides>>>[]> | undefined;
+    try {
+      await vi.waitFor(() => expect(splitPid).toBeGreaterThan(0), { timeout: 5000 });
+      saving = Promise.allSettled([updateGrindingPlanningBoardOverrides({
+        siteKey: site, sourceRevision: initial.sourceRevision, items: [{
+          itemId: sibling.itemId, itemRevision: sibling.itemRevision,
+          due: { kind: 'date', date: '2026-12-01' }, orderPinned: true, specialDue: 'today'
+        }]
+      })]).then((results) => { saveSettled = true; return results; });
+      // Fixed code waits on the state lock; old code commits before the flush.
+      await vi.waitFor(async () => {
+        const [waiting] = await reader.$queryRaw<Array<{ blocked: boolean }>>`
+          SELECT EXISTS (
+            SELECT 1 FROM pg_stat_activity
+            WHERE ${splitPid} = ANY(pg_blocking_pids(pid))
+              AND query LIKE '%ProductionScheduleGrindingPlanningBoardState%'
+          ) AS blocked`;
+        blocked = waiting!.blocked;
+        expect(blocked || saveSettled).toBe(true);
+      }, { timeout: 5000, interval: 20 });
+    } finally {
+      release();
+      await splitting;
+      await saving;
+      spy.mockRestore();
+    }
+    const [splitResult] = await splitting;
+    expect(blocked, 'the sibling save must wait on the split state lock').toBe(true);
+    expect(splitResult!.status).toBe('fulfilled');
+    const [saveResult] = (await saving)!;
+    const persisted = await reader.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({
+      where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: site, itemKey: sibling.itemId } }
+    });
+    if (saveResult!.status === 'fulfilled') {
+      expect(persisted.overrideDueDate?.toISOString(), 'successful sibling save must survive the split lane flush')
+        .toBe('2026-12-01T00:00:00.000Z');
+      expect(persisted).toMatchObject({ orderPinned: true, dueDateCleared: false, specialDueKind: 'today' });
+      expect(persisted.specialDueExpiresAt).not.toBeNull();
+    } else {
+      expect(saveResult!.reason).toMatchObject({ statusCode: 409 });
+      expect(persisted).toMatchObject({ overrideDueDate: null, dueDateCleared: null, orderPinned: false, specialDueKind: null, specialDueExpiresAt: null });
+    }
+  });
   it('cascades operation boundaries when a piece is deleted', async () => {
     const set = await prisma.productionScheduleSessakuPieceSet.create({ data: { ...key(), csvDashboardId: dashboardId,
       pieces: { create: { position: 1, quantity: 1 } } }, include: { pieces: true } });
@@ -2517,7 +2598,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     expect(sql).toEqual(fallback); expect(sql.load[0].requiredMinutes).toBe(r.pieces.reduce((sum, piece) => sum + piece.requiredMinutes!, 0));
   });
 
-  it.each([false, true])('does not expose a tombstone warning or acquire piece/board locks for parent due writes (tombstone=%s)', async (tombstone) => {
+  it.each([false, true])('does not expose a tombstone warning or acquire piece locks, but serializes parent due writes with lane rewrites (tombstone=%s)', async (tombstone) => {
     if (tombstone) await prisma.productionScheduleSessakuPieceSet.create({ data: { csvDashboardId: dashboardId, ...key(), quantityWarning: 'INVALID_PLANNED_QUANTITY' } });
     expect((await parent()).quantityWarning ?? null).toBeNull();
     const snapshot = await getGrindingPlanningBoardDueScope({ siteKey: site, deviceScopeKey: site, fseiban: seiban });
@@ -2531,7 +2612,7 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
         const result = await callback(tx);
         expect(execute.mock.calls.length).toBeGreaterThan(0); // legacy parent locks still execute
         expect(execute.mock.calls.some((args) => args.some((value) => typeof value === 'string' && value.startsWith('sessaku')))).toBe(false);
-        expect(query.mock.calls.some((args) => { const sql = JSON.stringify(args[0]); return sql.includes('ProductionScheduleGrindingPlanningBoardState') && sql.includes('FOR UPDATE'); })).toBe(false);
+        expect(query.mock.calls.some((args) => { const sql = JSON.stringify(args[0]); return sql.includes('ProductionScheduleGrindingPlanningBoardState') && sql.includes('FOR UPDATE'); })).toBe(true); // lane rewrites also rewrite piece-free rows
         checked = true;
         return result;
       } finally { execute.mockRestore(); query.mockRestore(); }
