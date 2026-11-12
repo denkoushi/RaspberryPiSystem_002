@@ -87,6 +87,20 @@ describe('automatic candidate SQL contract', () => {
     expect(sql.sql.includes('JSONB_TO_RECORDSET(')).toBe(hasRejected);
     expect(sql.sql).toContain('eligible AS MATERIALIZED');
   });
+  it('continues lock discovery in exactly the same order as the candidate query', () => {
+    const after = { fseiban: 'S', parentId: 'row:previous', id: 'previous' };
+    const query = autoUnitSplitCandidateSql('site', ['S', 'T'], { grindingResourceCds: [], cuttingExcludedResourceCds: [] },
+      [], [], { includeInputVersion: false, after });
+    expect(query.sql).toContain('(array_position(?::text[], "fseiban"), "fseiban" COLLATE "C", "parentId" COLLATE "C", "id") >');
+    expect(query.values.slice(-7)).toEqual([['S', 'T'], ['S', 'T'], 'S', 'S', 'row:previous', 'previous', ['S', 'T']]);
+  });
+  it.each([{ parentIds: [] }, { parentIds: ['row:selected'] }])('restricts both discovery gates to the fixed parent scope $parentIds', ({ parentIds }) => {
+    const query = autoUnitSplitCandidateSql('site', ['S'], { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] },
+      [], [], { parentIds });
+    const gates = query.sql.split('eligible AS MATERIALIZED');
+    for (const gate of gates) expect(gate).toContain(')) = ANY(?::text[])');
+    expect(query.values.filter((value) => Array.isArray(value) && JSON.stringify(value) === JSON.stringify(parentIds))).toHaveLength(2);
+  });
   it('optionally excludes raw parent IDs without changing the default candidate query or ordering', () => {
     const policy = { grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] };
     const original = autoUnitSplitCandidateSql('site', ['S'], policy);

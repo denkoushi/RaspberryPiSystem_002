@@ -116,7 +116,9 @@ describe('piece operation completion transaction', () => {
     const tx = mocks.tx as unknown as Prisma.TransactionClient;
     const completed: number[] = [];
     const error = new Error('one rejected lot');
-    await runAutoUnitSplitBatch(tx, async () => [sessakuPieceParentItemId(key)], async () => {
+    await runAutoUnitSplitBatch(tx, async () => [sessakuPieceParentItemId(key)], async (parentIds) => {
+      expect(parentIds).toEqual([sessakuPieceParentItemId(key)]);
+      expect(mocks.logicalLocks).toHaveBeenCalledWith(tx, [key]);
       for (let index = 0; index < 3; index++) {
         try {
           await runAutoUnitSplitLot(async () => { if (index === failedLot) throw error; completed.push(index); });

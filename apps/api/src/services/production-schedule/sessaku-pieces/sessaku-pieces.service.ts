@@ -248,11 +248,12 @@ const autoUnitSplitBatch = new AsyncLocalStorage<AutoUnitSplitBatch>();
 
 /** Only the automatic runner shares this transaction; direct/manual splits keep operate's transaction. */
 export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
-  parentIds: () => Promise<string[]>, work: () => Promise<T>, audit?: PieceAuditContext, raw: Prisma.TransactionClient = tx): Promise<T> {
+  parentIds: () => Promise<string[]>, work: (parentIds: readonly string[]) => Promise<T>, audit?: PieceAuditContext, raw: Prisma.TransactionClient = tx): Promise<T> {
   await tx.$queryRaw`SELECT set_config('lock_timeout', '250ms', true)`;
   await acquireFkojunstStatusMailCriticalTransactionLock(tx);
-  // Discover every possible page before taking board locks, preserving critical -> logical -> board -> row.
-  const keys = (await parentIds()).map(decodeSessakuPieceParentItemId);
+  // Fix the bounded parent scope before locks, preserving critical -> logical -> board -> row.
+  const selectedParentIds = await parentIds();
+  const keys = selectedParentIds.map(decodeSessakuPieceParentItemId);
   const lockedKeys = await acquireSessakuPieceLogicalLocks(tx, keys);
   await acquireSessakuPieceBoardStateLocks(tx);
   const rows = await readWinnerRowsByLogicalKeyFseibans(tx, [...new Set(keys.map((key) => key.fseiban))]);
@@ -263,7 +264,7 @@ export async function runAutoUnitSplitBatch<T>(tx: Prisma.TransactionClient,
     WHERE "id" IN (${Prisma.join(selected.map((row) => row.id))}) ORDER BY "id" FOR UPDATE`);
   const batch: AutoUnitSplitBatch = { tx, raw, audit, keys, lockedKeys, rowIds: new Set(selected.map((row) => row.id)) };
   return autoUnitSplitBatch.run(batch, async () => {
-    const result = await work();
+    const result = await work(selectedParentIds);
     if (batch.before) {
       await timed(audit, 'writeMs', () => flushSiteItems(tx, batch.before!, audit));
       await timed(audit, 'siteVersionMs', () => saveSiteVersions(tx, batch.before!, true));

@@ -22,7 +22,7 @@ vi.mock('../sessaku-pieces.service.js', () => ({ splitSessakuPieces: mocks.split
   runAutoUnitSplitLot: async (work: () => Promise<unknown>) => work() }));
 vi.mock('../piece-audit.js', async () => ({ runSessakuPieceOperation: mocks.audit,
   pieceTimingStage: new (await import('node:async_hooks')).AsyncLocalStorage() }));
-import { autoSplitSessakuUnits as runProductionAutoSplit, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS,
+import { autoSplitSessakuUnits as runProductionAutoSplit, autoUnitSplitCandidates, AUTO_UNIT_SPLIT_MAX_LOTS, AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS,
   AUTO_UNIT_SPLIT_BUDGET_MS as PRODUCTION_BUDGET_MS, AUTO_UNIT_SPLIT_FIRST_LOT_GRACE_MS, AUTO_UNIT_SPLIT_RUNNER_MARGIN_MS,
   AUTO_UNIT_SPLIT_RUNNER_TIMEOUT_MS as PRODUCTION_RUNNER_TIMEOUT_MS } from '../auto-unit-split.service.js';
 import { Prisma } from '@prisma/client';
@@ -39,8 +39,11 @@ const item = (patch: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningB
   itemId: 'row:one', kind: 'row', fseiban: 'S', fhincd: 'PART', processOrder: '10', originalResourceCd: '021', effectiveResourceCd: '021',
   plannedQuantity: 3, itemRevision: 'a'.repeat(64), isCompleted: false, sourceRowId: 'source', ...patch
 } as GrindingPlanningBoardItem);
-const sqlExcludedParents = (sql: { values: unknown[] }) => new Set(sql.values.filter(Array.isArray).flat()
-  .filter((value): value is string => typeof value === 'string' && value.startsWith('row:')));
+const sqlExcludedParents = (sql: { sql: string; values: unknown[] }) => {
+  const index = sql.sql.lastIndexOf('<> ALL(?::text[])');
+  return new Set<string>((index < 0 ? [] : sql.values[sql.sql.slice(0, index).split('?').length - 1] as string[])
+    .filter((value) => value.startsWith('row:')));
+};
 const candidatePageSize = AUTO_UNIT_SPLIT_MAX_LOTS + 1;
 const capacity = { dailyHoursByResource: {}, runsThroughBreaksResources: [] };
 const candidates = (items: GrindingPlanningBoardItem[]) => autoUnitSplitCandidates(items, capacity, (cd) => cd !== '305');
@@ -58,7 +61,7 @@ describe('automatic unit split', () => {
       productionScheduleSessakuPieceSet: { findMany: mocks.sets },
       productionScheduleSessakuPieceHistory: { findMany: mocks.history }
     }));
-    mocks.batch.mockImplementation(async (_tx, _ids, work) => work());
+    mocks.batch.mockImplementation(async (_tx, _ids, work) => work([...new Set(mocks.items.map((item) => item.parentItemId ?? item.itemId))]));
     mocks.state.mockResolvedValue({ seibanOrder: ['S'] });
     mocks.policy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
     mocks.capacity.mockResolvedValue({}); mocks.details.mockResolvedValue(new Map());
@@ -147,7 +150,7 @@ describe('automatic unit split', () => {
       });
       await autoSplitSessakuUnits({ siteKey: `flush-backoff-${code}` }).catch(() => undefined);
       mocks.split.mockClear();
-      await autoSplitSessakuUnits({ siteKey: `flush-backoff-${code}` });
+      expect(await autoSplitSessakuUnits({ siteKey: `flush-backoff-${code}` })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: false });
       expect(mocks.split).not.toHaveBeenCalled();
       vi.mocked(performance.now).mockReturnValue(code === 'AUTO_UNIT_SPLIT_YIELD' ? 30000 : 180000);
       await autoSplitSessakuUnits({ siteKey: `flush-backoff-${code}` });
@@ -343,7 +346,7 @@ describe('automatic unit split', () => {
   });
   it('omits fingerprints from lock discovery while retaining them on the first page', async () => {
     mocks.query.mockResolvedValue([]);
-    mocks.batch.mockImplementationOnce(async (_tx, ids, work) => { await ids(); return work(); });
+    mocks.batch.mockImplementationOnce(async (_tx, ids, work) => { const parents = await ids(); return work(parents); });
     await autoSplitSessakuUnits({ siteKey: 'lock-without-fingerprints' });
     const [lock, page] = mocks.query.mock.calls.map(([sql]) => sql.sql as string);
     expect(lock).toContain('AS lock_candidates');
@@ -351,6 +354,115 @@ describe('automatic unit split', () => {
     expect(lock).not.toContain('"inputVersion"');
     expect(page).toContain('input_versions AS MATERIALIZED');
     expect(page).toContain('AS "inputVersion"');
+  });
+  function boundedDiscovery(rows: Array<{ id: string; fseiban: string; parentId: string; inputVersion: string }>) {
+    mocks.batch.mockImplementation(async (_tx, ids, work) => work(await ids()));
+    mocks.query.mockImplementation(async (sql: Prisma.Sql) => {
+      const excluded = sqlExcludedParents(sql);
+      const rejected = sql.values.filter((value): value is string => typeof value === 'string' && value.startsWith('[{'))
+        .flatMap((value) => JSON.parse(value)) as Array<{ parentId: string; inputVersion: string }>;
+      const selectedIndex = sql.sql.indexOf(')) = ANY(?::text[])');
+      const selected = selectedIndex < 0 ? undefined
+        : new Set(sql.values[sql.sql.slice(0, selectedIndex).split('?').length - 1] as string[]);
+      const afterParent = sql.sql.includes(') >')
+        ? sql.values.find((value) => typeof value === 'string' && value.startsWith('row:')) : undefined;
+      const cursorIndex = afterParent === undefined ? -1 : rows.findIndex((row) => row.parentId === afterParent);
+      return rows.filter((row, index) => index > cursorIndex && !excluded.has(row.parentId) && (!selected || selected.has(row.parentId))
+        && !rejected.some((entry) => entry.parentId === row.parentId && entry.inputVersion === row.inputVersion))
+        .slice(0, Number(sql.values.at(-1)));
+    });
+  }
+  it.each([8, 80, 800])('locks at most the fixed parent cap with %i eligible lots and scopes every later page', async (count) => {
+    mocks.items = Array.from({ length: count }, (_, i) => item({ itemId: `row:bounded-${i}`, sourceRowId: `bounded-${i}`, fhincd: `BOUNDED-${i}` }));
+    const rows = mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId, inputVersion: 'v1' }));
+    boundedDiscovery(rows);
+    const locked: string[][] = [];
+    mocks.batch.mockImplementation(async (_tx, ids, work) => { const parents = await ids(); locked.push(parents); return work(parents); });
+    expect(await autoSplitSessakuUnits({ siteKey: `bounded-${count}` })).toMatchObject({ splitCount: 3, hasMore: true });
+    expect(locked).toEqual([rows.slice(0, AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS).map((row) => row.parentId)]);
+    const [lock, ...pages] = mocks.query.mock.calls.map(([sql]) => sql as Prisma.Sql);
+    expect(lock.values.at(-1)).toBe(AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS + 1);
+    for (const page of pages) {
+      expect(page.sql).toContain(')) = ANY(?::text[])');
+      expect(page.values).toContainEqual(locked[0]);
+    }
+    for (const [params] of mocks.split.mock.calls) expect(locked[0]).toContain(params.parentItemId);
+  });
+  it.each(['projection', 'locked', 'expired-cache'] as const)('reaches a normal tail beyond the cap after %s heads without counting them as success', async (stage) => {
+    const rejected = Array.from({ length: AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS * 2 }, (_, i) => item({
+      itemId: `row:head-${i}`, sourceRowId: `head-${i}`, fhincd: `HEAD-${i}`, plannedQuantity: stage === 'projection' || stage === 'expired-cache' ? 1 : 3
+    }));
+    const tail = item({ itemId: 'row:bounded-tail', sourceRowId: 'bounded-tail', fhincd: 'TAIL' });
+    mocks.items = [...rejected, tail];
+    const rows = mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId, inputVersion: 'v1' }));
+    boundedDiscovery(rows);
+    mocks.split.mockImplementation(async ({ parentItemId }) => {
+      if (parentItemId !== tail.itemId) throw new ApiError(409, 'blocked', undefined,
+        'LATER_PROCESS_PIECE_COMPLETED');
+      rows.splice(rows.findIndex((row) => row.parentId === tail.itemId), 1);
+      return { pieceSetVersion: 1 };
+    });
+    const siteKey = `bounded-rejected-${stage}`;
+    for (let round = 0; round < 2; round++) {
+      if (stage === 'expired-cache') vi.mocked(performance.now).mockReturnValue(round * 180001);
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0,
+        skippedCount: stage === 'projection' || stage === 'expired-cache' ? 0 : AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS, hasMore: true });
+    }
+    if (stage === 'expired-cache') vi.mocked(performance.now).mockReturnValue(2 * 180001);
+    expect(await autoSplitSessakuUnits({ siteKey })).toMatchObject({ splitCount: 1, hasMore: true });
+    expect(mocks.split.mock.calls.at(-1)![0].parentItemId).toBe(tail.itemId);
+    // A changed eligibility fingerprint makes a previously rejected head discoverable again.
+    {
+      rows[0].inputVersion = 'v2';
+      mocks.items[0].plannedQuantity = 3;
+      mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
+      expect(await autoSplitSessakuUnits({ siteKey })).toMatchObject({ splitCount: 1 });
+      expect(mocks.split.mock.calls.at(-1)![0].parentItemId).toBe(rejected[0].itemId);
+    }
+  });
+  it.each(['P2034', 'STALE_SESSAKU_PIECES', 'SOURCE_ITEM_MISSING', 'PIECE_REFERENCED'])(
+    'retries the first reloadable %s lot before advancing beyond the lock window', async (code) => {
+      mocks.items = Array.from({ length: AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS + 1 }, (_, i) => item({
+        itemId: `row:retry-${i}`, sourceRowId: `retry-${i}`, plannedQuantity: 1
+      }));
+      mocks.items[2].plannedQuantity = 3;
+      mocks.items[5].plannedQuantity = 3;
+      const rows = mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId, inputVersion: 'v1' }));
+      boundedDiscovery(rows);
+      const scopes: string[][] = [];
+      mocks.batch.mockImplementation(async (_tx, ids, work) => { const selected = await ids(); scopes.push(selected); return work(selected); });
+      mocks.split.mockRejectedValue(new ApiError(409, 'reload', undefined, code));
+      const siteKey = `retry-window-${code}`;
+      expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 2, hasMore: true });
+      if (code.startsWith('STALE_')) {
+        // An unchanged stale input is rejected on its second attempt, so the tail is reachable.
+        expect(await autoSplitSessakuUnits({ siteKey })).toEqual({ splitCount: 0, skippedCount: 2, hasMore: true });
+        expect(scopes[1][0]).toBe(rows[2].parentId);
+        await autoSplitSessakuUnits({ siteKey });
+        expect(scopes[1]).toContain(rows[8].parentId);
+        expect(scopes[2]).toEqual([]);
+      } else {
+        mocks.split.mockResolvedValue({ pieceSetVersion: 1 });
+        expect(await autoSplitSessakuUnits({ siteKey })).toMatchObject({ splitCount: 2 });
+        expect(scopes[1][0]).toBe(rows[2].parentId);
+      }
+    });
+  it('rolls back the traversal cursor with a failed batch flush', async () => {
+    mocks.items = Array.from({ length: AUTO_UNIT_SPLIT_MAX_LOCK_PARENTS + 1 }, (_, i) => item({
+      itemId: `row:cursor-${i}`, sourceRowId: `cursor-${i}`, fhincd: `CURSOR-${i}`, plannedQuantity: 1
+    }));
+    boundedDiscovery(mocks.items.map((item) => ({ id: item.sourceRowId, fseiban: 'S', parentId: item.itemId, inputVersion: 'v1' })));
+    const scopes: string[][] = [];
+    mocks.batch.mockImplementation(async (_tx, ids, work) => {
+      const selected = await ids(); scopes.push(selected);
+      const result = await work(selected);
+      if (scopes.length === 1) throw new ApiError(500, 'flush failed', undefined, 'FLUSH_FAILED');
+      return result;
+    });
+    await expect(autoSplitSessakuUnits({ siteKey: 'cursor-rollback' })).rejects.toMatchObject({ code: 'FLUSH_FAILED' });
+    expect(await autoSplitSessakuUnits({ siteKey: 'cursor-rollback' })).toEqual({ splitCount: 0, skippedCount: 0, hasMore: true });
+    expect(scopes).toHaveLength(2);
+    expect(scopes[1]).toEqual(scopes[0]);
   });
   it('returns without loading winners or projecting when no untouched cutting key exists', async () => {
     mocks.query.mockResolvedValue([]);
@@ -361,7 +473,7 @@ describe('automatic unit split', () => {
   it.each([new ApiError(500, 'timeout')])(
     'stops and rethrows server ApiErrors', async (error) => {
       mocks.items = [item(), item({ itemId: 'row:two' })]; mocks.split.mockRejectedValueOnce(error);
-      await expect(autoSplitSessakuUnits({ siteKey: 'site' })).rejects.toBe(error);
+      await expect(autoSplitSessakuUnits({ siteKey: 'server-error' })).rejects.toBe(error);
       expect(mocks.split).toHaveBeenCalledTimes(1);
     });
   it('defers a P2028 lot failure without using the expired runner', async () => {

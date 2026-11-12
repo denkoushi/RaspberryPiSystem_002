@@ -320,6 +320,7 @@ export function PlanningBoardPage() {
   }, [pieceFocusItemIdRef]);
   const specialDueModeRef = useRef(specialDueMode); specialDueModeRef.current = specialDueMode;
 
+  const clearSelection = useCallback(() => setSelectedItemIdsByCategory((current) => current[category]?.size ? { ...current, [category]: new Set<string>() } : current), [category]);
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
     if (!gate.attempt()) return; if (!scopeReady || item.isCompleted) return;
     setSelectedItemIdsByCategory((current) => {
@@ -735,7 +736,7 @@ export function PlanningBoardPage() {
         data={data} ganttEnabled={ganttEnabled} focusedSeiban={focusedSeiban} setFocusedSeiban={setFocusedSeiban}
         colorBySeiban={colorBySeiban} registeredFseibans={registeredFseibans} gantt={gantt} ganttLayout={ganttLayout}
         view={view} orderPreview={orderPreview} category={category} resourcesQuery={resourcesQuery}
-        pinMode={pinMode} togglePin={togglePin} selectedItemIds={selectedItemIds} toggleItem={toggleItem}
+        pinMode={pinMode} togglePin={togglePin} selectedItemIds={selectedItemIds} clearSelection={clearSelection} toggleItem={toggleItem}
         toggleCompletion={toggleCompletion} completionPendingItemIds={completionPendingItemIds} onArrivalChange={changeArrival} onFirstProcessArrivalChange={changeFirstProcessArrival} arrivalPending={arrivalPending} arrivalError={arrivalError}
         moveDueByDrag={moveDueByDrag} reorderResourceByDrag={reorderResourceByDrag} moveResourceInGantt={moveResourceInGantt}
         canMoveResource={canMoveResource} interactionLocked={interactionLocked} writeQueue={writeQueue}

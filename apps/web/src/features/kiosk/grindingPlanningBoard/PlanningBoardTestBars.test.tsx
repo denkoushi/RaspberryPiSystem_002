@@ -189,11 +189,59 @@ describe('テスト加工の順番と選択', () => {
     const { result } = renderHook(() => usePlanningBoardTestBars({ data, enqueue, remember, disabled: false }));
     await act(async () => { expect(await result.current.create('300', 30)).toBe(true); });
     expect(result.current.selectedId).toBe(made.itemId); expect(remember).toHaveBeenLastCalledWith(made, 'delete');
-    await act(async () => result.current.remove(made)); await waitFor(() => expect(remember).toHaveBeenLastCalledWith(expect.objectContaining({ version: 2 }), 'restore'));
+    await act(async () => result.current.remove(made)); await waitFor(() => expect(remember).toHaveBeenLastCalledWith(expect.objectContaining({ version: 2 }), 'restore', null));
     expect(result.current.selectedId).toBeNull(); expect(writes.every((write) => write.order)).toBe(true);
     const done = vi.fn(); api.mutate.mockResolvedValue({ ...response, sourceRevision: 'r4', testBar: { ...made, version: 3 } });
     await act(async () => result.current.undo({ id: 1, scope: 'site', orders: [], testBarUndo: { item: { ...made, version: 2 }, action: 'restore' } }, done));
     await waitFor(() => expect(done).toHaveBeenCalled()); expect(api.mutate).toHaveBeenLastCalledWith(made.itemId, 'restore', expect.objectContaining({ expectedVersion: 2 }));
+  });
+  it.each(['normal', 'head', 'test', 'band'] as const)('keeps the %s predecessor through queued delete and undo', async (scenario) => {
+    const made = testBar({ alternateRank: scenario === 'head' || scenario === 'band' ? 1 : 2 });
+    const { data } = optimisticBoard([made]);
+    data.items = data.items.map((item, index) => ({ ...item, alternateRank: index ? 3 : 1,
+      ...(scenario === 'band' && !index ? { specialDue: { kind: 'today' as const, expiresAt: '2099-01-01' } } : {}) }));
+    const predecessor = testBar({ itemId: 'test:predecessor', alternateRank: 1 });
+    if (scenario === 'test') { data.testBars = [predecessor, made]; data.items = []; }
+    if (scenario === 'head') data.items = data.items.map((item) => ({ ...item, alternateRank: 3 }));
+    const expected = scenario === 'normal' ? data.items[0]!.itemId : scenario === 'test' ? predecessor.itemId : null;
+    const remember = vi.fn(); const writes: PlanningBoardWrite[] = [];
+    const enqueue = (write: PlanningBoardWrite) => { writes.push(write); return true; };
+    const { result } = renderHook(() => usePlanningBoardTestBars({ data, enqueue, remember, disabled: false }));
+    act(() => result.current.remove(made));
+    const deleted = { ...made, version: 2, deletedAt: '2026-11-05' };
+    api.mutate.mockResolvedValueOnce({ sourceRevision: 'r2', testBar: deleted, testBars: [] });
+    await act(async () => { const saved = await writes[0]!.save({ sourceRevision: 'r1', item: (item) => item }); writes[0]!.onSaved?.(saved); });
+    expect(remember).toHaveBeenCalledWith(deleted, 'restore', expected);
+    const [item, action, restoreAfterItemId] = remember.mock.calls[0]!;
+    act(() => { result.current.undo({ id: 1, scope: 'site', orders: [], testBarUndo: { item, action, restoreAfterItemId } }, vi.fn()); });
+    // The queue retains the captured anchor until save is run later with a fresh revision.
+    api.mutate.mockResolvedValueOnce({});
+    await writes[1]!.save({ sourceRevision: 'r3', item: (item) => item });
+    expect(api.mutate).toHaveBeenLastCalledWith(made.itemId, 'restore', expect.objectContaining({ sourceRevision: 'r3', restoreAfterItemId: expected }));
+  });
+  it.each(['complete', 'delete', 'create'] as const)('uses the refreshed version for %s after an overlay is superseded', async (action) => {
+    const original = testBar();
+    const saved = testBar({ version: 2, itemRevision: 'test:r2' });
+    const fresh = testBar({ version: 3, itemRevision: 'test:r3' });
+    const { data } = optimisticBoard([original]);
+    const writes: PlanningBoardWrite[] = [];
+    const enqueue = (write: PlanningBoardWrite) => { writes.push(write); return true; };
+    const { result, rerender } = renderHook(({ board }) => usePlanningBoardTestBars({ data: board, enqueue, remember: vi.fn(), disabled: false }), { initialProps: { board: data } });
+    act(() => result.current.accept({ sourceRevision: 'r2', testBars: [saved], nextTestBarSequence: 5 }));
+    expect(result.current.bars).toEqual([saved]);
+    rerender({ board: { ...data, sourceRevision: 'r3', testBars: [fresh] } });
+    expect(result.current.bars).toEqual([fresh]);
+    act(() => {
+      if (action === 'create') void result.current.create('300', 30, fresh);
+      else if (action === 'delete') result.current.remove(fresh);
+      else result.current.complete(fresh, 'complete');
+    });
+    api.create.mockResolvedValue({}); api.mutate.mockResolvedValue({});
+    await writes[0]!.save({ sourceRevision: 'r3', item: (item) => item });
+    if (action === 'create') expect(api.create).toHaveBeenCalledWith(expect.objectContaining({
+      afterItem: { itemId: fresh.itemId, itemRevision: fresh.itemRevision, overrideVersion: 3 }
+    }));
+    else expect(api.mutate).toHaveBeenCalledWith(fresh.itemId, action, expect.objectContaining({ expectedVersion: 3 }));
   });
   it('keeps cached test data isolated by site and blocks writes while offline', async () => {
     const data = { siteKey: 'A', sourceRevision: 'r1', testBars: [testBar()], nextTestBarSequence: 5 } as unknown as GrindingPlanningBoardResponse;

@@ -183,6 +183,7 @@ export interface GrindingPlanningBoardTestBarCreateRequest {
   afterItem?: GrindingPlanningBoardItemReference;
 }
 export interface GrindingPlanningBoardTestBarMutationRequest {
+  restoreAfterItemId?: string | null;
   dueSource?: 'excel' | 'scaw';
   sourceRevision: string;
   expectedVersion: number;

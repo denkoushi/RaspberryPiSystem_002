@@ -31,7 +31,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
   data: GrindingPlanningBoardResponse | undefined;
   items?: GrindingPlanningBoardItem[];
   enqueue: ReturnType<typeof usePlanningBoardWriteQueue>['enqueue'];
-  remember: (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore') => void;
+  remember: (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore', restoreAfterItemId?: string | null) => void;
   disabled: boolean;
 }): PlanningBoardTestBarControls {
   const { enabled: offlineEnabled, refreshRead } = usePlanningBoardOffline();
@@ -41,8 +41,8 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
   const pendingId = useRef(0);
   const clearPending = (id: number) => setPending((writes) => writes.filter((write) => write.id !== id));
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const latest = useRef({ data, overlay }); latest.current = { data, overlay };
   const activeOverlay = overlay && data && overlay.siteKey === data.siteKey && (overlay.stale.has(data.sourceRevision) || overlay.revision === data.sourceRevision) ? overlay : null;
+  const latest = useRef({ data, activeOverlay }); latest.current = { data, activeOverlay };
   const pendingHere = pending.filter((write) => write.siteKey === data?.siteKey);
   const bars = pendingHere.reduce((bars, write) => write.apply(bars), activeOverlay?.bars ?? data?.testBars ?? EMPTY);
   const nextSequence = Math.max(activeOverlay?.next ?? data?.nextTestBarSequence ?? 1, ...pendingHere.map((write) => write.next ?? 1));
@@ -52,7 +52,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     setOverlay((previous) => ({ siteKey: latest.current.data?.siteKey ?? '', stale: new Set([...previous?.stale ?? [], latest.current.data?.sourceRevision ?? '', previous?.revision ?? '']),
       revision: result.sourceRevision ?? '', bars: result.testBars!, next: result.nextTestBarSequence ?? previous?.next ?? data?.nextTestBarSequence ?? 1 }));
   };
-  const mutate = (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore' | 'complete' | 'incomplete', onSaved?: (result: GrindingPlanningBoardTestBarMutationResponse) => void) => {
+  const mutate = (item: GrindingPlanningBoardTestBar, action: 'delete' | 'restore' | 'complete' | 'incomplete', onSaved?: (result: GrindingPlanningBoardTestBarMutationResponse) => void, restoreAfterItemId?: string | null) => {
     if (disabled || isPendingPlanningTestBar(item)) return false;
     const id = ++pendingId.current;
     setPending((writes) => [...writes, { id, siteKey: data?.siteKey ?? '', apply: (bars) => action === 'delete'
@@ -62,8 +62,9 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     let saved: GrindingPlanningBoardTestBarMutationResponse | undefined;
     const queued = enqueue({ label: 'テスト加工', itemIds: [item.itemId], seibans: [], order: true, apply: (display) => display,
       save: async (context) => {
-        const current = (latest.current.overlay?.siteKey === latest.current.data?.siteKey ? latest.current.overlay?.bars : latest.current.data?.testBars)?.find((candidate) => candidate.itemId === item.itemId) ?? item;
-        saved = await mutateKioskGrindingPlanningBoardTestBar(item.itemId, action, { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, expectedVersion: current.version });
+        const current = (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((candidate) => candidate.itemId === item.itemId) ?? item;
+        saved = await mutateKioskGrindingPlanningBoardTestBar(item.itemId, action, { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, expectedVersion: current.version,
+          ...(action === 'restore' && restoreAfterItemId !== undefined ? { restoreAfterItemId } : {}) });
         return saved;
       }, onSaved: (result) => { clearPending(id); accept(result); if (saved) onSaved?.(saved); },
       onFailed: () => clearPending(id), onDiscarded: () => clearPending(id)
@@ -91,7 +92,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       let saved: GrindingPlanningBoardTestBarMutationResponse | undefined;
       const queued = enqueue({ label: 'テスト加工', itemIds: after ? [after.itemId] : [], seibans: [], order: true, apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
         save: async (context) => {
-          const current = after?.kind === 'test' ? (latest.current.overlay?.siteKey === latest.current.data?.siteKey ? latest.current.overlay?.bars : latest.current.data?.testBars)?.find((bar) => bar.itemId === after.itemId) ?? after : after ? context.item(after) : undefined;
+          const current = after?.kind === 'test' ? (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((bar) => bar.itemId === after.itemId) ?? after : after ? context.item(after) : undefined;
           const request: GrindingPlanningBoardTestBarCreateRequest = { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, resourceCd, minutes,
             ...(current ? { afterItem: { itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version } } : {}) };
           saved = await createKioskGrindingPlanningBoardTestBar(request); return saved;
@@ -101,11 +102,19 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       if (!queued) clearPending(id);
       return queued;
     },
-    remove: (item) => { mutate(item, 'delete', (result) => { remember(result.testBar, 'restore'); setSelectedId(null); }); },
+    remove: (item) => {
+      const normal = sortGrindingPlanningBoardItems(items.filter((candidate) => !candidate.isCompleted && resolveGrindingPlanningBoardResource(candidate, 'alternate') === item.resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
+      const lane: GrindingPlanningBoardBar[] = [...normal, ...bars.filter((bar) => !bar.isCompleted && !bar.deletedAt && bar.resourceCd === item.resourceCd)];
+      lane.sort(comparePlanningBoardBarOrder);
+      const unbanded = lane.filter((bar) => resolvePlanningBoardOrderBand(bar) == null);
+      const at = unbanded.findIndex((bar) => bar.itemId === item.itemId);
+      const restoreAfterItemId = at < 0 ? undefined : unbanded[at - 1]?.itemId ?? null;
+      mutate(item, 'delete', (result) => { remember(result.testBar, 'restore', restoreAfterItemId); setSelectedId(null); });
+    },
     complete: (item, intent) => { mutate(item, intent); },
     undo: (entry, done) => {
       if (!entry.testBarUndo) return false;
-      return mutate(entry.testBarUndo.item, entry.testBarUndo.action, () => { setSelectedId(entry.testBarUndo!.action === 'restore' ? entry.testBarUndo!.item.itemId : null); done(); });
+      return mutate(entry.testBarUndo.item, entry.testBarUndo.action, () => { setSelectedId(entry.testBarUndo!.action === 'restore' ? entry.testBarUndo!.item.itemId : null); done(); }, entry.testBarUndo.restoreAfterItemId);
     }
   };
 }

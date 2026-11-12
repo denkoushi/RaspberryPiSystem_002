@@ -41,6 +41,7 @@ describe('deferred lane writes', () => {
       where: { id: 'test-id', csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: 'site', deletedAt: null },
       data: { alternateRank: 3, version: { increment: 1 } }
     });
+    expect(next.testBars?.[0]).toMatchObject({ alternateRank: 3, version: 2, itemRevision: 'test:test-id:2' });
   });
 
   it('matches legacy intermediate parent ranks and all override columns, incrementing repeated versions only once', async () => {
@@ -59,7 +60,8 @@ describe('deferred lane writes', () => {
       const { id: _id, version: _version, createdAt: _created, updatedAt: _updated, ...columns } = actual;
       const { id: _oldId, version: _oldVersion, createdAt: _oldCreated, updatedAt: _oldUpdated, ...oldColumns } = expected;
       expect(columns).toEqual(oldColumns);
-      expect(actual.version).toBe(next.laneWrites.pending.has(id) ? (next.laneWrites.original.get(id)?.version ?? 0) + 1 : expected.version);
+      const original = next.laneWrites.original.get(id);
+      expect(actual.version).toBe(actual === original ? original.version : next.laneWrites.pending.has(id) ? (original?.version ?? 0) + 1 : expected.version);
     }
     expect([...next.overrides.keys()].sort()).toEqual([...legacy.overrides.keys()].sort());
     expect(next.overrides.get('later-parent')?.alternateRank).toBe(3);
@@ -75,21 +77,50 @@ describe('deferred lane writes', () => {
     expect(upsert.values[2]).not.toContain('piece:a');
     expect(upsert.values[2]).not.toContain('completed');
   });
-  it('touches unchanged ranks with one version UPDATE and inserts missing overrides, including a null lane', async () => {
+  it('preserves unchanged versions and timestamps and inserts missing overrides, including a null lane', async () => {
     const rows = [override('before', 1), override(parent, 2), override('completed', 9)];
     const next = state([item('before', null), item(parent, null), item('missing', null), item('completed', null, true)], rows);
     const tx = transaction();
     await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', [parent], ['piece:a', 'piece:b']);
     expect(tx.$executeRaw).not.toHaveBeenCalled();
     await flushSiteItems(tx as unknown as Prisma.TransactionClient, new Map([['site', next]]));
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
-    const update = tx.$executeRaw.mock.calls[0][0] as Prisma.Sql;
-    expect(update.sql).toContain('SET "version" =');
-    expect(update.sql).not.toContain('"alternateRank" =');
-    expect(update.values).toContainEqual(['before']);
-    const upsert = tx.$executeRaw.mock.calls[1][0] as Prisma.Sql;
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    const upsert = tx.$executeRaw.mock.calls[0][0] as Prisma.Sql;
     expect(upsert.values[4]).toEqual(['piece:a', 'piece:b', 'missing']);
-    expect(next.overrides.get('before')?.version).toBe(8);
+    expect(next.overrides.get('before')).toBe(rows[0]);
+    expect(next.overrides.get('before')?.version).toBe(7);
+    expect(next.overrides.get('before')?.updatedAt).toEqual(new Date(0));
+  });
+  it('restores the original version and timestamp when a later replacement restores the batch-start rank', async () => {
+    const rows = [override(parent, 1), override('after', 2)];
+    const next = state([item(parent), item('after')], rows);
+    const tx = transaction();
+    await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', [parent], ['piece:a', 'piece:b']);
+    expect(next.overrides.get('after')).toMatchObject({ alternateRank: 3, version: 8 });
+    await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', ['piece:a', 'piece:b'], [parent]);
+    expect(next.overrides.get('after')).toBe(rows[1]);
+    await flushSiteItems(tx as unknown as Prisma.TransactionClient, new Map([['site', next]]));
+    expect(next.overrides.get('after')).toMatchObject({ alternateRank: 2, version: 7, updatedAt: new Date(0) });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1); // deleted temporary pieces only
+    expect((tx.$executeRaw.mock.calls[0][0] as Prisma.Sql).sql).toContain('DELETE FROM');
+  });
+
+  it.each([false, true])('does not update a test bar whose final rank is unchanged (temporary move=%s)', async (move) => {
+    const next = state([{ ...item(parent), alternateRank: 1 }], [override(parent, 1)]);
+    const tx = transaction();
+    tx.productionScheduleGrindingPlanningBoardTestBar.findMany.mockResolvedValue([{
+      id: 'test-id', sequence: 1, resourceCd: '10', minutes: 30, alternateRank: move ? 2 : 1,
+      version: 7, completedAt: null, deletedAt: null
+    }]);
+    if (!move) next.overrides.set(parent, { ...next.overrides.get(parent)!, alternateRank: 2 });
+    await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', [parent], ['piece:a', 'piece:b']);
+    if (move) {
+      expect(next.testBarRanks?.get('test:test-id')).toBe(3);
+      await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', ['piece:a', 'piece:b'], [parent]);
+    }
+    await flushSiteItems(tx as unknown as Prisma.TransactionClient, new Map([['site', next]]));
+    expect(tx.productionScheduleGrindingPlanningBoardTestBar.updateMany).not.toHaveBeenCalled();
+    expect(next.testBars?.[0]).toMatchObject({ version: 7, itemRevision: 'test:test-id:7', alternateRank: move ? 2 : 1 });
   });
 });
 
@@ -117,17 +148,14 @@ describe('production lane write cardinality', () => {
     for (const [id, actual] of next.overrides) {
       const expected = legacy.overrides.get(id)!;
       expect(actual.alternateRank).toBe(expected.alternateRank);
-      expect(actual.version).toBe(next.laneWrites.pending.has(id) ? (next.laneWrites.original.get(id)?.version ?? 0) + 1 : expected.version);
+      const original = next.laneWrites.original.get(id);
+      expect(actual.version).toBe(actual === original ? original.version : next.laneWrites.pending.has(id) ? (original?.version ?? 0) + 1 : expected.version);
     }
     expect(next.pieces).toEqual(legacy.pieces);
     const writer = transaction();
     await flushSiteItems(writer as unknown as Prisma.TransactionClient, new Map([['site', next]]));
-    expect(writer.$executeRaw).toHaveBeenCalledTimes(placement === 'head' ? 1 : 2);
+    expect(writer.$executeRaw).toHaveBeenCalledTimes(1);
     const upsert = writer.$executeRaw.mock.calls.at(-1)![0] as Prisma.Sql;
     expect((upsert.values[4] as string[]).length * 4).toBe(placement === 'head' ? 17768 : 148);
-    if (placement === 'tail') {
-      const update = writer.$executeRaw.mock.calls[0][0] as Prisma.Sql;
-      expect((update.values[2] as string[]).length * 4).toBe(17620);
-    }
   });
 });

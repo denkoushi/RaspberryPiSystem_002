@@ -116,7 +116,7 @@ describe('planningBoardAutoOrder', () => {
     expect(planningBoardOrderMetrics(unfiltered)).toEqual({ lateCount: 1, waitMinutes: 100 });
     expect(bars(layout).map((bar) => bar.segments)).toEqual(bars(unfiltered).filter((bar) => bar.item.arrived !== false).map((bar) => bar.segments));
   });
-  it('retains the same fallback and pinned slots when pieces are present', () => {
+  it('retains proposed pins with pieces while the preview prioritizes precedence', () => {
     const input = options([
       item('successor', 1, null, { fhincd: 'part', processOrder: '20' }),
       item('piece:a', 2, null, { kind: 'piece', parentItemId: 'parent', fhincd: 'part' }),
@@ -125,14 +125,14 @@ describe('planningBoardAutoOrder', () => {
     ]);
     const order = planningBoardAutoOrder(input, new Set(['successor', 'piece:b']));
     expect(order).toEqual({ '305': ['successor', 'piece:a', 'other', 'piece:b'] });
-    expect(bars(buildForwardPlanningBoardGanttLayout({ ...input, laneOrder: order })).map((bar) => bar.item.itemId)).toEqual(order['305']);
+    expect(bars(buildForwardPlanningBoardGanttLayout({ ...input, laneOrder: order })).map((bar) => bar.item.itemId)).toEqual(['piece:a', 'other', 'piece:b', 'successor']);
   });
-  it('preserves current order for ties and reserves pins even when they deadlock precedence', () => {
+  it('preserves proposal ties and pins while the preview resolves precedence deadlocks', () => {
     const input = options([item('successor', 1, null, { fhincd: 'part', processOrder: '20' }),
       item('first', 2, null, { fhincd: 'part' }), item('other', 3, null)]);
     const order = planningBoardAutoOrder(input, new Set(['successor']));
     expect(order).toEqual({ '305': ['successor', 'first', 'other'] });
-    expect(bars(buildForwardPlanningBoardGanttLayout({ ...input, laneOrder: order })).map((bar) => bar.item.itemId)).toEqual(order['305']);
+    expect(bars(buildForwardPlanningBoardGanttLayout({ ...input, laneOrder: order })).map((bar) => bar.item.itemId)).toEqual(['first', 'successor', 'other']);
     expect(planningBoardAutoOrder(options([item('b', 1, null), item('a', 2, null)]), new Set())).toEqual({ '305': ['b', 'a'] });
   });
 });

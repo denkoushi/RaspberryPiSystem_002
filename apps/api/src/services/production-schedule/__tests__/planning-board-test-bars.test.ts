@@ -3,7 +3,7 @@ import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi
 import type { ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({ transaction: vi.fn(), winnerRows: vi.fn(), executeRaw: vi.fn(), queryRaw: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
-  table: { findMany: vi.fn(), create: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
+  table: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
   state: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   $transaction: mocks.transaction, productionScheduleGrindingPlanningBoardState: mocks.state,
@@ -23,11 +23,11 @@ vi.mock('../sessaku-pieces/piece-key.js', () => ({ acquireSessakuPieceLogicalLoc
 vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({
   ...await original<typeof import('../grinding-planning-board/schedule-source.js')>(), readScheduleSourceExcludedFseibans: async () => []
 }));
-import { createPlanningTestBar, mixedPlanningLane, projectPlanningTestBar, reorderPlanningTestBarLane } from '../grinding-planning-board/test-bars.js';
+import { createPlanningTestBar, mutatePlanningTestBar, mixedPlanningLane, projectPlanningTestBar, reorderPlanningTestBarLane } from '../grinding-planning-board/test-bars.js';
 
 const band = { kind: 'today' as const, expiresAt: '2026-11-12T00:00:00.000Z' };
 const normal = (itemId: string, alternateRank: number, specialDue: GrindingPlanningBoardItem['specialDue'] = null) => ({
-  kind: 'row', itemId, itemRevision: itemId, fseiban: 'lot', effectiveResourceCd: '761', originalResourceCd: '761',
+  kind: 'row', itemId, itemRevision: itemId, fseiban: 'lot', productNo: '', fhincd: '', processOrder: '1', effectiveResourceCd: '761', originalResourceCd: '761',
   isCompleted: false, alternateRank, specialDue
 } as GrindingPlanningBoardItem);
 let items: GrindingPlanningBoardItem[];
@@ -44,11 +44,12 @@ beforeEach(() => {
   rows = []; overrides = new Map();
   mocks.state.findUniqueOrThrow.mockResolvedValue({}); mocks.state.update.mockResolvedValue({});
   mocks.table.findMany.mockImplementation(async () => rows);
+  mocks.table.findFirst.mockImplementation(async ({ where }) => { const row = rows.find((row) => row.id === where.id); return row ? { ...row } : null; });
   mocks.table.create.mockImplementation(async ({ data }) => { const row = { ...data, id: 'uuid', version: 1, completedAt: null, deletedAt: null }; rows.push(row); return row; });
   mocks.table.update.mockImplementation(async ({ where, data }) => { const row = rows.find((row) => row.id === where.id)!; Object.assign(row, { ...data, version: row.version + 1 }); return row; });
   mocks.table.findUniqueOrThrow.mockImplementation(async () => rows[0]);
   mocks.transaction.mockImplementation(async (run) => run({ $executeRaw: mocks.executeRaw, $queryRaw: mocks.queryRaw, productionScheduleGrindingPlanningBoardTestBar: mocks.table, productionScheduleGrindingPlanningBoardState: mocks.state }));
-  mocks.current.mockImplementation(async () => ({ state: { id: 'board' }, byItemId: new Map(items.map((item) => [item.itemId, item])), overrides, masterResourceCds: new Set(['761']) }));
+  mocks.current.mockImplementation(async () => ({ state: { id: 'board' }, byItemId: new Map(items.map((item) => [item.itemId, { ...item, alternateRank: overrides.get(item.itemId)?.alternateRank ?? item.alternateRank }])), overrides, masterResourceCds: new Set(['761']) }));
   mocks.save.mockImplementation(async (_tx, _site, _id, _previous, data) => data);
   mocks.project.mockImplementation(() => new Map(items.map((item) => [item.itemId, item])));
 });
@@ -103,4 +104,49 @@ it('locks the same sorted parent rows in two round trips regardless of board siz
       expect(mocks.executeRaw.mock.invocationCallOrder[0]).toBeLessThan(mocks.queryRaw.mock.invocationCallOrder[0]);
     }
   }
+});
+
+
+describe('test bar restore predecessor', () => {
+  it.each(['normal', 'head', 'test', 'deleted', 'completed', 'resource', 'band', 'omitted', 'incomplete'] as const)(
+    'restores using %s while preserving the special due band', async (scenario) => {
+      items = [normal('priority', 1, band), normal('A', 1), normal('B', 2)];
+      await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30,
+        ...(scenario === 'head' ? {} : { afterItem: ref('A') }) });
+      const target = rows[0];
+      if (scenario === 'test') {
+        // A separate test bar is the predecessor of T.
+        rows.push({ ...target, id: 'predecessor', sequence: 2, alternateRank: 1 });
+        items = items.filter((item) => item.itemId !== 'A'); overrides.delete('A');
+      }
+      await mutatePlanningTestBar({ ...request, id: target.id, expectedVersion: target.version,
+        action: scenario === 'incomplete' ? 'complete' : 'delete' });
+      const anchor = scenario === 'test' ? 'test:predecessor' : 'A';
+      if (scenario === 'deleted') items = items.filter((item) => item.itemId !== 'A');
+      if (scenario === 'completed') items = items.map((item) => item.itemId === 'A' ? { ...item, isCompleted: true } : item);
+      if (scenario === 'resource') items = items.map((item) => item.itemId === 'A' ? { ...item, effectiveResourceCd: '762' } : item);
+      if (scenario === 'band') {
+        items = items.map((item) => item.itemId === 'A' ? { ...item, specialDue: band } : item);
+        overrides.set('A', { alternateRank: 2 });
+      }
+      // Insert X at the normal head after T has disappeared.
+      const currentLane = lane();
+      for (const item of currentLane.filter((item) => item.kind !== 'test' && !item.specialDue)) {
+        overrides.set(item.itemId, { alternateRank: (item.alternateRank ?? 0) + 1 });
+      }
+      for (const row of rows.filter((row) => !row.deletedAt && !row.completedAt)) row.alternateRank++;
+      items.push(normal('X', 1));
+      await mutatePlanningTestBar({ ...request, id: target.id, expectedVersion: target.version,
+        action: scenario === 'incomplete' ? 'incomplete' : 'restore',
+        ...(scenario === 'omitted' ? {} : { restoreAfterItemId: scenario === 'head' || scenario === 'incomplete' ? null : anchor }) });
+      const expected = scenario === 'normal' ? ['priority', 'X', 'A', 'test:uuid', 'B']
+        : scenario === 'test' ? ['priority', 'X', 'test:predecessor', 'test:uuid', 'B']
+        : scenario === 'head' ? ['priority', 'test:uuid', 'X', 'A', 'B']
+        : scenario === 'band' ? ['priority', 'A', 'X', 'test:uuid', 'B']
+        : scenario === 'omitted' || scenario === 'incomplete' ? ['priority', 'X', 'test:uuid', 'A', 'B']
+        : ['priority', 'X', 'test:uuid', 'B'];
+      expect(ids(lane())).toEqual(expected);
+      expect(ids(lane())[0]).toBe('priority');
+    }
+  );
 });

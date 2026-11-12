@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
 import { describe, expect, it, vi } from 'vitest';
 import { acquireSessakuPieceLogicalLocks, decodeSessakuPieceParentItemId, encodeSessakuPieceKey, readSessakuPieceSet, readSessakuPieceSets, readSessakuPieceGeneration, sessakuPieceConflict, sessakuPieceKeyFromRow, sessakuPieceParentItemId, sessakuPieceIdFromItemId, sessakuPieceItemIds, resolveSessakuPieceItemKeys } from '../piece-key.js';
-describe('piece identity and monotonic generation', () => {
+describe('piece identity and scoped generation', () => {
   it.each([['P2003', 'PIECE_REFERENCED'], ['P2002', 'STALE_SESSAKU_PIECES'], ['P2034', 'STALE_SESSAKU_PIECES']])('maps %s to a piece conflict', (code, expected) => {
     const error = new Prisma.PrismaClientKnownRequestError('constraint', { code, clientVersion: 'test' });
     expect(() => sessakuPieceConflict(error)).toThrowError(expect.objectContaining({ statusCode: 409, code: expected }));
@@ -40,9 +40,32 @@ describe('piece identity and monotonic generation', () => {
     const itemId = `row:${Buffer.from(JSON.stringify(['********', 'p', '1', '1', 'order'])).toString('base64url')}`;
     expect(() => decodeSessakuPieceParentItemId(itemId)).toThrowError(expect.objectContaining({ statusCode: 409, code: 'UNSUPPORTED_PIECE_PARENT' }));
   });
-  it('retains sums above Number.MAX_SAFE_INTEGER', async () => {
-    expect(await readSessakuPieceGeneration({ $queryRaw: vi.fn().mockResolvedValue([{ count: 3n, version: 9007199254740993n }]) } as never)).toEqual({ count: '3', version: '9007199254740993' });
-  });  it('takes the complete same-part lock group in one stable order from either process', async () => {
+  it('fingerprints logical keys, set IDs and versions in Postgres in stable order', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([{ fingerprint: 'abc' }]);
+    expect(await readSessakuPieceGeneration({ $queryRaw: queryRaw } as never)).toBe('abc');
+    const text = (queryRaw.mock.calls[0][0] as Prisma.Sql).text;
+    expect(text).toContain('md5(COALESCE(string_agg(jsonb_build_array(s."fseiban", s."fhincd", s."fsigencd", s."fkojun", s."id", s."version")');
+    expect(text).toContain('ORDER BY s."id" COLLATE "C"');
+    queryRaw.mockResolvedValue([]);
+    expect(await readSessakuPieceGeneration({ $queryRaw: queryRaw } as never)).toBe('');
+  });
+
+  it('scopes parents by exact raw CSV logical keys and includes referenced sets', async () => {
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    const client = { $queryRaw: queryRaw } as never;
+    await readSessakuPieceGeneration(client, { fseibans: ['A'] });
+    const query = queryRaw.mock.calls[0][0] as Prisma.Sql;
+    expect(query.values).toContainEqual(['A']);
+    expect(query.text).toContain('SELECT DISTINCT COALESCE(r."rowData"');
+    expect(query.text).toContain('(s."fseiban", s."fhincd", s."fsigencd", s."fkojun") IN');
+    expect(query.text).toContain('SELECT "sourcePieceSetId" FROM parents');
+    expect(query.text).toContain('source."pieceSetId"');
+    await readSessakuPieceGeneration(client, { fseibans: [] });
+    expect((queryRaw.mock.calls[1][0] as Prisma.Sql).values).toContainEqual([]);
+    await readSessakuPieceGeneration(client);
+    expect((queryRaw.mock.calls[2][0] as Prisma.Sql).text).not.toContain('FROM "CsvDashboardRow"');
+  });
+  it('takes the complete same-part lock group in one stable order from either process', async () => {
     const cutting = { fseiban: 'A', fhincd: 'P', fsigencd: '1', fkojun: '2' };
     const later = { ...cutting, fsigencd: '305', fkojun: '10' };
     const calls: string[][] = [];
