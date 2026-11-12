@@ -115,7 +115,8 @@ it.each([['021', '022'], ['022', '021']])('keeps only the latest pane chain open
   expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
   const strip = screen.getByRole('region', { name: '工程のつながり' });
   expect(within(strip).getAllByRole('button', { name: new RegExp(`工順.*${second}`) }).length).toBeGreaterThan(0);
-  expect(within(screen.getByRole('region', { name: first })).queryByTestId(/^planning-gantt-chain-badge-/)).toBeNull();
+  expect(within(screen.getByRole('region', { name: first })).getByTestId('planning-board-gantt'))
+    .toHaveClass('[&_[data-testid^=planning-gantt-chain-badge-]]:hidden');
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
   expect(strip.parentElement!.parentElement).toBe(screen.getByTestId('planning-two-machine'));
@@ -807,6 +808,144 @@ it('passes unit split controls through the display and view in single and two-ma
 });
 
 
+describe('two-machine chain links', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.useFakeTimers();
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1000);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(260);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      const viewport = this.closest<HTMLElement>('[data-gantt-viewport]');
+      const top = this.closest('section[aria-label="022"]') ? 400 : 100;
+      return new DOMRect(100, top - (viewport && viewport !== this ? viewport.scrollTop : 0), 1000, 260);
+    });
+  });
+  afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
+
+  function pieces(resources = ['021', '022']) {
+    const fixture = productionFixture(1, 1);
+    const items = resources.map((resource, index) => ({ ...fixture.items[0]!,
+      kind: 'piece' as const, itemId: `piece:p${index}`, pieceId: `p${index}`, parentItemId: 'parent',
+      piecePosition: index + 1, quantity: 1, plannedQuantity: 1, parentPlannedQuantity: resources.length,
+      originalResourceCd: resource, requiredMinutes: 60, specialDue: null, alternateRank: index + 1 }));
+    return { ...props('forward'), layout: buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] }) };
+  }
+  const bar = (index: number) => screen.getAllByTestId(`planning-gantt-bar-piece:p${index}`)[0]!;
+
+  it.each([0, 1])('links pieces across panes and highlights the partner when selecting piece %s', selected => {
+    render(<PlanningBoardGanttDisplay {...pieces()} />);
+    fireEvent.click(bar(selected));
+    const link = screen.getByTestId('planning-gantt-piece-link');
+    expect(link).toHaveAttribute('data-from-to', 'piece:p0->piece:p1');
+    expect(link).toHaveAttribute('stroke', 'white');
+    expect(link).toHaveAttribute('stroke-width', '2');
+    expect(link).not.toHaveAttribute('stroke-dasharray');
+    const overlay = screen.getByTestId('planning-gantt-cross-pane-links');
+    expect(overlay).toContainElement(link);
+    expect(overlay).toHaveClass('pointer-events-none');
+    expect(overlay.querySelectorAll('clipPath rect')).toHaveLength(2);
+    expect(bar(1 - selected)).toHaveClass('outline-white');
+    expect(screen.getAllByRole('region', { name: '工程のつながり' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
+    expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
+    expect(bar(1 - selected)).not.toHaveClass('outline-white');
+  });
+
+  it('clears shared focus when entering pin mode without restoring it on exit', () => {
+    const values = pieces();
+    const view = render(<PlanningBoardGanttDisplay {...values} />);
+    fireEvent.click(bar(0));
+    expect(screen.getByTestId('planning-gantt-piece-link')).toBeInTheDocument();
+    view.rerender(<PlanningBoardGanttDisplay {...values} pinMode />);
+    expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
+    view.rerender(<PlanningBoardGanttDisplay {...values} pinMode={false} />);
+    expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
+    expect(bar(1)).not.toHaveClass('outline-white');
+  });
+
+  it('keeps same-pane piece links single and inside that pane', () => {
+    render(<PlanningBoardGanttDisplay {...pieces(['021', '021'])} />);
+    fireEvent.click(bar(0));
+    expect(screen.getAllByTestId('planning-gantt-piece-link')).toHaveLength(1);
+    expect(screen.getByRole('region', { name: '021' })).toContainElement(screen.getByTestId('planning-gantt-piece-link'));
+    expect(within(screen.getByTestId('planning-gantt-cross-pane-links')).queryByTestId('planning-gantt-piece-link')).toBeNull();
+  });
+
+  it('also draws the unselected pane internal pair using the combined order', () => {
+    render(<PlanningBoardGanttDisplay {...pieces(['022', '022', '021'])} />);
+    fireEvent.click(bar(2));
+    expect(screen.getAllByTestId('planning-gantt-piece-link')).toHaveLength(2);
+    expect(within(screen.getByRole('region', { name: '022' })).getByTestId('planning-gantt-piece-link'))
+      .toHaveAttribute('data-from-to', 'piece:p0->piece:p1');
+    expect(within(screen.getByTestId('planning-gantt-cross-pane-links')).getByTestId('planning-gantt-piece-link'))
+      .toHaveAttribute('data-from-to', 'piece:p1->piece:p2');
+  });
+
+  it('does not connect same-pane pieces across an intervening partner piece', () => {
+    render(<PlanningBoardGanttDisplay {...pieces(['021', '022', '021'])} />);
+    fireEvent.click(bar(0));
+    expect(screen.getAllByTestId('planning-gantt-piece-link')).toHaveLength(2);
+    expect(within(screen.getByRole('region', { name: '021' })).queryByTestId('planning-gantt-piece-link')).toBeNull();
+  });
+
+  it('updates endpoints on scroll and resize, coalescing scroll measurements', () => {
+    render(<PlanningBoardGanttDisplay {...pieces()} />);
+    fireEvent.click(bar(0));
+    const link = () => screen.getByTestId('planning-gantt-piece-link').getAttribute('d');
+    const initial = link();
+    const viewport = bar(1).closest<HTMLElement>('[data-gantt-viewport]')!;
+    const rect = vi.fn(() => new DOMRect(100, 100, 1000, 600));
+    Object.defineProperty(screen.getByTestId('planning-two-machine'), 'getBoundingClientRect', { configurable: true, value: rect });
+    viewport.scrollTop = 80;
+    fireEvent.scroll(viewport);
+    fireEvent.scroll(viewport);
+    expect(link()).toBe(initial);
+    act(() => vi.advanceTimersByTime(20));
+    expect(link()).not.toBe(initial);
+    expect(rect).toHaveBeenCalledTimes(1);
+    viewport.scrollTop = 120;
+    fireEvent(window, new Event('resize'));
+    act(() => vi.advanceTimersByTime(20));
+    expect(link()).not.toBe(initial);
+    const clips = screen.getByTestId('planning-gantt-cross-pane-links').querySelectorAll('clipPath rect');
+    expect(clips[0]).toHaveAttribute('width', '832');
+    expect(clips[1]).toHaveAttribute('height', '260');
+  });
+
+  it('includes the thick pane divider in the clip without covering labels', () => {
+    render(<PlanningBoardGanttDisplay {...pieces()} />);
+    const viewport = bar(1).closest<HTMLElement>('[data-gantt-viewport]')!;
+    Object.defineProperty(viewport, 'getBoundingClientRect', { configurable: true, value: () => new DOMRect(100, 364, 1000, 260) });
+    fireEvent.click(bar(0));
+    const clips = screen.getByTestId('planning-gantt-cross-pane-links').querySelectorAll('clipPath rect');
+    expect(clips).toHaveLength(3);
+    expect(clips[2]).toHaveAttribute('y', '260');
+    expect(clips[2]).toHaveAttribute('height', '4');
+    expect(clips[2]).toHaveAttribute('x', '168');
+    expect(clips[2]).toHaveAttribute('width', '832');
+  });
+
+  it('uses process dashes and a circle across panes after the last interval of a piece', () => {
+    const values = pieces(['021', '022', '022']);
+    const original = values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars)).map(bar => bar.item).filter(item => item.kind !== 'test');
+    const items = original.map(item => ({ ...item,
+      parentItemId: item.itemId === 'piece:p2' ? 'next' : 'parent', pieceId: item.itemId === 'piece:p2' ? 'next' : 'p',
+      opRange: { fromOpNo: item.itemId === 'piece:p0' ? 10 : 20, toOpNo: item.itemId === 'piece:p0' ? 19 : 30 },
+      processOrder: item.itemId === 'piece:p2' ? '20' : '10',
+      originalResourceCd: item.itemId === 'piece:p1' ? '021' : '022' }));
+    const fixture = productionFixture(1, 1);
+    values.layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] });
+    render(<PlanningBoardGanttDisplay {...values} />);
+    fireEvent.click(bar(0));
+    fireEvent.click(screen.getByRole('button', { name: '線の表示を切り替える(今は分割)' }));
+    const link = screen.getByTestId('planning-gantt-chain-link');
+    expect(link).toHaveAttribute('data-from-to', 'piece:p1->piece:p2');
+    expect(link).toHaveAttribute('stroke-dasharray', '6 4');
+    expect(link.parentElement?.querySelector('circle')).toHaveAttribute('fill', 'white');
+    expect(screen.queryByTestId('planning-gantt-piece-link')).toBeNull();
+  });
+});
+
 describe('two-machine forward dragging', () => {
   class TestPointerEvent extends MouseEvent {
     readonly pointerId = 1;
@@ -864,6 +1003,19 @@ describe('two-machine forward dragging', () => {
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-arrow')).toBeNull();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
+  });
+
+  it('does not remeasure chain links for shared drag previews', () => {
+    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={vi.fn()} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    fireEvent.click(source);
+    const measure = vi.fn(() => new DOMRect(100, 100, 1000, 600));
+    Object.defineProperty(screen.getByTestId('planning-two-machine'), 'getBoundingClientRect', { configurable: true, value: measure });
+    begin(source, bar('item-0001'));
+    fireEvent.pointerMove(source, { clientX: 200, clientY: 430 });
+    expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+    expect(measure).not.toHaveBeenCalled();
+    fireEvent.pointerCancel(source);
   });
 
   it('keeps the source pane still while dragging over the other pane, but scrolls it near its own edge', () => {
