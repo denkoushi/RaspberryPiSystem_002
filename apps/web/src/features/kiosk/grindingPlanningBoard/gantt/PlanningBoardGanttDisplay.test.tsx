@@ -866,6 +866,21 @@ describe('two-machine forward dragging', () => {
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).toBeNull();
   });
 
+  it('keeps the source pane still while dragging over the other pane, but scrolls it near its own edge', () => {
+    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={vi.fn()} canMoveResource={() => true} />);
+    const source = bar('item-0000');
+    const upper = source.closest<HTMLElement>('[data-gantt-viewport]')!;
+    upper.scrollTop = 0;
+    begin(source, bar('item-0001'));
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(upper.scrollTop).toBe(0);
+    pointAt(source);
+    fireEvent.pointerMove(source, { clientX: 100, clientY: 150 });
+    act(() => { vi.advanceTimersByTime(200); });
+    expect(upper.scrollTop).toBeGreaterThan(0);
+    end(source);
+  });
+
   it('moves after a bar using the destination working window start', () => {
     const fixture = productionFixture(2, 1);
     const items = fixture.items.map((item, i) => ({ ...item, originalResourceCd: i ? '022' : '021', requiredMinutes: 60, specialDue: null }));

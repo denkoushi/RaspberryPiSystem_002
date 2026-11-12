@@ -146,7 +146,10 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
       if (pending.moved && pending.allowed && viewport) {
         const bounds = viewport.getBoundingClientRect();
         const { x, y } = dragPointer.current;
-        const delta = y > bounds.bottom - 40 ? 12 : y < bounds.top + 40 ? -12 : 0;
+        // In the two-machine view, pointing at the other pane must not scroll the pane the bar came from.
+        const overOtherPane = (document.elementsFromPoint?.(x, y) ?? [])
+          .some((element) => { const hit = element.closest('[data-gantt-viewport]'); return hit !== null && hit !== viewport; });
+        const delta = overOtherPane ? 0 : y > bounds.bottom - 40 ? 12 : y < bounds.top + 40 ? -12 : 0;
         if (delta && bounds.height > 0) {
           const previous = viewport.scrollTop;
           viewport.scrollTop += delta;
