@@ -1,13 +1,14 @@
 {
   "modelProfileId": "business_qwen38_flash_next_orcarouter_fp8_tp2",
   "displayNameJa": "Qwen3.8 Flash Next FP8",
-  "descriptionJa": "2台のSparkで動作する業務用テキストモデル。",
+  "descriptionJa": "2台のSparkで動作する業務用の画像対応モデル。",
   "backend": "blue",
   "servedAlias": "system-prod-primary",
   "enabled": false,
   "businessOrchestrationEligible": true,
   "declaredCapabilities": [
-    "text"
+    "text",
+    "vision"
   ],
   "visionRequiresMmproj": false,
   "expectedColdStartSec": 900,
