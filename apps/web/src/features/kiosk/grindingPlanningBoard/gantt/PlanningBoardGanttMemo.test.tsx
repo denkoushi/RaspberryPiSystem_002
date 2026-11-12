@@ -3,9 +3,11 @@ import { expect, it, vi } from 'vitest';
 
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
 
+import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey } from './planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 
+import type { PlanningBoardTestBarControls } from '../usePlanningBoardTestBars';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ComponentProps } from 'react';
 
@@ -13,11 +15,13 @@ const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resour
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
 
 const renders = vi.hoisted(() => [] as string[]);
+const rowItems = vi.hoisted(() => new Map<string, string[]>());
 vi.mock('./PlanningBoardForwardGanttRow', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./PlanningBoardForwardGanttRow')>();
   const { memo } = await import('react');
   return { ...actual, PlanningBoardForwardGanttRow: memo(function CountedRow(props: ComponentProps<typeof actual.PlanningBoardForwardGanttRow>) {
     renders.push(props.row.key);
+    rowItems.set(props.row.key, props.row.bars.map(bar => bar.item.itemId));
     return <actual.PlanningBoardForwardGanttRow {...props} />;
   }) };
 });
@@ -120,5 +124,59 @@ it('renders only the source and lanes whose insertion marker changes during a dr
     vi.unstubAllGlobals();
     if (originalHitTest) Object.defineProperty(document, 'elementsFromPoint', originalHitTest);
     else Reflect.deleteProperty(document, 'elementsFromPoint');
+  }
+});
+
+
+it.each([null, '305', '305+306'])('isolates selection and deselection with fresh parent callbacks (single resource %s)', async singleResourceCd => {
+  const items = [item('a', '305'), item('b', singleResourceCd === '305' ? '305' : '306')].map(entry => ({ ...entry, requiredMinutes: singleResourceCd ? 600 : 60 }));
+  const props = { scale: 2 as const, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), singleResourceCd };
+  const controls: PlanningBoardTestBarControls = { bars: [], nextSequence: 1, selectedId: null, selectedBar: null,
+    select: vi.fn(), create: vi.fn(), remove: vi.fn(), complete: vi.fn(), accept: vi.fn(), undo: vi.fn(), disabled: false };
+  const capacity = vi.fn(); const breaks = vi.fn(); const anchor = vi.fn();
+  const View = singleResourceCd === '305+306' ? PlanningBoardGanttDisplay : PlanningBoardGanttView;
+  const draw = (selected: ReadonlySet<string>, onCapacityChange = vi.fn(), onBreaksChange = vi.fn(), onTestBarAnchorChange = vi.fn()) =>
+    <View {...props} layout={buildPlanningBoardGanttLayout({ items: items.map(entry => ({ ...entry })), resources: ['305', '306'],
+      allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05',
+      now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' })}
+      testBarControls={{ ...controls, select: vi.fn() }} onTestBarAnchorChange={onTestBarAnchorChange}
+      selectedItemIds={selected} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} />;
+  rowItems.clear();
+  const { rerender } = render(draw(new Set()));
+  await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+  const affected = [...rowItems].filter(([, ids]) => ids.includes('a')).map(([key]) => key);
+  expect(affected.length).toBeGreaterThan(0);
+  expect(rowItems.size).toBeGreaterThan(affected.length);
+  renders.length = 0;
+  rerender(draw(new Set(), capacity, breaks, anchor));
+  expect(renders).toEqual([]);
+  rerender(draw(new Set(['a']), capacity, breaks, anchor));
+  expect(renders).toEqual(affected);
+  expect(screen.getAllByTestId('planning-gantt-bar-a')[0]).toHaveAttribute('aria-pressed', 'true');
+  renders.length = 0;
+  rerender(draw(new Set(['a'])));
+  expect(renders).toEqual([]);
+  rerender(draw(new Set(), capacity, breaks, anchor));
+  expect(renders).toEqual(affected);
+  expect(screen.getAllByTestId('planning-gantt-bar-a')[0]).toHaveAttribute('aria-pressed', 'false');
+  if (!singleResourceCd) {
+    fireEvent.click(screen.getAllByRole('button', { name: '10H' })[0]!);
+    expect(capacity).toHaveBeenCalledWith('305', 10);
+    fireEvent.click(screen.getAllByRole('button', { name: '休憩' })[0]!);
+    expect(breaks).toHaveBeenCalledWith('305', true);
+  }
+  if (singleResourceCd === '305+306') return;
+  fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+  expect(anchor).toHaveBeenLastCalledWith(expect.objectContaining({ itemId: 'a' }));
+  expect(screen.getAllByTestId('planning-gantt-bar-a')[0]).toHaveClass('outline-white');
+  renders.length = 0;
+  rerender(draw(new Set(), capacity, breaks, anchor));
+  expect(renders).toEqual([]);
+  if (!singleResourceCd) {
+    fireEvent.click(screen.getAllByTestId('planning-gantt-bar-a')[0]!);
+    expect(anchor).toHaveBeenLastCalledWith(null);
+    expect(screen.getAllByTestId('planning-gantt-bar-a')[0]).not.toHaveClass('outline-white');
   }
 });

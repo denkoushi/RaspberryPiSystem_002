@@ -37,7 +37,9 @@ import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardC
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
+import { usePlanningBoardRowSelections } from './usePlanningBoardRowSelections';
 import { usePlanningBoardSharedDrag } from './usePlanningBoardSharedDrag';
+import { usePlanningBoardStableCallback } from './usePlanningBoardStableCallback';
 
 import type { ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { ForwardQueueHandle } from './PlanningBoardForwardQueuePopover';
@@ -167,15 +169,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     groups: [...sourceLayout.groups].sort((a, b) => (a.category === 'cutting' ? 1 : 0) - (b.category === 'cutting' ? 1 : 0)
       || laneOrder.order.indexOf(a.resource!) - laneOrder.order.indexOf(b.resource!)) },
   [sourceLayout, laneResources, laneOrder.order]);
-  const previousRowSelections = useRef(new Map<string, ReadonlySet<string>>());
-  const rowSelections = useMemo(() => new Map(layout.groups.flatMap((group) => group.rows.map((row) => {
-    const next = new Set(row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.item.itemId));
-    const previous = previousRowSelections.current.get(row.key);
-    const selected = next.size === 0 ? EMPTY_SELECTION
-      : previous && next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
-    return [row.key, selected] as const;
-  }))), [layout, interaction.selectedItemIds]);
-  useLayoutEffect(() => { previousRowSelections.current = rowSelections; }, [rowSelections]);
   const { onPointerDown, onPointerMove, onPointerUp, onPointerCancel, onKeyDown } = laneOrder;
   const laneHandle = useCallback((resource: string, text: string, className: string) => <button type="button" title={text}
     className={clsx('touch-none select-none truncate text-left focus-visible:outline focus-visible:outline-emerald-300', className)}
@@ -217,6 +210,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   // The scheduler still sees every resource. Only these render rows are folded/filtered.
   const renderedGroups = useMemo(() => singleGroup ? [{ ...singleGroup, rows: [...foldedRows.values()].map(({ row }) => row) }] : layout.groups,
     [singleGroup, foldedRows, layout.groups]);
+  const rowSelections = usePlanningBoardRowSelections(renderedGroups, interaction.selectedItemIds, EMPTY_SELECTION);
   const barLocations = useMemo<GanttBarLocations>(() => {
     const result = new Map<string, { first: GanttBarLocation; last: GanttBarLocation }>();
     for (const group of renderedGroups) for (const row of group.rows) for (const bar of row.bars) {
@@ -279,14 +273,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
   const effectiveChainView = sharedChain?.view ?? (hasPieceLinks ? chainView : 'process');
   useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
+  const numberedChain = sharedChain && chainOwner !== singleResourceCd ? EMPTY_CHAIN : chain;
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    return new Map((sharedChain && chainOwner !== singleResourceCd ? EMPTY_CHAIN : chain).map(({ item }) => {
+    return new Map(numberedChain.map(({ item }) => {
       const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));
-  }, [chain, sharedChain, chainOwner, singleResourceCd]);
+  }, [numberedChain]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
   const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: () => { if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
@@ -336,7 +331,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   }, [singleResourceCd, onChainTopChange, showChain, chainTop, chainStripHeight]);
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
-  const focusChain = useCallback((bar: GanttBar, keepOpen = false) => {
+  const focusChain = usePlanningBoardStableCallback((bar: GanttBar, keepOpen = false) => {
     const next = keepOpen || focusedPartKey !== bar.partKey || (sharedChain && chainOwner !== singleResourceCd) ? bar.partKey : null;
     onTestBarAnchorChange?.(next ? bar.item : null);
     if (bar.item.kind === 'test') { sharedChain?.focus(null, bar.resource); setFocusedPartKey(null); setCurrentItemId(null); testBarControls?.select(bar.item, true); onChainFocus?.(bar.resource); return; }
@@ -344,10 +339,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     if (singleResourceCd) onChainFocus?.(singleResourceCd);
     if (sharedChain) sharedChain.focus(next, singleResourceCd); else setFocusedPartKey(next);
     setCurrentItemId(null);
-  }, [onTestBarAnchorChange, focusedPartKey, testBarControls, onChainFocus, singleResourceCd, sharedChain, chainOwner]);
-  const showQueue = useCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
+  });
+  const showQueue = usePlanningBoardStableCallback((bar: GanttBar, anchor: HTMLButtonElement) => {
     if (!showChain && !queuePopover.current?.isPinned()) queuePopover.current?.show(latest.current.currentBars.get(bar.item.itemId) ?? bar, anchor);
-  }, [showChain]);
+  });
   const leaveQueue = useCallback(() => queuePopover.current?.hideSoon(), []);
   const closeQueue = useCallback(() => queuePopover.current?.closeUnlessPinned(), []);
   const flaggedIndex = useRef(-1);
@@ -479,15 +474,15 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     if (first) scrollToBar(first);
   };
   // Rows are memoized, so the late-star date buttons get one stable callback that reads the latest focus.
-  const toggleSeibanLatest = useRef<NonNullable<PlanningBoardGanttRowProps['onToggleSeiban']>>((seiban, itemIds) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban, itemIds); });
-  useLayoutEffect(() => { toggleSeibanLatest.current = (seiban, itemIds) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban, itemIds); }; });
-  const toggleSeiban = useCallback<NonNullable<PlanningBoardGanttRowProps['onToggleSeiban']>>((seiban, itemIds) => toggleSeibanLatest.current(seiban, itemIds), []);
+  const toggleSeiban = usePlanningBoardStableCallback((...[seiban, itemIds]: Parameters<NonNullable<PlanningBoardGanttRowProps['onToggleSeiban']>>) => { if (focusedSeiban === seiban) setFocusedSeiban(null); else focusSeiban(seiban, itemIds); });
+  const changeCapacity = usePlanningBoardStableCallback((...args: Parameters<PlanningBoardGanttProps['onCapacityChange']>) => onCapacityChange(...args));
+  const changeBreaks = usePlanningBoardStableCallback((...args: Parameters<NonNullable<PlanningBoardGanttProps['onBreaksChange']>>) => onBreaksChange?.(...args));
   const breaksButton = useCallback((resource: string) => <button type="button"
     className={clsx('h-7 w-9 shrink-0 whitespace-nowrap rounded border px-0 text-[13px] font-bold leading-none disabled:opacity-40',
       !runsThroughBreaks?.has(resource) ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
     aria-pressed={!runsThroughBreaks?.has(resource)}
     aria-disabled={frozen || undefined} disabled={resource === '未設定' || dailyHoursByResource[resource] === 24 || capacityPending || interaction.disabled}
-    onClick={() => onBreaksChange?.(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [frozen, runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, onBreaksChange]);
+    onClick={() => changeBreaks(resource, !runsThroughBreaks?.has(resource))}>休憩</button>, [frozen, runsThroughBreaks, dailyHoursByResource, capacityPending, interaction.disabled, changeBreaks]);
   const resourceLabel = useCallback((resource: string, label: string) => <>
     {laneHandle(resource, ganttResourceLabel(normalizeMachineName(label), resourceNameMap[resource]), 'min-h-5 font-bold')}
     {resourceMinutes?.ownSourceResourceCds.includes(resource) && <span className="rounded bg-amber-400/15 px-1 text-[10px] font-bold text-amber-300">独自</span>}
@@ -497,14 +492,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           (dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 bg-slate-900 text-slate-200')}
         aria-pressed={(dailyHoursByResource[resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS) === hours}
         aria-disabled={frozen || undefined} disabled={resource === '未設定' || capacityPending || interaction.disabled}
-        onClick={() => onCapacityChange(resource, hours)}>{hours}H</button>)}
+        onClick={() => changeCapacity(resource, hours)}>{hours}H</button>)}
       {breaksButton(resource)}
     </div>
     {uptimeByResource.has(normalizeMachineName(resource)) && <div className="flex h-4 items-center gap-1.5 whitespace-nowrap leading-4" title="稼働した日の1日あたり稼働時間の中央値">
       <span className="text-[12px] font-bold text-slate-300">月平均</span>
       <span className="font-mono text-[15px] font-bold tabular-nums text-emerald-300">{(uptimeByResource.get(normalizeMachineName(resource))! / 3600).toFixed(1)}h</span>
     </div>}
-  </>, [frozen, resourceMinutes, laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, onCapacityChange, breaksButton, uptimeByResource]);
+  </>, [frozen, resourceMinutes, laneHandle, resourceNameMap, dailyHoursByResource, capacityPending, interaction.disabled, changeCapacity, breaksButton, uptimeByResource]);
   const previousLabels = useRef<{ render: typeof resourceLabel; labels: Map<string, { text: string; node: React.ReactNode }> } | null>(null);
   const resourceLabels = useMemo(() => new Map(layout.groups.filter((group) => group.resource).map((group) => {
     const old = previousLabels.current?.render === resourceLabel ? previousLabels.current.labels.get(group.resource!) : undefined;
@@ -529,8 +524,12 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
         chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => (sharedChain?.changeView ?? changeChainView)(effectiveChainView === 'pieces' ? 'process' : 'pieces') : undefined}
         onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
+  const unitOpContext = useMemo(() => ({ minutes: resourceMinutes,
+    items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item),
+    loading: minutesPending || minutesError || !resourceMinutes
+  }), [resourceMinutes, resourceMinutesItems, currentBars, minutesPending, minutesError]);
   return (
-    <PlanningBoardUnitOpContext.Provider value={{ minutes: resourceMinutes, items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item), loading: minutesPending || minutesError || !resourceMinutes }}>
+    <PlanningBoardUnitOpContext.Provider value={unitOpContext}>
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <section aria-label="製番ボード ガント" data-testid="planning-board-gantt" className={clsx('relative overflow-hidden rounded-lg border border-slate-800 bg-slate-900', fitPane ? 'flex h-full min-h-0 flex-col' : 'mt-2')}>
       {minutesError && <p role="alert" className="absolute right-0 top-10 z-[70] bg-slate-950 px-2 py-1 text-xs text-rose-200">所要時間を保存・取得できませんでした。</p>}
@@ -594,7 +593,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
-                selectedItemIds={folded ? interaction.selectedItemIds : rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
+                selectedItemIds={rowSelections.get(row.key) ?? EMPTY_SELECTION} disabled={interaction.disabled} dragDisabled={interaction.dragDisabled}
                 pinMode={interaction.pinMode} resourceView={interaction.resourceView} {...rowActions}
                 lanes={availableDragLanes}
                 draggedItemId={dragPreview && row.bars.some((bar) => bar.item.itemId === dragPreview.bar.item.itemId) ? dragPreview.bar.item.itemId : null}
