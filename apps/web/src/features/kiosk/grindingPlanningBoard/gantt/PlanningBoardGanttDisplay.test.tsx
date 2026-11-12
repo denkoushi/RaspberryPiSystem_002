@@ -746,9 +746,9 @@ it.each(['forward', 'backward'] as const)('keeps the seiban focus on both panes 
   const legend = () => within(screen.getAllByRole('group', { name: '製番の色分け凡例' })[0]!);
   const surfaces = (id: string) => screen.getAllByTestId(new RegExp(`^planning-gantt-bar-${id}(-segment-\\d+)?$`))
     .map(bar => mode === 'backward' ? bar.firstElementChild! : bar);
-  const focused = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('ring-2', 'ring-white'));
+  const focused = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass(mode === 'forward' ? 'ring-[3px]' : 'ring-2', 'ring-white'));
   const dimmed = (id: string) => surfaces(id).forEach(surface => expect(surface).toHaveClass('opacity-20'));
-  const clear = (id: string) => surfaces(id).forEach(surface => { expect(surface).not.toHaveClass('ring-2'); expect(surface).not.toHaveClass('opacity-20'); });
+  const clear = (id: string) => surfaces(id).forEach(surface => { expect(surface).not.toHaveClass('ring-2'); expect(surface).not.toHaveClass('ring-[3px]'); expect(surface).not.toHaveClass('opacity-20'); });
 
   fireEvent.click(legend().getByRole('button', { name: '26-1201' }));
   expect(legend().getByRole('button', { name: '26-1201' })).toHaveAttribute('aria-pressed', 'true');
