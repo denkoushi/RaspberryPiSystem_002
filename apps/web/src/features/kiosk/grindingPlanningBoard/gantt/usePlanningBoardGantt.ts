@@ -100,7 +100,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     if (!offlineEnabled && targets.length === 1) { mutate({ resourceCd: targets[0]!, ...change }); return; }
     const writeAll = async () => { for (const resourceCd of targets) await mutateAsync({ resourceCd, ...change }); };
     if (!offlineEnabled) { void writeAll().catch(() => undefined); return; }
-    void gate.run(writeAll).then(() =>
+    void gate.run(writeAll).finally(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [mutate, mutateAsync]);
   // 2台表示では押していない側の値も渡し、上下段の行の区切りを決める2つの値をまとめてそろえる。
@@ -112,7 +112,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     const { gate, isPending, offlineEnabled, refreshRead } = latestCapacityWrite.current;
     if (!gate.attempt() || isPending) return;
     if (!offlineEnabled) mutate({ resourceCd, unitSplitEnabled });
-    else void gate.run(() => mutateAsync({ resourceCd, unitSplitEnabled })).then(() =>
+    else void gate.run(() => mutateAsync({ resourceCd, unitSplitEnabled })).finally(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [mutate, mutateAsync]);
   return { testBarControls: undefined as PlanningBoardTestBarControls | undefined,

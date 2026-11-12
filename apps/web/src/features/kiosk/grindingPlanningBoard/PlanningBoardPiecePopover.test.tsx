@@ -28,7 +28,7 @@ function setup(item = row, items = [item], selectedItemIds = new Set(items.map((
 }
 describe('PlanningBoardPiecePopover', () => {
   it.each(['CUT-1', 'CUT-2'])('allows operation configuration only on the leading machine (later=%s)', (resourceCd) => {
-    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', unitRequiredMinutes: 10, opRange: { fromOpNo: 1, toOpNo: 1 } });
+    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', unitRequiredMinutes: 10, opSplitSourceResourceCd: 'CUT-1', opRange: { fromOpNo: 1, toOpNo: 1 } });
     const later = { ...head, itemId: 'pieceops:unit:2', effectiveResourceCd: resourceCd, opRange: { fromOpNo: 2, toOpNo: 2 },
       ops: [{ opNo: 2, minutes: 20 }] };
     const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
@@ -45,6 +45,25 @@ describe('PlanningBoardPiecePopover', () => {
     expect(screen.getByRole('button', { name: 'まとめる' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '工程2を完了にする' })).toBeInTheDocument();
+  });
+  it.each([false, true])('hides configuration on a moved head and keeps merge actions (all moved=%s)', (moveAll) => {
+    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-2', fhincd: 'PART', unitRequiredMinutes: 10,
+      opSplitSourceResourceCd: 'CUT-1', opRange: { fromOpNo: 1, toOpNo: 1 } });
+    const later = { ...head, itemId: 'pieceops:unit:2', effectiveResourceCd: moveAll ? 'CUT-2' : 'CUT-1',
+      opRange: { fromOpNo: 2, toOpNo: 2 } };
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}>
+      <PlanningBoardUnitOpContext.Provider value={{ items: [head, later], loading: false }}>
+        <PlanningBoardPiecePopover item={head} variant="gantt" />
+      </PlanningBoardUnitOpContext.Provider>
+    </PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '工程の数' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /工程にする$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('spinbutton', { name: /工程 1台/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'まとめる' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
   });
   it.each([
     { manualIsCompleted: true, isCompleted: true, unitRequiredMinutes: 30, visible: false },

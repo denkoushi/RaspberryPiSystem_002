@@ -108,6 +108,7 @@ export interface GrindingPlanningBoardItem {
   pieceId?: string;
   sourcePieceId?: string;
   sourceItemId?: string;
+  opSplitSourceResourceCd?: string | null;
   opRange?: { fromOpNo: number; toOpNo: number } | null;
   isLaterProcess?: boolean;
   piecePosition?: number;

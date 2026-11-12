@@ -595,7 +595,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         const setupMinutes = piece.position === firstPosition ? rangeOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) : 0;
         const completedOpNos = (piece.opCompletions ?? []).map((op) => op.opNo)
           .filter((opNo) => rangeOps.some((op) => op.opNo === opNo)).sort((a, b) => a - b);
-        return { ...base, itemId: rangeId, opRange, ops: rangeOps, completedOpNos, unitRequiredMinutes, setupMinutes,
+        return { ...base, itemId: rangeId, opRange, opSplitSourceResourceCd: sourceResources[0], ops: rangeOps, completedOpNos, unitRequiredMinutes, setupMinutes,
           requiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
           ownRequiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
           originalRequiredMinutes: null, requiredMinutesKnown: unitRequiredMinutes !== null, requiredMinutesSource: 'own',
