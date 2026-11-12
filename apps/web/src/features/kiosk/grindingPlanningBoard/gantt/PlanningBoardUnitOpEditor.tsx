@@ -25,6 +25,14 @@ export function unitOpGhost(original: number, values: readonly (number | null)[]
   return empty && Number.isFinite(remainder) && remainder > 0 ? half(remainder / empty) : null;
 }
 
+function unitOpFailureMessage(error: unknown) {
+  if (!isAxiosError(error)) return '保存できませんでした。時間をおいて再試行してください。';
+  const code = error.response?.data?.errorCode;
+  if (code === 'OPERATION_SPLIT_IN_USE') return '別のロットや対象外の台が工程で分かれています。先にまとめてください';
+  if (code === 'OPERATION_NUMBER_LIMIT') return '工程をこれ以上増やせません。';
+  return error.response?.status === 409 ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。';
+}
+
 export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClose, onPending, onFailure }: {
   item: GrindingPlanningBoardItem; canConfigure: boolean; disabled: boolean; onClose: () => void;
   onPending: (pending: boolean) => void; onFailure: (failure: { message: string; isError: boolean } | null) => void;
@@ -67,8 +75,7 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
       if (offline.enabled) await Promise.all(['board', 'load', 'resource-minutes'].map((key) => offline.refreshRead(key)));
       if (generation === gate.generation()) onClose();
     } catch (error) {
-      if (generation === gate.generation()) onFailure({ message: isAxiosError(error) && error.response?.data?.errorCode === 'OPERATION_SPLIT_IN_USE'
-        ? '別のロットや対象外の台が工程で分かれています。先にまとめてください' : error instanceof Error ? error.message : '保存できませんでした。', isError: true });
+      if (generation === gate.generation()) onFailure({ message: unitOpFailureMessage(error), isError: true });
     } finally { if (generation === gate.generation()) onPending(false); }
   };
   return <>
