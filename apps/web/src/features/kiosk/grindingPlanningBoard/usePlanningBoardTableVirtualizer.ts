@@ -66,14 +66,14 @@ export function usePlanningBoardTableVirtualizer(
   });
   useLayoutEffect(() => {
     if (!enabled || !focusedSeiban) return;
+    const index = items.findIndex((item) => item.fseiban === focusedSeiban);
+    if (index < 0) return;
     const scroll = rootRef.current?.closest<HTMLElement>('[data-resource-scroll]');
-    const row = rootRef.current?.querySelector<HTMLElement>('[data-seiban-focused="true"]');
-    // A rendered row keeps the original measured scroll; offscreen rows need the virtualizer first.
+    const row = Array.from(rootRef.current?.querySelectorAll<HTMLElement>('tr[data-planning-board-item-id]') ?? [])
+      .find((element) => element.dataset.planningBoardItemId === items[index].itemId);
+    // A rendered first match keeps the original measured scroll; an offscreen one needs the virtualizer.
     if (scroll && row) scroll.scrollTop += (row.getBoundingClientRect().top - scroll.getBoundingClientRect().top) / pageZoom();
-    else {
-      const index = items.findIndex((item) => item.fseiban === focusedSeiban);
-      if (index >= 0) virtualizer.scrollToIndex(index, { align: 'start' });
-    }
+    else virtualizer.scrollToIndex(index, { align: 'start' });
     // A refresh must not move a pane the user has scrolled manually.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanFocusKey]);
