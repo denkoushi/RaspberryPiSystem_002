@@ -38,6 +38,8 @@ type Options = {
 export function usePlanningBoardCompletion({ data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending,
   piecePending = false, piecePendingRef, piecePendingParentRef, currentItemsRef, completePiece, completePieceOp, notify, onCompleted, onIncomplete }: Options) {
   const { gate, snapshot, enabled } = usePlanningBoardOffline();
+  const latestDataRef = useRef(data);
+  useLayoutEffect(() => { latestDataRef.current = data; }, [data]);
   useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setCompletionOverlay(new Map()); setCompletionPendingParentIds(new Set()); setCompletionPendingItemIds(new Set()); } }, [enabled, snapshot.phase]);
   const queryClient = useQueryClient();
   const { refetch } = boardQuery;
@@ -101,6 +103,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
   }, [data, boardQuery.isPlaceholderData, completionPendingItemIds]);
   const toggleCompletion = useCallback(async (item: GrindingPlanningBoardItem, intent: 'complete' | 'incomplete', opNo?: number) => {
     if (!gate.attempt()) return;
+    const data = latestDataRef.current;
     const generation = gate.generation();
     const currentItem = currentItemsRef.current.find((candidate) => candidate.itemId === item.itemId) ?? item;
     if (opNo != null && (currentItem.kind !== 'piece' || !completePieceOp || !currentItem.ops?.some((op) => op.opNo === opNo))) return;
@@ -184,7 +187,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
       setCompletionPendingItemIds(new Set(completionPendingRef.current));
       }
     }
-  }, [interactionLocked, data, category, setCompletionAsync, completePiece, completePieceOp, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef, gate, enabled]);
+  }, [interactionLocked, category, setCompletionAsync, completePiece, completePieceOp, queryClient, notify, onCompleted, onIncomplete, refetch, currentItemsRef, piecePendingRef, piecePendingParentRef, gate, enabled]);
   const clearPieceCompletion = useCallback((parentItemId: string) => {
     setCompletionOverlay((current) => new Map([...current].filter(([, overlay]) =>
       overlay.item.itemId !== parentItemId && (overlay.item.kind !== 'piece' || overlay.item.parentItemId !== parentItemId))));

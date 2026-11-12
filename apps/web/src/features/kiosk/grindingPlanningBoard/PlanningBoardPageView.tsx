@@ -13,7 +13,7 @@ import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem, Grinding
 import type { SyntheticEvent } from 'react';
 
 type Props = {
-  data: GrindingPlanningBoardResponse | undefined;
+  data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
   ganttEnabled: boolean;
   focusedSeiban: string | null;
   setFocusedSeiban: (fseiban: string | null) => void;

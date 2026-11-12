@@ -1586,7 +1586,9 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(scroll.scrollTop).toBe(120);
   });
 
-  it('skips layout and chip calculations for equal board/chips/minutes refetches and updates changed payloads', () => {
+  it('skips layout and chip calculations for snapshot-only board/chips/minutes refetches and updates changed payloads', () => {
+    const gantt = vi.spyOn(pageGanttHook, 'usePlanningBoardPageGantt');
+    const queue = vi.spyOn(writeQueueHook, 'usePlanningBoardWriteQueue');
     const strips = vi.spyOn(chipStrips, 'layoutChipStrips');
     const layouts = vi.spyOn(ganttLayout, 'buildPlanningBoardGanttLayout');
     const chips = vi.spyOn(chipData, 'buildPlanningBoardProcessChipsByPart');
@@ -1599,10 +1601,19 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const page = render(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(layouts).toHaveBeenCalled();
     expect(chips).toHaveBeenCalled();
+    const previousGantt = gantt.mock.lastCall![0];
+    const previousQueue = queue.mock.lastCall![0];
     layouts.mockClear(); chips.mockClear(); strips.mockClear();
-    board = structuredClone(board);
+    board = { ...structuredClone(board), snapshotId: 'same-content-new-snapshot' };
     page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
+    const nextGantt = gantt.mock.lastCall![0];
+    expect(nextGantt.ganttItems).toBe(previousGantt.ganttItems);
+    expect(nextGantt.visibleItems).toBe(previousGantt.visibleItems);
+    expect(nextGantt.sortedItemsBySeiban).toBe(previousGantt.sortedItemsBySeiban);
+    expect(nextGantt.data).toBe(previousGantt.data);
+    expect(queue.mock.lastCall![0].items).toBe(previousQueue.items);
+    expect(queue.mock.lastCall![0].order).toBe(previousQueue.order);
     processChips = structuredClone(processChips);
     page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
     expect(layouts).not.toHaveBeenCalled(); expect(chips).not.toHaveBeenCalled(); expect(strips).not.toHaveBeenCalled();
@@ -1653,6 +1664,23 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(within(screen.getByTestId('planning-board-item-a')).getByRole('checkbox')).not.toBeChecked();
     await waitFor(() => expect(mocks.completion).toHaveBeenLastCalledWith({ rowId: 'source-a', intent: 'incomplete' }));
     expect(screen.queryByText('完了にしました')).not.toBeInTheDocument();
+  });
+
+  it('clears saved completion after two snapshot-only disagreeing GETs', async () => {
+    let data = fixture();
+    mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+    const page = renderSeibanBoard();
+    fireEvent.click(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' }));
+    await screen.findByText('完了にしました');
+    await waitFor(() => expect(mocks.completion).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    data = { ...structuredClone(data), snapshotId: 'disagreeing-1' };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.queryByTestId('planning-board-item-a')).not.toBeInTheDocument();
+    data = { ...structuredClone(data), snapshotId: 'disagreeing-2' };
+    page.rerender(<ProductionScheduleGrindingPlanningBoardPage />);
+    expect(screen.getByTestId('planning-board-item-a')).toBeInTheDocument();
+    expect(within(screen.getByTestId('planning-board-item-a')).getByRole('button', { name: '完了にする' })).toBeEnabled();
   });
 
   describe('completion revision compatibility', () => {

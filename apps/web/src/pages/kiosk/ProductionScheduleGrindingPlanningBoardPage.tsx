@@ -35,6 +35,7 @@ import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlannin
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
 import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
 import { usePlanningBoardNotices } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardNotices';
+import { usePlanningBoardPageData } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageData';
 import { usePlanningBoardPageGantt } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt';
 import { usePlanningBoardPageItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardPageItems';
 import { usePlanningBoardQueryData } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
@@ -184,10 +185,9 @@ export function PlanningBoardPage() {
     notify('保存できませんでした。時間をおいて再試行してください。', 'error');
   }, [notify]);
 
-  const data = usePlanningBoardQueryData(boardQuery.data);
-  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(data, nowMs, dueSource);
-  const scopeReady = boardQuery.scopeReady;
-  const bulkReady = scopeReady && boardQuery.isComplete;
+  const { response, data } = usePlanningBoardPageData(boardQuery.data, `${category}:${scheduleSource}:${view}:${status}:${dueSource}`);
+  const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(response, nowMs, dueSource);
+  const scopeReady = boardQuery.scopeReady; const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
   const sourceRevision = data?.sourceRevision ?? '';
   const rankScopeKey = `${data?.siteKey ?? ''}\0${category}\0${scheduleSource}\0${status}`;
@@ -231,7 +231,7 @@ export function PlanningBoardPage() {
   }, [setCompletionNotice]);
   const onIncomplete = useCallback(() => setCompletionNotice(null), [setCompletionNotice]);
   const { displayItems: liveDisplayItems, completionPendingRef, completionPendingParentIds, completionPendingItemIds, toggleCompletion, clearPieceCompletion } = usePlanningBoardCompletion({
-    data, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
+    data: response, boardQuery, category, queuedItems, applyArrival, status, interactionLocked, bulkReady, writePending: writeQueue.pending, piecePending, piecePendingRef, piecePendingParentRef, currentItemsRef,
     completePiece: pieceMutations.completion.mutateAsync, completePieceOp: pieceMutations.opCompletion?.mutateAsync, notify, onCompleted, onIncomplete
   });
 

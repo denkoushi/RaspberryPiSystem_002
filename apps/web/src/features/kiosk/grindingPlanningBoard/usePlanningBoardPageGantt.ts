@@ -34,7 +34,7 @@ type Options = {
   ganttEnabled: boolean;
   allocation: PlanningBoardAllocation;
   category: GrindingPlanningBoardCategory;
-  data: GrindingPlanningBoardResponse | undefined;
+  data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
   registeredFseibans: string[];
   scheduleSource?: 'general' | 'dCompany' | 'both';
   bulkReady: boolean;
