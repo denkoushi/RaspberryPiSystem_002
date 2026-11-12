@@ -25,8 +25,8 @@ import {
 
 import {
   processGroupSchema,
-  optionalQueryTrueOnlyBooleanSchema,
   inspectionDrawingDigitQuerySchema,
+  optionalQueryTrueOnlyBooleanSchema,
   drawingOcrCandidateBodySchema,
   serializeVisualTemplate,
   serializeDrawingOcrStatus,
@@ -35,6 +35,27 @@ import {
   readMultipartFile,
   type PartMeasurementRouteDeps
 } from './shared.js';
+
+export const listVisualTemplatesQuerySchema = z.object({
+  includeInactive: optionalQueryTrueOnlyBooleanSchema,
+  q: z.string().optional(),
+  digitQuery: inspectionDrawingDigitQuerySchema,
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+  sort: z.enum(['name', 'recentlyUpdated']).optional()
+});
+export const updateVisualTemplateNameBodySchema = z.object({
+  name: z.string().trim().min(1).max(200)
+});
+export const drawingPlacementProposalsQuerySchema = z.object({ processGroup: processGroupSchema.default('cutting') });
+export const drawingPlacementDecisionsBodySchema = z.object({
+  approvedIds: z.array(z.string().guid()).max(200).optional().default([]),
+  approvedPositions: z.array(z.object({
+    id: z.string().guid(),
+    xRatio: z.number().min(0).max(1),
+    yRatio: z.number().min(0).max(1)
+  })).max(200).optional(),
+  rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
+});
 
 export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMeasurementRouteDeps): void {
   const {
@@ -51,15 +72,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       '/part-measurement/visual-templates',
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
-        const q = z
-          .object({
-            includeInactive: optionalQueryTrueOnlyBooleanSchema,
-            q: z.string().optional(),
-            digitQuery: inspectionDrawingDigitQuerySchema,
-            limit: z.coerce.number().int().min(1).max(200).optional(),
-            sort: z.enum(['name', 'recentlyUpdated']).optional()
-          })
-          .parse(request.query);
+        const q = listVisualTemplatesQuerySchema.parse(request.query);
         const list = await visualTemplateService.list({
           includeInactive: q.includeInactive === true,
           q: q.q,
@@ -160,7 +173,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       { preHandler: allowView, config: { rateLimit: false } },
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
-        const { processGroup } = z.object({ processGroup: processGroupSchema.default('cutting') }).parse(request.query);
+        const { processGroup } = drawingPlacementProposalsQuerySchema.parse(request.query);
         return drawingPlacementService.listForEditor(id, processGroup === 'grinding' ? 'GRINDING' : 'CUTTING');
       }
     );
@@ -170,15 +183,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
         const { id } = z.object({ id: z.string().guid() }).parse(request.params);
-        const body = z.object({
-          approvedIds: z.array(z.string().guid()).max(200).optional().default([]),
-          approvedPositions: z.array(z.object({
-            id: z.string().guid(),
-            xRatio: z.number().min(0).max(1),
-            yRatio: z.number().min(0).max(1)
-          })).max(200).optional(),
-          rejectedIds: z.array(z.string().guid()).max(200).optional().default([])
-        }).parse(request.body);
+        const body = drawingPlacementDecisionsBodySchema.parse(request.body);
         return drawingPlacementService.recordDecisions(id, body);
       }
     );
@@ -263,11 +268,7 @@ export function registerVisualTemplateRoutes(app: FastifyInstance, deps: PartMea
       { preHandler: allowWriteKiosk, config: { rateLimit: false } },
       async (request) => {
         const params = z.object({ id: z.string().guid() }).parse(request.params);
-        const body = z
-          .object({
-            name: z.string().trim().min(1).max(200)
-          })
-          .parse(request.body);
+        const body = updateVisualTemplateNameBodySchema.parse(request.body);
         try {
           const updated = await visualTemplateService.updateName(params.id, body.name);
           return { visualTemplate: serializeVisualTemplate(updated) };

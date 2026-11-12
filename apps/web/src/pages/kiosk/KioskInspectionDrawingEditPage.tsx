@@ -31,7 +31,7 @@ import type { InspectionDrawingPoint } from '../../features/part-measurement/ins
 import type { PartMeasurementSheetDto } from '../../features/part-measurement/types';
 
 const AUTOSAVE_MS = 600;
-const PIECE_INDEX = 0;
+const PIECE_INDEX = 0 as const;
 
 export function KioskInspectionDrawingEditPage() {
   const { sheetId } = useParams<{ sheetId: string }>();
@@ -119,10 +119,10 @@ export function KioskInspectionDrawingEditPage() {
     async (
       id: string,
       body: {
-        quantity?: number;
+        quantity?: 1;
         employeeTagUid?: string;
         results?: Array<{
-          pieceIndex: number;
+          pieceIndex: 0;
           templateItemId: string;
           value: string | null;
         }>;
