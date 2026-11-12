@@ -4,7 +4,7 @@ import { planningBoardAutoOrder, planningBoardOrderMetrics } from './planningBoa
 import { buildPlanningBoardGanttLayout, dateToDay, forwardPlanningBoardPredecessors, planningBoardPartKey, shiftedDueDate, workingPeriods } from './planningBoardGanttLayout';
 
 import type { GanttLayoutOptions } from './planningBoardGanttLayout';
-import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardItem, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
   itemId: 'a', kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: 'a',
@@ -296,14 +296,49 @@ describe('forward planningBoardGanttLayout', () => {
     expect(b.start).toBe(a.end);
     expect(b.waitFrom).toBeDefined();
   });
-  it('retains explicit proposal slots when their heads cycle with process precedence', () => {
+  it('prioritizes process precedence over conflicting explicit proposal slots', () => {
     const result = forward([
       item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
       item({ itemId: 'a', alternateRank: 2, requiredMinutes: 60 })
     ], { laneOrder: { '305': ['b', 'a'] } });
-    expect(bars(result).map((bar) => bar.item.itemId)).toEqual(['b', 'a']);
+    expect(bars(result).map((bar) => bar.item.itemId)).toEqual(['a', 'b']);
     expect(bars(result)[0]!.start).toBeCloseTo(today + 13 / 24);
     expect(bars(result)[1]!.start).toBe(bars(result)[0]!.end);
+  });
+  it.each([false, true])('keeps dependencies when reversed lanes contain tests (multiple resources %s)', (multiple) => {
+    const values = [
+      item({ itemId: 'B', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'A', alternateRank: 3, requiredMinutes: 60, originalResourceCd: multiple ? '584' : '305' }),
+      ...(multiple ? [item({ itemId: 'D', fhincd: 'P2', processOrder: '20', originalResourceCd: '584', alternateRank: 1, requiredMinutes: 30 }),
+        item({ itemId: 'C', fhincd: 'P2', alternateRank: 3, requiredMinutes: 30 })] : [])
+    ];
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:T', itemRevision: 't1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '305', minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null };
+    const result = bars(forward(values, { testBars: [test], resources: ['305', '584'],
+      laneOrder: multiple ? { '305': ['B', test.itemId, 'C'], '584': ['D', 'A'] } : undefined }));
+    expect(result.map((bar) => bar.item.itemId).sort()).toEqual([...values.map((value) => value.itemId), test.itemId].sort());
+    const byId = new Map(result.map((bar) => [bar.item.itemId, bar]));
+    for (const [id, predecessors] of forwardPlanningBoardPredecessors(values).predecessors)
+      for (const predecessor of predecessors) expect(byId.get(predecessor)!.end!).toBeLessThanOrEqual(byId.get(id)!.start!);
+    for (const resource of ['305', '584']) {
+      const lane = result.filter((bar) => bar.resource === resource).sort((a, b) => a.start! - b.start!);
+      for (let index = 1; index < lane.length; index++) expect(lane[index - 1]!.end!).toBeLessThanOrEqual(lane[index]!.start!);
+    }
+  });
+  it('fills a ready gap without crossing a test slot', () => {
+    const test: GrindingPlanningBoardTestBar = { kind: 'test', itemId: 'test:T', itemRevision: 't1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '305', minutes: 30, alternateRank: 3, isCompleted: false, completedAt: null, deletedAt: null };
+    const result = bars(forward([
+      item({ itemId: 'pre', originalResourceCd: '584', requiredMinutes: 120 }),
+      item({ itemId: 'waiting', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }),
+      item({ itemId: 'filler', fhincd: 'P2', alternateRank: 2, requiredMinutes: 30 }),
+      item({ itemId: 'later', fhincd: 'P3', alternateRank: 4, requiredMinutes: 30 })
+    ], { testBars: [test], dailyHoursByResource: { '305': 24, '584': 24 } }));
+    const lane = result.filter((bar) => bar.resource === '305').sort((a, b) => a.start! - b.start!);
+    expect(lane.map((bar) => bar.item.itemId)).toEqual(['filler', 'waiting', test.itemId, 'later']);
+    expect(lane[1]!.start).toBe(result.find((bar) => bar.item.itemId === 'pre')!.end);
+    expect(lane[2]!.start).toBe(lane[1]!.end);
+    expect(lane[3]!.start).toBe(lane[2]!.end);
   });
   it('resolves reversed process ranks without repeatedly pushing the schedule forward', () => {
     const result = forward([item({ itemId: 'b', processOrder: '20', alternateRank: 1, requiredMinutes: 30 }), item({ alternateRank: 2, requiredMinutes: 60 })]);

@@ -133,10 +133,19 @@ export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBar
     await tx.productionScheduleGrindingPlanningBoardTestBar.update({ where: { id: row.id }, data: {
       ...(params.action === 'delete' ? { deletedAt: new Date() } : params.action === 'restore' ? { deletedAt: null } : { completedAt: params.action === 'complete' ? new Date() : null }), version: { increment: 1 }
     } });
-    // Keep the tombstone rank: undo restores the same slot without reusing its sequence.
+    // Use the current predecessor position for restore, otherwise keep the tombstone rank.
     if ((params.action === 'restore' && !row.completedAt) || params.action === 'incomplete') {
       const lane = mixedPlanningLane([...current.byItemId.values()], tests.testBars.filter((item) => item.itemId !== `test:${row.id}`), stateOrder(current.state), row.resourceCd);
-      lane.splice(Math.min(lane.filter((item) => planningBarBand(item) != null).length + row.alternateRank - 1, lane.length), 0, { ...projectPlanningTestBar(row), deletedAt: null, isCompleted: false, completedAt: null });
+      const unbandedStart = lane.filter((item) => planningBarBand(item) != null).length;
+      let at = Math.min(unbandedStart + row.alternateRank - 1, lane.length);
+      if (params.action === 'restore' && params.restoreAfterItemId !== undefined) {
+        if (params.restoreAfterItemId === null) at = unbandedStart;
+        else {
+          const after = lane.findIndex((item) => item.itemId === params.restoreAfterItemId && planningBarBand(item) == null);
+          if (after >= 0) at = after + 1;
+        }
+      }
+      lane.splice(at, 0, { ...projectPlanningTestBar(row), deletedAt: null, isCompleted: false, completedAt: null });
       await saveLane(tx, params.siteKey, current, lane);
     }
     return mutationResponse(tx, params.siteKey, current, row.id);

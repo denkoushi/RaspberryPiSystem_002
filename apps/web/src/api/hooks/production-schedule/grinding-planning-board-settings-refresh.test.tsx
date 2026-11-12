@@ -4,14 +4,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
-import { useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
+import { useKioskGrindingPlanningBoard, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS, useKioskGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes';
 
-import type { GrindingPlanningBoardResourceCapacityResponse as Capacity } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardResourceCapacityRequest, GrindingPlanningBoardResourceCapacityResponse as Capacity } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ minutes: vi.fn(), capacity: vi.fn(), updateCapacity: vi.fn() }));
+const mocks = vi.hoisted(() => ({ minutes: vi.fn(), capacity: vi.fn(), updateCapacity: vi.fn(), board: vi.fn(), load: vi.fn() }));
 vi.mock('../../client', () => ({
+  getKioskGrindingPlanningBoard: mocks.board,
+  getKioskGrindingPlanningBoardLoad: mocks.load,
   getKioskGrindingPlanningBoardResourceMinutes: mocks.minutes,
   getKioskGrindingPlanningBoardResourceCapacity: mocks.capacity,
   updateKioskGrindingPlanningBoardResourceCapacity: mocks.updateCapacity
@@ -58,6 +60,58 @@ describe('planning board settings refresh', () => {
     hook.unmount();
   });
 
+  it.each([true, false, null])('immediately refreshes board and load after unit split %s succeeds', async (unitSplitEnabled) => {
+    mocks.board.mockResolvedValue({ items: [] }); mocks.load.mockResolvedValue({ resources: [] });
+    mocks.updateCapacity.mockResolvedValue({ ...capacity(8), unitSplitEnabledByResource: unitSplitEnabled === null ? {} : { '305': unitSplitEnabled } });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(capacityKey, { ...capacity(8), unitSplitEnabledByResource: { '305': !unitSplitEnabled } });
+    const hook = renderHook(() => ({
+      board: useKioskGrindingPlanningBoard({ category: 'all', view: 'resource' }, { refetchIntervalMs: false }),
+      load: useKioskGrindingPlanningBoardLoad('all'),
+      update: useUpdateKioskGrindingPlanningBoardResourceCapacity()
+    }), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(hook.result.current.load.isSuccess && hook.result.current.board.isSuccess).toBe(true));
+    await act(async () => { await hook.result.current.update.mutateAsync({ resourceCd: '305', unitSplitEnabled }); });
+    await waitFor(() => { expect(mocks.board).toHaveBeenCalledTimes(2); expect(mocks.load).toHaveBeenCalledTimes(2); });
+    hook.unmount(); client.clear();
+  });
+
+  it.each([
+    { payload: { resourceCd: '305', dailyHours: 9 }, callerRefreshes: false },
+    { payload: { resourceCd: '305', runsThroughBreaks: true }, callerRefreshes: false },
+    { payload: { resourceCd: '305', unitSplitEnabled: true }, callerRefreshes: true }
+  ] satisfies { payload: GrindingPlanningBoardResourceCapacityRequest; callerRefreshes: boolean }[])('leaves refresh to the caller for $payload / $callerRefreshes', async ({ payload, callerRefreshes }) => {
+    mocks.board.mockResolvedValue({ items: [] }); mocks.load.mockResolvedValue({ resources: [] });
+    mocks.updateCapacity.mockResolvedValue(capacity(9));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const hook = renderHook(() => ({
+      board: useKioskGrindingPlanningBoard({ category: 'all', view: 'resource' }, { refetchIntervalMs: false }),
+      load: useKioskGrindingPlanningBoardLoad('all'),
+      update: useUpdateKioskGrindingPlanningBoardResourceCapacity({ invalidateOnSuccess: !callerRefreshes })
+    }), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(hook.result.current.load.isSuccess && hook.result.current.board.isSuccess).toBe(true));
+    await act(async () => { await hook.result.current.update.mutateAsync(payload); });
+    expect(mocks.board).toHaveBeenCalledTimes(1); expect(mocks.load).toHaveBeenCalledTimes(1);
+    hook.unmount(); client.clear();
+  });
+
+  it('restores the setting without refreshing board or load when unit split fails', async () => {
+    mocks.board.mockResolvedValue({ items: [] }); mocks.load.mockResolvedValue({ resources: [] });
+    mocks.updateCapacity.mockRejectedValue(new Error('save failed'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const previous = { ...capacity(8), unitSplitEnabledByResource: { '305': false } };
+    client.setQueryData(capacityKey, previous);
+    const hook = renderHook(() => ({
+      board: useKioskGrindingPlanningBoard({ category: 'all', view: 'resource' }, { refetchIntervalMs: false }),
+      load: useKioskGrindingPlanningBoardLoad('all'),
+      update: useUpdateKioskGrindingPlanningBoardResourceCapacity()
+    }), { wrapper: wrapperFor(client) });
+    await waitFor(() => expect(hook.result.current.load.isSuccess && hook.result.current.board.isSuccess).toBe(true));
+    await act(async () => { await expect(hook.result.current.update.mutateAsync({ resourceCd: '305', unitSplitEnabled: true })).rejects.toThrow('save failed'); });
+    expect(client.getQueryData(capacityKey)).toEqual(previous);
+    expect(mocks.board).toHaveBeenCalledTimes(1); expect(mocks.load).toHaveBeenCalledTimes(1);
+    hook.unmount(); client.clear();
+  });
   it('does not let a fetch that started during a capacity save bring back the older value', async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     mocks.capacity.mockResolvedValueOnce(capacity(8));

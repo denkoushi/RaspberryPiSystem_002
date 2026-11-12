@@ -301,7 +301,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
         const scope = deps.resolveLocationScopeContext(clientDevice);
         const { id } = z.object({ id: z.string().uuid() }).parse(request.params);
         const body = z.object({ dueSource: grindingPlanningBoardDueSourceSchema, sourceRevision: sourceRevisionSchema, expectedVersion: z.number().int().min(1),
-          intent: z.enum(['complete', 'incomplete']).optional() }).parse(request.body);
+          intent: z.enum(['complete', 'incomplete']).optional(), restoreAfterItemId: z.string().min(1).max(2000).nullable().optional() }).parse(request.body);
         const action = operation.action === 'completion' ? z.enum(['complete', 'incomplete']).parse(body.intent) : operation.action;
         const result = await mutatePlanningTestBar({ siteKey: scope.siteKey, id, ...body, action });
         void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });

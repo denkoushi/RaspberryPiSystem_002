@@ -93,8 +93,8 @@ export function usePlanningBoardPageGantt({
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
   const tests = usePlanningBoardTestBars({ data, items: writeQueue.items, enqueue: enqueueWrite,
     disabled: !scopeReady || !rankMutationReady || writeBlocked || writeQueue.pending || Boolean(orderPreview) || pinMode || allocation !== 'alternate',
-    remember: (item, action) => { const id = ++resourceOrderHistoryId.current;
-      setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: [], testBarUndo: { item, action } }].slice(-10)); }
+    remember: (item, action, restoreAfterItemId) => { const id = ++resourceOrderHistoryId.current;
+      setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: [], testBarUndo: { item, action, restoreAfterItemId } }].slice(-10)); }
   });
   const baseGantt = usePlanningBoardGantt({ enabled: ganttEnabled, machineSelectionLocked: Boolean(orderPreview), items: ganttItems, testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
     seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER,
