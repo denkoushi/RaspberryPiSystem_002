@@ -1495,7 +1495,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument();
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
     const card = screen.getByTestId('planning-forward-queue-card-b');
-    expect(card).toHaveClass('border-slate-600', 'text-slate-500');
+    expect(card).toHaveClass('border-slate-950', 'text-slate-500');
     const arrive = within(card).getByRole('button', { name: '着', exact: true });
     expect(arrive).toHaveClass('min-h-9');
     fireEvent.click(arrive);
@@ -1503,7 +1503,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(screen.getByTestId('planning-gantt-bar-b')).toBeInTheDocument());
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
     const arrived = screen.getByTestId('planning-forward-queue-card-b');
-    expect(arrived).not.toHaveClass('border-slate-600');
+    expect(arrived).not.toHaveClass('text-slate-500');
     fireEvent.click(within(arrived).getByRole('button', { name: '取り消し', exact: true }));
     await waitFor(() => expect(mocks.arrival).toHaveBeenLastCalledWith({ itemId: 'b', itemRevision: 'revision-b', overrideVersion: 2, recorded: false }));
     await waitFor(() => expect(screen.queryByTestId('planning-gantt-bar-b')).not.toBeInTheDocument());
@@ -1839,7 +1839,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '製番ごとに色分け' })).toHaveAttribute('aria-pressed', 'true');
     const legend = screen.getByRole('group', { name: '製番の色分け凡例' });
     expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-2', 'ring-white');
+    expect(screen.getByTestId('planning-gantt-bar-a')).toHaveClass('ring-[3px]', 'ring-white');
     expect(screen.getByText('1234567890 → 製番 26-1041')).toHaveAttribute('role', 'status');
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(within(legend).getByRole('button', { name: '26-1041', exact: true })).toHaveAttribute('aria-pressed', 'false');
