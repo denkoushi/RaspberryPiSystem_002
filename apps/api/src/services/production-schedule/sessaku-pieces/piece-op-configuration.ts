@@ -43,6 +43,7 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
       : 'scope' in params && params.scope === 'set' ? c.set.pieces.filter((candidate) => !candidate.isCompleted) : [piece];
     if (targets.some((candidate) => candidate.isCompleted)) conflict('COMPLETED_PIECE');
     if (configure && (!item.effectiveResourceCd || !('resourceCd' in params) || params.resourceCd !== item.effectiveResourceCd)) conflict();
+    if (configure && c.current.pieces.find((bar) => bar.itemId === `piece:${piece.id}`)?.effectiveResourceCd !== ('resourceCd' in params ? params.resourceCd : null)) conflict();
     const removed = targets.flatMap(sessakuPieceItemIds);
     const before = await beforeProjections(tx, c.sites, c.key, removed, c.later, params.audit, params.dueSource);
     let opNos: number[] = [];

@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
     site: { findMany: vi.fn() },
     productionScheduleOrderAssignment: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn() },
-    productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn() },
+    productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn(), upsert: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn(), findUnique: vi.fn(), upsert: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartOpMinutes: { findMany: vi.fn(), createMany: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
     productionScheduleSessakuPieceHistory: { findUnique: vi.fn(), upsert: vi.fn() },
@@ -197,6 +197,21 @@ describe('piece operation boundary mutations', () => {
       for (const split of data) set.pieces.find((piece) => piece.id === split.pieceId)!.opSplits!.push({ ...split });
     });
   }
+
+  it('rejects configuring a later bar on a different machine before any board or definition writes', async () => {
+    installDefinitionWrites();
+    await split(2);
+    overrides.set(barId(2), override(barId(2), { overrideResourceCd: '022' }));
+    vi.clearAllMocks();
+    const before = structuredClone({ set, settings, overrides });
+    await expect(configureSessakuPieceOps({ ...configuration([10, 20], barId(2)), resourceCd: '022' }))
+      .rejects.toMatchObject({ statusCode: 409 });
+    expect({ set, settings, overrides }).toEqual(before);
+    for (const write of [mocks.tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert,
+      mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert,
+      mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany,
+      mocks.tx.productionScheduleSessakuPieceOpSplit.createMany, mocks.tx.$executeRaw]) expect(write).not.toHaveBeenCalled();
+  });
 
   it('registers an unconfigured part once and splits all five unit pieces, leaving another lot untouched', async () => {
     installDefinitionWrites(); settings.values = [];

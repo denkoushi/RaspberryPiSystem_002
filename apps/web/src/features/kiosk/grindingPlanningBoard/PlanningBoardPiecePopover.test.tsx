@@ -1,6 +1,7 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { PlanningBoardUnitOpContext } from './gantt/PlanningBoardUnitOpEditor';
 import { PieceOperationBlockedError, PlanningBoardPiecePopover, PlanningBoardPiecesContext, usePlanningBoardPieceActions, usePlanningBoardPieceFocus } from './PlanningBoardPiecePopover';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
@@ -26,6 +27,25 @@ function setup(item = row, items = [item], selectedItemIds = new Set(items.map((
   return { ...view, value, onSplit, onMerge };
 }
 describe('PlanningBoardPiecePopover', () => {
+  it.each(['CUT-1', 'CUT-2'])('allows operation configuration only on the leading machine (later=%s)', (resourceCd) => {
+    const head = piece('unit', 1, { effectiveResourceCd: 'CUT-1', fhincd: 'PART', opRange: { fromOpNo: 1, toOpNo: 1 } });
+    const later = { ...head, itemId: 'pieceops:unit:2', effectiveResourceCd: resourceCd, opRange: { fromOpNo: 2, toOpNo: 2 },
+      ops: [{ opNo: 2, minutes: 20 }] };
+    const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
+      resourceCategories: { 'CUT-1': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
+    render(<PlanningBoardPiecesContext.Provider value={result.current}>
+      <PlanningBoardUnitOpContext.Provider value={{ items: [head, later], loading: false }}>
+        <PlanningBoardPiecePopover item={later} variant="gantt" />
+      </PlanningBoardUnitOpContext.Provider>
+    </PlanningBoardPiecesContext.Provider>);
+    fireEvent.click(screen.getByRole('button', { name: /の数量/ }));
+    expect(screen.queryByRole('group', { name: '工程の数' }) !== null).toBe(resourceCd === 'CUT-1');
+    expect(screen.queryByRole('button', { name: /工程にする$/ }) !== null).toBe(resourceCd === 'CUT-1');
+    expect(screen.queryAllByRole('spinbutton', { name: /工程 1台/ }).length > 0).toBe(resourceCd === 'CUT-1');
+    expect(screen.getByRole('button', { name: 'まとめる' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '全部まとめる' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '工程2を完了にする' })).toBeInTheDocument();
+  });
   it.each([false, true])('keeps the value and parent index stable across unrelated renders with 1000 rows (pieces=%s)', (withPieces) => {
     const readParent = vi.fn(() => withPieces ? 'parent' : undefined);
     const items = Array.from({ length: 1000 }, (_, index) => ({ ...row, itemId: `item:${index}`,

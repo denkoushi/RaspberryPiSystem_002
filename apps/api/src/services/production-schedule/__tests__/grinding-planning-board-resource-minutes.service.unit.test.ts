@@ -29,9 +29,18 @@ describe('resource minutes storage', () => {
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [] });
     mocks.ops.findMany.mockResolvedValue([]);
     mocks.transaction.mockImplementation((callback) => callback({
+      productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
       productionScheduleGrindingPlanningBoardResourcePartMinutes: mocks.values,
       productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops
     }));
+  });
+  it.each([false, true])('enables own source in the saving transaction without changing an existing row (%s)', async (existing) => {
+    const source = { ...key, source: 'own' };
+    mocks.sources.upsert.mockResolvedValue(existing ? source : { ...source });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value });
+    expect(mocks.sources.upsert).toHaveBeenCalledExactlyOnceWith({
+      where: { csvDashboardId_siteKey_resourceCd: key }, create: source, update: {}
+    });
   });
   it('waits for the common lock before a legacy write without checking a baseline', async () => {
     let unlock!: () => void;
@@ -58,7 +67,7 @@ describe('resource minutes storage', () => {
       ...(!['created', 'deleted'].includes(field) ? { expectedOpIds: ['op-1'] } : {})
     })).rejects.toMatchObject({ statusCode: 409, code: 'RESOURCE_MINUTES_CHANGED' });
     expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
-    for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.ops.update, mocks.ops.createMany, mocks.ops.deleteMany, mocks.values.update]) expect(write).not.toHaveBeenCalled();
+    for (const write of [mocks.sources.upsert, mocks.values.upsert, mocks.values.deleteMany, mocks.ops.update, mocks.ops.createMany, mocks.ops.deleteMany, mocks.values.update]) expect(write).not.toHaveBeenCalled();
   });
   it.each(['operations', 'no-operations', 'cleared-operations', 'legacy-operations', 'legacy-allocation', 'deleted'] as const)(
     'accepts only identical retries with a stale baseline: %s', async (kind) => {
@@ -83,6 +92,8 @@ describe('resource minutes storage', () => {
         savedMinutes: current === null ? null : { perUnitMinutes: 5, setupMinutes: 5,
           ops: ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes })) }
       });
+      expect(mocks.sources.upsert).toHaveBeenCalledTimes(kind === 'deleted' ? 0 : 1);
+      mocks.sources.upsert.mockClear();
       expect(lockOperationDefinitionPieces).toHaveBeenCalledTimes(1);
       for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.values.update, mocks.ops.update]) write.mockClear();
       const different = kind === 'deleted' ? { perUnitMinutes: 6 } : { setupMinutes: 6 };
@@ -101,6 +112,7 @@ describe('resource minutes storage', () => {
       expectedMinutes: null, expectedOpIds: kind === 'addition' ? [] : ['old-1']
     })).resolves.toMatchObject({ savedOpIds: ops.map((op) => op.id), savedOpNos: ops.map((op) => op.opNo),
       savedMinutes: current === null ? null : { perUnitMinutes: 5, setupMinutes: 5, ops: [{ opNo: 1, minutes: 5, setupMinutes: 5 }] } });
+    expect(mocks.sources.upsert).toHaveBeenCalledTimes(kind === 'deletion' ? 0 : 1);
     for (const write of [mocks.values.upsert, mocks.values.deleteMany, mocks.values.update, mocks.ops.update,
       mocks.ops.createMany, mocks.ops.deleteMany, reconcileOperationDefinitionPieces]) expect(write).not.toHaveBeenCalled();
   });
@@ -189,6 +201,7 @@ describe('resource minutes storage', () => {
     mocks.transaction.mockImplementation(async (callback) => {
       inTransaction = true;
       const result = await callback({
+        productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
         productionScheduleGrindingPlanningBoardResourcePartMinutes: mocks.values,
         productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops
       });
@@ -319,6 +332,7 @@ describe('resource minutes storage', () => {
     await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value, perUnitMinutes: null });
     expect(mocks.values.deleteMany).toHaveBeenCalledWith({ where: { ...key, fhincd: 'part' } });
     expect(mocks.sources.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.sources.upsert).not.toHaveBeenCalled();
   });
   it.each([
     { resourceCd: '' }, { resourceCd: 'x'.repeat(21) }, { fhincd: ' ' }, { fhincd: 'x'.repeat(121) },

@@ -253,6 +253,53 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
           orderPinned: true, alternateRank: index + 1 }))) });
       return { pieceId: set.pieces[0].id, ids };
     }
+    it('enables an unselected machine on one-operation configure and projects 90 minutes plus setup in load', async () => {
+      const result = await units();
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).not.toContain('1');
+      await configure(result.pieces[0].itemId, [90]);
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).toContain('1');
+      const bars = (await board()).items.filter((item) => item.sourceRowId === rowId);
+      expect(bars).toHaveLength(5);
+      expect(bars.map((bar) => bar.requiredMinutes).sort((a, b) => a! - b!)).toEqual([90, 90, 90, 90, 105]);
+      const params = { client: prisma, siteKey: site, category: 'cutting' as const, isResourceInCategory: () => true };
+      const load = await readGrindingPlanningBoardLoadSummary({ ...params, winnerRowIds: [rowId] });
+      const sql = await readGrindingPlanningBoardLoadSummary({ ...params, leaderboardMaterializedBaseWhere: Prisma.sql`"CsvDashboardRow"."id" = ${rowId}` });
+      expect(sql).toEqual(load);
+      expect(load.load[0].requiredMinutes).toBe(465);
+    });
+    it('enables an unselected machine on the part value screen save and changes the projected duration', async () => {
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      expect((await getGrindingPlanningBoardResourceMinutes({ siteKey: site })).ownSourceResourceCds).not.toContain('1');
+      await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '1', fhincd: 'PART-A', perUnitMinutes: 90, setupMinutes: 15 });
+      const settings = await getGrindingPlanningBoardResourceMinutes({ siteKey: site });
+      expect(settings.ownSourceResourceCds).toContain('1');
+      expect((await board()).items.find((item) => item.sourceRowId === rowId)?.requiredMinutes).toBe(465);
+    });
+    it('splits every selected-lot unit but keeps another lot bars whole with summed operation minutes and setup', async () => {
+      const result = await units();
+      const sibling = await otherLot(2);
+      await prisma.productionScheduleSessakuPieceOpSplit.deleteMany({ where: { pieceId: sibling.pieceId } });
+      await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { itemKey: { in: sibling.ids } } });
+      const siblingPiece = await prisma.productionScheduleSessakuPiece.findUniqueOrThrow({ where: { id: sibling.pieceId } });
+      await prisma.productionScheduleSessakuPieceSet.update({ where: { id: siblingPiece.pieceSetId }, data: {
+        plannedQuantity: 5, nextPosition: 3, pieces: { update: { where: { id: sibling.pieceId }, data: { quantity: 2 } },
+          create: { quantity: 3, position: 2 } }
+      } });
+      await prisma.productionScheduleOrderSupplement.updateMany({ where: { sourceCsvDashboardId: `${site}-other-lot` }, data: { plannedQuantity: 5 } });
+      await updateGrindingPlanningBoardResourceMinutesSource({ siteKey: site, resourceCd: '1', source: 'original' });
+      await configure(result.pieces[0].itemId, [12, 18]);
+      const bars = (await board()).items;
+      expect(bars.filter((bar) => bar.sourceRowId === rowId)).toHaveLength(10);
+      for (const piece of result.pieces) {
+        expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId: piece.pieceId! } })).toBe(1);
+      }
+      const siblingBars = bars.filter((bar) => bar.parentItemId && bar.pieceId && bar.sourceRowId !== rowId && bar.fseiban === `${seiban}-other-lot`);
+      expect(siblingBars).toHaveLength(2);
+      expect(siblingBars.map((bar) => bar.requiredMinutes).sort((a, b) => a! - b!)).toEqual([75, 90]);
+      expect(siblingBars.every((bar) => !bar.opRange)).toBe(true);
+      expect(await prisma.productionScheduleSessakuPieceOpSplit.count({ where: { pieceId: { in: siblingBars.map((bar) => bar.pieceId!) } } })).toBe(0);
+    });
     it('preserves another lot operation boundaries and every placement override when configuring', async () => {
       const result = await units();
       const sibling = await otherLot(2);

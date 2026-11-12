@@ -116,6 +116,10 @@ export async function saveGrindingPlanningBoardResourcePartMinutes(
 ) {
   const { resourceCd, fhincd, perUnitMinutes, setupMinutes, ops, expectedOpIds, expectedMinutes } = resourcePartMinutesSchema.parse(params);
   const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, resourceCd, fhincd };
+  const enableOwnSource = () => tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert({
+    where: { csvDashboardId_siteKey_resourceCd: { csvDashboardId: key.csvDashboardId, siteKey: key.siteKey, resourceCd } },
+    create: { csvDashboardId: key.csvDashboardId, siteKey: key.siteKey, resourceCd, source: 'own' }, update: {}
+  });
   if (expectedOpIds !== undefined || expectedMinutes !== undefined) {
     const current = await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findUnique({
       where: { csvDashboardId_siteKey_resourceCd_fhincd: key }, include: { ops: true }
@@ -144,6 +148,7 @@ export async function saveGrindingPlanningBoardResourcePartMinutes(
       };
       const identicalRetry = legacyMatches && matchesCurrent(intended);
       if (identicalRetry && ops !== undefined) {
+        if (perUnitMinutes !== null) await enableOwnSource();
         return { ops: [...(current?.ops ?? [])].sort((a, b) => a.opNo - b.opNo), minutes: current ? {
           perUnitMinutes: current.perUnitMinutes, setupMinutes: current.setupMinutes,
           ops: current.ops.map(({ opNo, minutes, setupMinutes }) => ({ opNo, minutes, setupMinutes }))
@@ -207,6 +212,7 @@ export async function saveGrindingPlanningBoardResourcePartMinutes(
   const savedOps = await tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany({
     where: { partMinutesId: saved.id }, select: { id: true, opNo: true }, orderBy: { opNo: 'asc' }
   });
+  await enableOwnSource();
   return { ops: savedOps, minutes: {
     perUnitMinutes: nextOps.length ? nextOps.reduce((sum, op) => sum + op.minutes, 0) : perUnitMinutes,
     setupMinutes: nextOps.length ? operationSetup : setupMinutes,

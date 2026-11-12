@@ -134,6 +134,7 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   item: GrindingPlanningBoardItem; disabled?: boolean; selected?: boolean; specialDueMode?: 'today' | 'overnight' | null; variant?: 'table' | 'gantt';
 }) {
   const actions = useContext(PlanningBoardPiecesContext);
+  const unitOpContext = useContext(PlanningBoardUnitOpContext);
   const [open, setOpen] = useState(false);
   const mergeItems = !item.opRange && !item.isLaterProcess && actions?.isCutting(item) && selected && item.kind === 'piece' && item.parentItemId
     ? actions?.selectedItemsByParent.get(item.parentItemId) : undefined;
@@ -143,7 +144,7 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   const canMerge = Boolean(item.kind === 'piece' && mergeItems);
   const label = item.kind === 'piece' ? `${quantity ?? '—'}／${item.parentPlannedQuantity ?? '—'}` : quantity == null ? '—' : `${quantity}個`;
   const canMergeOps = Boolean(item.opRange);
-  const canConfigureOps = variant === 'gantt' && item.kind === 'piece' && quantity === 1 && !item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && !item.quantityWarning && item.fseiban?.trim() !== '********';
+  const canConfigureOps = Boolean(item.effectiveResourceCd && (unitOpContext?.items ?? [item]).find((bar) => bar.itemId === `piece:${item.pieceId}`)?.effectiveResourceCd === item.effectiveResourceCd) && variant === 'gantt' && item.kind === 'piece' && quantity === 1 && !item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && !item.quantityWarning && item.fseiban?.trim() !== '********';
   const canCompleteOp = item.kind === 'piece' && Boolean(item.ops?.length) && item.completionSource !== 'import';
   const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps || canConfigureOps);
   if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
@@ -185,7 +186,7 @@ function PiecePopoverControl(props: PiecePopoverControlProps) {
 function PiecePopoverDialog({ item, actions, canSplit, mergeItems, disabled, open, setOpen, variant }: PiecePopoverControlProps) {
   const { gate, frozen } = usePlanningBoardOffline();
   const unitOpContext = useContext(PlanningBoardUnitOpContext);
-  const canConfigureOps = variant === 'gantt' && item.kind === 'piece' && item.plannedQuantity === 1 && !item.isLaterProcess && actions.createEnabled && actions.isCutting(item) && !item.quantityWarning;
+  const canConfigureOps = Boolean(item.effectiveResourceCd && (unitOpContext?.items ?? [item]).find((bar) => bar.itemId === `piece:${item.pieceId}`)?.effectiveResourceCd === item.effectiveResourceCd) && variant === 'gantt' && item.kind === 'piece' && item.plannedQuantity === 1 && !item.isLaterProcess && actions.createEnabled && actions.isCutting(item) && !item.quantityWarning;
   const showUnitEditor = Boolean((variant === 'gantt' && canConfigureOps) || item.opRange);
   const quantity = item.plannedQuantity;
   const [showSplit] = useState(canSplit);
