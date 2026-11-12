@@ -1,6 +1,10 @@
+export const PLANNING_BOARD_SHEET_RATIO = 0.8;
+export const PLANNING_BOARD_SHEET_MAX_HEIGHT = 760;
+export const planningBoardSheetHeight = (containerHeight: number) => Math.min(containerHeight * PLANNING_BOARD_SHEET_RATIO, PLANNING_BOARD_SHEET_MAX_HEIGHT);
+
 /** Coordinates and heights are CSS pixels within the shared container. */
 export function planningBoardSheetGeometry(containerHeight: number, paneTop: number, paneBottom: number, sheetOpen: boolean, chainHeight: number) {
-  const sheetHeight = sheetOpen ? Math.min(containerHeight * 0.56, 520) : 0;
+  const sheetHeight = sheetOpen ? planningBoardSheetHeight(containerHeight) : 0;
   const paneHeight = Math.max(0, paneBottom - paneTop);
   const sheetOverlap = Math.min(paneHeight, Math.max(0, paneBottom - (containerHeight - sheetHeight)));
   // A fully covered pane's strip must escape that pane and sit above the sheet.

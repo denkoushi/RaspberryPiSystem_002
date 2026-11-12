@@ -9,7 +9,7 @@ import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHe
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-const { save, rowRender, offline } = vi.hoisted(() => ({ save: vi.fn(), rowRender: vi.fn(), offline: { enabled: false, refreshRead: vi.fn() } }));
+const { save, rowRender, offline } = vi.hoisted(() => ({ save: vi.fn(), rowRender: vi.fn(), offline: { enabled: false, frozen: false, refreshRead: vi.fn() } }));
 vi.mock('../offline/PlanningBoardOfflineProvider', async (original) => {
   const actual = await original<typeof import('../offline/PlanningBoardOfflineProvider')>();
   return { ...actual, usePlanningBoardOffline: () => ({ ...actual.usePlanningBoardOffline(), ...offline }) };
@@ -23,7 +23,7 @@ const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlann
   requiredMinutesSource: 'own', requiredMinutes: 70, requiredMinutesKnown: true, isCompleted: false, lslhSurface: false,
   progress: { completed: 0, total: 1, quantityKnown: true }, ...overrides
 });
-afterEach(() => { vi.useRealTimers(); save.mockReset(); rowRender.mockClear(); offline.enabled = false; offline.refreshRead.mockReset(); vi.restoreAllMocks(); });
+afterEach(() => { vi.useRealTimers(); save.mockReset(); rowRender.mockClear(); offline.enabled = false; offline.frozen = false; offline.refreshRead.mockReset(); vi.restoreAllMocks(); });
 describe('resource minutes UI', () => {
   it.each([400, 401, 403, 422])('sends corrected values directly after a confirmed %s failure', async (status) => {
     vi.useFakeTimers();
@@ -352,7 +352,7 @@ describe('resource minutes UI', () => {
     expect(save.mock.calls[1][0]).toMatchObject({ expectedMinutes: savedMinutes, expectedOpIds: reset ? [] : ['new-1'] });
     expect(screen.queryByRole('alert')).toBeNull();
   });
-  it.each(['queued', 'closed-queued', 'closed-draft'])('keeps the edit baseline and advances it from transaction values: %s', async (mode) => {
+  it.each(['queued', 'closed-queued', 'closed-clear'])('keeps the edit baseline and advances it from transaction values: %s', async (mode) => {
     vi.useFakeTimers();
     offline.enabled = true;
     offline.refreshRead.mockRejectedValue(new Error('refresh offline'));
@@ -368,14 +368,14 @@ describe('resource minutes UI', () => {
     expect(save.mock.calls[0][0].expectedMinutes).toEqual({ perUnitMinutes: 10, setupMinutes: 0, ops: [] });
     fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '10' } });
     await act(async () => vi.advanceTimersByTime(400));
-    if (mode === 'closed-draft') fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
+    if (mode === 'closed-clear') fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
     if (mode !== 'queued') view.unmount();
     await act(async () => finish({ values: [{ ...initial, perUnitMinutes: 20 }], savedMinutes: { perUnitMinutes: 10, setupMinutes: 5, ops: [] } }));
-    if (mode === 'closed-draft') {
-      expect(save).toHaveBeenCalledTimes(1);
-      render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: part })]} values={[{ ...initial, perUnitMinutes: 20 }]} disabled={false} />);
-      fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '11' } });
-      await act(async () => vi.advanceTimersByTime(400));
+    if (mode === 'closed-clear') {
+      expect(save).toHaveBeenCalledTimes(2);
+      expect(save.mock.calls[1][0]).toMatchObject({ perUnitMinutes: null, ops: [] });
+      render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: part })]} values={[]} disabled={false} />);
+      expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(null);
     }
     expect(save.mock.calls[1][0].expectedMinutes).toEqual({ perUnitMinutes: 10, setupMinutes: 5, ops: [] });
     expect(offline.refreshRead).toHaveBeenCalledWith('resource-minutes');
@@ -447,7 +447,8 @@ describe('resource minutes UI', () => {
     fireEvent.change(screen.getByRole('spinbutton', { name: 'P1 1台' }), { target: { value: '' } });
     expect(within(row).queryByText('130分')).toBeNull();
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ perUnitMinutes: null, ops: [] }));
     expect(screen.getByRole('spinbutton', { name: 'P1 段取り' })).toHaveValue(5);
   });
   it('flushes a pending edit when the sheet closes', () => {
@@ -635,13 +636,72 @@ describe('resource minutes UI', () => {
     received.rerender(<PlanningBoardResourceMinutesSheet {...late} values={[{ resourceCd: '305', fhincd: 'ARRIVED', perUnitMinutes: 10, setupMinutes: 15 }]} />);
     fireEvent.change(screen.getByRole('spinbutton', { name: 'ARRIVED 1台' }), { target: { value: '' } });
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ perUnitMinutes: null, ops: [] }));
     expect(screen.getByRole('spinbutton', { name: 'ARRIVED 段取り' })).toHaveValue(15);
   });
-  it('does not save a cleared value after the first save finishes', async () => {
+  it.each([0, 5])('does not restore a cleared saved single value after unfreezing with setup %s', async (setupMinutes) => {
+    vi.useFakeTimers();
+    offline.enabled = true;
+    offline.refreshRead.mockResolvedValue(false);
+    const part = `CLEAR-UNFREEZE-${setupMinutes}`;
+    let serverValues = [{ resourceCd: '305', fhincd: part, perUnitMinutes: 10, setupMinutes }];
+    save.mockImplementation(async (payload) => {
+      if (payload.perUnitMinutes === null) serverValues = [];
+      return { values: serverValues, savedMinutes: null, savedOpIds: [], savedOpNos: [] };
+    });
+    const props = { resourceCd: '305', items: [item({ fhincd: part })], disabled: false };
+    const view = render(<PlanningBoardResourceMinutesSheet {...props} values={serverValues} />);
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    expect.soft(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ perUnitMinutes: null, ops: [] }));
+    offline.frozen = true;
+    view.rerender(<PlanningBoardResourceMinutesSheet {...props} values={serverValues} disabled />);
+    offline.frozen = false;
+    view.rerender(<PlanningBoardResourceMinutesSheet {...props} values={serverValues} />);
+    expect.soft(screen.getByLabelText(`${part} 1台`)).toHaveValue(null);
+    view.unmount();
+    render(<PlanningBoardResourceMinutesSheet {...props} values={serverValues} />);
+    expect.soft(screen.getByLabelText(`${part} 1台`)).toHaveValue(null);
+  });
+  it('saves a replacement instead of deleting when a cleared unit is refilled before debounce', async () => {
+    vi.useFakeTimers();
+    save.mockResolvedValue({ values: [] });
+    const part = 'CLEAR-REFILL';
+    render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: part })]} values={[
+      { resourceCd: '305', fhincd: part, perUnitMinutes: 10, setupMinutes: 5 }
+    ]} disabled={false} />);
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
+    await act(async () => vi.advanceTimersByTime(399));
+    expect(save).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '12' } });
+    await act(async () => vi.advanceTimersByTime(399));
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(save).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ perUnitMinutes: 12 }));
+  });
+  it.each(['acknowledged', 'uncertain'])('deletes a cleared single value with an %s save before the cache catches up', async (state) => {
+    vi.useFakeTimers();
+    offline.enabled = true;
+    offline.refreshRead.mockResolvedValue(false);
+    const part = `CLEAR-${state}`;
+    const savedMinutes = { perUnitMinutes: 12, setupMinutes: 0, ops: [] };
+    const response = { values: [], savedMinutes, savedOpIds: [], savedOpNos: [] };
+    if (state === 'uncertain') save.mockRejectedValueOnce(new Error('response lost')).mockResolvedValueOnce(response);
+    else save.mockResolvedValueOnce(response);
+    save.mockResolvedValue({ values: [], savedMinutes: null, savedOpIds: [], savedOpNos: [] });
+    render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: part })]} values={[]} disabled={false} />);
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '12' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
+    await act(async () => vi.advanceTimersByTime(400));
+    expect(save).toHaveBeenCalledTimes(state === 'uncertain' ? 3 : 2);
+    if (state === 'uncertain') expect(save.mock.calls[1][0]).toEqual(save.mock.calls[0][0]);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ perUnitMinutes: null, ops: [], expectedMinutes: savedMinutes }));
+  });
+  it('deletes a cleared value after the first save finishes', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
-    save.mockReturnValueOnce(new Promise((resolve) => { finish = () => resolve({ ownSourceResourceCds: [], values: [] }); })).mockResolvedValue({ ownSourceResourceCds: [], values: [] });
+    save.mockReturnValueOnce(new Promise((resolve) => { finish = () => resolve({ values: [], savedMinutes: { perUnitMinutes: 12, setupMinutes: 0, ops: [] }, savedOpIds: [] }); })).mockResolvedValue({ values: [], savedMinutes: null, savedOpIds: [] });
     render(<PlanningBoardResourceMinutesSheet resourceCd="305" items={[item({ fhincd: 'INFLIGHT' })]} values={[]} disabled={false} />);
     const input = screen.getByRole('spinbutton', { name: 'INFLIGHT 1台' });
     fireEvent.change(input, { target: { value: '12' } });
@@ -650,7 +710,9 @@ describe('resource minutes UI', () => {
     await act(async () => vi.advanceTimersByTime(400));
     expect(save).toHaveBeenCalledTimes(1);
     await act(async () => finish());
-    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith(expect.objectContaining({ perUnitMinutes: null, ops: [], expectedMinutes: { perUnitMinutes: 12, setupMinutes: 0, ops: [] } }));
+    expect(input).toHaveValue(null);
   });
   it('keeps the explicit clear intent through another edit before debounce', async () => {
     vi.useFakeTimers(); save.mockResolvedValue({ ownSourceResourceCds: [], values: [] });
@@ -666,15 +728,16 @@ describe('resource minutes UI', () => {
     expect(save).toHaveBeenCalledWith({ resourceCd: '021', fhincd: 'CLEAR-NEXT',
       perUnitMinutes: 12, setupMinutes: 5, ops: [], expectedOpIds: ['op-3'], expectedMinutes: { perUnitMinutes: 10, setupMinutes: 5, ops: [{ opNo: 3, minutes: 10, setupMinutes: 5 }] } });
   });
-  it.each(['remove', 'reset', 'remove-empty'] as const)('retains an incomplete draft after %s and ordinary edits, including reopening', async (action) => {
-    vi.useFakeTimers(); save.mockResolvedValue({ ownSourceResourceCds: [], values: [] });
+  it.each(['remove', 'reset', 'remove-empty'] as const)('deletes the saved row after %s and keeps later unsaved setup edits as drafts', async (action) => {
+    vi.useFakeTimers();
+    save.mockResolvedValue({ values: [], savedMinutes: null, savedOpIds: [], savedOpNos: [] });
     vi.spyOn(window, 'confirm').mockReturnValue(true);
     const part = `CLEAR-INCOMPLETE-${action}`;
-    const props = { resourceCd: '021', items: [item({ fhincd: part })], values: [{
+    const props = { resourceCd: '021', items: [item({ fhincd: part })], disabled: false };
+    const view = render(<PlanningBoardResourceMinutesSheet {...props} values={[{
       resourceCd: '021', fhincd: part, perUnitMinutes: 10, setupMinutes: 5,
       ops: [{ id: 'op-1', opNo: 1, minutes: 10, setupMinutes: 5 }]
-    }], disabled: false };
-    const view = render(<PlanningBoardResourceMinutesSheet {...props} />);
+    }]} />);
     fireEvent.click(screen.getByText(part));
     if (action === 'remove-empty') fireEvent.change(screen.getByLabelText(`${part} 1工程 1台`), { target: { value: '' } });
     if (action === 'reset') fireEvent.click(screen.getByText('元に戻す'));
@@ -682,19 +745,23 @@ describe('resource minutes UI', () => {
     fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '' } });
     fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '8' } });
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledExactlyOnceWith({ resourceCd: '021', fhincd: part,
+      perUnitMinutes: null, setupMinutes: 8, ops: [], expectedOpIds: ['op-1'], expectedMinutes: { perUnitMinutes: 10, setupMinutes: 5, ops: [{ opNo: 1, minutes: 10, setupMinutes: 5 }] } });
+    view.rerender(<PlanningBoardResourceMinutesSheet {...props} values={[]} />);
+    fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '8' } });
     // Exercise close-time normalization as well as the restored-draft save check.
     fireEvent.change(screen.getByLabelText(`${part} 段取り`), { target: { value: '8.5' } });
     view.unmount();
-    render(<PlanningBoardResourceMinutesSheet {...props} />);
+    render(<PlanningBoardResourceMinutesSheet {...props} values={[]} />);
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledTimes(1);
     expect(screen.getByLabelText(`${part} 段取り`)).toHaveValue(8);
     expect(screen.getByLabelText(`${part} 1台`)).toHaveValue(null);
     fireEvent.change(screen.getByLabelText(`${part} 1台`), { target: { value: '12' } });
     await act(async () => vi.advanceTimersByTime(400));
-    expect(save).toHaveBeenCalledExactlyOnceWith({ resourceCd: '021', fhincd: part,
-      perUnitMinutes: 12, setupMinutes: 8, ops: [], expectedOpIds: ['op-1'], expectedMinutes: { perUnitMinutes: 10, setupMinutes: 5, ops: [{ opNo: 1, minutes: 10, setupMinutes: 5 }] } });
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith({ resourceCd: '021', fhincd: part,
+      perUnitMinutes: 12, setupMinutes: 8, expectedOpIds: [], expectedMinutes: null });
   });
   it('resets the saved row when its last operation has no unit value', async () => {
     vi.useFakeTimers(); save.mockResolvedValue({ ownSourceResourceCds: [], values: [] });

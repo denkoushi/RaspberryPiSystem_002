@@ -28,7 +28,7 @@ import { sharePlanningBoardGanttLayout } from './planningBoardGanttSharing';
 import { PlanningBoardResourceMinutesSheet } from './PlanningBoardResourceMinutesSheet';
 import { planningBoardSeibanColor } from './planningBoardSeibanColor';
 import { PlanningBoardSeibanLegend } from './PlanningBoardSeibanLegend';
-import { planningBoardSharedBottomInset, planningBoardSheetGeometry } from './planningBoardSheetGeometry';
+import { planningBoardSharedBottomInset, planningBoardSheetGeometry, planningBoardSheetHeight } from './planningBoardSheetGeometry';
 import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHead';
 import { buildSingleResourceWindows, foldSingleResourceRow, singleResourceWindowTime } from './planningBoardSingleResourceWindows';
 import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
@@ -324,7 +324,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(pane);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [valueSheetContainer]);
-  const sheetHeight = valueSheetOpen && showResourceHead ? Math.min(((viewportHeight ?? 0) + 40) * 0.56, 520) : 0;
+  const sheetHeight = valueSheetOpen && showResourceHead ? planningBoardSheetHeight((viewportHeight ?? 0) + 40) : 0;
   const sharedGeometry = planningBoardSheetGeometry(sharedBounds.height, sharedBounds.top, sharedBounds.bottom,
     sharedValueSheetOpen, showChain ? chainStripHeight : 0);
   const chainTop = sharedBounds.height - sharedGeometry.chainBottom - chainStripHeight;

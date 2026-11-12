@@ -123,7 +123,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   expect(sheet.parentElement).toHaveClass('flex-1', 'min-h-0', 'flex-col');
   expect(sheet.parentElement).toHaveClass('relative');
   expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
-  expect(sheet).toHaveStyle({ height: 'min(56%, 520px)' });
+  expect(sheet).toHaveStyle({ height: 'min(80%, 760px)' });
   expect(within(screen.getByRole('region', { name: '021' })).queryByRole('region', { name: '品番の値' })).toBeNull();
   expect(within(within(sheet).getByText('021').parentElement!).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
@@ -181,11 +181,11 @@ it.each(['021', '022'])('reserves only overlapping chain space in each pane (own
   expect(lower.style.scrollPaddingBottom).toBe(owner === '021' ? '0px' : '60px');
   expect(lower.firstElementChild).toHaveStyle({ paddingBottom: owner === '021' ? '0px' : '60px' });
   view.rerender(<PlanningBoardGanttDisplay {...values} valueSheetResource="021" />);
-  expect(parseFloat(screen.getByRole('region', { name: '工程のつながり' }).style.bottom)).toBeCloseTo(336);
-  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(96);
+  expect(parseFloat(screen.getByRole('region', { name: '工程のつながり' }).style.bottom)).toBeCloseTo(480);
+  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(240);
   expect(parseFloat(lower.style.scrollPaddingBottom)).toBeCloseTo(300);
   fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
-  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(36);
+  expect(parseFloat(upper.style.scrollPaddingBottom)).toBeCloseTo(180);
 });
 
 it.each(['scrollToNextOverlap', 'scrollToNextLate'] as const)('moves one pane per %s and restarts on layout change', method => {
