@@ -55,10 +55,9 @@ export class FkojunstExternalCompletionSyncService {
       return { skipped: true, reason: 'empty_status_csv' };
     }
 
-    await this.deps.prismaClient.$transaction(
-      async (tx) => {
-        await replaceAllWinnerExternalCompletionStatesFromMailSync(tx);
-      },
+    const startedAt = Date.now();
+    const writtenRows = await this.deps.prismaClient.$transaction(
+      async (tx) => replaceAllWinnerExternalCompletionStatesFromMailSync(tx),
       {
         maxWait: EXTERNAL_COMPLETION_TX_MAX_WAIT_MS,
         timeout: EXTERNAL_COMPLETION_TX_TIMEOUT_MS,
@@ -66,7 +65,7 @@ export class FkojunstExternalCompletionSyncService {
     );
 
     logger.info(
-      {},
+      { writtenRows, durationMs: Date.now() - startedAt },
       '[FkojunstExternalCompletionSyncService] external completion recalculated from FKOJUNST_Status mail rows'
     );
 
