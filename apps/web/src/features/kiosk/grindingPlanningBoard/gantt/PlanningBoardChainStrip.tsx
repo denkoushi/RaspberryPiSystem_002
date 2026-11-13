@@ -20,10 +20,10 @@ type Props = {
   completionPendingItemIds?: ReadonlySet<string>;
   disabled?: boolean;
   pieceDisabled?: boolean;
-  bars: GanttBar[];
+  bars: Pick<GanttBar, 'item' | 'resource'>[];
   resourceNameMap: Record<string, string[]>;
   currentItemId: string | null;
-  onStep: (bar: GanttBar) => void;
+  onStep: (bar: Pick<GanttBar, 'item' | 'resource'>) => void;
   onClose: () => void;
   chainView?: PlanningBoardChainView;
   onChainViewToggle?: () => void;
@@ -45,12 +45,16 @@ export function PlanningBoardChainStrip({ ref, bottom, selectedItemIds, bars, re
     {bars.map((bar, index) => <Fragment key={bar.item.itemId}>
       {index > 0 && (bars[index - 1]!.item.parentItemId ?? bars[index - 1]!.item.itemId) !== (bar.item.parentItemId ?? bar.item.itemId) && <span aria-hidden="true" className="text-slate-400">→</span>}
       <button type="button" aria-current={currentItemId === bar.item.itemId ? 'step' : undefined}
-        className={clsx('flex min-h-11 shrink-0 items-center gap-2 rounded border border-slate-700 px-2 py-1 text-left', currentItemId === bar.item.itemId && 'ring-2 ring-white')}
+        className={clsx('flex min-h-11 shrink-0 items-center gap-2 rounded border border-slate-700 px-2 py-1 text-left', currentItemId === bar.item.itemId && 'ring-2 ring-white', bar.item.isCompleted && 'opacity-45')}
+        disabled={bar.item.isCompleted}
         onClick={() => onStep(bar)}>
         <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-slate-800 font-mono font-bold text-white">{positions[index]}</span>
-        <strong>工順{bar.item.processOrder} · {ganttResourceLabel(normalizeMachineName(bar.resource), resourceNameMap[bar.resource])}</strong>
+        <span className="flex flex-col leading-tight">
+          <strong>工順{bar.item.processOrder}</strong>
+          <strong className="text-slate-300">{ganttResourceLabel(normalizeMachineName(bar.resource), resourceNameMap[bar.resource])}</strong>
+        </span>
       </button>
-      <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selectedItemIds.has(bar.item.itemId)} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />
+      {!bar.item.isCompleted && <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selectedItemIds.has(bar.item.itemId)} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
       {onCompleteToggle && <PlanningBoardCompletionButton item={bar.item} onToggle={onCompleteToggle}
         disabled={disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
     </Fragment>)}

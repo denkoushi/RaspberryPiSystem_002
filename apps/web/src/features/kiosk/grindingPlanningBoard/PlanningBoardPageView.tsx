@@ -14,6 +14,8 @@ import type { SyntheticEvent } from 'react';
 
 type Props = {
   data: Omit<GrindingPlanningBoardResponse, 'snapshotId' | 'nextCursor'> | undefined;
+  chainItems?: readonly GrindingPlanningBoardItem[];
+  onChainPartChange?: (fseiban: string | null) => void;
   ganttEnabled: boolean;
   focusedSeiban: string | null;
   setFocusedSeiban: (fseiban: string | null) => void;
@@ -70,7 +72,7 @@ type Props = {
 };
 
 export function PlanningBoardPageView({
-  data, ganttEnabled, focusedSeiban, setFocusedSeiban, colorBySeiban, registeredFseibans, gantt, ganttLayout,
+  data, chainItems, onChainPartChange, ganttEnabled, focusedSeiban, setFocusedSeiban, colorBySeiban, registeredFseibans, gantt, ganttLayout,
   view, orderPreview, category, resourcesQuery, pinMode, togglePin, selectedItemIds, clearSelection, toggleItem,
   toggleCompletion, completionPendingItemIds, onArrivalChange, onFirstProcessArrivalChange, arrivalPending, arrivalError, moveDueByDrag, reorderResourceByDrag, moveResourceInGantt,
   canMoveResource, interactionLocked, writeQueue, allocation, writeBlocked, piecesWriting, rankMutationReady,
@@ -96,7 +98,7 @@ export function PlanningBoardPageView({
   const content = (
     <>
       {data && ganttEnabled ? (
-        <PlanningBoardGanttDisplay testBarControls={gantt.testBarControls ? { ...gantt.testBarControls, disabled: gantt.testBarControls.disabled || writeBlocked } : undefined} testBarCreationEnabled={allocation === 'alternate'} capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
+        <PlanningBoardGanttDisplay chainItems={chainItems ?? data.items} onChainPartChange={onChainPartChange} chainAllocation={allocation} testBarControls={gantt.testBarControls ? { ...gantt.testBarControls, disabled: gantt.testBarControls.disabled || writeBlocked } : undefined} testBarCreationEnabled={allocation === 'alternate'} capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} resourceMinutesItems={gantt.resourceMinutesItems} resourceMinutes={gantt.resourceMinutes} minutesPending={gantt.minutesPending} minutesError={gantt.minutesError}
           onUnitSplitChange={gantt.changeUnitSplit} unitSplitAvailable={unitSplitAvailable}
           onMinutesSourceChange={gantt.changeMinutesSource} valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}

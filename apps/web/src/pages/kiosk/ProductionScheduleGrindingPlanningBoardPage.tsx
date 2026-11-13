@@ -31,6 +31,7 @@ import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } 
 import { usePersistedPlanningBoardScawMode } from '../../features/kiosk/grindingPlanningBoard/usePersistedPlanningBoardScawMode';
 import { usePlanningBoardArrival } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardArrival';
 import { usePlanningBoardCategory } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCategory';
+import { usePlanningBoardPageChainItems } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardChainItems';
 import { usePlanningBoardCompletion } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion';
 import { usePlanningBoardDueActions } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions';
 import { usePlanningBoardLargeScreen } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardLargeScreen';
@@ -127,10 +128,8 @@ export function PlanningBoardPage() {
   const queryClient = useQueryClient();
   const pieceMutations = useKioskSessakuPieceMutations(dueSource); const [pieceMutationResult, setPieceMutationResult] = useState<SessakuPiecesMutationResponse | null>(null);
   const [piecePhase, setPiecePhase] = useState<'idle' | 'saving' | 'refreshing'>('idle'); const piecePending = piecePhase !== 'idle'; const piecePendingRef = useRef(false); const piecePendingParentRef = useRef<string | null>(null);
-  const { boardQuery, loadQuery, candidateQuery, resourcesQuery, dueDetailQuery } = usePlanningBoardPageQueries(
-    { scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
-    { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined, drawerOpen, showCompletedCandidates, dueDetailFseiban }
-  );
+  const { boardQuery, loadQuery, candidateQuery, resourcesQuery, dueDetailQuery } = usePlanningBoardPageQueries({ scheduleSource, category, view, completionFilter: status, dueSource, includePieces: true },
+    { refetchIntervalMs: editorOpen || orderPreview || piecePending ? false : undefined, drawerOpen, showCompletedCandidates, dueDetailFseiban });
   const { mutateAsync: updatePinsAsync } = useUpdateKioskGrindingPlanningBoardPins({ invalidateOnSuccess: false, dueSource });
   const { mutateAsync: updateOverridesAsync } = useUpdateKioskGrindingPlanningBoardOverrides({ invalidateOnSuccess: false, dueSource });
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
@@ -186,6 +185,7 @@ export function PlanningBoardPage() {
   }, [notify]);
 
   const { response, data } = usePlanningBoardPageData(boardQuery.data, `${category}:${scheduleSource}:${view}:${status}:${dueSource}`);
+  const { chainItems, onChainPartChange } = usePlanningBoardPageChainItems({ scheduleSource, category, view, completionFilter: status, dueSource }, data?.items);
   const { arrivalFilterEnabled, toggleArrivalFilter, applyArrival, changeArrival, changeFirstProcessArrival, arrivalPending, arrivalError } = usePlanningBoardArrival(response, nowMs, dueSource);
   const scopeReady = boardQuery.scopeReady; const bulkReady = scopeReady && boardQuery.isComplete;
   const interactionLocked = !scopeReady || Boolean(orderPreview);
@@ -733,7 +733,7 @@ export function PlanningBoardPage() {
       {scanNotice && <p role="status" className="pointer-events-none fixed left-1/2 top-16 z-[90] -translate-x-1/2 rounded-lg bg-emerald-900 px-4 py-2 text-sm font-bold text-emerald-50 shadow-lg">{scanNotice.text}</p>}
       {boardQuery.isError ? <p className={`${data ? 'absolute z-50 ' : ''}p-5 text-sm text-rose-200`}>一覧を読み込めませんでした。</p> : null}
       <PlanningBoardPageView
-        data={data} ganttEnabled={ganttEnabled} focusedSeiban={focusedSeiban} setFocusedSeiban={setFocusedSeiban}
+        data={data} chainItems={chainItems} onChainPartChange={onChainPartChange} ganttEnabled={ganttEnabled} focusedSeiban={focusedSeiban} setFocusedSeiban={setFocusedSeiban}
         colorBySeiban={colorBySeiban} registeredFseibans={registeredFseibans} gantt={gantt} ganttLayout={ganttLayout}
         view={view} orderPreview={orderPreview} category={category} resourcesQuery={resourcesQuery}
         pinMode={pinMode} togglePin={togglePin} selectedItemIds={selectedItemIds} clearSelection={clearSelection} toggleItem={toggleItem}

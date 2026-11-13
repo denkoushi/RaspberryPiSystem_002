@@ -1654,6 +1654,52 @@ describe('forward PlanningBoardGanttView', () => {
     if (operation === 'move') expect(onResourceMove).toHaveBeenCalledWith(entries[0], '306', entries[1], 'before');
     else expect(values.onResourceReorder).toHaveBeenCalledWith(entries[0], entries[1], 'before');
   });
+  it('includes completed pieces only in the forward strip and restores them to the gantt', () => {
+    const completed = item({ itemId: 'done', kind: 'piece', parentItemId: 'first', piecePosition: 1, processOrder: '10', isCompleted: true });
+    const pending = item({ itemId: 'pending', kind: 'piece', parentItemId: 'first', piecePosition: 2, processOrder: '10', requiredMinutes: 60 });
+    const last = item({ itemId: 'last', processOrder: '20', requiredMinutes: 60 });
+    const imported = item({ itemId: 'imported', processOrder: '30', isCompleted: true, completionSource: 'import' });
+    const other = item({ itemId: 'other', fhincd: 'OTHER', isCompleted: true });
+    const onCompleteToggle = vi.fn();
+    const source = [last, other, pending, imported, completed];
+    const draw = (restored = false) => <PlanningBoardGanttView {...forwardProps(restored ? [{ ...completed, isCompleted: false }, pending, last] : [pending, last])}
+      chainItems={source} onCompleteToggle={onCompleteToggle} />;
+    const view = render(draw());
+    tap(screen.getByTestId('planning-gantt-bar-pending'));
+    const strip = screen.getByTestId('planning-gantt-chain-strip');
+    const steps = within(strip).getAllByRole('button', { name: /工順\d/ });
+    expect(steps).toHaveLength(4);
+    expect(steps.map((step) => step.firstElementChild?.textContent)).toEqual(['1', '1', '2', '3']);
+    expect(strip).toHaveTextContent('3工程');
+    expect(screen.queryByTestId('planning-gantt-bar-done')).toBeNull();
+    expect(screen.queryByTestId('planning-gantt-bar-imported')).toBeNull();
+    expect(screen.getByTestId('planning-gantt-chain-badge-last')).toHaveTextContent(/^2$/);
+    expect(steps[0]).toHaveClass('opacity-45', 'min-h-11');
+    expect(steps[0]).toBeDisabled();
+    const lines = steps[0]!.querySelectorAll('strong');
+    expect([...lines].map((line) => line.textContent)).toEqual(['工順10', '305']);
+    expect(lines[0]?.parentElement).toHaveClass('flex-col', 'leading-tight');
+    expect(lines[1]).toHaveClass('text-slate-300');
+    fireEvent.click(steps[0]!);
+    expect(steps[0]).not.toHaveAttribute('aria-current');
+    expect(within(strip).getByRole('button', { name: '取込で完了' })).toBeDisabled();
+    fireEvent.click(within(strip).getByRole('button', { name: '未完了に戻す' }));
+    expect(onCompleteToggle).toHaveBeenCalledExactlyOnceWith(completed, 'incomplete');
+    view.rerender(draw(true));
+    expect(screen.getByTestId('planning-gantt-bar-done')).toBeInTheDocument();
+    const restoredStep = within(screen.getByTestId('planning-gantt-chain-strip')).getAllByRole('button', { name: /工順10/ })[0]!;
+    expect(restoredStep).toBeEnabled();
+    expect(restoredStep).not.toHaveClass('opacity-45');
+  });
+  it('does not call onStep for a completed strip entry', () => {
+    const completed = item({ kind: 'piece', isCompleted: true });
+    const onStep = vi.fn();
+    render(<PlanningBoardChainStrip bottom={0} bars={[{ item: completed, resource: '305' }]} selectedItemIds={new Set()}
+      resourceNameMap={{}} currentItemId={null} onStep={onStep} onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /工順10/ }));
+    expect(onStep).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-planning-board-quantity-item]')).toBeNull();
+  });
   it('focuses a part across resource rows in process order, switches parts and toggles closed', () => {
     const values = forwardProps(chainItems());
     render(<PlanningBoardGanttView {...values} resourceNameMap={{ '306': ['306 ＮＣ研削盤'] }} selectedItemIds={new Set(['a', 'c'])} />);
@@ -1674,8 +1720,8 @@ describe('forward PlanningBoardGanttView', () => {
     expect(document.querySelector('[data-planning-gantt-pan-cover]')).toBeNull();
     expect(strip).toHaveTextContent('26-1001 · P1 · 2工程');
     const steps = within(strip).getAllByRole('button');
-    expect(steps[0]).toHaveTextContent('工順2 · 305');
-    expect(steps[1]).toHaveTextContent('工順20 · 306 NC研削盤');
+    expect(steps[0]).toHaveTextContent('工順2305');
+    expect(steps[1]).toHaveTextContent('工順20306 NC研削盤');
     expect(a).toHaveClass('outline-emerald-300');
     expect(a).not.toHaveClass('outline-white');
     expect(a).toHaveAttribute('aria-pressed', 'true');
@@ -1903,7 +1949,7 @@ describe('forward PlanningBoardGanttView', () => {
     render(<PlanningBoardGanttView {...values} />);
     tap(screen.getByTestId('planning-gantt-bar-a'));
     const strip = screen.getByTestId('planning-gantt-chain-strip');
-    expect(within(strip).getByRole('button', { name: /工順10/ })).toHaveTextContent(/^1工順10 · 305$/);
+    expect(within(strip).getByRole('button', { name: /工順10/ })).toHaveTextContent(/^1工順10305$/);
     expect(within(strip).getByRole('button', { name: /工順20/ })).not.toHaveTextContent(/所要不明|遅れ見込み|予定|〜/);
   });
   it.each([['a', 'b', 300, 'after'], ['b', 'a', 0, 'before']] as const)('drags %s %s %i %s with a green insertion marker', (source, target, destination, placement) => {

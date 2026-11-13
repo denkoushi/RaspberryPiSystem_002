@@ -69,7 +69,7 @@ vi.mock('../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover', 
 });
 
 vi.mock('../../api/domains/production-schedule/grinding-planning-board', async (importOriginal) => ({
-  ...await importOriginal<object>(), clearKioskSessakuPieceOps: (args: unknown) => mocks.opClear(args)
+  ...await importOriginal<object>(), getKioskGrindingPlanningBoardSnapshot: vi.fn().mockResolvedValue({ items: [] }), clearKioskSessakuPieceOps: (args: unknown) => mocks.opClear(args)
 }));
 
 vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
