@@ -73,7 +73,7 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
       const isReplacement = replacements.includes(item.itemId);
       const own = isReplacement ? inherited : before.overrides.get(item.itemId);
       const data = {
-        overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null,
+        overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null, overrideDueDateSetAt: own?.overrideDueDateSetAt ?? null,
         dueDateCleared: own?.dueDateCleared ?? null, orderPinned: own?.orderPinned ?? false,
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
         alternateRank: rank
@@ -102,6 +102,7 @@ export async function replaceSiteItems(_tx: Prisma.TransactionClient, key: Sessa
 
 const samePlacement = (a: Override, b: Override) =>
   a.alternateRank === b.alternateRank && a.overrideResourceCd === b.overrideResourceCd
+  && a.overrideDueDateSetAt?.getTime() === b.overrideDueDateSetAt?.getTime()
   && a.overrideDueDate?.getTime() === b.overrideDueDate?.getTime() && a.dueDateCleared === b.dueDateCleared
   && a.orderPinned === b.orderPinned && a.specialDueKind === b.specialDueKind
   && a.specialDueExpiresAt?.getTime() === b.specialDueExpiresAt?.getTime();
@@ -144,19 +145,20 @@ export async function flushSiteItems(tx: Prisma.TransactionClient, states: Map<s
     // and the old writer's UTC date/timestamp casts with the PostgreSQL adapter.
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO "ProductionScheduleGrindingPlanningBoardOverride"
-        ("id", "csvDashboardId", "siteKey", "itemKey", "overrideResourceCd", "overrideDueDate", "dueDateCleared",
+        ("id", "csvDashboardId", "siteKey", "itemKey", "overrideResourceCd", "overrideDueDate", "overrideDueDateSetAt", "dueDateCleared",
          "orderPinned", "specialDueKind", "specialDueExpiresAt", "alternateRank", "updatedAt")
-      SELECT k.id, ${PRODUCTION_SCHEDULE_DASHBOARD_ID}, k.site, k.item, k.resource, k.due::date, k.cleared,
+      SELECT k.id, ${PRODUCTION_SCHEDULE_DASHBOARD_ID}, k.site, k.item, k.resource, k.due::date, k.dueSetAt::timestamp, k.cleared,
         k.pinned, k.kind, k.expires::timestamp, k.rank, ${updatedAt}::timestamp
       FROM unnest(${changed.map((r) => r.id)}::text[], ${changed.map((r) => r.siteKey)}::text[],
         ${changed.map((r) => r.itemKey)}::text[], ${changed.map((r) => r.overrideResourceCd)}::text[],
-        ${changed.map((r) => r.overrideDueDate?.toISOString() ?? null)}::text[], ${changed.map((r) => r.dueDateCleared)}::boolean[],
+        ${changed.map((r) => r.overrideDueDate?.toISOString() ?? null)}::text[], ${changed.map((r) => r.overrideDueDateSetAt?.toISOString() ?? null)}::text[], ${changed.map((r) => r.dueDateCleared)}::boolean[],
         ${changed.map((r) => r.orderPinned)}::boolean[], ${changed.map((r) => r.specialDueKind)}::text[],
         ${changed.map((r) => r.specialDueExpiresAt?.toISOString() ?? null)}::text[], ${changed.map((r) => r.alternateRank)}::integer[])
-        AS k(id, site, item, resource, due, cleared, pinned, kind, expires, rank)
+        AS k(id, site, item, resource, due, dueSetAt, cleared, pinned, kind, expires, rank)
       WHERE true
       ON CONFLICT ("csvDashboardId", "siteKey", "itemKey") DO UPDATE SET
         "overrideResourceCd" = EXCLUDED."overrideResourceCd", "overrideDueDate" = EXCLUDED."overrideDueDate",
+        "overrideDueDateSetAt" = EXCLUDED."overrideDueDateSetAt",
         "dueDateCleared" = EXCLUDED."dueDateCleared", "orderPinned" = EXCLUDED."orderPinned",
         "specialDueKind" = EXCLUDED."specialDueKind", "specialDueExpiresAt" = EXCLUDED."specialDueExpiresAt",
         "alternateRank" = EXCLUDED."alternateRank", "updatedAt" = EXCLUDED."updatedAt",

@@ -19,3 +19,15 @@ export function resolveBoardDueDate(input: {
   }
   return input.excelDueDate;
 }
+
+/** A planning-board due override wins over Excel only when entered after the last Excel date change. */
+export function isGrindingPlanningBoardDueOverrideActive(params: {
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
+  dueSource?: BoardDueSource;
+  overrideDueDateSetAt?: Date | null;
+}): boolean {
+  return params.excelDueDate == null || params.dueSource === 'scaw'
+    || (params.overrideDueDateSetAt != null
+      && (params.excelChangedAt == null || params.overrideDueDateSetAt > params.excelChangedAt));
+}

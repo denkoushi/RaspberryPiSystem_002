@@ -2122,6 +2122,7 @@ model ProductionScheduleGrindingPlanningBoardOverride {
   itemKey             String    @db.VarChar(1000)
   overrideResourceCd  String?   @db.VarChar(20)
   overrideDueDate     DateTime? @db.Date
+  overrideDueDateSetAt DateTime?
   /// null keeps the historical meaning of a missing due override; true means
   /// an explicit processing clear falls back to the CSV planned end date.
   dueDateCleared      Boolean?

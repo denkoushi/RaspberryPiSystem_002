@@ -31,7 +31,7 @@ export async function legacyReplaceSiteItems(tx: Prisma.TransactionClient, key: 
       const isReplacement = replacements.includes(item.itemId);
       const own = isReplacement ? inherited : before.overrides.get(item.itemId);
       const data = {
-        overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null,
+        overrideResourceCd: own?.overrideResourceCd ?? null, overrideDueDate: own?.overrideDueDate ?? null, overrideDueDateSetAt: own?.overrideDueDateSetAt ?? null,
         dueDateCleared: own?.dueDateCleared ?? null, orderPinned: own?.orderPinned ?? false,
         specialDueKind: own?.specialDueKind ?? null, specialDueExpiresAt: own?.specialDueExpiresAt ?? null,
         alternateRank: index + 1
@@ -40,7 +40,7 @@ export async function legacyReplaceSiteItems(tx: Prisma.TransactionClient, key: 
       // including rows whose dense rank stays the same.
       const id = randomUUID();
       values.push(Prisma.sql`(${id}, ${PRODUCTION_SCHEDULE_DASHBOARD_ID}, ${siteKey}, ${item.itemId},
-        ${data.overrideResourceCd}::text, ${data.overrideDueDate}::date, ${data.dueDateCleared}::boolean,
+        ${data.overrideResourceCd}::text, ${data.overrideDueDate}::date, ${data.overrideDueDateSetAt}::timestamp, ${data.dueDateCleared}::boolean,
         ${data.orderPinned}::boolean, ${data.specialDueKind}::text, ${data.specialDueExpiresAt}::timestamp,
         ${data.alternateRank}::integer, ${updatedAt}::timestamp)`);
       const existing = before.overrides.get(item.itemId);
@@ -57,11 +57,12 @@ export async function legacyReplaceSiteItems(tx: Prisma.TransactionClient, key: 
     const writeStarted = performance.now();
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO "ProductionScheduleGrindingPlanningBoardOverride"
-        ("id", "csvDashboardId", "siteKey", "itemKey", "overrideResourceCd", "overrideDueDate", "dueDateCleared",
+        ("id", "csvDashboardId", "siteKey", "itemKey", "overrideResourceCd", "overrideDueDate", "overrideDueDateSetAt", "dueDateCleared",
          "orderPinned", "specialDueKind", "specialDueExpiresAt", "alternateRank", "updatedAt")
       VALUES ${Prisma.join(chunk)}
       ON CONFLICT ("csvDashboardId", "siteKey", "itemKey") DO UPDATE SET
         "overrideResourceCd" = EXCLUDED."overrideResourceCd", "overrideDueDate" = EXCLUDED."overrideDueDate",
+        "overrideDueDateSetAt" = EXCLUDED."overrideDueDateSetAt",
         "dueDateCleared" = EXCLUDED."dueDateCleared", "orderPinned" = EXCLUDED."orderPinned",
         "specialDueKind" = EXCLUDED."specialDueKind", "specialDueExpiresAt" = EXCLUDED."specialDueExpiresAt",
         "alternateRank" = EXCLUDED."alternateRank", "updatedAt" = EXCLUDED."updatedAt",

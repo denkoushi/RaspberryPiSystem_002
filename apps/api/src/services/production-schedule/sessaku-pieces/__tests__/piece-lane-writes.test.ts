@@ -10,7 +10,7 @@ const key = { fseiban: 'lot', fhincd: 'part', fsigencd: '10', fkojun: '100' };
 const parent = sessakuPieceParentItemId(key);
 const override = (itemKey: string, alternateRank: number, extra: Partial<Override> = {}): Override => ({
   id: itemKey, csvDashboardId: 'production-schedule', siteKey: 'site', itemKey, alternateRank,
-  overrideResourceCd: null, overrideDueDate: null, dueDateCleared: null, orderPinned: false,
+  overrideResourceCd: null, overrideDueDate: null, overrideDueDateSetAt: null, dueDateCleared: null, orderPinned: false,
   specialDueKind: null, specialDueExpiresAt: null, version: 7, createdAt: new Date(0), updatedAt: new Date(0), ...extra
 });
 const item = (itemId: string, resource: string | null = '10', isCompleted = false) =>
@@ -73,7 +73,7 @@ describe('deferred lane writes', () => {
     expect(writer.$executeRaw).toHaveBeenCalledTimes(2); // one upsert, one delete
     const upsert = writer.$executeRaw.mock.calls[0][0] as Prisma.Sql;
     expect(upsert.sql).toContain('FROM unnest(');
-    expect(upsert.values.length).toBe(12);
+    expect(upsert.values.length).toBe(13);
     expect(upsert.values[2]).not.toContain('piece:a');
     expect(upsert.values[2]).not.toContain('completed');
   });
@@ -158,4 +158,19 @@ describe('production lane write cardinality', () => {
     const upsert = writer.$executeRaw.mock.calls.at(-1)![0] as Prisma.Sql;
     expect((upsert.values[4] as string[]).length * 4).toBe(placement === 'head' ? 17768 : 148);
   });
+});
+
+
+it('inherits due input timestamps and flushes a timestamp-only change', async () => {
+  const timestamp = new Date('2026-11-09T01:02:03.456Z');
+  const next = state([item(parent), item('neighbour')], [override(parent, 1, { overrideDueDateSetAt: timestamp }), override('neighbour', 3)]);
+  const tx = transaction();
+  await replaceSiteItems(tx as unknown as Prisma.TransactionClient, key, next, 'site', [parent], ['piece:a', 'piece:b']);
+  expect(next.overrides.get('piece:a')?.overrideDueDateSetAt).toEqual(timestamp);
+  expect(next.overrides.get('piece:b')?.overrideDueDateSetAt).toEqual(timestamp);
+  next.overrides.set('neighbour', { ...next.overrides.get('neighbour')!, overrideDueDateSetAt: timestamp });
+  await flushSiteItems(tx as unknown as Prisma.TransactionClient, new Map([['site', next]]));
+  const sql = tx.$executeRaw.mock.calls[0][0] as Prisma.Sql;
+  expect(sql.sql).toContain('"overrideDueDateSetAt" = EXCLUDED."overrideDueDateSetAt"');
+  expect(sql.values[7]).toEqual([timestamp.toISOString(), timestamp.toISOString(), timestamp.toISOString()]);
 });

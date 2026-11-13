@@ -91,16 +91,17 @@ function sameDate(a: Date | null | undefined, b: Date | null | undefined): boole
 
 function sameTimestamp(a: Date | null | undefined, b: Date | null | undefined): boolean { return (a?.getTime() ?? null) === (b?.getTime() ?? null); }
 
-export async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean } & PersistedSpecialDue): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
+export async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean; overrideDueDateSetAt?: Date | null } & PersistedSpecialDue): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
   const orderPinned = next.orderPinned ?? current?.orderPinned ?? false;
-  const changed = current == null
+  const overrideDueDateSetAt = next.overrideDueDateSetAt === undefined ? current?.overrideDueDateSetAt ?? null : next.overrideDueDateSetAt;
+  const changed = !sameTimestamp(current?.overrideDueDateSetAt, overrideDueDateSetAt) || (current == null
     ? orderPinned || next.overrideResourceCd != null || next.overrideDueDate != null || next.dueDateCleared != null || next.alternateRank != null || next.specialDueKind != null || next.specialDueExpiresAt != null
-    : (current.orderPinned ?? false) !== orderPinned || current.overrideResourceCd !== next.overrideResourceCd || !sameDate(current.overrideDueDate, next.overrideDueDate) || (current.dueDateCleared ?? null) !== next.dueDateCleared || current.alternateRank !== next.alternateRank || (current.specialDueKind ?? null) !== next.specialDueKind || !sameTimestamp(current.specialDueExpiresAt, next.specialDueExpiresAt);
+    : (current.orderPinned ?? false) !== orderPinned || current.overrideResourceCd !== next.overrideResourceCd || !sameDate(current.overrideDueDate, next.overrideDueDate) || (current.dueDateCleared ?? null) !== next.dueDateCleared || current.alternateRank !== next.alternateRank || (current.specialDueKind ?? null) !== next.specialDueKind || !sameTimestamp(current.specialDueExpiresAt, next.specialDueExpiresAt));
   if (!changed) return current;
   return client.productionScheduleGrindingPlanningBoardOverride.upsert({
     where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId } },
-    create: { orderPinned, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt },
-    update: { orderPinned, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt, version: { increment: 1 } }
+    create: { overrideDueDateSetAt, orderPinned, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: itemId, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt },
+    update: { overrideDueDateSetAt, orderPinned, overrideResourceCd: next.overrideResourceCd, overrideDueDate: next.overrideDueDate, dueDateCleared: next.dueDateCleared, alternateRank: next.alternateRank, specialDueKind: next.specialDueKind, specialDueExpiresAt: next.specialDueExpiresAt, version: { increment: 1 } }
   });
 }
 
@@ -122,7 +123,7 @@ async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw
   }
   const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
   // Non-position edits are guarded only by itemRevision/overrideVersion; rank edits also need the board revision (unchanged neighbours keep their revision).
-  const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean } & PersistedSpecialDue }> = [];
+  const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean; overrideDueDateSetAt?: Date | null } & PersistedSpecialDue }> = [];
   for (const request of params.requests) {
     const item = current.byItemId.get(request.itemId);
     if (!item) throw new ApiError(409, '対象アイテムが消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
@@ -131,6 +132,7 @@ async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw
     assertItemRevision(request.itemRevision, item, request.overrideVersion);
     const currentOverride = current.overrides.get(request.itemId);
     let nextOverrideResource = currentOverride?.overrideResourceCd ?? null;
+    let nextOverrideDueSetAt = currentOverride?.overrideDueDateSetAt ?? null, dueChanged = false;
     let nextOverrideDue = currentOverride?.overrideDueDate ?? null;
     let nextDueDateCleared = currentOverride?.dueDateCleared ?? null;
     let nextSpecialDueKind = currentOverride?.specialDueKind ?? null;
@@ -155,8 +157,10 @@ async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw
     if (request.due !== undefined) {
       const due = resolvePlanningBoardDueRequest({ request: request.due, currentEffectiveDueDate: item.effectiveDueDate, originalDueDate: item.originalDueDate });
       if (due !== undefined) {
+        nextOverrideDueSetAt = new Date();
         nextOverrideDue = due;
         nextDueDateCleared = false;
+        dueChanged = (due != null ? ymd(due) : item.originalDueDate) !== item.effectiveDueDate;
       }
     }
     if (request.specialDue !== undefined) {
@@ -176,9 +180,7 @@ async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw
       }
     }
     const resourceChanged = request.resourceCd !== undefined && (nextOverrideResource ?? item.originalResourceCd) !== item.effectiveResourceCd;
-    const effectiveDueAfterOverride = nextOverrideDue != null ? ymd(nextOverrideDue) : item.originalDueDate;
-    const dueChanged = request.due !== undefined && effectiveDueAfterOverride !== item.effectiveDueDate;
-    desired.push({ request, currentOverride, next: { orderPinned: request.orderPinned, overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null, specialDueKind: nextSpecialDueKind, specialDueExpiresAt: nextSpecialDueExpiresAt } });
+    desired.push({ request, currentOverride, next: { overrideDueDateSetAt: nextOverrideDueSetAt, orderPinned: request.orderPinned, overrideResourceCd: nextOverrideResource, overrideDueDate: nextOverrideDue, dueDateCleared: nextDueDateCleared, alternateRank: request.alternateRank !== undefined ? request.alternateRank : resourceChanged || dueChanged ? null : currentOverride?.alternateRank ?? null, specialDueKind: nextSpecialDueKind, specialDueExpiresAt: nextSpecialDueExpiresAt } });
   }
   if (params.requests.some((request) => request.alternateRank !== undefined)) assertBoardRevision(params.sourceRevision, current.state);
   const overrides = new Map(current.overrides);

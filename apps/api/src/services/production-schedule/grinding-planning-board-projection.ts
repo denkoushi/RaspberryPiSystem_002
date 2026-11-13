@@ -2,7 +2,8 @@ import { isUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { compareProcessOrder } from './process-order.js';
 import { encodeSessakuPieceKey, sessakuPieceKeyFromRow, type SessakuPieceSet } from './sessaku-pieces/piece-key.js';
-import { resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
+import { isGrindingPlanningBoardDueOverrideActive, resolveBoardDueDate, type BoardDueSource } from './d-schedule-minutes/resolve-board-due-date.js';
+export { isGrindingPlanningBoardDueOverrideActive };
 import { createHash } from 'node:crypto';
 
 import type { Prisma } from '@prisma/client';
@@ -55,6 +56,7 @@ export type GrindingPlanningBoardProjectionRanks = {
 export type GrindingPlanningBoardProjectionOverride = {
   overrideResourceCd: string | null;
   overrideDueDate: Date | null;
+  overrideDueDateSetAt?: Date | null;
   dueDateCleared?: boolean | null;
   orderPinned?: boolean;
   alternateRank: number | null;
@@ -137,8 +139,12 @@ function ymd(value: Date | null | undefined): string | null {
 export function resolveGrindingPlanningBoardParentDueDate(params: {
   originalParentDueDate: Date | null;
   plannedEndDate: Date | null;
-  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared'>;
+  override?: Pick<GrindingPlanningBoardProjectionOverride, 'overrideDueDate' | 'dueDateCleared' | 'overrideDueDateSetAt'>;
+  excelDueDate?: Date | null;
+  excelChangedAt?: Date | null;
+  dueSource?: BoardDueSource;
 }): string | null {
+  if (!isGrindingPlanningBoardDueOverrideActive({ ...params, overrideDueDateSetAt: params.override?.overrideDueDateSetAt })) return ymd(params.originalParentDueDate);
   if (params.override?.overrideDueDate != null) return ymd(params.override.overrideDueDate);
   if (params.override?.dueDateCleared === true) return ymd(params.plannedEndDate);
   return ymd(params.originalParentDueDate);
@@ -446,6 +452,7 @@ function buildItems(
     const originalDueDate = ymd(originalParentDueDate);
     const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
       originalParentDueDate,
+      excelDueDate: detail.excelDueDate, excelChangedAt: detail.excelChangedAt, dueSource: params.dueSource,
       plannedEndDate: detail.orderSupplements[0]?.plannedEndDate ?? null,
       override
     });
@@ -479,6 +486,7 @@ function buildItems(
       overrideVersion: override?.version ?? 0,
       overrideResourceCd: override?.overrideResourceCd ?? null,
       overrideDueDate: ymd(override?.overrideDueDate),
+      overrideDueDateSetAt: override?.overrideDueDateSetAt?.toISOString() ?? null,
       dueDateCleared: override?.dueDateCleared ?? null,
       effectiveDueDate,
       alternateRank: override?.alternateRank ?? null,
@@ -557,6 +565,8 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
       const isCompleted = external || piece.isCompleted;
       const effectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
         originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
+        excelDueDate: params.details.get(parent.sourceRowId)?.excelDueDate,
+        excelChangedAt: params.details.get(parent.sourceRowId)?.excelChangedAt, dueSource: params.dueSource,
         plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null,
         override
       });
@@ -575,7 +585,7 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         version: own?.version ?? 0, ...resolvedMinutes, ...unitFields,
         itemRevision: params.placementOnly ? '' : createItemRevision({ parentRevision: parent.itemRevision, pieceId: piece.id, position: piece.position,
           pieceSetVersion: set.version, quantity: piece.quantity, manualIsCompleted: piece.isCompleted,
-          quantityWarning: set.quantityWarning, external, inherited, own })
+          quantityWarning: set.quantityWarning, external, inherited, own, effectiveDueDate })
       };
       const splits = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo);
       if (!splits.length) return [base];
@@ -595,19 +605,23 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
         const setupMinutes = piece.position === firstPosition ? rangeOps.reduce((sum, op) => sum + (op.setupMinutes ?? 0), 0) : 0;
         const completedOpNos = (piece.opCompletions ?? []).map((op) => op.opNo)
           .filter((opNo) => rangeOps.some((op) => op.opNo === opNo)).sort((a, b) => a - b);
+        const rangeEffectiveDueDate = resolveGrindingPlanningBoardParentDueDate({
+          originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
+          excelDueDate: params.details.get(parent.sourceRowId)?.excelDueDate,
+          excelChangedAt: params.details.get(parent.sourceRowId)?.excelChangedAt, dueSource: params.dueSource,
+          plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null, override: rangeOverride
+        });
         return { ...base, itemId: rangeId, opRange, opSplitSourceResourceCd: sourceResources[0], ops: rangeOps, completedOpNos, unitRequiredMinutes, setupMinutes,
           requiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
           ownRequiredMinutes: unitRequiredMinutes === null ? null : unitRequiredMinutes + setupMinutes,
           originalRequiredMinutes: null, requiredMinutesKnown: unitRequiredMinutes !== null, requiredMinutesSource: 'own',
           isCompleted: isCompleted || (rangeOps.length > 0 && rangeOps.every((op) => completedOpNos.includes(op.opNo))),
           effectiveResourceCd: normalizeResourceCd(rangeOverride?.overrideResourceCd ?? parent.originalResourceCd),
-          effectiveDueDate: resolveGrindingPlanningBoardParentDueDate({
-            originalParentDueDate: parent.originalDueDate ? new Date(`${parent.originalDueDate}T00:00:00.000Z`) : null,
-            plannedEndDate: params.details.get(parent.sourceRowId)?.orderSupplements[0]?.plannedEndDate ?? null, override: rangeOverride }),
+          effectiveDueDate: rangeEffectiveDueDate,
           alternateRank: rangeOverride?.alternateRank ?? null, orderPinned: rangeOverride?.orderPinned ?? false,
           specialDue: specialDueForOverride(rangeOverride), version: rangeOwn?.version ?? 0,
           itemRevision: params.placementOnly ? '' : createItemRevision({ baseRevision: base.itemRevision, opRange, splits,
-            rangeOwn, inherited, rangeOps, completedOpNos })
+            rangeOwn, inherited, rangeOps, completedOpNos, effectiveDueDate: rangeEffectiveDueDate })
         };
       });
     });
