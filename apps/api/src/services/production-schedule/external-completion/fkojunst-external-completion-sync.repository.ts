@@ -24,16 +24,21 @@ const winnersBaseSql = () => Prisma.sql`
  * FKOJUNST_Status メール同期後: `fkmail` の **C/X** だけを外部完了に反映する。
  * 旧「メール dedupe キー消失」と生産日程CSV消滅完了は完了正本から外し、互換列は false に収束させる。
  */
-export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: Prisma.TransactionClient, mailCriticalLocked = false): Promise<void> {
+export async function replaceAllWinnerExternalCompletionStatesFromMailSync(executor: Prisma.TransactionClient, mailCriticalLocked = false): Promise<number> {
   const sets = await lockAllSessakuPieceSets(executor, mailCriticalLocked);
   if (sets.some((set) => set.pieces.length)) await acquireSessakuPieceBoardStateLocks(executor);
+  // この transaction は CsvDashboardRow を書き換えないので、片の winner は前後で変わらない。
+  const winnerIdBySetKey = new Map<string, string | null>();
   const previous = new Map<string, boolean>();
   for (const set of sets) {
     const winner = await findSessakuPieceWinner(executor, set);
     const external = winner && await executor.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } });
+    winnerIdBySetKey.set(encodeSessakuPieceKey(set), winner?.id ?? null);
     previous.set(encodeSessakuPieceKey(set), external?.isExternallyCompleted === true);
   }
-  await executor.$executeRaw`
+  // 値が変わる行だけを書く。全 winner（約10万行）を毎回書き直すと WAL が膨らみ、
+  // 書き込みの遅い時間帯に transaction が timeout する（2026-11-13 の生産日程2通目）。
+  const written = await executor.$executeRaw`
     WITH "winners" AS (
       ${winnersBaseSql()}
     ),
@@ -43,6 +48,17 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
         FALSE AS "mailDisappeared",
         "w"."mailStatusComplete" AS "mailStatusComplete"
       FROM "winners" "w"
+    ),
+    "pending" AS (
+      SELECT "c".*
+      FROM "computed" "c"
+      LEFT JOIN "ProductionScheduleExternalCompletion" AS "existing"
+        ON "existing"."csvDashboardRowId" = "c"."id"
+      WHERE "existing"."csvDashboardRowId" IS NULL
+        OR "existing"."isExternallyCompleted" IS DISTINCT FROM "c"."mailStatusComplete"
+        OR "existing"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM "c"."mailStatusComplete"
+        OR "existing"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM "c"."mailDisappeared"
+        OR "existing"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
     )
     INSERT INTO "ProductionScheduleExternalCompletion" (
       "csvDashboardRowId",
@@ -63,21 +79,37 @@ export async function replaceAllWinnerExternalCompletionStatesFromMailSync(execu
       FALSE,
       NOW(),
       NOW()
-    FROM "computed" "c"
+    FROM "pending" "c"
     ON CONFLICT ("csvDashboardRowId") DO UPDATE SET
       "externallyCompletedFromFkojunstDisappeared" = EXCLUDED."externallyCompletedFromFkojunstDisappeared",
       "externallyCompletedFromFkojunstMailStatus" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
       "externallyCompletedFromScheduleCsvDisappeared" = FALSE,
       "isExternallyCompleted" = EXCLUDED."externallyCompletedFromFkojunstMailStatus",
       "updatedAt" = NOW()
+    WHERE "ProductionScheduleExternalCompletion"."isExternallyCompleted" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstMailStatus"
+      OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstMailStatus" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstMailStatus"
+      OR "ProductionScheduleExternalCompletion"."externallyCompletedFromFkojunstDisappeared" IS DISTINCT FROM EXCLUDED."externallyCompletedFromFkojunstDisappeared"
+      OR "ProductionScheduleExternalCompletion"."externallyCompletedFromScheduleCsvDisappeared" IS DISTINCT FROM FALSE
   `;
+  const winnerIds = [...new Set([...winnerIdBySetKey.values()].filter((id): id is string => id !== null))];
+  const currentByWinnerId = new Map(
+    (winnerIds.length
+      ? await executor.productionScheduleExternalCompletion.findMany({
+          where: { csvDashboardRowId: { in: winnerIds } },
+          select: { csvDashboardRowId: true, isExternallyCompleted: true },
+        })
+      : []
+    ).map((row) => [row.csvDashboardRowId, row.isExternallyCompleted === true])
+  );
   const changed = new Set<string>();
   for (const set of sets) {
-    const winner = await findSessakuPieceWinner(executor, set);
-    const external = winner && await executor.productionScheduleExternalCompletion.findUnique({ where: { csvDashboardRowId: winner.id } });
-    if (previous.get(encodeSessakuPieceKey(set)) !== (external?.isExternallyCompleted === true)) changed.add(encodeSessakuPieceKey(set));
+    const key = encodeSessakuPieceKey(set);
+    const winnerId = winnerIdBySetKey.get(key) ?? null;
+    const current = winnerId ? currentByWinnerId.get(winnerId) === true : false;
+    if (previous.get(key) !== current) changed.add(key);
   }
   await synchronizeSessakuPieceSources(executor, sets, changed);
+  return written;
 }
 
 /**
