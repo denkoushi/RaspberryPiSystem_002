@@ -1,12 +1,14 @@
 import { Prisma } from '@prisma/client';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ query: vi.fn(), policy: vi.fn() }));
+const mocks = vi.hoisted(() => ({ query: vi.fn(), policy: vi.fn(), cachedBaseWhere: vi.fn(), uncachedBaseWhere: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.query } }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: mocks.policy }));
-vi.mock('../row-resolver/index.js', () => ({ resolveLeaderboardMaterializedBaseWhere: async () => Prisma.sql`TRUE` }));
+vi.mock('../leaderboard/leaderboard-materialized-winner-cache.js', () => ({ resolveLeaderboardMaterializedBaseWhereWithGenerationCache: mocks.cachedBaseWhere }));
+vi.mock('../row-resolver/index.js', () => ({ resolveLeaderboardMaterializedBaseWhere: mocks.uncachedBaseWhere }));
 vi.mock('../seiban-machine-display-names.service.js', () => ({ resolveSeibanMachineDisplayNamesBatched: async () => ({ machineNames: {} }) }));
 
+import { prisma } from '../../../lib/prisma.js';
 import {
   getGrindingPlanningBoardSeibanCandidates,
   resolveSeibanCandidateDateRange,
@@ -14,6 +16,25 @@ import {
 } from '../grinding-planning-board-seiban-candidates.service.js';
 
 describe('grinding planning board seiban candidate date range', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.cachedBaseWhere.mockResolvedValue(Prisma.sql`TRUE`);
+  });
+
+  it('uses the generation cache without a token and includes its baseWhere in the SQL', async () => {
+    mocks.cachedBaseWhere.mockResolvedValue(Prisma.sql`"CsvDashboardRow"."id" = ${'cached-winner-id'}`);
+    mocks.policy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: [] });
+    mocks.query.mockResolvedValue([]);
+
+    await getGrindingPlanningBoardSeibanCandidates({ siteKey: 'site-a', category: 'all', now: new Date('2026-09-11') });
+
+    expect(mocks.cachedBaseWhere).toHaveBeenCalledExactlyOnceWith(prisma);
+    expect(mocks.uncachedBaseWhere).not.toHaveBeenCalled();
+    const sql = mocks.query.mock.lastCall![0] as Prisma.Sql;
+    expect(sql.text).toContain('WHERE "CsvDashboardRow"."id" = $');
+    expect(sql.values).toContain('cached-winner-id');
+  });
+
   it.each([{ excluded: [] }, { excluded: ['10', 'MSZ'] }])('scopes all candidates to nonempty, nonexcluded resources: %j', async ({ excluded }) => {
     mocks.policy.mockResolvedValue({ grindingResourceCds: ['305'], cuttingExcludedResourceCds: excluded });
     mocks.query.mockResolvedValue([]);

@@ -15,7 +15,7 @@ import { buildProductionScheduleEffectiveCompletedSql } from './production-sched
 import { buildResourceCategoryCondition } from './production-schedule-query/filters.js';
 import { getResourceCategoryPolicy } from './policies/resource-category-policy.service.js';
 import { resolveSeibanMachineDisplayNamesBatched } from './seiban-machine-display-names.service.js';
-import { resolveLeaderboardMaterializedBaseWhere } from './row-resolver/index.js';
+import { resolveLeaderboardMaterializedBaseWhereWithGenerationCache } from './leaderboard/leaderboard-materialized-winner-cache.js';
 
 type CandidateRow = {
   fseiban: string;
@@ -69,7 +69,7 @@ export async function getGrindingPlanningBoardSeibanCandidates(params: {
   const completionFilter = params.completionFilter ?? 'incomplete';
   const perf = createGrindingPlanningBoardPerformance('grinding-planning-board/seiban-candidates');
   const [baseWhere, policy] = await perf.measure('baseWhereAndPolicy', () => Promise.all([
-    resolveLeaderboardMaterializedBaseWhere(prisma),
+    resolveLeaderboardMaterializedBaseWhereWithGenerationCache(prisma),
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
   const normalizedResource = Prisma.sql`NULLIF(UPPER(BTRIM("CsvDashboardRow"."rowData"->>'FSIGENCD')), '')`;
