@@ -1,6 +1,6 @@
 # Mac から業務用 Pi5 を見張る
 
-- 更新日: 2026-11-01
+- 更新日: 2026-11-13
 - 対象: 運用者の Mac（ログイン中の LaunchAgent）
 - 関連: [M3 計画](../plans/fleet-100-scale-gap-execplan.md)、[システム通知](./kiosk-inquiry-inbox.md#システム通知)
 
@@ -29,6 +29,7 @@ bash scripts/mac/pi5-watchdog/install.sh
 | `PI5_WATCHDOG_CERT_SHA256` | Pi5 証明書全体の SHA-256（16進、`:` 区切り可。信頼できる経路で確認した値だけに更新） |
 | `PI5_WATCHDOG_STATE` | 状態ファイルの絶対パス |
 | `PI5_WATCHDOG_LOG` | ログの絶対パス |
+| `PI5_WATCHDOG_TAILSCALE` | Tailscale CLI のパス。指定時は他へフォールバックしない。未指定時はアプリ内 CLI、PATH の `tailscale` の順 |
 
 Pi5 の証明書は自己署名のため、CA 検証の代わりに証明書全体の SHA-256 を固定値と照合する。
 一致した同じ TLS 接続だけで健康確認を送り、不一致なら失敗として扱う。
@@ -44,8 +45,16 @@ tail -n 20 "$HOME/Library/Logs/raspi-pi5-watchdog.log"
 
 HTTP 200、`status: ok`、`checks.database.status: ok` がすべて必要。
 1回の試行は接続・送受信の各段階が15秒以内、失敗時は30秒後に1回だけ再試行する。
-2回とも失敗すると Mac に通知し、down 継続中は30分ごとに念押しする。
-復旧すると Mac に停止時間（最初の失敗確認から復旧確認まで）を知らせ、SSH で
+2回とも失敗したら Tailscale CLI で経路を確認する。`status --json`（10秒）が取得不能・不正、
+Mac が Running / Online でない場合は `path_issue`。確認先 IP の Peer が見つからない・Offline なら down とする。
+Peer が Online なら `ping -c 3 --timeout 5s`（全体30秒）を実行し、標準出力・標準エラーの
+`pong from` で判定する（DERP 経由の pong は終了コード1でも有効）。pong があれば健康確認を1回だけ追加し、
+成功なら ok / recovered、失敗なら down。pong がなければ `path_issue`。CLI が無い・起動できない場合は従来どおり down とする。
+down 開始時は Mac に通知し、down 継続中は30分ごとに念押しする。
+`path_issue` 中は状態を維持し、停止・念押し通知や Chat 記録を行わない。
+最初の経路不調の確認開始時刻を `suspect_since` に保持し、後で down になった場合の停止開始時刻に使う。
+ok 状態で経路不調が6時間以上続いたら Mac にだけ一度通知し、健康確認が成功したら suspect と通知済み印を消す。
+復旧すると Mac に停止時間（suspect があればその時刻、なければ最初の失敗確認から復旧確認まで）を知らせ、SSH で
 `/opt/RaspberryPiSystem_002/scripts/generate-alert.sh` を呼び、
 `pi5-watchdog-recovered` を既存のファイル取り込み経路へ1件残す。
 API はこの type を Chat 用として扱い、停止時間を表示する。新しい Slack 配送は作らない。
@@ -69,7 +78,8 @@ bash scripts/mac/pi5-watchdog/uninstall.sh
 ## 限界
 
 Mac が眠っている・閉じている・ログアウト中、または Tailscale が切れている間は Pi5 を見張れない。
-Tailscale の切断は Pi5 の停止と区別できず、Mac が動いていれば健康確認失敗として通知する。
+Mac 側の切断や Online Peer への pong 不達は経路不調として扱うため、その間の Pi5 停止は確定できない。
+Peer 不在・Offline、CLI 無し・起動失敗は安全側で down とするため、Pi5 停止以外でも通知されることがある。
 Mac の通知はその Mac でしか見えない。5分間隔のため、確認の間に止まって戻った場合は分からない。
 停止時間は監視から見た概算で、実際の電源断時間ではない。状態を保存してから通知するため、
 通知処理中の Mac の終了や通知拒否などでは通知が届かないことがある。
