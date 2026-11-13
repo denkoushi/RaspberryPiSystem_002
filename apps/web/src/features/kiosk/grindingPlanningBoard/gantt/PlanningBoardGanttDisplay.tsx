@@ -15,7 +15,7 @@ import { PlanningBoardSeibanShelf } from './PlanningBoardSeibanShelf';
 import { PlanningBoardTwoMachineChainLinks, TwoMachineChainContext, type ChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
 import { usePlanningBoardChainPartChange } from './usePlanningBoardChainPartChange';
-import { usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
+import { planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GanttBar } from './planningBoardGanttLayout';
@@ -102,15 +102,16 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const effectiveView = hasPieces ? chainView : 'process';
   const chainContext = useMemo(() => ({ partKey: chainBars.length ? partKey : null, focus, bars: chainBars, view: effectiveView, changeView, register }),
     [chainBars, partKey, focus, effectiveView, changeView, register]);
+  const visibleSeibans = useMemo(() => planningBoardSeibansWithVisibleBars(paneBars.flat()), [paneBars]);
   const seibanColors = useMemo(() => {
     if (!props.colorBySeiban) return undefined;
     const seibanOrder = props.seibanOrder ?? [];
-    const seibans = [...new Set(paneBars.flatMap(bars => bars.flatMap(bar => bar.item.kind === 'test' ? [] : [bar.item.fseiban])))];
+    const seibans = [...visibleSeibans];
     const rank = (seiban: string) => { const index = seibanOrder.indexOf(seiban); return index < 0 ? seibanOrder.length : index; };
     seibans.sort((a, b) => rank(a) - rank(b));
     return new Map(seibans.map(seiban => [seiban, planningBoardSeibanColor(seiban, seibanOrder)] as const));
-  }, [props.colorBySeiban, props.seibanOrder, paneBars]);
-  const shelfColumns = usePlanningBoardSeibanShelf(props.layout, resourceMinutesItems, resources, props.seibanOrder ?? EMPTY_SEIBAN_ORDER, Boolean(props.colorBySeiban));
+  }, [props.colorBySeiban, props.seibanOrder, visibleSeibans]);
+  const shelfColumns = usePlanningBoardSeibanShelf(props.layout, resourceMinutesItems, resources, props.seibanOrder ?? EMPTY_SEIBAN_ORDER, visibleSeibans, Boolean(props.colorBySeiban));
   const { focusedSeiban, onFocusedSeibanChange } = props;
   useEffect(() => {
     if (focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !shelfColumns.some(column => column.seiban === focusedSeiban)) onFocusedSeibanChange(null);
