@@ -306,7 +306,8 @@ export async function getGrindingPlanningBoardDueScope(params: { siteKey: string
   throw new ApiError(409, '表示中に対象データが更新されました。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
 }
 
-type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?: boolean | null; resetRank: boolean; dueOverrideActive: boolean };
+// dueSetAt is null when the request clears the due: clearing returns the card to the Excel date.
+type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?: boolean | null; resetRank: boolean; dueOverrideActive: boolean; dueSetAt: Date | null };
 
 async function readWriteTargets(params: { client: Prisma.TransactionClient; siteKey: string; fseiban: string; scope: GrindingPlanningBoardDueScope; dueDate: Date | null; scopesAfter: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; originalSeibanDue: Date | null }): Promise<TargetWrite[]> {
   const rows = await readTargetRows(params.client, params.fseiban);
@@ -354,6 +355,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
     return params.dueDate ?? noteMap.get(row.id)?.dueDate ?? supplementMap.get(row.id)?.plannedEndDate ?? params.originalSeibanDue ?? null;
   };
   const writes: TargetWrite[] = [];
+  const dueSetAt = params.dueDate != null ? new Date() : null;
   for (const row of rows) {
     const nextParentDate = targetDueForRow(row);
     if (nextParentDate === undefined) continue;
@@ -371,7 +373,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
       ? supplementMap.get(row.id)?.plannedEndDate ?? null
       : nextParentDate ?? base;
     const changed = before?.getTime() !== after?.getTime();
-    writes.push({ dueOverrideActive: active !== undefined, itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
+    writes.push({ dueSetAt, dueOverrideActive: active !== undefined, itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
     }
   }
   if (params.scope.kind === 'processing' && !matchedProcessing) {
@@ -383,8 +385,8 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
 async function writeTargetOverride(client: Prisma.TransactionClient, siteKey: string, target: TargetWrite, current: ProductionScheduleGrindingPlanningBoardOverride | undefined): Promise<void> {
   const nextDueDate = target.nextDueDate === undefined ? current?.overrideDueDate ?? null : target.nextDueDate;
   const nextDueDateCleared = target.dueDateCleared === undefined ? current?.dueDateCleared ?? null : target.dueDateCleared;
-  const overrideDueDateSetAt = new Date();
-  const changed = !target.dueOverrideActive || (target.nextDueDate !== undefined && (current == null ? nextDueDate != null : current.overrideDueDate?.getTime() !== nextDueDate?.getTime())) || (current?.dueDateCleared ?? null) !== nextDueDateCleared;
+  const overrideDueDateSetAt = target.dueSetAt;
+  const changed = (!target.dueOverrideActive && overrideDueDateSetAt != null) || (target.nextDueDate !== undefined && (current == null ? nextDueDate != null : current.overrideDueDate?.getTime() !== nextDueDate?.getTime())) || (current?.dueDateCleared ?? null) !== nextDueDateCleared;
   const nextRank = target.resetRank ? null : current?.alternateRank ?? null;
   if (!changed && nextRank === (current?.alternateRank ?? null)) return;
   await client.productionScheduleGrindingPlanningBoardOverride.upsert({

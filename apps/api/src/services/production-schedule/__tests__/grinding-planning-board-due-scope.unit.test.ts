@@ -72,4 +72,15 @@ describe('scope due override priority', () => {
       expect(data.alternateRank).toBeNull();
     }
   });
+
+  it('clearing a processing due stores no timestamp so the Excel date applies again', async () => {
+    mocks.tx.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([override(new Date('2026-11-09'))]);
+    mocks.tx.productionSchedulePartProcessingType.findMany.mockResolvedValue([{ fhincd: 'P', processingType: 'processing' }]);
+    const before = await getGrindingPlanningBoardDueScope(params);
+    await updateGrindingPlanningBoardDueScope({ ...params, request: {
+      scope: { kind: 'processing', processingType: 'processing' }, dueDate: '', sourceGenerationToken: before.sourceGenerationToken, scopeRevision: before.scopeRevision
+    } });
+    const write = mocks.tx.productionScheduleGrindingPlanningBoardOverride.upsert.mock.calls[0][0];
+    for (const data of [write.create, write.update]) expect(data.overrideDueDateSetAt).toBeNull();
+  });
 });
