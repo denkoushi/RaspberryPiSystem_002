@@ -785,7 +785,7 @@ describe('forward PlanningBoardGanttView', () => {
     });
     it.each([
       ['pinned queue', 'arrivalPending'], ['pinned queue', 'isCompleted'],
-      ['bar', 'arrivalPending'], ['bar', 'isCompleted']
+      ['pinned queue', 'resource'], ['bar', 'arrivalPending'], ['bar', 'isCompleted'], ['bar', 'resource']
     ] as const)('cancels the %s drag when %s changes', (source, state) => {
       const items = entries();
       const values = forwardProps(items);
@@ -795,6 +795,7 @@ describe('forward PlanningBoardGanttView', () => {
       const layout = tickLayout(items);
       const bar = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((entry) => entry.item.itemId === 'b')!;
       if (state === 'arrivalPending') bar.arrivalPending = true;
+      else if (state === 'resource') bar.resource = '306';
       else bar.item = { ...bar.item, isCompleted: true };
       rerender(<PlanningBoardGanttView {...values} layout={layout} />);
       expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();

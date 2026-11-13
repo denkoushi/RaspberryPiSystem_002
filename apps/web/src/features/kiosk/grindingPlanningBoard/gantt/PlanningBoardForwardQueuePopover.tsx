@@ -104,7 +104,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     if (!pending) return;
     const bar = [...(layout.forwardQueue ?? []), ...layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))]
       .find((candidate) => candidate.item.itemId === pending.bar.item.itemId);
-    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted) clearDrag();
+    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted || bar.resource !== pending.bar.resource) clearDrag();
     else pending.bar = bar;
   }, [layout, clearDrag]);
   useEffect(() => () => { clearTimeout(timer.current); clearDrag(); }, [clearDrag]);

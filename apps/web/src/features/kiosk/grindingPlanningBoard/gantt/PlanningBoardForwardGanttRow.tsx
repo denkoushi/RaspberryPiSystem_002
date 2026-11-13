@@ -138,7 +138,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     const pending = drag.current;
     if (!pending) return;
     const bar = row.bars.find((candidate) => candidate.item.itemId === pending.bar.item.itemId);
-    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted) {
+    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted || bar.resource !== pending.bar.resource) {
       cancelLongPress();
       suppressClick.current = true;
       drag.current = null;
