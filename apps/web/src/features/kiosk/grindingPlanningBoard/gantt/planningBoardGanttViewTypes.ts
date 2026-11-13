@@ -1,3 +1,4 @@
+import type { PlanningBoardAllocation } from '../types';
 import type { PlanningBoardTestBarControls } from '../usePlanningBoardTestBars';
 import type { ForwardMove, ForwardReorder } from './PlanningBoardForwardGanttRow';
 import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
@@ -13,6 +14,8 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onClearChain?: () => void;
   onToggleItem: (item: GrindingPlanningBoardBar, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardBar, intent: 'complete' | 'incomplete') => void;
+  chainItems?: readonly GrindingPlanningBoardItem[];
+  chainAllocation?: PlanningBoardAllocation;
   resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   minutesPending?: boolean; minutesError?: boolean;
   onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest[]) => void;

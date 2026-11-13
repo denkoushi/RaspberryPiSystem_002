@@ -11,12 +11,12 @@ import { pageZoom } from '../pageZoom';
 import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { PlanningBoardTestBarStrip } from '../PlanningBoardTestBarStrip';
-import { compareProcessOrder } from '../sortGrindingPlanningBoardItems';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
 import { PlanningBoardChainLinks, planningBoardHasPieceLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
+import { compareChainStripBars, planningBoardChainStripBars } from './planningBoardChainStripBars';
 import { PlanningBoardDragArrow } from './PlanningBoardDragArrow';
 import { PlanningBoardForwardGanttRow, type ForwardMove, type ForwardReorder } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardForwardLaterQueue } from './PlanningBoardForwardLaterQueue';
@@ -71,7 +71,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag; sharedShelfInteraction?: SharedShelfInteraction }>(function PlanningBoardGanttView({
-  sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
+  chainItems, chainAllocation = 'alternate', sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
@@ -259,8 +259,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const focusedPartKey = sharedChain ? sharedChain.partKey : localPartKey;
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const chain = useMemo(() => forward && focusedPartKey ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
-    .filter(isNormalGanttBar).filter((bar) => bar.partKey === focusedPartKey)
-    .sort((a, b) => compareProcessOrder(a.item.processOrder, b.item.processOrder) || (a.item.piecePosition ?? Infinity) - (b.item.piecePosition ?? Infinity) || a.item.itemId.localeCompare(b.item.itemId)) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
+    .filter(isNormalGanttBar).filter((bar) => bar.partKey === focusedPartKey).sort(compareChainStripBars) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
+  const stripChain = useMemo(() => forward && focusedPartKey ? planningBoardChainStripBars(chain, chainItems, focusedPartKey, chainAllocation) : EMPTY_CHAIN, [forward, focusedPartKey, chain, chainItems, chainAllocation]);
   const { view: chainView, changeView: changeChainView } = usePersistedPlanningBoardChainView();
   const linkBars = sharedChain?.bars ?? chain;
   const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
@@ -269,16 +269,16 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const showChainPositions = !sharedChain || chainOwner === singleResourceCd;
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
-    return new Map((showChainPositions ? chain : EMPTY_CHAIN).map(({ item }) => {
+    return new Map((showChainPositions ? stripChain : EMPTY_CHAIN).map(({ item }) => {
       const key = item.kind === 'piece' && item.parentItemId ? item.parentItemId : item.itemId;
       if (!positions.has(key)) positions.set(key, positions.size + 1);
       return [item.itemId, positions.get(key)!];
     }));
-  }, [chain, showChainPositions]);
+  }, [stripChain, showChainPositions]);
   const selectedTest = forward && testBarControls?.selectedBar && (!singleResourceCd || testBarControls.selectedBar.resourceCd === singleResourceCd) ? testBarControls.selectedBar : null;
   const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: (event) => { if (shelfInteractionRef.current?.placeAt(event.clientX, event.clientY)) return; if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
-  const showChain = (chain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
+  const showChain = (stripChain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
   useEffect(() => {
     if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
   }, [showChain]);
@@ -517,10 +517,10 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         onOpenPicker={onOpenSingleResourcePicker} onCapacityChange={onCapacityChange} onBreaksChange={onBreaksChange} /> : null;
   const chainStripView = selectedTest && testBarControls ? <PlanningBoardTestBarStrip ref={chainStrip} item={selectedTest}
         bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} disabled={testBarControls.disabled || interaction.pieceDisabled || interaction.disabled}
-        onComplete={testBarControls.complete} onRemove={testBarControls.remove} onClose={() => testBarControls.select(selectedTest, false)} /> : <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={chain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
+        onComplete={testBarControls.complete} onRemove={testBarControls.remove} onClose={() => testBarControls.select(selectedTest, false)} /> : <PlanningBoardChainStrip selectedItemIds={interaction.selectedItemIds} ref={chainStrip} bottom={valueSheetContainer ? sharedGeometry.chainBottom : legendHeight + sheetHeight} bars={stripChain} resourceNameMap={resourceNameMap} currentItemId={currentItemId}
         onCompleteToggle={onCompleteToggle} completionPendingItemIds={completionPendingItemIds} pieceDisabled={interaction.pieceDisabled} disabled={interaction.disabled}
         chainView={effectiveChainView} onChainViewToggle={hasPieceLinks ? () => (sharedChain?.changeView ?? changeChainView)(effectiveChainView === 'pieces' ? 'process' : 'pieces') : undefined}
-        onStep={scrollToStep} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
+        onStep={({ item }) => { const bar = chain.find((bar) => bar.item.itemId === item.itemId); if (bar) scrollToStep(bar); }} onClose={() => { sharedChain?.focus(null, singleResourceCd); setFocusedPartKey(null); onTestBarAnchorChange?.(null); }} />;
   const unitOpContext = useMemo(() => ({ minutes: resourceMinutes, items: resourceMinutesItems ?? [...currentBars.values()].filter(isNormalGanttBar).map((bar) => bar.item),
     loading: minutesPending || minutesError || !resourceMinutes }), [resourceMinutes, resourceMinutesItems, currentBars, minutesPending, minutesError]);
   return (
