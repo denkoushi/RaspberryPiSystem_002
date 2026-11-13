@@ -133,7 +133,19 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
     globalThis.window.addEventListener('blur', cancel);
     return () => { cancel(); globalThis.window.removeEventListener('blur', cancel); };
   }, [onDragPreview]);
-  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [row, dayWidth, disabled, dragDisabled, frozen, pinMode, onDragPreview]);
+  useEffect(() => { cancelLongPress(); if (drag.current) { suppressClick.current = true; drag.current = null; setHeldItemId(null); onDragPreview(null); } }, [dayWidth, disabled, dragDisabled, frozen, pinMode, resourceView, onDragPreview]);
+  useEffect(() => {
+    const pending = drag.current;
+    if (!pending) return;
+    const bar = row.bars.find((candidate) => candidate.item.itemId === pending.bar.item.itemId);
+    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted) {
+      cancelLongPress();
+      suppressClick.current = true;
+      drag.current = null;
+      setHeldItemId(null);
+      onDragPreview(null);
+    } else pending.bar = bar;
+  }, [row, onDragPreview]);
   const findDrop = (clientX: number, clientY: number, pending: Drag): Drop | null => {
     return findForwardDrop(clientX, clientY, pending.bar, pending.allowed,
       forwardDropBoard(track.current), lanes.current, start, dayWidth);
@@ -327,7 +339,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                   if (!pending || pending.tapCancelled) return;
                   pending.longPressed = true;
                   suppressClick.current = true;
-                  onToggleItem(bar.item, !selected, bar.resource);
+                  onToggleItem(pending.bar.item, !selected, pending.bar.resource);
                 }, 500);
                 event.currentTarget.setPointerCapture?.(event.pointerId);
               }} onPointerMove={move}
