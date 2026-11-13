@@ -42,6 +42,9 @@ describe('buildPlanningBoardSeibanShelf', () => {
     expect(result[0]!.parts[0]!.units[0]![0]!.late).toBe(true);
     expect(result[1]!.late).toBe(false);
   });
+  it('shows the machine name in half-width upper case', () => {
+    expect(buildPlanningBoardSeibanShelf([item('a', { machineName: 'ｍｘ－５２０' })], [], ['021'], colors)[0]!.model).toBe('MX-520');
+  });
   it('keeps unassigned product numbers separate and handles missing quantities and empty input', () => {
     const unknownColors = new Map([['********', 'bg-slate-400']]);
     const items = ['1', '2'].map(productNo => item(productNo, { fseiban: '********', productNo, plannedQuantity: null, parentPlannedQuantity: null }));

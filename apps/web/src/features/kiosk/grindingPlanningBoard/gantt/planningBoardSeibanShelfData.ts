@@ -1,3 +1,4 @@
+import { normalizeMachineName } from '../../productionSchedule/machineName';
 import { compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';
 
 import { planningBoardPartKey } from './planningBoardGanttLayout';
@@ -62,7 +63,7 @@ export function buildPlanningBoardSeibanShelf(
       for (const item of members) {
         const itemDue = resolveGrindingPlanningBoardDueDate(item, 'alternate');
         if (itemDue && (!due || itemDue < due)) due = itemDue;
-        if (!model) model = item.machineName ?? '';
+        if (!model) model = normalizeMachineName(item.machineName);
         const resource = resolveGrindingPlanningBoardResource(item, 'alternate');
         const tile = { item, resource, placed: resource !== null && resources.includes(resource), late: lateIds.has(item.itemId), arrivalPending: pendingIds.has(item.itemId) };
         placed += Number(tile.placed); total++;
