@@ -148,6 +148,69 @@ describe('PlanningBoardGanttView', () => {
     expect(screen.getByTestId('planning-forward-queue-card-other')).not.toHaveClass('border-rose-400');
   });
 
+  it('groups identical late dates and cycles through each seiban before clearing focus', () => {
+    // Deliberately supply B before A: the shared badge must still cycle in seiban order.
+    const items = [item({ itemId: 'b', fhincd: 'P2', fseiban: 'B', lslhSurface: true }),
+      item({ itemId: 'a', fseiban: 'A', lslhSurface: true }),
+      item({ itemId: 'c', fhincd: 'P3', fseiban: 'C', lslhSurface: true })];
+    const rows = new Map(['A', 'B', 'C'].map((fseiban) => [fseiban, {
+      fseiban, outsourceMarks: [], memo: null,
+      surfaceSendOutDates: [{ date: fseiban === 'C' ? '2026-10-13' : '2026-10-12', note: null }]
+    }]));
+    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(items)} colorBySeiban
+        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+    </DScheduleMinutesContext.Provider>);
+    const dates = screen.getByTestId('planning-gantt-late-star-dates');
+    expect([...dates.children].map((chip) => chip.textContent)).toEqual(['★10/12', '★10/13']);
+    const shared = within(dates).getByRole('button', { name: 'A B ★10/12' });
+    const other = within(dates).getByRole('button', { name: 'C ★10/13' });
+    const bar = (id: string) => screen.getByTestId(`planning-gantt-bar-${id}`);
+    expect(screen.getAllByTestId('planning-gantt-late-star')).toHaveLength(3);
+    expect(shared).toHaveAttribute('aria-pressed', 'false');
+    for (const focused of ['a', 'b']) {
+      fireEvent.click(shared);
+      expect(shared).toHaveAttribute('aria-pressed', 'true');
+      expect(shared).toHaveClass('ring-2', 'ring-white');
+      expect(bar(focused)).toHaveClass('ring-[3px]', 'ring-white');
+      for (const id of ['a', 'b', 'c'].filter((id) => id !== focused)) {
+        expect(bar(id)).toHaveClass('opacity-20');
+        expect(bar(id)).not.toHaveClass('ring-[3px]');
+      }
+    }
+    fireEvent.click(shared);
+    expect(shared).toHaveAttribute('aria-pressed', 'false');
+    expect(shared).not.toHaveClass('ring-white');
+    for (const id of ['a', 'b', 'c']) {
+      expect(bar(id)).not.toHaveClass('ring-[3px]');
+      expect(bar(id)).not.toHaveClass('opacity-20');
+    }
+    fireEvent.click(other);
+    expect(bar('c')).toHaveClass('ring-[3px]');
+    fireEvent.click(shared);
+    expect(bar('a')).toHaveClass('ring-[3px]');
+    expect(bar('c')).toHaveClass('opacity-20');
+  });
+
+  it('keeps partially overlapping late-date sets in separate badges', () => {
+    const items = [item({ fseiban: 'A', lslhSurface: true }),
+      item({ itemId: 'b', fhincd: 'P2', fseiban: 'B', lslhSurface: true })];
+    const rows = new Map(['A', 'B'].map((fseiban) => [fseiban, {
+      fseiban, outsourceMarks: [], memo: null,
+      surfaceSendOutDates: (fseiban === 'A' ? ['2026-10-12', '2026-10-11'] : ['2026-10-12']).map((date) => ({ date, note: null }))
+    }]));
+    render(<DScheduleMinutesContext.Provider value={{ dueSource: 'excel', rows }}>
+      <PlanningBoardGanttView {...props(items)} colorBySeiban
+        layout={buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+          dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T01:00:00Z'), scale: 2 })} />
+    </DScheduleMinutesContext.Provider>);
+    const dates = screen.getByTestId('planning-gantt-late-star-dates');
+    expect([...dates.children].map((chip) => chip.textContent)).toEqual(['★10/11 10/12', '★10/12']);
+    expect(within(dates).getByRole('button', { name: 'A ★10/11 10/12' })).toBeInTheDocument();
+    expect(within(dates).getByRole('button', { name: 'B ★10/12' })).toBeInTheDocument();
+  });
+
   it.each(['backward', 'forward'] as const)('jumps to the starred bar in the pressed machine row, not the seiban earliest bar, in %s mode', (mode) => {
     // Same seiban: an earlier unstarred part on 503 and the starred LSLH part on 021, queued behind another seiban.
     const items = [item({ itemId: 'early', fhincd: 'P0', productNo: '9', originalResourceCd: '503', originalDueDate: '2026-10-15', requiredMinutes: 60 }),

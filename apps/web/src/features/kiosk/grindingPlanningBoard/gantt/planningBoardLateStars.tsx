@@ -23,14 +23,25 @@ export function usePlanningBoardLateStars(bars: readonly GanttBar[], today: numb
         datesBySeiban.set(bar.item.fseiban, dates.add(date));
       }
     }
-    const groups = [...datesBySeiban].map(([fseiban, dates]) => ({ fseiban, dates: [...dates].sort(), itemIds: [...itemIdsBySeiban.get(fseiban)!] }))
-      .sort((a, b) => a.dates[0]!.localeCompare(b.dates[0]!) || a.fseiban.localeCompare(b.fseiban));
+    const groupsByDates = new Map<string, { dates: string[]; seibans: { fseiban: string; itemIds: string[] }[] }>();
+    for (const [fseiban, dates] of [...datesBySeiban].sort(([a], [b]) => a.localeCompare(b))) {
+      const sortedDates = [...dates].sort();
+      const key = sortedDates.join(',');
+      const group = groupsByDates.get(key) ?? { dates: sortedDates, seibans: [] };
+      group.seibans.push({ fseiban, itemIds: [...itemIdsBySeiban.get(fseiban)!] });
+      groupsByDates.set(key, group);
+    }
+    const groups = [...groupsByDates.values()]
+      .sort((a, b) => a.dates[0]!.localeCompare(b.dates[0]!) || a.seibans[0]!.fseiban.localeCompare(b.seibans[0]!.fseiban));
     return { itemIds, groups };
   }, [bars, rows, today]);
 }
 
 /** itemIds are the starred bars in this row, so pressing the dates jumps within the row rather than to the seiban's earliest bar. */
-export type PlanningBoardLateStarGroup = { fseiban: string; dates: readonly string[]; itemIds?: readonly string[] };
+export type PlanningBoardLateStarGroup = {
+  dates: readonly string[];
+  seibans: readonly { fseiban: string; itemIds?: readonly string[] }[];
+};
 export type PlanningBoardToggleSeiban = (fseiban: string, itemIds?: readonly string[]) => void;
 
 export const LATE_STAR_BUTTON_HEIGHT = 28;
@@ -61,18 +72,22 @@ export function estimateLateStarLabelHeight(groups: readonly PlanningBoardLateSt
   return 32 + lines * lineHeight + Math.max(0, lines - 1) * LATE_STAR_GAP;
 }
 
-/** 機械名の欄に、★が付いた製番ごとの処理出し日を並べる。押すとその製番のバーだけを光らせる（1つだけ）。 */
+/** 機械名の欄に、同じ処理出し日をまとめて並べる。押すと札内の製番を順に光らせ、最後に解除する。 */
 export function PlanningBoardLateStarDates({ groups, focusedSeiban = null, onToggleSeiban }: {
   groups: readonly PlanningBoardLateStarGroup[]; focusedSeiban?: string | null; onToggleSeiban?: PlanningBoardToggleSeiban;
 }) {
   return groups.length > 0 && <span data-testid="planning-gantt-late-star-dates" className="flex flex-wrap" style={{ gap: LATE_STAR_GAP }}>
-    {groups.map(({ fseiban, dates, itemIds }) => {
+    {groups.map(({ seibans, dates }) => {
       const text = `★${dates.map(shortDate).join(' ')}`;
+      const focusedIndex = seibans.findIndex(({ fseiban }) => fseiban === focusedSeiban);
+      const pressed = focusedIndex >= 0;
+      const target = seibans[Math.min(focusedIndex + 1, seibans.length - 1)]!;
+      const key = dates.join(',');
       return onToggleSeiban
-        ? <button key={fseiban} type="button" aria-pressed={focusedSeiban === fseiban} aria-label={`${fseiban} ${text}`} onClick={() => onToggleSeiban(fseiban, itemIds)}
+        ? <button key={key} type="button" aria-pressed={pressed} aria-label={`${seibans.map(({ fseiban }) => fseiban).join(' ')} ${text}`} onClick={() => onToggleSeiban(target.fseiban, target.itemIds)}
           className={clsx('rounded bg-violet-500/25 px-1.5 font-mono text-[12px] font-bold text-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300',
-            focusedSeiban === fseiban && 'ring-2 ring-white')} style={{ minHeight: LATE_STAR_BUTTON_HEIGHT }}>{text}</button>
-        : <span key={fseiban} style={{ lineHeight: `${LATE_STAR_TEXT_HEIGHT}px` }} className="rounded bg-violet-500/25 px-1 font-mono text-[10px] text-violet-300">{text}</span>;
+            pressed && 'ring-2 ring-white')} style={{ minHeight: LATE_STAR_BUTTON_HEIGHT }}>{text}</button>
+        : <span key={key} style={{ lineHeight: `${LATE_STAR_TEXT_HEIGHT}px` }} className="rounded bg-violet-500/25 px-1 font-mono text-[10px] text-violet-300">{text}</span>;
     })}
   </span>;
 }
