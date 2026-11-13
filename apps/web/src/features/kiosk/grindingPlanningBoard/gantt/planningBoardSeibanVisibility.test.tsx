@@ -96,3 +96,11 @@ it('excludes test bars and applies the shared machine selection matching', () =>
   expect([...planningBoardSeibansWithVisibleBars(bars, '305')]).toEqual(['A']);
   expect([...planningBoardSeibansWithVisibleBars(bars, '305+306')]).toEqual(['A', 'B']);
 });
+
+it('keeps a literal machine code containing + as one machine', () => {
+  const bars = [
+    { resource: '021+022', item: { kind: 'row', fseiban: 'L' } },
+    { resource: '021', item: { kind: 'row', fseiban: 'M' } }
+  ] as GanttBar[];
+  expect([...planningBoardSeibansWithVisibleBars(bars, '021+022')]).toEqual(['L', 'M']);
+});

@@ -13,7 +13,7 @@ import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 const EMPTY_COLUMNS: SeibanShelfColumn[] = [];
 
 export function planningBoardBarsOnResource(bars: readonly GanttBar[], resource?: string | null): NormalGanttBar[] {
-  return bars.filter(isNormalGanttBar).filter(bar => !resource || planningBoardResourceMatches(resource, bar.resource));
+  return bars.filter(isNormalGanttBar).filter(bar => !resource || bar.resource === resource || planningBoardResourceMatches(resource, bar.resource));
 }
 
 export function planningBoardSeibansWithVisibleBars(bars: readonly GanttBar[], resource?: string | null): ReadonlySet<string> {
