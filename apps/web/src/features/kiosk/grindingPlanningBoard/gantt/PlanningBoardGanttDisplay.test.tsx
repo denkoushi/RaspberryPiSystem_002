@@ -52,9 +52,10 @@ it.each(['021', '022'])('clears both panes from blank space in %s', resource => 
   try {
     const values = props('forward');
     const clear = vi.fn();
+    const onChainPartChange = vi.fn();
     function Board() {
       const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-      return <PlanningBoardGanttDisplay {...values} selectedItemIds={selected}
+      return <PlanningBoardGanttDisplay {...values} onChainPartChange={onChainPartChange} selectedItemIds={selected}
         onToggleItem={(item) => setSelected(new Set([item.itemId]))}
         onClearSelection={() => { clear(); setSelected(new Set()); }} />;
     }
@@ -62,11 +63,13 @@ it.each(['021', '022'])('clears both panes from blank space in %s', resource => 
     const upper = within(screen.getByRole('region', { name: '021' }));
     const bar = upper.getByTestId('planning-gantt-bar-item-0000');
     fireEvent.click(bar);
+    expect(onChainPartChange).toHaveBeenLastCalledWith(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fseiban);
     expect(bar).toHaveClass('outline-emerald-300');
     expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
     const blank = within(screen.getByRole('region', { name: resource })).getByLabelText('ガントの日付と工程');
     fireEvent.pointerDown(blank, { button: 0, clientX: 100, clientY: 20 });
     fireEvent.pointerUp(blank, { button: 0, clientX: 100, clientY: 20 });
+    expect(onChainPartChange).toHaveBeenLastCalledWith(null);
     expect(clear).toHaveBeenCalledOnce();
     expect(bar).not.toHaveClass('outline-emerald-300');
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();

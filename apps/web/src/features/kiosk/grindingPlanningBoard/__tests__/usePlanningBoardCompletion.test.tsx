@@ -3,6 +3,7 @@ import { act, render, renderHook } from '@testing-library/react';
 import { memo } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { productionScheduleQueryKeys } from '../../../../api/queryKeys/productionSchedule';
 import { usePlanningBoardCompletion } from '../usePlanningBoardCompletion';
 
 import type { GrindingPlanningBoardItem, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
@@ -231,7 +232,7 @@ describe('usePlanningBoardCompletion piece overlays', () => {
     const h = setup();
     await act(async () => { await h.result.current.toggleCompletion(piece('a'), 'complete'); });
     expect(h.refetch).toHaveBeenCalledTimes(1);
-    expect(h.invalidate).not.toHaveBeenCalled();
+    expect(h.invalidate).toHaveBeenCalledExactlyOnceWith({ queryKey: [...productionScheduleQueryKeys.grindingPlanningBoardAll, 'chain-completed'] });
   });
 });
 

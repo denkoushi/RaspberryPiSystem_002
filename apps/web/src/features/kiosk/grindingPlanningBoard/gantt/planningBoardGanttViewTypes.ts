@@ -14,6 +14,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onClearChain?: () => void;
   onToggleItem: (item: GrindingPlanningBoardBar, selected: boolean) => void;
   onCompleteToggle?: (item: GrindingPlanningBoardBar, intent: 'complete' | 'incomplete') => void;
+  onChainPartChange?: (fseiban: string | null) => void;
   chainItems?: readonly GrindingPlanningBoardItem[];
   chainAllocation?: PlanningBoardAllocation;
   resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;

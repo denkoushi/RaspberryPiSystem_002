@@ -7,6 +7,7 @@ import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSc
 import { reportSessakuPieceError } from '../errorTelemetry';
 
 import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { planningBoardChainCompletedKey } from './usePlanningBoardChainItems';
 
 import type { CompletionOverlay, FeedbackKind } from './planningBoardPageModel';
 import type { PlanningBoardStatus } from './types';
@@ -157,7 +158,10 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
         const overlay = current.get(item.itemId);
         return overlay ? new Map(current).set(item.itemId, { ...overlay, item: savedItem, saved: true }) : current;
       });
-      if (item.kind === 'piece' || enabled) await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
+      if (item.kind === 'piece' || enabled) {
+        void queryClient.invalidateQueries({ queryKey: planningBoardChainCompletedKey });
+        await refetch({ loadAlreadyInvalidated: true }).catch(() => undefined);
+      }
       else void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
       if (generation !== gate.generation()) return;
       if (opNo == null ? intent === 'complete' : savedItem.isCompleted) onCompleted(savedItem, opNo);

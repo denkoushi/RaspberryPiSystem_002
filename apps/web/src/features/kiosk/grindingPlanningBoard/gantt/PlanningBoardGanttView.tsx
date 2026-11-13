@@ -34,6 +34,7 @@ import { buildSingleResourceWindows, foldSingleResourceRows, singleResourceWindo
 import { TwoMachineChainContext, useTwoMachineChainPane } from './PlanningBoardTwoMachineChainLinks';
 import { PlanningBoardUnitOpContext } from './PlanningBoardUnitOpEditor';
 import { usePersistedPlanningBoardChainView } from './usePersistedPlanningBoardChainView';
+import { usePlanningBoardChainPartChange, usePlanningBoardChainVisibility } from './usePlanningBoardChainPartChange';
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
@@ -71,7 +72,7 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 }
 
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag; sharedShelfInteraction?: SharedShelfInteraction }>(function PlanningBoardGanttView({
-  chainItems, chainAllocation = 'alternate', sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
+  onChainPartChange, chainItems, chainAllocation = 'alternate', sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
@@ -279,9 +280,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const blankTap = usePlanningBoardGanttBlankTap({ disabled: Boolean(interaction.pinMode), onBlankTap: (event) => { if (shelfInteractionRef.current?.placeAt(event.clientX, event.clientY)) return; if (!interaction.selectedItemIds.size && !focusedPartKey && !testBarControls?.selectedBar && !(chainOwner && sharedChainHeight > 0)) return;
     if (interaction.selectedItemIds.size) onClearSelection?.(); setFocusedPartKey(null); setCurrentItemId(null); onClearChain?.(); onTestBarAnchorChange?.(null); if (testBarControls?.selectedBar) testBarControls.select(testBarControls.selectedBar, false); } });
   const showChain = (stripChain.length > 0 || selectedTest !== null) && !interaction.pinMode && (chainOwner === undefined || chainOwner === singleResourceCd);
-  useEffect(() => {
-    if (!showChain) { setFocusedPartKey(null); setCurrentItemId(null); }
-  }, [showChain]);
+  usePlanningBoardChainPartChange(showChain && !selectedTest ? chain[0]?.item.fseiban ?? null : null, onChainPartChange);
+  usePlanningBoardChainVisibility(showChain, setFocusedPartKey, setCurrentItemId);
   useLayoutEffect(() => {
     const element = chainStrip.current;
     if (!showChain || !element) return;
