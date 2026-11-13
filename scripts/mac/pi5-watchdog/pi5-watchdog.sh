@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import shutil
 import ssl
 import subprocess
 import time
@@ -94,6 +95,47 @@ def record_recovery(message):
         notify('Pi5は戻りましたが、フローティングChatに残せませんでした。')
 
 
+def check_path():
+    if 'PI5_WATCHDOG_TAILSCALE' in os.environ:
+        cli = os.environ['PI5_WATCHDOG_TAILSCALE']
+    else:
+        app = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+        cli = app if os.access(app, os.X_OK) else shutil.which('tailscale')
+    if not cli:
+        return 'down'
+    try:
+        result = subprocess.run([cli, 'status', '--json'], capture_output=True, timeout=10)
+    except OSError:
+        return 'down'
+    except subprocess.TimeoutExpired:
+        return 'path_issue'
+    try:
+        status = json.loads(result.stdout)
+        if (result.returncode != 0 or not isinstance(status, dict)
+                or status.get('BackendState') != 'Running'
+                or not isinstance(status.get('Self'), dict)
+                or status['Self'].get('Online') is not True):
+            return 'path_issue'
+        host = urlsplit(URL).hostname
+        peers = status.get('Peer', {})
+        peer = next((p for p in peers.values() if isinstance(p, dict)
+                     and host in p.get('TailscaleIPs', [])), None)
+    except (ValueError, AttributeError, TypeError):
+        return 'path_issue'
+    if peer is None or peer.get('Online') is not True:
+        return 'down'
+    try:
+        result = subprocess.run([cli, 'ping', '-c', '3', '--timeout', '5s', host],
+                                capture_output=True, timeout=30)
+        output = result.stdout + result.stderr
+    except OSError:
+        return 'down'
+    except subprocess.TimeoutExpired as error:
+        output = (error.stdout or b'') + (error.stderr or b'')
+    # DERP pong can be followed by rc=1 when no direct connection is established.
+    return 'pong' if b'pong from' in output else 'path_issue'
+
+
 # Also protect manual runs from racing the LaunchAgent. OS releases the lock on exit.
 with STATE.with_suffix('.lock').open('a') as lock:
     try:
@@ -105,6 +147,9 @@ with STATE.with_suffix('.lock').open('a') as lock:
         if (state.get('status') not in ('ok', 'down')
                 or not isinstance(state.get('down_since'), (int, float))
                 or not isinstance(state.get('last_notice'), (int, float))):
+            raise ValueError('invalid state')
+        if (('suspect_since' in state and type(state['suspect_since']) not in (int, float))
+                or ('path_notice_sent' in state and type(state['path_notice_sent']) is not bool)):
             raise ValueError('invalid state')
     except FileNotFoundError:
         state = {'status': 'ok', 'down_since': 0, 'last_notice': 0}
@@ -119,12 +164,25 @@ with STATE.with_suffix('.lock').open('a') as lock:
     if not ok:
         subprocess.run(['sleep', '30'], check=True)
         ok = healthy()
+    path_issue = False
+    if not ok:
+        path = check_path()
+        path_issue = path == 'path_issue'
+        if path == 'pong':
+            ok = healthy()
     now = time.time()
     event = 'ok' if ok else 'down'
     message = None
     recovered = False
-    if not ok and state['status'] == 'ok':
-        state = {'status': 'down', 'down_since': first_check, 'last_notice': now}
+    if path_issue:
+        event = 'path_issue'
+        state.setdefault('suspect_since', first_check)
+        if (state['status'] == 'ok' and now - state['suspect_since'] >= 21600
+                and not state.get('path_notice_sent', False)):
+            state['path_notice_sent'] = True
+            message = 'Macから業務用Pi5へつながりにくい状態が続いています(Pi5の停止ではない可能性が高い)。'
+    elif not ok and state['status'] == 'ok':
+        state = {'status': 'down', 'down_since': state.get('suspect_since', first_check), 'last_notice': now}
         event = 'down_started'
         message = '業務用Pi5の健康確認に2回続けて失敗しました。停止または接続・DBの不調が疑われます。'
     elif not ok and now - state['last_notice'] >= 1800:
@@ -137,6 +195,9 @@ with STATE.with_suffix('.lock').open('a') as lock:
         state = {'status': 'ok', 'down_since': 0, 'last_notice': 0}
         event = 'recovered'
         recovered = True
+    if ok:
+        state.pop('suspect_since', None)
+        state.pop('path_notice_sent', None)
     temporary = STATE.with_suffix('.tmp')
     temporary.write_text(json.dumps(state) + '\n')
     temporary.replace(STATE)

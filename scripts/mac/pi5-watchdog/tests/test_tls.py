@@ -53,7 +53,8 @@ class TlsTest(unittest.TestCase):
                     stub.chmod(0o755)
                 env = dict(os.environ, HOME=str(home), PATH=str(bin_dir) + os.pathsep + os.environ['PATH'],
                            PI5_WATCHDOG_STATE=str(home / 'state.json'), PI5_WATCHDOG_LOG=str(home / 'log'),
-                           PI5_WATCHDOG_URL=f'https://localhost:{server.server_port}/health', PI5_WATCHDOG_CERT_SHA256=pin)
+                           PI5_WATCHDOG_URL=f'https://localhost:{server.server_port}/health', PI5_WATCHDOG_CERT_SHA256=pin,
+                           PI5_WATCHDOG_TAILSCALE=str(home / 'no-tailscale'))
                 # No injection from the command-stub test environment.
                 env.pop('PYTHONPATH', None)
                 for requested_pin, status in [(pin, 'ok'), ('0' * 64, 'down'), (pin, 'ok')]:
