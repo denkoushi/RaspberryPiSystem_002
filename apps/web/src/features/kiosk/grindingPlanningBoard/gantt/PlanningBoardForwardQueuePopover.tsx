@@ -87,7 +87,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     cancelHide();
     if (!pinned.current && !drag.current) timer.current = setTimeout(close, 300);
   }, [cancelHide, close]);
-  const closeUnlessPinned = useCallback(() => { if (!pinned.current) close(); }, [close]);
+  const closeUnlessPinned = useCallback(() => { if (!pinned.current && !drag.current) close(); }, [close]);
   useImperativeHandle(ref, () => ({
     show: (bar, anchor, fixed = false) => {
       if (pinned.current && !fixed) return;
@@ -98,7 +98,15 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     .find((bar) => bar.item.itemId === open.itemId);
   useEffect(() => { closeUnlessPinned(); }, [layout, scale, closeUnlessPinned]);
   useEffect(() => { if (open && !openBar) close(); }, [open, openBar, close]);
-  useEffect(() => { clearDrag(); }, [layout, disabled, dragDisabled, resourceView, clearDrag]);
+  useEffect(() => { clearDrag(); }, [disabled, dragDisabled, resourceView, clearDrag]);
+  useEffect(() => {
+    const pending = drag.current;
+    if (!pending) return;
+    const bar = [...(layout.forwardQueue ?? []), ...layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))]
+      .find((candidate) => candidate.item.itemId === pending.bar.item.itemId);
+    if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted || bar.resource !== pending.bar.resource) clearDrag();
+    else pending.bar = bar;
+  }, [layout, clearDrag]);
   useEffect(() => () => { clearTimeout(timer.current); clearDrag(); }, [clearDrag]);
   useEffect(() => {
     if (!open) return;
@@ -218,7 +226,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           if (event.pointerType === 'touch') longPress.current = setTimeout(() => {
             if (!drag.current) return;
             drag.current.ready = true;
-            onDragPreview({ source: 'queue', bar, x: drag.current.x, y: drag.current.y, allowed: drag.current.allowed, drop: null });
+            onDragPreview({ source: 'queue', bar: drag.current.bar, x: drag.current.x, y: drag.current.y, allowed: drag.current.allowed, drop: null });
             element.setPointerCapture?.(event.pointerId);
             element.style.touchAction = 'none';
           }, 220);

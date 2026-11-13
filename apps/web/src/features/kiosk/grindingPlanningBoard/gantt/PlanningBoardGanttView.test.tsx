@@ -803,6 +803,68 @@ describe('forward PlanningBoardGanttView', () => {
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
+  describe('dragging across layout refreshes', () => {
+    const entries = () => [item({ requiredMinutes: 60, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 })];
+    const tickLayout = (items: GrindingPlanningBoardItem[]) => buildPlanningBoardGanttLayout({ items,
+      mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
+      dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:30+09:00'), scale: 2 });
+    const startDrag = (source: 'pinned queue' | 'hover queue' | 'bar') => {
+      if (source === 'bar') {
+        const bar = screen.getByTestId('planning-gantt-bar-b');
+        fireEvent.pointerDown(bar, { pointerId: 1, clientX: 100, clientY: 100, button: 0 });
+        fireEvent.pointerMove(bar, { pointerId: 1, clientX: 10, clientY: 100 });
+        return bar;
+      }
+      // Keep the anchor while removing b so the removal test checks the dragged item independently.
+      fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+      if (source === 'pinned queue') fireEvent.pointerEnter(screen.getByRole('region', { name: /の次にやる順/ }), { pointerType: 'mouse' });
+      return dragQueue('b', 10);
+    };
+    it.each(['pinned queue', 'hover queue', 'bar'] as const)('continues the %s drag after a 30-second tick', (source) => {
+      const items = entries();
+      const values = forwardProps(items);
+      const { rerender } = render(<PlanningBoardGanttView {...values} />);
+      const target = startDrag(source);
+      expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+      rerender(<PlanningBoardGanttView {...values} layout={tickLayout(items)} />);
+      expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+      fireEvent.pointerMove(target, { pointerId: 1, clientX: 0, clientY: 100 });
+      expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+      fireEvent.pointerUp(target, { pointerId: 1, clientX: 0, clientY: 100 });
+      expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
+      expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
+        expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: 'a' }), 'before');
+    });
+    it.each(['pinned queue', 'bar'] as const)('cancels the %s drag when the dragged item disappears', (source) => {
+      const items = entries();
+      const values = forwardProps(items);
+      const { rerender } = render(<PlanningBoardGanttView {...values} />);
+      startDrag(source);
+      expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+      rerender(<PlanningBoardGanttView {...values} layout={tickLayout(items.filter((entry) => entry.itemId !== 'b'))} />);
+      expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
+      if (source === 'pinned queue') expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
+      expect(values.onResourceReorder).not.toHaveBeenCalled();
+    });
+    it.each([
+      ['pinned queue', 'arrivalPending'], ['pinned queue', 'isCompleted'],
+      ['pinned queue', 'resource'], ['bar', 'arrivalPending'], ['bar', 'isCompleted'], ['bar', 'resource']
+    ] as const)('cancels the %s drag when %s changes', (source, state) => {
+      const items = entries();
+      const values = forwardProps(items);
+      const { rerender } = render(<PlanningBoardGanttView {...values} />);
+      startDrag(source);
+      expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
+      const layout = tickLayout(items);
+      const bar = layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars)).find((entry) => entry.item.itemId === 'b')!;
+      if (state === 'arrivalPending') bar.arrivalPending = true;
+      else if (state === 'resource') bar.resource = '306';
+      else bar.item = { ...bar.item, isCompleted: true };
+      rerender(<PlanningBoardGanttView {...values} layout={layout} />);
+      expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
+      expect(values.onResourceReorder).not.toHaveBeenCalled();
+    });
+  });
   function BlankBoard({ clear, mode = 'forward', pinMode = false }: { clear: () => void; mode?: 'forward' | 'backward'; pinMode?: boolean }) {
     const items = [item({ requiredMinutes: 60 }), item({ itemId: 'b', processOrder: '20', requiredMinutes: 60 })];
     const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -2597,13 +2659,22 @@ describe('forward PlanningBoardGanttView', () => {
       expect(card.style.touchAction).toBe('');
     });
 
-    it.each(['pointercancel', 'lostpointercapture', 'layout', 'unmount'])('stops on %s', (reason) => {
-      const { values, strip, card, frame, begin, rerender, unmount } = setup();
+    it('keeps scrolling across a layout rebuild', () => {
+      const { values, strip, frame, begin, rerender } = setup();
       begin(400);
       frame();
       expect(strip.scrollLeft).toBe(24);
-      if (reason === 'layout') rerender(<PlanningBoardGanttView {...values} layout={{ ...values.layout }} />);
-      else if (reason === 'unmount') unmount();
+      rerender(<PlanningBoardGanttView {...values} layout={{ ...values.layout }} />);
+      frame();
+      expect(strip.scrollLeft).toBeGreaterThan(24);
+    });
+
+    it.each(['pointercancel', 'lostpointercapture', 'unmount'])('stops on %s', (reason) => {
+      const { strip, card, frame, begin, unmount } = setup();
+      begin(400);
+      frame();
+      expect(strip.scrollLeft).toBe(24);
+      if (reason === 'unmount') unmount();
       else if (reason === 'pointercancel') fireEvent.pointerCancel(card);
       else fireEvent.lostPointerCapture(card);
       frame(3);
