@@ -82,7 +82,7 @@ export async function writePieceOpSplit(tx: Prisma.TransactionClient, c: PieceOp
           const now = new Date();
           state.overrides.set(addedId, { id: randomUUID(), csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
             siteKey: site, itemKey: addedId, overrideResourceCd: original.effectiveResourceCd,
-            overrideDueDate: inherited?.overrideDueDate ?? null, dueDateCleared: inherited?.dueDateCleared ?? null,
+            overrideDueDate: inherited?.overrideDueDate ?? null, overrideDueDateSetAt: inherited?.overrideDueDateSetAt ?? null, dueDateCleared: inherited?.dueDateCleared ?? null,
             orderPinned: inherited?.orderPinned ?? false, specialDueKind: inherited?.specialDueKind ?? null,
             specialDueExpiresAt: inherited?.specialDueExpiresAt ?? null,
             alternateRank: original.alternateRank == null ? null : original.alternateRank + 1,

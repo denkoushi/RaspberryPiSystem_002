@@ -17,7 +17,8 @@ import { getDueManagementSeibanDetailWithScope } from './due-management-location
 import { presentDueManagementSeibanDetail, type PartEffectiveDueDate, type PresentedDueManagementSeibanDetail } from './due-management-detail-presentation.service.js';
 import { isValidDueDateText, listSeibanRowIdsForWriteback } from './due-date-writeback.service.js';
 import { readLeaderboardShellSnapshotGenerationToken } from './leaderboard/leaderboard-shell-snapshot-generation.js';
-import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
+import { resolveBoardDueDate } from './d-schedule-minutes/resolve-board-due-date.js';
+import { buildGrindingPlanningBoardRowItemId, isGrindingPlanningBoardDueOverrideActive } from './grinding-planning-board-projection.js';
 import { ensurePlanningBoardState, lockState } from './grinding-planning-board/state.js';
 import { acquireProductionScheduleParentRowLockInTransaction } from './order-assignment/production-schedule-parent-row-lock.service.js';
 
@@ -27,6 +28,19 @@ type TargetRow = { id: string; rowData: Prisma.JsonValue; updatedAt: Date | null
 type ScopeRow = ProductionScheduleGrindingPlanningBoardDueScope;
 type OriginalProcessingRow = { processingType: string; dueDate: Date; updatedAt: Date };
 type TargetMetadata = { rowId: string; dueDate: Date | null; processingType: string | null; noteUpdatedAt: Date | null; plannedEndDate: Date | null; supplementUpdatedAt: Date | null; completed: boolean; progressUpdatedAt: Date | null; externalCompleted: boolean; externalUpdatedAt: Date | null };
+type ExcelDue = { partsCompleteDate: Date | null; excelChangedAt: Date | null };
+
+async function readExcelDue(client: DbClient, fseiban: string): Promise<ExcelDue | null> {
+  return client.productionScheduleDScheduleMinutes.findUnique({
+    where: { csvDashboardId_fseiban: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban } },
+    select: { partsCompleteDate: true, excelChangedAt: true }
+  });
+}
+
+function activeDueOverride(override: ProductionScheduleGrindingPlanningBoardOverride | undefined, excelDue: ExcelDue | null) {
+  return isGrindingPlanningBoardDueOverrideActive({ excelDueDate: excelDue?.partsCompleteDate, excelChangedAt: excelDue?.excelChangedAt, overrideDueDateSetAt: override?.overrideDueDateSetAt }) ? override : undefined;
+}
+
 type TargetBaseDue = { dueDate: Date | null; plannedEndDate: Date | null };
 type ProcessingMapping = { fhincd: string; processingType: string; updatedAt: Date | null };
 
@@ -86,6 +100,7 @@ async function readTargetOverrideRows(client: DbClient, siteKey: string, rows: r
 
 function buildScopeRevision(params: {
   sourceGenerationToken: string;
+  excelDue: ExcelDue | null;
   pieceSets: ReadonlyMap<string, SessakuPieceSet>;
   state: { version: number; updatedAt: Date | null } | null;
   scopes: readonly ScopeRow[];
@@ -97,6 +112,7 @@ function buildScopeRevision(params: {
   metadata: readonly TargetMetadata[];
 }): string {
   const payload = {
+    excelDue: params.excelDue,
     pieceSets: [...params.pieceSets.values()].map((set) => ({ id: set.id, version: set.version })),
     sourceGenerationToken: params.sourceGenerationToken,
     boardVersion: params.state?.version ?? 0,
@@ -112,9 +128,10 @@ function buildScopeRevision(params: {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 }
 
-async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; pieceSets: Map<string, SessakuPieceSet>; rows: TargetRow[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
+async function readSnapshotParts(params: { client: DbClient; siteKey: string; fseiban: string; sourceGenerationToken?: string }): Promise<{ excelDue: ExcelDue | null; sourceGenerationToken: string; scopeRevision: string; scopes: ScopeRow[]; overrides: ProductionScheduleGrindingPlanningBoardOverride[]; pieceSets: Map<string, SessakuPieceSet>; rows: TargetRow[]; baseDueByRowId: Map<string, TargetBaseDue>; originalProcessing: Map<string, Date>; originalSeiban: { dueDate: Date | null; updatedAt: Date } | null }> {
   const sourceGenerationToken = params.sourceGenerationToken ?? await readLeaderboardShellSnapshotGenerationToken();
-  const [state, scopes, rows, originalProcessing, originalSeiban] = await Promise.all([
+  const [excelDue, state, scopes, rows, originalProcessing, originalSeiban] = await Promise.all([
+    readExcelDue(params.client, params.fseiban),
     params.client.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey } },
       select: { version: true, updatedAt: true }
@@ -150,8 +167,9 @@ async function readSnapshotParts(params: { client: DbClient; siteKey: string; fs
   const pieceSets = await readSessakuPieceSets(params.client, rows);
   const overrides = await readTargetOverrideRows(params.client, params.siteKey, rows, pieceSets);
   return {
+    excelDue,
     sourceGenerationToken,
-    scopeRevision: buildScopeRevision({ pieceSets, sourceGenerationToken, state, scopes, overrides, rows, originalProcessing, originalSeiban, processingMappings, metadata }),
+    scopeRevision: buildScopeRevision({ excelDue, pieceSets, sourceGenerationToken, state, scopes, overrides, rows, originalProcessing, originalSeiban, processingMappings, metadata }),
     scopes,
     overrides,
     rows,
@@ -189,7 +207,7 @@ function toDateTextDetail(detail: PresentedDueManagementSeibanDetail) {
   };
 }
 
-function buildAlternateDetail(params: { pieceSets: ReadonlyMap<string, SessakuPieceSet>; original: DueManagementSeibanDetail; scopes: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; rows: readonly TargetRow[]; baseDueByRowId: ReadonlyMap<string, TargetBaseDue>; overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[] }): PresentedDueManagementSeibanDetail {
+function buildAlternateDetail(params: { excelDue: ExcelDue | null; pieceSets: ReadonlyMap<string, SessakuPieceSet>; original: DueManagementSeibanDetail; scopes: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; rows: readonly TargetRow[]; baseDueByRowId: ReadonlyMap<string, TargetBaseDue>; overrides: readonly ProductionScheduleGrindingPlanningBoardOverride[] }): PresentedDueManagementSeibanDetail {
   const original = cloneDetail(params.original);
   const rowById = new Map(params.rows.map((row) => [row.id, row]));
   const overrideByItemKey = new Map(params.overrides.map((row) => [row.itemKey, row]));
@@ -219,7 +237,7 @@ function buildAlternateDetail(params: { pieceSets: ReadonlyMap<string, SessakuPi
       const parent = overrideByItemKey.get(buildGrindingPlanningBoardRowItemId(asRowData(sourceRow.rowData)));
       const pieces = params.pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(sourceRow.rowData)))?.pieces ?? [];
       return pieces.length ? pieces.flatMap((piece) => sessakuPieceItemIds(piece).map((itemId) => overrideByItemKey.get(itemId) ?? parent)) : [parent];
-    });
+    }).map((override) => activeDueOverride(override, params.excelDue));
     const itemDates = processOverrides.map((override) => override?.overrideDueDate).filter((value): value is Date => value != null);
     // A part is an aggregate of several process rows. Apply an item override
     // only when it is unambiguous across the aggregate; otherwise let the
@@ -276,7 +294,7 @@ export async function getGrindingPlanningBoardDueScope(params: { siteKey: string
       throw new ApiError(409, '表示中に対象データが更新されました。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
     }
     const originalPresented = presentDueManagementSeibanDetail({ detail: original, processingDueDateMap: after.originalProcessing });
-    const alternate = buildAlternateDetail({ pieceSets: after.pieceSets, original, scopes: after.scopes, originalProcessing: after.originalProcessing, rows: after.rows, baseDueByRowId: after.baseDueByRowId, overrides: after.overrides });
+    const alternate = buildAlternateDetail({ excelDue: after.excelDue, pieceSets: after.pieceSets, original, scopes: after.scopes, originalProcessing: after.originalProcessing, rows: after.rows, baseDueByRowId: after.baseDueByRowId, overrides: after.overrides });
     return {
       original: toDateTextDetail(originalPresented),
       alternate: toDateTextDetail(alternate),
@@ -288,13 +306,15 @@ export async function getGrindingPlanningBoardDueScope(params: { siteKey: string
   throw new ApiError(409, '表示中に対象データが更新されました。再読み込みしてください', undefined, 'STALE_PLANNING_DUE_SCOPE');
 }
 
-type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?: boolean | null; resetRank: boolean };
+// dueSetAt is null when the request clears the due: clearing returns the card to the Excel date.
+type TargetWrite = { itemKey: string; nextDueDate?: Date | null; dueDateCleared?: boolean | null; resetRank: boolean; dueOverrideActive: boolean; dueSetAt: Date | null };
 
 async function readWriteTargets(params: { client: Prisma.TransactionClient; siteKey: string; fseiban: string; scope: GrindingPlanningBoardDueScope; dueDate: Date | null; scopesAfter: readonly ScopeRow[]; originalProcessing: ReadonlyMap<string, Date>; originalSeibanDue: Date | null }): Promise<TargetWrite[]> {
   const rows = await readTargetRows(params.client, params.fseiban);
   const rowIds = rows.map((row) => row.id);
-  const [notes, processingTypes, supplements] = await Promise.all([
-    params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true } }),
+  const [excelDue, notes, processingTypes, supplements] = await Promise.all([
+    readExcelDue(params.client, params.fseiban),
+    params.client.productionScheduleRowNote.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, dueDate: true, processingType: true, updatedAt: true } }),
     params.client.productionSchedulePartProcessingType.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fhincd: { in: rows.map((row) => rowValue(asRowData(row.rowData), 'FHINCD')) } }, select: { fhincd: true, processingType: true } }),
     params.client.productionScheduleOrderSupplement.findMany({ where: { csvDashboardRowId: { in: rowIds } }, select: { csvDashboardRowId: true, plannedEndDate: true } })
   ]);
@@ -335,6 +355,7 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
     return params.dueDate ?? noteMap.get(row.id)?.dueDate ?? supplementMap.get(row.id)?.plannedEndDate ?? params.originalSeibanDue ?? null;
   };
   const writes: TargetWrite[] = [];
+  const dueSetAt = params.dueDate != null ? new Date() : null;
   for (const row of rows) {
     const nextParentDate = targetDueForRow(row);
     if (nextParentDate === undefined) continue;
@@ -342,15 +363,17 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
     const keys = [parentKey, ...(pieceSets.get(encodeSessakuPieceKey(sessakuPieceKeyFromRow(row.rowData)))?.pieces ?? []).flatMap(sessakuPieceItemIds)];
     for (const key of keys) {
     const current = overrideMap.get(key);
-    const base = noteMap.get(row.id)?.dueDate ?? supplementMap.get(row.id)?.plannedEndDate ?? null;
-    const before = current?.dueDateCleared === true
+    const baseText = resolveBoardDueDate({ source: 'excel', itemOverride: null, manualDueDate: dateText(noteMap.get(row.id)?.dueDate), manualUpdatedAt: noteMap.get(row.id)?.updatedAt ?? null, excelDueDate: dateText(excelDue?.partsCompleteDate), excelChangedAt: excelDue?.excelChangedAt ?? null, scawPlannedEndDate: dateText(supplementMap.get(row.id)?.plannedEndDate) });
+    const base = baseText ? dateValue(baseText) : null;
+    const active = activeDueOverride(current, excelDue);
+    const before = active?.dueDateCleared === true
       ? supplementMap.get(row.id)?.plannedEndDate ?? null
-      : current?.overrideDueDate ?? base;
+      : active?.overrideDueDate ?? base;
     const after = processingClearFallsBackToCsv
       ? supplementMap.get(row.id)?.plannedEndDate ?? null
       : nextParentDate ?? base;
     const changed = before?.getTime() !== after?.getTime();
-    writes.push({ itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
+    writes.push({ dueSetAt, dueOverrideActive: active !== undefined, itemKey: key, nextDueDate: processingClearFallsBackToCsv ? null : nextParentDate, dueDateCleared: processingClearFallsBackToCsv ? true : params.scope.kind === 'processing' || params.scope.kind === 'seiban' ? false : current?.dueDateCleared ?? null, resetRank: changed });
     }
   }
   if (params.scope.kind === 'processing' && !matchedProcessing) {
@@ -362,13 +385,14 @@ async function readWriteTargets(params: { client: Prisma.TransactionClient; site
 async function writeTargetOverride(client: Prisma.TransactionClient, siteKey: string, target: TargetWrite, current: ProductionScheduleGrindingPlanningBoardOverride | undefined): Promise<void> {
   const nextDueDate = target.nextDueDate === undefined ? current?.overrideDueDate ?? null : target.nextDueDate;
   const nextDueDateCleared = target.dueDateCleared === undefined ? current?.dueDateCleared ?? null : target.dueDateCleared;
-  const changed = (target.nextDueDate !== undefined && (current == null ? nextDueDate != null : current.overrideDueDate?.getTime() !== nextDueDate?.getTime())) || (current?.dueDateCleared ?? null) !== nextDueDateCleared;
+  const overrideDueDateSetAt = target.dueSetAt;
+  const changed = (!target.dueOverrideActive && overrideDueDateSetAt != null) || (target.nextDueDate !== undefined && (current == null ? nextDueDate != null : current.overrideDueDate?.getTime() !== nextDueDate?.getTime())) || (current?.dueDateCleared ?? null) !== nextDueDateCleared;
   const nextRank = target.resetRank ? null : current?.alternateRank ?? null;
   if (!changed && nextRank === (current?.alternateRank ?? null)) return;
   await client.productionScheduleGrindingPlanningBoardOverride.upsert({
     where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey } },
-    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey, overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, overrideResourceCd: current?.overrideResourceCd ?? null, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null },
-    update: { overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null, version: { increment: 1 } }
+    create: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey, itemKey: target.itemKey, overrideDueDateSetAt, overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, overrideResourceCd: current?.overrideResourceCd ?? null, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null },
+    update: { overrideDueDateSetAt, overrideDueDate: nextDueDate, dueDateCleared: nextDueDateCleared, alternateRank: nextRank, specialDueKind: current?.specialDueKind ?? null, specialDueExpiresAt: current?.specialDueExpiresAt ?? null, version: { increment: 1 } }
   });
 }
 

@@ -1680,14 +1680,16 @@ describe('bulk grinding resource order service', () => {
   });
   it('unpins without changing other overrides and resource-order writes preserve pins', async () => {
     const previous = { itemKey: items[0]!.itemId, version: 0, orderPinned: true, overrideResourceCd: '305',
-      overrideDueDate: new Date('2026-10-19'), dueDateCleared: false, alternateRank: 7, specialDueKind: null, specialDueExpiresAt: null };
+      overrideDueDate: new Date('2026-10-19'), overrideDueDateSetAt: new Date('2026-10-18T01:00:00Z'), dueDateCleared: false, alternateRank: 7,
+      specialDueKind: null, specialDueExpiresAt: null };
     mocks.prisma.productionScheduleGrindingPlanningBoardOverride.findMany.mockResolvedValue([previous]);
     // The mocked projection leaves the revision unchanged for the current override.
     mocks.projectGrindingPlanningBoard.mockReturnValue({ allItems: items });
     const payload = request();
     await updateGrindingPlanningBoardPins({ ...payload, items: [payload.items[1]!], pinned: false });
     expect(mocks.prisma.productionScheduleGrindingPlanningBoardOverride.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
-      update: { orderPinned: false, overrideResourceCd: '305', overrideDueDate: previous.overrideDueDate, dueDateCleared: false,
+      update: { orderPinned: false, overrideResourceCd: '305', overrideDueDate: previous.overrideDueDate,
+        overrideDueDateSetAt: previous.overrideDueDateSetAt, dueDateCleared: false,
         alternateRank: 7, specialDueKind: null, specialDueExpiresAt: null, version: { increment: 1 } }
     }));
     await updateGrindingPlanningBoardResourceOrderBulk(payload);

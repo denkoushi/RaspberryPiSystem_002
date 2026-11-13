@@ -8,6 +8,7 @@ import {
   buildGrindingPlanningBoardRowItemId,
   projectGrindingPlanningBoard,
   resolveGrindingPlanningBoardParentDueDate,
+  isGrindingPlanningBoardDueOverrideActive,
   sortGrindingPlanningBoardProjectionItems,
   type GrindingPlanningBoardProjectionOverride,
   type GrindingPlanningBoardProjectionRow,
@@ -82,6 +83,19 @@ describe('grinding-planning-board-projection', () => {
     params.overrides.set(tail.itemId, { overrideResourceCd: 'G-02', overrideDueDate: new Date('2026-11-20'), alternateRank: 42, orderPinned: true, version: 1 });
     expect(project().items.find((item) => item.itemId === tail.itemId)).toMatchObject({
       effectiveResourceCd: 'G-02', unitRequiredMinutes: 70, setupMinutes: 7, effectiveDueDate: '2026-11-20', alternateRank: 42, orderPinned: true });
+    params.details.set('row-1', detail({ excelDueDate: new Date('2026-11-13'), excelChangedAt: new Date('2026-11-08') }));
+    expect(project().items.map((item) => item.effectiveDueDate)).toEqual(['2026-11-13', '2026-11-13']);
+    params.overrides.set(tail.itemId, { ...params.overrides.get(tail.itemId)!, overrideDueDateSetAt: new Date('2026-11-09') });
+    expect(project().items.map((item) => item.effectiveDueDate)).toEqual(['2026-11-13', '2026-11-20']);
+    params.details.set('row-1', detail({ excelDueDate: new Date('2026-11-14'), excelChangedAt: new Date('2026-11-10') }));
+    expect(project().items.map((item) => item.effectiveDueDate)).toEqual(['2026-11-14', '2026-11-14']);
+    params.details.set('row-1', detail({ excelDueDate: new Date('2026-11-13'), excelChangedAt: new Date('2026-11-08'), manualUpdatedAt: new Date('2026-11-12') }));
+    const activeTail = project().items.find((item) => item.itemId === tail.itemId)!;
+    params.details.set('row-1', detail({ excelDueDate: new Date('2026-11-14'), excelChangedAt: new Date('2026-11-10'), manualUpdatedAt: new Date('2026-11-12') }));
+    const expiredTail = project().items.find((item) => item.itemId === tail.itemId)!;
+    expect(expiredTail.originalDueDate).toBe(activeTail.originalDueDate);
+    expect(expiredTail.effectiveDueDate).toBe('2026-09-10');
+    expect(expiredTail.itemRevision).not.toBe(activeTail.itemRevision);
     piece.opSplits.push({ fromOpNo: 4, sourceResourceCd: 'G-01', leadingSourceResourceCd: 'G-01' });
     const multiple = project().items;
     expect(multiple).toHaveLength(3);
@@ -552,19 +566,59 @@ describe('D schedule due source in the grinding projection', () => {
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-09-10');
   });
 
-  it('ignores legacy dates and overrides while preserving parent overrides ahead of Excel', () => {
+  it('ignores legacy dates and overrides while preserving newer parent overrides ahead of Excel', () => {
     const updatedAt = new Date('2026-11-04Z');
     const input = baseParams({ details: new Map([['row-1', detail({ excelDueDate: new Date('2026-11-10Z'), excelChangedAt: updatedAt,
       orderSplits: [{ id: 'd-test-split', splitQuantity: 1, dueDate: new Date('2026-11-06Z'), updatedAt }] })]]) });
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
     input.overrides.set('split:d-test-split', { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-10');
-    input.overrides.set(buildGrindingPlanningBoardRowItemId(sourceRow().rowData), { overrideResourceCd: null, overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
+    input.overrides.set(buildGrindingPlanningBoardRowItemId(sourceRow().rowData), { overrideResourceCd: null, overrideDueDateSetAt: new Date('2026-11-05Z'), overrideDueDate: new Date('2026-11-07Z'), alternateRank: null, version: 1 });
     expect(projectGrindingPlanningBoard(input).items[0]?.effectiveDueDate).toBe('2026-11-07');
   });
 
   it('produces identical responses for both sources when Excel has no stored rows', () => {
     const input = baseParams();
     expect(projectGrindingPlanningBoard({ ...input, dueSource: 'excel' })).toEqual(projectGrindingPlanningBoard({ ...input, dueSource: 'scaw' }));
+  });
+});
+
+
+describe('planning board due override priority', () => {
+  const excelDueDate = new Date('2026-11-13');
+  const excelChangedAt = new Date('2026-11-08T23:23:00Z');
+  const earlier = new Date('2026-10-30T00:00:00Z');
+  const later = new Date('2026-11-09T00:00:00Z');
+  it.each([
+    { name: 'manual after Excel', overrideDueDateSetAt: later, active: true },
+    { name: 'Excel changed after manual', overrideDueDateSetAt: earlier, active: false },
+    { name: 'equal timestamps', overrideDueDateSetAt: excelChangedAt, active: false },
+    { name: 'legacy null timestamp with Excel', overrideDueDateSetAt: null, active: false },
+    { name: 'legacy null timestamp without Excel', overrideDueDateSetAt: null, excelDueDate: null, active: true },
+    { name: 'scaw ignores Excel', overrideDueDateSetAt: null, dueSource: 'scaw' as const, active: true },
+    { name: 'null Excel change time with manual timestamp', overrideDueDateSetAt: earlier, excelChangedAt: null, active: true },
+    { name: 'both timestamps null with Excel', overrideDueDateSetAt: null, excelChangedAt: null, active: false }
+  ])('$name applies to dates and explicit clears', ({ name: _name, active, ...input }) => {
+    const context = { excelDueDate, excelChangedAt, ...input };
+    expect(isGrindingPlanningBoardDueOverrideActive(context)).toBe(active);
+    for (const cleared of [false, true]) {
+      expect(resolveGrindingPlanningBoardParentDueDate({ ...context, originalParentDueDate: excelDueDate,
+        plannedEndDate: new Date('2026-11-20'), override: { overrideDueDate: cleared ? null : new Date('2026-11-02'),
+          dueDateCleared: cleared, overrideDueDateSetAt: input.overrideDueDateSetAt }
+      })).toBe(active ? cleared ? '2026-11-20' : '2026-11-02' : '2026-11-13');
+    }
+  });
+
+  it('keeps manual input on retransmission and restores Excel on a date change', () => {
+    const row = sourceRow();
+    const itemKey = buildGrindingPlanningBoardRowItemId(row.rowData);
+    const input = baseParams({ details: new Map([['row-1', detail({ excelDueDate, excelChangedAt })]]),
+      overrides: new Map([[itemKey, { overrideResourceCd: null, overrideDueDate: new Date('2026-11-02'),
+        overrideDueDateSetAt: later, alternateRank: null, version: 1 }]]) });
+    expect(projectGrindingPlanningBoard(input).items[0].effectiveDueDate).toBe('2026-11-02');
+    input.details.set('row-1', detail({ excelDueDate: new Date('2026-11-13'), excelChangedAt }));
+    expect(projectGrindingPlanningBoard(input).items[0].effectiveDueDate).toBe('2026-11-02');
+    input.details.set('row-1', detail({ excelDueDate: new Date('2026-11-14'), excelChangedAt: new Date('2026-11-10') }));
+    expect(projectGrindingPlanningBoard(input).items[0].effectiveDueDate).toBe('2026-11-14');
   });
 });

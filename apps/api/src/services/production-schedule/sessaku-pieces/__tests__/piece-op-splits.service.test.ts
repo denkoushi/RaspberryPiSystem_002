@@ -69,7 +69,7 @@ const request = (itemId: string) => ({ siteKey: 'site', itemId, expectedPieceSet
 const split = (fromOpNo: number, itemId = headId()) => splitSessakuPieceOps({ ...request(itemId), fromOpNo });
 const merge = (fromOpNo: number) => mergeSessakuPieceOps(request(barId(fromOpNo)));
 const override = (itemKey: string, data: Partial<Override> = {}): Override => ({
-  id: randomUUID(), csvDashboardId: 'dashboard', siteKey: 'site', itemKey, overrideResourceCd: '021', overrideDueDate: null,
+  id: randomUUID(), csvDashboardId: 'dashboard', siteKey: 'site', itemKey, overrideResourceCd: '021', overrideDueDate: null, overrideDueDateSetAt: null,
   dueDateCleared: null, orderPinned: false, specialDueKind: null, specialDueExpiresAt: null, alternateRank: 1, version: 1, createdAt: now, updatedAt: now, ...data
 });
 function syncCompletionRecords() { set.pieces[0].opCompletions = [...completed].map((opNo) => ({ opNo })); }
@@ -78,12 +78,12 @@ function syncCompletionRecords() { set.pieces[0].opCompletions = [...completed].
 // implements that statement's stored rows so the next real projection reads its result.
 function persistLaneSql(sql: Prisma.Sql) {
   if (sql.sql?.includes('INSERT INTO "ProductionScheduleGrindingPlanningBoardOverride"')) {
-    const [dashboard, updatedAt, ids, sites, keys, resources, dues, cleared, pinned, kinds, expires, ranks] = sql.values as unknown as [
-      string, Date, string[], string[], string[], Array<string | null>, Array<string | null>, Array<boolean | null>, boolean[], Array<string | null>, Array<string | null>, number[]
+    const [dashboard, updatedAt, ids, sites, keys, resources, dues, dueSetAts, cleared, pinned, kinds, expires, ranks] = sql.values as unknown as [
+      string, Date, string[], string[], string[], Array<string | null>, Array<string | null>, Array<string | null>, Array<boolean | null>, boolean[], Array<string | null>, Array<string | null>, number[]
     ];
     keys.forEach((itemKey, index) => overrides.set(itemKey, override(itemKey, {
       id: ids[index], csvDashboardId: dashboard, siteKey: sites[index], overrideResourceCd: resources[index],
-      overrideDueDate: dues[index] ? new Date(dues[index]!) : null, dueDateCleared: cleared[index], orderPinned: pinned[index],
+      overrideDueDate: dues[index] ? new Date(dues[index]!) : null, overrideDueDateSetAt: dueSetAts[index] ? new Date(dueSetAts[index]!) : null, dueDateCleared: cleared[index], orderPinned: pinned[index],
       specialDueKind: kinds[index], specialDueExpiresAt: expires[index] ? new Date(expires[index]!) : null,
       alternateRank: ranks[index], version: (overrides.get(itemKey)?.version ?? 0) + 1, updatedAt
     })));
@@ -595,11 +595,11 @@ describe('piece operation boundary mutations', () => {
   });
 
   it('copies all placement fields immediately after the original and deletes only the merged bar override', async () => {
-    const original = override(headId(), { overrideDueDate: new Date('2026-12-01'), orderPinned: true, dueDateCleared: false,
+    const original = override(headId(), { overrideDueDateSetAt: new Date('2026-11-13T01:02:03.456Z'), overrideDueDate: new Date('2026-12-01'), orderPinned: true, dueDateCleared: false,
       specialDueKind: 'today', specialDueExpiresAt: new Date('2026-12-01T15:00:00Z'), alternateRank: 1 });
     overrides.set(headId(), original);
     await split(3);
-    expect(overrides.get(barId(3))).toMatchObject({ overrideResourceCd: '021', overrideDueDate: original.overrideDueDate,
+    expect(overrides.get(barId(3))).toMatchObject({ overrideResourceCd: '021', overrideDueDate: original.overrideDueDate, overrideDueDateSetAt: original.overrideDueDateSetAt,
       orderPinned: true, dueDateCleared: false, specialDueKind: 'today', specialDueExpiresAt: original.specialDueExpiresAt, alternateRank: 2 });
     const headBefore = overrides.get(headId());
     const response = await merge(3);
