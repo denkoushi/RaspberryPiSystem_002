@@ -28,6 +28,28 @@ const bars = '[data-testid^="planning-gantt-bar-"]';
 const legend = '[aria-label="製番の色分け凡例"] button';
 const metrics = async cdp => Object.fromEntries((await cdp.send('Performance.getMetrics')).metrics.map(({ name, value }) => [name, value]));
 
+// A virtual row has no locator until its resource viewport reaches it.
+async function revealItem(page, itemId) {
+  const row = page.getByTestId(`planning-board-item-${itemId}`);
+  if (await row.count()) return row;
+  const resource = await page.evaluate(id => {
+    const item = window.perfHarness.board().items.find(item => item.itemId === id);
+    return item?.effectiveResourceCd ?? item?.originalResourceCd ?? '未設定';
+  }, itemId);
+  const scroll = page.locator(`[data-planning-board-resource-pane][data-resource-code="${resource}"] [data-resource-scroll]`);
+  await scroll.evaluate(element => { element.scrollTop = 0; });
+  for (;;) {
+    await settle(page);
+    if (await row.count()) return row;
+    const moved = await scroll.evaluate(element => {
+      const before = element.scrollTop;
+      element.scrollTop += element.clientHeight;
+      return element.scrollTop > before;
+    });
+    assert(moved, `item ${itemId} was not found in resource ${resource}`);
+  }
+}
+
 async function endTrace(cdp) {
   const complete = new Promise(resolve => cdp.once('Tracing.tracingComplete', resolve));
   await cdp.send('Tracing.end');
@@ -420,7 +442,7 @@ try {
     await category('切削');
     await button('ガント').click();
     await settle(page);
-    const targetRow = page.getByTestId(`planning-board-item-${targetId}`);
+    const targetRow = await revealItem(page, targetId);
     const quantity = targetRow.locator('[data-planning-board-quantity-item]');
     await quantity.scrollIntoViewIfNeeded();
     await measure('pieces_popup_open', () => quantity.click());
@@ -434,7 +456,7 @@ try {
       await page.waitForFunction(before => window.perfHarness.board().items.length === before + 1, beforePieces);
     });
     const newPieceId = await page.evaluate(() => window.perfHarness.board().items.find(item => item.kind === 'piece' && item.pieceSetVersion === 2 && item.plannedQuantity === 1).itemId);
-    const complete = page.getByTestId(`planning-board-item-${newPieceId}`).getByRole('button', { name: '完了にする', exact: true });
+    const complete = (await revealItem(page, newPieceId)).getByRole('button', { name: '完了にする', exact: true });
     await complete.scrollIntoViewIfNeeded();
     await measure('pieces_piece_complete', async () => {
       await complete.click();

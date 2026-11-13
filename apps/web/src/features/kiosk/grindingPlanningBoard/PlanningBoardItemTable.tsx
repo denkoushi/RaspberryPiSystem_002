@@ -1,6 +1,6 @@
 import { replaceEqualDeep } from '@tanstack/react-query';
 import clsx from 'clsx';
-import { memo, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useContext, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { MaterialArrivalBadge } from '../../../components/kiosk/MaterialArrivalBadge';
 import { PlacementLocationBadge } from '../../../components/kiosk/PlacementLocationBadge';
@@ -19,6 +19,7 @@ import {
   resolveGrindingPlanningBoardDueDate,
   resolveGrindingPlanningBoardResource
 } from './sortGrindingPlanningBoardItems';
+import { usePlanningBoardTableVirtualizer } from './usePlanningBoardTableVirtualizer';
 
 import type { PlanningBoardAllocation } from './types';
 import type { KioskResourceProgressProcessChip } from '../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
@@ -52,10 +53,14 @@ export type PlanningBoardItemTableProps = {
     item: GrindingPlanningBoardItem,
     currentResource: string | null
   ) => void;
+  virtualize?: boolean;
+  scanFocusKey?: number;
+  draggedItemId?: string | null;
   tableLabel: string;
 };
 
 type PlanningBoardItemTableRowProps = {
+  measureRow?: (element: HTMLTableRowElement | null) => void;
   item: GrindingPlanningBoardItem;
   processChips: readonly KioskResourceProgressProcessChip[] | undefined;
   allocation: PlanningBoardAllocation;
@@ -84,6 +89,7 @@ type PlanningBoardItemTableRowProps = {
 };
 
 const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
+  measureRow,
   item,
   processChips,
   allocation,
@@ -131,6 +137,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
 
   return (
     <tr
+      ref={measureRow}
       key={item.itemId}
       data-testid={`planning-board-item-${item.itemId}`}
       data-planning-board-item-id={item.itemId}
@@ -374,6 +381,9 @@ function areTablePropsEqual(previous: PlanningBoardItemTableProps, next: Plannin
     previous.rankDisabled === next.rankDisabled &&
     previous.resourceDragDisabled === next.resourceDragDisabled &&
     previous.onResourcePointerDown === next.onResourcePointerDown &&
+    previous.virtualize === next.virtualize &&
+    previous.scanFocusKey === next.scanFocusKey &&
+    previous.draggedItemId === next.draggedItemId &&
     previous.tableLabel === next.tableLabel &&
     areSelectionStatesEqual(previous.items, previous.selectedItemIds, next.selectedItemIds);
 }
@@ -400,6 +410,7 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   rankDisabled = false,
   resourceDragDisabled = false,
   onResourcePointerDown,
+  virtualize = false, scanFocusKey = 0, draggedItemId,
   tableLabel
 }: PlanningBoardItemTableProps) {
   const pieceActions = useContext(PlanningBoardPiecesContext);
@@ -409,6 +420,10 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
   const rowItems = useMemo(() => new Map(items.map((item) =>
     [item.itemId, replaceEqualDeep(previousItems.current.get(item.itemId), item)])), [items]);
   const rootRef = useRef<HTMLDivElement>(null);
+  const { rows, bottomPadding, measureRow } = usePlanningBoardTableVirtualizer(
+    rootRef, items, virtualize, focusedSeiban, scanFocusKey, draggedItemId
+  );
+  const columnCount = onCompleteToggle ? 5 : 4;
   const callbacks = { onToggleItem, onCompleteToggle, onResourceClick, onRankChange, onSpecialDueClick, onResourcePointerDown };
   const latest = useRef({ callbacks, rowItems });
   useLayoutEffect(() => { latest.current = { callbacks, rowItems }; previousItems.current = rowItems; });
@@ -452,39 +467,44 @@ export const PlanningBoardItemTable = memo(function PlanningBoardItemTable({
           </thead>
         ) : null}
         <tbody>
-          {items.map((item) => {
+          {rows.map(({ index, paddingBefore }) => {
+            const item = items[index];
             const selected = selectedItemIds.has(item.itemId);
             const itemRankDisabled = typeof rankDisabled === 'function' ? rankDisabled(item) : rankDisabled;
             return (
-              <PlanningBoardItemTableRow
-                key={item.itemId}
-                seibanFocus={focusedSeiban === null ? null : focusedSeiban === item.fseiban ? 'match' : 'dim'}
-                item={rowItems.get(item.itemId)!}
-                processChips={chipsByPart.get(planningBoardPartKey(item))}
-                allocation={allocation}
-                selected={selected}
-                onToggleItem={rowActions.onToggleItem}
-                onCompleteToggle={onCompleteToggle ? rowActions.onCompleteToggle : undefined}
-                completionPending={Boolean(completionPendingItemIds?.has(item.itemId) || (item.kind === 'piece' &&
-                  (bulkDisabled || (item.parentItemId && pieceActions?.completionPendingParentIds?.has(item.parentItemId)))))}
-                pieceDisabled={Boolean(pieceActions?.enabled && (item.kind === 'piece' || pieceActions.createEnabled) &&
-                  (disabled || (item.kind === 'piece' && (bulkDisabled || itemRankDisabled)) || completionPendingItemIds?.has(item.itemId) ||
-                    (item.parentItemId != null && pieceActions.completionPendingParentIds?.has(item.parentItemId))))}
-                onResourceClick={rowActions.onResourceClick}
-                onRankChange={onRankChange ? rowActions.onRankChange : undefined}
-                onSpecialDueClick={onSpecialDueClick ? rowActions.onSpecialDueClick : undefined}
-                specialDueEnabled={Boolean(specialDueMode) && !disabled}
-                specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
-                showRank={showRank}
-                showSeiban={showSeiban}
-                seibanRank={seibanRankByFseiban?.get(item.fseiban)}
-                disabled={disabled}
-                rankDisabled={itemRankDisabled}
-                resourceDragDisabled={resourceDragDisabled}
-                onResourcePointerDown={onResourcePointerDown ? rowActions.onResourcePointerDown : undefined}
-              />
+              <Fragment key={item.itemId}>
+                {paddingBefore > 0 && <tr aria-hidden="true"><td colSpan={columnCount} style={{ height: paddingBefore, padding: 0, border: 0 }} /></tr>}
+                <PlanningBoardItemTableRow
+                  measureRow={measureRow}
+                  seibanFocus={focusedSeiban === null ? null : focusedSeiban === item.fseiban ? 'match' : 'dim'}
+                  item={rowItems.get(item.itemId)!}
+                  processChips={chipsByPart.get(planningBoardPartKey(item))}
+                  allocation={allocation}
+                  selected={selected}
+                  onToggleItem={rowActions.onToggleItem}
+                  onCompleteToggle={onCompleteToggle ? rowActions.onCompleteToggle : undefined}
+                  completionPending={Boolean(completionPendingItemIds?.has(item.itemId) || (item.kind === 'piece' &&
+                    (bulkDisabled || (item.parentItemId && pieceActions?.completionPendingParentIds?.has(item.parentItemId)))))}
+                  pieceDisabled={Boolean(pieceActions?.enabled && (item.kind === 'piece' || pieceActions.createEnabled) &&
+                    (disabled || (item.kind === 'piece' && (bulkDisabled || itemRankDisabled)) || completionPendingItemIds?.has(item.itemId) ||
+                      (item.parentItemId != null && pieceActions.completionPendingParentIds?.has(item.parentItemId))))}
+                  onResourceClick={rowActions.onResourceClick}
+                  onRankChange={onRankChange ? rowActions.onRankChange : undefined}
+                  onSpecialDueClick={onSpecialDueClick ? rowActions.onSpecialDueClick : undefined}
+                  specialDueEnabled={Boolean(specialDueMode) && !disabled}
+                  specialDueExpired={item.specialDue != null && new Date(item.specialDue.expiresAt).getTime() <= resolvedNowMs}
+                  showRank={showRank}
+                  showSeiban={showSeiban}
+                  seibanRank={seibanRankByFseiban?.get(item.fseiban)}
+                  disabled={disabled}
+                  rankDisabled={itemRankDisabled}
+                  resourceDragDisabled={resourceDragDisabled}
+                  onResourcePointerDown={onResourcePointerDown ? rowActions.onResourcePointerDown : undefined}
+                />
+              </Fragment>
             );
           })}
+          {bottomPadding > 0 && <tr aria-hidden="true"><td colSpan={columnCount} style={{ height: bottomPadding, padding: 0, border: 0 }} /></tr>}
         </tbody>
       </table>
     </div>
