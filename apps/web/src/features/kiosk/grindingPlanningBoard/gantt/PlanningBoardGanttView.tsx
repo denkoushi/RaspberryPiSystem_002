@@ -38,7 +38,7 @@ import { usePlanningBoardChainPartChange, usePlanningBoardChainVisibility } from
 import { usePlanningBoardGanttBlankTap } from './usePlanningBoardGanttBlankTap';
 import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
-import { usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
+import { planningBoardBarsOnResource, planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
 import { usePlanningBoardShelfInteraction, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
@@ -223,8 +223,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     return result;
   }, [renderedGroups, foldedRows, layout.start]);
   const shelfResources = useMemo(() => singleResourceCd ? [singleResourceCd] : [], [singleResourceCd]);
-  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, Boolean(singleResourceCd && colorBySeiban && !sharedSeibanLegend));
-  const seibanColors = usePlanningBoardSeibanColors(layout, colorBySeiban, seibanOrder);
+  const visibleSeibans = useMemo(() => planningBoardSeibansWithVisibleBars(planningBoardVisibleBars(layout), singleGroup ? singleResourceCd : null), [layout, singleGroup, singleResourceCd]);
+  const shelfColumns = usePlanningBoardSeibanShelf(sourceLayout, resourceMinutesItems, shelfResources, seibanOrder, visibleSeibans, Boolean(singleResourceCd && colorBySeiban && !sharedSeibanLegend));
+  const seibanColors = usePlanningBoardSeibanColors(visibleSeibans, colorBySeiban, seibanOrder);
   useEffect(() => {
     if (!sharedSeibanLegend && focusedSeiban !== null && !seibanColors?.has(focusedSeiban) && !(singleResourceCd && shelfColumns.some(column => column.seiban === focusedSeiban))) setFocusedSeiban(null);
   }, [focusedSeiban, seibanColors, setFocusedSeiban, sharedSeibanLegend, singleResourceCd, shelfColumns]);
@@ -466,8 +467,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const focusSeiban = (seiban: string, itemIds?: readonly string[]) => {
     setFocusedSeiban(seiban);
     const barStart = (bar: GanttBar) => bar.segments?.[0]?.start ?? bar.start ?? bar.end ?? Infinity;
-    const candidates = planningBoardVisibleBars(layout).filter((bar) => bar.item.kind !== 'test' && bar.item.fseiban === seiban && (!singleGroup || bar.resource === singleResourceCd));
-    const first = [candidates.filter((bar) => itemIds?.includes(bar.item.itemId)), candidates].find((bars) => bars.length)?.reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
+    const candidates = planningBoardBarsOnResource(planningBoardVisibleBars(layout), singleGroup ? singleResourceCd : null).filter((bar) => bar.item.fseiban === seiban), first = [candidates.filter((bar) => itemIds?.includes(bar.item.itemId)), candidates].find((bars) => bars.length)?.reduce<GanttBar | undefined>((earliest, bar) => !earliest || barStart(bar) < barStart(earliest) ? bar : earliest, undefined);
     if (first) scrollToBar(first);
   };
   // Rows are memoized, so the late-star date buttons get one stable callback that reads the latest focus.

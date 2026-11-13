@@ -330,7 +330,7 @@ it.each([false, true])('does not render the shelf when drag previews change (pai
 
 it.each([false, true])('rerenders only the affected shelf columns for Gantt bar selection (pair=%s)', pair => {
   localStorage.clear();
-  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }, { ...item('c', '305'), fseiban: '26-1003' }];
+  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }, { ...item('c', '305'), fseiban: '26-1003' }, { ...item('d', '305'), fseiban: '26-1002' }];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
   const props = { layout, resourceMinutesItems: items, scale: 2, dailyHoursByResource: {}, resourceNameMap: {},
