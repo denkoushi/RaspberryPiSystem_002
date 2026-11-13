@@ -66,6 +66,7 @@ vi.mock('../../features/hermes-knowledge/useKnowledgePoster', () => ({
 
 vi.mock('./HermesChatPanel', () => ({
   default: (props: {
+    onVoiceTranscript?: (text: string) => void;
     inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
     mode?: 'legacy' | 'consultations';
     messages: Array<{ id: string; content: string; planId?: string; display?: { records: Array<{ sourceLabel: string }> }; evidence?: ReadonlyArray<{ id: string; title: string }> }>;
@@ -104,6 +105,8 @@ vi.mock('./HermesChatPanel', () => ({
     style?: CSSProperties;
   }) => (
     <section data-testid="hermes-panel" style={props.style}>
+      <button onClick={() => props.onVoiceTranscript?.('キット、訓練')}>訓練の声</button>
+      <button onClick={() => props.onVoiceTranscript?.('追加の相談')}>相談の声</button>
       {props.onKnowledgeModeChange ? (
         <div data-testid="hermes-mode-selector">
           <button type="button" aria-pressed={!props.inquiryMode?.active && props.knowledgeMode === 'search'} onClick={() => props.onKnowledgeModeChange?.('search')}>検索</button>
@@ -212,12 +215,13 @@ function render(ui: ReactNode) {
   return testingRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider> });
 }
 
-function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext) {
+function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext, observeRoute = false) {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <HermesPageContextProvider>
         {pageContext ? <ContextControls value={pageContext} /> : null}
         <HermesFloatingChat />
+        {observeRoute ? <GuideRouteControls /> : null}
       </HermesPageContextProvider>
     </MemoryRouter>
   );
@@ -304,6 +308,37 @@ describe('HermesFloatingChat', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it('appends voice dictation to the current draft without sending', async () => {
+    renderChat();
+    openSearch();
+    await screen.findByTestId('hermes-panel');
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '既存の相談' } });
+    fireEvent.click(screen.getByRole('button', { name: '相談の声' }));
+    expect(screen.getByRole('textbox')).toHaveValue('既存の相談 追加の相談');
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('opens a voice destination with local bubbles and excludes them from subsequent chat history', async () => {
+    renderChat('/kiosk/assembly', undefined, true);
+    openSearch();
+    await waitFor(() => expect(mocks.listConsultations).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: '訓練の声' }));
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
+    expect(await screen.findByText('キット、訓練')).toBeInTheDocument();
+    expect(screen.getByText('組立 > 訓練 を開きました。')).toBeInTheDocument();
+    expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+    expect(mocks.createConsultation).not.toHaveBeenCalled();
+    mocks.send.mockResolvedValue({ status: 'ok', message: '返事', evidence: [] });
+    await waitFor(() => expect(screen.getByRole('textbox')).not.toBeDisabled());
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '次の相談' } });
+    fireEvent.click(screen.getByRole('button', { name: '送信' }));
+    await waitFor(() => expect(mocks.send).toHaveBeenCalled());
+    expect(mocks.send.mock.calls[0][0].messages).toEqual([{ role: 'user', content: '次の相談' }]);
   });
 
   it('opens inquiries by default on kiosk pages with no unread inquiries', async () => {

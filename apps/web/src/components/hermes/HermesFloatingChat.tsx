@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 import {
   cancelBusinessHermesConsultation,
@@ -41,6 +41,7 @@ import { kioskLazy } from '../../features/kiosk/kioskLazyPreload';
 import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
 import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
+import { resolveVoiceNavigation } from '../../features/voice/voiceNavigation';
 import { AiUnavailableBadge } from '../ui/AiUnavailableBadge';
 
 import { useHermesPageContext } from './HermesPageContext';
@@ -149,6 +150,8 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  const [voiceMessages, setVoiceMessages] = useState<HermesPanelMessage[]>([]);
   const operationGuide = useOperationGuide();
   const { pageContext } = useHermesPageContext();
   const [viewport, setViewport] = useState(getViewport);
@@ -196,6 +199,7 @@ export function HermesFloatingChat() {
   knowledgeModeRef.current = knowledgeMode;
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
+  useEffect(() => { setVoiceMessages([]); }, [clientKey, token, user?.id]);
   const inquiry = useKioskInquiryEntry(clientKey, location.pathname, open);
   const iconRef = useRef<HTMLButtonElement | null>(null);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
@@ -1020,7 +1024,20 @@ export function HermesFloatingChat() {
     composerVisible: !inquiry.active && (knowledgeMode !== 'knowledge' || !knowledge.enabled || knowledgeDestination.ready),
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
-    messages,
+    messages: [...messages, ...voiceMessages],
+    onVoiceTranscript: text => {
+      const destination = resolveVoiceNavigation(text);
+      if (destination) {
+        setVoiceMessages(current => [...current,
+          { id: crypto.randomUUID(), role: 'user', content: text, localOnly: true, voice: true },
+          { id: crypto.randomUUID(), role: 'assistant', content: `${destination.label} を開きました。`, localOnly: true }
+        ]);
+        navigate(destination.path);
+      } else {
+        draftRevisionRef.current += 1;
+        setDraft(current => current ? `${current} ${text}` : text);
+      }
+    },
     draft,
     isBusy: isBusy || (knowledgeMode === 'knowledge' && knowledge.busy),
     error,
@@ -1037,14 +1054,14 @@ export function HermesFloatingChat() {
     onDraftChange: handleDraftChange,
     onSend: sendMessage,
     onRefine: knowledgeMode === 'record-pilot' ? (refine, label, planId) => void sendMessage(`${refine.axis === 'cause' ? label ?? refine.value : refine.value}で絞り込む`, { refine: { ...refine, planId } }) : undefined,
-    onReset: () => { operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
+    onReset: () => { setVoiceMessages([]); operationGuide.clear(); knowledge.reset(); resetActiveConversation(); },
     onClose: closePanel,
     onStop: knowledgeMode === 'knowledge' && knowledge.busy ? undefined : stopRequest,
     isExpanded: panelExpanded,
     onToggleSize: togglePanelSize,
-    onNewConsultation: () => { operationGuide.clear(); knowledge.reset(); void createConsultation(); },
+    onNewConsultation: () => { setVoiceMessages([]); operationGuide.clear(); knowledge.reset(); void createConsultation(); },
     onScan: () => void openScanner(),
-    onSelectConsultation: (consultationId) => { operationGuide.clear(); void selectConsultation(consultationId); },
+    onSelectConsultation: (consultationId) => { setVoiceMessages([]); operationGuide.clear(); void selectConsultation(consultationId); },
     onLoadOlderMessages: () => void loadOlderMessages(),
     suggestion: consultationSuggestion,
     onAnswerSuggestion: respondToSuggestion,
