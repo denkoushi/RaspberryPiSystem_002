@@ -8,6 +8,8 @@ import { ProtectedImage } from '../ProtectedImage';
 import { HermesA2uiPreview } from './HermesA2uiPreview';
 import { HermesOperationGuideAnswer } from './HermesOperationGuideAnswer';
 import { HermesRecordAnswer } from './HermesRecordAnswer';
+import { HermesVoiceControls, VoiceMicrophoneIcon } from './HermesVoiceControls';
+import { useHermesVoiceInput } from './useHermesVoiceInput';
 
 import type {
   BusinessHermesChatEvidence,
@@ -21,6 +23,8 @@ import type {
 } from '../../api/domains/assembly';
 
 export type HermesPanelMessage = {
+  localOnly?: boolean;
+  voice?: boolean;
   feedback?: 'pending' | 'helpful' | 'unhelpful';
   id: string;
   role: 'user' | 'assistant';
@@ -48,6 +52,7 @@ export type HermesConsultationSuggestion = {
 export type HermesKnowledgeMode = 'search' | 'knowledge' | 'record-pilot';
 
 export type HermesChatPanelProps = {
+  onVoiceTranscript?: (text: string) => void;
   inquiryMode?: { active: boolean; unreadCount: number; onSelect: () => void };
   conversationExtension?: ReactNode;
   conversationContent?: ReactNode;
@@ -445,6 +450,7 @@ function SignageProposalPreview({
 }
 
 export default function HermesChatPanel({
+  onVoiceTranscript,
   inquiryMode,
   conversationExtension,
   conversationContent,
@@ -487,6 +493,7 @@ export default function HermesChatPanel({
   style
 }: HermesChatPanelProps) {
   const reducedMotion = useReducedMotion();
+  const voice = useHermesVoiceInput(composerVisible && !conversationContent && !isBusy && !isConsultationDetailLoading && !isMessageHistoryLoading && !isConsultationsLoading, text => onVoiceTranscript?.(text));
   const panelRef = useRef<HTMLElement | null>(null);
   const signagePreviewToken = suggestion?.signageProposal?.canvas || suggestion?.signageProposal?.a2ui
     ? JSON.stringify({ canvas: suggestion.signageProposal.canvas, a2ui: suggestion.signageProposal.a2ui })
@@ -498,21 +505,63 @@ export default function HermesChatPanel({
     editor?.setAttribute('aria-label', 'Hermesへの質問');
   });
 
+  const voiceBusy = voice.state !== 'idle';
   const messageInput = composerVisible ? (
     <MessageInput
-      value={escapeInputHtml(draft)}
-      disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
+      className={voice.state === 'recording' ? 'hermes-chat-panel__input--recording' : undefined}
+      value={escapeInputHtml(voiceBusy ? '' : draft)}
+      disabled={voiceBusy || isBusy || isConsultationDetailLoading || isMessageHistoryLoading || (mode === 'consultations' && isConsultationsLoading)}
       sendButton
       attachButton={false}
-      placeholder={isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : knowledgeMode === 'record-pilot' ? '自然文で不適合記録を検索…' : '自然な言葉で相談…'}
+      placeholder={voice.state === 'processing' ? '文字にしています…' : voice.state === 'recording' ? '' : isBusy ? '回答を取得中…' : isConsultationsLoading ? '相談一覧を準備中…' : knowledgeMode === 'record-pilot' ? '自然文で不適合記録を検索…' : '自然な言葉で相談…'}
       aria-label="Hermesへの質問"
       onChange={(_innerHtml, textContent) => onDraftChange(textContent)}
-      onSend={() => onSend()}
+      onSend={() => { if (!voiceBusy) onSend(); }}
     />
   ) : null;
 
+  const renderMessages = (items: readonly HermesPanelMessage[]) => items.map((message) => (
+    <Message
+      key={message.id}
+      model={{
+        message: message.content,
+        sender: message.role === 'assistant' ? 'Hermes' : 'あなた',
+        direction: message.role === 'assistant' ? 'incoming' : 'outgoing',
+        position: 'single',
+        type: 'custom'
+      }}
+    >
+      <Message.CustomContent>
+        {message.selection ? (
+          <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
+        ) : (
+          <div className="hermes-chat-panel__message">{message.voice ? <VoiceMicrophoneIcon /> : null}{message.role === 'assistant'
+            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine && message.planId !== undefined ? (refine, label) => onRefine(refine, label, message.planId) : onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
+            : message.content}</div>
+        )}
+        {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {
+          const evidence = message.evidence?.find((candidate) => `${candidate.kind}:${candidate.id}` === recordId);
+          return evidence ? [<RecordCard key={`${message.id}-record-${recordId}-${message.recordView ?? 'summary'}`} evidence={evidence} view={message.recordView ?? 'summary'} />] : [];
+        }) : null}
+        {message.evidenceVisible !== false ? (message.evidenceVisibleIds
+          ? message.evidence?.filter((evidence) => message.evidenceVisibleIds?.includes(`${evidence.kind}:${evidence.id}`))
+          : message.evidence)?.map((evidence) => (
+          <EvidenceCard key={`${message.id}-${evidence.kind}-${evidence.id}`} evidence={evidence} />
+        )) : null}
+        {message.role === 'assistant' && message.feedback && onFeedback ? (
+          <div role="group" aria-label="回答の評価" className="hermes-chat-panel__suggestion-actions">
+            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'helpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'helpful')}>役立った</button>
+            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'unhelpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'unhelpful')}>合わない</button>
+            {message.feedback !== 'pending' ? <span role="status">評価を保存しました</span> : null}
+          </div>
+        ) : null}
+      </Message.CustomContent>
+    </Message>
+  ));
+
   return (
     <section ref={panelRef} className="hermes-chat-panel" style={style} aria-label="Hermesチャット" role="region">
+      {onVoiceTranscript ? <HermesVoiceControls panelRef={panelRef} voice={voice} disabled={isBusy || isConsultationDetailLoading || isMessageHistoryLoading || isConsultationsLoading} /> : null}
       <header className="hermes-chat-panel__header">
         <div className="hermes-chat-panel__header-main">
           {onKnowledgeModeChange ? (
@@ -586,6 +635,7 @@ export default function HermesChatPanel({
       {!inquiryMode?.active && authRequired ? <p className="hermes-chat-panel__status" role="status">{authRequired}</p> : null}
       {conversationContent ?? <>
       {conversationExtension}
+      {voice.error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{voice.error}</p> : null}
       {error ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{error}</p> : null}
       {consultationError ? <p className="hermes-chat-panel__status hermes-chat-panel__status--error" role="alert">{consultationError}</p> : null}
       {selectionNotice ? <p className="hermes-chat-panel__status hermes-chat-panel__status--selection" role="status">{selectionNotice}</p> : null}
@@ -616,6 +666,7 @@ export default function HermesChatPanel({
                 ) : null}
               </button>
             ))}
+            {renderMessages(messages.filter(message => message.localOnly))}
           </div>
           {composerVisible ? <div className="hermes-chat-panel__consultation-composer">{messageInput}</div> : null}
         </>
@@ -641,44 +692,7 @@ export default function HermesChatPanel({
                       {messageHistoryError ? <p className="hermes-chat-panel__history-error" role="alert">{messageHistoryError}</p> : null}
                     </div>
                   ) : null}
-                  {messages.map((message) => (
-                    <Message
-                      key={message.id}
-                      model={{
-                        message: message.content,
-                        sender: message.role === 'assistant' ? 'Hermes' : 'あなた',
-                        direction: message.role === 'assistant' ? 'incoming' : 'outgoing',
-                        position: 'single',
-                        type: 'custom'
-                      }}
-                    >
-                      <Message.CustomContent>
-                        {message.selection ? (
-                          <p className="hermes-chat-panel__message-selection" role="status">「{message.selection.option}」が選択されました。</p>
-                        ) : (
-                          <div className="hermes-chat-panel__message">{message.role === 'assistant'
-                            ? message.guide ? <HermesOperationGuideAnswer guide={message.guide} /> : message.display?.records.length ? <HermesRecordAnswer display={message.display} onRefine={onRefine && message.planId !== undefined ? (refine, label) => onRefine(refine, label, message.planId) : onRefine} disabled={isBusy} /> : renderMessageContent(message.content)
-                            : message.content}</div>
-                        )}
-                        {message.recordIds?.length && message.evidence?.length ? message.recordIds.flatMap((recordId) => {
-                          const evidence = message.evidence?.find((candidate) => `${candidate.kind}:${candidate.id}` === recordId);
-                          return evidence ? [<RecordCard key={`${message.id}-record-${recordId}-${message.recordView ?? 'summary'}`} evidence={evidence} view={message.recordView ?? 'summary'} />] : [];
-                        }) : null}
-                        {message.evidenceVisible !== false ? (message.evidenceVisibleIds
-                          ? message.evidence?.filter((evidence) => message.evidenceVisibleIds?.includes(`${evidence.kind}:${evidence.id}`))
-                          : message.evidence)?.map((evidence) => (
-                          <EvidenceCard key={`${message.id}-${evidence.kind}-${evidence.id}`} evidence={evidence} />
-                        )) : null}
-                        {message.role === 'assistant' && message.feedback && onFeedback ? (
-                          <div role="group" aria-label="回答の評価" className="hermes-chat-panel__suggestion-actions">
-                            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'helpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'helpful')}>役立った</button>
-                            <button type="button" className="hermes-chat-panel__suggestion-button" aria-pressed={message.feedback === 'unhelpful'} disabled={isBusy || feedbackBusy} onClick={() => onFeedback(message.id, 'unhelpful')}>合わない</button>
-                            {message.feedback !== 'pending' ? <span role="status">評価を保存しました</span> : null}
-                          </div>
-                        ) : null}
-                      </Message.CustomContent>
-                    </Message>
-                  ))}
+                  {renderMessages(messages)}
                   {suggestion ? (
                     <div className="hermes-chat-panel__suggestion" role="group" aria-label="Hermesからの候補確認">
                       {suggestion.signageProposal ? <SignageProposalPreview proposal={suggestion.signageProposal} onPreviewReady={setSignagePreviewReady} /> : null}

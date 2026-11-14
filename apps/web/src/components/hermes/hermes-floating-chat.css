@@ -1209,3 +1209,84 @@
 .hermes-chat-panel__mode--inquiry-unread.hermes-chat-panel__mode--selected .hermes-inquiry-count { color: #ffd9a0; background: #2a1000; }
 .hermes-chat-panel__mode-selector:has(.hermes-inquiry-count),
 .hermes-chat-panel__mode-selector:has(button:nth-child(4)) { flex-wrap: wrap; flex-shrink: 1; }
+
+.hermes-chat-panel .hermes-chat-panel__voice {
+  order: -1;
+  color: #b5ffca;
+  align-self: flex-end;
+}
+
+.hermes-chat-panel__voice svg {
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.125em;
+}
+
+.hermes-chat-panel .hermes-chat-panel__voice--recording {
+  background: #ff5a5a;
+  color: #fff;
+  border-radius: 5px;
+}
+
+.hermes-chat-panel__voice-spinner {
+  animation: hermes-voice-spin 1s linear infinite;
+}
+
+@keyframes hermes-voice-spin {
+  to { transform: rotate(360deg); }
+}
+
+.hermes-chat-panel__input--recording .cs-message-input__content-editor-container {
+  visibility: hidden;
+}
+
+.hermes-chat-panel__input--recording .cs-message-input__content-editor-wrapper {
+  position: relative;
+}
+
+.hermes-chat-panel__recording {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  color: #e8fff0;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  overflow: hidden;
+}
+
+.hermes-chat-panel__microphone-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hermes-chat-panel__voice-bars {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: 22px;
+}
+
+.hermes-chat-panel__voice-bars i {
+  width: 2px;
+  height: 22px;
+  background: #ff5a5a;
+}
+
+.hermes-chat-panel__message > .hermes-chat-panel__voice-icon {
+  width: 0.8em;
+  height: 0.8em;
+  margin-right: 5px;
+}
+
+.hermes-chat-panel .cs-message-input__tools .cs-button--send {
+  margin-right: 0;
+}
+
+.hermes-chat-panel .hermes-chat-panel__voice:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
