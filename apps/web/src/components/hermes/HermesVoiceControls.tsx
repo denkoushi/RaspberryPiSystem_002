@@ -27,7 +27,7 @@ export function HermesVoiceControls({ panelRef, voice, disabled }: HermesVoiceCo
   return <>
     {voiceTools ? createPortal(
       <button type="button" className={`cs-button hermes-chat-panel__voice${voice.state === 'recording' ? ' hermes-chat-panel__voice--recording' : ''}`}
-        aria-label={voice.state === 'recording' ? '聞き取りを止める' : voice.state === 'processing' ? '文字にしています' : '声で入力'}
+        aria-label={voice.state === 'recording' || voice.state === 'preparing' ? '聞き取りを止める' : voice.state === 'processing' ? '文字にしています' : '声で入力'}
         disabled={voice.state === 'processing' || (voice.state === 'idle' && disabled)}
         onClick={voice.toggle}>
         {voice.state === 'recording' ? <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="5" width="14" height="14" fill="currentColor" /></svg>

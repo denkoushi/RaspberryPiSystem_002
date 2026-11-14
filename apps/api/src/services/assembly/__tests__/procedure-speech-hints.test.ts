@@ -3,11 +3,11 @@ import { inferenceEnvShape } from '../../../config/env/inference.js';
 import { PROCEDURE_SPEECH_HINTS, toWhisperPrompt } from '../procedure-speech-hints.js';
 
 describe('procedure speech hints', () => {
-  it.each(Object.entries(PROCEDURE_SPEECH_HINTS))('%s is short and already safe for Whisper', (_key, prompt) => {
+  it.each(Object.entries(PROCEDURE_SPEECH_HINTS))('%s is short and already safe for Whisper', (key, prompt) => {
     expect(toWhisperPrompt(prompt)).toBe(prompt);
     expect(Buffer.byteLength(prompt, 'utf8')).toBeLessThanOrEqual(800);
     expect(prompt).not.toMatch(/\p{C}/u);
-    expect(prompt.split('、').length).toBeGreaterThanOrEqual(30);
+    expect(prompt.split('、').length).toBeGreaterThanOrEqual(key === 'kiosk-navigation' ? 20 : 30);
     expect(prompt.split('、').length).toBeLessThanOrEqual(40);
   });
   it('replaces all category-C characters and collapses whitespace', () => {

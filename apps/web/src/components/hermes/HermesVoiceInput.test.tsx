@@ -41,7 +41,9 @@ describe('Hermes microphone', () => {
     expect(microphone.parentElement?.querySelector('.cs-button--send')).toBeTruthy();
     fireEvent.click(microphone);
     expect(screen.getByRole('button', { name: '聞き取りを止める' })).toBeEnabled();
+    expect(microphone).not.toHaveClass('hermes-chat-panel__voice--recording');
     expect(await screen.findByText('USB microphone')).toBeInTheDocument();
+    expect(microphone).toHaveClass('hermes-chat-panel__voice--recording');
     expect(document.querySelectorAll('.hermes-chat-panel__voice-bars i')).toHaveLength(7);
     expect(document.querySelector('[contenteditable]')).toHaveAttribute('contenteditable', 'false');
     fireEvent.click(screen.getByRole('button', { name: '聞き取りを止める' }));
@@ -51,8 +53,24 @@ describe('Hermes microphone', () => {
     expect(screen.getByRole('button', { name: '声で入力' })).toBeEnabled();
     expect(document.querySelector('[contenteditable]')).toHaveTextContent('下書き 追加の相談');
     expect(transcript).toHaveBeenCalledWith('追加の相談');
+    expect(transcribeAssemblyProcedureDictation).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal), 'kiosk-navigation');
     expect(media.stopTrack).toHaveBeenCalled();
     expect(media.closeContext).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the microphone uncolored until recording starts after permission arrives', async () => {
+    const media = mockVoiceRecording();
+    const stream = await media.getUserMedia();
+    let grant!: (value: typeof stream) => void;
+    media.getUserMedia.mockReturnValue(new Promise(done => { grant = done; }));
+    render(<Harness />);
+    const microphone = screen.getByRole('button', { name: '声で入力' });
+    fireEvent.click(microphone);
+    expect(microphone).not.toHaveClass('hermes-chat-panel__voice--recording');
+    expect(media.recorder).toBeUndefined();
+    await act(async () => grant(stream));
+    expect(media.recorder.state).toBe('recording');
+    expect(microphone).toHaveClass('hermes-chat-panel__voice--recording');
   });
 
   it.each(['recording', 'processing'])('disposes %s when the panel closes', async phase => {
@@ -96,6 +114,7 @@ describe('Hermes microphone', () => {
     await act(async () => grant(stream));
     expect(screen.getByRole('button', { name: '声で入力' })).toBeEnabled();
     expect(media.stopTrack).toHaveBeenCalledOnce();
+    expect(media.recorder).toBeUndefined();
     expect(transcribeAssemblyProcedureDictation).not.toHaveBeenCalled();
   });
 

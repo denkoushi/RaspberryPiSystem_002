@@ -42,5 +42,5 @@ export function useHermesHoldVoice(enabled: boolean, onTranscript: (text: string
     if (held.current) voice.stop();
     return held.current;
   };
-  return { press, release, cancel, state: voice.state === 'idle' ? feedback : voice.state, level: voice.meter.level };
+  return { press, release, cancel, state: voice.state === 'preparing' ? null : voice.state === 'idle' ? feedback : voice.state, level: voice.meter.level };
 }

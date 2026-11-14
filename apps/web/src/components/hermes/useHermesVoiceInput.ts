@@ -7,7 +7,7 @@ let activeSession: VoiceSession | null = null;
 
 export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: string) => void) {
   const sessionRef = useRef<VoiceSession | null>(null);
-  const [state, setState] = useState<'idle' | 'recording' | 'processing'>('idle');
+  const [state, setState] = useState<'idle' | 'preparing' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState<VoiceInputError | null>(null);
   const [meter, setMeter] = useState({ level: 0, seconds: 0, microphone: '' });
   const cancel = useCallback(() => {
@@ -37,7 +37,7 @@ export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: strin
     activeSession = session;
     setError(null);
     setMeter({ level: 0, seconds: 0, microphone: '' });
-    setState('recording');
+    setState('preparing');
     const active = () => sessionRef.current === session && !session.abort.signal.aborted;
     void startVoiceTranscription(session, active, () => setState('processing'), text => {
       cancel();
@@ -46,9 +46,13 @@ export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: strin
       if (!active()) return;
       cancel();
       setError(message);
-    }, undefined, {
+    }, 'kiosk-navigation', {
       silenceStopMs: 1200,
-      onRecording: microphone => setMeter(current => ({ ...current, microphone })),
+      onRecording: microphone => {
+        if (!active()) return;
+        setState('recording');
+        setMeter(current => ({ ...current, microphone }));
+      },
       onLevel: (level, seconds) => setMeter(current => ({ ...current, level, seconds }))
     });
   }, [enabled, onTranscript, cancel]);
