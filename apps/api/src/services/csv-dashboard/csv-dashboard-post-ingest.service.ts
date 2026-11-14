@@ -1,3 +1,4 @@
+import { CsvDashboardFkobainoAgePruneService, type FkobainoAgePruneResult } from './csv-dashboard-fkobaino-age-prune.service.js';
 import { APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS, CsvDashboardAppendRawRowPruneService, type PruneResult } from './csv-dashboard-append-raw-row-prune.service.js';
 import { pruneCompletedGrindingPlanningBoardSeibans } from '../production-schedule/grinding-planning-board/completion.js';
 import { markProductionScheduleResourceCdsCacheStale } from '../production-schedule/production-schedule-query/resources.js';
@@ -65,7 +66,8 @@ export class CsvDashboardPostIngestService {
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
     private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService(),
     private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService(),
-    private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService()
+    private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService(),
+    private readonly fkobainoAgePruneService: CsvDashboardFkobainoAgePruneService = new CsvDashboardFkobainoAgePruneService()
   ) {}
 
   private static readonly appendRawRowPruneInFlight = new Set<string>();
@@ -85,6 +87,25 @@ export class CsvDashboardPostIngestService {
       CsvDashboardPostIngestService.appendRawRowPruneInFlight.delete(dashboardId);
     }
     logger.info({ dashboardId, ...pruneResult }, '[CsvDashboardPostIngestService] append raw row prune completed');
+  }
+
+  private static readonly fkobainoAgePruneInFlight = new Set<string>();
+
+  private async runFkobainoAgePrune(dashboardId: string, ingestRunId: string): Promise<void> {
+    if (CsvDashboardPostIngestService.fkobainoAgePruneInFlight.has(dashboardId)) {
+      logger.info({ dashboardId }, '[CsvDashboardPostIngestService] fkobaino age prune skipped: already running');
+      return;
+    }
+    CsvDashboardPostIngestService.fkobainoAgePruneInFlight.add(dashboardId);
+    let pruneResult: FkobainoAgePruneResult = { deletedCount: 0, hasRemaining: null };
+    try {
+      pruneResult = await this.fkobainoAgePruneService.prune(ingestRunId);
+    } catch (error) {
+      logger.error({ err: error, dashboardId, ingestRunId }, '[CsvDashboardPostIngestService] fkobaino age prune failed');
+    } finally {
+      CsvDashboardPostIngestService.fkobainoAgePruneInFlight.delete(dashboardId);
+    }
+    logger.info({ dashboardId, ...pruneResult }, '[CsvDashboardPostIngestService] fkobaino age prune completed');
   }
 
   async runAfterSuccessfulIngest(params: {
@@ -198,6 +219,8 @@ export class CsvDashboardPostIngestService {
         },
         '[CsvDashboardPostIngestService] FKOBAINO purchase order lookup sync completed'
       );
+      // Housekeeping must not hold the upload response or ingest scheduler.
+      void this.runFkobainoAgePrune(params.dashboardId, params.ingestRunId);
     }
 
     if (params.dashboardId === RIGGING_SLINGS_INSPECTION_POWERAPPS_DASHBOARD_ID) {

@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 export const ingestTuningEnvShape = {
+  CSV_FKOBAINO_AGE_PRUNE_ENABLED: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
+    z.enum(['true', 'false']).default('true')
+  ).transform((v) => v === 'true'),
   CSV_APPEND_RAW_ROW_PRUNE_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('true')

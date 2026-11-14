@@ -16,6 +16,13 @@ const logInfo = vi.hoisted(() => vi.fn());
 const logError = vi.hoisted(() => vi.fn());
 vi.mock('../../../lib/logger.js', () => ({ logger: { info: logInfo, error: logError } }));
 
+const agePrune = vi.hoisted(() => vi.fn());
+vi.mock('../csv-dashboard-fkobaino-age-prune.service.js', () => ({
+  CsvDashboardFkobainoAgePruneService: vi.fn().mockImplementation(function () {
+    return { prune: agePrune };
+  }),
+}));
+
 const appendPrune = vi.hoisted(() => vi.fn());
 vi.mock('../csv-dashboard-append-raw-row-prune.service.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../csv-dashboard-append-raw-row-prune.service.js')>();
@@ -102,6 +109,7 @@ vi.mock('../../rigging/inspection/rigging-inspection-projection.service.js', () 
 describe('CsvDashboardPostIngestService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    agePrune.mockReset().mockResolvedValue({ deletedCount: 0, hasRemaining: false });
     appendPrune.mockReset().mockResolvedValue({ deletedCount: 0, hasRemaining: false });
     syncFromSupplementDashboard.mockResolvedValue({
       scanned: 2,
@@ -456,6 +464,7 @@ describe('append raw row pruning after successful sync', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    agePrune.mockReset().mockResolvedValue({ deletedCount: 0, hasRemaining: false });
     appendPrune.mockReset().mockResolvedValue({ deletedCount: 12, hasRemaining: true });
     for (const [, sync] of cases) sync.mockReset().mockResolvedValue({ scanned: 1 });
   });
@@ -500,5 +509,63 @@ describe('append raw row pruning after successful sync', () => {
   it('does not prune an unrelated dashboard', async () => {
     await new CsvDashboardPostIngestService().runAfterSuccessfulIngest({ dashboardId: 'unrelated', ingestSource: 'manual' });
     expect(appendPrune).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('FKOBAINO age pruning after successful sync', () => {
+  const dashboardId = PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID;
+  const params = { dashboardId, ingestSource: 'manual' as const, ingestRunId: 'run-1' };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    agePrune.mockReset().mockResolvedValue({ deletedCount: 12, hasRemaining: true });
+    syncFromFkobainoDashboard.mockReset().mockResolvedValue({ scanned: 1 });
+  });
+
+  it('starts only after lookup sync succeeds and logs the outcome', async () => {
+    let resolve!: (result: object) => void;
+    syncFromFkobainoDashboard.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const pending = new CsvDashboardPostIngestService().runAfterSuccessfulIngest(params);
+    expect(agePrune).not.toHaveBeenCalled();
+    resolve({ scanned: 1 });
+    await pending;
+    expect(agePrune).toHaveBeenCalledExactlyOnceWith('run-1');
+    expect(logInfo).toHaveBeenCalledWith({ dashboardId, deletedCount: 12, hasRemaining: true }, '[CsvDashboardPostIngestService] fkobaino age prune completed');
+  });
+
+  it('does not prune when sync fails', async () => {
+    syncFromFkobainoDashboard.mockRejectedValueOnce(new Error('sync failed'));
+    await expect(new CsvDashboardPostIngestService().runAfterSuccessfulIngest(params)).rejects.toThrow('sync failed');
+    expect(agePrune).not.toHaveBeenCalled();
+  });
+
+  it('contains prune exceptions and releases the in-flight guard', async () => {
+    agePrune.mockRejectedValueOnce(new Error('prune failed'));
+    const service = new CsvDashboardPostIngestService();
+    await expect(service.runAfterSuccessfulIngest(params)).resolves.toBeDefined();
+    expect(logError).toHaveBeenCalledWith(expect.objectContaining({ dashboardId, err: expect.any(Error) }), expect.any(String));
+    expect(logInfo).toHaveBeenCalledWith({ dashboardId, deletedCount: 0, hasRemaining: null }, '[CsvDashboardPostIngestService] fkobaino age prune completed');
+    await service.runAfterSuccessfulIngest(params);
+    expect(agePrune).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns without waiting, prevents overlap across service instances, and allows the next run', async () => {
+    let finish!: (result: { deletedCount: number; hasRemaining: boolean }) => void;
+    agePrune.mockImplementationOnce(() => new Promise((done) => { finish = done; }));
+    const service = new CsvDashboardPostIngestService();
+    await expect(service.runAfterSuccessfulIngest(params)).resolves.toBeDefined();
+    await new CsvDashboardPostIngestService().runAfterSuccessfulIngest({ ...params, ingestRunId: 'run-2' });
+    expect(agePrune).toHaveBeenCalledTimes(1);
+    finish({ deletedCount: 1, hasRemaining: false });
+    await new Promise((done) => setImmediate(done));
+    await service.runAfterSuccessfulIngest({ ...params, ingestRunId: 'run-3' });
+    expect(agePrune).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not prune unrelated dashboards or missing ingest runs', async () => {
+    const service = new CsvDashboardPostIngestService();
+    await service.runAfterSuccessfulIngest({ dashboardId: 'unrelated', ingestSource: 'manual' });
+    await expect(service.runAfterSuccessfulIngest({ dashboardId, ingestSource: 'manual' })).rejects.toThrow('ingestRunId is required');
+    expect(agePrune).not.toHaveBeenCalled();
   });
 });
