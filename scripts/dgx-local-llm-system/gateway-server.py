@@ -44,9 +44,10 @@ import sys
 import subprocess
 import time
 import socket
+import secrets
 import http.client
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from urllib.parse import urlsplit
 import urllib.error
 import urllib.request
@@ -73,6 +74,193 @@ from model_storage_delete import (
     parse_allowed_roots,
 )
 from resource_state import read_resource_state, state_to_api, write_resource_state
+from business_qwen38 import sharing_evidence as qwen_sharing_evidence
+
+QWEN_PRIVATE_WAIT_SECONDS = 30
+QWEN_BUSINESS_PREEMPT_SECONDS = 5
+QWEN_CACHE_RESET_SECONDS = 10
+QWEN_BUSINESS_DRAIN_SECONDS = 2
+QWEN_PREFIX_RESET_INTERVAL_SECONDS = 0.5
+_QWEN_PRIVATE_CACHE_SALT = secrets.token_hex(32)
+
+
+class QwenOwnerExclusive:
+    """One admission gate for the single gateway process and both vLLM ranks."""
+    def __init__(self):
+        self.condition = threading.Condition()
+        self.identity = None
+        self.owner = 'unknown'
+        self.uncleared = True
+        self.transitioning = False
+        self.business_waiters = 0
+        self.active = {'business': set(), 'private': set()}
+
+    @contextmanager
+    def request(self, owner, identity, handler, reset, draining):
+        stopped = threading.Event()
+        def watch_lifecycle():
+            while not stopped.wait(0.05):
+                if draining():
+                    handler._business_abort()
+                    return
+        watcher = None
+        if owner == 'private':
+            watcher = threading.Thread(target=watch_lifecycle, daemon=True)
+            watcher.start()
+        try:
+            with self._admit(owner, identity, handler, reset, draining):
+                yield
+        finally:
+            stopped.set()
+            if watcher:
+                watcher.join()
+
+    @contextmanager
+    def _admit(self, owner, identity, handler, reset, draining):
+        business = owner == 'business'
+        deadline = time.monotonic() + QWEN_PRIVATE_WAIT_SECONDS
+        with self.condition:
+            if self.identity != identity:
+                self.identity = identity
+                self.owner = 'private' if self.active['private'] else 'unknown'
+                self.uncleared = True
+            if business:
+                self.business_waiters += 1
+            try:
+                while True:
+                    if draining() or handler._business_timed_out:
+                        raise ValueError('business_draining')
+                    if not business and (self.business_waiters or self.identity != identity):
+                        raise ValueError('private_shared_busy')
+                    if self.transitioning:
+                        if not business and time.monotonic() >= deadline:
+                            raise ValueError('private_shared_busy')
+                        self.condition.wait(0.05)
+                        continue
+                    if business and self.owner == 'business':
+                        break
+                    if not business and self.owner == 'private':
+                        if not self.uncleared:
+                            break
+                        if self.active['private']:
+                            # An identity change left old private work behind.
+                            # Only business may preempt that work.
+                            raise ValueError('private_shared_busy')
+                        # Old private work has ended: clear before private resumes.
+                    if not business and (self.active['business'] or self.active['private']):
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise ValueError('private_shared_busy')
+                        self.condition.wait(min(remaining, 0.05))
+                        continue
+                    self.transitioning = True
+                    try:
+                        if business and self.active['private']:
+                            cutoff = time.monotonic() + QWEN_BUSINESS_PREEMPT_SECONDS
+                            while self.active['private']:
+                                remaining = cutoff - time.monotonic()
+                                if remaining <= 0:
+                                    break
+                                self.condition.wait(min(remaining, 0.05))
+                            for private in self.active['private']:
+                                private._qwen_preempted = True
+                                private._business_abort(include_downstream=False)
+                            cutoff = time.monotonic() + QWEN_BUSINESS_DRAIN_SECONDS
+                            while self.active['private']:
+                                remaining = cutoff - time.monotonic()
+                                if remaining <= 0:
+                                    for private in self.active['private']:
+                                        private._business_abort()
+                                    break
+                                self.condition.wait(min(remaining, 0.05))
+                        # Admission is closed, but completion must remain possible.
+                        self.condition.release()
+                        try:
+                            def cancelled():
+                                with self.condition:
+                                    return not business and (self.business_waiters > 0 or self.identity != identity)
+                            cleared = reset(cancelled)
+                        except Exception:
+                            cleared = False
+                        finally:
+                            self.condition.acquire()
+                        if not business and (cleared is None or cancelled()):
+                            # No private inference was admitted. Keep the previous
+                            # isolation state and let business skip another reset.
+                            if self.identity == identity:
+                                self.owner = 'business'
+                            raise ValueError('private_shared_busy')
+                        self.uncleared = not cleared
+                        self.owner = owner if business or cleared else 'business'
+                        if not business and not cleared:
+                            raise ValueError('private_shared_isolation_failed')
+                    finally:
+                        self.transitioning = False
+                        self.condition.notify_all()
+                    # A business arrival or lifecycle mutation during reset wins.
+                self.active[owner].add(handler)
+            finally:
+                if business:
+                    self.business_waiters -= 1
+                self.condition.notify_all()
+        try:
+            yield
+        finally:
+            with self.condition:
+                self.active[owner].remove(handler)
+                self.condition.notify_all()
+
+
+def reset_qwen_caches(base, proxy, cancelled=lambda: False):
+    deadline = time.monotonic() + QWEN_CACHE_RESET_SECONDS
+    _business_request.reset_deadline = deadline
+    expired = threading.Event()
+    context = getattr(_business_request, 'context', None)
+    def expire():
+        expired.set()
+        if context is not None:
+            _, guard, sockets, handler = context
+            with guard:
+                for current in sockets:
+                    if current is not handler.connection:
+                        try:
+                            current.shutdown(socket.SHUT_RDWR)
+                        except OSError:
+                            pass
+    timer = threading.Timer(max(0, deadline - time.monotonic()), expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        while True:
+            if cancelled():
+                return None
+            if expired.is_set() or time.monotonic() >= deadline:
+                return False
+            status, body, _ = proxy('POST', base + '/reset_prefix_cache', b'', {})
+            if not 200 <= status < 300:
+                return False
+            success = json.loads(body).get('success')
+            if success is True:
+                break
+            remaining = deadline - time.monotonic()
+            if success is not False or remaining <= 0:
+                return False
+            time.sleep(min(QWEN_PREFIX_RESET_INTERVAL_SECONDS, remaining))
+        for endpoint in ('/reset_mm_cache', '/reset_encoder_cache'):
+            if cancelled():
+                return None
+            if expired.is_set() or time.monotonic() >= deadline:
+                return False
+            status, _, _ = proxy('POST', base + endpoint, b'', {})
+            if not 200 <= status < 300:
+                return False
+        return not expired.is_set() and time.monotonic() < deadline
+    except Exception:
+        return False
+    finally:
+        timer.cancel()
+        timer.join()
+        del _business_request.reset_deadline
 
 
 @dataclass(frozen=True)
@@ -260,18 +448,22 @@ def attest_private_sharing(config: GatewayConfig, runtime: dict) -> dict:
     runtime = dict(runtime)
     evidence = runtime.pop("privateSharingEvidence", None)
     runtime.pop("privateSharing", None)
-    if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") not in {"true", "1"}:
-        return runtime
     try:
         _, _, profile = business_route(config)
+        flag = ('DGX_PRIVATE_SHARED_QWEN38_ENABLED' if profile == BUSINESS_QWEN38_PROFILE_ID
+                else 'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED')
+        if os.environ.get(flag, '') not in {'true', '1'}:
+            return runtime
         state = business_selection_state(config.active_model_state_path)
         generation = state["businessGeneration"]
         expected = {'generation': generation, 'weightsRevision': '878f5689-ablit-0bdc2036',
             'runtimeIdentity': 'tensorfold-native:serve:8889:parallel4:thinking',
             'promptCacheGiB': 0, 'learn': False, 'logDriver': 'none',
             'requestResponseLogging': False, 'persistsConversations': False}
+        if profile == BUSINESS_QWEN38_PROFILE_ID:
+            expected = qwen_sharing_evidence(generation)
         ranks = runtime['ranks']
-        if (profile != DEEPSEEK_PROFILE or runtime['modelProfileId'] != profile
+        if (profile not in {DEEPSEEK_PROFILE, BUSINESS_QWEN38_PROFILE_ID} or runtime['modelProfileId'] != profile
                 or runtime['generation'] != generation
                 or type(runtime['selectionRevision']) is not int
                 or runtime['selectionRevision'] != state['selectionRevision']
@@ -304,6 +496,17 @@ def qwen_has_image(value) -> bool:
         return value.get("type") in {"image_url", "input_image", "image"} or any(
             qwen_has_image(part) for part in value.values())
     return isinstance(value, list) and any(qwen_has_image(part) for part in value)
+
+
+def private_has_unsupported_image_url(value):
+    if isinstance(value, dict):
+        if 'image_url' in value:
+            image = value['image_url']
+            url = image.get('url') if isinstance(image, dict) else image
+            if not isinstance(url, str) or not url.startswith('data:'):
+                return True
+        return any(private_has_unsupported_image_url(part) for part in value.values())
+    return isinstance(value, list) and any(private_has_unsupported_image_url(part) for part in value)
 
 
 def business_sse_alias(line: bytes) -> bytes:
@@ -903,6 +1106,7 @@ def business_request_lifetime(handler):
     lifetime = positive_env_seconds("BUSINESS_REQUEST_MAX_LIFETIME_SEC", 300)
     write_timeout = positive_env_seconds("BUSINESS_RESPONSE_WRITE_TIMEOUT_SEC", 10)
     handler._business_timed_out = False
+    handler._business_downstream_closed = False
     guard = threading.Lock()
     sockets = []
     previous_timeout = None
@@ -912,14 +1116,19 @@ def business_request_lifetime(handler):
         connection.settimeout(min(write_timeout, lifetime))
         sockets.append(connection)
     deadline = time.monotonic() + lifetime
-    def expire():
+    def expire(*, include_downstream=True):
         with guard:
             handler._business_timed_out = True
+            if include_downstream:
+                handler._business_downstream_closed = True
             for current in sockets:
+                if current is connection and not include_downstream:
+                    continue
                 try:
                     current.shutdown(socket.SHUT_RDWR)
                 except OSError:
                     pass
+    handler._business_abort = expire
     _business_request.context = (deadline, guard, sockets, handler)
     timer = threading.Timer(lifetime, expire)
     timer.daemon = True
@@ -937,6 +1146,12 @@ def business_request_lifetime(handler):
 
 
 def business_upstream_timeout(default: float) -> float:
+    reset_deadline = getattr(_business_request, 'reset_deadline', None)
+    if reset_deadline is not None:
+        remaining = reset_deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError('qwen_cache_reset_deadline_exceeded')
+        default = min(default, remaining)
     context = getattr(_business_request, "context", None)
     if context is None:
         return default
@@ -975,7 +1190,8 @@ class BusinessHTTPConnection(http.client.HTTPConnection):
         if context is not None:
             deadline, guard, sockets, handler = context
             with guard:
-                if handler._business_timed_out or time.monotonic() >= deadline:
+                reset_deadline = getattr(_business_request, 'reset_deadline', float('inf'))
+                if handler._business_timed_out or time.monotonic() >= min(deadline, reset_deadline):
                     self.close()
                     raise TimeoutError("business_request_lifetime_exceeded")
                 # Register before sending the request or parsing response headers.
@@ -1019,6 +1235,7 @@ def make_handler(
     config: GatewayConfig,
     proxy_impl: Callable[[str, str, bytes, dict[str, str]], tuple[int, bytes, str]] = proxy_request,
 ) -> type[BaseHTTPRequestHandler]:
+    qwen_owner = QwenOwnerExclusive()
     class Handler(BaseHTTPRequestHandler):
         server_version = "dgx-local-llm-gateway/1.0"
 
@@ -1046,6 +1263,15 @@ def make_handler(
             req = urllib.request.Request(url, data=body, method="POST", headers=headers)
             self.close_connection = True
             response_started = False
+            self._business_stream_handled = True
+            def preempted_error():
+                if getattr(self, '_business_downstream_closed', False):
+                    return
+                if response_started:
+                    self.wfile.write(b'data: {"error":{"code":"private_shared_preempted"}}\n\n')
+                    self.wfile.flush()
+                else:
+                    self._send_json(409, {'error': {'code': 'private_shared_preempted'}})
             try:
                 try:
                     with business_urlopen(req, timeout=business_upstream_timeout(120)) as response, business_upstream_response(response):
@@ -1061,6 +1287,8 @@ def make_handler(
                         self.end_headers()
                         pending = b""
                         while chunk:
+                            if getattr(self, '_qwen_preempted', False):
+                                break
                             if business:
                                 pending += chunk
                                 lines = pending.split(b"\n")
@@ -1072,7 +1300,9 @@ def make_handler(
                             self.wfile.write(chunk)
                             self.wfile.flush()
                             chunk = response.read1(65536)
-                        if business and pending:
+                        if getattr(self, '_qwen_preempted', False):
+                            preempted_error()
+                        elif business and pending:
                             self.wfile.write(business_sse_alias(pending))
                             self.wfile.flush()
                 except urllib.error.HTTPError as exc:
@@ -1082,10 +1312,12 @@ def make_handler(
                                 exc.code, exc.read(), exc.headers.get("Content-Type", "text/plain; charset=utf-8")
                             )
                 except Exception as exc:
-                    if not response_started:
+                    if getattr(self, '_qwen_preempted', False):
+                        preempted_error()
+                    elif not response_started:
                         reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
                         self._send_text(502, f"bad gateway: {reason}")
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, OSError):
                 # The client may also disconnect while an error response is being sent.
                 pass
 
@@ -1150,7 +1382,8 @@ def make_handler(
                     if status == 200:
                         try:
                             runtime = json.loads(body)["businessRuntime"]
-                            if os.environ.get("DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "") in {"true", "1"}:
+                            if any(os.environ.get(flag, "") in {"true", "1"} for flag in (
+                                    "DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED", "DGX_PRIVATE_SHARED_QWEN38_ENABLED")):
                                 with business_state_lock(config.active_model_state_path, exclusive=False, blocking=False):
                                     runtime = attest_private_sharing(config, runtime)
                             else:
@@ -1575,13 +1808,15 @@ def make_handler(
                     base, auth, profile = business_route(config)
                     if shared is not None:
                         state = business_selection_state(config.active_model_state_path)
-                        if (profile != DEEPSEEK_PROFILE or len(self.headers.get_all("X-Private-Shared-Runtime")) != 1
+                        if (profile not in {DEEPSEEK_PROFILE, BUSINESS_QWEN38_PROFILE_ID}
+                                or (profile == BUSINESS_QWEN38_PROFILE_ID and os.environ.get('DGX_PRIVATE_SHARED_QWEN38_ENABLED', '') not in {'true', '1'})
+                                or len(self.headers.get_all("X-Private-Shared-Runtime")) != 1
                                 or shared != f"{state['selectionRevision']}:{state['businessGeneration']}"):
                             self._send(409, b"", "application/json")
                             return
-                        status, snapshot, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                        status, runtime_snapshot, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
                             {"X-Runtime-Control-Token": config.runtime_control_token})
-                        runtime = attest_private_sharing(config, json.loads(snapshot)['businessRuntime']) if status == 200 else {}
+                        runtime = attest_private_sharing(config, json.loads(runtime_snapshot)['businessRuntime']) if status == 200 else {}
                         proof = runtime.get('privateSharing', {})
                         if shared != f"{proof.get('selectionRevision')}:{proof.get('generation')}":
                             self._send(409, b"", "application/json")
@@ -1594,15 +1829,20 @@ def make_handler(
                                 raise ValueError("invalid_request")
                             if payload.get("model", "system-prod-primary") != "system-prod-primary":
                                 raise ValueError("unsupported_model")
-                            if ((profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path))
-                                    or (profile == BUSINESS_QWEN38_PROFILE_ID and (qwen_has_image(payload) or "/images" in self.path))):
+                            if profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path):
                                 raise ValueError("image_requests_unsupported")
+                            if shared is not None and private_has_unsupported_image_url(payload):
+                                raise ValueError('private_shared_image_url_unsupported')
                             if profile == BUSINESS_QWEN38_PROFILE_ID and "chat_template_kwargs" in payload and not isinstance(payload["chat_template_kwargs"], dict):
                                 raise ValueError("invalid_chat_template_kwargs")
                         except (ValueError, UnicodeDecodeError) as error:
                             self._send_json(400, {"error": {"code": str(error)}})
                             return
                         payload["model"] = "system-prod-primary"
+                        if profile == BUSINESS_QWEN38_PROFILE_ID:
+                            payload.pop('cache_salt', None)
+                            if shared is not None:
+                                payload['cache_salt'] = _QWEN_PRIVATE_CACHE_SALT
                         body = json.dumps(payload, ensure_ascii=False).encode()
                         if profile == GLM_PROFILE:
                             body = inject_blue_chat_completions_defaults(self.path, body, "blue", config)
@@ -1612,6 +1852,11 @@ def make_handler(
                         elif profile == BUSINESS_QWEN38_PROFILE_ID and self.path.rstrip("/").endswith("/chat/completions"):
                             payload.setdefault("chat_template_kwargs", {}).setdefault("enable_thinking", False)
                             body = json.dumps(payload, ensure_ascii=False).encode()
+                    admission = (qwen_owner.request('private' if shared is not None else 'business',
+                        (snapshot['selectionRevision'], generation), self,
+                        lambda cancelled: reset_qwen_caches(base, proxy_impl, cancelled),
+                        lambda: business_draining(config.active_model_state_path))
+                        if profile == BUSINESS_QWEN38_PROFILE_ID and method == 'POST' else nullcontext())
                     if profile == BUSINESS_QWEN38_PROFILE_ID:
                         status, runtime_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
                             {"X-Runtime-Control-Token": config.runtime_control_token})
@@ -1632,27 +1877,41 @@ def make_handler(
                             models = json.loads(models_body).get("data", []) if status == 200 else []
                             if not any(isinstance(model, dict) and model.get("id") == "system-prod-primary" for model in models):
                                 raise ValueError("business_alias_unavailable")
-                    if method == "POST" and self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
-                        self._proxy_stream(base + self.path, body, headers, business=True)
-                        return
-                    status, response, content_type = proxy_impl(method, base + self.path, body, headers)
-                    if 200 <= status < 300:
-                        if self.path == "/v1/models":
-                            models = json.loads(response).get("data", [])
-                            if not any(m.get("id") == "system-prod-primary" for m in models):
-                                raise ValueError("business_alias_unavailable")
-                            response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
-                        else:
-                            response = deepseek_json_response(response) if json_mode else business_response_alias(response)
-                    self._send(status, response, content_type)
+                    with admission:
+                        if method == "POST" and self.path.rstrip("/").endswith("/completions") and payload.get("stream") is True:
+                            self._proxy_stream(base + self.path, body, headers, business=True)
+                            return
+                        status, response, content_type = proxy_impl(method, base + self.path, body, headers)
+                        if profile == BUSINESS_QWEN38_PROFILE_ID and self._business_timed_out:
+                            raise TimeoutError('business_request_cancelled')
+                        if 200 <= status < 300:
+                            if self.path == "/v1/models":
+                                models = json.loads(response).get("data", [])
+                                if not any(m.get("id") == "system-prod-primary" for m in models):
+                                    raise ValueError("business_alias_unavailable")
+                                response = json.dumps({"object": "list", "data": [m for m in models if m.get("id") == "system-prod-primary"]}).encode()
+                            else:
+                                response = deepseek_json_response(response) if json_mode else business_response_alias(response)
+                        self._send(status, response, content_type)
             except Exception as exc:
                 if getattr(self, "_business_timed_out", False) or isinstance(exc, (BrokenPipeError, ConnectionResetError)):
+                    if (getattr(self, '_qwen_preempted', False)
+                            and not getattr(self, '_business_stream_handled', False)
+                            and not getattr(self, '_business_downstream_closed', False)):
+                        try:
+                            self._send_json(409, {'error': {'code': 'private_shared_preempted'}})
+                        except OSError:
+                            pass
                     self.close_connection = True
                     return
-                log_business_failure("inference", profile, generation, exc,
-                    secrets=(*config.llm_shared_tokens, config.runtime_control_token))
+                if shared is None:
+                    log_business_failure("inference", profile, generation, exc,
+                        secrets=(*config.llm_shared_tokens, config.runtime_control_token, _QWEN_PRIVATE_CACHE_SALT))
                 if shared is not None:
-                    self._send(409, b"", "application/json")
+                    if profile == BUSINESS_QWEN38_PROFILE_ID and str(exc) in {'private_shared_busy', 'private_shared_isolation_failed'}:
+                        self._send_json(409, {'error': {'code': str(exc)}})
+                    else:
+                        self._send(409, b"", "application/json")
                 else:
                     self._send_json(503, {"error": {"code": "business_runtime_unavailable"}})
 

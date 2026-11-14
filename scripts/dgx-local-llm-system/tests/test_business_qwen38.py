@@ -32,10 +32,10 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
         with patch.object(qwen, '_observations', return_value=self.nodes):
             qwen.record_generation(self.profile, 'generation-1', self.state)
 
-    def status(self, nodes=None):
+    def status(self, nodes=None, sharing=False):
         with patch.object(qwen, '_observations', return_value=nodes or self.nodes), \
                 patch.object(qwen, 'check_prepared', side_effect=AssertionError('runtime must not inspect prepared assets')) as prepared:
-            status = qwen.runtime_status(self.profile, 'generation-1', self.state)
+            status = qwen.runtime_status(self.profile, 'generation-1', self.state, sharing=sharing)
         prepared.assert_not_called()
         return status
 
@@ -46,6 +46,104 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
         self.assertTrue(all(r['generation'] == 'generation-1' for r in status['ranks']))
         self.assertNotIn('privateSharingEvidence', status)
         self.assertFalse(status['apiListenerClosed'])
+
+    def inspected_nodes(self):
+        result = []
+        for rank, (node, (_, model, _)) in enumerate(zip(self.nodes, qwen._nodes(self.profile))):
+            options, env = qwen.sharing_launch_contract(self.profile, rank)
+            args = ['serve', '/models/qwen38fn']
+            for name, value in options.items():
+                args.append(name)
+                if value is not None:
+                    args.append(value)
+            mounts = [{'Source': model, 'Destination': '/models/qwen38fn', 'RW': False}]
+            mounts += [{'Source': qwen.CACHE + '/' + source, 'Destination': dest, 'RW': True}
+                       for source, dest in [('vllm', '/root/.cache/vllm'), ('flashinfer', '/root/.cache/flashinfer'),
+                                            ('triton', '/root/.triton'), ('b12x', '/root/.cache/b12x')]]
+            result.append({**node, 'args': args, 'path': 'vllm', 'env': sorted(env),
+                           'logDriver': 'none', 'image': qwen.IMAGE, 'mounts': mounts})
+        return result
+
+    def test_sharing_requires_both_live_inspections_and_default_is_off(self):
+        nodes = self.inspected_nodes()
+        self.assertNotIn('privateSharingEvidence', self.status(nodes))
+        self.assertEqual(self.status(nodes, sharing=True)['privateSharingEvidence'], qwen.sharing_evidence('generation-1'))
+        self.assertNotIn('privateSharingEvidence', self.status(sharing=True))
+        for rank in (0, 1):
+            mutations = [lambda n: n.update(logDriver='json-file'), lambda n: n.update(env=[]),
+                         lambda n: n.update(path='bash'), lambda n: n.update(image='other'),
+                         lambda n: n['args'].append('--enable-log-requests'),
+                         lambda n: n['args'].extend(['--unknown-future-option', 'value']),
+                         lambda n: n['env'].append('VLLM_UNKNOWN_FUTURE_SETTING=1'),
+                         lambda n: n['env'].append('VLLM_SERVER_DEV_MODE=1'),
+                         lambda n: n['env'].__setitem__(n['env'].index('VLLM_PLE_TABLE_MEMORY=shared'), 'VLLM_PLE_TABLE_MEMORY=other'),
+                         lambda n: n['args'].__setitem__(n['args'].index('--max-model-len') + 1, '42'),
+                         lambda n: n['args'].append('--mm-processor-cache-gb=4'),
+                         lambda n: n['args'].append('--no-enable-prefix-caching'),
+                         lambda n: n['args'].remove('--enable-prefix-caching'),
+                         lambda n: n['args'].__setitem__(n['args'].index('--mm-processor-cache-gb') + 1, '4'),
+                         lambda n: n['mounts'][0].update(RW=True),
+                         lambda n: n['mounts'][1].update(Source='/private/cache')]
+            if rank == 0:
+                mutations.append(lambda n: n['args'].__setitem__(n['args'].index('--host') + 1, '0.0.0.0'))
+            for mutate in mutations:
+                changed = json.loads(json.dumps(nodes))
+                mutate(changed[rank])
+                with self.subTest(rank=rank, node=changed[rank]):
+                    self.assertNotIn('privateSharingEvidence', self.status(changed, sharing=True))
+
+    def test_every_launch_option_and_adapter_environment_value_is_required(self):
+        original = self.inspected_nodes()
+        for rank in (0, 1):
+            options, env = qwen.sharing_launch_contract(self.profile, rank)
+            for name, value in options.items():
+                for mutation in ('missing', 'different') if value is not None else ('missing',):
+                    nodes = json.loads(json.dumps(original))
+                    args = nodes[rank]['args']
+                    index = args.index(name)
+                    if mutation == 'missing':
+                        del args[index:index + (1 if value is None else 2)]
+                    else:
+                        args[index + 1] = 'unexpected'
+                    with self.subTest(rank=rank, option=name, mutation=mutation):
+                        self.assertNotIn('privateSharingEvidence', self.status(nodes, sharing=True))
+            for entry in env:
+                for mutation in ('missing', 'different'):
+                    nodes = json.loads(json.dumps(original))
+                    nodes[rank]['env'].remove(entry)
+                    if mutation == 'different':
+                        nodes[rank]['env'].append(entry.split('=', 1)[0] + '=unexpected')
+                    with self.subTest(rank=rank, env=entry, mutation=mutation):
+                        self.assertNotIn('privateSharingEvidence', self.status(nodes, sharing=True))
+
+    def test_sharing_accepts_reordered_complete_options_and_image_environment(self):
+        nodes = self.inspected_nodes()
+        for rank, node in enumerate(nodes):
+            options, _ = qwen.sharing_launch_contract(self.profile, rank)
+            node['args'] = ['serve', '/models/qwen38fn']
+            for name, value in reversed(list(options.items())):
+                node['args'].append(name)
+                if value is not None:
+                    node['args'].append(value)
+            node['env'].reverse()
+            node['env'].append('PATH=/usr/local/bin:/usr/bin')
+        self.assertIn('privateSharingEvidence', self.status(nodes, sharing=True))
+
+    def test_observations_collect_actual_container_launch_metadata_on_both_nodes(self):
+        commands = []
+        nodes = self.inspected_nodes()
+        def run(command, **kwargs):
+            rank = len(commands)
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0, stdout=json.dumps(nodes[rank]) + '\nfalse\n')
+        observed = qwen._observations(self.profile, run)
+        self.assertEqual(observed[0]['args'], nodes[0]['args'])
+        self.assertEqual(commands[1][0], 'ssh')
+        for command in commands:
+            script = ' '.join(command)
+            for field in ('.Path', '.Args', '.Config.Env', '.HostConfig.LogConfig.Type', '.Mounts', '.Config.Image'):
+                self.assertIn(field, script)
+            self.assertNotIn('docker run', script)
 
     def test_old_generation_and_replaced_containers_are_rejected(self):
         with patch.object(qwen, '_observations', return_value=self.nodes):

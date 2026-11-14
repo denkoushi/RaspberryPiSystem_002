@@ -1545,6 +1545,20 @@ class BusinessRoutingContractTests(unittest.TestCase):
             self.assertEqual(self.request()[0], 200)
         self.assertEqual(modes, ['r'])
 
+    def test_v1_paths_are_forwarded_verbatim_without_url_normalization(self):
+        for enabled in ('true', 'false'):
+            with patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': enabled}):
+                for method in ('GET', 'POST'):
+                    for tail in ('../reset_prefix_cache', '%2e%2e/reset_mm_cache',
+                                 '%2E%2E%2Freset_encoder_cache', '..%2fsleep', '%2fwake_up',
+                                 '%2fcollective_rpc', '%2fserver_info'):
+                        path = '/v1/' + tail
+                        with self.subTest(enabled=enabled, method=method, path=path):
+                            self.assertEqual(self.request(method, path)[0], 200)
+                            url = self.calls[-1][1]
+                            self.assertTrue(url.endswith(path))
+                            self.assertEqual(urllib.request.Request(url).selector, path)
+
     def test_resource_status_requires_runtime_token_and_proxies_structured_control_status(self):
         self.assertEqual(self.request('GET', '/system/resource-state')[0], 403)
         self.assertEqual(self.request('GET', '/system/resource-state', runtime_token='control-key')[0], 200)
@@ -1582,6 +1596,9 @@ class BusinessRoutingContractTests(unittest.TestCase):
             with patch('sys.stderr', output):
                 status, body = self.request(shared=shared, payload={'messages': [{'content': 'request-body-secret'}]})
             self.assertEqual(status, expected)
+            if shared is not None:
+                self.assertEqual(output.getvalue(), '')
+                continue
             line = next(line for line in output.getvalue().splitlines() if line.startswith('{'))
             record = json.loads(line)
             self.assertEqual(record['profileId'], self.value['selectedBusinessProfileId'])
@@ -1599,7 +1616,7 @@ class BusinessQwenRoutingTests(unittest.TestCase):
     def setUp(self):
         BusinessRoutingContractTests.setUp(self)
         flags = patch.dict(os.environ, {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true',
-            'BUSINESS_QWEN38_SWITCH_ENABLED': 'true'})
+            'BUSINESS_QWEN38_SWITCH_ENABLED': 'true', 'DGX_PRIVATE_SHARED_QWEN38_ENABLED': 'false'})
         flags.start()
         self.addCleanup(flags.stop)
         self.value.update(modelProfileId=self.module.BUSINESS_QWEN38_PROFILE_ID,
@@ -1615,7 +1632,8 @@ class BusinessQwenRoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(body)['model'], 'system-prod-primary')
         self.assertEqual([call[1] for call in self.calls], [
             self.config.runtime_control_base_url + '/system/resource-state',
-            'http://127.0.0.1:38083/v1/models', 'http://127.0.0.1:38083/v1/chat/completions'])
+            'http://127.0.0.1:38083/v1/models', 'http://127.0.0.1:38083/reset_prefix_cache',
+            'http://127.0.0.1:38083/v1/chat/completions'])
         self.assertEqual(self.calls[0][3], {'X-Runtime-Control-Token': 'control-key'})
         sent = json.loads(self.calls[-1][2])
         self.assertEqual(sent, {**payload, 'model': 'system-prod-primary',
@@ -1689,16 +1707,15 @@ class BusinessQwenRoutingTests(unittest.TestCase):
                 self.assertEqual(self.request()[0], 503)
                 self.assertFalse(any(call[0] == 'POST' for call in self.calls))
 
-    def test_text_only_rejects_chat_and_responses_images_and_invalid_kwargs(self):
+    def test_images_pass_in_chat_responses_and_images_routes(self):
         for image_type in ('image_url', 'input_image', 'image'):
             part = {'type': image_type, 'image_url': {'url': 'data:private'}}
             for path, payload in (('/v1/chat/completions', {'messages': [{'content': [part]}]}),
                     ('/v1/responses', {'input': [{'content': [part]}]})):
                 with self.subTest(image_type=image_type, path=path):
-                    self.assertEqual(self.request(path=path, payload=payload)[0], 400)
-        self.assertEqual(self.request(path='/v1/images/generations', payload={'prompt': 'image'})[0], 400)
+                    self.assertEqual(self.request(path=path, payload=payload)[0], 200)
+        self.assertEqual(self.request(path='/v1/images/generations', payload={'prompt': 'image'})[0], 200)
         self.assertEqual(self.request(payload={'messages': [], 'chat_template_kwargs': None})[0], 400)
-        self.assertEqual(self.calls, [])
 
     def test_qwen_private_sharing_refused_without_forwarding(self):
         for shared in ('3:generation-3', ''):
@@ -1729,3 +1746,527 @@ class BusinessQwenRoutingTests(unittest.TestCase):
         self.assertEqual(sent['response_format'], {'type': 'json_object'})
         self.assertNotIn('reasoning_effort', sent)
         self.assertIsNone(request.get_header('Authorization'))
+
+    def enable_sharing(self):
+        flag = patch.dict(os.environ, {'DGX_PRIVATE_SHARED_QWEN38_ENABLED': 'true'})
+        flag.start()
+        self.addCleanup(flag.stop)
+        self.runtime['privateSharingEvidence'] = self.module.qwen_sharing_evidence('generation-3')
+        self.reset_status = 200
+        def proxy(method, url, body, headers):
+            self.calls.append((method, url, body, headers))
+            if '/reset_' in url:
+                return self.reset_status, b'{"success":true}', 'application/json'
+            if url.endswith('/system/resource-state'):
+                return 200, json.dumps({'businessRuntime': self.runtime}).encode(), 'application/json'
+            if url.endswith('/v1/models'):
+                return 200, b'{"data":[{"id":"system-prod-primary"}]}', 'application/json'
+            return 200, b'{"model":"system-prod-primary","choices":[]}', 'application/json'
+        self.handler = self.module.make_handler(self.config, proxy)
+
+    def test_shared_images_and_secret_salt_only_on_private_requests(self):
+        self.enable_sharing()
+        salts = []
+        for shared in (None, '3:generation-3', '3:generation-3', None):
+            for path, payload in (('/v1/chat/completions', {'messages': [{'content': [{'type': 'image_url'}]}]}),
+                                  ('/v1/responses', {'input': [{'type': 'input_image'}]}),
+                                  ('/v1/images/generations', {'prompt': 'image'})):
+                status, response = self.request(path=path, shared=shared, payload={**payload, 'cache_salt': 'client-salt'})
+                self.assertEqual(status, 200)
+                sent = json.loads(self.calls[-1][2])
+                if shared:
+                    salts.append(sent['cache_salt'])
+                    self.assertEqual(len(sent['cache_salt']), 64)
+                    self.assertNotEqual(sent['cache_salt'], 'client-salt')
+                    self.assertNotIn(sent['cache_salt'].encode(), response)
+                else:
+                    self.assertNotIn('cache_salt', sent)
+        self.assertEqual(len(set(salts)), 1)
+        self.assertEqual([call[1].rsplit('/', 1)[1] for call in self.calls if '/reset_' in call[1]],
+                         ['reset_prefix_cache', 'reset_mm_cache', 'reset_encoder_cache'] * 3)
+
+    def test_qwen_only_resource_status_publishes_proof_and_both_flags_off_strip_it(self):
+        self.enable_sharing()
+        self.runtime['privateSharing'] = {'untrusted': True}
+        for qwen, expected in (('true', True), ('false', False)):
+            with patch.dict(os.environ, {'DGX_PRIVATE_SHARED_DEEPSEEK_ENABLED': 'false',
+                                         'DGX_PRIVATE_SHARED_QWEN38_ENABLED': qwen}):
+                status, body = self.request('GET', '/system/resource-state', runtime_token='control-key')
+            self.assertEqual(status, 200)
+            runtime = json.loads(body)['businessRuntime']
+            self.assertNotIn('privateSharingEvidence', runtime)
+            self.assertEqual('privateSharing' in runtime, expected)
+            if expected:
+                self.assertEqual(runtime['privateSharing']['generation'], 'generation-3')
+
+    def test_shared_images_only_allow_inline_data_urls_while_business_is_unchanged(self):
+        self.enable_sharing()
+        for path, field in (('/v1/chat/completions', 'messages'), ('/v1/responses', 'input')):
+            for image in ({'url': 'https://example.test/private.png'}, 'http://example.test/a',
+                          {'url': 'file:///private/image.png'}, {'url': '/private/image.png'},
+                          {'url': 'ftp://example.test/a'}, None, {'url': 42}):
+                payload = {field: [{'content': [{'type': 'image_url', 'image_url': image}]}]}
+                with self.subTest(path=path, image=image):
+                    self.calls.clear()
+                    status, body = self.request(path=path, shared='3:generation-3', payload=payload)
+                    self.assertEqual(status, 400)
+                    self.assertEqual(json.loads(body)['error']['code'], 'private_shared_image_url_unsupported')
+                    self.assertFalse(any(call[0] == 'POST' for call in self.calls))
+                    self.assertEqual(self.request(path=path, payload=payload)[0], 200)
+            for image in ('data:image/png;base64,AA==', {'url': 'data:image/png;base64,AA=='}):
+                self.assertEqual(self.request(path=path, shared='3:generation-3', payload={
+                    field: [{'content': [{'type': 'input_image', 'image_url': image}]}]})[0], 200)
+
+    def test_shared_failures_never_call_business_diagnostics(self):
+        self.enable_sharing()
+        for error in (ValueError('private_shared_busy'), RuntimeError('private-input-output-detail')):
+            self.handler = self.module.make_handler(self.config, Mock(side_effect=error))
+            with patch.object(self.module, 'log_business_failure') as log:
+                self.assertEqual(self.request(shared='3:generation-3')[0], 409)
+            log.assert_not_called()
+
+    def test_preempted_buffered_handler_skips_error_write_after_downstream_abort(self):
+        self.enable_sharing()
+        original_handler = self.handler
+        # The proxy runs in the request lifetime, so it can emulate the hard abort.
+        def proxy(method, url, body, headers):
+            if url.endswith('/system/resource-state'):
+                return 200, json.dumps({'businessRuntime': self.runtime}).encode(), 'application/json'
+            if url.endswith('/v1/models'):
+                return 200, b'{"data":[{"id":"system-prod-primary"}]}', 'application/json'
+            if '/reset_' in url:
+                return 200, b'{"success":true}', 'application/json'
+            handler = self.module._business_request.context[3]
+            handler._qwen_preempted = True
+            handler._business_abort()
+            return 200, b'{"choices":[]}', 'application/json'
+        cls = self.module.make_handler(self.config, proxy)
+        handler = object.__new__(cls)
+        handler.connection = object()
+        handler.path = '/v1/chat/completions'
+        handler.headers = http.client.HTTPMessage()
+        handler.headers['X-Private-Shared-Runtime'] = '3:generation-3'
+        handler._send_json = Mock()
+        handler._send = Mock()
+        handler._business_v1('POST', b'{"messages":[]}')
+        self.assertTrue(handler._business_downstream_closed)
+        handler._send_json.assert_not_called()
+        handler._send.assert_not_called()
+        self.assertTrue(handler.close_connection)
+        self.handler = original_handler
+
+    def test_preempted_stream_skips_error_write_after_downstream_abort(self):
+        handler = object.__new__(self.handler)
+        handler._qwen_preempted = True
+        handler._business_downstream_closed = True
+        handler._send_json = Mock()
+        handler.wfile = Mock()
+        with patch.object(self.module, 'business_urlopen', side_effect=OSError('closed')):
+            handler._proxy_stream('http://engine/v1/chat/completions', b'{}', {}, business=True)
+        handler._send_json.assert_not_called()
+        handler.wfile.write.assert_not_called()
+
+    def test_business_salt_removed_even_with_sharing_disabled(self):
+        self.assertEqual(self.request(payload={'messages': [], 'cache_salt': 'untrusted'})[0], 200)
+        self.assertNotIn('cache_salt', json.loads(self.calls[-1][2]))
+        self.assertEqual(sum('/reset_' in call[1] for call in self.calls), 1)
+
+    def test_shared_attestation_exact_fields_types_and_generation(self):
+        self.enable_sharing()
+        proof = self.module.attest_private_sharing(self.config, self.runtime)['privateSharing']
+        self.assertEqual(proof, {**self.runtime['privateSharingEvidence'],
+                                'selectionRevision': 3, 'generationFenced': True})
+        original = json.loads(json.dumps(self.runtime))
+        mutations = [lambda r: r.pop('privateSharingEvidence'),
+                     lambda r: r.update(generation='old'), lambda r: r.update(selectionRevision=True)]
+        for key, value in original['privateSharingEvidence'].items():
+            mutations.extend([lambda r, k=key: r['privateSharingEvidence'].pop(k),
+                              lambda r, k=key: r['privateSharingEvidence'].update({k: 'wrong'})])
+        mutations.append(lambda r: r['privateSharingEvidence'].update(mmProcessorCacheGiB=False))
+        for mutate in mutations:
+            self.runtime = json.loads(json.dumps(original))
+            mutate(self.runtime)
+            self.calls.clear()
+            self.assertEqual(self.request(shared='3:generation-3')[0], 409)
+            self.assertFalse(any(call[0] == 'POST' for call in self.calls))
+        self.runtime = original
+        for shared in ('2:generation-3', '3:old', ''):
+            self.assertEqual(self.request(shared=shared)[0], 409)
+        self.assertEqual(self.request(shared='3:generation-3',
+            extra_headers='X-Private-Shared-Runtime: 3:generation-3\r\n')[0], 409)
+
+    def test_failed_reset_blocks_private_but_business_always_passes_and_retry_recovers(self):
+        self.enable_sharing()
+        self.assertEqual(self.request()[0], 200)
+        self.reset_status = 500
+        status, response = self.request(shared='3:generation-3')
+        self.assertEqual((status, json.loads(response)['error']['code']), (409, 'private_shared_isolation_failed'))
+        self.reset_status = 200
+        self.assertEqual(self.request(shared='3:generation-3')[0], 200)
+
+    def test_business_cuts_private_upstream_stream_after_five_seconds(self):
+        self.enable_sharing()
+        upstream, peer = self.module.socket.socketpair()
+        self.addCleanup(upstream.close)
+        self.addCleanup(peer.close)
+        upstream.settimeout(8)
+        reading = threading.Event()
+        results, errors = [], []
+        class Stream:
+            status = 200
+            headers = {'Content-Type': 'text/event-stream'}
+            fp = Mock(raw=Mock(_sock=upstream))
+            first = True
+            def __enter__(self): return self
+            def __exit__(self, *args): return False
+            def read1(self, size):
+                if self.first:
+                    self.first = False
+                    return b'data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'
+                reading.set()
+                return upstream.recv(size)
+        def private():
+            try:
+                results.append(self.request(shared='3:generation-3', payload={'stream': True}))
+            except Exception as error:
+                errors.append(error)
+        with patch.object(self.module, 'business_urlopen', return_value=Stream()):
+            worker = threading.Thread(target=private, daemon=True)
+            worker.start()
+            self.assertTrue(reading.wait(2))
+            start = self.module.time.monotonic()
+            self.assertEqual(self.request()[0], 200)
+            elapsed = self.module.time.monotonic() - start
+            worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertGreaterEqual(elapsed, 5)
+        self.assertLess(elapsed, 7)
+        self.assertEqual(results[0][0], 200)
+        self.assertIn(b'partial', results[0][1])
+        self.assertIn(b'private_shared_preempted', results[0][1])
+        self.assertNotIn(b'[DONE]', results[0][1])
+        peer.settimeout(1)
+        self.assertEqual(peer.recv(1), b'')
+        self.assertEqual([call[1].rsplit('/', 1)[1] for call in self.calls if '/reset_' in call[1]],
+                         ['reset_prefix_cache', 'reset_mm_cache', 'reset_encoder_cache'] * 2)
+
+    def test_business_reset_failure_and_private_retry_recovery(self):
+        self.enable_sharing()
+        self.assertEqual(self.request(shared='3:generation-3')[0], 200)
+        self.reset_status = 500
+        self.assertEqual(self.request()[0], 200)
+        self.assertEqual(self.request(shared='3:generation-3')[0], 409)
+        self.reset_status = 200
+        self.assertEqual(self.request(shared='3:generation-3')[0], 200)
+
+
+class QwenOwnerExclusiveTests(unittest.TestCase):
+    def setUp(self):
+        self.module = load_module()
+        self.gate = self.module.QwenOwnerExclusive()
+        self.resets = []
+        self.identity = (3, 'generation-3')
+        self.draining = False
+
+    def handler(self):
+        handler = Mock(_business_timed_out=False)
+        handler._business_abort = Mock(side_effect=lambda **kwargs: setattr(handler, '_business_timed_out', True))
+        return handler
+
+    def reset(self, cancelled=lambda: False):
+        self.assertFalse(self.gate.active['business'])
+        self.assertFalse(self.gate.active['private'])
+        self.resets.append(self.gate.owner)
+        return True
+
+    def request(self, owner, handler=None, reset=None):
+        return self.gate.request(owner, self.identity, handler or self.handler(), reset or self.reset,
+                                 lambda: self.draining)
+
+    def test_initial_private_resets_and_same_owner_is_concurrent_and_generation_resets(self):
+        with self.request('private'):
+            with self.request('private'):
+                self.assertEqual(len(self.gate.active['private']), 2)
+        self.assertEqual(self.resets, ['unknown'])
+        for identity in ((3, 'generation-4'), (4, 'generation-4')):
+            self.identity = identity
+            with self.request('private'):
+                pass
+        self.assertEqual(self.resets, ['unknown'] * 3)
+
+    def test_private_waits_for_business_while_new_business_passes(self):
+        entered, finished = threading.Event(), threading.Event()
+        errors = []
+        def private():
+            try:
+                entered.set()
+                with self.request('private'):
+                    finished.set()
+            except Exception as error:
+                errors.append(error)
+        with self.request('business'):
+            worker = threading.Thread(target=private)
+            worker.start()
+            self.assertTrue(entered.wait(1))
+            self.assertFalse(finished.wait(0.05))
+            with self.request('business'):
+                self.assertEqual(len(self.gate.active['business']), 2)
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(finished.is_set())
+        self.assertEqual(errors, [])
+        self.assertEqual(self.resets, ['unknown', 'business'])
+
+    def test_private_wait_timeout_leaves_business_unblocked(self):
+        with self.request('business'), patch.object(self.module, 'QWEN_PRIVATE_WAIT_SECONDS', 0):
+            with self.assertRaisesRegex(ValueError, 'private_shared_busy'):
+                with self.request('private'):
+                    self.fail('private admitted')
+            with self.request('business'):
+                pass
+        self.assertEqual(self.resets, ['unknown'])
+
+    def test_business_preempts_private_at_five_second_deadline(self):
+        self.assertEqual(self.module.QWEN_BUSINESS_PREEMPT_SECONDS, 5)
+        self.assertEqual(self.module.QWEN_PRIVATE_WAIT_SECONDS, 30)
+        private = self.handler()
+        entered, ended = threading.Event(), threading.Event()
+        def hold_private():
+            with self.request('private', private):
+                entered.set()
+                while not private._business_timed_out:
+                    ended.wait(0.005)
+            ended.set()
+        worker = threading.Thread(target=hold_private)
+        worker.start()
+        self.assertTrue(entered.wait(1))
+        with patch.object(self.module, 'QWEN_BUSINESS_PREEMPT_SECONDS', 0.05):
+            with self.request('business'):
+                self.assertFalse(self.gate.active['private'])
+        worker.join(1)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(ended.is_set())
+        private._business_abort.assert_called()
+        self.assertEqual(self.resets, ['unknown', 'private'])
+
+    def test_lifecycle_cancels_private_and_waiters_exit(self):
+        private = self.handler()
+        with self.request('private', private):
+            self.draining = True
+            for _ in range(100):
+                if private._business_timed_out:
+                    break
+                threading.Event().wait(0.005)
+            self.assertTrue(private._business_timed_out)
+            with self.assertRaisesRegex(ValueError, 'business_draining'):
+                with self.request('private'):
+                    pass
+
+    def test_business_arrival_immediately_stops_new_private_admission(self):
+        arrived, release = threading.Event(), threading.Event()
+        errors = []
+        def business():
+            try:
+                with self.request('business'):
+                    arrived.set()
+            except Exception as error:
+                errors.append(error)
+        with self.request('private'):
+            worker = threading.Thread(target=business, daemon=True)
+            worker.start()
+            for _ in range(100):
+                with self.gate.condition:
+                    waiting = self.gate.business_waiters
+                if waiting:
+                    break
+                release.wait(0.005)
+            self.assertEqual(waiting, 1)
+            with self.assertRaisesRegex(ValueError, 'private_shared_busy'):
+                with self.request('private'):
+                    self.fail('new private admitted')
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(arrived.is_set())
+        self.assertEqual(errors, [])
+
+    def test_prefix_false_retries_then_resets_both_image_caches(self):
+        self.assertEqual(self.module.QWEN_CACHE_RESET_SECONDS, 10)
+        self.assertEqual(self.module.QWEN_PREFIX_RESET_INTERVAL_SECONDS, 0.5)
+        proxy = Mock(side_effect=[(200, b'{"success":false}', ''),
+                                  (200, b'{"success":true}', ''), (204, b'', ''), (200, b'', '')])
+        with patch.object(self.module.time, 'sleep') as sleep:
+            self.assertTrue(self.module.reset_qwen_caches('http://engine', proxy))
+        sleep.assert_called_once_with(0.5)
+        self.assertEqual([call.args[1] for call in proxy.call_args_list],
+                         ['http://engine/reset_prefix_cache'] * 2 +
+                         ['http://engine/reset_mm_cache', 'http://engine/reset_encoder_cache'])
+
+    def test_reset_failures_and_prefix_retry_deadline(self):
+        for responses in ([(500, b'', '')], [(200, b'{}', '')], [(200, b'{"success":1}', '')],
+                          [(200, b'{"success":true}', ''), (500, b'', '')],
+                          [(200, b'{"success":true}', ''), (200, b'', ''), (500, b'', '')]):
+            self.assertFalse(self.module.reset_qwen_caches('http://engine', Mock(side_effect=responses)))
+        with patch.object(self.module, 'QWEN_CACHE_RESET_SECONDS', 0):
+            self.assertFalse(self.module.reset_qwen_caches('http://engine', Mock(return_value=(200, b'{"success":false}', ''))))
+
+    def test_first_business_attempts_reset_once_even_on_failure(self):
+        for success in (True, False):
+            self.gate = self.module.QwenOwnerExclusive()
+            reset = Mock(return_value=success)
+            for _ in range(2):
+                with self.request('business', reset=reset):
+                    self.assertEqual(self.gate.owner, 'business')
+                    self.assertEqual(self.gate.uncleared, not success)
+            reset.assert_called_once()
+
+    def test_private_reset_yields_to_business_between_retries_and_each_reset(self):
+        for initial_owner in ('unknown', 'business'):
+            for interrupt_at in ('/reset_prefix_cache', '/reset_mm_cache', '/reset_encoder_cache'):
+                self.gate = self.module.QwenOwnerExclusive()
+                self.gate.identity = self.identity
+                self.gate.owner = initial_owner
+                self.gate.uncleared = initial_owner == 'unknown'
+                uncleared = self.gate.uncleared
+                in_reset, release = threading.Event(), threading.Event()
+                private_errors, business_errors, calls = [], [], []
+                business_reset = Mock(return_value=False)
+                def proxy(method, url, body, headers):
+                    calls.append(url)
+                    if url.endswith(interrupt_at):
+                        in_reset.set()
+                        if not release.wait(1):
+                            raise AssertionError('business did not arrive')
+                    return 200, (b'{"success":false}' if interrupt_at == '/reset_prefix_cache'
+                                 else b'{"success":true}'), ''
+                def private():
+                    try:
+                        with self.request('private', reset=lambda cancel: self.module.reset_qwen_caches('http://engine', proxy, cancel)):
+                            private_errors.append('admitted')
+                    except ValueError as error:
+                        private_errors.append(str(error))
+                def business():
+                    try:
+                        with self.request('business', reset=business_reset):
+                            self.assertEqual(self.gate.uncleared, uncleared)
+                    except Exception as error:
+                        business_errors.append(error)
+                with patch.object(self.module, 'QWEN_PREFIX_RESET_INTERVAL_SECONDS', 0.001):
+                    worker = threading.Thread(target=private, daemon=True)
+                    worker.start()
+                    self.assertTrue(in_reset.wait(1))
+                    business_worker = threading.Thread(target=business, daemon=True)
+                    business_worker.start()
+                    with self.gate.condition:
+                        self.assertTrue(self.gate.condition.wait_for(lambda: self.gate.business_waiters == 1, timeout=1))
+                    release.set()
+                    worker.join(1)
+                    business_worker.join(1)
+                self.assertFalse(worker.is_alive())
+                self.assertFalse(business_worker.is_alive())
+                self.assertEqual(private_errors, ['private_shared_busy'])
+                self.assertEqual(business_errors, [])
+                business_reset.assert_not_called()
+                self.assertEqual(len(calls), {'/reset_prefix_cache': 1, '/reset_mm_cache': 2, '/reset_encoder_cache': 3}[interrupt_at])
+
+    def test_identity_change_with_active_private_preempts_and_bounds_business_wait(self):
+        self.assertEqual(self.module.QWEN_BUSINESS_DRAIN_SECONDS, 2)
+        for identity in ((3, 'generation-4'), (4, 'generation-3')):
+            self.gate = self.module.QwenOwnerExclusive()
+            self.identity = (3, 'generation-3')
+            private = self.handler()
+            entered, release = threading.Event(), threading.Event()
+            def hold_private():
+                with self.request('private', private):
+                    entered.set()
+                    release.wait(2)  # Deliberately ignores both aborts until business enters.
+            worker = threading.Thread(target=hold_private, daemon=True)
+            worker.start()
+            self.assertTrue(entered.wait(1))
+            self.identity = identity
+            with self.assertRaisesRegex(ValueError, 'private_shared_busy'):
+                with self.request('private'):
+                    self.fail('old private work must be cleared by business')
+            def reset(cancelled):
+                self.assertEqual(self.gate.owner, 'private')
+                # A reset transport obeys the one total deadline.
+                self.module.time.sleep(self.module.QWEN_CACHE_RESET_SECONDS)
+                return False
+            with patch.object(self.module, 'QWEN_BUSINESS_PREEMPT_SECONDS', 0.05), \
+                    patch.object(self.module, 'QWEN_BUSINESS_DRAIN_SECONDS', 0.02), \
+                    patch.object(self.module, 'QWEN_CACHE_RESET_SECONDS', 0.1):
+                start = self.module.time.monotonic()
+                with self.request('business', reset=reset):
+                    elapsed = self.module.time.monotonic() - start
+                    self.assertEqual(private._business_abort.call_args_list[0].kwargs, {'include_downstream': False})
+                    self.assertEqual(private._business_abort.call_args_list[1].kwargs, {})
+                    self.assertTrue(self.gate.uncleared)
+                    self.assertGreaterEqual(elapsed, 0.17)
+                    self.assertLess(elapsed, 0.22)  # 5 + 2 + 10, scaled to 0.05 + 0.02 + 0.1.
+                release.set()
+            worker.join(1)
+            self.assertFalse(worker.is_alive())
+
+    def test_private_resumes_with_reset_after_old_identity_private_ends_without_business(self):
+        self.gate = self.module.QwenOwnerExclusive()
+        self.identity = (3, 'generation-3')
+        private = self.handler()
+        entered, release = threading.Event(), threading.Event()
+        def hold_private():
+            with self.request('private', private):
+                entered.set()
+                release.wait(2)
+        worker = threading.Thread(target=hold_private, daemon=True)
+        worker.start()
+        self.assertTrue(entered.wait(1))
+        self.identity = (3, 'generation-4')
+        with self.assertRaisesRegex(ValueError, 'private_shared_busy'):
+            with self.request('private'):
+                self.fail('old private work is still active')
+        release.set()
+        worker.join(1)
+        self.assertFalse(worker.is_alive())
+        resets = []
+        def reset(cancelled):
+            resets.append(self.gate.owner)
+            return True
+        with self.request('private', reset=reset):
+            self.assertEqual(self.gate.owner, 'private')
+            self.assertFalse(self.gate.uncleared)
+        self.assertEqual(resets, ['private'])
+
+    def test_all_cache_resets_share_one_absolute_deadline(self):
+        deadlines = []
+        def proxy(method, url, body, headers):
+            deadlines.append(self.module._business_request.reset_deadline)
+            return 200, b'{"success":true}', ''
+        self.assertTrue(self.module.reset_qwen_caches('http://engine', proxy))
+        self.assertEqual(len(deadlines), 3)
+        self.assertEqual(len(set(deadlines)), 1)
+        calls = []
+        def slow_mm(method, url, body, headers):
+            calls.append(url)
+            if url.endswith('/reset_mm_cache'):
+                self.module.time.sleep(0.03)
+            return 200, b'{"success":true}', ''
+        with patch.object(self.module, 'QWEN_CACHE_RESET_SECONDS', 0.02):
+            self.assertFalse(self.module.reset_qwen_caches('http://engine', slow_mm))
+        self.assertEqual(len(calls), 2)
+
+    def test_reset_deadline_interrupts_trickling_upstream_without_aborting_business(self):
+        upstream, peer = self.module.socket.socketpair()
+        self.addCleanup(upstream.close)
+        self.addCleanup(peer.close)
+        downstream, client = self.module.socket.socketpair()
+        self.addCleanup(downstream.close)
+        self.addCleanup(client.close)
+        handler = Mock(connection=downstream)
+        def proxy(*args):
+            self.module._business_request.context[2].append(upstream)
+            self.assertEqual(upstream.recv(1), b'')
+            return 200, b'{"success":true}', ''
+        with self.module.business_request_lifetime(handler), patch.object(self.module, 'QWEN_CACHE_RESET_SECONDS', 0.03):
+            self.assertFalse(self.module.reset_qwen_caches('http://engine', proxy))
+            self.assertFalse(handler._business_timed_out)
+            downstream.sendall(b'ok')
+            self.assertEqual(client.recv(2), b'ok')

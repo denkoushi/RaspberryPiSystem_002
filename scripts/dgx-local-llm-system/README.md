@@ -244,6 +244,9 @@ curl -sS -X POST http://127.0.0.1:38081/start \
 
 ### Business Qwen3.8 Flash の段階導入
 
+業務 Qwen3.8 FP8 TP2 の画像対応と、既定 off の `DGX_PRIVATE_SHARED_QWEN38_ENABLED` による
+業務優先・交代制の共用は [運用正本](../../docs/runbooks/dgx-system-prod-local-llm.md#業務-glm--deepseek--qwen38-切替既定-off) を参照。
+
 `business_qwen38_flash_next_nvfp4` は既存 `business_qwen36_27b_nvfp4` を上書きせず、別 profile として追加する。DGX の live checkout は git 管理されていないため、通常の DGX 反映手順（この runbook の profile 反映節にある `scp` と、実機の control/gateway 管理方式に応じた再読込）で、次の runtime ファイルを `/srv/dgx/system-prod/bin/` へ配置する。
 
 - `profile_launcher.py`
