@@ -35,7 +35,9 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
         self.assertEqual(old['ansible.builtin.cron'], {
             'name': 'Daily rkhunter scan', 'user': 'root', 'state': 'absent'})
         self.assertNotIn('when', old)
-        removal = next(task for task in tasks if task.get('ansible.builtin.file', {}).get('state') == 'absent')
+        removal = next(task for task in tasks
+                       if task.get('name') == 'Remove server rkhunter scripts, schedules and local configuration')
+        self.assertEqual(removal['ansible.builtin.file']['state'], 'absent')
         self.assertEqual(removal['loop'], ['/usr/local/bin/rkhunter-scan.sh', '/etc/rkhunter.conf.local',
                                            '/etc/cron.d/rkhunter-weekly', '/usr/local/bin/rkhunter-weekly-scan.sh'])
         self.assertNotIn('when', removal)
@@ -56,6 +58,17 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
             self.assertEqual(cron['ansible.builtin.cron'][field], '{{ package_integrity_cron.split()[' + str(index) + '] }}')
         self.assertIn('{{ package_integrity_log_dir }}', tasks[0]['loop'])
         self.assertNotIn('{{ rkhunter_log_dir }}', tasks[0]['loop'])
+
+    def test_server_stops_unused_clamd_and_removes_weekly_scan(self):
+        tasks = yaml.safe_load((SERVER_TASKS / 'malware.yml').read_text())
+        by_name = {task.get('name'): task for task in tasks}
+        freshclam = by_name['Ensure ClamAV signature updater is enabled']['ansible.builtin.systemd']
+        self.assertEqual(freshclam, {'name': 'clamav-freshclam', 'state': 'started', 'enabled': True})
+        daemon = by_name['Stop the unused ClamAV daemon']['ansible.builtin.systemd']
+        self.assertEqual(daemon, {'name': 'clamav-daemon', 'state': 'stopped', 'enabled': False})
+        weekly = by_name['Remove the duplicate weekly ClamAV job']
+        self.assertEqual(weekly['ansible.builtin.file']['state'], 'absent')
+        self.assertEqual(weekly['loop'], ['/etc/cron.d/clamav-weekly', '/usr/local/bin/clamav-weekly-scan.sh'])
 
     def test_package_integrity_variables_and_review_source(self):
         ansible = ROOT / 'infrastructure/ansible'
