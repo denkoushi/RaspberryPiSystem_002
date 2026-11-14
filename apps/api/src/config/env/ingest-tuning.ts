@@ -29,10 +29,10 @@ export const ingestTuningEnvShape = {
     z.string().min(1).default('rps_processed')
   ),
   // FKOJUNST_Status mail raw の上書き済み旧行を32バケットに分け、1回あたり上限まで削除する。
-  // 削除後の全件同期は省略。既定 OFF のまま、本番の新しい dry-run を確認して別 PR で有効化する。
+  // 削除後の全件同期は省略。本番 dry-run（2026-11-14: 候補 91,380、maxBucketScanned 32,656、65 秒）を確認して既定 ON。
   FKOJUNST_MAIL_PRUNE_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
-    z.enum(['true', 'false']).default('false')
+    z.enum(['true', 'false']).default('true')
   ).transform((v) => v === 'true'),
   FKOJUNST_MAIL_PRUNE_CRON: z.string().default('40 3 * * *'),
   FKOJUNST_MAIL_PRUNE_MAX_DELETE: z.coerce.number().int().min(1).default(20_000),
