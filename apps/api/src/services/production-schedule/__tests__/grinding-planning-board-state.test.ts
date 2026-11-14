@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   state: { version: 0, updatedAt: new Date('2026-10-01') },
   prisma: {
     $queryRaw: vi.fn(),
+    csvDashboardIngestRun: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardState: { findUnique: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { aggregate: vi.fn() },
     productionScheduleResourceMaster: { aggregate: vi.fn() },
@@ -27,6 +28,7 @@ import { readPlanningLoadGenerationToken, readPlanningSnapshotGenerationDetails 
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.prisma.csvDashboardIngestRun.findMany.mockResolvedValue([]);
   mocks.prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue(mocks.state);
   for (const table of Object.values(mocks.prisma)) {
     if ('aggregate' in table) table.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
@@ -37,6 +39,23 @@ beforeEach(() => {
 });
 
 describe('load generation token', () => {
+  it('includes the presence day in both tokens and changes both on day transitions', async () => {
+    const before = await readPlanningSnapshotGenerationDetails('site-a');
+    expect(JSON.parse(before.generationToken).rowPresenceKey).toBe('none');
+    expect(JSON.parse(before.loadGenerationToken).rowPresenceKey).toBe('none');
+    let previous = before;
+    for (const day of ['2026-11-14', '2026-11-15']) {
+      mocks.prisma.csvDashboardIngestRun.findMany.mockResolvedValue(Array.from({ length: 4 }, (_, i) => ({
+        status: 'COMPLETED', messageId: `${i}`, rowSeenRecordedAt: new Date(), sourceReceivedAt: new Date(`${day}T03:00:00Z`), startedAt: new Date()
+      })));
+      const next = await readPlanningSnapshotGenerationDetails('site-a');
+      expect(JSON.parse(next.generationToken).rowPresenceKey).toBe(day);
+      expect(JSON.parse(next.loadGenerationToken).rowPresenceKey).toBe(day);
+      expect(next.generationToken).not.toBe(previous.generationToken);
+      expect(next.loadGenerationToken).not.toBe(previous.loadGenerationToken);
+      previous = next;
+    }
+  });
   it.each(['leaderboard', 'piece'])('changes when %s generation changes', async (input) => {
     const before = await readPlanningLoadGenerationToken('site-a');
     if (input === 'leaderboard') mocks.readGrindingPlanningBoardSnapshotGenerationToken.mockResolvedValue('changed');

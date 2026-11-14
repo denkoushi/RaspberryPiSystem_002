@@ -1588,6 +1588,7 @@ model CsvDashboardIngestRun {
   errorMessage             String? // エラーメッセージ
   startedAt                DateTime                 @default(now())
   sourceReceivedAt         DateTime?
+  rowSeenRecordedAt        DateTime?
   completedAt              DateTime?
   sourceRows               CsvDashboardRow[]        @relation("CsvDashboardRowSourceIngestRun")
   scawCurrentRows          ScawStfutekigoCurrent[]  @relation("ScawStfutekigoCurrentSourceIngestRun")
@@ -1597,6 +1598,7 @@ model CsvDashboardIngestRun {
   @@index([csvDashboardId])
   @@index([status])
   @@index([startedAt])
+  @@index([csvDashboardId, status, sourceReceivedAt])
   @@index([completedAt])
 }
 
@@ -6721,4 +6723,10 @@ model ProductionScheduleMissingStandardHoursProcess {
 
   @@unique([csvDashboardId, fsezono, fkojun, fkoteicd], map: "PSMissingStandardHours_unique_key")
   @@index([csvDashboardId, updatedAt], map: "PSMissingStandardHours_idx_generation")
+}
+
+model ProductionScheduleRowSeen {
+  dataHash   String   @id
+  lastSeenAt DateTime
+  updatedAt  DateTime @updatedAt
 }

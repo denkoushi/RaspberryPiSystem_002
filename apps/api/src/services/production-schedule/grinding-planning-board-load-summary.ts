@@ -1,3 +1,4 @@
+import { buildScheduleRowPresenceCondition } from './schedule-row-presence.service.js';
 import { addMinutes, addMissingStandardHoursLoad, buildGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-items.js';
 export { addMissingStandardHoursLoad, buildGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-items.js';
 import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from './missing-standard-hours-process.js';
@@ -45,6 +46,7 @@ export type ReadGrindingPlanningBoardLoadSummaryParams = {
   excludedFseibans?: readonly string[];
   client: GrindingPlanningBoardLoadSummaryDbClient;
   dashboardId?: string;
+  rowPresenceCutoff?: Date | null;
   /** Canonical winner ids, used by the isolated fallback path and tests. */
   winnerRowIds?: readonly string[];
   /** Existing leaderboard materialization predicate. Avoids re-reading ids in 900-row chunks. */
@@ -281,6 +283,7 @@ function buildGrindingPlanningBoardLoadSummaryFromAggregates(
 
 async function readAggregatedLoadSummary(params: {
   client: JitControlledQueryClient;
+  rowPresenceCutoff?: Date | null;
   dashboardId: string;
   leaderboardMaterializedBaseWhere: Prisma.Sql;
   overrideRows: readonly LoadSummaryOverrideRow[];
@@ -327,6 +330,7 @@ async function readAggregatedLoadSummary(params: {
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${params.leaderboardMaterializedBaseWhere}
+        AND ${buildScheduleRowPresenceCondition(params.rowPresenceCutoff ?? null)}
         AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
           OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
     ),
@@ -436,6 +440,7 @@ async function readMaterializedLoadAggregates(
     `);
     // The cache stays keyed by the root client; only the aggregate runs in the JIT-off transaction.
     return readWithoutJit(params.client, (client) => readAggregatedLoadSummary({
+      rowPresenceCutoff: params.rowPresenceCutoff,
       client, dashboardId, siteKey: params.siteKey, overrideRows, resourceMinutes: params.resourceMinutes!,
       leaderboardMaterializedBaseWhere: params.leaderboardMaterializedBaseWhere
     }));
@@ -549,6 +554,7 @@ async function readBaseGrindingPlanningBoardLoadSummary(
       ${SESSAKU_PIECE_LOAD_JOINS_SQL}
       ${OP_BAR_LOAD_JOINS_SQL}
       WHERE ${where}
+        AND ${buildScheduleRowPresenceCondition(params.rowPresenceCutoff ?? null)}
         AND NOT (COALESCE("ext"."isExternallyCompleted", FALSE)
           OR CASE WHEN pc."id" IS NULL THEN COALESCE("p"."isCompleted", FALSE) ELSE pc."isCompleted" END)
       ORDER BY "CsvDashboardRow"."id", pc."id"

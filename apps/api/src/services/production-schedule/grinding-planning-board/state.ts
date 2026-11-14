@@ -1,3 +1,4 @@
+import { readScheduleRowPresence } from '../schedule-row-presence.service.js';
 import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
 import { readSessakuPieceGeneration, type SessakuPieceGenerationScope } from '../sessaku-pieces/piece-key.js';
 import { createHash } from 'node:crypto';
@@ -93,7 +94,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails & { loadGenerationToken: string }> {
-  const [leaderboardGeneration, state, overrides, loadOverrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, loadOverrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity, presence] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -136,13 +137,15 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
     prisma.productionScheduleGrindingPlanningBoardResourceCapacity.aggregate({
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
       _count: { _all: true }, _max: { updatedAt: true }
-    })
+    }),
+    readScheduleRowPresence()
   ]);
   const boardVersion = state?.version ?? 0;
   const boardUpdatedAt = state?.updatedAt?.toISOString() ?? '';
   return {
     generationToken: JSON.stringify({
       leaderboardGeneration,
+      rowPresenceKey: presence.key,
       missingStandardHoursGeneration: loadOverrides[0]?.missingStandardHoursGeneration ?? '',
       boardVersion,
       boardUpdatedAt,
@@ -164,6 +167,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
     // Only inputs to the persisted load aggregate, before category filtering.
     loadGenerationToken: JSON.stringify({
       leaderboardGeneration,
+      rowPresenceKey: presence.key,
       missingStandardHoursGeneration: loadOverrides[0]?.missingStandardHoursGeneration ?? '',
       overrideResourceFingerprint: loadOverrides[0]?.fingerprint ?? '',
       pieceSetFingerprint: pieces,

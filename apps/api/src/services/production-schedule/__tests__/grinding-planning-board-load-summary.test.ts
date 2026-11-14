@@ -522,3 +522,20 @@ describe('own minutes in load summary paths', () => {
   });
 
 });
+
+
+describe('row presence load scope', () => {
+  it.each([true, false])('uses the shared presence predicate (materialized=%s)', async (materialized) => {
+    const cutoff = new Date('2026-11-13T15:00:00Z');
+    const queryRaw = vi.fn().mockResolvedValue([]);
+    await readGrindingPlanningBoardLoadSummary({
+      missingStandardHoursRows: [], client: { $executeRaw: vi.fn(), $queryRaw: queryRaw } as never,
+      siteKey: 'site-a', category: 'all', isResourceInCategory: () => true, rowPresenceCutoff: cutoff,
+      ...(materialized ? { leaderboardMaterializedBaseWhere: Prisma.sql`TRUE` } : { winnerRowIds: ['row'] })
+    });
+    const query = queryRaw.mock.calls.map(([query]) => query as Prisma.Sql).find((query) => query.sql.includes('FROM "CsvDashboardRow"'))!;
+    expect(query.sql).toContain('SELECT 1 FROM "ProductionScheduleRowSeen" s');
+    expect(query.sql).toContain('s."dataHash" = "CsvDashboardRow"."dataHash" AND s."lastSeenAt" >= ?');
+    expect(query.values).toContainEqual(cutoff);
+  });
+});

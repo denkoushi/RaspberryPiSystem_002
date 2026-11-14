@@ -1,3 +1,4 @@
+import { readScheduleRowPresence, buildScheduleRowPresenceCondition } from '../schedule-row-presence.service.js';
 import { readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { BOARD_DUE_JOINS_SQL, BOARD_MANUAL_UPDATED_AT_SQL } from '../d-schedule-minutes/board-due.sql.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
@@ -129,7 +130,9 @@ export async function readPlanningSource(params: {
 }): Promise<PlanningSource> {
   const generationToken = params.leaderboardGenerationToken ?? await readGrindingPlanningBoardSnapshotGenerationToken();
   const { baseWhere, winnerRowIds } = await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken });
-  const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}`;
+  const presence = await readScheduleRowPresence();
+  const dashboardWhere = Prisma.sql`"CsvDashboardRow"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+    AND ${buildScheduleRowPresenceCondition(presence.cutoff)}`;
   const order = uniqueFseibans(params.fseibans);
   if (order.length === 0) {
     return { baseWhere, generationToken, rows: [], details: new Map(), progressRows: [] };

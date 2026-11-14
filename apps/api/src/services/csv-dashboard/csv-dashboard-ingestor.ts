@@ -151,6 +151,21 @@ export class CsvDashboardIngestor {
       const rowsProcessed = normalizedRows.length;
       const isProductionScheduleDashboard = dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID;
 
+      if (isProductionScheduleDashboard) {
+        const hashes = [...new Set(normalizedRows.map((row) => calculateProductionScheduleDataHash(row.data)))];
+        const lastSeenAt = ingestRun.sourceReceivedAt ?? ingestRun.startedAt;
+        for (let offset = 0; offset < hashes.length; offset += 1000) {
+          const values = hashes.slice(offset, offset + 1000).map((hash) => Prisma.sql`(${hash}, ${lastSeenAt}, NOW())`);
+          await prisma.$executeRaw(Prisma.sql`
+            INSERT INTO "ProductionScheduleRowSeen" ("dataHash", "lastSeenAt", "updatedAt")
+            VALUES ${Prisma.join(values)}
+            ON CONFLICT ("dataHash") DO UPDATE
+            SET "lastSeenAt" = GREATEST("ProductionScheduleRowSeen"."lastSeenAt", EXCLUDED."lastSeenAt"),
+                "updatedAt" = NOW()
+          `);
+        }
+      }
+
       // production schedule (DEDUP) のみ: 1年超過行は保存しない（取り込み時点で除外）
       const cleanupService = new ProductionScheduleCleanupService();
       let oneYearFilteredRows = normalizedRows;
@@ -381,6 +396,7 @@ export class CsvDashboardIngestor {
             where: { id: ingestRun.id },
             data: {
               status: 'COMPLETED',
+              ...(isProductionScheduleDashboard ? { rowSeenRecordedAt: completedAt } : {}),
               rowsProcessed,
               rowsAdded,
               rowsSkipped,

@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => {
     productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
+    csvDashboardIngestRun: { findMany: vi.fn() },
     productionScheduleDScheduleMinutes: { findMany: vi.fn() },
     orderPlacementBranchState: { findMany: vi.fn() },
     mobilePlacementShelf: { findMany: vi.fn() },
@@ -130,6 +131,7 @@ function configurePersistence(): void {
   databaseGeneration += 1;
   overrideResourceFingerprint = 'empty-overrides';
   const { prisma, sourceRow, state } = mocks;
+  prisma.csvDashboardIngestRun.findMany.mockResolvedValue([]);
   prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
   mocks.pieceSets = [];
   vi.mocked(readSessakuPieceGeneration).mockResolvedValue('empty-pieces');
@@ -365,6 +367,9 @@ describe('grinding planning board service orchestration', () => {
   });
 
   it.each((['general', 'dCompany', 'both'] as const).flatMap((scheduleSource) => [false, true].map((list) => ({ scheduleSource, list }))))('scopes load and its cache to $scheduleSource with C collation (list: $list)', async ({ scheduleSource, list }) => {
+    mocks.prisma.csvDashboardIngestRun.findMany.mockResolvedValue(Array.from({ length: 4 }, (_, i) => ({
+      status: 'COMPLETED', messageId: `${i}`, rowSeenRecordedAt: new Date(), sourceReceivedAt: new Date('2026-11-14T03:00:00Z'), startedAt: new Date()
+    })));
     mocks.listKinds.mockResolvedValue(new Map([['D', ['D_COMPANY']], ['GENERAL', ['INTERNAL']], ['DUAL', ['INTERNAL', 'D_COMPANY']]]));
     const summary = vi.spyOn(loadSummary, 'readGrindingPlanningBoardLoadSummary').mockResolvedValue({ load: [], unknownRequiredMinutesCount: 0 });
     try {
@@ -374,6 +379,7 @@ describe('grinding planning board service orchestration', () => {
         await getGrindingPlanningBoardLoad({ siteKey: 'site-a', category: 'grinding', scheduleSource });
       }
       const params = summary.mock.lastCall![0];
+      expect(params.rowPresenceCutoff).toEqual(new Date('2026-11-13T15:00:00Z'));
       expect(params.cache?.scheduleSource).toBe(scheduleSource);
       const predicate = params.leaderboardMaterializedBaseWhere!;
       expect(predicate.sql).toContain('"CsvDashboardRow"."id" COLLATE "C" = ANY(');

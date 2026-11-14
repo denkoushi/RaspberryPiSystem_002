@@ -271,6 +271,15 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。 既存 status の値は変えず、代用時だけ製番ボードの `items[].materialArrivalBasis` と順位ボードの `leaderboardMaterialArrivalBasisByPartKey` に `part` を追加する（装飾 API・list・composite board で配信）。
 - **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
 
+### 製番ボードから生産日程に無くなった行を隠す（2026-11-15） {#planning-board-hide-vanished-schedule-rows-2026-11-15}
+
+- Context: 生産日程CSVの取り込みは変わった行だけ書き換えるため、日程から消えたオーダーや工程の行が DB に残り、製番ボードに出続けていた。
+- データ: 生産日程は毎朝4通(件名同じ、オーダーが重ならない分け方)で、4通の和がその時点の全件。11/13 朝のように2通しか取り込まれない日がある。同じメールの再取り込みもある。
+- 記録: 取り込みのたびに CSV 全行の dataHash を `ProductionScheduleRowSeen` に書く(lastSeenAt はメールの受信時刻、古い値では上書きしない)。書き終えた run だけ `CsvDashboardIngestRun.rowSeenRecordedAt` が入る。
+- 判定: 異なる messageId がちょうど4つそろった JST の日のうち最新の日を基準日とし、その日の 00:00 以降に見えた行だけを製番ボード(表示・進捗)と負荷集計に出す。基準日が無い間(導入直後)は何も隠さない。行は削除しない。
+- 本番での試算(11/15 朝の4通): DB の 24,583 オーダーのうち 10,023 オーダー(37,548 行)が隠れる。オーダーは残り工程だけ消えた行 620、資源だけ変わった古い行 400 も隠れる。消えた側で手の割当は 0 件。
+- 制約: 4通という前提が変わる(5通になる等)と基準日が進まず、新しく消えた行は隠れない(安全側)。
+
 ### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}
 
 - **Symptoms**: 定期 CSV の抽出範囲を「更新日が直近 6 日」から「直近 60 日」に広げたところ（42,319 行）、手動実行が毎回失敗し、メールが未読のまま残った。管理コンソールで連続して実行すると `インポートは既に実行中です`（409）になる。
