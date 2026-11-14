@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   canDiscardAssemblyProcedureDocumentRevision,
@@ -7,7 +7,8 @@ import {
   createOverlayForRange,
   lineEndpointsForDirection,
   normalizeOverlayBBox,
-  overlayDraftReducer
+  overlayDraftReducer,
+  overlayDraftSnapshot
   , updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 
@@ -186,5 +187,36 @@ describe('assembly document editor draft reducer', () => {
     const ellipse = convertOverlayShapeKind(arrow, 'ELLIPSE');
     expect(ellipse.start).toBeUndefined();
     expect(ellipse.end).toBeUndefined();
+  });
+});
+
+
+describe('overlayDraftSnapshot', () => {
+  it('retains the sorted JSON format and serializes only changed immutable elements', () => {
+    const a = { ...createOverlayForRange('TEXT', 0, bbox), id: 'a' };
+    const b = { ...createOverlayForRange('SHAPE', 1, bbox), id: 'b' };
+    const elements = [b, a];
+    const expected = JSON.stringify([a, b]);
+    const stringify = vi.spyOn(JSON, 'stringify');
+    try {
+      const first = overlayDraftSnapshot(elements);
+      const firstCalls = stringify.mock.calls.length;
+      const repeated = overlayDraftSnapshot(elements);
+      const repeatedCalls = stringify.mock.calls.length;
+      const reordered = overlayDraftSnapshot([a, b]);
+      const reorderedCalls = stringify.mock.calls.length;
+      const changed = { ...a, text: '編集\nした文章' };
+      const next = overlayDraftSnapshot([b, changed]);
+      const changedCalls = stringify.mock.calls.length;
+      expect(first).toBe(expected);
+      expect(repeated).toBe(first);
+      expect(reordered).toBe(first);
+      expect(firstCalls).toBe(2);
+      expect(repeatedCalls).toBe(firstCalls);
+      expect(reorderedCalls).toBe(firstCalls);
+      expect(changedCalls).toBe(firstCalls + 1);
+      expect(next).toBe(JSON.stringify([changed, b]));
+      expect(overlayDraftSnapshot(elements)).toBe(first);
+    } finally { stringify.mockRestore(); }
   });
 });

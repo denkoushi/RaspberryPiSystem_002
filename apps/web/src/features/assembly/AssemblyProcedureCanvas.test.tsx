@@ -48,6 +48,21 @@ describe('AssemblyProcedureImageWithMarkers', () => {
     fireEvent.load(img);
   });
 
+  it('keeps natural-size observation when only the imageContent node identity changes', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 900, 594));
+    const width = vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(210);
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(297);
+    const view = render(<AssemblyProcedureImageWithMarkers fitToParent imageContent={<img alt="同じ画像" src="/same.png" />} bolts={[]} />);
+    const frame = screen.getByTestId('assembly-procedure-image-with-markers').firstElementChild;
+    expect(frame).toHaveStyle({ width: '420px', height: '594px' });
+    width.mockClear();
+    await act(async () => {
+      view.rerender(<AssemblyProcedureImageWithMarkers fitToParent imageContent={<img alt="同じ画像" src="/same.png" />} bolts={[]} />);
+    });
+    expect(width).not.toHaveBeenCalled();
+    expect(frame).toHaveStyle({ width: '420px', height: '594px' });
+  });
+
   it('uses the rendered work-view image size as the callout SVG coordinate space', async () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,

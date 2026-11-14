@@ -61,6 +61,13 @@ function historyReducer(state: OverlayHistory, action: OverlayDraftAction | { ty
   return { dragStart: null, past: [...state.past.slice(-49), state.present], present, future: [] };
 }
 
+// Event callbacks keep their identity while reading the latest editor state.
+function useEditorCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
+  const callbackRef = useRef(callback);
+  callbackRef.current = callback;
+  return useCallback((...args: Args) => callbackRef.current(...args), []);
+}
+
 type ControllerInput = {
   documentId: string;
   onNavigateBack?: () => void;
@@ -334,10 +341,10 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
 
   const { confirmNavigation } = useUnsavedChangesGuard(isDirty);
   const onNavigateBack = input.onNavigateBack;
-  const navigateBack = useCallback(() => {
+  const navigateBack = useEditorCallback(() => {
     if (layoutSuggestions.locked) return;
     if (confirmNavigation()) onNavigateBack?.();
-  }, [confirmNavigation, onNavigateBack, layoutSuggestions.locked]);
+  });
 
   const handleRangeSelected = useCallback((bbox: AssemblyProcedureOverlayBBox) => {
     setPendingRange(bbox);
@@ -372,18 +379,18 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const nudgeElement = useCallback((id: string, dxRatio: number, dyRatio: number) => {
     if (!readOnly) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
   }, [readOnly]);
-  const updateElementBBox = useCallback((id: string, bbox: AssemblyProcedureOverlayBBox) => {
+  const updateElementBBox = useEditorCallback((id: string, bbox: AssemblyProcedureOverlayBBox) => {
     if (readOnly) return;
     const element = elements.find((candidate) => candidate.id === id);
     if (element) dispatch({ type: 'update', element: updateOverlayBBox(element, bbox) });
-  }, [elements, readOnly]);
-  const deleteSelectedOverlay = useCallback(() => {
+  });
+  const deleteSelectedOverlay = useEditorCallback(() => {
     if (!selectedOverlayId || readOnly) return;
     dispatch({ type: 'remove', id: selectedOverlayId });
     setSelectedOverlayId(null);
-  }, [readOnly, selectedOverlayId]);
+  });
 
-  const addBlankPage = useCallback(async () => {
+  const addBlankPage = useEditorCallback(async () => {
     if (!document || readOnly || busy || conflict) return;
     setBusy(true);
     try {
@@ -401,41 +408,51 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
       setErrorMessage(readAssemblyApiErrorMessage(error, '白紙ページを追加できませんでした。'));
     } finally { setBusy(false); }
-  }, [editLease.holderToken, busy, conflict, document, onEditLeaseError, isDirty, passwordInput, readOnly, saveRecoveryImmediately, setSelectedPage, setMessage, setErrorMessage]);
+  });
 
-  const duplicateOverlayToCurrentPage = useCallback((sourceId: string) => {
+  const duplicateOverlayToCurrentPage = useEditorCallback((sourceId: string) => {
     if (readOnly || busy || !selectedPage) return;
     const source = elements.find((element) => element.id === sourceId);
     if (!source || source.pageIndex === selectedPage.pageIndex) return;
     const id = createOverlayId();
     dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
     setSelectedOverlayId(id);
-  }, [readOnly, busy, selectedPage, elements]);
+  });
 
-  const duplicateSelectedOverlay = useCallback(() => {
+  const duplicateSelectedOverlay = useEditorCallback(() => {
     if (!selectedElement || readOnly) return;
     const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
     dispatch({ type: 'add', element: copy });
     setSelectedOverlayId(copy.id);
-  }, [selectedElement, elements, readOnly]);
-  const addOverlay = useCallback((kind: 'TEXT' | 'SHAPE') => {
+  });
+  const addOverlay = useEditorCallback((kind: 'TEXT' | 'SHAPE') => {
     if (readOnly || busy) return;
     // Toolbar creation uses a visible starter box; range creation retains OCR/cropping.
     const element = createOverlayForRange(kind, selectedPageIndex, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.3, heightRatio: 0.15 }, elements);
     dispatch({ type: 'add', element });
     setSelectedOverlayId(element.id);
     setSelectionMode(false);
-  }, [busy, readOnly, selectedPageIndex, elements]);
+  });
+
+  const beginOverlayDrag = useCallback(() => { if (!readOnly) dispatch({ type: 'beginDrag' }); }, [readOnly]);
+  const endOverlayDrag = useCallback(() => dispatch({ type: 'endDrag' }), []);
+  const undo = useCallback(() => { if (!readOnly && !busy) dispatch({ type: 'undo' }); }, [readOnly, busy]);
+  const redo = useCallback(() => { if (!readOnly && !busy) dispatch({ type: 'redo' }); }, [readOnly, busy]);
+  const selectOverlay = useCallback((id: string | null) => { if (!layoutSuggestions.locked) setSelectedOverlayId(id); }, [layoutSuggestions.locked]);
+  const selectMode = useCallback((value: boolean) => { if (!layoutSuggestions.locked) setSelectionMode(value); }, [layoutSuggestions.locked]);
+  const save = useEditorCallback(revisionCommands.save);
+  const refetchTextCandidates = useEditorCallback(overlayCommands.refetchTextCandidates);
+  const startLayoutSuggestions = useEditorCallback(layoutSuggestions.start);
 
   return {
-    layoutSuggestions,
+    layoutSuggestions: { ...layoutSuggestions, start: startLayoutSuggestions },
     onEditLeaseError,
-    beginOverlayDrag: () => { if (!readOnly) dispatch({ type: 'beginDrag' }); },
-    endOverlayDrag: () => dispatch({ type: 'endDrag' }),
+    beginOverlayDrag,
+    endOverlayDrag,
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
-    undo: () => { if (!readOnly && !busy) dispatch({ type: 'undo' }); },
-    redo: () => { if (!readOnly && !busy) dispatch({ type: 'redo' }); },
+    undo,
+    redo,
     addOverlay,
     duplicateSelectedOverlay,
     duplicateOverlayToCurrentPage,
@@ -461,18 +478,18 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedPage,
     selectedPageElements,
     selectedOverlayId,
-    setSelectedOverlayId: (id: string | null) => { if (!layoutSuggestions.locked) setSelectedOverlayId(id); },
+    setSelectedOverlayId: selectOverlay,
     selectedElement,
     elements,
     selectionMode: selectionMode && !readOnly,
-    setSelectionMode: (value: boolean) => { if (!layoutSuggestions.locked) setSelectionMode(value); },
+    setSelectionMode: selectMode,
     pendingRange,
     cancelPendingRange,
     createOverlay: overlayCommands.createOverlay,
     handleRangeSelected,
     updateElement,
     deleteSelectedOverlay,
-    save: revisionCommands.save,
+    save,
     publish: revisionCommands.publish,
     discard: revisionCommands.discard,
     deleteDocument: revisionCommands.deleteDocument,
@@ -492,7 +509,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     textCandidates,
     chooseTextCandidate: overlayCommands.chooseTextCandidate,
     cancelTextCandidates: overlayCommands.cancelTextCandidates,
-    refetchTextCandidates: overlayCommands.refetchTextCandidates,
+    refetchTextCandidates,
     uploadImage: overlayCommands.uploadImage,
     bringForward,
     sendBackward,

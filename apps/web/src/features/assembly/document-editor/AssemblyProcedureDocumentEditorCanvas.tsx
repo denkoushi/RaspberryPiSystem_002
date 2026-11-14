@@ -4,6 +4,7 @@ import {
   type AssemblyProcedureOverlayElement
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
+import { memo } from 'react';
 
 import { OverlayRangeSelectionSurface } from '../../overlays/OverlayRangeSelectionSurface';
 import { AssemblyProcedureCanvas } from '../AssemblyProcedureCanvas';
@@ -12,7 +13,7 @@ import { AssemblyProcedureOverlayLayer } from '../AssemblyProcedureOverlayLayer'
 
 import type { AssemblyProcedureOverlayAssetDto } from '../types';
 
-export function AssemblyProcedureDocumentEditorCanvas({
+export const AssemblyProcedureDocumentEditorCanvas = memo(function AssemblyProcedureDocumentEditorCanvas({
   pageUrl,
   pageIndex,
   crop,
@@ -91,4 +92,4 @@ export function AssemblyProcedureDocumentEditorCanvas({
       className={clsx('h-full w-full', className)}
     />
   );
-}
+});

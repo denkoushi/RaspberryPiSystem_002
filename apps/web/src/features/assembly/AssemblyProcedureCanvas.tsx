@@ -52,7 +52,7 @@ type Props = {
   className?: string;
 };
 
-function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unknown[]): {
+function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>): {
   width: number;
   height: number;
 } {
@@ -89,8 +89,7 @@ function useNaturalSizeFromImg(rootRef: RefObject<HTMLElement | null>, deps: unk
       observer.disconnect();
       img?.removeEventListener('load', sync);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- caller passes explicit dependency list
-  }, deps);
+  }, [rootRef]);
 
   return natural;
 }
@@ -145,11 +144,14 @@ export function AssemblyProcedureCanvas({
   const { blobUrl, error } = useProtectedImageBlobUrl(imageRelativePath);
 
   useLayoutEffect(() => {
-    viewportRef.current?.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    const viewport = viewportRef.current;
+    if (viewport && (viewport.scrollLeft !== 0 || viewport.scrollTop !== 0)) {
+      viewport.scrollTo({ left: 0, top: 0, behavior: 'instant' });
+    }
   }, [fitGeneration, imageRelativePath]);
 
   useLayoutEffect(() => {
-    setNatural({ width: 0, height: 0 });
+    setNatural(current => current.width === 0 && current.height === 0 ? current : { width: 0, height: 0 });
     pendingPointerRef.current = null;
   }, [blobUrl]);
 
@@ -453,7 +455,7 @@ export function AssemblyProcedureImageWithMarkers({
 }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
-  const natural = useNaturalSizeFromImg(fitToParent ? viewportRef : frameRef, [imageContent, fitToParent]);
+  const natural = useNaturalSizeFromImg(fitToParent ? viewportRef : frameRef);
   const fitted = useAssemblyProcedureContainBox(
     viewportRef,
     natural.width,

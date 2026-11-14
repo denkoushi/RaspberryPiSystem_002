@@ -3,7 +3,7 @@ import {
   projectOverlayElementToCrop
 } from '@raspi-system/shared-types';
 import clsx from 'clsx';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useProtectedImageBlobUrl } from '../../hooks/useProtectedImageBlobUrl';
 
@@ -108,7 +108,7 @@ function bboxEqual(left: OverlayBBox, right: OverlayBBox): boolean {
     && Math.abs(left.heightRatio - right.heightRatio) < 1e-9;
 }
 
-function pointInLayer(event: ReactPointerEvent<HTMLElement>, layer: HTMLElement | null): OverlayPoint | null {
+function pointInLayer(event: Pick<ReactPointerEvent<HTMLElement>, 'clientX' | 'clientY'>, layer: HTMLElement | null): OverlayPoint | null {
   if (!layer) return null;
   const rect = layer.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return null;
@@ -238,13 +238,10 @@ function ShapeContent({ element }: { element: Extract<OverlayElement, { kind: 'S
   return <span aria-hidden="true" className="absolute inset-0 rounded-sm" style={{ border: `${strokeWidth}px solid ${stroke}`, backgroundColor: fill }} />;
 }
 
-function ImageContent({ element, assets, resolveAssetUrl }: {
+function ImageContent({ element, source }: {
   element: Extract<OverlayElement, { kind: 'IMAGE' }>;
-  assets?: OverlayAssetMap;
-  resolveAssetUrl: (assetId: string, asset?: OverlayAsset) => string;
+  source: string | null;
 }) {
-  const asset = assets?.[element.assetId];
-  const source = element.assetId ? resolveAssetUrl(element.assetId, asset) : null;
   const { blobUrl, error } = useProtectedImageBlobUrl(source);
   if (!element.assetId) return <span className="flex h-full w-full items-center justify-center bg-slate-200/80 text-center text-[0.65rem] font-semibold text-slate-700">画像assetを指定</span>;
   if (error || !blobUrl) return <span className="flex h-full w-full items-center justify-center bg-slate-200/80 text-center text-[0.65rem] font-semibold text-slate-700">{error ? '画像の読み込みに失敗しました' : '画像を読み込み中…'}</span>;
@@ -257,10 +254,9 @@ export function overlayTextFontSize(fontSizeRatio: number | undefined, crop?: Ov
   return `${Math.max(0.005, fontSizeRatio ?? 0.025) * 100 * cropScale}cqw`;
 }
 
-function OverlayContent({ element, assets, resolveAssetUrl, crop }: {
+function OverlayContent({ element, assetSource, crop }: {
   element: OverlayElement;
-  assets?: OverlayAssetMap;
-  resolveAssetUrl: (assetId: string, asset?: OverlayAsset) => string;
+  assetSource: string | null;
   crop?: OverlayCropRect | null;
 }): ReactNode {
   if (element.kind === 'TEXT') {
@@ -273,7 +269,7 @@ function OverlayContent({ element, assets, resolveAssetUrl, crop }: {
     };
     return <span className="block h-full w-full whitespace-pre-wrap break-words" style={style}>{element.text}</span>;
   }
-  if (element.kind === 'IMAGE') return <ImageContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} />;
+  if (element.kind === 'IMAGE') return <ImageContent element={element} source={assetSource} />;
   return <ShapeContent element={element} />;
 }
 
@@ -296,15 +292,14 @@ export function OverlayLayer({
 }: OverlayLayerProps) {
   const layerRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef<PointerInteraction | null>(null);
-  const projected = elements
-    .map((source) => {
-      const element = projectElement(source, crop);
-      return element ? { source, element } : null;
-    })
-    .filter((entry): entry is { source: OverlayElement; element: OverlayElement } => entry != null)
-    .sort((left, right) => left.element.zIndex - right.element.zIndex);
+  const callbacks = useRef({ crop, onSelect, onNudge, onUpdateBBox, onInteractionStart, onInteractionEnd });
+  callbacks.current = { crop, onSelect, onNudge, onUpdateBBox, onInteractionStart, onInteractionEnd };
+  const frameRef = useRef<number | null>(null);
+  const pendingMove = useRef<Pick<ReactPointerEvent<HTMLElement>, 'pointerId' | 'clientX' | 'clientY'> | null>(null);
+  const sorted = useMemo(() => [...elements].sort((left, right) => left.zIndex - right.zIndex), [elements]);
 
-  const applyPointerInteraction = (event: ReactPointerEvent<HTMLElement>) => {
+  const applyPointerInteraction = useCallback((event: Pick<ReactPointerEvent<HTMLElement>, 'pointerId' | 'clientX' | 'clientY'>) => {
+    const { crop, onUpdateBBox } = callbacks.current;
     const interaction = pointerRef.current;
     if (!interaction || interaction.pointerId !== event.pointerId) return;
     const point = pointInLayer(event, layerRef.current);
@@ -327,20 +322,37 @@ export function OverlayLayer({
       localBBox = bboxBetweenPoints(opposite, point, minWidth, minHeight, false);
     }
     const sourceBBox = sourceBBoxFromLocal(localBBox, crop);
-    event.stopPropagation();
-    event.preventDefault();
     if (bboxEqual(sourceBBox, interaction.lastSourceBBox)) return;
     interaction.lastSourceBBox = sourceBBox;
     onUpdateBBox?.(interaction.elementId, sourceBBox);
-  };
+  }, []);
 
-  const beginPointerInteraction = (
+  const queuePointerInteraction = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    if (pointerRef.current?.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    event.preventDefault();
+    pendingMove.current = { pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY };
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      const pending = pendingMove.current;
+      pendingMove.current = null;
+      if (pending) applyPointerInteraction(pending);
+    });
+  }, [applyPointerInteraction]);
+
+  useEffect(() => () => {
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+  }, []);
+
+  const beginPointerInteraction = useCallback((
     event: ReactPointerEvent<HTMLElement>,
     source: OverlayElement,
     mode: PointerInteraction['mode'],
     handle?: ResizeHandle
   ) => {
-    if (!interactive || !onUpdateBBox || (event.button != null && event.button !== 0)) return;
+    const { crop, onUpdateBBox, onInteractionStart, onSelect } = callbacks.current;
+    if (!onUpdateBBox || (event.button != null && event.button !== 0)) return;
     const startLocalPoint = pointInLayer(event, layerRef.current);
     if (!startLocalPoint) return;
     event.stopPropagation();
@@ -359,102 +371,130 @@ export function OverlayLayer({
     };
     onInteractionStart?.();
     onSelect?.(source.id);
-  };
+  }, []);
 
-  const endPointerInteraction = (event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
+  const endPointerInteraction = useCallback((event: ReactPointerEvent<HTMLElement>, cancelled = false) => {
     const interaction = pointerRef.current;
     if (!interaction || interaction.pointerId !== event.pointerId) return;
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
     if (!cancelled) applyPointerInteraction(event);
+    else if (pendingMove.current) applyPointerInteraction(pendingMove.current);
+    pendingMove.current = null;
     pointerRef.current = null;
-    onInteractionEnd?.();
+    callbacks.current.onInteractionEnd?.();
     if (interaction.captureTarget.hasPointerCapture?.(interaction.pointerId)) interaction.captureTarget.releasePointerCapture?.(interaction.pointerId);
     event.stopPropagation();
     event.preventDefault();
-  };
+  }, [applyPointerInteraction]);
+  const select = useCallback((id: string) => callbacks.current.onSelect?.(id), []);
+  const nudge = useCallback((id: string, dx: number, dy: number) => callbacks.current.onNudge?.(id, dx, dy), []);
+  const updateBBox = useCallback((id: string, bbox: OverlayBBox) => callbacks.current.onUpdateBBox?.(id, bbox), []);
 
   return (
     <div ref={layerRef} className={clsx('pointer-events-none absolute inset-0 isolate overflow-hidden', className)} data-testid={testId} style={{ containerType: 'inline-size' } as CSSProperties}>
-      {projected.map(({ source, element }) => {
-        const selected = selectedOverlayId === element.id;
-        const transformable = interactive && Boolean(onUpdateBBox) && selected;
-        const style: CSSProperties = {
-          left: `${element.bbox.xRatio * 100}%`,
-          top: `${element.bbox.yRatio * 100}%`,
-          width: `${element.bbox.widthRatio * 100}%`,
-          height: `${element.bbox.heightRatio * 100}%`,
-          opacity: element.opacity ?? 1,
-          zIndex: element.zIndex,
-          backgroundColor: element.mask?.enabled ? element.mask.color : undefined
-        };
-        return (
-          <span key={element.id}>
-            <div
-              className={clsx('absolute overflow-hidden p-0.5', interactive ? 'pointer-events-auto cursor-pointer rounded-sm' : 'pointer-events-none', transformable && 'touch-none cursor-move', selected && 'outline outline-2 outline-cyan-400 outline-offset-1')}
-              style={style}
-              data-overlay-id={element.id}
-              data-testid={`${testIdPrefix}-${element.id}`}
-              aria-label={interactive ? elementLabel(element) : undefined}
-              aria-pressed={interactive ? selected : undefined}
-              role={interactive ? 'button' : undefined}
-              tabIndex={interactive ? 0 : undefined}
-              onClick={interactive ? (event) => { event.stopPropagation(); onSelect?.(element.id); } : undefined}
-              onPointerDown={interactive && onUpdateBBox ? (event) => beginPointerInteraction(event, source, 'move') : undefined}
-              onPointerMove={interactive && onUpdateBBox ? applyPointerInteraction : undefined}
-              onPointerUp={interactive && onUpdateBBox ? endPointerInteraction : undefined}
-              onPointerCancel={interactive && onUpdateBBox ? (event) => endPointerInteraction(event, true) : undefined}
-              onKeyDown={interactive ? (event) => {
-                if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
-                  if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect?.(element.id); }
-                  return;
-                }
-                event.preventDefault();
-                const step = event.shiftKey ? 0.02 : 0.005;
-                onNudge?.(element.id, event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0);
-              } : undefined}
-            >
-              <OverlayContent element={element} assets={assets} resolveAssetUrl={resolveAssetUrl} crop={crop} />
-            </div>
-            {transformable ? (['nw', 'ne', 'sw', 'se'] as const).map((handle) => {
-              const label = { nw: '左上', ne: '右上', sw: '左下', se: '右下' }[handle];
-              return (
-                <button
-                  key={handle}
-                  type="button"
-                  aria-label={`${elementLabel(source)} ${label}リサイズハンドル`}
-                  className={clsx('pointer-events-auto absolute h-6 w-6 touch-none rounded-full border-2 border-slate-950 bg-cyan-300 p-0', handle === 'nw' || handle === 'se' ? 'cursor-nwse-resize' : 'cursor-nesw-resize')}
-                  style={{ left: `${(element.bbox.xRatio + (handle.includes('w') ? 0 : element.bbox.widthRatio)) * 100}%`, top: `${(element.bbox.yRatio + (handle.includes('n') ? 0 : element.bbox.heightRatio)) * 100}%`, transform: 'translate(-50%, -50%)', zIndex: 1_000_000 }}
-                  data-testid={`${testIdPrefix}-${element.id}-resize-${handle}`}
-                  onPointerDown={(event) => beginPointerInteraction(event, source, 'resize', handle)}
-                  onPointerMove={applyPointerInteraction}
-                  onPointerUp={endPointerInteraction}
-                  onPointerCancel={(event) => endPointerInteraction(event, true)}
-                  onKeyDown={(event) => {
-                    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const step = event.shiftKey ? 0.02 : 0.005;
-                    const sourceBBox = source.bbox;
-                    const corner = {
-                      xRatio: sourceBBox.xRatio + (handle.includes('w') ? 0 : sourceBBox.widthRatio),
-                      yRatio: sourceBBox.yRatio + (handle.includes('n') ? 0 : sourceBBox.heightRatio)
-                    };
-                    const opposite = {
-                      xRatio: sourceBBox.xRatio + (handle.includes('w') ? sourceBBox.widthRatio : 0),
-                      yRatio: sourceBBox.yRatio + (handle.includes('n') ? sourceBBox.heightRatio : 0)
-                    };
-                    const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
-                    const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
-                    onUpdateBBox?.(source.id, bboxBetweenPoints(opposite, { xRatio: Math.max(0, Math.min(1, corner.xRatio + dx)), yRatio: Math.max(0, Math.min(1, corner.yRatio + dy)) }));
-                  }}
-                />
-              );
-            }) : null}
-          </span>
-        );
-      })}
+      {sorted.map(source => <OverlayItem key={source.id} source={source} crop={crop}
+        selected={selectedOverlayId === source.id} interactive={interactive}
+        assetSource={source.kind === 'IMAGE' && source.assetId ? resolveAssetUrl(source.assetId, assets?.[source.assetId]) : null}
+        onSelect={select} onNudge={nudge} onUpdateBBox={onUpdateBBox ? updateBBox : undefined}
+        beginPointerInteraction={beginPointerInteraction} queuePointerInteraction={queuePointerInteraction}
+        endPointerInteraction={endPointerInteraction} testIdPrefix={testIdPrefix} />)}
     </div>
   );
 }
+
+const OverlayItem = memo(function OverlayItem({ source, crop, selected, interactive, assetSource, onSelect, onNudge, onUpdateBBox, beginPointerInteraction, queuePointerInteraction, endPointerInteraction, testIdPrefix }: {
+  source: OverlayElement;
+  crop?: OverlayCropRect | null;
+  selected: boolean;
+  interactive: boolean;
+  assetSource: string | null;
+  onSelect: (id: string) => void;
+  onNudge: (id: string, dx: number, dy: number) => void;
+  onUpdateBBox?: (id: string, bbox: OverlayBBox) => void;
+  beginPointerInteraction: (event: ReactPointerEvent<HTMLElement>, source: OverlayElement, mode: PointerInteraction['mode'], handle?: ResizeHandle) => void;
+  queuePointerInteraction: (event: ReactPointerEvent<HTMLElement>) => void;
+  endPointerInteraction: (event: ReactPointerEvent<HTMLElement>, cancelled?: boolean) => void;
+  testIdPrefix: string;
+}) {
+  const element = useMemo(() => projectElement(source, crop), [source, crop]);
+  if (!element) return null;
+  const transformable = interactive && Boolean(onUpdateBBox) && selected;
+  const style: CSSProperties = {
+    left: `${element.bbox.xRatio * 100}%`,
+    top: `${element.bbox.yRatio * 100}%`,
+    width: `${element.bbox.widthRatio * 100}%`,
+    height: `${element.bbox.heightRatio * 100}%`,
+    opacity: element.opacity ?? 1,
+    zIndex: element.zIndex,
+    backgroundColor: element.mask?.enabled ? element.mask.color : undefined
+  };
+  return (
+    <span key={element.id}>
+      <div
+        className={clsx('absolute overflow-hidden p-0.5', interactive ? 'pointer-events-auto cursor-pointer rounded-sm' : 'pointer-events-none', transformable && 'touch-none cursor-move', selected && 'outline outline-2 outline-cyan-400 outline-offset-1')}
+        style={style}
+        data-overlay-id={element.id}
+        data-testid={`${testIdPrefix}-${element.id}`}
+        aria-label={interactive ? elementLabel(element) : undefined}
+        aria-pressed={interactive ? selected : undefined}
+        role={interactive ? 'button' : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={interactive ? (event) => { event.stopPropagation(); onSelect?.(element.id); } : undefined}
+        onPointerDown={interactive && onUpdateBBox ? (event) => beginPointerInteraction(event, source, 'move') : undefined}
+        onPointerMove={interactive && onUpdateBBox ? queuePointerInteraction : undefined}
+        onPointerUp={interactive && onUpdateBBox ? endPointerInteraction : undefined}
+        onPointerCancel={interactive && onUpdateBBox ? (event) => endPointerInteraction(event, true) : undefined}
+        onKeyDown={interactive ? (event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+            if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelect?.(element.id); }
+            return;
+          }
+          event.preventDefault();
+          const step = event.shiftKey ? 0.02 : 0.005;
+          onNudge?.(element.id, event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0, event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0);
+        } : undefined}
+      >
+        <OverlayContent element={element} assetSource={assetSource} crop={crop} />
+      </div>
+      {transformable ? (['nw', 'ne', 'sw', 'se'] as const).map((handle) => {
+        const label = { nw: '左上', ne: '右上', sw: '左下', se: '右下' }[handle];
+        return (
+          <button
+            key={handle}
+            type="button"
+            aria-label={`${elementLabel(source)} ${label}リサイズハンドル`}
+            className={clsx('pointer-events-auto absolute h-6 w-6 touch-none rounded-full border-2 border-slate-950 bg-cyan-300 p-0', handle === 'nw' || handle === 'se' ? 'cursor-nwse-resize' : 'cursor-nesw-resize')}
+            style={{ left: `${(element.bbox.xRatio + (handle.includes('w') ? 0 : element.bbox.widthRatio)) * 100}%`, top: `${(element.bbox.yRatio + (handle.includes('n') ? 0 : element.bbox.heightRatio)) * 100}%`, transform: 'translate(-50%, -50%)', zIndex: 1_000_000 }}
+            data-testid={`${testIdPrefix}-${element.id}-resize-${handle}`}
+            onPointerDown={(event) => beginPointerInteraction(event, source, 'resize', handle)}
+            onPointerMove={queuePointerInteraction}
+            onPointerUp={endPointerInteraction}
+            onPointerCancel={(event) => endPointerInteraction(event, true)}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const step = event.shiftKey ? 0.02 : 0.005;
+              const sourceBBox = source.bbox;
+              const corner = {
+                xRatio: sourceBBox.xRatio + (handle.includes('w') ? 0 : sourceBBox.widthRatio),
+                yRatio: sourceBBox.yRatio + (handle.includes('n') ? 0 : sourceBBox.heightRatio)
+              };
+              const opposite = {
+                xRatio: sourceBBox.xRatio + (handle.includes('w') ? sourceBBox.widthRatio : 0),
+                yRatio: sourceBBox.yRatio + (handle.includes('n') ? sourceBBox.heightRatio : 0)
+              };
+              const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+              const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+              onUpdateBBox?.(source.id, bboxBetweenPoints(opposite, { xRatio: Math.max(0, Math.min(1, corner.xRatio + dx)), yRatio: Math.max(0, Math.min(1, corner.yRatio + dy)) }));
+            }}
+          />
+        );
+      }) : null}
+    </span>
+  );
+});
 
 export function overlayElementLabel(element: OverlayElement): string {
   return elementLabel(element);
