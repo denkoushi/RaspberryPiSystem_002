@@ -271,6 +271,15 @@ DB 統合テスト2ファイル・242件は専用 `TEST_DATABASE_URL` が未設�
 - **配信**: 順位ボードは工程チップと同じ部品キー単位の `leaderboardMaterialArrivalByPartKey`（装飾 API）。製番ボードは `items[].materialArrivalStatus` を応答のたびに付け、スナップショットと `itemRevision` には含めない。 既存 status の値は変えず、代用時だけ製番ボードの `items[].materialArrivalBasis` と順位ボードの `leaderboardMaterialArrivalBasisByPartKey` に `part` を追加する（装飾 API・list・composite board で配信）。
 - **制約**: `FKOBAIST` は列追加（migration `20261001120000_purchase_order_lookup_purchase_status`）以降に取り込んだ行だけに入る。それ以前の行は次に同じ注番が CSV に載るまでバッジが出ない。突合対象は MD 品番のみ（MH/SD/SH などは購買行が無い）。`(A)` 行の多くは生産日程に無い製番で発注されており当たらない。MD 部品の約 15% は同じ製番の購買行が無く、バッジは出ない。
 
+### 製番ボードの着判定に外作の工順を使う（2026-11-15） {#planning-board-outsourced-routing-arrival-2026-11-15}
+
+- **Context**: 外作（外注切削・表面処理など）の工程は生産日程CSVに出ないため、外注先から戻っていない部品が「着」としてガントに並んだ。逆に外作は入荷済なのに、同じ部品の古い購買行（`O`）に引っぱられて初工程が隠れる部品もあった。
+- **データ**: 工順状態メール（`FKOJUNST_Status`）の生の行に外作の工順が入る。`FKOTEICD` が10桁の数字なら外作（仕入先CD）。正規化表 `ProductionScheduleFkojunstMailStatus` は日程行に紐づく工程だけを持ち、外作の行は無い（2026-11-15 本番で10桁0件）。仕入先を替えると古い方が `O` のまま残るため、`(FSEZONO, FKOJUN)` ごとに `FUPDTEDT` が最新の1行を状態とする。
+- **判定**: 研削行の製造オーダー番号で、自分より工順が小さい外作が1つでも `C`/`X` 以外なら未着（手入力の着・配膳・初工程の照合があれば着）。すべて `C`/`X` で初工程なら、手入力の外が無い限り着（購買の材料状態より優先）。2つ目以降は従来どおり日程上の前工程の完了も要る。外作が無ければ従来どおり。正本は [`outsourced-routing-arrival.service.ts`](../../apps/api/src/services/production-schedule/outsourced-routing-arrival.service.ts)、適用は `grinding-planning-board/read.ts`（応答のたびに付け、スナップショットに含めない）。
+- **索引**: migration `20261115090000_add_fkojunst_outsourced_routing_index`（外作の行だけの部分索引、`BTRIM(FSEZONO)`）。クエリの条件は索引の述語と同じリテラルにする。
+- **2026-11-15 本番試算**: テーブル `MD005213200`（AA1SCM09/10・AA1T1M06、外作 `R`）、ベアリングサポート `SD100049880`（BA1SB354/355、`R`）、Y軸本体 `MD100197880`（AA1SBM03、`P`）が未着に。ベアリングサポート `MD005245360` の初工程は外作 `C` で着に戻る。
+- **制約**: 外作の手配が同じ製造オーダーに付かない部品（モータブラケット Y/X/YZ 軸、サドル `MD100469600` など）は判定できず従来どおり。状態メールは D 日の完了が D+2 の朝に入るため、外作の入荷も約2日遅れて反映される。順位ボードには適用していない。
+
 ### FKOBAINO 取込が大きい CSV で失敗する（2026-10-01） {#fkobaino-sync-large-csv-timeout-2026-10-01}
 
 - **Symptoms**: 定期 CSV の抽出範囲を「更新日が直近 6 日」から「直近 60 日」に広げたところ（42,319 行）、手動実行が毎回失敗し、メールが未読のまま残った。管理コンソールで連続して実行すると `インポートは既に実行中です`（409）になる。
