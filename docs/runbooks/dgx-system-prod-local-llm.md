@@ -96,7 +96,7 @@ DeepSeek稼働中にflagを先に戻さない。privateの既存データは削�
 `BUSINESS_QWEN38_SWITCH_ENABLED=false` が既定。`BUSINESS_DEEPSEEK_SWITCH_ENABLED`と
 新フラグの両方、および CP 側の両フラグが有効で、
 capability の `supportedBusinessProfileIds` に業務 Qwen ID がある場合だけ選択する（旧 CP では拒否）。
-Spark 1 `127.0.0.1:38083`、alias `system-prod-primary`、text のみ、cold start 900秒。
+Spark 1 `127.0.0.1:38083`、alias `system-prod-primary`、text + vision、cold start 900秒。
 private と同じ pinned image / recipe / 読み取り専用の重みを使い、両 Spark の cache は
 `/srv/dgx/system-prod/data/business-qwen38/cache/{vllm,flashinfer,triton,b12x}` に分離する。
 operator は配置先 manifest の head/worker model path、SSH target、master address を実機に合わせ、
@@ -104,6 +104,18 @@ operator は配置先 manifest の head/worker model path、SSH target、master 
 不備は旧モデル停止前に `business_qwen38_unprepared` で拒否する。所有 profile の変更では停止中も含め両 rank を再作成し、
 要求ログを有効にしない。gateway は選択・active・ready・世代と upstream の業務 alias を確認し、private alias のみなら拒否する。
 Qwen の `chat_template_kwargs.enable_thinking` は未指定なら false。GLM / DeepSeek の要求変換を適用しない。
+Qwen の共用は control / gateway の `DGX_PRIVATE_SHARED_QWEN38_ENABLED=true` と両 rank の実設定の証明が必要（既定 off）。
+runtimeIdentity は `vllm:qwen38_fp8_tp2:38083`、weightsRevision は manifest の固定 Hub revision
+`5638ef95592d5c0b6a83791f55b09051565cfd9b`。両 rank は dev mode、mm processor cache 0、Docker log driver none とし、
+prefix caching は維持する。要求の利用者指定 salt は除去し、私用だけ gateway 内の秘密 salt を付ける。
+業務と私用は同時に推論せず、交代時に prefix / mm / encoder cache を消去する。私用は業務の空きを最大30秒待ち、
+業務は私用を最大5秒待って上流を切断し、さらに最大2秒で下流も切断する。
+prefix / mm / encoder reset 全体の期限は10秒（prefix の false は0.5秒間隔で再試行）。
+私用への交代の消去中に業務が来たら交代を中断し、業務へ譲る。起動直後の最初の業務も消去を1回試す。
+私用への交代の消去失敗は409、業務への交代は失敗しても業務を通し、次の私用で再消去する。
+業務の画像は共用フラグにかかわらず通す。共用の私用画像URLは `data:` のみ許可する。
+共用証明は両rankの起動引数とadapter設定の完全一致を要求し、私用の共用失敗は業務ログに記録しない。
+稼働中の推論は gateway 経由に限定する（loading 中の readiness probe は例外）。
 rollback はフラグを維持して停止証明→GLM 選択→ready 確認の後に CP / 業務フラグを無効にする。
 Qwen フラグを切る前に、画面で GLM か DeepSeek に切り替えておく（Qwen 選択のまま切ると業務 LLM は自動では戻らず 503 になる）。
 

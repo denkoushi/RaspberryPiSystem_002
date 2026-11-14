@@ -131,6 +131,9 @@ install -d "$(dirname "${MARKER}")"
 DOCKER_ARGS=(run -d --privileged --gpus all --ipc host --network host --shm-size=16g
   --ulimit nofile=1048576:1048576 --ulimit memlock=-1 --ulimit stack=67108864
   --label "dgx.profile=${PROFILE_ID}")
+if [[ "${PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+  DOCKER_ARGS+=(--log-driver none -e VLLM_SERVER_DEV_MODE=1)
+fi
 if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
   for setting in \
     HF_HUB_OFFLINE=1 "MN_IF_NAME=${ETH_IF}" "UCX_NET_DEVICES=${ETH_IF}" "NCCL_SOCKET_IFNAME=${ETH_IF}" \
@@ -171,6 +174,9 @@ if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
     --reasoning-parser "${VLLM_REASONING_PARSER:-qwen3}" --tool-call-parser "${VLLM_TOOL_CALL_PARSER:-qwen3_xml}"
     --enable-auto-tool-choice --gpu-memory-utilization "${GPU_MEM_UTIL}" --nnodes 2
     --master-addr "${HEAD_IP}" --master-port "${MASTER_PORT}")
+  if [[ "${PROFILE_ID}" == "business_qwen38_flash_next_orcarouter_fp8_tp2" ]]; then
+    VLLM_ARGS+=(--mm-processor-cache-gb 0)
+  fi
   HEAD_ARGS=(--host 127.0.0.1 --port "${HOST_PORT}" --scheduling-policy priority)
 else
 VLLM_ARGS=(serve /models/GLM-5.3-Flash-FP4-Local --served-model-name "${ALIAS}"

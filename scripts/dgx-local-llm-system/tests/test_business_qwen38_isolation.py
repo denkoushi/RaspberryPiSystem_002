@@ -36,6 +36,7 @@ class BusinessQwen38IsolationTests(unittest.TestCase):
         self.flags = {'BUSINESS_DEEPSEEK_SWITCH_ENABLED': 'true', 'BUSINESS_QWEN38_SWITCH_ENABLED': 'true'}
         with patch.dict(os.environ, self.flags):
             profile = validate_startable_profile(str(self.manifest.parent.parent), QWEN)
+        self.profile = profile
         self.env = {**launcher_env_for_profile(profile), **self.flags,
                     'EXPECTED_WORKER_SSH': body['launcherHints']['blueWorkerSshTarget']}
 
@@ -149,6 +150,35 @@ class BusinessQwen38IsolationTests(unittest.TestCase):
             self.assertNotIn('qwen38fn-trial', ' '.join(args))
             self.assertFalse(any(arg.startswith(('--enable-log-requests', '--log-requests', '--enable-log-outputs')) for arg in args))
             self.assertEqual(args[args.index('--served-model-name') + 1], 'system-prod-primary')
+            self.assertIn('VLLM_SERVER_DEV_MODE=1', args)
+            self.assertEqual(args[args.index('--log-driver') + 1], 'none')
+            self.assertEqual(args[args.index('--mm-processor-cache-gb') + 1], '0')
+            self.assertIn('--enable-prefix-caching', args)
+            if event['node'] == 'head':
+                self.assertEqual(args[args.index('--host') + 1], '127.0.0.1')
+
+    def test_sharing_contract_matches_actual_adapter_arguments_and_environment(self):
+        import business_qwen38 as qwen
+        result = self.h.run_script('start-trtllm-server.sh', **self.env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        starts = [e for e in self.h.docker_events() if e['args'][0] == 'run' and '--rm' not in e['args']]
+        self.assertEqual(len(starts), 2)
+        nodes = [None, None]
+        for event in starts:
+            rank = 0 if event['node'] == 'head' else 1
+            args = event['args']
+            mounts = [args[i + 1].split(':') for i, arg in enumerate(args) if arg == '-v']
+            nodes[rank] = {
+                'path': 'vllm', 'args': args[args.index('serve'):],
+                'image': args[args.index('--entrypoint') + 2],
+                'logDriver': args[args.index('--log-driver') + 1],
+                'env': [args[i + 1] for i, arg in enumerate(args) if arg == '-e'],
+                'mounts': [{'Source': m[0], 'Destination': m[1], 'RW': len(m) == 2 or m[2] != 'ro'} for m in mounts],
+            }
+            _, expected_env = qwen.sharing_launch_contract(self.profile, rank)
+            self.assertEqual(set(nodes[rank]['env']), expected_env)
+        self.assertTrue(qwen._sharing_inspected(self.profile, nodes))
+
 
 
 if __name__ == '__main__':

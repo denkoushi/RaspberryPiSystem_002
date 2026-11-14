@@ -1320,6 +1320,18 @@ class BusinessQwenSwitchTests(unittest.TestCase):
             self.assertEqual(body['chat_template_kwargs'], {'enable_thinking': False})
             self.assertNotIn('reasoning_effort', body)
 
+    def test_qwen_sharing_inspection_only_requested_when_enabled_and_ready(self):
+        from unittest.mock import patch
+        self.request(modelProfileId=self.qwen, reason='business-model-selection')
+        state = self.state_value()
+        for flag, transition, expected in [('false', 'ready', False), ('true', 'ready', True),
+                                            ('true', 'loading', False), ('true', 'failed', False)]:
+            self.state.write_text(json.dumps({**state, 'businessTransition': transition}))
+            with patch.dict('os.environ', {'DGX_PRIVATE_SHARED_QWEN38_ENABLED': flag}), \
+                    patch('business_qwen38.runtime_status', return_value={}) as inspect:
+                self.module.business_runtime_status(self.config)
+            self.assertEqual(inspect.call_args.kwargs['sharing'], expected)
+
     def test_stale_qwen_generation_cannot_become_ready(self):
         from unittest.mock import patch
         self.request(modelProfileId=self.qwen, reason='business-model-selection')

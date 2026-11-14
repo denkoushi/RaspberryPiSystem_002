@@ -326,7 +326,9 @@ def business_runtime_status(config: ControlConfig) -> dict:
     elif state["selectedBusinessProfileId"] == BUSINESS_QWEN38_PROFILE_ID:
         from business_qwen38 import runtime_status as qwen_runtime_status
         profile = find_model_profile(config.model_registry_root, BUSINESS_QWEN38_PROFILE_ID)
-        result = qwen_runtime_status(profile, generation, config.active_model_state_path)
+        result = qwen_runtime_status(profile, generation, config.active_model_state_path, sharing=(
+            os.environ.get('DGX_PRIVATE_SHARED_QWEN38_ENABLED', '') in {'true', '1'}
+            and state['businessTransition'] == 'ready' and not state.get('businessFailureReason')))
     else:
         from resource_state import glm_business_runtime
         result = glm_business_runtime(generation)
