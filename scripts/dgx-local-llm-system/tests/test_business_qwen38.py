@@ -60,7 +60,7 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
             mounts += [{'Source': qwen.CACHE + '/' + source, 'Destination': dest, 'RW': True}
                        for source, dest in [('vllm', '/root/.cache/vllm'), ('flashinfer', '/root/.cache/flashinfer'),
                                             ('triton', '/root/.triton'), ('b12x', '/root/.cache/b12x')]]
-            result.append({**node, 'args': args, 'path': 'vllm', 'env': sorted(env),
+            result.append({**node, 'args': args, 'path': 'vllm', 'env': sorted(env | qwen.IMAGE_VLLM_ENV),
                            'logDriver': 'none', 'image': qwen.IMAGE, 'mounts': mounts})
         return result
 
@@ -76,6 +76,8 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
                          lambda n: n['args'].extend(['--unknown-future-option', 'value']),
                          lambda n: n['env'].append('VLLM_UNKNOWN_FUTURE_SETTING=1'),
                          lambda n: n['env'].append('VLLM_SERVER_DEV_MODE=1'),
+                         lambda n: n['env'].remove('VLLM_BASE_DIR=/workspace/vllm'),
+                         lambda n: n['env'].__setitem__(n['env'].index('VLLM_WSL2_ENABLE_PIN_MEMORY=1'), 'VLLM_WSL2_ENABLE_PIN_MEMORY=0'),
                          lambda n: n['env'].__setitem__(n['env'].index('VLLM_PLE_TABLE_MEMORY=shared'), 'VLLM_PLE_TABLE_MEMORY=other'),
                          lambda n: n['args'].__setitem__(n['args'].index('--max-model-len') + 1, '42'),
                          lambda n: n['args'].append('--mm-processor-cache-gb=4'),

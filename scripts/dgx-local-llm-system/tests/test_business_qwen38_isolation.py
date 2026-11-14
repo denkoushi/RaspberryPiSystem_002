@@ -177,6 +177,8 @@ class BusinessQwen38IsolationTests(unittest.TestCase):
             }
             _, expected_env = qwen.sharing_launch_contract(self.profile, rank)
             self.assertEqual(set(nodes[rank]['env']), expected_env)
+            # Docker merges the pinned image's own VLLM_* env into the container.
+            nodes[rank]['env'] += sorted(qwen.IMAGE_VLLM_ENV)
         self.assertTrue(qwen._sharing_inspected(self.profile, nodes))
 
 
