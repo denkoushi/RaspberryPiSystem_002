@@ -3,17 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { AssemblyProcedureDocumentEditorCanvasToolbar } from './AssemblyProcedureDocumentEditorCanvasToolbar';
 
-import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
+import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
 function renderToolbar({ workshop = false, revision = false, locked = false, readOnly = false } = {}) {
   const controller = {
     readOnly, busy: false, canSave: true, canPublish: true, canDiscard: true, canUndo: true, canRedo: true,
-    document: { status: 'draft', supersedesDocumentId: revision ? 'previous' : null },
-    layoutSuggestions: { locked, canSuggest: true, start: vi.fn() },
+    documentStatus: 'draft', supersedesDocumentId: revision ? 'previous' : null,
+    layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
-  } as unknown as AssemblyProcedureDocumentEditorController;
+  } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
   const onDelete = vi.fn(), onDiscard = vi.fn();
   render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} onDelete={onDelete} onDiscard={onDiscard} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
   return { controller, onDelete, onDiscard };

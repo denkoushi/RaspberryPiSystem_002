@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
@@ -33,7 +33,7 @@ export function percentToRatio(percent: number): number {
   return percent / 100;
 }
 
-export function AssemblyProcedureDocumentEditorInspector({
+export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyProcedureDocumentEditorInspector({
   element,
   onUpdate,
   onDuplicate,
@@ -378,4 +378,4 @@ export function AssemblyProcedureDocumentEditorInspector({
       />
     </aside>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { listProcedureMaterials } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
@@ -18,8 +18,11 @@ import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayou
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
 
+import type { AssemblyProcedureDocumentPageDto } from '../types';
+
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
+  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, elements: controllerElements, pages: controllerPages } = controller;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
     : processNames.some(name => name.startsWith('研削')) ? 'procedure-grinding' : undefined;
@@ -27,19 +30,19 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     try { return localStorage.getItem('assembly-document-editor-voice-input') === 'on'; }
     catch { return false; }
   });
-  const toggleVoiceInput = () => {
+  const toggleVoiceInput = useCallback(() => {
     const enabled = !voiceInputEnabled;
     setVoiceInputEnabled(enabled);
     try { localStorage.setItem('assembly-document-editor-voice-input', enabled ? 'on' : 'off'); }
     catch { /* The editor remains usable when local storage is unavailable. */ }
-  };
+  }, [voiceInputEnabled]);
   const [partsPaneOpen, setPartsPaneOpen] = useState(() => {
     try { return localStorage.getItem('assembly-document-editor-parts-pane') !== 'closed'; }
     catch { return true; }
   });
   const [hiddenOverlayIds, setHiddenOverlayIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    setHiddenOverlayIds(new Set());
+    setHiddenOverlayIds(current => current.size ? new Set() : current);
   }, [controller.selectedPageIndex, controller.document?.id]);
   const togglePartsPane = () => {
     const open = !partsPaneOpen;
@@ -47,7 +50,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     try { localStorage.setItem('assembly-document-editor-parts-pane', open ? 'open' : 'closed'); }
     catch { /* The editor remains usable when local storage is unavailable. */ }
   };
-  const toggleHidden = (id: string) => {
+  const toggleHidden = useCallback((id: string) => {
     const hidden = hiddenOverlayIds.has(id);
     setHiddenOverlayIds(current => {
       const next = new Set(current);
@@ -55,8 +58,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
       else next.add(id);
       return next;
     });
-    if (!hidden) controller.setSelectedOverlayId(null);
-  };
+    if (!hidden) setSelectedOverlayId(null);
+  }, [hiddenOverlayIds, setSelectedOverlayId]);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
   const [materialCount, setMaterialCount] = useState<number | null>(null);
@@ -85,14 +88,57 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     if (controller.recoveryPending) setRecoveryOpen(true);
   }, [controller.recoveryPending]);
 
-  const pages = useMemo(
-    () => controller.pages.map((page) => ({
-      ...page,
-      overlays: controller.elements.filter((element) => element.pageIndex === page.pageIndex)
-    })),
-    [controller.elements, controller.pages]
-  );
+  const previousPages = useRef<Map<number, { source: AssemblyProcedureDocumentPageDto; page: AssemblyProcedureDocumentPageDto }>>(new Map());
+  const pages = useMemo(() => {
+    const grouped = new Map<number, typeof controllerElements>();
+    for (const element of controllerElements) {
+      const group = grouped.get(element.pageIndex);
+      if (group) group.push(element);
+      else grouped.set(element.pageIndex, [element]);
+    }
+    const previous = previousPages.current;
+    const cache = new Map<number, { source: AssemblyProcedureDocumentPageDto; page: AssemblyProcedureDocumentPageDto }>();
+    const next = controllerPages.map(page => {
+      const overlays = grouped.get(page.pageIndex) ?? [];
+      const cached = previous.get(page.pageIndex);
+      const reused = cached && cached.source === page &&
+        cached.page.overlays?.length === overlays.length &&
+        cached.page.overlays.every((element, index) => element === overlays[index]) ? cached.page : null;
+      const value = reused ?? { ...page, overlays };
+      cache.set(page.pageIndex, { source: page, page: value });
+      return value;
+    });
+    previousPages.current = cache;
+    return next;
+  }, [controllerElements, controllerPages]);
   const selectedPage = controller.selectedPage;
+  const visibleElements = useMemo(() => controller.layoutSuggestions.previewElements ??
+    (controller.layoutSuggestions.locked ? controller.selectedPageElements :
+      controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
+  [controller.layoutSuggestions.previewElements, controller.layoutSuggestions.locked, controller.selectedPageElements, hiddenOverlayIds]);
+  const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
+  const replaceImage = useCallback(() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }, []);
+  const openMaterial = useCallback(() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }, []);
+  const openVideo = useCallback(() => setVideoLinkOpen(true), []);
+  const openPublish = useCallback(() => setPublishOpen(true), []);
+  const openDelete = useCallback(() => setDeleteOpen(true), []);
+  const openDiscard = useCallback(() => setDiscardOpen(true), []);
+  const addBlankPage = useCallback(() => void addControllerBlankPage(), [addControllerBlankPage]);
+  const toolbarController = useMemo(() => ({
+    readOnly: controller.readOnly, busy: controller.busy,
+    canSave: controller.canSave, canPublish: controller.canPublish, canDiscard: controller.canDiscard,
+    canUndo: controller.canUndo, canRedo: controller.canRedo,
+    selectionMode: controller.selectionMode, selectedKind: controller.selectedElement?.kind,
+    documentStatus: controller.document?.status, supersedesDocumentId: controller.document?.supersedesDocumentId,
+    layoutLocked: controller.layoutSuggestions.locked, canSuggest: controller.layoutSuggestions.canSuggest,
+    startLayout: controller.layoutSuggestions.start,
+    navigateBack: controller.navigateBack, save: controller.save, addOverlay: controller.addOverlay,
+    setSelectionMode: controller.setSelectionMode, undo: controller.undo, redo: controller.redo
+  }), [controller.readOnly, controller.busy, controller.canSave, controller.canPublish, controller.canDiscard,
+    controller.canUndo, controller.canRedo, controller.selectionMode, controller.selectedElement?.kind,
+    controller.document?.status, controller.document?.supersedesDocumentId, controller.layoutSuggestions.locked,
+    controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
+    controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);
 
   if (!controller.accessGranted || controller.loading) {
     return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
@@ -128,7 +174,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           assets={controller.document?.assets}
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
-          onAddBlankPage={() => void controller.addBlankPage()}
+          onAddBlankPage={addBlankPage}
           locked={controller.layoutSuggestions.locked}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
@@ -154,7 +200,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           <AssemblyProcedureDocumentEditorCanvas
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
-            elements={controller.layoutSuggestions.previewElements ?? (controller.layoutSuggestions.locked ? controller.selectedPageElements : controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id)))}
+            elements={visibleElements}
             selectionMode={controller.selectionMode}
             editable={!controller.readOnly}
             locked={controller.layoutSuggestions.locked}
@@ -194,16 +240,16 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             </div>
           ) : null}
         </section>
-        <AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
+        <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
           voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
-          onMaterial={() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }} onVideo={() => setVideoLinkOpen(true)} onPublish={() => setPublishOpen(true)} onDelete={() => setDeleteOpen(true)} onDiscard={() => setDiscardOpen(true)} />
+          onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} onDelete={openDelete} onDiscard={openDiscard} />
         {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
           voiceInputEnabled={voiceInputEnabled}
           voiceContext={voiceContext}
           element={controller.selectedElement}
-          onClose={() => controller.setSelectedOverlayId(null)}
+          onClose={closeInspector}
           onDuplicate={controller.duplicateSelectedOverlay}
           onUpdate={controller.updateElement}
           onDelete={controller.deleteSelectedOverlay}
@@ -211,8 +257,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           onSendBackward={controller.sendBackward}
           onBringToFront={controller.bringToFront}
           onSendToBack={controller.sendToBack}
-          onReplaceImage={() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }}
-          onRefetchTextCandidates={() => void controller.refetchTextCandidates()}
+          onReplaceImage={replaceImage}
+          onRefetchTextCandidates={controller.refetchTextCandidates}
           readOnly={controller.readOnly}
           busy={controller.busy}
         />

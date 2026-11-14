@@ -130,6 +130,41 @@ describe('AssemblyProcedureDocumentEditorPartsPane', () => {
     expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
   });
 
+  it('does not scroll or redraw unchanged rows while typing or moving a part', () => {
+    const p = props({ selectedOverlayId: 'back' });
+    const view = render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    const scroll = vi.fn();
+    screen.getAllByRole('option')[3].scrollIntoView = scroll;
+    overlayMock.render.mockClear();
+    const typed = { ...elements[0], text: '編集した文章' };
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} elements={[typed, ...elements.slice(1)]} />);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(overlayMock.render).toHaveBeenCalledTimes(1);
+    expect(overlayMock.render.mock.calls[0][0].elements).toEqual([typed]);
+    const moved = { ...typed, bbox: { ...typed.bbox, xRatio: 0.3 } };
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} elements={[moved, ...elements.slice(1)]} />);
+    expect(scroll).not.toHaveBeenCalled();
+    expect(overlayMock.render).toHaveBeenCalledTimes(2);
+    const nextScroll = vi.fn();
+    screen.getAllByRole('option')[0].scrollIntoView = nextScroll;
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} elements={[moved, ...elements.slice(1)]} selectedOverlayId="front" />);
+    expect(nextScroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+  });
+
+  it('keeps the selected row in view when its order changes', () => {
+    const p = props({ selectedOverlayId: 'back' });
+    const view = render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    const index = elements.findIndex(element => element.id === 'back');
+    const raised = { ...elements[index], zIndex: 999 };
+    const reordered = elements.map((element, i) => i === index ? raised : element);
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} elements={reordered} />);
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+    // @ts-expect-error restore jsdom default
+    delete HTMLElement.prototype.scrollIntoView;
+  });
+
   it('renders one display-only overlay per row with assets and a padded crop clamped to the page', () => {
     overlayMock.render.mockClear();
     const edge = { ...elements[0], bbox: { xRatio: 0, yRatio: 0.9, widthRatio: 1, heightRatio: 0.1 } };

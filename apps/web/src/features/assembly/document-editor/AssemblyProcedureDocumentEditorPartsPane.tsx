@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AssemblyProcedureOverlayLayer, assemblyProcedureOverlayElementLabel } from '../AssemblyProcedureOverlayLayer';
 
@@ -6,6 +6,7 @@ import { EditorIconButton } from './EditorIconButton';
 
 import type { AssemblyProcedureOverlayAssetDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type { RefObject } from 'react';
 
 type Props = {
   elements: AssemblyProcedureOverlayElement[];
@@ -35,7 +36,7 @@ function previewBounds(bbox: AssemblyProcedureOverlayBBox) {
   return { crop, width, height };
 }
 
-export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy, locked = false }: Props) {
+export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy, locked = false }: Props) {
   const [source, setSource] = useState<'current' | 'other'>('current');
   const sorted = useMemo(() => elements
     .map((element, index) => ({ element, index }))
@@ -45,12 +46,14 @@ export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, 
     .sort((a, b) => a.element.pageIndex - b.element.pageIndex);
   const rows = source === 'current' ? currentRows : otherRows;
   const selectedRow = useRef<HTMLButtonElement | null>(null);
+  const selectedIndex = rows.findIndex(({ element }) => element.id === selectedOverlayId);
   useEffect(() => {
     selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedOverlayId, sorted, source, pageIndex]);
-  const selectedIndex = rows.findIndex(({ element }) => element.id === selectedOverlayId);
+  }, [selectedOverlayId, selectedIndex, source]);
   const disabled = selectedIndex < 0 || readOnly || busy;
   const hidden = selectedOverlayId != null && hiddenOverlayIds.has(selectedOverlayId);
+  const pageNumbers = new Map<number, number>();
+  const showCurrent = useCallback(() => setSource('current'), []);
 
   return <aside aria-label="部品" className="grid min-h-0 grid-rows-[56px_minmax(0,1fr)_auto] border-r border-[#27313b] bg-[#161c22]">
     <div className="flex h-14 items-center gap-2.5 border-b border-[#27313b] pl-4 pr-3">
@@ -63,36 +66,14 @@ export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, 
     </div>
     <div role="listbox" aria-label={source === 'current' ? 'このページの部品' : 'ほかのページの部品'} className="grid min-h-0 content-start gap-1.5 overflow-y-auto p-2">
       {rows.map(({ element }, index) => {
-        const selected = source === 'current' && element.id === selectedOverlayId;
-        const pageStart = rows.findIndex(row => row.element.pageIndex === element.pageIndex);
-        const number = index - pageStart + 1;
-        const { crop, width, height } = previewBounds(element.bbox);
-        return <Fragment key={element.id}>
-          {source === 'other' && index === pageStart ? <h3 className="mb-0.5 mt-1 px-1 font-mono text-[15px] text-[#9fadb9]">p{element.pageIndex + 1}</h3> : null}
-          <button
-          ref={selected ? selectedRow : undefined}
-          type="button"
-          role="option"
-          aria-selected={selected}
-          aria-label={source === 'current' ? `${number}: ${assemblyProcedureOverlayElementLabel(element)}` : `p${element.pageIndex + 1}から置く: ${assemblyProcedureOverlayElementLabel(element)}`}
-          disabled={locked || (source === 'other' && (readOnly || busy))}
-          onClick={() => {
-            if (source === 'other') {
-              onDuplicate(element.id);
-              setSource('current');
-            } else onSelect(element.id);
-          }}
-          className={`grid h-28 grid-cols-[minmax(0,1fr)_20px] items-center gap-1 rounded-[10px] border bg-white px-1 py-2 ${selected ? 'border-[#5fc3e8] ring-2 ring-[#5fc3e8]' : 'border-[#27313b] hover:border-[#344252]'} ${hiddenOverlayIds.has(element.id) ? 'opacity-40' : ''} disabled:cursor-default disabled:opacity-40`}
-        >
-          <span aria-hidden="true" className="pointer-events-none grid h-24 min-w-0 place-items-center overflow-hidden">
-            <span className="grid min-h-6 min-w-6 max-w-full place-items-center bg-white" style={{ width: Math.max(24, width), height: Math.max(24, height) }}>
-              <span className="relative block max-w-full bg-white" style={{ width, aspectRatio: `${crop.widthRatio} / ${crop.heightRatio * 1.414}` }}>
-                <AssemblyProcedureOverlayLayer elements={[element]} assets={assets} crop={crop} className="pointer-events-none" />
-              </span>
-            </span>
-          </span>
-          <span className={`text-right font-mono text-sm ${selected ? 'text-[#5fc3e8]' : 'text-[#9fadb9]'}`}>{number}</span>
-        </button></Fragment>;
+        const pageStart = index === 0 || rows[index - 1].element.pageIndex !== element.pageIndex;
+        const number = (pageNumbers.get(element.pageIndex) ?? 0) + 1;
+        pageNumbers.set(element.pageIndex, number);
+        return <PartRow key={element.id} element={element} number={number} pageStart={pageStart}
+          source={source} selected={source === 'current' && element.id === selectedOverlayId}
+          hidden={hiddenOverlayIds.has(element.id)} selectedRow={selectedRow} assets={assets}
+          locked={locked} disabled={source === 'other' && (readOnly || busy)}
+          onDuplicate={onDuplicate} onSelect={onSelect} onCopied={showCurrent} />;
       })}
     </div>
     {source === 'current' ? <div className="grid grid-cols-3 gap-1.5 border-t border-[#27313b] p-2">
@@ -101,4 +82,49 @@ export function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, 
       <EditorIconButton label={hidden ? '出す' : '隠す'} icon={<><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z" /><circle cx="12" cy="12" r="2.5" /></>} onClick={() => selectedOverlayId && onToggleHidden(selectedOverlayId)} disabled={disabled} tipSide="top" className="w-full rounded-lg" />
     </div> : null}
   </aside>;
-}
+});
+
+const PartRow = memo(function PartRow({ element, number, pageStart, source, selected, hidden, selectedRow, assets, locked, disabled, onDuplicate, onSelect, onCopied }: {
+  element: AssemblyProcedureOverlayElement;
+  number: number;
+  pageStart: boolean;
+  source: 'current' | 'other';
+  selected: boolean;
+  hidden: boolean;
+  selectedRow: RefObject<HTMLButtonElement | null>;
+  assets?: Record<string, AssemblyProcedureOverlayAssetDto>;
+  locked: boolean;
+  disabled: boolean;
+  onDuplicate: (id: string) => void;
+  onSelect: (id: string) => void;
+  onCopied: () => void;
+}) {
+  const { crop, width, height } = previewBounds(element.bbox);
+  return <>
+    {source === 'other' && pageStart ? <h3 className="mb-0.5 mt-1 px-1 font-mono text-[15px] text-[#9fadb9]">p{element.pageIndex + 1}</h3> : null}
+    <button
+    ref={selected ? selectedRow : undefined}
+    type="button"
+    role="option"
+    aria-selected={selected}
+    aria-label={source === 'current' ? `${number}: ${assemblyProcedureOverlayElementLabel(element)}` : `p${element.pageIndex + 1}から置く: ${assemblyProcedureOverlayElementLabel(element)}`}
+    disabled={locked || disabled}
+    onClick={() => {
+      if (source === 'other') {
+        onDuplicate(element.id);
+        onCopied();
+      } else onSelect(element.id);
+    }}
+    className={`grid h-28 grid-cols-[minmax(0,1fr)_20px] items-center gap-1 rounded-[10px] border bg-white px-1 py-2 ${selected ? 'border-[#5fc3e8] ring-2 ring-[#5fc3e8]' : 'border-[#27313b] hover:border-[#344252]'} ${hidden ? 'opacity-40' : ''} disabled:cursor-default disabled:opacity-40`}
+  >
+    <span aria-hidden="true" className="pointer-events-none grid h-24 min-w-0 place-items-center overflow-hidden">
+      <span className="grid min-h-6 min-w-6 max-w-full place-items-center bg-white" style={{ width: Math.max(24, width), height: Math.max(24, height) }}>
+        <span className="relative block max-w-full bg-white" style={{ width, aspectRatio: `${crop.widthRatio} / ${crop.heightRatio * 1.414}` }}>
+          <AssemblyProcedureOverlayLayer elements={[element]} assets={assets} crop={crop} className="pointer-events-none" />
+        </span>
+      </span>
+    </span>
+    <span className={`text-right font-mono text-sm ${selected ? 'text-[#5fc3e8]' : 'text-[#9fadb9]'}`}>{number}</span>
+  </button>
+  </>;
+});

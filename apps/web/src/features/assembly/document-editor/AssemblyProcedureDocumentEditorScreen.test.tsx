@@ -10,14 +10,14 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn() }));
+const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
 vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
   AssemblyProcedureDocumentEditorCanvas: ({ elements }: { elements: AssemblyProcedureOverlayElement[] }) => <div aria-label="手順書キャンバス" data-testid="editor-canvas" data-elements={elements.map(element => element.id).join(",")} />
 }));
-vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: () => <span /> }));
+vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: ({ pageUrl }: { pageUrl: string }) => { approvalMocks.pageRender(pageUrl); return <span />; } }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
   ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode, onCreatedDocument }: { onSelect: (material: { id: string; kind: 'PHOTO'; documentId?: string; placedAt?: string }) => Promise<void>; onClose: () => void; onCreatedDocument: (documentId: string) => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={() => void onSelect({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' })}>配置済み素材を選択</button><button onClick={() => onCreatedDocument('created-document')}>要領書を作る</button><button onClick={onClose}>閉じる</button></div>
 }));
@@ -180,6 +180,22 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
 
   beforeEach(() => {
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false }); localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
+  it('redraws only the edited page thumbnail and keeps the toolbar stable while typing', () => {
+    const first: AssemblyProcedureOverlayElement = { id: 'first', kind: 'TEXT', text: '文章', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.2 } };
+    const second = { ...first, id: 'second', pageIndex: 1 };
+    const pages = [editorDocument.pages[0], { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] }];
+    const controller = makeController({ pages, elements: [first, second], selectedElement: first, selectedOverlayId: first.id, selectedPageElements: [first], canSave: true, canUndo: true });
+    const onNavigate = vi.fn();
+    const view = renderScreen(controller, onNavigate);
+    approvalMocks.pageRender.mockClear();
+    vi.mocked(useLocalLlmAvailability).mockClear();
+    const edited = { ...first, text: '文章あ' };
+    view.rerender(<AssemblyProcedureDocumentEditorProvider value={{ ...controller, elements: [edited, second], selectedElement: edited, selectedPageElements: [edited] }}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={onNavigate} /></AssemblyProcedureDocumentEditorProvider>);
+    expect(approvalMocks.pageRender.mock.calls).toEqual([['/pages/1.png']]);
+    expect(useLocalLlmAvailability).not.toHaveBeenCalled();
+    expect(screen.getAllByText('文章あ').length).toBeGreaterThan(0);
+  });
+
   it('closes and reopens the parts pane and persists its state', () => {
     const view = renderScreen(makeController());
     expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();

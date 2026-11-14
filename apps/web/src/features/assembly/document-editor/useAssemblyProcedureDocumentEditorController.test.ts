@@ -440,6 +440,25 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.conflict).toBe(true);
     expect(hook.result.current.conflictEditVersion).toBe(2);
   });
+  it('keeps interaction callbacks stable and uses the latest selection and draft', async () => {
+    const hook = renderEditor(makeDocument()); await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.readOnly).toBe(false));
+    const before = hook.result.current;
+    act(() => before.addOverlay('TEXT'));
+    const added = hook.result.current.selectedElement!;
+    act(() => hook.result.current.updateElement({ ...added, text: '最新の文章' } as AssemblyProcedureOverlayElement));
+    const after = hook.result.current;
+    for (const key of ['addOverlay', 'save', 'duplicateSelectedOverlay', 'duplicateOverlayToCurrentPage', 'deleteSelectedOverlay', 'updateElementBBox', 'beginOverlayDrag', 'endOverlayDrag', 'setSelectedOverlayId', 'refetchTextCandidates'] as const) {
+      expect(after[key]).toBe(before[key]);
+    }
+    act(() => before.duplicateSelectedOverlay());
+    expect(hook.result.current.selectedElement).toMatchObject({ text: '最新の文章' });
+    const copyId = hook.result.current.selectedOverlayId;
+    expect(copyId).not.toBe(added.id);
+    act(() => before.deleteSelectedOverlay());
+    expect(hook.result.current.elements.map(element => element.id)).toEqual([added.id]);
+  });
+
   it('groups a long drag into one undo operation without recording intermediate positions', async () => {
     const hook = renderEditor(makeDocument()); await authenticate(hook.result);
     await waitFor(() => expect(hook.result.current.readOnly).toBe(false));

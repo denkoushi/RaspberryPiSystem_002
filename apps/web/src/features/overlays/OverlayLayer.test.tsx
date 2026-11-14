@@ -134,3 +134,80 @@ describe('overlayTextFontSize', () => {
     expect(overlayTextFontSize(undefined, { xRatio: 0, yRatio: 0, widthRatio: 0, heightRatio: 0 })).toBe('2.5cqw');
   });
 });
+
+
+describe('OverlayLayer rendering and pointer scheduling', () => {
+  beforeEach(() => vi.stubGlobal('PointerEvent', MouseEvent));
+  afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+  it('does not render an unchanged overlay when another overlay changes', () => {
+    const readText = vi.fn(() => 'unchanged');
+    const unchanged: OverlayElement = { ...shape, id: 'unchanged', kind: 'TEXT', get text() { return readText(); } };
+    const view = render(<OverlayLayer elements={[shape, unchanged]} />);
+    readText.mockClear();
+    view.rerender(<OverlayLayer elements={[{ ...shape, strokeColor: '#ff0000' }, unchanged]} />);
+    expect(readText).not.toHaveBeenCalled();
+    expect(screen.getByText('unchanged')).toBeInTheDocument();
+  });
+
+  it.each(['move', 'resize'] as const)('coalesces %s events and flushes the final position before ending', mode => {
+    let frame: FrameRequestCallback | undefined;
+    const request = vi.fn((callback: FrameRequestCallback) => { frame = callback; return 42; });
+    const cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', request);
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1000, 1000));
+    const update = vi.fn();
+    const end = vi.fn(() => expect(update).toHaveBeenLastCalledWith(shape.id, expect.objectContaining(
+      mode === 'move' ? { xRatio: expect.closeTo(0.4), yRatio: expect.closeTo(0.5) }
+        : { widthRatio: expect.closeTo(0.7), heightRatio: expect.closeTo(0.35) }
+    )));
+    const start = vi.fn();
+    const view = render(<OverlayLayer elements={[shape]} interactive selectedOverlayId={shape.id} onUpdateBBox={update} onInteractionStart={start} onInteractionEnd={end} />);
+    const target = screen.getByTestId(mode === 'move' ? `overlay-${shape.id}` : `overlay-${shape.id}-resize-se`);
+    const x = mode === 'move' ? 100 : 500;
+    const y = mode === 'move' ? 200 : 250;
+    fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: x, clientY: y });
+    fireEvent.pointerMove(target, { pointerId: 1, clientX: x + 100, clientY: y + 100 });
+    fireEvent.pointerMove(target, { pointerId: 1, clientX: x + 200, clientY: y + 200 });
+    expect(request).toHaveBeenCalledOnce();
+    expect(update).not.toHaveBeenCalled();
+    act(() => frame?.(0));
+    expect(update).toHaveBeenCalledOnce();
+    expect(update).toHaveBeenLastCalledWith(shape.id, expect.objectContaining(mode === 'move'
+      ? { xRatio: expect.closeTo(0.3), yRatio: expect.closeTo(0.4) }
+      : { widthRatio: expect.closeTo(0.6), heightRatio: expect.closeTo(0.25) }));
+    fireEvent.pointerMove(target, { pointerId: 1, clientX: x + 250, clientY: y + 250 });
+    fireEvent.pointerUp(target, { pointerId: 1, clientX: x + 300, clientY: y + 300 });
+    expect(cancel).toHaveBeenCalledWith(42);
+    expect(update).toHaveBeenCalledTimes(2);
+    expect(start).toHaveBeenCalledOnce();
+    expect(end).toHaveBeenCalledOnce();
+    act(() => frame?.(1));
+    expect(update).toHaveBeenCalledTimes(2);
+    view.unmount();
+  });
+
+  it('keeps the last move on cancellation and cancels queued work on unmount', () => {
+    const request = vi.fn(() => 42);
+    const cancel = vi.fn();
+    vi.stubGlobal('requestAnimationFrame', request);
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 1000, 1000));
+    const update = vi.fn();
+    const end = vi.fn();
+    const view = render(<OverlayLayer elements={[shape]} interactive onUpdateBBox={update} onInteractionEnd={end} />);
+    const target = screen.getByTestId(`overlay-${shape.id}`);
+    fireEvent.pointerDown(target, { button: 0, pointerId: 1, clientX: 100, clientY: 200 });
+    fireEvent.pointerMove(target, { pointerId: 1, clientX: 200, clientY: 300 });
+    fireEvent.pointerCancel(target, { pointerId: 1, clientX: 0, clientY: 0 });
+    expect(update).toHaveBeenLastCalledWith(shape.id, expect.objectContaining({ xRatio: expect.closeTo(0.2), yRatio: expect.closeTo(0.3) }));
+    expect(end).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(target, { button: 0, pointerId: 2, clientX: 100, clientY: 200 });
+    fireEvent.pointerMove(target, { pointerId: 2, clientX: 200, clientY: 300 });
+    update.mockClear(); cancel.mockClear();
+    view.unmount();
+    expect(cancel).toHaveBeenCalledWith(42);
+    expect(update).not.toHaveBeenCalled();
+  });
+});

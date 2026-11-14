@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
 
 import { EditorIconButton } from './EditorIconButton';
@@ -21,8 +23,17 @@ const icons: Record<string, ReactNode> = {
   delete: <><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5" /></>
 };
 
-export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, onDelete, onDiscard, voiceInputEnabled, onToggleVoiceInput }: {
-  controller: AssemblyProcedureDocumentEditorController;
+export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, workshop, materialCount, materialOpen, videoOpen, onMaterial, onVideo, onPublish, onDelete, onDiscard, voiceInputEnabled, onToggleVoiceInput }: {
+  controller: Pick<AssemblyProcedureDocumentEditorController,
+    'readOnly' | 'busy' | 'canSave' | 'canPublish' | 'canDiscard' | 'canUndo' | 'canRedo' |
+    'selectionMode' | 'navigateBack' | 'save' | 'addOverlay' | 'setSelectionMode' | 'undo' | 'redo'> & {
+      selectedKind?: NonNullable<AssemblyProcedureDocumentEditorController['selectedElement']>['kind'];
+      documentStatus?: string;
+      supersedesDocumentId?: string | null;
+      layoutLocked: boolean;
+      canSuggest: boolean;
+      startLayout: AssemblyProcedureDocumentEditorController['layoutSuggestions']['start'];
+    };
   workshop: boolean;
   voiceInputEnabled: boolean;
   onToggleVoiceInput: () => void;
@@ -40,22 +51,22 @@ export function AssemblyProcedureDocumentEditorCanvasToolbar({ controller: c, wo
   const button = (label: string, icon: string, onClick: () => void, options: { disabled?: boolean; pressed?: boolean; color?: string; target?: string; badge?: number | null } = {}) => <EditorIconButton key={icon} aiUnavailable={icon === 'layout' && unavailable} label={label} icon={icons[icon]} onClick={onClick} disabled={options.disabled} pressed={options.pressed} target={options.target} badge={options.badge} className={options.color} tipSide="left" />;
   const separator = <span aria-hidden="true" className="my-1 h-px w-9 shrink-0 bg-[#344252]" />;
   return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
-    {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { disabled: c.layoutSuggestions.locked, color: '!border-transparent !text-[#9fadb9]' })}
+    {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { disabled: c.layoutLocked, color: '!border-transparent !text-[#9fadb9]' })}
     {separator}
     {button('保存する', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}
     {button('公開する', 'publish', onPublish, { disabled: disabled || !c.canPublish, color: '!border-[#f6b93b] !text-[#f6b93b]', target: 'assembly-document-editor-publish' })}
     {separator}
     {button('素材を置く', 'material', onMaterial, { disabled, pressed: materialOpen, badge: materialCount })}
     {button('動画をつなぐ', 'video', onVideo, { disabled, pressed: videoOpen })}
-    {button('文字を置く', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedElement?.kind === 'TEXT' })}
-    {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedElement?.kind === 'SHAPE' })}
+    {button('文字を置く', 'text', () => c.addOverlay('TEXT'), { disabled, pressed: c.selectedKind === 'TEXT' })}
+    {button('図形を置く', 'shape', () => c.addOverlay('SHAPE'), { disabled, pressed: c.selectedKind === 'SHAPE' })}
     {button('範囲を選ぶ', 'range', () => c.setSelectionMode(!c.selectionMode), { disabled, pressed: c.selectionMode, target: 'assembly-document-editor-range-add' })}
-    {button('整える', 'layout', () => void c.layoutSuggestions.start(), { disabled: disabled || !c.layoutSuggestions.canSuggest, pressed: c.layoutSuggestions.locked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
+    {button('整える', 'layout', () => void c.startLayout(), { disabled: disabled || !c.canSuggest, pressed: c.layoutLocked, color: '!border-[#5fc3e8] !text-[#5fc3e8]' })}
     {button('音声入力', 'mic', onToggleVoiceInput, { disabled, pressed: voiceInputEnabled, target: 'assembly-document-editor-voice-input', color: voiceInputEnabled ? '!border-[#7cc4ff] !bg-[#7cc4ff1f] !text-[#7cc4ff]' : undefined })}
     {separator}
     {button('元に戻す', 'undo', c.undo, { disabled: disabled || !c.canUndo })}
     {button('やり直す', 'redo', c.redo, { disabled: disabled || !c.canRedo })}
     <span aria-hidden="true" className="min-h-2 flex-1" />
-    {c.document?.status === 'draft' ? button(c.document.supersedesDocumentId ? '改版を破棄する' : '削除する', 'delete', c.document.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.document.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
+    {c.documentStatus === 'draft' ? button(c.supersedesDocumentId ? '改版を破棄する' : '削除する', 'delete', c.supersedesDocumentId ? onDiscard : onDelete, { disabled: disabled || (Boolean(c.supersedesDocumentId) && !c.canDiscard), color: '!border-transparent !text-[#e5484d]' }) : null}
   </nav>;
-}
+});

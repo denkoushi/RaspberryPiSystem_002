@@ -268,10 +268,24 @@ export function createOverlayForRange(
   };
 }
 
+// Draft arrays and elements are immutable. Reuse serialization across history and
+// dirty checks, and serialize only changed elements while retaining the exact format.
+const draftSnapshots = new WeakMap<AssemblyProcedureOverlayElement[], string>();
+const elementSnapshots = new WeakMap<AssemblyProcedureOverlayElement, string>();
+
 export function overlayDraftSnapshot(elements: AssemblyProcedureOverlayElement[]): string {
-  return JSON.stringify(
-    elements.map((element) => ({ ...element })).sort((a, b) => a.id.localeCompare(b.id))
-  );
+  const cached = draftSnapshots.get(elements);
+  if (cached !== undefined) return cached;
+  const snapshot = `[${[...elements].sort((a, b) => a.id.localeCompare(b.id)).map(element => {
+    let serialized = elementSnapshots.get(element);
+    if (serialized === undefined) {
+      serialized = JSON.stringify({ ...element });
+      elementSnapshots.set(element, serialized);
+    }
+    return serialized;
+  }).join(',')}]`;
+  draftSnapshots.set(elements, snapshot);
+  return snapshot;
 }
 
 export function isOverlayDraftSaveable(elements: AssemblyProcedureOverlayElement[]): boolean {
