@@ -1,10 +1,12 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
+import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../api/client';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineConfig';
 import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardNow } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardNow';
 
 import { PlanningBoardPage, ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
@@ -24,6 +26,12 @@ const board = () => ({
 const response = (data: unknown) => ({ data, status: 200, headers: { date: 'Tue, 10 Nov 2026 03:00:00 GMT' } }) as AxiosResponse;
 let control: ReturnType<typeof usePlanningBoardOffline>;
 function Inspect() { control = usePlanningBoardOffline(); return null; }
+function Clock() { return <output data-testid="sampled-clock">{usePlanningBoardNow()}</output>; }
+function ClockHarness() {
+  const [, rerender] = useState(0);
+  return <><button onClick={() => rerender(value => value + 1)}>rerender clock parent</button><Clock /></>;
+}
+const sampledClock = () => Number(screen.getByTestId('sampled-clock').textContent);
 const advance = async (ms = 0) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
 
 describe('planning board offline page', () => {
@@ -48,11 +56,56 @@ describe('planning board offline page', () => {
     vi.spyOn(api, 'post').mockResolvedValue(response({ chipsByPartKey: {} }));
   });
   afterEach(() => { cleanup(); document.getElementById('planning-board-connectivity-slot')?.remove(); vi.useRealTimers(); vi.restoreAllMocks(); });
-  const mount = async (waitForSecondProbe = true) => {
+  const mount = async (waitForSecondProbe = true, clock = false) => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-    render(<QueryClientProvider client={client}><PlanningBoardOfflineProvider config={{ ...DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG, enabled: true }}><Inspect /><PlanningBoardPage /></PlanningBoardOfflineProvider></QueryClientProvider>);
+    render(<QueryClientProvider client={client}><PlanningBoardOfflineProvider config={{ ...DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG, enabled: true }}><Inspect />{clock && <ClockHarness />}<PlanningBoardPage /></PlanningBoardOfflineProvider></QueryClientProvider>);
     await advance(); if (waitForSecondProbe) await advance(5000);
   };
+  const advanceServerClock = () => {
+    const originalGet = get.getMockImplementation()!;
+    const started = performance.now();
+    get.mockImplementation(async (url, config) => {
+      const result = await originalGet(url, config);
+      return { ...result, headers: { ...result.headers, date: new Date(Date.parse('2026-11-10T03:00:00Z') + performance.now() - started).toUTCString() } };
+    });
+  };
+  it('keeps the online server time stable on unrelated renders and advances on the 30-second tick', async () => {
+    advanceServerClock();
+    await mount(false, true);
+    expect(control.snapshot.phase).toBe('online');
+    const initial = sampledClock();
+    await advance(1000);
+    fireEvent.click(screen.getByRole('button', { name: 'rerender clock parent' }));
+    expect(sampledClock()).toBe(initial);
+    await advance(29000);
+    expect(sampledClock()).toBe(initial + 30000);
+    await advance(1000);
+    fireEvent.click(screen.getByRole('button', { name: 'rerender clock parent' }));
+    expect(sampledClock()).toBe(initial + 30000);
+  });
+  it('keeps the sampled time frozen through clock ticks and samples again on recovery', async () => {
+    advanceServerClock();
+    await mount(false, true);
+    const initial = sampledClock();
+    reachable = false;
+    await advance(15000);
+    expect(control.frozen).toBe(true);
+    await advance(45000);
+    fireEvent.click(screen.getByRole('button', { name: 'rerender clock parent' }));
+    expect(sampledClock()).toBe(initial);
+    reachable = true;
+    await advance(10000);
+    expect(control.frozen).toBe(false);
+    expect(sampledClock()).toBe(control.now());
+  });
+  it('uses the existing local 30-second clock when offline support is disabled', async () => {
+    const hook = renderHook(() => usePlanningBoardNow());
+    const initial = hook.result.current;
+    await advance(1000); hook.rerender();
+    expect(hook.result.current).toBe(initial);
+    await advance(29000);
+    expect(hook.result.current).toBe(initial + 30000);
+  });
   it('renders the startup board while bootstrapping when the probe is still pending', async () => {
     const originalGet = get.getMockImplementation()!;
     get.mockImplementation((url, config) => config?.kioskTelemetry === 'background'
