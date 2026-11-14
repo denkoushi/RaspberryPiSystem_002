@@ -357,6 +357,9 @@ export function OverlayLayer({
     if (!startLocalPoint) return;
     event.stopPropagation();
     event.preventDefault();
+    if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
+    frameRef.current = null;
+    pendingMove.current = null;
     const captureTarget = event.currentTarget;
     captureTarget.setPointerCapture?.(event.pointerId);
     pointerRef.current = {

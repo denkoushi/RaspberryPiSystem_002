@@ -46,10 +46,10 @@ export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyPr
     .sort((a, b) => a.element.pageIndex - b.element.pageIndex);
   const rows = source === 'current' ? currentRows : otherRows;
   const selectedRow = useRef<HTMLButtonElement | null>(null);
+  const selectedIndex = rows.findIndex(({ element }) => element.id === selectedOverlayId);
   useEffect(() => {
     selectedRow.current?.scrollIntoView?.({ block: 'nearest' });
-  }, [selectedOverlayId]);
-  const selectedIndex = rows.findIndex(({ element }) => element.id === selectedOverlayId);
+  }, [selectedOverlayId, selectedIndex, source]);
   const disabled = selectedIndex < 0 || readOnly || busy;
   const hidden = selectedOverlayId != null && hiddenOverlayIds.has(selectedOverlayId);
   const pageNumbers = new Map<number, number>();

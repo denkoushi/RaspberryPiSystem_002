@@ -151,6 +151,20 @@ describe('AssemblyProcedureDocumentEditorPartsPane', () => {
     expect(nextScroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
   });
 
+  it('keeps the selected row in view when its order changes', () => {
+    const p = props({ selectedOverlayId: 'back' });
+    const view = render(<AssemblyProcedureDocumentEditorPartsPane {...p} />);
+    const index = elements.findIndex(element => element.id === 'back');
+    const raised = { ...elements[index], zIndex: 999 };
+    const reordered = elements.map((element, i) => i === index ? raised : element);
+    const scroll = vi.fn();
+    HTMLElement.prototype.scrollIntoView = scroll;
+    view.rerender(<AssemblyProcedureDocumentEditorPartsPane {...p} elements={reordered} />);
+    expect(scroll).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' });
+    // @ts-expect-error restore jsdom default
+    delete HTMLElement.prototype.scrollIntoView;
+  });
+
   it('renders one display-only overlay per row with assets and a padded crop clamped to the page', () => {
     overlayMock.render.mockClear();
     const edge = { ...elements[0], bbox: { xRatio: 0, yRatio: 0.9, widthRatio: 1, heightRatio: 0.1 } };
