@@ -13,6 +13,8 @@ import {
 } from '../production-schedule/row-resolver/index.js';
 import {
   PRODUCTION_SCHEDULE_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
   PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID
 } from '../production-schedule/constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from '../production-schedule/fkojunst-status-mail-critical-lock.js';
@@ -37,6 +39,11 @@ import {
   type FkojunstDeferredRowUpdate,
 } from './fkojunst-status-mail-ingest-publication.js';
 import { SCAW_STFUTEKIGO_DASHBOARD_ID } from '../scaw-stfutekigo/constants.js';
+
+const UNCHANGED_ROW_REFRESH_DASHBOARD_IDS = new Set([
+  PRODUCTION_SCHEDULE_ORDER_SUPPLEMENT_DASHBOARD_ID,
+  PRODUCTION_SCHEDULE_FKOBAINO_DASHBOARD_ID,
+]);
 
 /**
  * CSVダッシュボード取り込みサービス
@@ -199,6 +206,7 @@ export class CsvDashboardIngestor {
       // 取り込み方式に応じて処理
       let rowsAdded = 0;
       let rowsSkipped = 0;
+      let dedupCounts: { rowsCreated: number; rowsUpdated: number; rowsSkippedUnchanged: number } | undefined;
       const deferredExistingRowUpdates: FkojunstDeferredRowUpdate[] = [];
 
       if (dashboard.ingestMode === 'APPEND') {
@@ -246,9 +254,16 @@ export class CsvDashboardIngestor {
                   refreshSourceMetadataOnDuplicate: true,
                   preferLaterUnparseableDuplicate: true
                 }
-              : undefined
+              : {
+                  skipUnchangedRowsWithinRefreshWindow: UNCHANGED_ROW_REFRESH_DASHBOARD_IDS.has(dashboardId)
+                }
         });
         const { rowsToCreate, updates } = diff;
+        dedupCounts = {
+          rowsCreated: rowsToCreate.length,
+          rowsUpdated: updates.length,
+          rowsSkippedUnchanged: diff.rowsSkippedUnchanged
+        };
         rowsAdded = diff.rowsAdded;
         rowsSkipped = diff.rowsSkipped + preDedupSkippedRows;
         const progressSyncCandidates: Array<{
@@ -450,6 +465,7 @@ export class CsvDashboardIngestor {
         {
           dashboardId,
           dashboardName: dashboard.name,
+          ...dedupCounts,
           rowsProcessed,
           rowsAdded,
           rowsSkipped,

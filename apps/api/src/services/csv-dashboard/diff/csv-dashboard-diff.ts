@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { Prisma } from '@prisma/client';
 import type { NormalizedRowData } from '../csv-dashboard.types.js';
 import { resolveUpdatedAt } from './csv-dashboard-updated-at.js';
@@ -49,9 +50,11 @@ type DiffResult = {
   updates: UpdateRow[];
   rowsAdded: number;
   rowsSkipped: number;
+  rowsSkippedUnchanged: number;
 };
 
 type MaxProductNoDiffOptions = {
+  skipUnchangedRowsWithinRefreshWindow?: boolean;
   maxProductNoWins?: boolean;
   productNoColumn?: string;
   firstIncomingHashWins?: boolean;
@@ -84,6 +87,7 @@ export function computeCsvDashboardDedupDiff(params: {
   existingRows: ExistingRow[];
   completedValue: string;
   options?: MaxProductNoDiffOptions;
+  now?: Date;
 }): DiffResult {
   const { dashboardId, incomingRows, existingRows, options } = params;
   const productNoColumn = options?.productNoColumn ?? 'ProductNo';
@@ -103,6 +107,8 @@ export function computeCsvDashboardDedupDiff(params: {
   >();
   let rowsAdded = 0;
   let rowsSkipped = 0;
+  let rowsSkippedUnchanged = 0;
+  const now = params.now ?? new Date();
 
   const hasUnparseableFupdtedt = (row: NormalizedRowData): boolean =>
     Object.prototype.hasOwnProperty.call(row, 'FUPDTEDT') &&
@@ -156,6 +162,20 @@ export function computeCsvDashboardDedupDiff(params: {
     row.sourceIngestRunId == null ||
     (row.sourceIngestRun?.status === 'COMPLETED' && row.sourceIngestRun.completedAt != null);
 
+  const shouldSkipUnchanged = (existing: ExistingRow, incoming: IncomingRow, hash: string): boolean => {
+    if (!options?.skipUnchangedRowsWithinRefreshWindow || !isReaderVisibleExistingRow(existing)) {
+      return false;
+    }
+    // Stable per-row refresh between 23 and 37 days, spreading periodic writes across days.
+    let jitterHash = 0;
+    for (const char of hash) {
+      jitterHash = (Math.imul(jitterHash, 31) + char.charCodeAt(0)) >>> 0;
+    }
+    const refreshAfterMs = (23 + jitterHash % 15) * 24 * 60 * 60 * 1000;
+    return existing.occurredAt.getTime() > now.getTime() - refreshAfterMs &&
+      isDeepStrictEqual(JSON.parse(JSON.stringify(incoming.data)), existing.rowData);
+  };
+
   const shouldReplaceExistingCandidate = (current: ExistingRow, next: ExistingRow): boolean => {
     const currentVisible = isReaderVisibleExistingRow(current);
     const nextVisible = isReaderVisibleExistingRow(next);
@@ -208,6 +228,11 @@ export function computeCsvDashboardDedupDiff(params: {
           continue;
         }
         if (incomingProductNo > existingProductNo) {
+          if (shouldSkipUnchanged(existing, incoming, hash)) {
+            rowsSkipped++;
+            rowsSkippedUnchanged++;
+            continue;
+          }
           updates.push({
             id: existing.id,
             occurredAt: incoming.occurredAt,
@@ -239,6 +264,12 @@ export function computeCsvDashboardDedupDiff(params: {
       continue;
     }
 
+    if (shouldSkipUnchanged(existing, incoming, hash)) {
+      rowsSkipped++;
+      rowsSkippedUnchanged++;
+      continue;
+    }
+
     updates.push({
       id: existing.id,
       occurredAt: incoming.occurredAt,
@@ -250,5 +281,5 @@ export function computeCsvDashboardDedupDiff(params: {
     rowsAdded++;
   }
 
-  return { rowsToCreate, updates, rowsAdded, rowsSkipped };
+  return { rowsToCreate, updates, rowsAdded, rowsSkipped, rowsSkippedUnchanged };
 }

@@ -334,3 +334,93 @@ describe('computeCsvDashboardDedupDiff', () => {
     expect(result.rowsSkipped).toBe(1);
   });
 });
+
+describe('unchanged row refresh window', () => {
+  const now = new Date('2026-06-01T00:00:00Z');
+  const day = 86_400_000;
+  type Params = Parameters<typeof computeCsvDashboardDedupDiff>[0];
+  const diff = (overrides: Partial<Params> = {}, ageDays = 1, hash = 'hash-1') => computeCsvDashboardDedupDiff({
+    dashboardId: 'dashboard-1', completedValue: '完了', now,
+    options: { skipUnchangedRowsWithinRefreshWindow: true },
+    incomingRows: [{ hash, data: { value: 'same' }, occurredAt: now }],
+    existingRows: [{ id: 'row-1', dataHash: hash, rowData: { value: 'same' }, occurredAt: new Date(+now - ageDays * day) }],
+    ...overrides
+  });
+
+  it('preserves updates when the option is disabled', () => {
+    expect(diff({ options: {} })).toMatchObject({ rowsAdded: 1, rowsSkipped: 0, rowsSkippedUnchanged: 0 });
+  });
+
+  it('skips equal JSON recursively regardless of object key order and JSON serialization', () => {
+    const data = { value: 'same', nested: { b: [1, { d: null, c: true }], a: 2 }, absent: undefined, date: now };
+    const result = diff({
+      incomingRows: [{ hash: 'hash-1', data, occurredAt: now }],
+      existingRows: [{ id: 'row-1', dataHash: 'hash-1', occurredAt: new Date(+now - day), rowData: {
+        date: now.toISOString(), nested: { a: 2, b: [1, { c: true, d: null }] }, value: 'same'
+      } }]
+    });
+    expect(result).toMatchObject({ updates: [], rowsAdded: 0, rowsSkipped: 1, rowsSkippedUnchanged: 1 });
+  });
+
+  it.each([{ value: 'changed' }, { value: 1 }, { value: 'same', extra: null }, { value: ['same'] }])('updates changed JSON %j', (data) => {
+    expect(diff({ incomingRows: [{ hash: 'hash-1', data, occurredAt: now }] }).updates).toHaveLength(1);
+  });
+
+  it.each([
+    { status: 'FAILED', completedAt: now },
+    { status: 'PROCESSING', completedAt: null },
+    { status: 'COMPLETED', completedAt: null },
+    null
+  ])('updates invisible existing rows for run %j', (sourceIngestRun) => {
+    expect(diff({ existingRows: [{ id: 'row-1', dataHash: 'hash-1', rowData: { value: 'same' },
+      occurredAt: new Date(+now - day), sourceIngestRunId: 'old-run', sourceIngestRun }] }).updates).toHaveLength(1);
+  });
+
+  it('skips reader-visible completed-run rows', () => {
+    expect(diff({ existingRows: [{ id: 'row-1', dataHash: 'hash-1', rowData: { value: 'same' },
+      occurredAt: new Date(+now - day), sourceIngestRunId: 'old-run', sourceIngestRun: { status: 'COMPLETED', completedAt: now } }] }).rowsSkippedUnchanged).toBe(1);
+  });
+
+  it('refreshes beyond 37 days and skips at 22 days', () => {
+    expect(diff({}, 38).updates).toHaveLength(1);
+    expect(diff({}, 22).rowsSkippedUnchanged).toBe(1);
+  });
+
+  it('uses deterministic per-hash thresholds covering 23 through 37 days, including the boundary', () => {
+    const thresholds = Array.from({ length: 100 }, (_, i) => {
+      const hash = `hash-${i}`;
+      const firstRefresh = Array.from({ length: 38 }, (_, age) => age + 1)
+        .find((age) => diff({}, age, hash).updates.length === 1)!;
+      expect(diff({}, firstRefresh - 0.001, hash).rowsSkippedUnchanged).toBe(1);
+      expect(diff({}, firstRefresh, hash).updates).toHaveLength(1);
+      return firstRefresh;
+    });
+    expect(new Set(thresholds).size).toBe(15);
+    expect(Math.min(...thresholds)).toBe(23);
+    expect(Math.max(...thresholds)).toBe(37);
+  });
+
+  it.each([true, false])('preserves the older/equal updatedAt path (metadata refresh=%s)', (refreshSourceMetadataOnDuplicate) => {
+    const result = diff({
+      options: { skipUnchangedRowsWithinRefreshWindow: true, refreshSourceMetadataOnDuplicate },
+      incomingRows: [{ hash: 'hash-1', data: { value: 'same' }, occurredAt: new Date(+now - 2 * day) }]
+    });
+    expect(result.updates).toHaveLength(refreshSourceMetadataOnDuplicate ? 1 : 0);
+    expect(result.rowsSkipped).toBe(1);
+    expect(result.rowsSkippedUnchanged).toBe(0);
+  });
+
+  it.each([
+    { incoming: '2', existing: '1', updates: 1, skippedUnchanged: 0 },
+    { incoming: '1', existing: '1', updates: 0, skippedUnchanged: 1 },
+    { incoming: '1', existing: '2', updates: 0, skippedUnchanged: 0 }
+  ])('combines maxProductNoWins with refresh: %j', ({ incoming, existing, updates, skippedUnchanged }) => {
+    const result = diff({
+      options: { maxProductNoWins: true, skipUnchangedRowsWithinRefreshWindow: true },
+      incomingRows: [{ hash: 'hash-1', data: { ProductNo: incoming }, occurredAt: now }],
+      existingRows: [{ id: 'row-1', dataHash: 'hash-1', rowData: { ProductNo: existing }, occurredAt: new Date(+now - day) }]
+    });
+    expect(result.updates).toHaveLength(updates);
+    expect(result.rowsSkippedUnchanged).toBe(skippedUnchanged);
+  });
+});
