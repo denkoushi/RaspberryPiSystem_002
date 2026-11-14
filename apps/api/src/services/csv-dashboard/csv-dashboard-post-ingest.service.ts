@@ -1,4 +1,4 @@
-import { APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS, CsvDashboardAppendRawRowPruneService } from './csv-dashboard-append-raw-row-prune.service.js';
+import { APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS, CsvDashboardAppendRawRowPruneService, type PruneResult } from './csv-dashboard-append-raw-row-prune.service.js';
 import { pruneCompletedGrindingPlanningBoardSeibans } from '../production-schedule/grinding-planning-board/completion.js';
 import { markProductionScheduleResourceCdsCacheStale } from '../production-schedule/production-schedule-query/resources.js';
 import { logger } from '../../lib/logger.js';
@@ -76,7 +76,7 @@ export class CsvDashboardPostIngestService {
       return;
     }
     CsvDashboardPostIngestService.appendRawRowPruneInFlight.add(dashboardId);
-    let pruneResult: { deletedCount: number; hasRemaining: boolean | null } = { deletedCount: 0, hasRemaining: null };
+    let pruneResult: PruneResult = { deletedCount: 0, hasRemaining: null };
     try {
       pruneResult = await this.appendRawRowPruneService.prune(dashboardId);
     } catch (error) {

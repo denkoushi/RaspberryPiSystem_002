@@ -1,4 +1,5 @@
 /** Default: --dry-run. Writes only with --execute (at most 20,000 rows per dashboard). */
+import { env } from '../config/env.js';
 import { prisma } from '../lib/prisma.js';
 import {
   APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS,
@@ -12,6 +13,9 @@ async function main(): Promise<void> {
     throw new Error('Usage: prune:csv-append-raw-rows [--dry-run | --execute]');
   }
   const execute = args.includes('--execute');
+  if (execute && !env.CSV_APPEND_RAW_ROW_PRUNE_ENABLED) {
+    throw new Error('--execute requires CSV_APPEND_RAW_ROW_PRUNE_ENABLED=true');
+  }
   const service = new CsvDashboardAppendRawRowPruneService();
   for (const dashboardId of APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS) {
     const before = await service.count(dashboardId);
