@@ -1782,6 +1782,44 @@ class BusinessQwenRoutingTests(unittest.TestCase):
             return 200, b'{"model":"system-prod-primary","choices":[]}', 'application/json'
         self.handler = self.module.make_handler(self.config, proxy)
 
+    def test_qwen_resource_state_is_fetched_once_for_shared_and_business_requests(self):
+        self.enable_sharing()
+        for shared in ('3:generation-3', None):
+            with self.subTest(shared=shared):
+                self.calls.clear()
+                self.assertEqual(self.request(shared=shared)[0], 200)
+                self.assertEqual(sum(call[1].endswith('/system/resource-state') for call in self.calls), 1)
+
+    def test_shared_qwen_single_snapshot_generation_mismatch_precedes_payload_error(self):
+        self.enable_sharing()
+        self.runtime['generation'] = 'old'
+        self.assertEqual(self.request(shared='3:generation-3', payload={'model': 'invalid'})[0], 409)
+        self.assertEqual(len(self.calls), 1)
+        self.assertTrue(self.calls[0][1].endswith('/system/resource-state'))
+
+    def test_shared_qwen_still_checks_ranks_after_attestation(self):
+        self.enable_sharing()
+        attested = self.module.attest_private_sharing(self.config, self.runtime)
+        self.runtime['ranks'][1]['running'] = False
+        with patch.object(self.module, 'attest_private_sharing', return_value=attested) as attest:
+            self.assertEqual(self.request(shared='3:generation-3')[0], 409)
+        attest.assert_called_once()
+        self.assertEqual(len(self.calls), 1)
+
+    def test_qwen_resource_state_errors_keep_shared_and_business_fail_closed(self):
+        self.enable_sharing()
+        for response in ((503, b'{}', 'application/json'), (200, b'bad-json', 'application/json')):
+            for shared, expected in (('3:generation-3', 409), (None, 503)):
+                with self.subTest(response=response, shared=shared):
+                    proxy = Mock(return_value=response)
+                    self.handler = self.module.make_handler(self.config, proxy)
+                    status, body = self.request(shared=shared)
+                    self.assertEqual(status, expected)
+                    if shared is None:
+                        self.assertEqual(json.loads(body)['error']['code'], 'business_runtime_unavailable')
+                    proxy.assert_called_once()
+                    self.assertTrue(proxy.call_args.args[1].endswith('/system/resource-state'))
+
     def test_shared_images_and_secret_salt_only_on_private_requests(self):
         self.enable_sharing()
         salts = []

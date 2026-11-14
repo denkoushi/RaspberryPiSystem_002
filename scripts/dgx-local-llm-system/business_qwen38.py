@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import re
 import shlex
+import stat
 import subprocess
 
 from model_profiles import ModelProfile
@@ -115,11 +117,38 @@ def _sharing_inspected(profile, nodes):
 def _run(script: str, target: str | None, runner) -> str:
     from active_model_state import request_timeout
     command = ['bash', '-eu', '-c', script]
-    if target:
-        if not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9_][a-zA-Z0-9_.-]*', target):
-            raise RuntimeError('business_qwen38_unprepared')
-        command = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', target, shlex.join(command)]
-    return runner(command, check=True, capture_output=True, text=True, timeout=request_timeout(30)).stdout
+    if not target:
+        return runner(command, check=True, capture_output=True, text=True, timeout=request_timeout(30)).stdout
+    if not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_.-]*@[a-zA-Z0-9_][a-zA-Z0-9_.-]*', target):
+        raise RuntimeError('business_qwen38_unprepared')
+    plain = ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--', target, shlex.join(command)]
+    control_path = None
+    directory = os.path.expanduser(os.environ.get('DGX_BUSINESS_SSH_CONTROL_DIR', '~/.ssh/dgx-mux'))
+    try:
+        # Leave room for the 40-byte %C hash and Unix socket path terminator.
+        if len(os.fsencode(directory)) <= 60:
+            os.makedirs(directory, mode=0o700, exist_ok=True)
+            info = os.lstat(directory)
+            if (stat.S_ISDIR(info.st_mode) and info.st_uid == os.geteuid()
+                    and stat.S_IMODE(info.st_mode) == 0o700):
+                control_path = os.path.join(directory, '%C')
+    except OSError:
+        pass
+    command = plain
+    if control_path is not None:
+        command = plain[:5] + ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + control_path,
+            '-o', 'ControlPersist=120', '-o', 'ServerAliveInterval=5', '-o', 'ServerAliveCountMax=2'] + plain[5:]
+    try:
+        return runner(command, check=True, capture_output=True, text=True, timeout=request_timeout(30)).stdout
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        if control_path is None or (isinstance(error, subprocess.CalledProcessError) and error.returncode != 255):
+            raise
+        try:
+            runner(['ssh', '-o', 'ControlPath=' + control_path, '-O', 'exit', '--', target],
+                   check=True, capture_output=True, text=True, timeout=request_timeout(2))
+        except (OSError, subprocess.SubprocessError):
+            pass
+        return runner(plain, check=True, capture_output=True, text=True, timeout=request_timeout(30)).stdout
 
 
 def _nodes(profile: ModelProfile):
