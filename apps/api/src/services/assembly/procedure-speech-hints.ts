@@ -2,6 +2,13 @@ export { toWhisperPrompt } from '../inference/whisper-prompt.js';
 
 // Short vocabulary from procedure-site-context.ts; put likely mishearings last.
 export const PROCEDURE_SPEECH_HINTS = {
+  // web の apps/web/src/features/voice/voiceNavigation.ts と合わせる。
+  'kiosk-navigation': [
+    'キット', '組立', '訓練', '組立の訓練', 'チェックシート', '組立のチェックシート',
+    '製品構成', '組立の製品構成', '記録確認', '組立の記録確認', '使う', '組立の使う',
+    '生産スケジュール', '生産日程', '開いて', 'を開いて', '開く', 'を開く',
+    'に移動', 'へ移動', 'に行って', 'を表示', '画面', 'の画面'
+  ].join('、'),
   'procedure-assembly': [
     'ベース', 'テーブル', 'スケール', 'リニアモーター', '固定子', 'モータブラケット',
     '支持ブラケット', 'ナットホルダー', 'ストッパー', 'アブソーバー', 'センサードグ',

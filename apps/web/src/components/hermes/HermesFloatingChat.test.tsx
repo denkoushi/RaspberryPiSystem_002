@@ -366,9 +366,25 @@ describe('HermesFloatingChat', () => {
     fireEvent.click(trigger);
     expect(media.recorder.state).toBe('inactive');
     expect(trigger).toHaveAttribute('data-voice-state', 'processing');
+    expect(mocks.transcribe).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal), 'kiosk-navigation');
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
     expect(media.stopTrack).toHaveBeenCalled();
     expect(media.closeContext).toHaveBeenCalledOnce();
+  });
+
+  it('shows the recording ring only after microphone permission arrives and recording starts', async () => {
+    const media = mockVoiceRecording();
+    const stream = await media.getUserMedia();
+    let grant!: (value: typeof stream) => void;
+    media.getUserMedia.mockReturnValue(new Promise(resolve => { grant = resolve; }));
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    expect(trigger).not.toHaveAttribute('data-voice-state');
+    expect(media.recorder).toBeUndefined();
+    await act(async () => grant(stream));
+    expect(media.recorder.state).toBe('recording');
+    expect(trigger).toHaveAttribute('data-voice-state', 'recording');
   });
 
   it('discards a long recording and switches to drag after moving more than 4px', async () => {
@@ -465,8 +481,10 @@ describe('HermesFloatingChat', () => {
     renderChat();
     vi.useFakeTimers();
     const trigger = await beginHold();
+    expect(trigger).not.toHaveAttribute('data-voice-state');
     pointer(trigger, 'pointerup');
     await act(async () => grant(stream));
+    expect(media.recorder).toBeUndefined();
     expect(media.stopTrack).toHaveBeenCalledOnce();
     expect(mocks.transcribe).not.toHaveBeenCalled();
     expect(trigger).not.toHaveAttribute('data-voice-state');

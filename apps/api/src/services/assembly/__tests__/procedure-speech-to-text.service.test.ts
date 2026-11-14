@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => { env.PROCEDURE_SPEECH_TO_TEXT_ENABLED = false; env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED = true; vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('procedure speech to text service', () => {
-  it.each(['procedure-assembly', 'procedure-grinding'] as const)('sends the allowlisted %s vocabulary', async key => {
+  it.each(['procedure-assembly', 'procedure-grinding', 'kiosk-navigation'] as const)('sends the allowlisted %s vocabulary', async key => {
     await service.transcribe(audio, 'audio/webm', signal, key);
     expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, hints.PROCEDURE_SPEECH_HINTS[key]);
   });
@@ -28,9 +28,9 @@ describe('procedure speech to text service', () => {
     await service.transcribe(audio, 'audio/webm', signal, key);
     expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
   });
-  it('omits hints when the kill switch is off', async () => {
+  it.each(['procedure-assembly', 'procedure-grinding', 'kiosk-navigation'])('omits %s hints when the kill switch is off', async key => {
     env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED = false;
-    await service.transcribe(audio, 'audio/webm', signal, 'procedure-assembly');
+    await service.transcribe(audio, 'audio/webm', signal, key);
     expect(port.transcribe).toHaveBeenCalledExactlyOnceWith(audio, 'audio/webm', signal, undefined);
   });
   it('continues without hints and does not log hint-building failures', async () => {

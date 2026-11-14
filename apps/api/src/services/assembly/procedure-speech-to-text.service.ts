@@ -28,7 +28,7 @@ export class ProcedureSpeechToTextService {
       if (!port) throw procedureSpeechToTextError(503);
       let prompt: string | undefined;
       try {
-        if (env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED && (hintKey === 'procedure-assembly' || hintKey === 'procedure-grinding')) {
+        if (env.PROCEDURE_SPEECH_TO_TEXT_HINTS_ENABLED && (hintKey === 'procedure-assembly' || hintKey === 'procedure-grinding' || hintKey === 'kiosk-navigation')) {
           prompt = toWhisperPrompt(PROCEDURE_SPEECH_HINTS[hintKey]);
         }
       } catch { /* Vocabulary hints must never interrupt dictation. */ }
