@@ -1,59 +1,57 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { disposeVoiceSession, startVoiceTranscription, type VoiceInputError, type VoiceSession } from '../../features/voice/voiceTranscription';
+
+// Both Hermes entry points share one microphone, including while permission or STT is pending.
+let activeSession: VoiceSession | null = null;
 
 export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: string) => void) {
   const sessionRef = useRef<VoiceSession | null>(null);
   const [state, setState] = useState<'idle' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState<VoiceInputError | null>(null);
   const [meter, setMeter] = useState({ level: 0, seconds: 0, microphone: '' });
-  useEffect(() => () => {
+  const cancel = useCallback(() => {
     const session = sessionRef.current;
     sessionRef.current = null;
-    if (session) disposeVoiceSession(session);
-  }, []);
-  useEffect(() => {
-    if (enabled) return;
-    const session = sessionRef.current;
-    sessionRef.current = null;
-    if (session) disposeVoiceSession(session);
-    setState('idle');
-  }, [enabled]);
-
-  const toggle = () => {
-    if (sessionRef.current) {
-      if (!sessionRef.current.recorder) {
-        const session = sessionRef.current;
-        sessionRef.current = null;
-        disposeVoiceSession(session);
-        setState('idle');
-      } else if (sessionRef.current.recorder.state === 'recording') sessionRef.current.recorder.stop();
-      return;
+    if (session) {
+      if (activeSession === session) activeSession = null;
+      disposeVoiceSession(session);
     }
-    if (!enabled) return;
+    setState('idle');
+  }, []);
+  useEffect(() => cancel, [cancel]);
+  useEffect(() => { if (!enabled) cancel(); }, [enabled, cancel]);
+
+  const stop = useCallback(() => {
+    const session = sessionRef.current;
+    if (!session) return;
+    // A release before permission arrives must never leave a recorder running later.
+    if (!session.recorder) cancel();
+    else if (session.recorder.state === 'recording') session.recorder.stop();
+  }, [cancel]);
+
+  const start = useCallback(() => {
+    if (!enabled || activeSession) return;
     const session: VoiceSession = { abort: new AbortController() };
     sessionRef.current = session;
+    activeSession = session;
     setError(null);
     setMeter({ level: 0, seconds: 0, microphone: '' });
     setState('recording');
     const active = () => sessionRef.current === session && !session.abort.signal.aborted;
-    const finish = () => {
-      sessionRef.current = null;
-      disposeVoiceSession(session);
-      setState('idle');
-    };
     void startVoiceTranscription(session, active, () => setState('processing'), text => {
-      finish();
+      cancel();
       onTranscript(text);
     }, message => {
       if (!active()) return;
-      finish();
+      cancel();
       setError(message);
     }, undefined, {
       silenceStopMs: 1200,
       onRecording: microphone => setMeter(current => ({ ...current, microphone })),
       onLevel: (level, seconds) => setMeter(current => ({ ...current, level, seconds }))
     });
-  };
-  return { state, error, meter, toggle };
+  }, [enabled, onTranscript, cancel]);
+  const toggle = () => { if (sessionRef.current) stop(); else start(); };
+  return { state, error, meter, toggle, start, stop, cancel };
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +6,7 @@ import { transcribeAssemblyProcedureDictation } from '../../api/domains/assembly
 import { mockVoiceRecording } from '../../features/voice/voiceRecording.test-support';
 
 import HermesChatPanel from './HermesChatPanel';
+import { useHermesVoiceInput } from './useHermesVoiceInput';
 
 vi.mock('../../api/domains/assembly', () => ({
   getAssemblyProcedureSpeechToTextAvailability: vi.fn().mockResolvedValue(true),
@@ -96,6 +97,25 @@ describe('Hermes microphone', () => {
     expect(screen.getByRole('button', { name: '声で入力' })).toBeEnabled();
     expect(media.stopTrack).toHaveBeenCalledOnce();
     expect(transcribeAssemblyProcedureDictation).not.toHaveBeenCalled();
+  });
+
+  it.each(['recording', 'processing'])('shares the microphone between entry points during %s', async phase => {
+    const media = mockVoiceRecording();
+    vi.mocked(transcribeAssemblyProcedureDictation).mockReturnValue(new Promise(() => undefined));
+    const first = renderHook(() => useHermesVoiceInput(true, vi.fn()));
+    const second = renderHook(() => useHermesVoiceInput(true, vi.fn()));
+    await act(async () => first.result.current.start());
+    if (phase === 'processing') await act(async () => first.result.current.stop());
+    await act(async () => second.result.current.start());
+    expect(media.getUserMedia).toHaveBeenCalledOnce();
+    expect(second.result.current.state).toBe('idle');
+    act(() => first.result.current.cancel());
+    await act(async () => second.result.current.start());
+    expect(media.getUserMedia).toHaveBeenCalledTimes(2);
+    expect(second.result.current.state).toBe('recording');
+    second.unmount();
+    expect(media.recorder.state).toBe('inactive');
+    expect(media.closeContext).toHaveBeenCalledTimes(2);
   });
 
   it('renders local navigation bubbles with a microphone marker in the consultation list', () => {

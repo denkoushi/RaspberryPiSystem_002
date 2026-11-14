@@ -5,6 +5,7 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLocalLlmAvailability } from '../../api/hooks/local-llm';
+import { mockVoiceRecording } from '../../features/voice/voiceRecording.test-support';
 
 const mocks = vi.hoisted(() => ({
   clientKey: 'client-key-test',
@@ -23,7 +24,14 @@ const mocks = vi.hoisted(() => ({
   knowledgePost: vi.fn(),
   pendingReviews: vi.fn(),
   inquirySummary: vi.fn(),
-  inquiryList: vi.fn()
+  inquiryList: vi.fn(),
+  transcribe: vi.fn()
+}));
+
+vi.mock('../../api/domains/assembly', async importOriginal => ({
+  ...await importOriginal<typeof import('../../api/domains/assembly')>(),
+  getAssemblyProcedureSpeechToTextAvailability: vi.fn().mockResolvedValue(true),
+  transcribeAssemblyProcedureDictation: mocks.transcribe
 }));
 
 vi.mock('../../api/client', () => ({
@@ -227,9 +235,9 @@ function renderChat(path = '/kiosk/assembly', pageContext?: HermesPageContext, o
   );
 }
 
-function openSearch() {
+async function openSearch() {
   fireEvent.click(screen.getByRole('button', { name: /業務Hermesチャットを開く/ }));
-  fireEvent.click(screen.getByRole('button', { name: '検索' }));
+  fireEvent.click(await screen.findByRole('button', { name: '検索' }));
 }
 
 function consultation(id: string, title = id) {
@@ -286,6 +294,7 @@ describe('HermesFloatingChat', () => {
 
   beforeEach(() => {
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false });
+    mocks.transcribe.mockReset();
     mocks.clientKey = 'client-key-test';
     mocks.inquirySummary.mockReset().mockResolvedValue({ isReceiver: false, unreadCount: 0 });
     mocks.inquiryList.mockReset().mockResolvedValue({ threads: [] });
@@ -308,11 +317,179 @@ describe('HermesFloatingChat', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
+    localStorage.removeItem('hermes-chat-icon-position');
+  });
+
+  function pointer(target: HTMLElement, type: string, x = 900, y = 700) {
+    const event = new Event(type, { bubbles: true });
+    Object.assign(event, { pointerId: 1, clientX: x, clientY: y, button: 0, isPrimary: true });
+    fireEvent(target, event);
+  }
+
+  async function beginHold() {
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    pointer(trigger, 'pointerdown');
+    await act(async () => vi.advanceTimersByTime(400));
+    return trigger;
+  }
+
+  it('keeps the panel closed initially and opens it on a short press without recording', async () => {
+    const media = mockVoiceRecording();
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(trigger.style.left).toBe(`${window.innerWidth - 29 - 22}px`);
+    expect(trigger.style.top).toBe(`${window.innerHeight - 29 - 22}px`);
+    pointer(trigger, 'pointerdown');
+    act(() => vi.advanceTimersByTime(399));
+    await act(async () => pointer(trigger, 'pointerup'));
+    fireEvent.click(trigger);
+    expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
+    expect(media.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('records after 400ms, stops on release and suppresses the following click', async () => {
+    const media = mockVoiceRecording();
+    mocks.transcribe.mockReturnValue(new Promise(() => undefined));
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    expect(media.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    expect(media.recorder.state).toBe('recording');
+    expect(trigger).toHaveAttribute('data-voice-state', 'recording');
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    // The browser's synthetic click can arrive after the pointerup task finishes.
+    await act(async () => pointer(trigger, 'pointerup'));
+    act(() => vi.advanceTimersByTime(10));
+    fireEvent.click(trigger);
+    expect(media.recorder.state).toBe('inactive');
+    expect(trigger).toHaveAttribute('data-voice-state', 'processing');
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(media.stopTrack).toHaveBeenCalled();
+    expect(media.closeContext).toHaveBeenCalledOnce();
+  });
+
+  it('discards a long recording and switches to drag after moving more than 4px', async () => {
+    const media = mockVoiceRecording();
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    const initialLeft = trigger.style.left;
+    pointer(trigger, 'pointermove', 896);
+    expect(media.recorder.state).toBe('recording');
+    pointer(trigger, 'pointermove', 895);
+    expect(media.recorder.state).toBe('inactive');
+    expect(media.stopTrack).toHaveBeenCalled();
+    expect(media.closeContext).toHaveBeenCalledOnce();
+    expect(trigger.style.left).not.toBe(initialLeft);
+    await act(async () => pointer(trigger, 'pointerup', 895));
+    fireEvent.click(trigger);
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+  });
+
+  it('navigates from a hold without opening chat or adding bubbles and clears the green ring', async () => {
+    mockVoiceRecording();
+    mocks.transcribe.mockResolvedValue({ text: 'キット、訓練' });
+    renderChat('/kiosk/assembly', undefined, true);
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    await act(async () => pointer(trigger, 'pointerup'));
+    fireEvent.click(trigger);
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+    expect(trigger).toHaveAttribute('data-voice-state', 'success');
+    act(() => vi.advanceTimersByTime(700));
+    expect(trigger).not.toHaveAttribute('data-voice-state');
+    fireEvent.click(trigger);
+    expect(screen.queryByText('キット、訓練')).not.toBeInTheDocument();
+    expect(screen.queryByText('組立 > 訓練 を開きました。')).not.toBeInTheDocument();
+  });
+
+  it.each(['', '既存の相談'])('opens chat and appends an unmatched hold transcript to draft "%s" without sending', async draft => {
+    mockVoiceRecording();
+    mocks.transcribe.mockResolvedValue({ text: '追加の相談' });
+    renderChat();
+    if (draft) {
+      await openSearch();
+      await screen.findByTestId('hermes-panel');
+      fireEvent.change(screen.getByRole('textbox'), { target: { value: draft } });
+      fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    }
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    await act(async () => pointer(trigger, 'pointerup'));
+    fireEvent.click(trigger);
+    expect(screen.getByRole('textbox')).toHaveValue(draft ? `${draft} 追加の相談` : '追加の相談');
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.sendConsultationMessage).not.toHaveBeenCalled();
+  });
+
+  it('keeps an already open chat open after hold navigation and the following click', async () => {
+    mockVoiceRecording();
+    mocks.transcribe.mockResolvedValue({ text: 'キット、訓練' });
+    renderChat('/kiosk/assembly', undefined, true);
+    await openSearch();
+    await screen.findByTestId('hermes-panel');
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    await act(async () => pointer(trigger, 'pointerup'));
+    fireEvent.click(trigger);
+    act(() => vi.advanceTimersByTime(1000));
+    expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
+    expect(screen.queryByText('キット、訓練')).not.toBeInTheDocument();
+  });
+
+  it('clears the yellow error ring after three flashes without opening chat', async () => {
+    const media = mockVoiceRecording();
+    media.getUserMedia.mockRejectedValue(new Error('denied'));
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    expect(trigger).toHaveAttribute('data-voice-state', 'error');
+    pointer(trigger, 'pointerup');
+    fireEvent.click(trigger);
+    act(() => vi.advanceTimersByTime(900));
+    expect(trigger).not.toHaveAttribute('data-voice-state');
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
+  });
+
+  it('cancels a pending microphone grant on release', async () => {
+    const media = mockVoiceRecording();
+    const stream = await media.getUserMedia();
+    let grant!: (value: typeof stream) => void;
+    media.getUserMedia.mockReturnValue(new Promise(resolve => { grant = resolve; }));
+    renderChat();
+    vi.useFakeTimers();
+    const trigger = await beginHold();
+    pointer(trigger, 'pointerup');
+    await act(async () => grant(stream));
+    expect(media.stopTrack).toHaveBeenCalledOnce();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveAttribute('data-voice-state');
+  });
+
+  it('closes the panel 900ms after navigating from its microphone', async () => {
+    renderChat('/kiosk/assembly', undefined, true);
+    await openSearch();
+    await screen.findByTestId('hermes-panel');
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: '訓練の声' }));
+    expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
+    expect(screen.getByText('キット、訓練')).toBeInTheDocument();
+    expect(screen.getByText('組立 > 訓練 を開きました。')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(899));
+    expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
   });
 
   it('appends voice dictation to the current draft without sending', async () => {
     renderChat();
-    openSearch();
+    await openSearch();
     await screen.findByTestId('hermes-panel');
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '既存の相談' } });
     fireEvent.click(screen.getByRole('button', { name: '相談の声' }));
@@ -323,7 +500,7 @@ describe('HermesFloatingChat', () => {
 
   it('opens a voice destination with local bubbles and excludes them from subsequent chat history', async () => {
     renderChat('/kiosk/assembly', undefined, true);
-    openSearch();
+    await openSearch();
     await waitFor(() => expect(mocks.listConsultations).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: '訓練の声' }));
     expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
@@ -352,7 +529,7 @@ describe('HermesFloatingChat', () => {
 
   it('reopens inquiries after switching to search and closing the panel', async () => {
     renderChat();
-    openSearch();
+    await openSearch();
     expect(await screen.findByRole('textbox', { name: 'Hermesへの質問' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
@@ -425,7 +602,7 @@ describe('HermesFloatingChat', () => {
 
   it.each(['手順書の作り方', '手順書はどうやって作るの?', '手順書を編集したい'])('offers local assembly guides for %s without creating or sending a consultation', async question => {
     renderChat();
-    openSearch();
+    await openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: question } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -440,7 +617,7 @@ describe('HermesFloatingChat', () => {
 
   it('preserves guide progress across same-tab navigation, completes and offers the other guide', async () => {
     render(<MemoryRouter initialEntries={['/kiosk/assembly']}><HermesPageContextProvider><GuideRouteControls /><HermesFloatingChat /></HermesPageContextProvider></MemoryRouter>);
-    openSearch();
+    await openSearch();
     fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書を編集したい' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     fireEvent.click(screen.getByRole('button', { name: '組立の手順書を編集' }));
@@ -470,7 +647,7 @@ describe('HermesFloatingChat', () => {
   it('returns to questions and sends an unrelated question without guide history', async () => {
     mocks.send.mockResolvedValue({ status: 'ready', message: '検索結果', evidence: [] });
     renderChat();
-    openSearch();
+    await openSearch();
     await waitFor(() => expect(screen.queryByTestId('consultation-list')).not.toBeInTheDocument());
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '手順書の作り方' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -540,7 +717,7 @@ describe('HermesFloatingChat', () => {
 
   it('toggles the panel between standard and expanded sizes without clearing the draft', async () => {
     renderChat();
-    openSearch();
+    await openSearch();
     const panel = await screen.findByTestId('hermes-panel');
     const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '入力中の質問' } });
@@ -618,7 +795,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    openSearch();
+    await openSearch();
     expect(screen.getByRole('button', { name: '検索' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '三島工場機械課の最近の不適合情報を２件出して' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -757,7 +934,7 @@ describe('HermesFloatingChat', () => {
     expect(screen.queryByRole('group', { name: '品番ショートカット' })).not.toBeInTheDocument();
     expect(mocks.getTrialScope).not.toHaveBeenCalled();
     expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
-    openSearch();
+    await openSearch();
     await waitFor(() => expect(mocks.getTrialScope).toHaveBeenCalledOnce());
     await screen.findByTestId('hermes-panel');
     await waitFor(() => expect(screen.queryByRole('button', { name: 'JEV記録' }) !== null).toBe(enabled));
@@ -783,7 +960,7 @@ describe('HermesFloatingChat', () => {
     mocks.sendTrialAnswer.mockImplementation(() => new Promise(resolve => { resolveAnswer = resolve; }));
     const pageContext = { path: '/kiosk/part-measurement/edit/sheet-1', entity: { kind: 'partNumber' as const, value: 'FH001' } };
     renderChat(pageContext.path, pageContext);
-    openSearch();
+    await openSearch();
     const shortcut = await screen.findByRole('button', { name: label });
     expect(mocks.sendTrialAnswer).not.toHaveBeenCalled();
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '以前の質問' } });
@@ -878,7 +1055,7 @@ describe('HermesFloatingChat', () => {
     mocks.sendTrialAnswer.mockResolvedValue({ status: 'completed', answer: 'trial answer', recordIds: [], elapsedMs: 1 });
     const pageContext = { path: '/kiosk/part-measurement/self-inspection', entity: { kind: 'partNumber' as const, value: 'FH001' } };
     renderChat(pageContext.path, pageContext);
-    openSearch();
+    await openSearch();
     const pilotButton = await screen.findByRole('button', { name: 'JEV記録' });
     const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '通常検索' } });
@@ -1164,7 +1341,7 @@ describe('HermesFloatingChat', () => {
     });
     mocks.send.mockReturnValue(request);
     renderChat();
-    openSearch();
+    await openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '<script>現場質問</script>' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -1204,7 +1381,7 @@ describe('HermesFloatingChat', () => {
       });
 
     renderChat();
-    openSearch();
+    await openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '旧端末での質問' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -1246,7 +1423,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    openSearch();
+    await openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '作業要領を見せて' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -1269,7 +1446,7 @@ describe('HermesFloatingChat', () => {
     });
 
     renderChat();
-    openSearch();
+    await openSearch();
     await waitFor(() => expect(screen.queryByTestId('consultation-list')).not.toBeInTheDocument());
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '旧方式で質問' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -1289,7 +1466,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     await screen.findByTestId('consultation-list');
     const input = screen.getByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '品番が分からない不適合を相談したい' } });
@@ -1312,7 +1489,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -1333,7 +1510,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
 
     renderChat();
-    openSearch();
+    await openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -1349,7 +1526,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockImplementation(async () => ({ consultations: [], enabled: true }));
 
     renderChat();
-    openSearch();
+    await openSearch();
     await screen.findByTestId('consultation-list');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Scan' })).toBeEnabled());
     fireEvent.click(screen.getByRole('button', { name: 'Scan' }));
@@ -1384,7 +1561,7 @@ describe('HermesFloatingChat', () => {
       .mockResolvedValueOnce(consultationResponse(candidate, rejectedMessages));
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 候補を確認する相談' }));
     await screen.findByText('対象を確認します。');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '写真を見てください' } });
@@ -1424,7 +1601,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     const input = await screen.findByRole('textbox', { name: 'Hermesへの質問' });
     fireEvent.change(input, { target: { value: '漏れについて相談したい' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
@@ -1454,7 +1631,7 @@ describe('HermesFloatingChat', () => {
       .mockReturnValueOnce(pendingSelection);
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.change(await screen.findByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '漏れについて相談したい' } });
     fireEvent.click(screen.getByRole('button', { name: '送信' }));
     fireEvent.click(await screen.findByRole('button', { name: 'はい' }));
@@ -1481,7 +1658,7 @@ describe('HermesFloatingChat', () => {
     ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 翌日の相談' }));
 
     expect(mocks.getConsultation).toHaveBeenCalledWith('case-reopen');
@@ -1504,7 +1681,7 @@ describe('HermesFloatingChat', () => {
       ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 履歴を続けて見る相談' }));
     expect(await screen.findByText('最新の回答')).toBeInTheDocument();
 
@@ -1527,7 +1704,7 @@ describe('HermesFloatingChat', () => {
     ));
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 現在の相談名' }));
     await screen.findByText('現在の履歴');
     fireEvent.click(screen.getByRole('button', { name: '以前の履歴を読み込む' }));
@@ -1556,7 +1733,7 @@ describe('HermesFloatingChat', () => {
     mocks.sendConsultationMessage.mockReturnValue(oldRequest);
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 案件A' }));
     await screen.findByText('case-aの履歴');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '案件Aへの質問' } });
@@ -1575,7 +1752,7 @@ describe('HermesFloatingChat', () => {
     mocks.listConsultations.mockResolvedValue({ consultations: [], enabled: true });
     mocks.createConsultation.mockResolvedValue({ ...item, messages: [] });
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '新規' }));
     await screen.findByText('先読み中の相談');
     expect(screen.queryByRole('button', { name: '停止' })).not.toBeInTheDocument();
@@ -1595,7 +1772,7 @@ describe('HermesFloatingChat', () => {
       ]));
 
     renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '新規' }));
     await screen.findByText('停止できる相談');
     fireEvent.change(screen.getByRole('textbox', { name: 'Hermesへの質問' }), { target: { value: '最初の質問' } });
@@ -1620,7 +1797,7 @@ describe('HermesFloatingChat', () => {
     mocks.getConsultation.mockReturnValue(pendingDetail);
 
     const view = renderChat();
-    openSearch();
+    await openSearch();
     fireEvent.click(await screen.findByRole('button', { name: '相談を開く: 認証切替相談' }));
     expect(await screen.findByText('相談内容を読み込んでいます…')).toBeInTheDocument();
 
