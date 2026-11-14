@@ -334,7 +334,7 @@ describe('HermesFloatingChat', () => {
     return trigger;
   }
 
-  it('keeps the panel closed initially and opens it on a short press without recording', async () => {
+  it('prerecords immediately, then discards a short press and opens the panel', async () => {
     const media = mockVoiceRecording();
     renderChat();
     vi.useFakeTimers();
@@ -343,30 +343,48 @@ describe('HermesFloatingChat', () => {
     expect(trigger.style.left).toBe(`${window.innerWidth - 29 - 22}px`);
     expect(trigger.style.top).toBe(`${window.innerHeight - 29 - 22}px`);
     pointer(trigger, 'pointerdown');
-    act(() => vi.advanceTimersByTime(399));
+    expect(media.getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: true });
+    await act(async () => vi.advanceTimersByTime(399));
+    expect(media.recorder.state).toBe('recording');
+    expect(trigger).not.toHaveAttribute('data-voice-state');
     await act(async () => pointer(trigger, 'pointerup'));
     fireEvent.click(trigger);
     expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
-    expect(media.getUserMedia).not.toHaveBeenCalled();
+    expect(media.recorder.state).toBe('inactive');
+    expect(media.stopTrack).toHaveBeenCalled();
+    expect(media.closeContext).toHaveBeenCalledOnce();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
   });
 
-  it('records after 400ms, stops on release and suppresses the following click', async () => {
+  it('records immediately, shows the ring at 400ms and stops 350ms after release', async () => {
     const media = mockVoiceRecording();
     mocks.transcribe.mockReturnValue(new Promise(() => undefined));
     renderChat();
     vi.useFakeTimers();
-    const trigger = await beginHold();
-    expect(media.getUserMedia).toHaveBeenCalledWith({ audio: true });
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    pointer(trigger, 'pointerdown');
+    expect(media.getUserMedia).toHaveBeenCalledExactlyOnceWith({ audio: true });
+    await act(async () => vi.advanceTimersByTime(399));
+    expect(media.recorder.state).toBe('recording');
+    expect(trigger).not.toHaveAttribute('data-voice-state');
+    media.recorder.ondataavailable?.({ data: new Blob(['prerecorded']) });
+    const stop = vi.spyOn(media.recorder, 'stop');
+    await act(async () => vi.advanceTimersByTime(1));
     expect(media.recorder.state).toBe('recording');
     expect(trigger).toHaveAttribute('data-voice-state', 'recording');
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
     // The browser's synthetic click can arrive after the pointerup task finishes.
     await act(async () => pointer(trigger, 'pointerup'));
-    act(() => vi.advanceTimersByTime(10));
+    await act(async () => vi.advanceTimersByTime(349));
     fireEvent.click(trigger);
+    expect(stop).not.toHaveBeenCalled();
+    expect(mocks.transcribe).not.toHaveBeenCalled();
+    expect(media.recorder.state).toBe('recording');
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(stop).toHaveBeenCalledOnce();
     expect(media.recorder.state).toBe('inactive');
     expect(trigger).toHaveAttribute('data-voice-state', 'processing');
-    expect(mocks.transcribe).toHaveBeenCalledExactlyOnceWith(expect.any(Blob), expect.any(AbortSignal), 'kiosk-navigation');
+    expect(mocks.transcribe).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ size: new Blob(['prerecordedaudio']).size }), expect.any(AbortSignal), 'kiosk-navigation');
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
     expect(media.stopTrack).toHaveBeenCalled();
     expect(media.closeContext).toHaveBeenCalledOnce();
@@ -387,11 +405,13 @@ describe('HermesFloatingChat', () => {
     expect(trigger).toHaveAttribute('data-voice-state', 'recording');
   });
 
-  it('discards a long recording and switches to drag after moving more than 4px', async () => {
+  it.each([200, 400])('discards recording and switches to drag after moving more than 4px at %ims', async elapsed => {
     const media = mockVoiceRecording();
     renderChat();
     vi.useFakeTimers();
-    const trigger = await beginHold();
+    const trigger = screen.getByRole('button', { name: /業務Hermesチャットを開く/ });
+    pointer(trigger, 'pointerdown');
+    await act(async () => vi.advanceTimersByTime(elapsed));
     const initialLeft = trigger.style.left;
     pointer(trigger, 'pointermove', 896);
     expect(media.recorder.state).toBe('recording');
@@ -413,6 +433,7 @@ describe('HermesFloatingChat', () => {
     vi.useFakeTimers();
     const trigger = await beginHold();
     await act(async () => pointer(trigger, 'pointerup'));
+    await act(async () => vi.advanceTimersByTime(350));
     fireEvent.click(trigger);
     expect(screen.getByTestId('guide-route')).toHaveTextContent('/kiosk/assembly/training');
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
@@ -437,6 +458,7 @@ describe('HermesFloatingChat', () => {
     vi.useFakeTimers();
     const trigger = await beginHold();
     await act(async () => pointer(trigger, 'pointerup'));
+    await act(async () => vi.advanceTimersByTime(350));
     fireEvent.click(trigger);
     expect(screen.getByRole('textbox')).toHaveValue(draft ? `${draft} 追加の相談` : '追加の相談');
     expect(mocks.send).not.toHaveBeenCalled();
@@ -452,6 +474,7 @@ describe('HermesFloatingChat', () => {
     vi.useFakeTimers();
     const trigger = await beginHold();
     await act(async () => pointer(trigger, 'pointerup'));
+    await act(async () => vi.advanceTimersByTime(350));
     fireEvent.click(trigger);
     act(() => vi.advanceTimersByTime(1000));
     expect(screen.getByTestId('hermes-panel')).toBeInTheDocument();
@@ -473,7 +496,7 @@ describe('HermesFloatingChat', () => {
     expect(screen.queryByTestId('hermes-panel')).not.toBeInTheDocument();
   });
 
-  it('cancels a pending microphone grant on release', async () => {
+  it('cancels a pending microphone grant after the release margin', async () => {
     const media = mockVoiceRecording();
     const stream = await media.getUserMedia();
     let grant!: (value: typeof stream) => void;
@@ -483,6 +506,7 @@ describe('HermesFloatingChat', () => {
     const trigger = await beginHold();
     expect(trigger).not.toHaveAttribute('data-voice-state');
     pointer(trigger, 'pointerup');
+    await act(async () => vi.advanceTimersByTime(350));
     await act(async () => grant(stream));
     expect(media.recorder).toBeUndefined();
     expect(media.stopTrack).toHaveBeenCalledOnce();
