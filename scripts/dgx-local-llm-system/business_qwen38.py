@@ -12,6 +12,9 @@ from model_profiles import ModelProfile
 PROFILE = 'business_qwen38_flash_next_orcarouter_fp8_tp2'
 CACHE = '/srv/dgx/system-prod/data/business-qwen38/cache'
 IMAGE = 'eugr/spark-vllm-b12x@sha256:03a956544e9f9b4b7ba91690469fbe7848bdbef29a7d2e0f5788368467bb3595'
+# VLLM_* entries baked into IMAGE (docker image inspect). Docker merges them into
+# every container; they are part of the exact pinned contract, not adapter settings.
+IMAGE_VLLM_ENV = frozenset({'VLLM_BASE_DIR=/workspace/vllm', 'VLLM_WSL2_ENABLE_PIN_MEMORY=1'})
 WEIGHTS_REVISION = '5638ef95592d5c0b6a83791f55b09051565cfd9b'
 RUNTIME_IDENTITY = 'vllm:qwen38_fp8_tp2:38083'
 
@@ -71,6 +74,7 @@ def _sharing_inspected(profile, nodes):
         for rank, (node, (_, model, _)) in enumerate(zip(nodes, _nodes(profile))):
             args = node['args']
             expected_options, expected_env = sharing_launch_contract(profile, rank)
+            expected_env = expected_env | IMAGE_VLLM_ENV
             remaining = dict(expected_options)
             if args[:2] != ['serve', '/models/qwen38fn']:
                 return False
@@ -86,7 +90,7 @@ def _sharing_inspected(profile, nodes):
                         return False
                     index += 1
             # Docker adds image env (PATH, etc). Every adapter setting and every
-            # VLLM_* entry must match exactly, including multiplicity.
+            # VLLM_* entry (adapter or pinned image) must match exactly, including multiplicity.
             observed_env = [entry for entry in node['env']
                             if entry.startswith('VLLM_')
                             or entry.split('=', 1)[0] in {e.split('=', 1)[0] for e in expected_env}]
