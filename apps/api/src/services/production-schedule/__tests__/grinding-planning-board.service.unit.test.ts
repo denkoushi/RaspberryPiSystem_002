@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
     pieceSets: [] as Array<{ fseiban: string; fhincd: string; fsigencd: string; fkojun: string; id: string; version: number }>,
     listKinds: vi.fn(),
     findMaterialArrivalStatusByPart: vi.fn(),
+    findOutsourcedRoutingArrivalByItemId: vi.fn(),
     sourceRow,
     state,
     getResourceCategoryPolicy: vi.fn(),
@@ -68,6 +69,8 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock('../d-schedule-minutes/kind-membership.js', () => ({ listDScheduleMinutesKinds: mocks.listKinds }));
+
+vi.mock('../outsourced-routing-arrival.service.js', () => ({ findOutsourcedRoutingArrivalByItemId: mocks.findOutsourcedRoutingArrivalByItemId }));
 
 vi.mock('../process-arrival.service.js', () => ({
   enrichRowsWithProcessArrival: vi.fn(async (rows) => rows.map((row: { id: string }) => ({ ...row, arrived: true, manualArrivalDate: null, isFirstProcess: false, firstProcessState: null })))
@@ -134,6 +137,7 @@ function configurePersistence(): void {
   prisma.csvDashboardIngestRun.findMany.mockResolvedValue([]);
   prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
   mocks.pieceSets = [];
+  mocks.findOutsourcedRoutingArrivalByItemId.mockResolvedValue(new Map());
   vi.mocked(readSessakuPieceGeneration).mockResolvedValue('empty-pieces');
   const details = {
     id: sourceRow.id,
@@ -454,6 +458,62 @@ describe('grinding planning board service orchestration', () => {
       where: { csvDashboardId: '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', fseiban: { in: ['ORDER-A'] } },
       select: { fseiban: true, assignees: true, assigneesKnown: true }
     });
+  });
+
+  it.each([
+    // outsourced, first, process arrived, manual state, daily manual, placement, verify, expected
+    ['pending', true, true, null, false, false, false, false],
+    ['pending', true, false, 'arrived', false, false, false, true],
+    ['pending', true, true, null, true, false, false, false],
+    ['pending', true, false, null, false, true, false, true],
+    ['pending', true, false, null, false, false, true, true],
+    ['pending', false, true, null, false, false, false, false],
+    ['pending', false, false, null, true, false, false, true],
+    ['pending', false, false, null, false, true, false, true],
+    ['pending', false, true, null, false, false, true, false],
+    ['done', true, false, null, false, false, false, true],
+    ['done', true, true, 'excluded', false, false, false, false],
+    ['done', true, false, 'excluded', false, true, false, true],
+    ['done', true, false, 'excluded', false, false, true, true],
+    ['done', false, false, null, false, false, false, false],
+    ['done', false, true, null, false, false, false, true],
+    ['none', true, true, null, false, false, false, false],
+    ['none', false, true, null, false, false, false, true],
+    ['none', false, false, null, false, false, false, false]
+  ] as const)('resolves outsourced=%s first=%s process=%s state=%s daily=%s placement=%s verify=%s',
+    async (outsourced, first, processArrived, state, daily, placed, verified, expected) => {
+      mocks.findOutsourcedRoutingArrivalByItemId.mockResolvedValue(new Map([['row:item-a', outsourced]]));
+      vi.mocked(enrichRowsWithProcessArrival).mockImplementationOnce(async (rows) => rows.map((row) => ({ ...row, arrived: processArrived, isFirstProcess: first })));
+      mocks.findMaterialArrivalStatusByPart.mockResolvedValue(new Map([['ORDER-A\tPART-A', { status: 'ordered', basis: 'material' }]]));
+      mocks.prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany.mockResolvedValue(state ? [
+        { itemKey: 'row:item-a', state, recordedAt: new Date('2026-11-01T00:00:00Z') }
+      ] : []);
+      mocks.prisma.productionScheduleGrindingPlanningBoardArrival.findMany.mockResolvedValue(daily ? [{ itemKey: 'row:item-a' }] : []);
+      mocks.prisma.orderPlacementBranchState.findMany.mockResolvedValue(placed ? [
+        { manufacturingOrderBarcodeRaw: '1', shelfCodeRaw: 'A', updatedAt: new Date('2026-11-02T00:00:00Z') }
+      ] : []);
+      mocks.prisma.mobileSlipVerifyRecord.groupBy.mockResolvedValue(verified ? [
+        { transferOrderBarcodeRaw: '1', _max: { verifiedAt: new Date('2026-11-02T00:00:00Z') } }
+      ] : []);
+      const response = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'resource' });
+      expect(response.items[0]?.arrived).toBe(expected);
+    });
+
+  it('refreshes outsourced routing on snapshot and warm reads without changing cached items or revisions', async () => {
+    const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'resource' as const, snapshotStore, pageSize: 1 };
+    mocks.findOutsourcedRoutingArrivalByItemId.mockResolvedValue(new Map([['row:item-a', 'pending']]));
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.items[0]?.arrived).toBe(false);
+    mocks.findOutsourcedRoutingArrivalByItemId.mockResolvedValue(new Map([['row:item-a', 'done']]));
+    const next = await getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId });
+    const warm = await getGrindingPlanningBoard(params);
+    expect(next.items[0]?.arrived).toBe(true);
+    expect(warm.items[0]?.arrived).toBe(true);
+    expect(next.items[0]?.itemRevision).toBe(first.items[0]?.itemRevision);
+    expect((snapshotStore.get(first.snapshotId)?.payload as { items: object[] }).items[0]).not.toHaveProperty('arrived');
+    expect(mocks.findOutsourcedRoutingArrivalByItemId).toHaveBeenCalledTimes(3);
+    expect(mocks.findOutsourcedRoutingArrivalByItemId).toHaveBeenLastCalledWith([expect.objectContaining({ itemId: 'row:item-a', productNo: '1' })]);
   });
 
   it.each([
