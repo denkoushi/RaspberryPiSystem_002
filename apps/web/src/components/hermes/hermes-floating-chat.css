@@ -7,14 +7,14 @@
 
 .hermes-floating-trigger {
   position: fixed;
-  width: 58px;
-  height: 58px;
+  width: 29px;
+  height: 29px;
   padding: 0;
-  border: 1px solid rgba(136, 255, 190, 0.72);
+  border: 0.5px solid rgba(136, 255, 190, 0.72);
   border-radius: 50%;
   color: #d8ffe6;
   background: #071f18;
-  box-shadow: 0 8px 20px rgba(0, 20, 12, 0.32), inset 0 0 0 3px rgba(10, 86, 55, 0.9);
+  box-shadow: 0 4px 10px rgba(0, 20, 12, 0.32), inset 0 0 0 1.5px rgba(10, 86, 55, 0.9);
   cursor: grab;
   pointer-events: auto;
   touch-action: none;
@@ -34,7 +34,7 @@
 
 .hermes-floating-trigger__surface {
   position: absolute;
-  inset: 5px;
+  inset: 2.5px;
   overflow: hidden;
   border-radius: 50%;
   background: radial-gradient(circle at 34% 28%, #42f28b 0 4%, #0a8e52 20%, #063e2c 64%, #021c15 100%);
@@ -42,7 +42,7 @@
 
 .hermes-floating-trigger__streams {
   position: absolute;
-  inset: 3px 7px;
+  inset: 1.5px 3.5px;
   display: flex;
   justify-content: space-between;
   overflow: hidden;
@@ -52,11 +52,11 @@
 .hermes-floating-trigger__stream {
   display: block;
   color: #a4ffc4;
-  font-size: 9px;
+  font-size: 4.5px;
   font-weight: 700;
-  line-height: 11px;
-  text-shadow: 0 0 5px rgba(102, 255, 166, 0.92);
-  transform: translateY(-16px);
+  line-height: 5.5px;
+  text-shadow: 0 0 2.5px rgba(102, 255, 166, 0.92);
+  transform: translateY(-8px);
   /* Pi4 では毎フレーム動かすと無操作でも描画に 1 コア分近く使う（KB-413）。
      1 秒に 1 回だけ 1 行ぶん進め、8 本は同じ瞬間に切り替える。 */
   animation: hermes-matrix-stream 8s step-end infinite;
@@ -70,19 +70,19 @@
   place-items: center;
   color: #effff3;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 22px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: -0.08em;
-  text-shadow: 0 0 8px rgba(123, 255, 172, 0.9);
+  text-shadow: 0 0 4px rgba(123, 255, 172, 0.9);
 }
 
 .hermes-floating-trigger__context-dot {
   position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 9px;
-  height: 9px;
-  border: 2px solid #071f18;
+  top: 1px;
+  right: 1px;
+  width: 4.5px;
+  height: 4.5px;
+  border: 1px solid #071f18;
   border-radius: 50%;
   background: #9cf1b9;
 }
@@ -139,43 +139,43 @@
 @keyframes hermes-matrix-stream {
   0% {
     opacity: 0;
-    transform: translateY(-18px);
+    transform: translateY(-9px);
   }
 
   12.5% {
     opacity: 0.9;
-    transform: translateY(-6px);
+    transform: translateY(-3px);
   }
 
   25% {
     opacity: 0.8;
-    transform: translateY(6px);
+    transform: translateY(3px);
   }
 
   37.5% {
     opacity: 0.62;
-    transform: translateY(18px);
+    transform: translateY(9px);
   }
 
   50% {
     opacity: 0.46;
-    transform: translateY(30px);
+    transform: translateY(15px);
   }
 
   62.5% {
     opacity: 0.3;
-    transform: translateY(42px);
+    transform: translateY(21px);
   }
 
   75% {
     opacity: 0.16;
-    transform: translateY(54px);
+    transform: translateY(27px);
   }
 
   87.5%,
   100% {
     opacity: 0.05;
-    transform: translateY(66px);
+    transform: translateY(33px);
   }
 }
 
@@ -1189,7 +1189,7 @@
 .hermes-floating-trigger--inquiry-unread {
   border-color: #ffd9a0;
   background: #3a1800;
-  box-shadow: 0 8px 22px rgba(255, 138, 31, 0.45), inset 0 0 0 3px #b24a00;
+  box-shadow: 0 4px 11px rgba(255, 138, 31, 0.45), inset 0 0 0 1.5px #b24a00;
 }
 .hermes-floating-trigger--inquiry-unread .hermes-floating-trigger__surface {
   background: radial-gradient(circle at 34% 28%, #fff1d6 0 5%, #ffb14d 24%, #ff8a1f 62%, #d96200 100%);
@@ -1197,9 +1197,9 @@
 .hermes-floating-trigger--inquiry-unread .hermes-floating-trigger__glyph { color: #2a1000; text-shadow: none; }
 .hermes-floating-trigger--inquiry-unread .hermes-floating-trigger__streams { display: none; }
 .hermes-floating-trigger__inquiry-count {
-  position: absolute; top: -6px; right: -6px; display: grid; place-items: center;
-  min-width: 24px; height: 24px; padding: 0 6px; border: 2px solid #ff8a1f; border-radius: 12px;
-  color: #8a3500; background: white; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums;
+  position: absolute; top: -3px; right: -3px; display: grid; place-items: center;
+  min-width: 12px; height: 12px; padding: 0 3px; border: 1px solid #ff8a1f; border-radius: 6px;
+  color: #8a3500; background: white; font-size: 7px; font-weight: 800; font-variant-numeric: tabular-nums;
 }
 .hermes-inquiry-count {
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 6px;
@@ -1212,7 +1212,15 @@
 
 .hermes-chat-panel .hermes-chat-panel__voice {
   order: -1;
-  color: #b5ffca;
+  color: #fff;
+  background: #0a8e52;
+  border: 1px solid #06663b;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   align-self: flex-end;
 }
 
@@ -1289,4 +1297,28 @@
 .hermes-chat-panel .hermes-chat-panel__voice:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: -2px;
+}
+
+.hermes-floating-trigger[data-voice-state]::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border: 2px solid #ffd48a;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.hermes-floating-trigger[data-voice-state="recording"]::after {
+  border-color: #ff5a5a;
+  transform: scale(var(--hermes-voice-scale, 1));
+}
+.hermes-floating-trigger[data-voice-state="processing"]::after {
+  border-style: dashed;
+  animation: hermes-voice-spin 1s linear infinite;
+}
+.hermes-floating-trigger[data-voice-state="success"]::after { border-color: #7dffb0; }
+.hermes-floating-trigger[data-voice-state="error"]::after { animation: hermes-voice-error 0.3s step-end 3; }
+@keyframes hermes-voice-error { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .hermes-floating-trigger[data-voice-state]::after,
+  .hermes-chat-panel__voice-spinner { animation: none; transform: none; }
 }

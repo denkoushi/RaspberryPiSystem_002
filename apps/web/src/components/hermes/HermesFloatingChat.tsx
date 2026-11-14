@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 
 import {
   cancelBusinessHermesConsultation,
@@ -41,11 +41,11 @@ import { kioskLazy } from '../../features/kiosk/kioskLazyPreload';
 import { OperationGuidePrompt } from '../../features/operation-guide/OperationGuideChoices';
 import { OperationGuideOverlay } from '../../features/operation-guide/OperationGuideOverlay';
 import { useOperationGuide } from '../../features/operation-guide/useOperationGuide';
-import { resolveVoiceNavigation } from '../../features/voice/voiceNavigation';
 import { AiUnavailableBadge } from '../ui/AiUnavailableBadge';
 
 import { useHermesPageContext } from './HermesPageContext';
 import { HermesPageContextShortcuts } from './HermesPageContextShortcuts';
+import { useHermesVoiceNavigation } from './useHermesVoiceNavigation';
 
 import type { HermesChatPanelProps, HermesPanelMessage, HermesConsultationSuggestion, HermesKnowledgeMode } from './HermesChatPanel';
 import type { BusinessHermesChatEvidence, HermesRecordRefine } from '../../api/domains/assembly';
@@ -62,7 +62,7 @@ const INTRO_MESSAGE: HermesPanelMessage = {
 
 type ConsultationMode = 'loading' | 'available' | 'legacy';
 
-const ICON_SIZE = 58;
+const ICON_SIZE = 29;
 const VIEWPORT_GUTTER = 12;
 const PANEL_STANDARD_WIDTH = 380;
 const PANEL_INQUIRY_WIDTH = 560;
@@ -150,8 +150,6 @@ function responseText(response: BusinessHermesChatResponse | BusinessHermesConsu
 export function HermesFloatingChat() {
   const { user, token } = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
-  const [voiceMessages, setVoiceMessages] = useState<HermesPanelMessage[]>([]);
   const operationGuide = useOperationGuide();
   const { pageContext } = useHermesPageContext();
   const [viewport, setViewport] = useState(getViewport);
@@ -199,7 +197,6 @@ export function HermesFloatingChat() {
   knowledgeModeRef.current = knowledgeMode;
   const [clientKey, setClientKey] = useState(() => getResolvedClientKey());
   const clientKeyRef = useRef(clientKey);
-  useEffect(() => { setVoiceMessages([]); }, [clientKey, token, user?.id]);
   const inquiry = useKioskInquiryEntry(clientKey, location.pathname, open);
   const iconRef = useRef<HTMLButtonElement | null>(null);
   const scanFocusRef = useRef<HTMLDivElement | null>(null);
@@ -416,8 +413,24 @@ export function HermesFloatingChat() {
     setDraft(value);
   }, []);
 
+  const { holdVoice, voiceMessages, setVoiceMessages, onPanelTranscript } = useHermesVoiceNavigation(isDocumentVisible, open, text => {
+    draftRevisionRef.current += 1;
+    setDraft(current => current ? `${current} ${text}` : text);
+  }, () => {
+    inquiry.leave();
+    operationGuide.clear();
+    closeScanner();
+    setKnowledgeMode('search');
+    setOpen(true);
+  }, () => { setOpen(false); closeScanner(); });
+  useEffect(() => { setVoiceMessages([]); }, [clientKey, token, user?.id, setVoiceMessages]);
+  const { press: pressVoice, release: releaseVoice, cancel: cancelHoldVoice } = holdVoice;
+
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (dragRef.current || event.button > 0 || event.isPrimary === false) return;
     event.preventDefault();
+    suppressNextClickRef.current = false;
+    pressVoice();
     try {
       event.currentTarget.setPointerCapture(event.pointerId);
     } catch {
@@ -431,7 +444,7 @@ export function HermesFloatingChat() {
       startTop: position.top,
       moved: false
     };
-  }, [position.left, position.top]);
+  }, [position.left, position.top, pressVoice]);
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
@@ -440,9 +453,10 @@ export function HermesFloatingChat() {
     const deltaY = event.clientY - drag.startY;
     if (Math.abs(deltaX) > 4 || Math.abs(deltaY) > 4) drag.moved = true;
     if (!drag.moved) return;
+    cancelHoldVoice();
     movedByUserRef.current = true;
     setPosition(clampPosition(drag.startLeft + deltaX, drag.startTop + deltaY, viewport));
-  }, [viewport]);
+  }, [viewport, cancelHoldVoice]);
 
   const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLButtonElement>) => {
     const drag = dragRef.current;
@@ -454,18 +468,18 @@ export function HermesFloatingChat() {
       // Pointer capture is unavailable in a few embedded WebViews.
     }
     suppressNextClickRef.current = true;
-    window.setTimeout(() => {
-      suppressNextClickRef.current = false;
-    }, 0);
-    if (!drag.moved) toggleOpen();
-  }, [toggleOpen]);
+    const wasHeld = releaseVoice();
+    if (!drag.moved && !wasHeld) toggleOpen();
+  }, [toggleOpen, releaseVoice]);
 
   const handlePointerCancel = useCallback(() => {
     dragRef.current = null;
-  }, []);
+    suppressNextClickRef.current = true;
+    cancelHoldVoice();
+  }, [cancelHoldVoice]);
 
   const handleButtonClick = useCallback(() => {
-    if (suppressNextClickRef.current) return;
+    if (suppressNextClickRef.current) { suppressNextClickRef.current = false; return; }
     toggleOpen();
   }, [toggleOpen]);
 
@@ -979,7 +993,7 @@ export function HermesFloatingChat() {
     maxHeight: panelHeight
   };
   const { unavailable } = useLocalLlmAvailability();
-  const iconStyle = { left: position.left, top: position.top };
+  const iconStyle = { left: position.left, top: position.top, '--hermes-voice-scale': 1 + holdVoice.level * 10 / (ICON_SIZE + 4) } as CSSProperties;
   const recordFeedback = async (messageId: string, verdict: 'helpful' | 'unhelpful') => {
     if (!activeConsultation || feedbackBusy) return;
     const consultationId = activeConsultation.id;
@@ -1025,19 +1039,7 @@ export function HermesFloatingChat() {
     attachmentControl: knowledgeMode === 'knowledge' && knowledge.enabled && knowledgeDestination.ready ? <KnowledgeAttachments files={knowledge.files} onChange={knowledge.setFiles} disabled={isBusy || knowledge.busy} onSend={() => void sendMessage()} /> : null,
     mode: knowledgeMode === 'record-pilot' || consultationMode === 'legacy' ? 'legacy' : 'consultations',
     messages: [...messages, ...voiceMessages],
-    onVoiceTranscript: text => {
-      const destination = resolveVoiceNavigation(text);
-      if (destination) {
-        setVoiceMessages(current => [...current,
-          { id: crypto.randomUUID(), role: 'user', content: text, localOnly: true, voice: true },
-          { id: crypto.randomUUID(), role: 'assistant', content: `${destination.label} を開きました。`, localOnly: true }
-        ]);
-        navigate(destination.path);
-      } else {
-        draftRevisionRef.current += 1;
-        setDraft(current => current ? `${current} ${text}` : text);
-      }
-    },
+    onVoiceTranscript: onPanelTranscript,
     draft,
     isBusy: isBusy || (knowledgeMode === 'knowledge' && knowledge.busy),
     error,
@@ -1076,7 +1078,8 @@ export function HermesFloatingChat() {
         type="button"
         className={`hermes-floating-trigger${inquiry.unreadCount > 0 ? ' hermes-floating-trigger--inquiry-unread' : ''}${isDocumentVisible ? '' : ' hermes-floating-trigger--paused'}`}
         style={iconStyle}
-        aria-label={inquiry.unreadCount > 0 ? `お問い合わせ 未読 ${inquiry.unreadCount} 件` : "業務Hermesチャットを開く。ドラッグで移動できます"}
+        data-voice-state={holdVoice.state ?? undefined}
+        aria-label={holdVoice.state === 'recording' ? '聞き取り中' : holdVoice.state === 'processing' ? '文字にしています' : inquiry.unreadCount > 0 ? `お問い合わせ 未読 ${inquiry.unreadCount} 件` : "業務Hermesチャットを開く。ドラッグで移動できます"}
         aria-expanded={open}
         title={showPageContextIndicator ? 'この品番で検索できます' : '業務Hermesチャット（ドラッグで移動）'}
         onClick={handleButtonClick}
@@ -1085,6 +1088,7 @@ export function HermesFloatingChat() {
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
+        onLostPointerCapture={() => { if (dragRef.current) handlePointerCancel(); }}
       >
         <span className="hermes-floating-trigger__surface" aria-hidden="true">
           <span className="hermes-floating-trigger__streams">
