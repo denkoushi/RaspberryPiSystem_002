@@ -43,6 +43,11 @@ describe('missing standard hours selection', () => {
   it.each(['731', 'OUTSOURCE'])('excludes resource %s absent from every schedule row', (fkoteicd) => {
     expect(buildMissingStandardHoursProcesses([mail({ fkoteicd })], [schedule()])).toEqual([]);
   });
+  it('skips values wider than the evidence columns instead of failing the mail sync', () => {
+    const order = '0'.repeat(33);
+    expect(buildMissingStandardHoursProcesses([mail({ fkojun: '7'.repeat(21) })], [schedule()])).toEqual([]);
+    expect(buildMissingStandardHoursProcesses([mail({ fsezono: order })], [schedule({ ProductNo: order })])).toEqual([]);
+  });
   it('allows resource membership supplied by another manufacturing order', () => {
     expect(buildMissingStandardHoursProcesses([mail({ fkoteicd: '588' })], [schedule(), schedule({ ProductNo: 'other', FSIGENCD: '588' }, 'other')])).toHaveLength(1);
   });

@@ -47,7 +47,9 @@ export function buildMissingStandardHoursProcesses(
     if (!(FKOJUNST_MAIL_LIST_VISIBLE_STATUS_CODES as readonly string[]).includes(row.statusCode)
       || !donor || scheduledProcesses.has(key)
       || row.sourceUpdatedAt.getTime() < latestByProcess.get(key)!
-      || !resources.has(row.fkoteicd)) return [];
+      || !resources.has(row.fkoteicd)
+      // Column widths (VARCHAR 32/20/40): an oversized mail value must not roll back the whole sync.
+      || row.fsezono.length > 32 || row.fkojun.length > 20 || row.fkoteicd.length > 40) return [];
     return [{ csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, csvDashboardRowId: donor.id,
       fsezono: row.fsezono, fkojun: row.fkojun, fkoteicd: row.fkoteicd,
       statusCode: row.statusCode, sourceUpdatedAt: row.sourceUpdatedAt }];
