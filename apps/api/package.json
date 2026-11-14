@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage --coverage.provider=v8",
     "design:preview": "tsx scripts/design-preview.ts",
+    "prune:csv-append-raw-rows": "tsx src/scripts/prune-csv-append-raw-rows.ts",
+    "prune:csv-append-raw-rows:prod": "node dist/scripts/prune-csv-append-raw-rows.js",
     "prune:fkojunst-mail-superseded": "tsx src/scripts/prune-fkojunst-status-mail-superseded.ts",
     "prune:fkojunst-mail-superseded:prod": "node dist/scripts/prune-fkojunst-status-mail-superseded.js",
     "backfill:procedure-material-image-description": "tsx src/scripts/backfill-procedure-material-image-description.ts",
