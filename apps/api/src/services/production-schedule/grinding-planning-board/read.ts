@@ -5,6 +5,7 @@ import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './s
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { Prisma } from '@prisma/client';
 import { LSLH_SURFACE_PROCESS_CODES, PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
+import { findOutsourcedRoutingArrivalByItemId } from '../outsourced-routing-arrival.service.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { isMachineSectionAssigned } from '../d-schedule-minutes/machine-section-assignee.js';
 import type { BoardDueSource } from '../d-schedule-minutes/resolve-board-due-date.js';
@@ -372,6 +373,7 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
   const page = orderedItems.slice(cursor, cursor + pageSize);
   // 材料の入荷状況は購買CSVの取込で変わるため、スナップショットや itemRevision に含めず応答のたびに付ける。
   const materialArrivalByPart = await perf.measure('materialArrival', () => findMaterialArrivalStatusByPart(page));
+  const outsourcedByItemId = await perf.measure('outsourcedRouting', () => findOutsourcedRoutingArrivalByItemId(page));
   // 配膳先も随時変わるため、保存済みの projection を変更せず応答にだけ付ける。
   const placementByProductNo = await perf.measure('placement', () => findPlacementByProductNo(page));
   const arrivalRows = await perf.measure('processArrival', () => enrichRowsWithProcessArrival(page.map((item) => ({
@@ -407,12 +409,20 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
       : manual?.state === 'excluded' && !newerPlacement ? 'excluded' as const : null;
     const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
       : Boolean(placement) || verifiedAt != null || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
+    const outsourced = outsourcedByItemId.get(item.itemId) ?? 'none';
+    const manuallyArrived = isFirstProcess ? firstProcessState === 'arrived' : manualArrivalIds.has(item.parentItemId ?? item.itemId);
+    let arrived = isFirstProcess ? firstProcessArrived : manuallyArrived || (arrivalById.get(item.itemId)?.arrived ?? true);
+    if (outsourced === 'pending') {
+      arrived = manuallyArrived || Boolean(placement) || (isFirstProcess && verifiedAt != null);
+    } else if (outsourced === 'done' && isFirstProcess) {
+      arrived = firstProcessState !== 'excluded';
+    }
     return {
       ...item,
       isFirstProcess,
       firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
-      arrived: isFirstProcess ? firstProcessArrived : manualArrivalIds.has(item.parentItemId ?? item.itemId) || (arrivalById.get(item.itemId)?.arrived ?? true),
+      arrived,
       manualArrivalDate: manualArrivalIds.has(item.parentItemId ?? item.itemId) ? arrivalDate : null,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),
