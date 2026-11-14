@@ -6,14 +6,27 @@ import { env } from '../../../config/env.js';
 import { FkojunstMailSupersededPruneScheduler } from '../fkojunst-status-mail-superseded-prune.scheduler.js';
 
 describe('FkojunstMailSupersededPruneScheduler', () => {
-  it('stays disabled by default until a new production dry-run has been reviewed', () => {
-    expect(env.FKOJUNST_MAIL_PRUNE_ENABLED).toBe(false);
-    const schedule = vi.spyOn(cron, 'schedule');
+  it('is enabled by default and registers the nightly cron in Asia/Tokyo', () => {
+    expect(env.FKOJUNST_MAIL_PRUNE_ENABLED).toBe(true);
+    const schedule = vi.spyOn(cron, 'schedule').mockReturnValue({ stop: vi.fn() } as never);
     const run = vi.fn();
     new FkojunstMailSupersededPruneScheduler(run as never).start();
-    expect(schedule).not.toHaveBeenCalled();
+    expect(schedule).toHaveBeenCalledWith('40 3 * * *', expect.any(Function), { timezone: 'Asia/Tokyo' });
     expect(run).not.toHaveBeenCalled();
     schedule.mockRestore();
+  });
+
+  it('does not register when disabled', () => {
+    const schedule = vi.spyOn(cron, 'schedule');
+    const original = env.FKOJUNST_MAIL_PRUNE_ENABLED;
+    (env as { FKOJUNST_MAIL_PRUNE_ENABLED: boolean }).FKOJUNST_MAIL_PRUNE_ENABLED = false;
+    try {
+      new FkojunstMailSupersededPruneScheduler(vi.fn() as never).start();
+      expect(schedule).not.toHaveBeenCalled();
+    } finally {
+      (env as { FKOJUNST_MAIL_PRUNE_ENABLED: boolean }).FKOJUNST_MAIL_PRUNE_ENABLED = original;
+      schedule.mockRestore();
+    }
   });
 
   it('runs the prune in execute mode with the per-run limit', async () => {
