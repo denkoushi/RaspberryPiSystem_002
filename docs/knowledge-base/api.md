@@ -4578,6 +4578,11 @@ docker compose -f docker-compose.server.yml restart api
   - 守り: ダッシュボードの ingestMode が APPEND でなければ消さない。基準の回の窓の行数が rowsAdded と合わなければ消さない（時刻の受け渡しのずれ対策）。6時間以内の PROCESSING の回が基準より前に始まっていれば、その startedAt を上限にする（並行して走る回の行を消さない）。候補の id は1回だけ取り、ORDER BY は付けない。
   - 確認用: `pnpm prune:csv-append-raw-rows:prod`（既定は dry-run、`--execute` で削除）。後処理のログは `[CsvDashboardPostIngestService] append raw row prune completed`（`deletedCount` / `hasRemaining`）。
   - 前提: `CsvDashboardRow` を onDelete Cascade で参照する9表（生産日程の備考・進捗・外部完了・全体順位など。本番の外部キーも同じ9つ）に、3種の行への参照は無い（11/14 本番で 0 件）。この3種を可視化やサイネージに使うと、表示は最新の回の分だけになる。
+- **11) FKOBAINO（購買）の CSV から消えた行が残り続ける（2026-11-14）**:
+  - 原因: FKOBAINO は DEDUP 取り込み（キー FKOBAINO・FHINCD・FSEIBAN）で、毎回の CSV は約7千行だが、CSV から消えた行を消さない。本番 11/14 は 313,394 行。
+  - 対策: `csv-dashboard-fkobaino-age-prune.service.ts`。購買照会の同期が成功した後に、後処理から裏で動かす（同じダッシュボードでは重ねない）。`occurredAt` が 90 日より古い行（＝90 日以上 CSV に出てきていない行。項目 9 で CSV に残る行は最大 37 日ごとに書き直される）を消す。今回の取り込み回の行は消さない。ingestMode が DEDUP でなければ消さない。候補の id は1回だけ取り、1回の DELETE は 1,000 行（主キーに加えて同じ条件を付け直す）、取り込みのロックは DELETE の間だけ持つ。1回の後処理で最大 20,000 行。止めるときは `CSV_FKOBAINO_AGE_PRUNE_ENABLED=false`。
+  - 確認用: `pnpm prune:csv-fkobaino-aged-rows:prod`（既定は dry-run、`--execute` で1回分だけ削除。API の取り込みと重ねない）。後処理のログは `[CsvDashboardPostIngestService] fkobaino age prune completed`。
+  - 前提: 購買照会の写し `PurchaseOrderLookupRow` はその回の CSV ファイルから追加・上書きするだけで行を消さないので、元の行を消しても照会は変わらない。11/14 本番で 90 日より古い行は 107,487、Cascade の9表からの参照は 0 件。FKOBAINO を可視化やサイネージに使うと、表示は 90 日以内の分だけになる。
 
 ---
 
