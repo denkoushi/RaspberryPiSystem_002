@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 
+import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
@@ -28,6 +29,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
+  clearManualLists();
     vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, checkSheets: 1, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });

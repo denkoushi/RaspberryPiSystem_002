@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
+import { clearManualLists, fetchManualList, readManualList } from './procedure-manual-list-cache';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { AssemblyProcedureSequenceDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
@@ -45,6 +46,7 @@ const overview: ProcedureManualModelOverviewDto = { modelCode: 'DFD1', modelCode
 function Location() { const location = useLocation(); return <output data-testid="location">{JSON.stringify({ pathname: location.pathname, search: location.search, state: location.state })}</output>; }
 function show(query = '?model=DFD1&process=assembly') { return render(<MemoryRouter initialEntries={[`/kiosk/assembly/manuals/workshop${query}`]}><ProcedureManualWorkshop /><Location /></MemoryRouter>); }
 beforeEach(() => {
+  clearManualLists();
   vi.resetAllMocks();
   clearProcedureEditorAccess(); saveProcedureEditorAccess('2520');
   mocks.verify.mockResolvedValue({ success: true });
@@ -74,6 +76,137 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
+  it('displays initial results without waiting for unrelated counts', async () => {
+    let finish!: (rows: unknown[]) => void;
+    mocks.videos.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    show();
+    await waitFor(() => expect(mocks.videos).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole('row', { name: '公開手順' })).toBeInTheDocument();
+    await act(async () => { finish([{}]); });
+    expect(await screen.findByRole('row', { name: '公開手順' })).toBeInTheDocument();
+    expect(mocks.processes).toHaveBeenCalledTimes(1);
+    expect(mocks.models).toHaveBeenCalledTimes(1);
+    expect(mocks.allOverview).toHaveBeenCalledTimes(1);
+    expect(mocks.materials).toHaveBeenCalledTimes(1);
+    expect(mocks.videos).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps successful initial results when models and counts fail', async () => {
+    mocks.models.mockRejectedValue(new Error('機種を検索できません'));
+    mocks.materials.mockRejectedValue(new Error('素材エラー'));
+    mocks.videos.mockRejectedValue(new Error('動画エラー'));
+    show();
+    expect(await screen.findByRole('row', { name: '公開手順' })).toBeInTheDocument();
+    expect(screen.getByText('機種を検索できません')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '素材 —' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '動画 —' })).toBeInTheDocument();
+  });
+
+  it('displays cached rows immediately on remount and revalidates them', async () => {
+    const first = show();
+    await screen.findByRole('row', { name: '公開手順' });
+    first.unmount();
+    let finish!: (value: unknown) => void;
+    mocks.allOverview.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    show();
+    expect(screen.getByRole('row', { name: '公開手順' })).toBeInTheDocument();
+    await waitFor(() => expect(mocks.allOverview).toHaveBeenCalledTimes(2));
+    await act(async () => { finish({ processes: [{ processId: 'assembly', items: [{ ...published, title: '更新された手順', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly' }] }] }); });
+    expect(await screen.findByRole('row', { name: '更新された手順' })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: '公開手順' })).not.toBeInTheDocument();
+  });
+
+  it('fetches fresh rows after a save increments version instead of restoring the cache', async () => {
+    show();
+    await screen.findByRole('row', { name: '公開手順' });
+    fireEvent.click(screen.getByRole('button', { name: '既存の要領書を割り当てる' }));
+    let finish!: (value: unknown) => void;
+    mocks.allOverview.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    fireEvent.click(screen.getByRole('button', { name: '保存' }));
+    expect(screen.queryByRole('row', { name: '公開手順' })).not.toBeInTheDocument();
+    await waitFor(() => expect(mocks.allOverview).toHaveBeenCalledTimes(2));
+    await act(async () => { finish({ processes: [{ processId: 'assembly', items: [{ ...published, title: '保存後の手順', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly' }] }] }); });
+    const row = await screen.findByRole('row', { name: '保存後の手順' });
+    expect(within(row).getAllByRole('cell').slice(3, 5).map(cell => cell.textContent)).toEqual(['組立', '組立']);
+    expect(screen.getByRole('button', { name: '組立' })).toBeInTheDocument();
+    expect(mocks.processes).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['素材', '動画'])('finishes loading after typing, clearing and opening %s while initial requests are pending', async shelf => {
+    let finishModels!: (rows: { modelCode: string; modelCodeKey: string }[]) => void;
+    let finishProcesses!: (rows: typeof processes) => void;
+    let finishOverview!: (value: { processes: unknown[] }) => void;
+    mocks.models.mockReturnValueOnce(new Promise(resolve => { finishModels = resolve; }));
+    mocks.processes.mockReturnValueOnce(new Promise(resolve => { finishProcesses = resolve; }));
+    mocks.allOverview.mockReturnValueOnce(new Promise(resolve => { finishOverview = resolve; }));
+    mocks.candidates.mockReturnValueOnce(new Promise(() => {}));
+    show('');
+    fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: 'D' } });
+    fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${shelf} `) }));
+    await act(async () => {
+      finishModels([{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]);
+      finishProcesses(processes);
+      finishOverview({ processes: [{ processId: 'assembly', items: [{ ...published, modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly' }] }] });
+    });
+    fireEvent.click(within(screen.getByRole('dialog', { name: shelf })).getByRole('button', { name: '閉じる' }));
+    expect(await screen.findByRole('button', { name: 'DFD1' })).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: '公開手順' })).toBeInTheDocument();
+    expect(screen.queryByText('検索中…')).not.toBeInTheDocument();
+    expect(mocks.models).toHaveBeenCalledTimes(1);
+    expect(mocks.processes).toHaveBeenCalledTimes(1);
+    expect(mocks.allOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('clears cached candidates immediately when searching after a cached remount', async () => {
+    const first = show('');
+    await screen.findByRole('row', { name: '公開手順' });
+    await act(async () => {});
+    first.unmount();
+    mocks.candidates.mockReturnValueOnce(new Promise(() => {}));
+    show('');
+    expect(screen.getByRole('button', { name: 'DFD1' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('機種検索'), { target: { value: 'D' } });
+    expect(screen.queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
+    expect(screen.getByText('検索中…')).toBeInTheDocument();
+    expect(mocks.processes).toHaveBeenCalledTimes(2);
+    await act(async () => {});
+    expect(mocks.allOverview).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['直す', '作る', '素材から作る'])('invalidates lists before leaving for %s and waits for fresh results on return', async action => {
+    const first = show();
+    const row = await screen.findByRole('row', { name: '公開手順' });
+    await fetchManualList('publishedOverview', async () => ({ processes: [] }));
+    expect(readManualList('publishedOverview')).toBeDefined();
+    if (action === '直す') fireEvent.click(within(row).getByRole('button', { name: action }));
+    else if (action === '作る') fireEvent.click(screen.getByRole('button', { name: action }));
+    else {
+      fireEvent.click(screen.getByRole('button', { name: /^素材 / }));
+      fireEvent.click(screen.getByRole('button', { name: '要領書を作る' }));
+    }
+    expect(readManualList('publishedOverview')).toBeUndefined();
+    first.unmount();
+    let finish!: (value: { processes: unknown[] }) => void;
+    mocks.allOverview.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    show();
+    expect(screen.queryByRole('row', { name: '公開手順' })).not.toBeInTheDocument();
+    await act(async () => { finish({ processes: [{ processId: 'assembly', items: [{ ...published, title: '編集後の手順', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly' }] }] }); });
+    expect(await screen.findByRole('row', { name: '編集後の手順' })).toBeInTheDocument();
+  });
+
+  it.each(['processes', 'allOverview'] as const)('keeps HEAD error arrival priority when %s fails last', async last => {
+    let failProcesses!: (error: Error) => void;
+    let failOverview!: (error: Error) => void;
+    mocks.processes.mockReturnValueOnce(new Promise((_, reject) => { failProcesses = reject; }));
+    mocks.allOverview.mockReturnValueOnce(new Promise((_, reject) => { failOverview = reject; }));
+    show();
+    await act(async () => { (last === 'processes' ? failOverview : failProcesses)(new Error('先の失敗')); });
+    expect(screen.getByRole('alert')).toHaveTextContent('先の失敗');
+    await act(async () => { (last === 'processes' ? failProcesses : failOverview)(new Error('後の失敗')); });
+    expect(screen.getByRole('alert')).toHaveTextContent('後の失敗');
+  });
+
   it.each(['', '?model=DFD1', '?process=assembly', '?model=DFD1&process=assembly'])('splits names and retains metadata fallbacks in every filter state: %s', async query => {
     const namedItems = [
       { ...published, assignmentId: 'named', title: '元タイトル', label: '主軸_P-123_加工_研削_仕上げ_確認' },

@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
+import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
@@ -43,6 +44,7 @@ function showWorkshop(query = '?common=1') { return render(<MemoryRouter initial
 const onChanged = vi.fn(); const onFix = vi.fn();
 function showDialog(categoryId = 'tools') { return render(<MemoryRouter><ProcedureManualCommonDialog catalog={catalog} items={items} categoryId={categoryId} onClose={vi.fn()} onChanged={onChanged} onFix={onFix} beforeMutation={() => true} /><Location /></MemoryRouter>); }
 beforeEach(() => {
+  clearManualLists();
   vi.resetAllMocks(); clearProcedureEditorAccess(); saveProcedureEditorAccess('test-pin');
   api.catalog.mockResolvedValue(catalog);
   api.overview.mockImplementation(async (_processId, published) => ({ processes: processes.map(row => ({ processId: row.id, count: 0, items: items.filter(item => item.processId === row.id && (!published || item.status === 'published')) })) }));
@@ -78,6 +80,31 @@ describe('common mode in the shared screens', () => {
     fireEvent.click(screen.getByRole('button', { name: '清掃', exact: true }));
     fireEvent.click(screen.getByRole('button', { name: '作る' }));
     expect(within(screen.getByRole('dialog', { name: '共通の手順を作る' })).getByRole('button', { name: '清掃', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('keeps refreshed common data when older overview and catalog requests finish later', async () => {
+    const first = showWorkshop('?common=1&process=tools');
+    await screen.findByRole('row', { name: 'トルクレンチ_使い方' });
+    first.unmount();
+    let finishOverview!: (value: { processes: unknown[] }) => void;
+    let finishCatalog!: (value: ProcedureManualCommonCatalogDto) => void;
+    api.overview.mockReturnValueOnce(new Promise(resolve => { finishOverview = resolve; }));
+    api.catalog.mockReturnValueOnce(new Promise(resolve => { finishCatalog = resolve; }));
+    showWorkshop('?common=1&process=tools');
+    fireEvent.click(screen.getByRole('button', { name: '作る' }));
+    const dialog = within(screen.getByRole('dialog', { name: '共通の手順を作る' }));
+    fireEvent.click(dialog.getByRole('button', { name: '分類を編集' }));
+    const section = within(dialog.getByRole('region', { name: '分類', exact: true }));
+    fireEvent.change(section.getByLabelText('分類の名前'), { target: { value: '新しい分類' } });
+    const updated = { ...catalog, categories: [...catalog.categories, { ...catalog.categories[0], id: 'new', name: '新しい分類' }] };
+    api.catalog.mockResolvedValue(updated);
+    api.overview.mockResolvedValue({ processes: [{ processId: 'tools', items: [item('new', '新しい工具', 'tools', 'あ')] }] });
+    fireEvent.click(section.getByRole('button', { name: '追加' }));
+    expect(await screen.findByRole('row', { name: '新しい工具_使い方' })).toBeInTheDocument();
+    await act(async () => { finishCatalog(catalog); finishOverview({ processes: [{ processId: 'tools', items }] }); });
+    expect(screen.getByRole('row', { name: '新しい工具_使い方' })).toBeInTheDocument();
+    expect(dialog.getByRole('button', { name: '新しい分類', exact: true })).toBeInTheDocument();
+    expect(screen.queryByRole('row', { name: 'トルクレンチ_使い方' })).not.toBeInTheDocument();
   });
 
   it('reserves an empty action row above the kind toggle until a common child category is selected', async () => {

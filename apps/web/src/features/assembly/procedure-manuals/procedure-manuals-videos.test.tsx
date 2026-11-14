@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
 import { ProcedurePageVideoStrip } from './ProcedurePageVideoStrip';
 import { ProcedureVideoPlaybackDialog } from './ProcedureVideoPlaybackDialog';
@@ -40,6 +41,7 @@ const failed: ProcedureVideoDto = { ...ready, id: 'failed', title: '失敗動画
 const pending: ProcedureVideoDto = { ...failed, id: 'pending', title: '受付動画', status: 'PENDING', errorCode: null, errorMessage: null };
 const scene = { id: 'scene', title: '仮締め', startSeconds: 2, endSeconds: 8, linkCount: 0, hasScenePoster: false };
 beforeEach(() => {
+  clearManualLists();
   vi.resetAllMocks();
   mocks.autoEdit.mockResolvedValue(null);
   mocks.list.mockResolvedValue([ready, failed, pending]); mocks.page.mockResolvedValue([]); mocks.save.mockResolvedValue([]);

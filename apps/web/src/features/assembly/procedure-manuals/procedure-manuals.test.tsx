@@ -3,6 +3,7 @@ import { useEffect, type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualBrowser } from './ProcedureManualBrowser';
@@ -55,6 +56,7 @@ const emptyDetail: ProcedureManualDetailDto = {
 
 describe('procedure-manuals', () => {
   beforeEach(() => {
+  clearManualLists();
     vi.resetAllMocks();
     localStorage.setItem('procedure-manuals-list-open', 'true');
     mocks.models.mockResolvedValue([{ modelCode: 'ｄｆｄ１', modelCodeKey: 'DFD1' }, { modelCode: 'DFD2', modelCodeKey: 'DFD2' }]);

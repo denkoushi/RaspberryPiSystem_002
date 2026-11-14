@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import { getProcedureManualAssignments, getProcedureManualOverview, listProcedureManualCommon, listProcedureManualModels, listProcedureManualParts, listProcedureManualProcesses } from '../../../api/client';
@@ -7,8 +7,10 @@ import { AssemblyProcedureSequenceViewer } from '../AssemblyProcedureSequenceVie
 import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
+
 import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
 import { extractProcedureManualPartFacets } from './procedure-manual-part-facets';
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
@@ -35,24 +37,24 @@ export function ProcedureManualBrowser() {
     if (next) { setTwoPages(false); if (subjectKind === 'COMMON') setModelCodeKey(''); }
     try { localStorage.setItem('procedure-manuals-list-open', String(next)); } catch { /* Storage is optional on kiosk devices. */ }
   };
-  const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
-  const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
+  const [models, setModels] = useState<ProcedureManualModelDto[]>(() => readManualList('models') ?? []);
+  const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>(() => readManualList('processes') ?? []);
   const [allKind, setAllKind] = useState<'MODEL' | 'PART' | 'COMMON'>(() => params.has('common') ? 'COMMON' : params.has('part') ? 'PART' : 'MODEL');
   const [modelCodeKey, setModelCodeKey] = useState(() => params.has('common') ? '' : params.has('part') ? normalizeWorkInstructionPartNumber(params.get('part')) : procedureManualModelKey(params.get('model') ?? ''));
   const [processId, setProcessId] = useState(() => params.get('process') ?? '');
   const subjectKind = processes.find(row => row.id === processId)?.subjectKind ?? allKind;
   const [kanaRow, setKanaRow] = useState('');
-  const [partCandidates, setPartCandidates] = useState<ProcedureManualModelDto[]>([]);
+  const [partCandidates, setPartCandidates] = useState<ProcedureManualModelDto[]>(() => readManualList('parts')?.map(part => ({ modelCode: part.partNumber, modelCodeKey: part.partNumberKey })) ?? []);
   const [userSelectedModel, setUserSelectedModel] = useState(false);
   const [initialDocumentId, setInitialDocumentId] = useState<string>();
-  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
+  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>(() => readManualList('publishedOverview')?.processes.flatMap(row => row.items) ?? []);
   const [search, setSearch] = useState('');
   const [selectedAxis, setSelectedAxis] = useState('');
   const [selectedName, setSelectedName] = useState('');
   useEffect(() => { setSelectedAxis(''); setSelectedName(''); }, [processId, modelCodeKey, subjectKind]);
   const [partDigits, setPartDigits] = useState('');
   const [detail, setDetail] = useState<ProcedureManualDetailDto | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readManualList('publishedOverview'));
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState<AssemblyProcedureSequencePageDto | null>(null);
   const onPageChange = useCallback((page: AssemblyProcedureSequencePageDto | null) => setCurrentPage(page), []);
@@ -60,8 +62,19 @@ export function ProcedureManualBrowser() {
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([listProcedureManualModels(), allKind === 'COMMON' ? listProcedureManualCommon(true).then(() => listProcedureManualProcesses()) : listProcedureManualProcesses(), getProcedureManualOverview(undefined, true), listProcedureManualParts()]).then(([nextModels, nextProcesses, nextOverview, nextParts]) => {
-      if (!cancelled) { setModels(nextModels); setProcesses(nextProcesses); setItems(nextOverview.processes.flatMap(process => process.items)); setPartCandidates(nextParts.map(part => ({ modelCode: part.partNumber, modelCodeKey: part.partNumberKey }))); }
+    void Promise.all([
+      fetchManualList('models', listProcedureManualModels),
+      allKind === 'COMMON'
+        ? fetchManualList('publishedCommon', () => listProcedureManualCommon(true)).then(() => fetchManualList('processes', listProcedureManualProcesses))
+        : fetchManualList('processes', listProcedureManualProcesses),
+      fetchManualList('publishedOverview', () => getProcedureManualOverview(undefined, true)),
+      fetchManualList('parts', listProcedureManualParts)
+    ]).then(([nextModels, nextProcesses, nextOverview, nextParts]) => {
+      if (!cancelled) {
+        setModels(current => retainEqual(current, nextModels)); setProcesses(current => retainEqual(current, nextProcesses));
+        setItems(current => retainEqual(current, nextOverview.processes.flatMap(process => process.items)));
+        setPartCandidates(current => retainEqual(current, nextParts.map(part => ({ modelCode: part.partNumber, modelCodeKey: part.partNumberKey }))));
+      }
     }).catch((e: unknown) => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '一覧を取得できません')); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -84,16 +97,17 @@ export function ProcedureManualBrowser() {
     return () => { cancelled = true; };
   }, [modelCodeKey, processId]);
 
+  const parsedNames = useMemo(() => new Map(items.map(item => [item.title, splitProcedureManualName(item.title)] as const)), [items]);
   const visibleModels = models.filter((m) => m.modelCodeKey.includes(procedureManualModelKey(search)));
   const visibleItems = subjectKind === 'COMMON' ? filterProcedureManualCommonItems(items, processes, processId, kanaRow, search) : items.filter(item => item.subjectKind !== 'COMMON' && processes.find(row => row.id === item.processId)?.subjectKind !== 'COMMON' && (!modelCodeKey || item.modelCodeKey === modelCodeKey)
     && (!processId || item.processId === processId) && (!modelCodeKey || (processes.find(process => process.id === item.processId)?.subjectKind ?? 'MODEL') === subjectKind));
   const partNames: Record<string, string> = {};
   for (const item of items) {
     if ((item.subjectKind ?? processes.find(process => process.id === item.processId)?.subjectKind) !== 'PART') continue;
-    const name = splitProcedureManualName(item.title)?.partName;
+    const name = parsedNames.get(item.title)?.partName;
     if (name && !partNames[item.modelCodeKey]) partNames[item.modelCodeKey] = name;
   }
-  const { facets, axes, names } = extractProcedureManualPartFacets(visibleItems.map(item => splitProcedureManualName(item.title)?.partName ?? item.title));
+  const { facets, axes, names } = extractProcedureManualPartFacets(visibleItems.map(item => parsedNames.get(item.title)?.partName ?? item.title));
   const filteredItems = visibleItems.filter((_, index) => (!selectedAxis || facets[index].axis === selectedAxis) && (!selectedName || facets[index].name === selectedName));
   const hasFacets = axes.length > 0 || names.length > 0;
   const showOverview = listOpen && (subjectKind === 'COMMON' ? !modelCodeKey : !modelCodeKey || !processId);
@@ -169,7 +183,7 @@ export function ProcedureManualBrowser() {
           </div>
           {filteredItems.map(item => {
             const child = processes.find(process => process.id === item.processId);
-            const name = splitProcedureManualName(item.title) ?? {
+            const name = parsedNames.get(item.title) ?? {
               partName: item.title, subjectKey: item.modelCode,
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
