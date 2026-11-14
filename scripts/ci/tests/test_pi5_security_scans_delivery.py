@@ -66,6 +66,11 @@ class Pi5SecurityScansDeliveryTest(unittest.TestCase):
         self.assertEqual(freshclam, {'name': 'clamav-freshclam', 'state': 'started', 'enabled': True})
         daemon = by_name['Stop the unused ClamAV daemon']['ansible.builtin.systemd']
         self.assertEqual(daemon, {'name': 'clamav-daemon', 'state': 'stopped', 'enabled': False})
+        self.assertNotIn('failed_when', by_name['Stop the unused ClamAV daemon'])
+        socket = by_name['Stop the unused ClamAV daemon socket']
+        self.assertEqual(socket['ansible.builtin.systemd'],
+                         {'name': 'clamav-daemon.socket', 'state': 'stopped', 'enabled': False})
+        self.assertIn('Could not find the requested service', ' '.join(socket['failed_when']))
         weekly = by_name['Remove the duplicate weekly ClamAV job']
         self.assertEqual(weekly['ansible.builtin.file']['state'], 'absent')
         self.assertEqual(weekly['loop'], ['/etc/cron.d/clamav-weekly', '/usr/local/bin/clamav-weekly-scan.sh'])
