@@ -355,6 +355,7 @@ update-frequency: medium
 - Debian bookworm系ではTrivyのAPTパッケージが提供されていないため、公式リリースを直接導入するのが確実
 - `freshclam`デーモンに任せれば手動`freshclam`は不要で、ログロックエラーも避けられる
 - 2026-10-17: 夜間スキャン（03:00〜04:17）がDBバックアップと同じUSB SSDを奪い合い、キオスクの応答が10秒を超えていた。Pi5の`/dev/sda`は`mq-deadline`で`ionice`が効かないため、各スキャンスクリプトはスキャン本体を`systemd-run --scope`（cgroup v2の`io.max`、スケジューラに依存しない）で読み書き各`security_scan_io_bandwidth_max`（既定30MB/秒、`security_scan_io_device`の裏のディスク）に制限し、`nice -n 19`で動かす。systemdが無い環境では`nice`だけ。ClamAVは14GBを約77分（平均3MB/秒）で読むので、上限で延びるのは瞬間的な読み込みの山だけ。`/opt/backups`はClamAV対象のまま。標準ローリング更新はserverロールを`host-config-only`で動かし`malware.yml`を飛ばすため、スキャンスクリプト・cron・`security_scan_*`を変えたときは、Pi5のcheckoutが対象コミットになった後に`ansible-playbook -i inventory.yml playbooks/prepare-pi5-security-scans.yml --limit raspberrypi5 --check --diff`で差分を確かめてから`--check --diff`を外して当てる
+- 2026-11-14: Pi5の`clamav-daemon`(clamd)を停止・無効化した。日次・週次のスキャンはどちらも`clamscan`を直接使い、clamdに接続する処理は無かった。clamdは定義ファイル約1GBを常駐させ、ほぼ全量がzramのスワップに出ていた(実メモリで約250MB)。`clamav-freshclam`は残す。あわせて、手で置かれていた`/etc/cron.d/clamav-weekly`と`/usr/local/bin/clamav-weekly-scan.sh`(日曜03:00、日次と同じ時刻に日次対象の一部を低優先度なしで約71分スキャン)を削除した。反映は上と同じく`prepare-pi5-security-scans.yml`で当てる
 
 - Pi5はrkhunterから`dpkg --verify`へ移行。検査直前の`--propupd`で基準を作り直すとプログラムの改ざんを検知できず、rkhunterの開発も2018年で停止しているため。Pi4キオスクも週次（日曜02:30）のパッケージ整合性確認へ移行し、rkhunterを削除する。
 - 正常な管理者編集やOSイメージ調整は、内容と由来を確認してから`group_vars/all.yml`と`group_vars/staging.yml`の`package_integrity_allowed_paths`へ絶対パスを追加する。完全一致のみ除外し、ワイルドカードは使わない。
