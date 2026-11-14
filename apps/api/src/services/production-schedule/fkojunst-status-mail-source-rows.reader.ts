@@ -76,7 +76,8 @@ function buildProjectedFkojunstStatusMailRowData(row: FkojunstStatusMailProjecte
 }
 
 export async function fetchFkojunstStatusMailSourceRowsOrdered(
-  client: CsvDashboardRowClient
+  client: CsvDashboardRowClient,
+  options?: { where: Prisma.Sql }
 ): Promise<FkojunstStatusMailSourceRow[]> {
   const rows = await client.$queryRaw<FkojunstStatusMailProjectedRow[]>(PrismaNamespace.sql`
     SELECT
@@ -98,6 +99,7 @@ export async function fetchFkojunstStatusMailSourceRowsOrdered(
         r."sourceIngestRunId" IS NULL
         OR (ir."status" = 'COMPLETED'::"ImportStatus" AND ir."completedAt" IS NOT NULL)
       )
+      ${options ? PrismaNamespace.sql`AND (${options.where})` : PrismaNamespace.empty}
     ORDER BY ${PrismaNamespace.join(
       FKOJUNST_STATUS_MAIL_SOURCE_ROW_SQL_ORDER_BY.map((fragment) => PrismaNamespace.raw(fragment)),
       ', '

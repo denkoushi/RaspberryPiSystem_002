@@ -5,11 +5,14 @@
  *   node dist/scripts/prune-fkojunst-status-mail-superseded.js --execute  # 削除
  */
 import { prisma } from '../lib/prisma.js';
+import { env } from '../config/env.js';
 import { runFkojunstMailSupersededPrune } from '../services/production-schedule/fkojunst-status-mail-superseded-prune.service.js';
 
 async function main(): Promise<void> {
   const execute = process.argv.includes('--execute');
-  const result = await runFkojunstMailSupersededPrune({ mode: execute ? 'execute' : 'dry-run' });
+  const result = await runFkojunstMailSupersededPrune({
+    mode: execute ? 'execute' : 'dry-run', maxDelete: env.FKOJUNST_MAIL_PRUNE_MAX_DELETE
+  });
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 
