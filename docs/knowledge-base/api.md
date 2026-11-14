@@ -4567,6 +4567,11 @@ docker compose -f docker-compose.server.yml restart api
   - 根本原因: 重複の元（APPEND 取り込み）は 10/21 の DEDUP 化で止まっている。残っているのは過去に溜まった約222万行の重複だけで、毎晩の重い再計算はこの山を少しずつ削っていたにすぎない。
   - 方針（10/24）: 夜間ジョブで削り続けるのをやめ、計画した時間に一度だけ片付ける。消す行の ID を1回だけ作業表に書き出し、5000件ずつ COMMIT と休みを挟んで消し、残った行に `dataHash` を入れ、最後に VACUUM と索引の作り直しを1回ずつ流す。手順と止め方は `scripts/ops/csv-inspection-dedup-once/README.md`。
   - 10/25 の実施結果: 08:20〜09:52 JST（日曜）。消す行の書き出し 2分、削除 444回で 2,221,099 行を約15分（1回の最長 6.4秒、エラー無し）、`dataHash` 書き込みと VACUUM が約18分、索引8本の作り直しが各2〜3分。表は 9.5GB→4.4GB、索引は 6.0GB→0.96GB。作業中も API の health は 200、取り込みは続き、以後の取り込みは同じ点検をすべて重複として飛ばしている（208件中208件）。
+- **9) DEDUP 取り込みが中身の同じ行を毎回書き直す（2026-11-14）**:
+  - 原因: DEDUP の `dataHash` はキー列だけから作り、既存行は `resolveUpdatedAt`（`rowData.updatedAt`、無ければ `occurredAt`）が新しければ UPDATE する。日付列の無いダッシュボードは `occurredAt` が毎回「今」になるので、中身が同じでも全行を UPDATE していた（OrderSupplement 約2.5万行/回、FKOBAINO 約0.7万行/回）。`CsvDashboardRow` は索引19本で HOT 更新が効かず重い。
+  - 対策: `computeCsvDashboardDedupDiff` の `skipUnchangedRowsWithinRefreshWindow`。既存行が読み手から見え（取り込み回が null か COMPLETED）、`rowData` が同じ（キー順に依存しない比較）で、`occurredAt` が行ごとの期限（`dataHash` から決まる 23〜37 日）より新しければ書かない。対象は `csv-dashboard-ingestor.ts` の `UNCHANGED_ROW_REFRESH_DASHBOARD_IDS`（OrderSupplement と FKOBAINO）。生産日程（Mishima）は効果を見てから足す。FKOJUNST_Status は取り込み回を世代として読むので対象外。
+  - 約束: 対象ダッシュボードの `occurredAt` は「CSV に最後に出てきた日時」から最大 37 日遅れる。`occurredAt` で古い行を消す処理は、37 日より十分長い期限にする（FKOBAINO の古い行削除は 90 日）。表示期間の短い可視化に対象ダッシュボードを使わない。
+  - 効果の確かめ方: 取り込み完了ログ `[CsvDashboardIngestor] CSV ingestion completed` の `rowsCreated` / `rowsUpdated` / `rowsSkippedUnchanged`。
 
 ---
 
