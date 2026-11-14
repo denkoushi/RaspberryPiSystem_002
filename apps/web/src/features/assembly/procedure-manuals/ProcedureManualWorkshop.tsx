@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
 import { listProcedureManualCommon, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
@@ -10,8 +10,10 @@ import { kioskAssemblyManualsPath, kioskAssemblyManualsWorkshopPath, kioskAssemb
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
+
 import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
+import { clearManualLists, fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
@@ -34,6 +36,10 @@ const statusFilters = ['全て', '公開', '下書き', '改版中'] as const;
 const usageLabel = (assignments: ProcedureManualOverviewItemDto['otherAssignments']) => assignments.map(row => `${row.modelCode} · ${row.processName}`).join('、');
 const canDelete = (item: ProcedureManualOverviewItemDto) => item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0;
 const shortName = (process?: ProcedureManualProcessDto) => process?.name.replace(/工程/g, '') ?? '';
+const normalizeModels = (rows: ProcedureManualModelDto[]) => [...new Map(rows.map(row => {
+  const code = procedureManualModelKey(row.modelCodeKey);
+  return [code, { ...row, modelCodeKey: code }] as const;
+})).values()].filter(row => row.modelCodeKey);
 
 export function ProcedureManualWorkshop() {
   const navigate = useNavigate();
@@ -44,21 +50,21 @@ export function ProcedureManualWorkshop() {
   const [nameFilter, setNameFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<typeof statusFilters[number]>('全て');
   const [digitQuery, setDigitQuery] = useState('');
-  const [models, setModels] = useState<ProcedureManualModelDto[]>([]);
+  const [models, setModels] = useState<ProcedureManualModelDto[]>(() => normalizeModels(readManualList('models') ?? []));
   const [partCandidates, setPartCandidates] = useState<ProcedureManualPartCandidateDto[]>([]);
-  const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>([]);
-  const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>([]);
+  const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>(() => normalizeModels(readManualList('models') ?? []));
+  const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>(() => readManualList('processes') ?? []);
   const [allKind, setAllKind] = useState<'MODEL' | 'PART' | 'COMMON'>(() => params.has('common') ? 'COMMON' : params.has('part') ? 'PART' : 'MODEL');
   const subjectKind = params.has('common') ? 'COMMON' : processes.find(row => row.id === processId)?.subjectKind ?? allKind;
   const isCommon = subjectKind === 'COMMON';
   const [kanaRow, setKanaRow] = useState('');
-  const [commonCatalog, setCommonCatalog] = useState<ProcedureManualCommonCatalogDto>({ categories: [], actions: [], subjects: [] });
+  const [commonCatalog, setCommonCatalog] = useState<ProcedureManualCommonCatalogDto>(() => readManualList('common') ?? { categories: [], actions: [], subjects: [] });
   const commonReturnTo = kioskAssemblyManualsWorkshopPath({ common: '1', process: processId });
-  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>([]);
+  const [items, setItems] = useState<ProcedureManualAssignmentOverviewItemDto[]>(() => readManualList('overview')?.processes.flatMap(row => row.items) ?? []);
   const [previewSequence, setPreviewSequence] = useState<AssemblyProcedureSequenceDto | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [searchLoading, setSearchLoading] = useState(true);
+  const [searchLoading, setSearchLoading] = useState(() => !readManualList('models'));
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -68,14 +74,26 @@ export function ProcedureManualWorkshop() {
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [materialOpen, setMaterialOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
-  const [materialCount, setMaterialCount] = useState<number | null>(null);
-  const [videoCount, setVideoCount] = useState<number | null>(null);
+  const [materialCount, setMaterialCount] = useState<number | null>(() => readManualList('materialCount') ?? null);
+  const [videoCount, setVideoCount] = useState<number | null>(() => readManualList('videoCount') ?? null);
   const [removing, setRemoving] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [deleting, setDeleting] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [reattaching, setReattaching] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const searchStarted = useRef(false);
   const requestSequence = useRef(0);
+  const commonSequence = useRef(0);
+  const previousVersion = useRef(version);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => {
+    if (previousVersion.current !== version) {
+      commonSequence.current += 1;
+      clearManualLists({ preserveProcesses: true });
+      previousVersion.current = version;
+    }
+  }, [version]);
   const [accessGranted, setAccessGranted] = useState(() => Boolean(readProcedureEditorAccess()));
   const checkAccess = useCallback(() => {
     const granted = Boolean(readProcedureEditorAccess());
@@ -89,14 +107,21 @@ export function ProcedureManualWorkshop() {
   }, [checkAccess]);
   useEffect(() => {
     let cancelled = false;
-    void listProcedureManualProcesses().then(rows => { if (!cancelled) setProcesses(rows); })
+    const sequence = commonSequence.current;
+    void fetchManualList('processes', listProcedureManualProcesses).then(rows => {
+      if (!cancelled) setProcesses(current => sequence === commonSequence.current ? rows : [...rows.filter(row => row.subjectKind !== 'COMMON'), ...current.filter(row => row.subjectKind === 'COMMON')]);
+    })
       .catch(e => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '工程を取得できません')); });
     return () => { cancelled = true; };
   }, []);
   useEffect(() => {
     if (subjectKind === 'COMMON') { setSearchLoading(false); setSearchError(null); return; }
     const sequence = ++requestSequence.current;
-    setSearchLoading(true); setSearchError(null); setCandidates([]); setPartCandidates([]); setHasMore(false);
+    if (searchStarted.current || search || digitQuery || subjectKind === 'PART' || !readManualList('models')) {
+      setSearchLoading(true); setCandidates([]); setPartCandidates([]); setHasMore(false);
+    }
+    searchStarted.current = true;
+    setSearchError(null);
     const load = subjectKind === 'PART'
       ? listProcedureManualPartCandidates({ digitQuery, q: search, limit: 30 }).then(rows => {
         if (sequence === requestSequence.current) setPartCandidates(rows);
@@ -107,13 +132,10 @@ export function ProcedureManualWorkshop() {
         setCandidates([...new Set(result.candidates.map(procedureManualModelKey).filter(Boolean))].map(code => ({ modelCode: code, modelCodeKey: code })));
         setHasMore(result.hasMore);
       })
-      : listProcedureManualModels().then(rows => {
+      : fetchManualList('models', listProcedureManualModels).then(rows => {
         if (sequence !== requestSequence.current) return;
-        const normalized = [...new Map(rows.map(row => {
-          const code = procedureManualModelKey(row.modelCodeKey);
-          return [code, { ...row, modelCodeKey: code }] as const;
-        })).values()].filter(row => row.modelCodeKey);
-        setModels(normalized); setCandidates(normalized);
+        const normalized = normalizeModels(rows);
+        setModels(current => retainEqual(current, normalized)); setCandidates(current => retainEqual(current, normalized));
       });
     void load.catch(e => { if (sequence === requestSequence.current) setSearchError(readAssemblyApiErrorMessage(e, `${subjectKind === 'PART' ? '部品' : '機種'}を検索できません`)); })
       .finally(() => { if (sequence === requestSequence.current) setSearchLoading(false); });
@@ -121,34 +143,46 @@ export function ProcedureManualWorkshop() {
   }, [search, digitQuery, version, subjectKind]);
   useEffect(() => {
     let cancelled = false;
-    setItems([]); setError(null); setOverviewLoading(true);
-    void getProcedureManualOverview().then(next => { if (!cancelled) setItems(next.processes.flatMap(row => row.items)); })
-      .catch(e => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '要領書を取得できません')); })
-      .finally(() => { if (!cancelled) setOverviewLoading(false); });
+    const sequence = commonSequence.current;
+    if (!readManualList('overview')) { setItems([]); setOverviewLoading(true); }
+    setError(null);
+    void fetchManualList('overview', () => getProcedureManualOverview()).then(next => { if (!cancelled && sequence === commonSequence.current) setItems(current => retainEqual(current, next.processes.flatMap(row => row.items))); })
+      .catch(e => { if (!cancelled && sequence === commonSequence.current) setError(readAssemblyApiErrorMessage(e, '要領書を取得できません')); })
+      .finally(() => { if (!cancelled && sequence === commonSequence.current) setOverviewLoading(false); });
     return () => { cancelled = true; };
   }, [version]);
   const refreshCommon = async () => {
-    const [catalog, overview] = await Promise.all([listProcedureManualCommon(), getProcedureManualOverview()]);
-    setCommonCatalog(catalog); setItems(overview.processes.flatMap(row => row.items));
-    setProcesses(current => [...current.filter(row => row.subjectKind !== 'COMMON'), ...catalog.categories]);
+    const sequence = ++commonSequence.current;
+    clearManualLists({ preserveProcesses: true });
+    try {
+      const [catalog, overview] = await Promise.all([
+        fetchManualList('common', () => listProcedureManualCommon()), fetchManualList('overview', () => getProcedureManualOverview())
+      ]);
+      if (!mounted.current || sequence !== commonSequence.current) return;
+      setCommonCatalog(catalog); setItems(overview.processes.flatMap(row => row.items));
+      setProcesses(current => [...current.filter(row => row.subjectKind !== 'COMMON'), ...catalog.categories]);
+    } finally {
+      if (mounted.current && sequence === commonSequence.current) setOverviewLoading(false);
+    }
   };
   useEffect(() => {
     if (!isCommon) return;
     let cancelled = false;
-    void listProcedureManualCommon().then(catalog => {
-      if (!cancelled) { setCommonCatalog(catalog); setProcesses(current => [...current.filter(row => row.subjectKind !== 'COMMON'), ...catalog.categories]); }
-    }).catch(e => { if (!cancelled) setError(readAssemblyApiErrorMessage(e, '分類を取得できません')); });
+    const sequence = commonSequence.current;
+    void fetchManualList('common', () => listProcedureManualCommon()).then(catalog => {
+      if (!cancelled && sequence === commonSequence.current) { setCommonCatalog(catalog); setProcesses(current => [...current.filter(row => row.subjectKind !== 'COMMON'), ...catalog.categories]); }
+    }).catch(e => { if (!cancelled && sequence === commonSequence.current) setError(readAssemblyApiErrorMessage(e, '分類を取得できません')); });
     return () => { cancelled = true; };
   }, [isCommon, version]);
   useEffect(() => {
     let cancelled = false;
-    void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then(rows => { if (!cancelled) setMaterialCount(rows.length); })
+    void fetchManualList('materialCount', async () => (await listProcedureMaterials({ state: 'unplaced', limit: 500 })).length).then(count => { if (!cancelled) setMaterialCount(count); })
       .catch(() => { if (!cancelled) setMaterialCount(null); });
     return () => { cancelled = true; };
   }, [materialOpen]);
   useEffect(() => {
     let cancelled = false;
-    void listProcedureVideos({ state: 'active', limit: 100 }).then(rows => { if (!cancelled) setVideoCount(rows.length); })
+    void fetchManualList('videoCount', async () => (await listProcedureVideos({ state: 'active', limit: 100 })).length).then(count => { if (!cancelled) setVideoCount(count); })
       .catch(() => { if (!cancelled) setVideoCount(null); });
     return () => { cancelled = true; };
   }, [videoOpen]);
@@ -169,6 +203,7 @@ export function ProcedureManualWorkshop() {
   };
   const process = processes.find(row => row.id === processId && row.parentId);
   const modelCode = items.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? candidates.find(row => row.modelCodeKey === modelCodeKey)?.modelCode ?? modelCodeKey;
+  const parsedNames = useMemo(() => new Map(items.map(item => { const name = item.label || item.title; return [name, splitProcedureManualName(name)] as const; })), [items]);
   const normalizedNameFilter = nameFilter.normalize('NFKC').trim().toLocaleLowerCase();
   const filteredItems = isCommon ? filterProcedureManualCommonItems(items, processes, processId, kanaRow, search) : items.filter(item => {
     if (item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON') return false;
@@ -182,10 +217,13 @@ export function ProcedureManualWorkshop() {
     const child = processes.find(row => row.id === item.processId);
     return `${shortName(processes.find(row => row.id === child?.parentId))} › ${shortName(child)}`;
   };
-  const openEditor = (item: ProcedureManualAssignmentOverviewItemDto) => navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
-    state: { returnTo: isCommon ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }),
-      context: { modelCode: item.modelCode, modelCodeKey: item.modelCodeKey, processId: item.processId, processName: rowProcessName(item), mode: 'fix' } }
-  });
+  const openEditor = (item: ProcedureManualAssignmentOverviewItemDto) => {
+    clearManualLists();
+    navigate(kioskAssemblyProcedureDocumentEditPath(item.draftRevision?.documentId ?? item.documentId), {
+      state: { returnTo: isCommon ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }),
+        context: { modelCode: item.modelCode, modelCodeKey: item.modelCodeKey, processId: item.processId, processName: rowProcessName(item), mode: 'fix' } }
+    });
+  };
   const fix = (item: ProcedureManualAssignmentOverviewItemDto) => { if (checkAccess()) openEditor(item); };
   const view = async (item: ProcedureManualAssignmentOverviewItemDto) => {
     setPreviewLoading(true); setError(null);
@@ -238,14 +276,14 @@ export function ProcedureManualWorkshop() {
       <h1 className="text-[26px] font-black tracking-widest">要領書</h1>
       <span className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f6b93b29] px-3.5 text-[19px] font-bold text-[#f6b93b]"><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</span>
       <div className="ml-auto flex gap-4">
-        <button className={`${action} gap-2 text-[19px]`} onClick={() => setMaterialOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}{materialCount === 500 ? '+' : ''}</button>
-        <button className={`${action} gap-2 text-[19px]`} onClick={() => setVideoOpen(true)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}{videoCount === 100 ? '+' : ''}</button>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setMaterialOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}{materialCount === 500 ? '+' : ''}</button>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setVideoOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}{videoCount === 100 ? '+' : ''}</button>
         <Link to="/kiosk/assembly" className={`${action} gap-2 text-[19px]`}>組立へ戻る</Link>
       </div>
     </header>
     <div className="grid min-h-0 grid-cols-[460px_minmax(0,1fr)]">
       <ProcedureManualFilterPane topActions={(isCommon ? process?.subjectKind === 'COMMON' : modelCodeKey && process) ? <>
-        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && previewLoading)} onClick={() => { if (checkAccess()) setBlankOpen(true); }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
+        <button className={`${primaryAction} h-14 shrink-0`} disabled={busy || (isCommon && previewLoading)} onClick={() => { if (checkAccess()) { clearManualLists(); setBlankOpen(true); } }}><svg aria-hidden="true" className="mr-2 h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 5v14M5 12h14" /></svg>作る</button>
         {!isCommon ? <button aria-label="既存の要領書を割り当てる" className={`${action} h-14 shrink-0`} disabled={busy || overviewLoading} onClick={() => { if (checkAccess()) setAssignmentOpen(true); }}>＋ 既存を割り当てる</button> : null}
       </> : null} allowKindChangeWithProcess subjectKind={subjectKind} onKindChange={kind => { if (kind !== subjectKind) { setSearch(''); setDigitQuery(''); setKanaRow(''); select('', '', kind); } }} processes={processes} items={items} models={candidates} partSearchCandidates={partCandidates} modelCodeKey={modelCodeKey} processId={processId}
         search={search} digitQuery={digitQuery} onSearchChange={setSearch} onDigitQueryChange={setDigitQuery}
@@ -277,7 +315,7 @@ export function ProcedureManualWorkshop() {
           {filteredItems.map(item => {
             const fullName = item.label || item.title;
             const child = processes.find(process => process.id === item.processId);
-            const name = splitProcedureManualName(fullName) ?? {
+            const name = parsedNames.get(fullName) ?? {
               partName: fullName, subjectKey: item.modelCode,
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
@@ -323,17 +361,18 @@ export function ProcedureManualWorkshop() {
       setAccessGranted(true);
       return true;
     }} /> : null}
-    {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={checkAccess} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
-    {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={checkAccess} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
+    {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
       beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
       onSaved={(key, id, message) => { setReattaching(null); select(key, id); setVersion(value => value + 1); setOperationMessage(message); }} /> : null}
-    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => setMaterialOpen(false)} onCreatedDocument={(documentId) => {
+    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {
+      clearManualLists();
       setMaterialOpen(false);
       navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: isCommon ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }) } });
     }} /> : null}
-    {videoOpen ? <ProcedureVideoShelfDialog onClose={() => setVideoOpen(false)} /> : null}
+    {videoOpen ? <ProcedureVideoShelfDialog onClose={() => { clearManualLists(); setVideoOpen(false); }} /> : null}
     {previewSequence ? <ProcedureManualFullscreenPreview sequence={previewSequence} title={previewTitle} onClose={() => setPreviewSequence(null)} /> : null}
     <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-12" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
     <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-12" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
