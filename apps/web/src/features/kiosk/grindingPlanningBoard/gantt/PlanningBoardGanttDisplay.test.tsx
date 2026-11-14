@@ -837,7 +837,8 @@ it('totals both machines and groups their parts in pane order, excluding other r
   const items = ['022', '021', '023'].map((resourceCd, index) => ({ ...base, itemId: `minutes-${resourceCd}`, fhincd: `PART-${resourceCd}`,
     originalResourceCd: resourceCd, effectiveResourceCd: resourceCd, originalRequiredMinutes: (index + 1) * 60, ownRequiredMinutes: (index + 1) * 120 }));
   const minutes = { ownSourceResourceCds: [], values: items.map(item => ({ resourceCd: item.originalResourceCd, fhincd: item.fhincd, perUnitMinutes: 5, setupMinutes: 0 })) };
-  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} resourceMinutesItems={[...items, items[0]!]} resourceMinutes={minutes}
+  const missing = { ...items[0]!, itemId: 'missing', fhincd: 'MISSING-PART', standardHoursMissing: true, plannedQuantity: 999, requiredMinutes: null, requiredMinutesKnown: false, originalRequiredMinutes: null, ownRequiredMinutes: null };
+  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} resourceMinutesItems={[...items, items[0]!, missing]} resourceMinutes={minutes}
     resourceNameMap={{ '021': ['上段機'], '022': ['下段機'] }} valueSheetResource="021" /></QueryClientProvider>);
   expect(screen.getByRole('button', { name: /元の値/ })).toHaveTextContent('3.0h');
   expect(screen.getByRole('button', { name: /独自の値/ })).toHaveTextContent('6.0h');
@@ -849,6 +850,7 @@ it('totals both machines and groups their parts in pane order, excluding other r
   expect(within(lower.parentElement!).getByText('PART-022')).toBeInTheDocument();
   expect(upper.compareDocumentPosition(lower) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(sheet.queryByText('PART-023')).toBeNull();
+  expect(sheet.queryByText('MISSING-PART')).toBeNull();
 });
 
 it('keeps minutes controls and the ungrouped sheet scoped to one machine', () => {

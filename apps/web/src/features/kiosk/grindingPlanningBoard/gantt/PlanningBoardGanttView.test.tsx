@@ -760,6 +760,29 @@ describe('PlanningBoardGanttView', () => {
     fireEvent.click(completed);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
+  it('標準工数入力忘れは128px、所要不明は72pxのまま、編集不可で色分けに従う', () => {
+    const missing = item({ itemId: 'missing', processOrder: '710', standardHoursMissing: true, requiredMinutes: null, requiredMinutesKnown: false });
+    const values = props([missing, item({ itemId: 'unknown', requiredMinutesKnown: false })]);
+    const complete = vi.fn();
+    const { rerender } = render(<PlanningBoardGanttView {...values} onCompleteToggle={complete} />);
+    const marker = screen.getByText('710 標準工数入力忘れ');
+    expect(marker).toHaveStyle({ width: '128px' });
+    expect(marker).toHaveClass('border-dashed', 'bg-slate-800');
+    expect(screen.getByText('10 所要不明')).toHaveStyle({ width: '72px' });
+    const bar = screen.getByTestId('planning-gantt-bar-missing');
+    expect(bar).toBeDisabled();
+    expect(bar).toHaveAttribute('title', expect.stringContaining('710 標準工数入力忘れ'));
+    fireEvent.click(bar);
+    fireEvent.pointerDown(bar, { clientX: 100, button: 0 });
+    fireEvent.pointerUp(bar, { clientX: 500 });
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    expect(values.onDueDrop).not.toHaveBeenCalled();
+    expect(complete).not.toHaveBeenCalled();
+    rerender(<PlanningBoardGanttView {...values} scale={56} dailyHoursByResource={{ '305': 10 }} seibanColors={new Map([[missing.fseiban, 'bg-amber-400']])} />);
+    expect(screen.getByText('710 標準工数入力忘れ')).toHaveStyle({ width: '128px' });
+    expect(screen.getByText('710 標準工数入力忘れ')).toHaveClass('border-dashed', 'bg-amber-400');
+    expect(screen.getByText('10 所要不明')).toHaveStyle({ width: '72px' });
+  });
   it('固定幅の所要不明と納期なしを表示する', () => {
     const values = props([item({ requiredMinutesKnown: false }), item({ itemId: 'b', originalDueDate: null })]);
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
@@ -910,6 +933,19 @@ describe('forward PlanningBoardGanttView', () => {
       if (reason !== 'button') expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
     }
   );
+  it('前向きの標準工数入力忘れは70pxで全文titleを持ちチェーン操作を出さない', () => {
+    const missing = item({ itemId: 'missing', processOrder: '710', standardHoursMissing: true, requiredMinutes: null, requiredMinutesKnown: false });
+    const values = forwardProps([missing]);
+    render(<PlanningBoardGanttView {...values} />);
+    const bar = screen.getByTestId('planning-gantt-bar-missing');
+    expect(bar).toHaveStyle({ width: '70px' });
+    expect(bar).toHaveAttribute('title', '710 標準工数入力忘れ');
+    expect(bar).toHaveClass('border-dashed');
+    expect(bar).toBeDisabled();
+    fireEvent.click(bar);
+    expect(values.onToggleItem).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('planning-gantt-chain-badge-missing')).not.toBeInTheDocument();
+  });
   it('deselects a test bar and closes its strip on blank taps', () => {
     const test: import('@raspi-system/shared-types').GrindingPlanningBoardTestBar = {
       kind: 'test', itemId: 'test:blank', itemRevision: 'r1', version: 1, sequence: 1,

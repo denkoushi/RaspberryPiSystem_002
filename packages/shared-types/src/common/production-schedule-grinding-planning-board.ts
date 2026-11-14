@@ -99,6 +99,8 @@ export type MaterialArrivalStatus = 'received' | 'partial' | 'ordered' | 'unorde
 export type MaterialArrivalBasis = 'material' | 'part';
 
 export interface GrindingPlanningBoardItem {
+  /** Read-only status-mail process absent from the schedule CSV. */
+  standardHoursMissing?: boolean;
   itemId: string;
   kind: GrindingPlanningBoardItemKind;
   itemRevision: string;

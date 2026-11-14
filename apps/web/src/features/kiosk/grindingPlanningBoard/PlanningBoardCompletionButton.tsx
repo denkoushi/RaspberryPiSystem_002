@@ -24,7 +24,7 @@ export function PlanningBoardCompletionButton<T extends GrindingPlanningBoardBar
     style={style}
     aria-label={imported ? '取込で完了' : item.isCompleted ? '未完了に戻す' : '完了にする'}
     aria-disabled={frozen || undefined}
-    disabled={disabled || imported}
+    disabled={disabled || imported || item.kind !== 'test' && item.standardHoursMissing}
     onClick={(event) => { event.stopPropagation(); onToggle(item, item.isCompleted ? 'incomplete' : 'complete'); }}>
     {imported ? '取込' : '✓'}
   </button>;

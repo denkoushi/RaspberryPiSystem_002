@@ -57,6 +57,21 @@ describe('load generation token', () => {
     expect(await readPlanningLoadGenerationToken('site-a')).not.toBe(before);
   });
 
+  it('invalidates board and load caches on replacement, update and clear of missing processes', async () => {
+    const baseline = await readPlanningSnapshotGenerationDetails('site-a');
+    for (const value of ['[1,"2026-11-01"]', '[1,"2026-11-02"]']) {
+      mocks.prisma.$queryRaw.mockResolvedValue([{ fingerprint: 'override-resources-1', missingStandardHoursGeneration: value }]);
+      const next = await readPlanningSnapshotGenerationDetails('site-a');
+      expect(next.generationToken).not.toBe(baseline.generationToken);
+      expect(next.loadGenerationToken).not.toBe(baseline.loadGenerationToken);
+    }
+    const previous = await readPlanningSnapshotGenerationDetails('site-a');
+    mocks.prisma.$queryRaw.mockResolvedValue([{ fingerprint: 'override-resources-1', missingStandardHoursGeneration: '[0,null]' }]);
+    const cleared = await readPlanningSnapshotGenerationDetails('site-a');
+    expect(cleared.generationToken).not.toBe(previous.generationToken);
+    expect(cleared.loadGenerationToken).not.toBe(previous.loadGenerationToken);
+  });
+
   it.each(['rank', 'pin', 'dueDate'])('ignores %s-only override writes while the full token changes', async () => {
     const before = await readPlanningSnapshotGenerationDetails('site-a');
     mocks.prisma.productionScheduleGrindingPlanningBoardOverride.aggregate.mockResolvedValue({
@@ -76,8 +91,8 @@ describe('load generation token', () => {
     expect(query.sql).toContain('ORDER BY "itemKey" COLLATE "C"');
     expect(query.sql).toContain('"csvDashboardId" = ? AND "siteKey" = ?');
     for (const prefix of ['row:', 'piece:', 'pieceops:']) expect(query.sql).toContain(`"itemKey" LIKE '${prefix}%'`);
-    expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'site-a']);
-    expect(query.sql).not.toMatch(/IS NOT NULL|updatedAt|alternateRank|pinned|overrideDueDate/);
+    expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_DASHBOARD_ID, 'site-a']);
+    expect(query.sql).not.toMatch(/IS NOT NULL|alternateRank|pinned|overrideDueDate/);
     mocks.prisma.$queryRaw.mockResolvedValue([{ fingerprint: 'override-resources-2' }]);
     const after = await readPlanningSnapshotGenerationDetails('site-a');
     expect(JSON.parse(after.loadGenerationToken).overrideResourceFingerprint).toBe('override-resources-2');
@@ -115,6 +130,7 @@ describe.skipIf(!hasDedicatedDatabase)('override load fingerprint SQL', () => {
     db = new Client({ connectionString: testDatabaseUrl });
     await db.connect();
     // A connection-local table shadows the real table; no application rows are touched.
+    await db.query(`CREATE TEMP TABLE "ProductionScheduleMissingStandardHoursProcess" ("csvDashboardId" text, "updatedAt" timestamp)`);
     await db.query(`CREATE TEMP TABLE "ProductionScheduleGrindingPlanningBoardOverride" (
       "csvDashboardId" text, "siteKey" text, "itemKey" text, "overrideResourceCd" text,
       "alternateRank" integer, "isPinned" boolean, "overrideDueDate" timestamp, "updatedAt" timestamp

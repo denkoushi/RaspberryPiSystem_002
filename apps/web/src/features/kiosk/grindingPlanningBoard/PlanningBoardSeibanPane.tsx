@@ -96,7 +96,7 @@ export const PlanningBoardSeibanPane = memo(function PlanningBoardSeibanPane({
   useEffect(() => {
     if (highlighted && isOpen) paneRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }, [highlighted, isOpen, scanFocusKey]);
-  const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
+  const selectableItems = useMemo(() => items.filter((item) => !item.standardHoursMissing && !item.isCompleted), [items]);
   const selectedSelectableCount = useMemo(
     () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
     [selectableItems, selectedItemIds]

@@ -208,6 +208,7 @@ function configurePersistence(): void {
   prisma.$queryRaw.mockImplementation(async (strings: unknown) => {
     const query = Array.isArray(strings) ? strings.join(' ') : JSON.stringify(strings);
     if (query.includes('string_agg(') && query.includes('ProductionScheduleGrindingPlanningBoardOverride') && !query.includes('effectiveItems')) return [{ fingerprint: overrideResourceFingerprint }];
+    if (query.includes('ProductionScheduleMissingStandardHoursProcess')) return [];
     if (query.includes('WITH parents AS')) {
       const scope = (strings as { values: unknown[] }).values.find(Array.isArray) as string[] | undefined;
       const sets = mocks.pieceSets.filter((set) => scope === undefined || scope.includes(set.fseiban));
@@ -738,6 +739,34 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.projectGrindingPlanningBoard).toHaveBeenCalledTimes(2);
   });
 
+  it('reads missing-hours evidence once per board build and invalidates reusable payloads when it clears', async () => {
+    const actual = await vi.importActual<typeof import('../grinding-planning-board-projection.js')>('../grinding-planning-board-projection.js');
+    mocks.projectGrindingPlanningBoard.mockImplementation(actual.projectGrindingPlanningBoard);
+    const baseQuery = mocks.prisma.$queryRaw.getMockImplementation()!;
+    let missing = true;
+    mocks.prisma.$queryRaw.mockImplementation(async (sql: unknown) => {
+      const query = JSON.stringify(sql);
+      if (query.includes('string_agg(')) return [{ fingerprint: 'resources', missingStandardHoursGeneration: missing ? '[1,"2026-11-14"]' : '[0,null]' }];
+      if (query.includes('ProductionScheduleMissingStandardHoursProcess')) return missing ? [{
+        fsezono: '1', fkojun: '710', fkoteicd: '305', sourceUpdatedAt: new Date('2026-11-10'),
+        rowData: mocks.sourceRow.rowData, plannedQuantity: 2, plannedEndDate: new Date('2026-11-20')
+      }] : [];
+      return baseQuery(sql);
+    });
+    const params = { siteKey: 'site-a', category: 'grinding' as const, view: 'resource' as const, includeLoad: false,
+      snapshotStore: createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 }) };
+    const first = await getGrindingPlanningBoard(params);
+    expect(first.items.find((item) => item.standardHoursMissing)).toMatchObject({ processOrder: '710', requiredMinutes: null, requiredMinutesKnown: false, isCompleted: false });
+    await getGrindingPlanningBoard(params);
+    const missingReads = () => mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => JSON.stringify(sql).includes('ProductionScheduleMissingStandardHoursProcess') && !JSON.stringify(sql).includes('string_agg('));
+    expect(missingReads()).toHaveLength(1);
+    missing = false;
+    const refreshed = await getGrindingPlanningBoard(params);
+    expect(refreshed.items.some((item) => item.standardHoursMissing)).toBe(false);
+    expect(missingReads()).toHaveLength(2);
+    await expect(getGrindingPlanningBoard({ ...params, snapshotId: first.snapshotId, cursor: 1 })).rejects.toMatchObject({ statusCode: 409 });
+  });
+
   it('returns legacy load through the separate endpoint without reading source details', async () => {
     const snapshotStore = createInMemoryLeaderboardShellSnapshotStore({ defaultTtlMs: 60_000 });
     const legacy = await getGrindingPlanningBoard({ siteKey: 'site-a', category: 'grinding', view: 'seiban', snapshotStore });
@@ -749,8 +778,9 @@ describe('grinding planning board service orchestration', () => {
     expect(mocks.prisma.csvDashboardRow.findMany).not.toHaveBeenCalled();
     expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
     const queries = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => !JSON.stringify(sql).includes('string_agg('));
-    expect(queries).toHaveLength(1);
-    expect(JSON.stringify(queries[0])).toContain('ProductionScheduleGrindingPlanningBoardTestBar');
+    expect(queries).toHaveLength(2);
+    expect(queries.filter((query) => JSON.stringify(query).includes('ProductionScheduleMissingStandardHoursProcess'))).toHaveLength(1);
+    expect(queries.some((query) => JSON.stringify(query).includes('ProductionScheduleGrindingPlanningBoardTestBar'))).toBe(true);
   });
 
   it('reuses winner materialization across load requests until the leaderboard generation changes', async () => {
@@ -870,7 +900,8 @@ describe('grinding planning board service orchestration', () => {
           expect(planningSource.readPlanningSource).not.toHaveBeenCalled();
           expect(mocks.projectGrindingPlanningBoard).not.toHaveBeenCalled();
           const queries = mocks.prisma.$queryRaw.mock.calls.filter(([sql]) => !JSON.stringify(sql).includes('string_agg('));
-          expect(queries).toHaveLength(2);
+          expect(queries).toHaveLength(3);
+          expect(queries.filter((query) => JSON.stringify(query).includes('ProductionScheduleMissingStandardHoursProcess'))).toHaveLength(1);
           expect(JSON.stringify(queries[0])).toContain('FSEZONO');
         }
         changeGeneration();

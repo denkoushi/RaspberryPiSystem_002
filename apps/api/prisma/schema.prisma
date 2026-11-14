@@ -6706,3 +6706,19 @@ model ProductionScheduleSessakuPieceOpSplit {
   piece ProductionScheduleSessakuPiece @relation(fields: [pieceId], references: [id], onDelete: Cascade, map: "PSSPieceOpSplit_piece_fk")
   @@unique([pieceId, fromOpNo], map: "PSSPieceOpSplit_piece_op_key")
 }
+
+/// Read-only board evidence, atomically replaced from retained status mail rows.
+model ProductionScheduleMissingStandardHoursProcess {
+  id                String   @id @default(uuid())
+  csvDashboardId    String
+  csvDashboardRowId String
+  fsezono           String   @db.VarChar(32)
+  fkojun            String   @db.VarChar(20)
+  fkoteicd          String   @db.VarChar(40)
+  statusCode        String   @db.VarChar(1)
+  sourceUpdatedAt   DateTime
+  updatedAt         DateTime @updatedAt
+
+  @@unique([csvDashboardId, fsezono, fkojun, fkoteicd], map: "PSMissingStandardHours_unique_key")
+  @@index([csvDashboardId, updatedAt], map: "PSMissingStandardHours_idx_generation")
+}

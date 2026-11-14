@@ -146,7 +146,7 @@ export function PlanningBoardPiecePopover({ item, disabled = false, selected = f
   const canMergeOps = Boolean(item.opRange);
   const canConfigureOps = (!item.opRange || item.opSplitSourceResourceCd === item.effectiveResourceCd) && Boolean(item.effectiveResourceCd && (unitOpContext?.items ?? [item]).find((bar) => bar.itemId === `piece:${item.pieceId}`)?.effectiveResourceCd === item.effectiveResourceCd) && !item.manualIsCompleted && (item.unitRequiredMinutes !== undefined || Boolean(item.opRange)) && variant === 'gantt' && item.kind === 'piece' && quantity === 1 && !item.isLaterProcess && actions?.createEnabled && actions.isCutting(item) && !item.quantityWarning && item.fseiban?.trim() !== '********';
   const canCompleteOp = item.kind === 'piece' && Boolean(item.ops?.length) && item.completionSource !== 'import';
-  const operable = !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps || canConfigureOps);
+  const operable = !item.standardHoursMissing && !specialDueMode && actions?.enabled && (canSplit || canMerge || canCompleteOp || canMergeOps || canConfigureOps);
   if (variant === 'gantt' && !item.isLaterProcess && !operable && !open) return null;
   if (item.kind !== 'piece' && !operable && !open) return <>{label}</>;
   return <span className={`inline-block min-w-8 align-middle ${variant === 'gantt' ? 'shrink-0 whitespace-nowrap' : ''}`} onClick={operable || open ? (event) => event.stopPropagation() : undefined}>

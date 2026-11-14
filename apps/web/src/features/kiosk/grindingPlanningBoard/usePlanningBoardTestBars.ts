@@ -76,9 +76,9 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
     nextSequence, disabled,
     select: (item, selected) => { if (!isPendingPlanningTestBar(item)) setSelectedId(item.kind === 'test' && selected ? item.itemId : null); }, accept,
     create: async (resourceCd, minutes, after) => {
-      if (disabled || (after && isPendingPlanningTestBar(after))) return false;
+      if (disabled || after?.kind !== 'test' && after?.standardHoursMissing || (after && isPendingPlanningTestBar(after))) return false;
       const id = ++pendingId.current;
-      const normal = sortGrindingPlanningBoardItems(items.filter((item) => !item.isCompleted && resolveGrindingPlanningBoardResource(item, 'alternate') === resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
+      const normal = sortGrindingPlanningBoardItems(items.filter((item) => !item.standardHoursMissing && !item.isCompleted && resolveGrindingPlanningBoardResource(item, 'alternate') === resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
       const lane: GrindingPlanningBoardBar[] = [...normal, ...bars.filter((bar) => !bar.isCompleted && !bar.deletedAt && bar.resourceCd === resourceCd)];
       if (lane.some((bar) => bar.kind === 'test')) lane.sort(comparePlanningBoardBarOrder);
       const unbanded = lane.filter((bar) => resolvePlanningBoardOrderBand(bar) == null);
@@ -103,7 +103,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       return queued;
     },
     remove: (item) => {
-      const normal = sortGrindingPlanningBoardItems(items.filter((candidate) => !candidate.isCompleted && resolveGrindingPlanningBoardResource(candidate, 'alternate') === item.resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
+      const normal = sortGrindingPlanningBoardItems(items.filter((candidate) => !candidate.standardHoursMissing && !candidate.isCompleted && resolveGrindingPlanningBoardResource(candidate, 'alternate') === item.resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
       const lane: GrindingPlanningBoardBar[] = [...normal, ...bars.filter((bar) => !bar.isCompleted && !bar.deletedAt && bar.resourceCd === item.resourceCd)];
       lane.sort(comparePlanningBoardBarOrder);
       const unbanded = lane.filter((bar) => resolvePlanningBoardOrderBand(bar) == null);

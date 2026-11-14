@@ -66,6 +66,7 @@ export class ProductionScheduleFkojunstMailStatusSyncService {
       skippedUnparseableDate,
       createInputs,
       processChangeResidualEvidenceInputs,
+      missingStandardHoursMailRows: dedupedRows,
       sourceRowsRevision: rowsRevision,
     });
 

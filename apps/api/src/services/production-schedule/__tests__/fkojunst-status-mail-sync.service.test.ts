@@ -20,6 +20,7 @@ describe('mail sync external completion publication', () => {
     const assignments = { reconcileStaleAssignments: vi.fn() };
     const service = new ProductionScheduleFkojunstMailStatusSyncService(external as never, assignments as never);
     expect(await service.syncFromStatusMailDashboard()).toEqual(result);
+    expect(pipeline.runFkojunstMailReplacementTransaction).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ missingStandardHoursMailRows: [{}] }));
     expect(external.syncFromDedupedStatusMailRows).toHaveBeenCalledTimes(pieces ? 0 : 1);
     expect(assignments.reconcileStaleAssignments).toHaveBeenCalledTimes(pieces ? 1 : 0);
   });

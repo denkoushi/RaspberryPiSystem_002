@@ -109,7 +109,7 @@ export function usePlanningBoardCompletion({ data, boardQuery, category, queuedI
     const currentItem = currentItemsRef.current.find((candidate) => candidate.itemId === item.itemId) ?? item;
     if (opNo != null && (currentItem.kind !== 'piece' || !completePieceOp || !currentItem.ops?.some((op) => op.opNo === opNo))) return;
     const parentId = currentItem.kind === 'piece' ? currentItem.parentItemId : undefined;
-    if (interactionLocked || (piecePendingRef.current && currentItem.itemId === piecePendingParentRef?.current) || (currentItem.kind === 'piece' && (!bulkReadyRef.current || piecePendingRef.current || writePendingRef.current ||
+    if (currentItem.standardHoursMissing || interactionLocked || (piecePendingRef.current && currentItem.itemId === piecePendingParentRef?.current) || (currentItem.kind === 'piece' && (!bulkReadyRef.current || piecePendingRef.current || writePendingRef.current ||
       !currentItem.pieceId || currentItem.pieceSetVersion == null || !parentId)) || !data || currentItem.completionSource === 'import' ||
       completionPendingRef.current.has(item.itemId) || (parentId && pendingPieceParentsRef.current.has(parentId))) return;
     const previousOverlay = completionOverlayRef.current.get(item.itemId);

@@ -1,3 +1,4 @@
+import { replaceMissingStandardHoursProcesses } from './missing-standard-hours-process.js';
 import { replaceAllWinnerExternalCompletionStatesFromMailSync } from './external-completion/fkojunst-external-completion-sync.repository.js';
 /**
  * FKOJUNST_Status Gmail CSV sync: read/normalize → FUPDTEDTで最新化 → winner resolve → delete-by-source + createMany.
@@ -397,6 +398,7 @@ export async function runFkojunstMailReplacementTransaction(
     skippedInvalidStatus: number;
     skippedUnparseableDate: number;
     createInputs: Prisma.ProductionScheduleFkojunstMailStatusCreateManyInput[];
+    missingStandardHoursMailRows?: readonly FkojunstMailNormalizedRow[];
     processChangeResidualEvidenceInputs?: Prisma.ProductionScheduleProcessChangeResidualEvidenceCreateManyInput[];
     sourceRowsRevision?: string;
   }
@@ -419,6 +421,8 @@ export async function runFkojunstMailReplacementTransaction(
           evidenceInputs: params.processChangeResidualEvidenceInputs ?? [],
         });
       }
+
+      await replaceMissingStandardHoursProcesses(tx, params.missingStandardHoursMailRows ?? []);
 
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
         where: {
@@ -489,6 +493,8 @@ export async function runFkojunstMailClearTransaction(
           evidenceInputs: [],
         });
       }
+
+      await replaceMissingStandardHoursProcesses(tx, []);
 
       const pruneResult = await tx.productionScheduleFkojunstMailStatus.deleteMany({
         where: {

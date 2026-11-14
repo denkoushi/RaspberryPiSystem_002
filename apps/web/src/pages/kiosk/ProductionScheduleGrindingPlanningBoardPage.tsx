@@ -322,7 +322,7 @@ export function PlanningBoardPage() {
 
   const clearSelection = useCallback(() => setSelectedItemIdsByCategory((current) => current[category]?.size ? { ...current, [category]: new Set<string>() } : current), [category]);
   const toggleItem = useCallback((item: GrindingPlanningBoardItem, selected: boolean) => {
-    if (!gate.attempt()) return; if (!scopeReady || item.isCompleted) return;
+    if (!gate.attempt()) return; if (!scopeReady || item.standardHoursMissing || item.isCompleted) return;
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       if (selected) next.add(item.itemId); else next.delete(item.itemId);
@@ -378,7 +378,7 @@ export function PlanningBoardPage() {
     setSelectedItemIdsByCategory((current) => {
       const next = new Set(current[category] ?? []);
       for (const item of items) {
-        if (item.isCompleted) continue;
+        if (item.standardHoursMissing || item.isCompleted) continue;
         if (selected) next.add(item.itemId); else next.delete(item.itemId);
       }
       return { ...current, [category]: next };
@@ -388,14 +388,14 @@ export function PlanningBoardPage() {
   const canMoveResource = useCallback((item: GrindingPlanningBoardItem, target: string) => {
     const originalCategory = data?.resourceCategories?.[item.originalResourceCd ?? ''];
     const targetCategory = data?.resourceCategories?.[target];
-    return originalCategory && targetCategory ? originalCategory === targetCategory : category !== 'all';
+    return !item.standardHoursMissing && (originalCategory && targetCategory ? originalCategory === targetCategory : category !== 'all');
   }, [category, data?.resourceCategories]);
 
   const enqueueOverrides = useCallback((
     originals: readonly GrindingPlanningBoardItem[], requests: GrindingPlanningBoardOverrideItemRequest[],
     label: string, onFailed?: (error: unknown) => void, capturedSourceRevision?: string, orderAction?: { onSaved: () => void }, onSaved?: () => void, onDiscarded?: () => void
   ) => {
-    if (!gate.attempt()) return false; if (writeBlocked || originals.some((item) => hasPendingSeiban(item.fseiban, true))) return false;
+    if (!gate.attempt()) return false; if (writeBlocked || originals.some((item) => item.standardHoursMissing || hasPendingSeiban(item.fseiban, true))) return false;
     if (requests.some((request) => {
       if (request.resourceCd === undefined) return false;
       const item = originals.find((candidate) => candidate.itemId === request.itemId);
@@ -433,7 +433,7 @@ export function PlanningBoardPage() {
 
   const openEditor = useCallback((items: readonly GrindingPlanningBoardItem[]) => {
     if (!gate.attempt()) return; if (!scopeReady || writeBlocked || items.some((item) => hasPendingSeiban(item.fseiban, true))) return;
-    const target = items.filter((item) => !item.isCompleted);
+    const target = items.filter((item) => !item.standardHoursMissing && !item.isCompleted);
     if (target.length === 0) return;
     if (!data) return;
     editorGenerationRef.current += 1;
@@ -522,14 +522,14 @@ export function PlanningBoardPage() {
     });
   }, [historyScope]);
   const snapshotResourceOrder = useCallback((resource: string): ResourceOrderSnapshot => ({ resourceCd: resource,
-    itemIds: sortGrindingPlanningBoardItems(currentItemsRef.current.filter((candidate) => !candidate.isCompleted &&
+    itemIds: sortGrindingPlanningBoardItems(currentItemsRef.current.filter((candidate) => !candidate.standardHoursMissing && !candidate.isCompleted &&
       (resolveGrindingPlanningBoardResource(candidate, 'alternate') ?? '未設定') === resource), registeredFseibans, 'resource', 'alternate').map((candidate) => candidate.itemId)
   }), [registeredFseibans]);
 
   const reorderResourceByDrag = useCallback((item: GrindingPlanningBoardItem, targetItem: GrindingPlanningBoardItem,
     placement: GrindingPlanningBoardResourceOrderPlacement) => {
     const resource = resolveGrindingPlanningBoardResource(item, allocation);
-    if (!gate.attempt()) return; if (!data || !scopeReady || !rankMutationReady || writeBlocked || allocation === 'original' || item.isCompleted || targetItem.isCompleted ||
+    if (!gate.attempt()) return; if (!data || !scopeReady || !rankMutationReady || writeBlocked || allocation === 'original' || item.standardHoursMissing || targetItem.standardHoursMissing || item.isCompleted || targetItem.isCompleted ||
       !resource || resource !== resolveGrindingPlanningBoardResource(targetItem, allocation) ||
       (item.specialDue?.expiresAt ?? null) !== (targetItem.specialDue?.expiresAt ?? null) ||
       hasPendingSeiban(item.fseiban, true) || hasPendingSeiban(targetItem.fseiban, true)) return;

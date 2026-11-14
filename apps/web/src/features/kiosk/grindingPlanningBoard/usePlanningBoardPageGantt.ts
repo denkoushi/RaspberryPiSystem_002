@@ -89,7 +89,7 @@ export function usePlanningBoardPageGantt({
     () => focusedFseiban ? sortedItemsBySeiban.get(focusedFseiban) ?? [] : [],
     [focusedFseiban, sortedItemsBySeiban]
   );
-  const orderItems = useMemo(() => ganttItems.filter((item) => isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
+  const orderItems = useMemo(() => ganttItems.filter((item) => !item.standardHoursMissing && isVisibleByArrival(item, arrivalFilterEnabled)), [ganttItems, arrivalFilterEnabled]);
   const ganttNow = useMemo(() => new Date(nowMs), [nowMs]);
   const tests = usePlanningBoardTestBars({ data, items: writeQueue.items, enqueue: enqueueWrite,
     disabled: !scopeReady || !rankMutationReady || writeBlocked || writeQueue.pending || Boolean(orderPreview) || pinMode || allocation !== 'alternate',
@@ -111,7 +111,9 @@ export function usePlanningBoardPageGantt({
     enqueueResourceOrder({ resourceCd: resource, itemIds: ids }, '順番', () => rememberResourceOrder(id, before));
   } } };
   const snapshotResourceOrder = (resource: string): ResourceOrderSnapshot => {
-    const normal = normalSnapshotResourceOrder(resource);
+    const original = normalSnapshotResourceOrder(resource);
+    const readonlyIds = new Set(currentItemsRef.current.filter((item) => item.standardHoursMissing).map((item) => item.itemId));
+    const normal = { ...original, itemIds: original.itemIds.filter((id) => !readonlyIds.has(id)) };
     const byId = new Map(currentItemsRef.current.map((item) => [item.itemId, item]));
     const laneTests = tests.bars.filter((item) => item.resourceCd === resource && !item.isCompleted && !item.deletedAt);
     if (!laneTests.length) return normal;
@@ -132,6 +134,7 @@ export function usePlanningBoardPageGantt({
     if (!gate.attempt()) return false;
     const sourceById = new Map<string, GrindingPlanningBoardBar>([...sourceItems, ...tests.bars].map((item) => [item.itemId, item]));
     const items = snapshot.itemIds.map((id) => sourceById.get(id));
+    if (items.some((item) => item?.kind !== 'test' && item?.standardHoursMissing)) return false;
     if (!items.length || items.length > 500 || items.some((item) => !item || isPendingPlanningTestBar(item) || item.isCompleted ||
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || (item.kind !== 'test' && hasPendingSeiban(item.fseiban, true)))) return false;
     const members = items as GrindingPlanningBoardBar[];
@@ -220,7 +223,7 @@ export function usePlanningBoardPageGantt({
   const proposeResourceOrder = (method: UnitOrderMethod = 'group', previous?: OrderPreview | null) => {
     if (!gate.attempt()) return;
     if (gantt.mode !== 'forward' || view !== 'resource' || allocation !== 'alternate' || orderActionsDisabled) return;
-    const options: GanttLayoutOptions = { items: ganttItems, testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
+    const options: GanttLayoutOptions = { items: ganttItems.filter((item) => !item.standardHoursMissing), testBars: tests.bars, arrivalFilterEnabled, allocation, view, category, resourceCategories: data?.resourceCategories,
       seibanOrder: registeredFseibans, resources: data?.resources ?? EMPTY_ORDER, resourceMinutes: gantt.resourceMinutes, dailyHoursByResource: gantt.dailyHoursByResource, runsThroughBreaks: gantt.runsThroughBreaks,
       today, scale: gantt.scale, now: ganttNow };
     const resources: string[] = gantt.singleResourceCd ? planningBoardPair(gantt.singleResourceCd, gantt.singleResourceLanes) ?? [gantt.singleResourceCd] : [];
@@ -228,7 +231,7 @@ export function usePlanningBoardPageGantt({
       resources.includes(resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定')) ? method : undefined;
     if (unitMethod === 'balance' && resources.length !== 2) return;
     if (unitMethod) {
-      const base = previous ? { ...previous.options, items: ganttItems, scale: gantt.scale } : options;
+      const base = previous ? { ...previous.options, items: options.items, scale: gantt.scale } : options;
       const current = previous?.current ?? planningBoardLaneOrder(base);
       const { proposal, resourceChanges } = planningBoardUnitOrder(base, resources, unitMethod, {
         visibleItemIds: new Set(orderItems.map(item => item.itemId)), canMoveResource,

@@ -83,3 +83,45 @@ describe('planning due input timestamps', () => {
     expect(write.update.overrideDueDateSetAt).toEqual(timestamp);
   });
 });
+
+
+describe('missing standard hours is read-only', () => {
+  const id = 'missing-standard-hours:example';
+  const ref = { itemId: id, itemRevision: 'revision' };
+  const base = { ...ref, siteKey: 'site', sourceRevision: 'board' };
+  it.each(['due', 'resource', 'special due', 'rank', 'pins', 'arrival', 'first arrival', 'order source', 'order target', 'bulk order', 'test insertion', 'test restoration'])('rejects %s before DB work', async (operation) => {
+    vi.clearAllMocks();
+    const writes = await import('../grinding-planning-board/write.js');
+    const tests = await import('../grinding-planning-board/test-bars.js');
+    let action: Promise<unknown>;
+    switch (operation) {
+      case 'due': action = writes.updateGrindingPlanningBoardOverrides({ ...base, items: [{ ...ref, due: { kind: 'date', date: '2026-12-01' } }] }); break;
+      case 'resource': action = writes.updateGrindingPlanningBoardOverrides({ ...base, items: [{ ...ref, resourceCd: '587' }] }); break;
+      case 'special due': action = writes.updateGrindingPlanningBoardOverrides({ ...base, items: [{ ...ref, specialDue: 'today' }] }); break;
+      case 'rank': action = writes.updateGrindingPlanningBoardRank({ ...base, alternateRank: 1 }); break;
+      case 'pins': action = writes.updateGrindingPlanningBoardPins({ ...base, items: [ref], pinned: true }); break;
+      case 'arrival': action = writes.updateGrindingPlanningBoardArrival({ ...base, recorded: true }); break;
+      case 'first arrival': action = writes.updateGrindingPlanningBoardFirstProcessArrival({ ...base, state: 'arrived' }); break;
+      case 'order source': action = writes.updateGrindingPlanningBoardResourceOrder({ ...base, targetItemId: 'row:other', targetItemRevision: 'other', placement: 'after' }); break;
+      case 'order target': action = writes.updateGrindingPlanningBoardResourceOrder({ ...base, itemId: 'row:other', targetItemId: id, targetItemRevision: 'other', placement: 'before' }); break;
+      case 'bulk order': action = writes.updateGrindingPlanningBoardResourceOrderBulk({ ...base, resourceCd: '587', items: [ref] }); break;
+      case 'test insertion': action = tests.createPlanningTestBar({ ...base, resourceCd: '587', minutes: 10, afterItem: ref }); break;
+      default: action = tests.mutatePlanningTestBar({ ...base, id: 'test', expectedVersion: 0, action: 'restore', restoreAfterItemId: id });
+    }
+    await expect(action).rejects.toMatchObject({ statusCode: 400, code: 'READ_ONLY_MISSING_STANDARD_HOURS' });
+    expect(mocks.tx.$transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.productionScheduleGrindingPlanningBoardOverride.upsert).not.toHaveBeenCalled();
+    expect(mocks.source.readWinnerRowsByLogicalKeyFseibans).not.toHaveBeenCalled();
+  });
+  it('rejects synthetic source IDs at generic completion and row editing boundaries', async () => {
+    const schemas = await import('../../../routes/kiosk/production-schedule/shared.js');
+    for (const schema of [schemas.productionScheduleCompleteParamsSchema, schemas.productionScheduleOrderParamsSchema,
+      schemas.productionScheduleNoteParamsSchema, schemas.productionScheduleDueDateParamsSchema, schemas.productionScheduleProcessingParamsSchema]) {
+      expect(schema.safeParse({ rowId: id }).success).toBe(false);
+    }
+  });
+  it('rejects missing marker IDs for piece splitting and merging', async () => {
+    const { decodeSessakuPieceParentItemId } = await import('../sessaku-pieces/piece-key.js');
+    expect(() => decodeSessakuPieceParentItemId(id)).toThrow();
+  });
+});

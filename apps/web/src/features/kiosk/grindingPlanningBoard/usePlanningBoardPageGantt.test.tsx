@@ -87,6 +87,25 @@ describe('planning board mixed test-bar order', () => {
 });
 
 describe('planning board due order', () => {
+  it('excludes missing-hours markers from due ordering and automatic proposals', () => {
+    const fixture = productionFixture(30, 1);
+    fixture.items = fixture.items.map((item, index) => ({ ...item, specialDue: null, originalDueDate: `2026-11-${String(30 - index).padStart(2, '0')}`, effectiveDueDate: null }));
+    fixture.items[0] = { ...fixture.items[0], standardHoursMissing: true, requiredMinutes: null, requiredMinutesKnown: false };
+    const setOrderPreview = vi.fn();
+    const h = setup(fixture, { setOrderPreview });
+    act(() => h.result.current.page.sortResourceOrdersByDue());
+    expect(h.requests).toHaveLength(1);
+    expect(h.requests[0].request.items).toHaveLength(29);
+    expect(h.requests[0].request.items.some((item) => item.itemId === fixture.items[0].itemId)).toBe(false);
+    h.unmount();
+    const proposal = setup(fixture, { setOrderPreview });
+    act(() => proposal.result.current.page.proposeResourceOrder());
+    const preview = setOrderPreview.mock.calls.at(-1)?.[0] as OrderPreview;
+    expect(preview).toBeDefined();
+    expect(Object.values(preview.proposal).flat()).not.toContain(fixture.items[0].itemId);
+    proposal.unmount();
+  });
+
   it('keeps special due bands first, then due date, process and itemId, and excludes completed work', () => {
     const fixture = productionFixture(8, 1);
     fixture.items = fixture.items.map((item, i) => ({ ...item, fseiban: fixture.seibans[0],

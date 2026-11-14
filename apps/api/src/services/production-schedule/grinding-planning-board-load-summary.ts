@@ -1,3 +1,6 @@
+import { addMinutes, addMissingStandardHoursLoad, buildGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-items.js';
+export { addMissingStandardHoursLoad, buildGrindingPlanningBoardLoadSummary } from './grinding-planning-board-load-items.js';
+import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from './missing-standard-hours-process.js';
 import { OP_BAR_LOAD_JOINS_SQL, resolveOpBarMinutes, type OpBarSummaryFields, type LoadSummaryAggregateRow, resolveOpBarLoadAggregates } from './grinding-planning-board-op-bar-load.js';
 import { getGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes.service.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
@@ -38,6 +41,8 @@ export type GrindingPlanningBoardLoadSummaryDbClient = JitControlledClient;
 
 export type ReadGrindingPlanningBoardLoadSummaryParams = {
   resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  missingStandardHoursRows?: readonly MissingStandardHoursBoardRow[];
+  excludedFseibans?: readonly string[];
   client: GrindingPlanningBoardLoadSummaryDbClient;
   dashboardId?: string;
   /** Canonical winner ids, used by the isolated fallback path and tests. */
@@ -494,7 +499,7 @@ async function readMaterializedLoadAggregates(
  * predicate, or canonical winner ids for the isolated fallback path.
  * No full rowData, note, rank, or machine metadata is selected.
  */
-export async function readGrindingPlanningBoardLoadSummary(
+async function readBaseGrindingPlanningBoardLoadSummary(
   params: ReadGrindingPlanningBoardLoadSummaryParams
 ): Promise<GrindingPlanningBoardLoadSummary> {
   const winnerRowIds = [...new Set((params.winnerRowIds ?? []).map((id) => id.trim()).filter(Boolean))].sort();
@@ -573,98 +578,10 @@ export async function readGrindingPlanningBoardLoadSummary(
   return addPlanningTestBarLoad(buildGrindingPlanningBoardLoadSummary(summaryRows), params);
 }
 
-function addMinutes(
-  entry: GrindingPlanningBoardLoad,
-  field: 'originalRequiredMinutes' | 'alternateRequiredMinutes',
-  minutes: number | null
-): void {
-  if (minutes == null) return;
-  entry[field] = (entry[field] ?? 0) + minutes;
-}
-
-/**
- * Aggregates the load view from lightweight logical item summaries.
- *
- * The caller supplies all rows for the board, including unselected seiban. The
- * summary intentionally does not perform winner selection, category filtering,
- * completion resolution; those stay in the existing source pipeline.
- */
-export function buildGrindingPlanningBoardLoadSummary(
-  inputRows: readonly GrindingPlanningBoardLoadSummaryRow[]
-): GrindingPlanningBoardLoadSummary {
-  const rows: GrindingPlanningBoardLoadSummaryRow[] = [];
-  const seen = new Set<string>();
-  for (const row of inputRows) {
-    const itemId = row.itemId.trim();
-    if (!itemId || seen.has(itemId)) continue;
-    seen.add(itemId);
-    rows.push(row);
-  }
-
-  const byResource = new Map<string, GrindingPlanningBoardLoad>();
-  let unknownRequiredMinutesCount = 0;
-
-  const ensure = (resourceCd: string): GrindingPlanningBoardLoad => {
-    const existing = byResource.get(resourceCd);
-    if (existing) return existing;
-    const created: GrindingPlanningBoardLoad = {
-      resourceCd,
-      originalItemCount: 0,
-      alternateItemCount: 0,
-      originalRequiredMinutes: null,
-      alternateRequiredMinutes: null,
-      unfinishedItemCount: 0,
-      requiredMinutes: null,
-      unknownItemCount: 0,
-      originalUnknownItemCount: 0,
-      alternateUnknownItemCount: 0
-    };
-    byResource.set(resourceCd, created);
-    return created;
-  };
-
-  rows.sort((left, right) => left.sourceRowId < right.sourceRowId ? -1 : left.sourceRowId > right.sourceRowId ? 1
-    : left.itemId < right.itemId ? -1 : left.itemId > right.itemId ? 1 : 0);
-  for (const row of rows) {
-    if (row.isCompleted) continue;
-    const originalResource = row.originalResourceCd?.trim() || null;
-    const alternateResource = row.effectiveResourceCd?.trim() || null;
-    if (originalResource == null && alternateResource == null) continue;
-
-    const unknown = !row.requiredMinutesKnown || row.requiredMinutes == null;
-    if (unknown) unknownRequiredMinutesCount += 1;
-
-    if (originalResource != null) {
-      const originalEntry = ensure(originalResource);
-      originalEntry.originalItemCount += 1;
-      addMinutes(originalEntry, 'originalRequiredMinutes', row.requiredMinutes);
-      if (unknown) originalEntry.originalUnknownItemCount += 1;
-    }
-
-    if (alternateResource != null) {
-      const alternateEntry = ensure(alternateResource);
-      alternateEntry.alternateItemCount += 1;
-      alternateEntry.unfinishedItemCount += 1;
-      addMinutes(alternateEntry, 'alternateRequiredMinutes', row.requiredMinutes);
-      if (unknown) {
-        alternateEntry.alternateUnknownItemCount += 1;
-        alternateEntry.unknownItemCount += 1;
-      }
-    }
-  }
-
-  for (const entry of byResource.values()) {
-    if (entry.originalItemCount === 0 && entry.originalUnknownItemCount === 0) {
-      entry.originalRequiredMinutes = 0;
-    }
-    if (entry.alternateItemCount === 0 && entry.alternateUnknownItemCount === 0) {
-      entry.alternateRequiredMinutes = 0;
-    }
-    entry.requiredMinutes = entry.alternateRequiredMinutes;
-  }
-
-  return {
-    load: [...byResource.values()].sort((left, right) => left.resourceCd.localeCompare(right.resourceCd)),
-    unknownRequiredMinutesCount
-  };
+export async function readGrindingPlanningBoardLoadSummary(params: ReadGrindingPlanningBoardLoadSummaryParams): Promise<GrindingPlanningBoardLoadSummary> {
+  const [summary, missing] = await Promise.all([
+    readBaseGrindingPlanningBoardLoadSummary(params),
+    params.missingStandardHoursRows ?? readMissingStandardHoursBoardRows(params.client)
+  ]);
+  return addMissingStandardHoursLoad(summary, missing, params);
 }

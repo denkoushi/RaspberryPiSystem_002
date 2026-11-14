@@ -47,7 +47,7 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
   const changeFirstProcessArrival = async (item: GrindingPlanningBoardItem, state: GrindingPlanningBoardFirstProcessState) => {
     if (!gate.attempt()) return;
     const generation = gate.generation();
-    if (pending.current || !siteKey) return;
+    if (item.standardHoursMissing || pending.current || !siteKey) return;
     pending.current = true;
     try {
       const result = await gate.run(() => firstProcessMutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,
@@ -66,7 +66,7 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
   const changeArrival = async (item: GrindingPlanningBoardItem, recorded: boolean) => {
     if (!gate.attempt()) return;
     const generation = gate.generation();
-    if (pending.current || !siteKey) return;
+    if (item.standardHoursMissing || pending.current || !siteKey) return;
     pending.current = true;
     try {
       const result = await gate.run(() => mutation.mutateAsync({ itemId: item.itemId, itemRevision: item.itemRevision,

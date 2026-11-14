@@ -90,6 +90,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const closeUnlessPinned = useCallback(() => { if (!pinned.current && !drag.current) close(); }, [close]);
   useImperativeHandle(ref, () => ({
     show: (bar, anchor, fixed = false) => {
+      if (bar.item.kind !== 'test' && bar.item.standardHoursMissing) return;
       if (pinned.current && !fixed) return;
       cancelHide(); clearDrag(); pinned.current = fixed; setPinned(fixed); setOpen({ itemId: bar.item.itemId, anchor });
     }, hideSoon, close, closeUnlessPinned, isPinned: () => pinned.current
@@ -144,7 +145,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   }, [open]);
   const findDrop = useCallback((clientX: number, source: GanttBar): Drop | null => {
     const cards = openBar ? forwardQueueWindow(layout, openBar) : [];
-    const others = cards.filter(({ bar }) => bar.item.itemId !== source.item.itemId).map(({ bar, position: queuePosition }) => ({ bar,
+    const others = cards.filter(({ bar }) => (bar.item.kind === 'test' || !bar.item.standardHoursMissing) && bar.item.itemId !== source.item.itemId).map(({ bar, position: queuePosition }) => ({ bar,
       rect: panel.current?.querySelector<HTMLElement>(`[data-queue-position="${queuePosition}"]`)?.getBoundingClientRect()
     })).filter((entry) => entry.rect);
     const before = others.find(({ rect }) => clientX < rect!.left + rect!.width / 2);
@@ -216,7 +217,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
           item.itemId === openBar.item.itemId && clsx('outline outline-2 outline-amber-400', focusedSeiban !== null && item.kind !== 'test' && item.fseiban === focusedSeiban && 'outline-offset-[-3px]'),
           draggedItemId === item.itemId && 'outline outline-2 outline-dashed outline-amber-400 [&>*]:opacity-30')}
         onPointerDown={(event) => {
-          if (event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
+          if ((item.kind !== 'test' && item.standardHoursMissing) || event.button !== 0 || event.isPrimary === false || drag.current || disabled || dragDisabled || !resourceView || item.isCompleted || bar.arrivalPending || (event.target instanceof Element && event.target.closest('button'))) return;
           if (!gate.attempt()) return;
           cancelHide();
           const element = event.currentTarget;
@@ -259,17 +260,17 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
               aria-pressed={item.firstProcessState === state}
               className={clsx('min-h-9 rounded border border-slate-500 disabled:opacity-50',
                 item.firstProcessState === state ? 'bg-white text-slate-950' : 'text-slate-100')}
-              disabled={disabled || arrivalPending}
+              disabled={item.standardHoursMissing || disabled || arrivalPending}
               onClick={() => onFirstProcessArrivalChange?.(item, item.firstProcessState === state ? null : state)}>
               {state === 'arrived' ? '着' : '外'}
             </button>)}
           </div>
         ) : bar.arrivalPending ? (
           <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
-            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
+            disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, true)}>着</button>
         ) : <>
           {item.manualArrivalDate && <button type="button" className="mt-1 min-h-9 w-full rounded border border-slate-500 text-slate-100 disabled:opacity-50"
-            disabled={disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>取り消し</button>}
+            disabled={item.standardHoursMissing || disabled || arrivalPending} onClick={() => onArrivalChange?.(item, false)}>取り消し</button>}
         </>}
 
         </>}
