@@ -1725,14 +1725,14 @@ class BusinessQwenRoutingTests(unittest.TestCase):
                 self.assertEqual(self.request()[0], 503)
                 self.assertFalse(any(call[0] == 'POST' for call in self.calls))
 
-    def test_images_pass_in_chat_responses_and_images_routes(self):
+    def test_images_pass_in_chat_and_responses_but_image_generation_is_refused(self):
         for image_type in ('image_url', 'input_image', 'image'):
             part = {'type': image_type, 'image_url': {'url': 'data:private'}}
             for path, payload in (('/v1/chat/completions', {'messages': [{'content': [part]}]}),
                     ('/v1/responses', {'input': [{'content': [part]}]})):
                 with self.subTest(image_type=image_type, path=path):
                     self.assertEqual(self.request(path=path, payload=payload)[0], 200)
-        self.assertEqual(self.request(path='/v1/images/generations', payload={'prompt': 'image'})[0], 200)
+        self.assertEqual(self.request(path='/v1/images/generations', payload={'prompt': 'image'})[0], 400)
         self.assertEqual(self.request(payload={'messages': [], 'chat_template_kwargs': None})[0], 400)
 
     def test_qwen_private_sharing_refused_without_forwarding(self):
@@ -1787,8 +1787,7 @@ class BusinessQwenRoutingTests(unittest.TestCase):
         salts = []
         for shared in (None, '3:generation-3', '3:generation-3', None):
             for path, payload in (('/v1/chat/completions', {'messages': [{'content': [{'type': 'image_url'}]}]}),
-                                  ('/v1/responses', {'input': [{'type': 'input_image'}]}),
-                                  ('/v1/images/generations', {'prompt': 'image'})):
+                                  ('/v1/responses', {'input': [{'type': 'input_image'}]})):
                 status, response = self.request(path=path, shared=shared, payload={**payload, 'cache_salt': 'client-salt'})
                 self.assertEqual(status, 200)
                 sent = json.loads(self.calls[-1][2])
@@ -1800,6 +1799,10 @@ class BusinessQwenRoutingTests(unittest.TestCase):
                 else:
                     self.assertNotIn('cache_salt', sent)
         self.assertEqual(len(set(salts)), 1)
+        for shared in (None, '3:generation-3'):
+            before = len(self.calls)
+            self.assertEqual(self.request(path='/v1/images/generations', shared=shared, payload={'prompt': 'image'})[0], 400)
+            self.assertFalse(any(call[0] == 'POST' for call in self.calls[before:]))
         self.assertEqual([call[1].rsplit('/', 1)[1] for call in self.calls if '/reset_' in call[1]],
                          ['reset_prefix_cache', 'reset_mm_cache', 'reset_encoder_cache'] * 3)
 

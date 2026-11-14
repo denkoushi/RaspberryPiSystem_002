@@ -1831,7 +1831,8 @@ def make_handler(
                                 raise ValueError("invalid_request")
                             if payload.get("model", "system-prod-primary") != "system-prod-primary":
                                 raise ValueError("unsupported_model")
-                            if profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path):
+                            if ((profile == DEEPSEEK_PROFILE and (business_has_image(payload) or "/images" in self.path))
+                                    or (profile == BUSINESS_QWEN38_PROFILE_ID and "/images" in self.path)):
                                 raise ValueError("image_requests_unsupported")
                             if shared is not None and private_has_unsupported_image_url(payload):
                                 raise ValueError('private_shared_image_url_unsupported')
