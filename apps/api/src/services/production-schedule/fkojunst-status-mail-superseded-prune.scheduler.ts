@@ -24,7 +24,14 @@ export class FkojunstMailSupersededPruneScheduler {
       try {
         const result = await this.run({ mode: 'execute', maxDelete: env.FKOJUNST_MAIL_PRUNE_MAX_DELETE });
         logger.info(
-          { status: result.status, deleteCandidates: result.deleteCandidates, winners: result.winners, hasRemaining: result.hasRemaining },
+          {
+            status: result.status,
+            deleted: 'deleted' in result ? result.deleted : 0,
+            reason: 'reason' in result ? result.reason ?? null : null,
+            deleteCandidates: result.deleteCandidates,
+            winners: result.winners,
+            hasRemaining: result.hasRemaining
+          },
           '[FkojunstMailSupersededPruneScheduler] tick completed'
         );
       } catch (error) {

@@ -2,6 +2,13 @@ import { createHash } from 'node:crypto';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { logger } from '../../../lib/logger.js';
+import {
+  buildFkojunstMailStatusKey,
+  collectFkojunstMailNormalizedRowsFromSourceRows,
+  dedupeFkojunstMailRowsByLatest
+} from '../fkojunst-status-mail-sync.pipeline.js';
+
 import { ProductionScheduleFkojunstMailStatusSyncService } from '../fkojunst-status-mail-sync.service.js';
 
 vi.mock('../fkojunst-status-mail-sync.service.js', () => ({
@@ -148,11 +155,77 @@ describe('runFkojunstMailSupersededPrune', () => {
     expect(tx.csvDashboardRow.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('limits deletion within a bucket and returns hasRemaining', async () => {
+  it('keeps an oversized key intact and returns hasRemaining', async () => {
     const { client, deletedIds } = fixture([...pair('a', 'PCR-1'), ...pair('b', 'PCR-1')]);
     const result = await execute(client, { maxDelete: 2, chunkSize: 1 });
-    expect(result).toMatchObject({ status: 'deleted', deleted: 2, hasRemaining: true, deleteCandidates: 3 });
-    expect(deletedIds).toHaveLength(2);
+    expect(result).toMatchObject({ status: 'deleted', deleted: 0, hasRemaining: true, deleteCandidates: 3, reason: expect.stringContaining('limit') });
+    expect(deletedIds).toHaveLength(0);
+  });
+
+  it.each([
+    { maxDelete: 1, chunkSize: 1, interrupt: false, expectedDeleted: 1, hasRemaining: true },
+    { maxDelete: 2, chunkSize: 1, interrupt: false, expectedDeleted: 1, hasRemaining: true },
+    { maxDelete: 3, chunkSize: 1, interrupt: false, expectedDeleted: 3, hasRemaining: true },
+    { maxDelete: 4, chunkSize: 1, interrupt: false, expectedDeleted: 4, hasRemaining: false },
+    { maxDelete: 4, chunkSize: 3, interrupt: false, expectedDeleted: 4, hasRemaining: false },
+    { maxDelete: 4, chunkSize: 1, interrupt: true, expectedDeleted: 1, hasRemaining: true },
+    { maxDelete: 4, chunkSize: 3, interrupt: true, expectedDeleted: 3, hasRemaining: true }
+  ])('preserves whole loser groups and winners: %j', async ({ maxDelete, chunkSize, interrupt, expectedDeleted, hasRemaining }) => {
+    const product = productInBucket(0);
+    const pathological = [
+      { ...mailRow('a', { ...key, FSEZONO: product, FKOJUNST: 'S', FUPDTEDT: '2026-09-01T08:00:00.000' }),
+        sourceRowOrdinal: 1, sourceIngestRunStartedAt: new Date('2026-09-01Z'), sourceIngestRunCompletedAt: new Date('2026-09-01Z') },
+      mailRow('b', { ...key, FSEZONO: product, FKOJUNST: 'S', FUPDTEDT: 'invalid' }),
+      mailRow('c', { ...key, FSEZONO: product, FKOJUNST: 'C', FUPDTEDT: '2026-09-02T08:00:00.000' })
+    ];
+    const otherPair = (prefix: string, resource: string) => pair(prefix, product).map((row) => ({
+      ...row, rowData: { ...row.rowData as object, FKOTEICD: resource }
+    }));
+    // 別キーを敗者の間にも挟み、読込順の連続区間ではなく論理キーでまとめることを確認する。
+    const sourceRows = [...otherPair('first', '2'), pathological[0], ...otherPair('last', '3'), ...pathological.slice(1)];
+    const winnersOf = (rows: FkojunstStatusMailSourceRow[]) => dedupeFkojunstMailRowsByLatest(
+      collectFkojunstMailNormalizedRowsFromSourceRows(rows).normalizedRows
+    );
+    expect(winnersOf(pathological).map((row) => row.sourceRowId)).toEqual(['c']);
+    expect(winnersOf(pathological.slice(1)).map((row) => row.sourceRowId)).toEqual(['b']);
+    const originalWinners = winnersOf(sourceRows);
+    const originalWinnerIds = new Set(originalWinners.map((row) => row.sourceRowId));
+    const losersByKey = new Map<string, string[]>();
+    for (const row of collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows).normalizedRows) {
+      if (originalWinnerIds.has(row.sourceRowId)) continue;
+      const statusKey = buildFkojunstMailStatusKey(row);
+      losersByKey.set(statusKey, [...(losersByKey.get(statusKey) ?? []), row.sourceRowId]);
+    }
+    const { client, tx, deletedIds, bumpRevision } = fixture(sourceRows);
+    const assertIntact = () => {
+      const removed = new Set(deletedIds);
+      for (const group of losersByKey.values()) {
+        const count = group.filter((id) => removed.has(id)).length;
+        expect([0, group.length]).toContain(count);
+      }
+      expect(new Map(winnersOf(sourceRows.filter((row) => !removed.has(row.id)))
+        .map((row) => [buildFkojunstMailStatusKey(row), row.sourceRowId])))
+        .toEqual(new Map(originalWinners.map((row) => [buildFkojunstMailStatusKey(row), row.sourceRowId])));
+    };
+    const originalDelete = tx.csvDashboardRow.deleteMany.getMockImplementation()!;
+    tx.csvDashboardRow.deleteMany.mockImplementation(async (args) => {
+      const result = await originalDelete(args);
+      assertIntact();
+      return result;
+    });
+    let transactions = 0;
+    client.$transaction.mockImplementation(async (work) => {
+      if (interrupt && ++transactions === 2) bumpRevision();
+      return work(tx);
+    });
+    const result = await execute(client, { maxDelete, chunkSize });
+    expect(result).toMatchObject({ status: interrupt ? 'stopped' : 'deleted', deleted: expectedDeleted, hasRemaining });
+    assertIntact();
+    if (expectedDeleted >= 3) {
+      expect(tx.csvDashboardRow.deleteMany.mock.calls.some(([args]) =>
+        args.where.id.in.includes('a') && args.where.id.in.includes('b')
+      )).toBe(true);
+    }
   });
 
   it('limits across buckets, deleting each before reading the next and following revision bumps', async () => {
@@ -201,7 +274,8 @@ describe('runFkojunstMailSupersededPrune', () => {
   });
 
   it('keeps committed chunks when a later chunk sees another change', async () => {
-    const { client, tx, bumpRevision } = fixture([...pair('a', 'PCR-1'), ...pair('b', 'PCR-1')]);
+    const otherKey = pair('b', 'PCR-1').map((row) => ({ ...row, rowData: { ...row.rowData as object, FKOTEICD: '2' } }));
+    const { client, tx, bumpRevision } = fixture([...pair('a', 'PCR-1'), ...otherKey]);
     let transactions = 0;
     client.$transaction.mockImplementation(async (work) => {
       if (++transactions === 2) bumpRevision();
@@ -212,6 +286,7 @@ describe('runFkojunstMailSupersededPrune', () => {
   });
 
   it('stops between buckets if an ingest intervenes', async () => {
+    const warn = vi.spyOn(logger, 'warn');
     const { client, tx, bumpRevision, bucketsRead } = fixture([...pair('a', productInBucket(0)), ...pair('b', productInBucket(1))]);
     client.$transaction.mockImplementation(async (work) => {
       const result = await work(tx);
@@ -220,6 +295,11 @@ describe('runFkojunstMailSupersededPrune', () => {
     });
     expect(await execute(client)).toMatchObject({ status: 'stopped', deleted: 1, hasRemaining: true });
     expect(bucketsRead).toEqual([0]);
+    expect(warn).toHaveBeenCalledWith(
+      { deleted: 1, reason: expect.stringContaining('revision changed') },
+      '[FkojunstMailSupersededPrune] stopped before finishing'
+    );
+    warn.mockRestore();
   });
 
   it('stops without deleting when candidates are referenced', async () => {

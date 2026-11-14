@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import cron from 'node-cron';
 
+import { logger } from '../../../lib/logger.js';
 import { env } from '../../../config/env.js';
 import { FkojunstMailSupersededPruneScheduler } from '../fkojunst-status-mail-superseded-prune.scheduler.js';
 
@@ -22,6 +23,21 @@ describe('FkojunstMailSupersededPruneScheduler', () => {
     await scheduler.runTick();
 
     expect(run).toHaveBeenCalledWith({ mode: 'execute', maxDelete: 20_000 });
+  });
+
+  it.each([
+    { status: 'deleted', deleted: 19_999, reason: 'max delete limit reached before next key', hasRemaining: true },
+    { status: 'stopped', deleted: 2_000, reason: 'raw source revision changed', hasRemaining: true },
+    { status: 'nothing_to_delete', hasRemaining: false }
+  ])('logs deleted, reason and hasRemaining for $status', async (result) => {
+    const info = vi.spyOn(logger, 'info');
+    const run = vi.fn().mockResolvedValue(result);
+    await new FkojunstMailSupersededPruneScheduler(run as never).runTick();
+    expect(info).toHaveBeenCalledWith(
+      expect.objectContaining({ deleted: result.deleted ?? 0, reason: result.reason ?? null, hasRemaining: result.hasRemaining }),
+      '[FkojunstMailSupersededPruneScheduler] tick completed'
+    );
+    info.mockRestore();
   });
 
   it('does not overlap ticks and keeps running after a failure', async () => {

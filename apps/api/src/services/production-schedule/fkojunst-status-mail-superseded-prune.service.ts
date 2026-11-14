@@ -2,7 +2,7 @@
  * FKOJUNST_Status mail raw 行のうち、同じキー（FKOJUN・FKOTEICD・FSEZONO）の最新行に上書き済みの旧行を削除する。
  *
  * 全利用者（メール同期・residual evidence）は {@link dedupeFkojunstMailRowsByLatest} の勝者だけを使う。
- * dedupe は取り込み順に「現在の勝者」と次の行を比べる畳み込みなので、敗者を消しても現在・将来の勝者は変わらない。
+ * キーごとの敗者を全部まとめて消すので勝者は変わらない。比較が推移的でない組み合わせがあるため、一部だけ消さない。
  * キーが欠けて正規化できない行は判定に使われないが、念のため削除しない。
  */
 import { Prisma, type PrismaClient } from '@prisma/client';
@@ -14,6 +14,7 @@ import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from './constan
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { fetchFkojunstStatusMailGenerationSignals } from './fkojunst-status-mail-generation-signals.js';
 import {
+  buildFkojunstMailStatusKey,
   collectFkojunstMailNormalizedRowsFromSourceRows,
   dedupeFkojunstMailRowsByLatest
 } from './fkojunst-status-mail-sync.pipeline.js';
@@ -57,6 +58,8 @@ export type FkojunstMailSupersededPrunePlan = {
   normalized: number;
   winners: number;
   deleteIds: string[];
+  /** 同じ論理キーの敗者は、上限・塊・途中停止で分割しない。 */
+  deleteIdGroups: string[][];
   /** 削除候補の createdAt 月別件数（dry-run 表示用） */
   deleteCountByCreatedMonth: Record<string, number>;
 };
@@ -64,10 +67,10 @@ export type FkojunstMailSupersededPrunePlan = {
 export type FkojunstMailSupersededPruneResult =
   | ({ status: 'dry_run'; referencingRows: number } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'nothing_to_delete' } & FkojunstMailSupersededPruneSummary)
-  | ({ status: 'deleted'; deleted: number } & FkojunstMailSupersededPruneSummary)
+  | ({ status: 'deleted'; deleted: number; reason?: string } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'stopped'; deleted: number; reason: string } & FkojunstMailSupersededPruneSummary);
 
-export type FkojunstMailSupersededPruneSummary = Omit<FkojunstMailSupersededPrunePlan, 'deleteIds'> & {
+export type FkojunstMailSupersededPruneSummary = Omit<FkojunstMailSupersededPrunePlan, 'deleteIds' | 'deleteIdGroups'> & {
   /** execute は停止までに計画したバケットだけを集計する。dry-run は全バケット。 */
   deleteCandidates: number;
   hasRemaining: boolean;
@@ -101,10 +104,15 @@ export function planFkojunstMailSupersededPrune(params: {
 
   const createdAtById = new Map(params.sourceRows.map((row) => [row.id, row.createdAt]));
   const deleteIds: string[] = [];
+  const deleteIdsByKey = new Map<string, string[]>();
   const deleteCountByCreatedMonth: Record<string, number> = {};
   for (const row of normalizedRows) {
     if (winnerIds.has(row.sourceRowId)) continue;
     deleteIds.push(row.sourceRowId);
+    const statusKey = buildFkojunstMailStatusKey(row);
+    const group = deleteIdsByKey.get(statusKey) ?? [];
+    group.push(row.sourceRowId);
+    deleteIdsByKey.set(statusKey, group);
     const createdAt = createdAtById.get(row.sourceRowId);
     const key = createdAt ? monthKey(createdAt) : 'unknown';
     deleteCountByCreatedMonth[key] = (deleteCountByCreatedMonth[key] ?? 0) + 1;
@@ -116,6 +124,7 @@ export function planFkojunstMailSupersededPrune(params: {
     normalized: normalizedRows.length,
     winners: winners.length,
     deleteIds,
+    deleteIdGroups: [...deleteIdsByKey.values()],
     deleteCountByCreatedMonth
   };
 }
@@ -202,7 +211,8 @@ async function planBucket(client: PruneClient, bucket: number, rowsRevision: str
 /**
  * バケットごとに計画・勝者再確認・削除を終えてから次へ進む。上限まで削除し、残候補を返す。
  * dry-run は全バケットの候補・参照を数える。execute の集計は停止までに読んだ範囲。
- * 敗者だけの削除では勝者は変わらないため全件同期は呼ばない。evidence snapshot の revision
+ * キーごとの敗者を全部まとめて消すので勝者は変わらず、全件同期は呼ばない。比較が推移的でない
+ * 組み合わせがあるため、一部だけ消さない。evidence snapshot の revision
  * 不一致は residual の raw 再計算へフォールバックし、次の取り込み同期で snapshot が揃う。
  */
 export async function runFkojunstMailSupersededPrune(options: {
@@ -234,10 +244,9 @@ export async function runFkojunstMailSupersededPrune(options: {
     if (options.mode === 'execute') {
       const current = await fetchFkojunstStatusMailGenerationSignals(client);
       if (current.rowsRevision !== expectedRevision) {
-        return {
-          status: 'stopped', deleted, ...summary, hasRemaining: true,
-          reason: `raw source revision changed: expected ${expectedRevision}, got ${current.rowsRevision}`
-        };
+        const reason = `raw source revision changed: expected ${expectedRevision}, got ${current.rowsRevision}`;
+        logger.warn({ deleted, reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
+        return { status: 'stopped', deleted, ...summary, hasRemaining: true, reason };
       }
     }
     const plan = await planBucket(client, bucket, expectedRevision);
@@ -253,11 +262,27 @@ export async function runFkojunstMailSupersededPrune(options: {
       referencingRows += await countReferencesToCsvDashboardRows(client, plan.deleteIds);
       continue;
     }
-    const allowed = Math.min(plan.deleteIds.length, maxDelete - deleted);
-    for (let i = 0; i < allowed; i += chunkSize) {
+    const chunks: string[][] = [];
+    let chunk: string[] = [];
+    let plannedDeletes = deleted;
+    let limitReached = false;
+    for (const group of plan.deleteIdGroups) {
+      // 1 キーだけで上限を超える場合も削除せず、実行上限と勝者を守る。
+      if (plannedDeletes + group.length > maxDelete) {
+        limitReached = true;
+        break;
+      }
+      if (chunk.length > 0 && chunk.length + group.length > chunkSize) {
+        chunks.push(chunk);
+        chunk = [];
+      }
+      chunk.push(...group);
+      plannedDeletes += group.length;
+    }
+    if (chunk.length > 0) chunks.push(chunk);
+    for (const chunk of chunks) {
       // バケット境界でも、前の塊を確定済みなら待って他のクエリを通す。
       if (deleted > 0 && pauseMs > 0) await sleep(pauseMs);
-      const chunk = plan.deleteIds.slice(i, Math.min(i + chunkSize, allowed));
       const outcome = await deleteChunk(client, chunk, expectedRevision);
       if (outcome.kind === 'stopped') {
         logger.warn({ deleted, reason: outcome.reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
@@ -266,8 +291,10 @@ export async function runFkojunstMailSupersededPrune(options: {
       deleted += outcome.deleted;
       expectedRevision = outcome.revisionAfter;
     }
-    if (allowed < plan.deleteIds.length) {
-      return { status: 'deleted', deleted, ...summary, hasRemaining: true };
+    if (limitReached) {
+      const reason = 'max delete limit reached before next key';
+      logger.warn({ deleted, reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
+      return { status: 'deleted', deleted, ...summary, hasRemaining: true, reason };
     }
     // 上限ちょうどなら、残候補があるバケットまで確認して hasRemaining を正確に返す。
   }
