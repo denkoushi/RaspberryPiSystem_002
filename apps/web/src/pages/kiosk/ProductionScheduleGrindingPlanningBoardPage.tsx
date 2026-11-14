@@ -15,6 +15,7 @@ import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingP
 import { PlanningBoardOfflineMinutesProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineMinutesProvider';
 import { PlanningBoardOfflineProvider, usePlanningBoardOffline, useFrozenValue } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
 import { usePlanningBoardPageQueries, usePlanningBoardPageChips } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineQueries';
+import { usePlanningBoardNow } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardNow';
 import { usePlanningBoardOfflineConfig } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardOfflineConfig';
 import { PlanningBoardBulkEditDialog } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardBulkEditDialog';
 import { PlanningBoardDuePanels } from '../../features/kiosk/grindingPlanningBoard/PlanningBoardDuePanels';
@@ -110,8 +111,7 @@ export function PlanningBoardPage() {
   const [specialDueMode, setSpecialDueMode] = useState<GrindingPlanningBoardSpecialDueKind | null>(null);
   const [resourceOrderHistory, setResourceOrderHistory] = useState<ResourceOrderHistory[]>([]);
   const resourceOrderHistoryId = useRef(0);
-  const [liveNowMs, setNowMs] = useState(() => Date.now());
-  const nowMs = useFrozenValue(offline.enabled ? offline.now() : liveNowMs);
+  const nowMs = usePlanningBoardNow();
   const [dueDetailFseiban, setDueDetailFseiban] = useState<string | null>(null);
   const [dueDetailTargetFseiban, setDueDetailTargetFseiban] = useState<string | null>(null);
   const [duePickerState, setDuePickerState] = useState<DuePickerState | null>(null);
@@ -168,11 +168,6 @@ export function PlanningBoardPage() {
 
   useEffect(() => () => {
     if (feedbackTimerRef.current != null) clearTimeout(feedbackTimerRef.current);
-  }, []);
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => window.clearInterval(interval);
   }, []);
 
   const handleError = useCallback((error: unknown) => {
