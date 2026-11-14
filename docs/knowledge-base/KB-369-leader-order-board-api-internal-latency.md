@@ -130,7 +130,7 @@ category: knowledge-base
 
 - 表示リクエストで 10万行級以上の raw dashboard を読まない。raw source scan は sync/backfill 境界に寄せる。
 - 少数 evidence key で十分な処理は `VALUES` / CTE + expression index へ寄せる。partial index は predicate をクエリ側にも明示する。（2026-10-19 追記: 多資源では VALUES 結合が総当たりになったため、`= ANY(text[])` 照合に置き換えた。下の節を参照）
-- `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。
+- `LEADERBOARD_BOARD_PERF_LOG` は一時測定のみ。測定後は `.env` から削除し API を再起動する。本番の API は `apps/api/.env.example` も env_file として読むため、そこの既定値は `false` のままにする（9月の計測で `true` のまま残っていたのを 2026-11-14 に `false` へ戻した）。
 - 詳細な時系列・デプロイ・計測ログは [leaderboard-defer-totals-performance-recovery](../plans/leaderboard-defer-totals-performance-recovery.md#pi5-residual-evidence-persistence--residual-key-index-deploy-2026-06-23) を参照。
 
 ## Residual summary の VALUES 結合が総当たりになる（2026-10-19）
