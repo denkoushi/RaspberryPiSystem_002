@@ -333,6 +333,7 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
   it('replaces process-change residual evidence inside mail replacement transaction', async () => {
     const sourceRowsRevision = '42';
     const tx = {
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn() },
       productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) },
       $executeRaw: vi.fn().mockResolvedValue(0),
       $queryRaw: vi.fn().mockResolvedValue([{ revision: 42n }]),
@@ -396,7 +397,8 @@ describe('fkojunst-status-mail-sync.pipeline', () => {
   });
   it.each([false, true])('publishes external completion once inside the mail tx only for live sets: %s', async (hasPieces) => {
     vi.mocked(replaceAllWinnerExternalCompletionStatesFromMailSync).mockClear();
-    const tx = { $executeRaw: vi.fn(), productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(hasPieces ? { id: 'set' } : null) },
+    const tx = {
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }), createMany: vi.fn() }, $executeRaw: vi.fn(), productionScheduleSessakuPieceSet: { findFirst: vi.fn().mockResolvedValue(hasPieces ? { id: 'set' } : null) },
       productionScheduleFkojunstMailStatus: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) } };
     const client = { $transaction: vi.fn(async (fn: (arg: typeof tx) => Promise<unknown>) => fn(tx)) };
     const result = await runFkojunstMailReplacementTransaction(client as never, { scanned: 1, normalized: 1, matched: 0, unmatched: 1,

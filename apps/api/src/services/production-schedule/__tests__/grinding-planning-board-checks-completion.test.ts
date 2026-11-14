@@ -6,7 +6,10 @@ const mocks = vi.hoisted(() => ({
   rows: [] as { id: string; rowData: Record<string, string> }[],
   details: new Map(),
   update: vi.fn(), transaction: vi.fn(), readWinners: vi.fn(),
-  minutes: vi.fn().mockResolvedValue([])
+  minutes: vi.fn().mockResolvedValue([]), missing: vi.fn().mockResolvedValue([])
+}));
+vi.mock('../missing-standard-hours-process.js', async (original) => ({
+  ...await original<typeof import('../missing-standard-hours-process.js')>(), readMissingStandardHoursBoardRows: mocks.missing
 }));
 vi.mock('../../../lib/prisma.js', () => {
   const client = {
@@ -41,7 +44,7 @@ import { updateGrindingPlanningBoardSeibanChecks, updateGrindingPlanningBoardSei
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.state = { id: 'board', version: 0, seibanOrder: ['A', 'B', 'C', 'D', 'E', 'F'], uncheckedFseibans: null };
-  mocks.rows = []; mocks.details = new Map();
+  mocks.rows = []; mocks.details = new Map(); mocks.missing.mockResolvedValue([]);
   mocks.minutes.mockResolvedValue([]);
   mocks.readWinners.mockImplementation(async () => mocks.rows);
   mocks.transaction.mockImplementation(async (fn, _options, client) => fn(client));
@@ -96,6 +99,14 @@ function process(id: string, seiban: string, resource: string, manual: boolean, 
 }
 
 describe('post-ingest completion pruning', () => {
+  it('keeps registered seiban with active missing-hours marker even when donor is completed', async () => {
+    process('200', 'A', '305', true);
+    mocks.missing.mockResolvedValue([{ fsezono: '1', fkojun: '710', fkoteicd: '305',
+      sourceUpdatedAt: new Date('2026-11-10'), rowData: mocks.rows[0].rowData, plannedQuantity: 1, plannedEndDate: null }]);
+    await pruneCompletedGrindingPlanningBoardSeibans();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.state.seibanOrder).toContain('A');
+  });
   it('removes only fully complete cutting/grinding parts and prunes their unchecked entries', async () => {
     mocks.state.uncheckedFseibans = ['A', 'B', 'C'];
     process('1', 'A', '305', true); process('2', 'A', '581', false, true);

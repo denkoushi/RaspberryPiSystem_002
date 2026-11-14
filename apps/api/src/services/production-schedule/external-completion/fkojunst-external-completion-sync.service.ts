@@ -1,3 +1,6 @@
+import { replaceMissingStandardHoursProcesses } from '../missing-standard-hours-process.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from '../fkojunst-status-mail-critical-lock.js';
+import { fetchFkojunstStatusMailGenerationSignals } from '../fkojunst-status-mail-generation-signals.js';
 import { logger } from '../../../lib/logger.js';
 import { prisma } from '../../../lib/prisma.js';
 import {
@@ -40,8 +43,26 @@ export class FkojunstExternalCompletionSyncService {
   }
 
   async syncFromCurrentStatusMailDashboard(): Promise<FkojunstExternalCompletionSyncResult> {
-    const { normalizedRows } = await loadFkojunstMailSourceRows(this.deps.prismaClient);
-    return this.syncFromDedupedStatusMailRows(dedupeFkojunstMailRowsByLatest(normalizedRows));
+    const { normalizedRows, rowsRevision } = await loadFkojunstMailSourceRows(this.deps.prismaClient);
+    const deduped = dedupeFkojunstMailRowsByLatest(normalizedRows);
+    // Schedule ingest replaces donor IDs and may add the previously missing process.
+    try {
+      await this.deps.prismaClient.$transaction(async (tx) => {
+        await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+        const signals = await fetchFkojunstStatusMailGenerationSignals(tx);
+        if (signals.rowsRevision !== rowsRevision) {
+          logger.warn(
+            {},
+            '[MissingStandardHours] raw source revision changed; skip replacement (next status-mail sync will rebuild candidates)'
+          );
+          return;
+        }
+        await replaceMissingStandardHoursProcesses(tx, deduped);
+      }, { maxWait: EXTERNAL_COMPLETION_TX_MAX_WAIT_MS, timeout: EXTERNAL_COMPLETION_TX_TIMEOUT_MS });
+    } catch (err) {
+      logger.error({ err }, '[MissingStandardHours] replacement failed; continuing external completion sync');
+    }
+    return this.syncFromDedupedStatusMailRows(deduped);
   }
 
   async syncFromDedupedStatusMailRows(

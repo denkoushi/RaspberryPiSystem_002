@@ -104,10 +104,13 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       _count: { _all: true },
       _max: { updatedAt: true }
     }),
-    prisma.$queryRaw<Array<{ fingerprint: string }>>(Prisma.sql`
+    prisma.$queryRaw<Array<{ fingerprint: string; missingStandardHoursGeneration: string }>>(Prisma.sql`
       SELECT md5(COALESCE(string_agg(
         jsonb_build_array("itemKey", "overrideResourceCd")::text, ',' ORDER BY "itemKey" COLLATE "C"
-      ), '')) AS "fingerprint"
+      ), '')) AS "fingerprint",
+      (SELECT jsonb_build_array(COUNT(*), MAX("updatedAt"))::text
+        FROM "ProductionScheduleMissingStandardHoursProcess"
+        WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}) AS "missingStandardHoursGeneration"
       FROM "ProductionScheduleGrindingPlanningBoardOverride"
       WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey}
         AND ("itemKey" LIKE 'row:%' OR "itemKey" LIKE 'piece:%' OR "itemKey" LIKE 'pieceops:%')
@@ -140,6 +143,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
   return {
     generationToken: JSON.stringify({
       leaderboardGeneration,
+      missingStandardHoursGeneration: loadOverrides[0]?.missingStandardHoursGeneration ?? '',
       boardVersion,
       boardUpdatedAt,
       overrideCount: overrides._count._all,
@@ -160,6 +164,7 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
     // Only inputs to the persisted load aggregate, before category filtering.
     loadGenerationToken: JSON.stringify({
       leaderboardGeneration,
+      missingStandardHoursGeneration: loadOverrides[0]?.missingStandardHoursGeneration ?? '',
       overrideResourceFingerprint: loadOverrides[0]?.fingerprint ?? '',
       pieceSetFingerprint: pieces,
       minuteSourceCount: minuteSources._count._all,

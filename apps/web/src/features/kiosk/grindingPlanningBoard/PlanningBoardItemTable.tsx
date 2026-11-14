@@ -126,7 +126,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
   const pendingSpecialDue = (item as GrindingPlanningBoardItem & { pendingSpecialDue?: 'today' | 'overnight' | null }).pendingSpecialDue;
   const specialDue = pendingSpecialDue !== undefined ? (pendingSpecialDue == null ? null : { kind: pendingSpecialDue }) : item.specialDue;
   const specialDueLabel = specialDue?.kind === 'today' ? '今日中' : specialDue?.kind === 'overnight' ? '朝まで' : null;
-  const resourceDragAllowed = Boolean(onResourcePointerDown) && !resourceDragDisabled && !disabled && allocation !== 'original' && !item.isCompleted;
+  const resourceDragAllowed = !item.standardHoursMissing && Boolean(onResourcePointerDown) && !resourceDragDisabled && !disabled && allocation !== 'original' && !item.isCompleted;
   const rankPickerPanelId = useId();
   const rankPickerAnchorRef = useRef<HTMLButtonElement | null>(null);
   const rankPickerPanelRef = useRef<HTMLDivElement | null>(null);
@@ -147,7 +147,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
         specialDue && 'outline outline-1 -outline-offset-1',
         item.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
         specialDue && (pendingSpecialDue === undefined && specialDueExpired ? 'outline-rose-400' : 'outline-amber-300'),
-        specialDueEnabled && !item.isCompleted && 'cursor-pointer',
+        specialDueEnabled && !item.standardHoursMissing && !item.isCompleted && 'cursor-pointer',
         seibanFocus === 'match' && 'ring-2 ring-inset ring-white',
         seibanFocus === 'dim' ? 'opacity-25' : item.isCompleted && 'opacity-55'
       )}
@@ -157,7 +157,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
           event.preventDefault(); event.stopPropagation();
         }
       }}
-      onClick={specialDueEnabled && !item.isCompleted ? (event) => {
+      onClick={specialDueEnabled && !item.standardHoursMissing && !item.isCompleted ? (event) => {
         if (event.currentTarget.closest('[data-planning-board-pieces-writing="true"]')) return;
         onSpecialDueClick?.(item);
       } : undefined}
@@ -168,7 +168,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
             type="checkbox"
             className="h-3.5 w-3.5 accent-emerald-400"
             checked={selected}
-            disabled={disabled || item.isCompleted}
+            disabled={item.standardHoursMissing || disabled || item.isCompleted}
             aria-label={`${item.fhinmei ?? item.fhincd}を選択`}
             onChange={(event) => onToggleItem(item, event.target.checked)}
           />
@@ -244,7 +244,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               data-planning-board-resource
               data-planning-board-piece-write="resource"
               aria-label={`資源CD ${currentResource ?? '未設定'}を変更`}
-              disabled={disabled || allocation === 'original' || item.isCompleted}
+              disabled={item.standardHoursMissing || disabled || allocation === 'original' || item.isCompleted}
               onPointerDown={resourceDragAllowed ? (event) => onResourcePointerDown?.(event, item, currentResource) : undefined}
               onClick={(event) => {
                 event.stopPropagation();
@@ -291,7 +291,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
                   data-planning-board-piece-write="rank"
                   ref={rankPickerAnchorRef}
                   type="button"
-                  disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
+                  disabled={item.standardHoursMissing || rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
                   aria-disabled={frozen || undefined} aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
                   aria-haspopup="dialog"
                   aria-expanded={rankPickerOpen}
@@ -327,7 +327,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
               <select
                 data-planning-board-piece-write="rank"
                 value={rank == null ? '' : String(rank)}
-                disabled={rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
+                disabled={item.standardHoursMissing || rankDisabled || allocation === 'original' || item.isCompleted || !onRankChange}
                 aria-disabled={frozen || undefined} aria-label={`${item.fhinmei ?? item.fhincd}の個別指定`}
                 className="min-h-11 w-11 rounded-md border border-slate-700 bg-slate-950 px-0.5 text-center text-[10px] text-slate-200 disabled:cursor-not-allowed disabled:opacity-55"
                 onClick={(event) => event.stopPropagation()}
@@ -345,7 +345,7 @@ const PlanningBoardItemTableRow = memo(function PlanningBoardItemTableRow({
       </td>
       {onCompleteToggle && <td className="px-1 align-middle">
         <PlanningBoardCompletionButton item={item} onToggle={onCompleteToggle}
-          disabled={disabled || completionPending} />
+          disabled={item.standardHoursMissing || disabled || completionPending} />
       </td>}
     </tr>
   );

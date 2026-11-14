@@ -37,6 +37,19 @@ describe('PlanningBoardItemTable completion', () => {
   const props = { items, allocation: 'alternate' as const, selectedItemIds: new Set<string>(),
     onToggleItem: vi.fn(), onResourceClick: vi.fn(), tableLabel: '工程' };
 
+  it('disables selection, rank, resource, special-due and completion for missing-hours rows', () => {
+    const missing = item('missing', { standardHoursMissing: true, requiredMinutes: null, requiredMinutesKnown: false });
+    const callbacks = { onToggleItem: vi.fn(), onResourceClick: vi.fn(), onRankChange: vi.fn(), onCompleteToggle: vi.fn(), onSpecialDueClick: vi.fn() };
+    render(<PlanningBoardItemTable {...props} {...callbacks} items={[missing]} showRank specialDueMode="today" />);
+    const row = screen.getByTestId('planning-board-item-missing');
+    expect(within(row).getByRole('checkbox')).toBeDisabled();
+    expect(within(row).getByRole('button', { name: '資源CD 305を変更' })).toBeDisabled();
+    expect(within(row).getByRole('button', { name: '完了にする' })).toBeDisabled();
+    expect(within(row).getByRole('combobox')).toBeDisabled();
+    fireEvent.click(row);
+    for (const callback of Object.values(callbacks)) expect(callback).not.toHaveBeenCalled();
+  });
+
   it('shows parent completion and keeps completed items enabled for undo', () => {
     const onCompleteToggle = vi.fn();
     const onSpecialDueClick = vi.fn();

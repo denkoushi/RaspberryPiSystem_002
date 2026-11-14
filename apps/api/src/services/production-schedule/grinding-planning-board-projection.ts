@@ -1,3 +1,5 @@
+import { asRowData, buildMissingStandardHoursProjectionInput } from './grinding-planning-board-missing-standard-hours-projection.js';
+import type { MissingStandardHoursBoardRow } from './missing-standard-hours-process.js';
 import { isUnitSplitEnabled } from './sessaku-pieces/unit-split-policy.js';
 import { resolveRequiredMinutes } from './grinding-planning-board-required-minutes.js';
 import { compareProcessOrder } from './process-order.js';
@@ -88,6 +90,7 @@ export type GrindingPlanningBoardProgressProjection = {
 };
 
 export type GrindingPlanningBoardProjectionInput = {
+  missingStandardHoursRows?: readonly MissingStandardHoursBoardRow[];
   resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
   resourceCapacity?: GrindingPlanningBoardResourceCapacityResponse;
   includePieces?: boolean;
@@ -124,12 +127,6 @@ export type GrindingPlanningBoardProjectionResult = {
 function rowValue(data: GrindingPlanningBoardRowData, key: string): string {
   const value = asRowData(data)[key];
   return value == null ? '' : String(value);
-}
-
-function asRowData(value: GrindingPlanningBoardRowData): Record<string, unknown> {
-  return value != null && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function ymd(value: Date | null | undefined): string | null {
@@ -628,6 +625,9 @@ function expandSessakuPieces(params: GrindingPlanningBoardProjectionInput, paren
   });
 }
 
+export const projectMissingStandardHoursItems = (params: GrindingPlanningBoardProjectionInput): GrindingPlanningBoardItem[] =>
+  buildItems(buildMissingStandardHoursProjectionInput(params), buildProgressProjection([])).map((item) => ({ ...item, itemId: item.sourceRowId, standardHoursMissing: true }));
+
 export function projectGrindingPlanningBoard(
   params: GrindingPlanningBoardProjectionInput
 ): GrindingPlanningBoardProjectionResult {
@@ -638,7 +638,8 @@ export function projectGrindingPlanningBoard(
   const lastItemByPiece = new Map<string, string>();
   for (const item of pieces) if (item.pieceId) lastItemByPiece.set(item.pieceId, item.itemId);
   for (const item of pieces) if (item.sourcePieceId) item.sourceItemId = lastItemByPiece.get(item.sourcePieceId) ?? item.sourceItemId ?? `piece:${item.sourcePieceId}`;
-  const allItems = params.includePieces ? pieces : parents;
+  const missing = projectMissingStandardHoursItems(params);
+  const allItems = [...(params.includePieces ? pieces : parents), ...missing];
   const sortedAllItems = sortGrindingPlanningBoardProjectionItems(
     allItems,
     params.seibanOrder,
@@ -648,7 +649,7 @@ export function projectGrindingPlanningBoard(
   const items = params.selectedFseibans
     ? sortedAllItems.filter((item) => params.selectedFseibans?.has(item.fseiban))
     : sortedAllItems;
-  const loadResult = params.placementOnly ? { load: [], unknownRequiredMinutesCount: 0 } : buildLoad(pieces);
+  const loadResult = params.placementOnly ? { load: [], unknownRequiredMinutesCount: 0 } : buildLoad([...pieces, ...missing]);
   return {
     items,
     allItems: sortedAllItems,

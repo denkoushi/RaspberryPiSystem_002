@@ -1,3 +1,4 @@
+import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from '../missing-standard-hours-process.js';
 import { readPlanningTestBars } from './test-bars.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
 import { readScheduleSourceExcludedFseibans, withScheduleSourceWhere } from './schedule-source.js';
@@ -26,7 +27,7 @@ import { readOverrides, readPlanningResourceCandidates, readPlanningSource, read
 import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningLoadGenerationToken, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
 
 
-async function projectCurrentBoard(params: { resourceMinutes: GrindingPlanningBoardResourceMinutesResponse; includePieces?: boolean; dueSource?: BoardDueSource; client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
+async function projectCurrentBoard(params: { missingStandardHoursRows?: readonly MissingStandardHoursBoardRow[]; resourceMinutes: GrindingPlanningBoardResourceMinutesResponse; includePieces?: boolean; dueSource?: BoardDueSource; client: DbClient; siteKey: string; category: GrindingPlanningBoardCategory; view: GrindingPlanningBoardView; state: PlanningState; selectedFseibans?: ReadonlySet<string>; machineNames?: ReadonlyMap<string, string | null>; source?: PlanningSource }): Promise<{ allItems: GrindingPlanningBoardItem[]; items: GrindingPlanningBoardItem[]; load: GrindingPlanningBoardLoad[]; unknownRequiredMinutesCount: number; progress: ReturnType<typeof projectGrindingPlanningBoard>['progress']; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride>; sourceRows: WinnerRow[]; details: Map<string, RowDetail> }> {
   const source = params.source ?? await readPlanningSource({
     siteKey: params.siteKey,
     category: params.category,
@@ -41,7 +42,7 @@ async function projectCurrentBoard(params: { resourceMinutes: GrindingPlanningBo
   }).map((row) => row.id);
   const ranks = await readRanks(params.client, displayRowIds, params.siteKey);
   const resourceCapacity = params.includePieces ? await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, params.client) : undefined;
-  const projection = projectGrindingPlanningBoard({ resourceCapacity, resourceMinutes: params.resourceMinutes, pieceSets: source.pieceSets, includePieces: params.includePieces, dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
+  const projection = projectGrindingPlanningBoard({ missingStandardHoursRows: params.missingStandardHoursRows, resourceCapacity, resourceMinutes: params.resourceMinutes, pieceSets: source.pieceSets, includePieces: params.includePieces, dueSource: params.dueSource, rows, details, ranks, overrides, progressRows: source.progressRows, category: params.category, view: params.view, seibanOrder: stateOrder(params.state), selectedFseibans: params.selectedFseibans, machineNameBySeiban: params.machineNames, isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy) });
   return { allItems: projection.allItems, items: projection.items, load: projection.load, unknownRequiredMinutesCount: projection.unknownRequiredMinutesCount, progress: projection.progress, policy, overrides, sourceRows: rows, details };
 }
 
@@ -105,16 +106,19 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
   }));
   const names = await perf.measure('machineNames', () => resolveSeibanMachineDisplayNamesBatched(order));
   const resourceMinutes = await getGrindingPlanningBoardResourceMinutes({ siteKey: params.siteKey });
-  const projection = await perf.measure('projection', () => projectCurrentBoard({ resourceMinutes, includePieces: params.includePieces, dueSource: params.dueSource, client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
+  const missingStandardHoursRows = await perf.measure('missingStandardHours', () => readMissingStandardHoursBoardRows(prisma));
+  const projection = await perf.measure('projection', () => projectCurrentBoard({ missingStandardHoursRows, resourceMinutes, includePieces: params.includePieces, dueSource: params.dueSource, client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
   const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted || item.quantityWarning) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted || item.quantityWarning) : projection.items;
   // includeLoad always aggregates pieces, regardless of the board projection includePieces flag.
   const loadWinners = includeLoad ? await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken: source.generationToken }) : undefined;
   const loadSummary = includeLoad ? await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     resourceMinutes,
+    missingStandardHoursRows,
     client: prisma,
     leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
       PRODUCTION_SCHEDULE_DASHBOARD_ID, [...loadWinners!.winnerRowIds], { useCCollation: true }
     ), excludedFseibans),
+    excludedFseibans,
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, projection.policy),
@@ -467,6 +471,7 @@ export async function getGrindingPlanningBoardLoad(params: {
     leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
       PRODUCTION_SCHEDULE_DASHBOARD_ID, [...winners.winnerRowIds], { useCCollation: true }
     ), excludedFseibans),
+    excludedFseibans,
     siteKey: params.siteKey,
     category: params.category,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy),

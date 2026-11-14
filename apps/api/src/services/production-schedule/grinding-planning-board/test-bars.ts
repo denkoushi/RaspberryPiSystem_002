@@ -1,3 +1,4 @@
+import { assertWritablePlanningItemIds } from '../missing-standard-hours-process.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardItemReference, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar, GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
@@ -106,6 +107,7 @@ async function mutationResponse(tx: Prisma.TransactionClient, siteKey: string, c
   return { sourceRevision: boardRevision(state), testBar: projectPlanningTestBar(row), ...await readPlanningTestBars(tx, siteKey), items: [...projectCurrentItems(current, current.overrides).values()] };
 }
 export async function createPlanningTestBar(params: GrindingPlanningBoardTestBarCreateRequest & { siteKey: string }): Promise<GrindingPlanningBoardTestBarMutationResponse> {
+  assertWritablePlanningItemIds([params.afterItem?.itemId]);
   if (!Number.isInteger(params.minutes) || params.minutes < 5 || params.minutes > 1440) throw new ApiError(400, '時間は5〜1440分の整数で指定してください', undefined, 'INVALID_TEST_BAR_MINUTES');
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
     const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
@@ -126,6 +128,7 @@ export async function createPlanningTestBar(params: GrindingPlanningBoardTestBar
   });
 }
 export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBarMutationRequest & { siteKey: string; id: string; action: 'delete' | 'restore' | 'complete' | 'incomplete' }): Promise<GrindingPlanningBoardTestBarMutationResponse> {
+  assertWritablePlanningItemIds([params.id, params.restoreAfterItemId]);
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
     const row = await tx.productionScheduleGrindingPlanningBoardTestBar.findFirst({ where: { id: params.id, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey } });
     if (!row) throw new ApiError(404, 'テスト加工がありません', undefined, 'TEST_BAR_NOT_FOUND');
@@ -152,6 +155,7 @@ export async function mutatePlanningTestBar(params: GrindingPlanningBoardTestBar
   });
 }
 export async function reorderPlanningTestBarLane(params: (GrindingPlanningBoardResourceOrderRequest | GrindingPlanningBoardResourceOrderBulkRequest) & { siteKey: string }): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  assertWritablePlanningItemIds('items' in params ? params.items.map((item) => item.itemId) : [params.itemId, params.targetItemId]);
   const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
     const byId = new Map<string, GrindingPlanningBoardBar>([...current.byItemId.values(), ...tests.testBars].map((item) => [item.itemId, item]));

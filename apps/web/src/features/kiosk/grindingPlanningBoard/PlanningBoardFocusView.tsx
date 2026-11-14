@@ -45,7 +45,7 @@ export function PlanningBoardFocusView({
   rankDisabled = false,
   bulkDisabled = false
 }: PlanningBoardFocusViewProps) {
-  const selectableItems = useMemo(() => items.filter((item) => !item.isCompleted), [items]);
+  const selectableItems = useMemo(() => items.filter((item) => !item.standardHoursMissing && !item.isCompleted), [items]);
   const selectedSelectableCount = useMemo(
     () => selectableItems.filter((item) => selectedItemIds.has(item.itemId)).length,
     [selectableItems, selectedItemIds]

@@ -8,7 +8,7 @@ import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton'
 import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 
-import { ganttBarGeometry } from './planningBoardGanttGeometry';
+import { ganttBarGeometry, unknownPlanningBarWidth } from './planningBoardGanttGeometry';
 import { isNormalGanttBar , dateToDay, dayLabel, shiftedDueDate } from './planningBoardGanttLayout';
 import { PlanningBoardGanttSendOutStars } from './PlanningBoardGanttSendOutStars';
 import {
@@ -104,21 +104,21 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
   const color = bar.tone !== 'completed' ? seibanColors?.get(bar.item.fseiban) : undefined;
   const split = Boolean(bar.item.opRange);
   const opIndex = bar.opSplitIndex ?? 0;
-  const width = bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth);
+  const width = bar.unknown ? unknownPlanningBarWidth(bar.item) : Math.max(5, (bar.end! - bar.start!) * dayWidth);
   return (
     <>
     <button
       type="button"
       data-testid={`planning-gantt-bar-${bar.item.itemId}`}
-      data-drag-disabled={dragDisabled || disabled || bar.item.isCompleted}
+      data-drag-disabled={dragDisabled || disabled || bar.item.isCompleted || bar.item.standardHoursMissing}
       aria-label={`${bar.item.fhinmei || bar.item.fhincd} 工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       aria-pressed={selected}
-      disabled={disabled}
-      title={`工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
+      disabled={disabled || bar.item.standardHoursMissing}
+      title={`${bar.item.standardHoursMissing ? `${bar.item.processOrder} 標準工数入力忘れ ` : ''}工順${bar.item.processOrder} ${bar.resource} 納期${bar.due}`}
       className={clsx("absolute top-1.5 min-h-11 min-w-11 touch-pan-y select-none rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300", bar.item.quantityWarning && "outline outline-2 -outline-offset-2 outline-red-500")}
       style={{ left: (bar.end! - start) * dayWidth - Math.max(44, width), width: Math.max(44, width), zIndex: selected ? 4 : 2 }}
       onPointerDown={(event) => {
-        if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted) return;
+        if (event.button !== 0 || event.isPrimary === false || pending.current || bar.item.isCompleted || bar.item.standardHoursMissing) return;
         onHeldItem(bar.item.itemId);
         suppressClick.current = false;
         pending.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, moved: false, delta: 0, frame: null, element: event.currentTarget };
@@ -138,6 +138,7 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       onLostPointerCapture={() => { if (pending.current) { suppressClick.current = true; clear(); } }}
       onClick={() => {
         if (suppressClick.current) { suppressClick.current = false; return; }
+        if (bar.item.standardHoursMissing) return;
         onCompletionTarget?.(bar.item.itemId);
         if (!bar.item.isCompleted) onToggleItem(bar.item, !selected);
       }}
@@ -150,13 +151,13 @@ const PlanningBoardGanttBar = memo(function PlanningBoardGanttBar({
       )} style={{ width, background: bar.tone === 'completed' && bar.item.completionSource === 'import' ? GANTT_IMPORT_HATCH : split && !bar.unknown && bar.tone !== 'completed' ? operationSplitColor(color ?? (bar.tone === 'late' ? 'bg-rose-400' : undefined), opIndex) : undefined, borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined, borderLeft: split && opIndex > 0 ? '1px solid rgb(2 6 23 / .6)' : undefined, clipPath: !split && bar.item.kind === 'piece' && width >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: true, right: true }) : undefined }}>
         {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={bar.start!} end={bar.end!} />}
         {split ? opIndex === 0 && width >= 48 ? <span className="relative">{bar.item.fhinmei || bar.item.fhincd}</span> : null : bar.opSegments ? <span className="relative">{bar.item.processOrder} {bar.resource}</span>
-          : bar.unknown ? `${bar.item.processOrder} 所要不明` : `${bar.item.processOrder} ${bar.resource}`}
+          : bar.unknown ? `${bar.item.processOrder} ${bar.item.standardHoursMissing ? '標準工数入力忘れ' : '所要不明'}` : `${bar.item.processOrder} ${bar.resource}`}
         {bar.flagged && bar.overlaps.length === 0 && <i className="absolute inset-y-0 right-0 w-1" style={{ background: GANTT_HATCH }} />}
       </span>
       {split && <span aria-hidden="true" data-gantt-unit-underline className="pointer-events-none absolute right-0 top-[39px] h-[3px] rounded" style={{ width, background: operationSplitColor(color, 0) }} />}
       <span ref={tip} hidden className="absolute right-0 top-0 z-20 whitespace-nowrap rounded bg-white px-1 text-[10px] font-bold text-slate-950" />
     </button>
-    {onCompleteToggle && completionTargetId === bar.item.itemId && <div
+    {!bar.item.standardHoursMissing && onCompleteToggle && completionTargetId === bar.item.itemId && <div
       className="absolute top-0 z-10 flex w-max items-start"
       style={{ left: Math.max(0, (bar.end! - start) * dayWidth), transform: `translateX(max(-100%, ${-Math.max(0, (bar.end! - start) * dayWidth)}px))` }}>
       {showPieceQuantity && <PlanningBoardPiecePopover item={bar.item} variant="gantt" selected={selected} disabled={pieceDisabled || disabled || completionPendingItemIds?.has(bar.item.itemId)} />}
@@ -224,7 +225,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
             dimmed={resourceView && selectedParts.size > 0 && !selectedParts.has(bar.partKey)} {...interaction} />
         ))}
         {visibleBars.filter((bar) => lateStars.itemIds.has(bar.item.itemId)).map((bar) => (
-          <PlanningBoardLateStar key={`late:${bar.item.itemId}`} left={(bar.end! - start) * dayWidth - (bar.unknown ? 72 : Math.max(5, (bar.end! - bar.start!) * dayWidth))} top={26} />
+          <PlanningBoardLateStar key={`late:${bar.item.itemId}`} left={(bar.end! - start) * dayWidth - (bar.unknown ? unknownPlanningBarWidth(bar.item) : Math.max(5, (bar.end! - bar.start!) * dayWidth))} top={26} />
         ))}
         {[...lastBarByPart.values()].filter((bar) => visibleIds.has(bar.item.itemId)).map((bar) => {
           const chips = chipsByPart.get(bar.partKey);

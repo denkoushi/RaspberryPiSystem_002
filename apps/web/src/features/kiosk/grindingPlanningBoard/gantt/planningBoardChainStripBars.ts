@@ -16,5 +16,5 @@ export function planningBoardChainStripBars(chain: readonly ChainStripBar[], ite
   const existingIds = new Set(chain.map(({ item }) => item.itemId));
   const completed = (items ?? []).filter((item) => item.isCompleted && planningBoardPartKey(item) === partKey && !existingIds.has(item.itemId))
     .map((item) => ({ item, resource: resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定' }));
-  return [...chain, ...completed].sort(compareChainStripBars);
+  return [...chain, ...completed].filter(({ item }) => !item.standardHoursMissing).sort(compareChainStripBars);
 }

@@ -1,8 +1,10 @@
+import { discoverSourceRows } from './write-source.js';
+import { assertWritablePlanningItemIds } from '../missing-standard-hours-process.js';
 import { hasPlanningTestBars, reorderPlanningTestBarLane } from './test-bars.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
 import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
-import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, sessakuPieceIdFromItemId, sessakuPieceItemIds, readSessakuPieceSets, resolveSessakuPieceItemKeys, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
+import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, sessakuPieceIdFromItemId, sessakuPieceItemIds, readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse, GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
@@ -15,8 +17,8 @@ import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sort
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
-import { assertItemRevision, MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, buildGrindingPlanningBoardLogicalKey, decodeRowItemId, isCategoryResource, logicalKeyFseiban, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
-import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds, readWinnerRowsByLogicalKeyFseibans } from './source.js';
+import { assertItemRevision, MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
 
 async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: readonly string[]): Promise<SessakuPieceLogicalKey[]> {
@@ -25,27 +27,8 @@ async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: reado
   return [...sets.values()].filter((set) => set.pieces.length);
 }
 
-async function discoverSourceRows(itemIds: readonly string[]): Promise<Map<string, string>> {
-  const logicalKeyByItem = new Map<string, string>();
-  for (const itemId of itemIds) {
-    const pieceKey = sessakuPieceIdFromItemId(itemId) ? (await resolveSessakuPieceItemKeys(prisma, [itemId])).get(itemId) : null;
-    const logicalKey = pieceKey ? encodeSessakuPieceKey(pieceKey) : decodeRowItemId(itemId);
-    if (logicalKey == null) throw new ApiError(400, '対象アイテムIDが不正です', undefined, 'INVALID_ITEM_ID');
-    logicalKeyByItem.set(itemId, logicalKey);
-  }
-  // The logical key starts with the raw FSEIBAN, so saves read only the edited seibans instead of every winner row.
-  const rows = await readWinnerRowsByLogicalKeyFseibans(prisma, [...logicalKeyByItem.values()].map(logicalKeyFseiban));
-  const byLogicalKey = new Map(rows.map((row) => [buildGrindingPlanningBoardLogicalKey(asRowData(row.rowData)), row.id]));
-  const sourceByItem = new Map<string, string>();
-  for (const itemId of itemIds) {
-    const sourceRowId = byLogicalKey.get(logicalKeyByItem.get(itemId) ?? '');
-    if (sourceRowId) sourceByItem.set(itemId, sourceRowId);
-  }
-  if (sourceByItem.size !== new Set(itemIds).size) throw new ApiError(409, '対象アイテムが消滅または更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-  return sourceByItem;
-}
-
 export async function resolveCurrentProjectionInTransaction(params: { dueSource?: 'excel' | 'scaw'; allowPieceParent?: boolean; client: Prisma.TransactionClient; siteKey: string; sourceRowIds: readonly string[]; itemIds: readonly string[]; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; includeAllOverrides?: boolean; preloaded?: { rows: WinnerRow[]; state: PlanningState; overrides: Map<string, ProductionScheduleGrindingPlanningBoardOverride> } }): Promise<CurrentProjection> {
+  assertWritablePlanningItemIds([...params.itemIds, ...params.sourceRowIds]);
   const state = params.preloaded?.state ?? await readState(params.client, params.siteKey);
   const rows = params.preloaded?.rows ?? await readWinnerRowsByIds(params.client, params.sourceRowIds);
   const pieceSets = await readSessakuPieceSets(params.client, rows);
@@ -92,6 +75,7 @@ function sameDate(a: Date | null | undefined, b: Date | null | undefined): boole
 function sameTimestamp(a: Date | null | undefined, b: Date | null | undefined): boolean { return (a?.getTime() ?? null) === (b?.getTime() ?? null); }
 
 export async function writeOverrideIfChanged(client: Prisma.TransactionClient, siteKey: string, itemId: string, current: ProductionScheduleGrindingPlanningBoardOverride | undefined, next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean; overrideDueDateSetAt?: Date | null } & PersistedSpecialDue): Promise<ProductionScheduleGrindingPlanningBoardOverride | undefined> {
+  assertWritablePlanningItemIds([itemId]);
   const orderPinned = next.orderPinned ?? current?.orderPinned ?? false;
   const overrideDueDateSetAt = next.overrideDueDateSetAt === undefined ? current?.overrideDueDateSetAt ?? null : next.overrideDueDateSetAt;
   const changed = !sameTimestamp(current?.overrideDueDateSetAt, overrideDueDateSetAt) || (current == null
@@ -296,6 +280,7 @@ export async function updateGrindingPlanningBoardRank(params: { dueSource?: 'exc
 export async function updateGrindingPlanningBoardResourceOrder(params: {
   siteKey: string;
 } & GrindingPlanningBoardResourceOrderRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  assertWritablePlanningItemIds([params.itemId, params.targetItemId]);
   if (params.itemId.startsWith('test:') || params.targetItemId.startsWith('test:')) return reorderPlanningTestBarLane(params);
   if (params.itemId === params.targetItemId) {
     throw new ApiError(400, '同じアイテムの前後には移動できません', undefined, 'INVALID_RESOURCE_ORDER_TARGET');
@@ -449,6 +434,7 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
 export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
   siteKey: string;
 } & GrindingPlanningBoardResourceOrderBulkRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  assertWritablePlanningItemIds(params.items.map((item) => item.itemId));
   if (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd))) return reorderPlanningTestBarLane(params);
   const itemIds = params.items.map((item) => item.itemId);
   if (itemIds.length < 1 || itemIds.length > 500 || new Set(itemIds).size !== itemIds.length) {

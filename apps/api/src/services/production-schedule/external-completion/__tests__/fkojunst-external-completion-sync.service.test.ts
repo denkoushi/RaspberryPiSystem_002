@@ -1,3 +1,4 @@
+import * as pipeline from '../../fkojunst-status-mail-sync.pipeline.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { logger } from '../../../../lib/logger.js';
@@ -33,6 +34,7 @@ describe('FkojunstExternalCompletionSyncService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(logger, 'warn').mockImplementation(() => {});
+    vi.spyOn(logger, 'error').mockImplementation(() => {});
     vi.spyOn(logger, 'info').mockImplementation(() => {});
   });
 
@@ -77,4 +79,56 @@ describe('FkojunstExternalCompletionSyncService', () => {
     expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledTimes(1);
     expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(txArg);
   });
+  it.each([false, true])('refreshes missing-hours candidates after schedule ingest (process now present=%s)', async (present) => {
+    const mail = mockRow({ fsezono: '0004091808', fkojun: '710', fkoteicd: '587', statusCode: 'R' });
+    vi.spyOn(pipeline, 'loadFkojunstMailSourceRows').mockResolvedValue({ scanned: 1, normalizedRows: [mail],
+      skippedInvalidStatus: 0, skippedUnparseableDate: 0, rowsRevision: '42' });
+    const donor = { id: 'new-donor', ProductNo: '0004091808', FKOJUN: present ? '710' : '200', FSIGENCD: '587' };
+    const tx = { $executeRaw: vi.fn(), $queryRaw: vi.fn().mockResolvedValueOnce([{ revision: 42n }]).mockResolvedValueOnce([donor]),
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn(), createMany: vi.fn() } };
+    const client = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const service = new FkojunstExternalCompletionSyncService({ prismaClient: client as never,
+      orderAssignmentReconciliationService: mockReconcileService() as never });
+    await service.syncFromCurrentStatusMailDashboard();
+    expect(tx.productionScheduleMissingStandardHoursProcess.deleteMany).toHaveBeenCalledTimes(1);
+    if (present) expect(tx.productionScheduleMissingStandardHoursProcess.createMany).not.toHaveBeenCalled();
+    else expect(tx.productionScheduleMissingStandardHoursProcess.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({ csvDashboardRowId: 'new-donor', fkojun: '710' })] });
+  });
+
+  it('does not replace candidates when the retained mail source changed before schedule refresh', async () => {
+    vi.spyOn(pipeline, 'loadFkojunstMailSourceRows').mockResolvedValue({ scanned: 1, normalizedRows: [mockRow({ fsezono: '1', fkojun: '710', fkoteicd: '587' })],
+      skippedInvalidStatus: 0, skippedUnparseableDate: 0, rowsRevision: '42' });
+    const tx = { $executeRaw: vi.fn(), $queryRaw: vi.fn().mockResolvedValue([{ revision: 43n }]),
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn() } };
+    const client = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    const reconcile = mockReconcileService();
+    const service = new FkojunstExternalCompletionSyncService({ prismaClient: client as never,
+      orderAssignmentReconciliationService: reconcile as never });
+    await expect(service.syncFromCurrentStatusMailDashboard()).resolves.toEqual({ skipped: false });
+    expect(logger.warn).toHaveBeenCalledWith({}, expect.stringContaining('next status-mail sync'));
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx);
+    expect(reconcile.reconcileStaleAssignments).toHaveBeenCalledTimes(1);
+    expect(tx.productionScheduleMissingStandardHoursProcess.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['transaction', 'replacement'])('continues external completion after %s failure', async (stage) => {
+    vi.spyOn(pipeline, 'loadFkojunstMailSourceRows').mockResolvedValue({ scanned: 1,
+      normalizedRows: [mockRow({ fsezono: '1', fkojun: '710', fkoteicd: '587' })],
+      skippedInvalidStatus: 0, skippedUnparseableDate: 0, rowsRevision: '42' });
+    const error = new Error('candidate refresh failed');
+    const tx = { $executeRaw: vi.fn(), $queryRaw: vi.fn().mockResolvedValueOnce([{ revision: 42n }]).mockResolvedValueOnce([]),
+      productionScheduleMissingStandardHoursProcess: { deleteMany: vi.fn().mockRejectedValue(error) } };
+    const client = { $transaction: vi.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+    if (stage === 'transaction') client.$transaction.mockRejectedValueOnce(error);
+    const reconcile = mockReconcileService();
+    const service = new FkojunstExternalCompletionSyncService({ prismaClient: client as never,
+      orderAssignmentReconciliationService: reconcile as never });
+    await expect(service.syncFromCurrentStatusMailDashboard()).resolves.toEqual({ skipped: false });
+    expect(logger.error).toHaveBeenCalledWith({ err: error }, expect.stringContaining('continuing external completion'));
+    expect(repo.replaceAllWinnerExternalCompletionStatesFromMailSync).toHaveBeenCalledWith(tx);
+    expect(reconcile.reconcileStaleAssignments).toHaveBeenCalledTimes(1);
+  });
+
 });

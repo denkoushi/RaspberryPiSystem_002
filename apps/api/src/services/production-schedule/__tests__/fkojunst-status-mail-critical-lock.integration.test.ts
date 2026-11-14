@@ -13,6 +13,9 @@ describe('fkojunst-status-mail-sync.pipeline lock integration', () => {
       productionScheduleFkojunstMailStatus: {
         deleteMany: vi.fn(async () => ({ count: 0 })),
       },
+      productionScheduleMissingStandardHoursProcess: {
+        deleteMany: vi.fn(async () => ({ count: 0 })),
+      },
     };
     const client = {
       $transaction: vi.fn(async (callback: (innerTx: typeof tx) => Promise<unknown>) => callback(tx)),

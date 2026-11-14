@@ -1,3 +1,4 @@
+import { readMissingStandardHoursBoardRows } from '../missing-standard-hours-process.js';
 import { Prisma } from '@prisma/client';
 
 import { logger } from '../../../lib/logger.js';
@@ -34,8 +35,10 @@ async function findCompletedSeibans(siteKey: string, order: string[]): Promise<S
   const details = await readRowDetails(prisma, rows.map((row) => row.id));
   const pieceSets = await readSessakuPieceSets(prisma, rows);
   // Match the board's process-part population; machine rows cannot prove completion.
-  const parts = rows.filter((row) => !/^(MH|SH)/.test(valueAsString(asRowData(row.rowData), 'FHINCD').trim().toUpperCase()));
+  const isMachineRow = (rowData: unknown) => /^(MH|SH)/.test(valueAsString(asRowData(rowData), 'FHINCD').trim().toUpperCase());
+  const parts = rows.filter((row) => !isMachineRow(row.rowData));
   const { allItems } = projectGrindingPlanningBoard({
+    missingStandardHoursRows: (await readMissingStandardHoursBoardRows(prisma)).filter((row) => !isMachineRow(row.rowData)),
     rows: parts, details, pieceSets, includePieces: true, ranks: { rows: new Map() }, overrides: new Map(),
     category: 'all', allocation: 'original', seibanOrder: order,
     isResourceInCategory: (resourceCd, category) => isCategoryResource(resourceCd, category, policy)

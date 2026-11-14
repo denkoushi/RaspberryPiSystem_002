@@ -187,7 +187,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const singleMode = Boolean(singleGroup);
   const singleItems = useMemo(() => {
     const items = resourceMinutesItems ?? resourceGroup?.rows.flatMap((row) => row.bars.filter(isNormalGanttBar).map((bar) => bar.item)) ?? [];
-    return [...new Map(items.filter((item) => minutesResourceCds ? minutesResourceCds.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? '') : (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd)
+    return [...new Map(items.filter((item) => !item.standardHoursMissing && (minutesResourceCds ? minutesResourceCds.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? '') : (item.effectiveResourceCd ?? item.originalResourceCd) === singleResourceCd))
       .map((item) => [item.itemId, item])).values()];
   }, [resourceMinutesItems, resourceGroup, singleResourceCd, minutesResourceCds]);
   const singleHours = dailyHoursByResource[singleResourceCd ?? ''] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS;
@@ -241,9 +241,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const [chainStripHeight, setChainStripHeight] = useState(0);
   const { frozen } = usePlanningBoardOffline();
   const dragLanes = useMemo(() => renderedGroups.flatMap((group) => group.resource
-    ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars, rowKey: row.key,
+    ? singleGroup ? group.rows.map((row) => ({ resource: group.resource!, bars: row.bars.filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing), rowKey: row.key,
       start: foldedRows.get(row.key)!.window.start, end: foldedRows.get(row.key)!.window.end }))
-      : [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars) }] : []), [renderedGroups, singleGroup, foldedRows]);
+      : [{ resource: group.resource, bars: group.rows.flatMap((row) => row.bars).filter((bar) => bar.item.kind === 'test' || !bar.item.standardHoursMissing) }] : []), [renderedGroups, singleGroup, foldedRows]);
   const { dragPreview, dragPointer, subscribePreview, setDragPreview, dragLanes: availableDragLanes, ownsDragPreview } = usePlanningBoardSharedDrag(sharedDrag, singleResourceCd, dragLanes);
   const queuePopover = useRef<ForwardQueueHandle>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -261,7 +261,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const focusedPartKey = sharedChain ? sharedChain.partKey : localPartKey;
   const [currentItemId, setCurrentItemId] = useState<string | null>(null);
   const chain = useMemo(() => forward && focusedPartKey ? layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
-    .filter(isNormalGanttBar).filter((bar) => bar.partKey === focusedPartKey).sort(compareChainStripBars) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
+    .filter(isNormalGanttBar).filter((bar) => !bar.item.standardHoursMissing && bar.partKey === focusedPartKey).sort(compareChainStripBars) : EMPTY_CHAIN, [forward, layout, focusedPartKey]);
   const stripChain = useMemo(() => forward && focusedPartKey ? planningBoardChainStripBars(chain, chainItems, focusedPartKey, chainAllocation) : EMPTY_CHAIN, [forward, focusedPartKey, chain, chainItems, chainAllocation]);
   const { view: chainView, changeView: changeChainView } = usePersistedPlanningBoardChainView();
   const linkBars = sharedChain?.bars ?? chain;

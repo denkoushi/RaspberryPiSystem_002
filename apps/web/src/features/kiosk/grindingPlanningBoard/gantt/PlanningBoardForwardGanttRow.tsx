@@ -304,8 +304,9 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               data-gantt-pinned={normal?.orderPinned ? 'true' : undefined}
               data-gantt-late={bar.tone === 'late' && index === 0 ? 'true' : undefined}
               aria-label={test ? `${test.name} ${test.minutes}分 ${bar.resource}` : `${normal?.fhinmei || normal?.fhincd} 工順${normal?.processOrder} ${bar.resource} 納期${bar.due ?? 'なし'}`}
-              aria-pressed={pinMode ? Boolean(normal?.orderPinned) : selected} disabled={disabled || bar.item.isCompleted}
-              data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView}
+              aria-pressed={pinMode ? Boolean(normal?.orderPinned) : selected} disabled={disabled || bar.item.isCompleted || normal?.standardHoursMissing}
+              title={normal?.standardHoursMissing ? `${normal.processOrder} 標準工数入力忘れ` : undefined}
+              data-drag-disabled={pinMode || dragDisabled || disabled || !resourceView || normal?.standardHoursMissing}
               className={clsx('absolute top-[3px] h-[70px] touch-pan-y select-none rounded text-left text-[11px] font-bold leading-[14px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-white',
                 inChain && index === 0 ? 'overflow-visible' : 'overflow-hidden',
                 seibanColors && bar.tone === 'completed' ? 'bg-slate-600 text-slate-300' : color ? `${color} text-slate-950` : bar.tone === 'late' ? 'bg-rose-400 text-slate-950' : 'bg-sky-400 text-slate-950',
@@ -325,11 +326,11 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 outline: draggedItemId === bar.item.itemId ? '3px dashed rgb(251 191 36)' : undefined,
                 outlineOffset: draggedItemId === bar.item.itemId ? -3 : undefined,
                 zIndex: draggedItemId === bar.item.itemId ? 9 : inChain ? 8 : selected ? 4 : 2 }}
-              onPointerEnter={(event) => { if (event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
+              onPointerEnter={(event) => { if (!normal?.standardHoursMissing && event.pointerType === 'mouse' && !drag.current) onShowQueue(bar, event.currentTarget); }}
               onPointerLeave={(event) => { if (event.pointerType === 'mouse') onLeaveQueue(); }}
               onPointerDown={(event) => {
                 onCloseQueue();
-                if (disabled || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
+                if (disabled || normal?.standardHoursMissing || bar.item.isCompleted || event.button !== 0 || event.isPrimary === false || drag.current) return;
                 dragPointer.current = { x: event.clientX, y: event.clientY };
                 setHeldItemId(bar.item.itemId);
                 suppressClick.current = false;
@@ -359,12 +360,13 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               onLostPointerCapture={() => { if (drag.current) { suppressClick.current = true; clear(); } }}
               onClick={() => {
                 if (suppressClick.current) { suppressClick.current = false; return; }
+                if (normal?.standardHoursMissing) return;
                 if (pinMode) { if (normal && gate.attempt()) onTogglePin?.(normal); } else { if (foldedWindow) { onToggleItem(bar.item, !selected, bar.resource); onFocusChain(bar, true); } else onFocusChain(bar); }
               }}>
               {bar.opSegments && <PlanningBoardUnitBarSections bar={bar} start={segment.start} end={segment.end} />}
               {normal?.orderPinned && index === 0 && <PlanningBoardPinIcon className="pointer-events-none absolute bottom-1 right-1 h-4 w-4 text-amber-300" />}
               {!split && inChain && chainPositions.has(bar.item.itemId) && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
-              {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? '所要不明' : segmentWidth >= 48
+              {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? normal?.standardHoursMissing ? `${normal.processOrder} 標準工数入力忘れ` : '所要不明' : segmentWidth >= 48
                 ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}>{(!split || opIndex === 0 && index === 0 && !bar.opSplitContinuation) && <b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>}
                   {!split && <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
                 </span> : null}
