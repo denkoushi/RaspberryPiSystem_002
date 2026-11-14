@@ -1,3 +1,4 @@
+import { readScheduleRowPresence } from '../schedule-row-presence.service.js';
 import { readMissingStandardHoursBoardRows, type MissingStandardHoursBoardRow } from '../missing-standard-hours-process.js';
 import { readPlanningTestBars } from './test-bars.js';
 import { getGrindingPlanningBoardResourceCapacity } from '../grinding-planning-board-resource-capacity.service.js';
@@ -111,10 +112,12 @@ async function buildPlanningPayload(context: PlanningPayloadContext): Promise<{ 
   const projection = await perf.measure('projection', () => projectCurrentBoard({ missingStandardHoursRows, resourceMinutes, includePieces: params.includePieces, dueSource: params.dueSource, client: prisma, siteKey: params.siteKey, category: params.category, view: params.view, state: stateForRead, selectedFseibans: new Set(selected), machineNames: new Map(Object.entries(names.machineNames)), source }));
   const filtered = completionFilter === 'complete' ? projection.items.filter((item) => item.isCompleted || item.quantityWarning) : completionFilter === 'incomplete' ? projection.items.filter((item) => !item.isCompleted || item.quantityWarning) : projection.items;
   // includeLoad always aggregates pieces, regardless of the board projection includePieces flag.
+  const loadPresence = includeLoad ? await readScheduleRowPresence() : undefined;
   const loadWinners = includeLoad ? await resolveLeaderboardMaterializedWinnersWithGenerationCache(prisma, { generationToken: source.generationToken }) : undefined;
   const loadSummary = includeLoad ? await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
     resourceMinutes,
     missingStandardHoursRows,
+    rowPresenceCutoff: loadPresence?.cutoff,
     client: prisma,
     leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
       PRODUCTION_SCHEDULE_DASHBOARD_ID, [...loadWinners!.winnerRowIds], { useCCollation: true }
@@ -476,7 +479,9 @@ export async function getGrindingPlanningBoardLoad(params: {
     getResourceCategoryPolicy({ siteKey: params.siteKey })
   ]));
   const excludedFseibans = await readScheduleSourceExcludedFseibans(params.scheduleSource);
+  const loadPresence = await readScheduleRowPresence();
   const summary = await perf.measure('loadSummary', () => readGrindingPlanningBoardLoadSummary({
+    rowPresenceCutoff: loadPresence.cutoff,
     client: prisma,
     leaderboardMaterializedBaseWhere: withScheduleSourceWhere(buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners(
       PRODUCTION_SCHEDULE_DASHBOARD_ID, [...winners.winnerRowIds], { useCCollation: true }

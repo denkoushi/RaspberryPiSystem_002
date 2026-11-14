@@ -1,8 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mocks = vi.hoisted(() => ({ queryRaw: vi.fn() }));
-vi.mock('../../../lib/prisma.js', () => ({ prisma: { $queryRaw: mocks.queryRaw, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } } }));
+const mocks = vi.hoisted(() => ({ queryRaw: vi.fn(), seenRuns: vi.fn().mockResolvedValue([]) }));
+vi.mock('../../../lib/prisma.js', () => ({ prisma: { csvDashboardIngestRun: { findMany: mocks.seenRuns }, $queryRaw: mocks.queryRaw, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } } }));
 vi.mock('../production-schedule-query/filters.js', () => ({
   prepareProductionScheduleDashboardFilters: vi.fn(async (params: { planningFseibans: string[]; resourceCategory?: string }) => ({
     kind: 'ready',
@@ -45,6 +45,7 @@ function asSql(first: Prisma.Sql | TemplateStringsArray, values: unknown[]): Pri
 describe('planning source bounded winner scope', () => {
   beforeEach(() => {
     mocks.queryRaw.mockReset();
+    mocks.seenRuns.mockResolvedValue([]);
     clearLeaderboardMaterializedWinnerCacheForTests();
     clearLeaderboardCanonicalRowCacheForTests();
   });
@@ -68,6 +69,8 @@ describe('planning source bounded winner scope', () => {
   });
 
   it('never sends the 107k winner array in category/progress selection or hydrate, and retains source fields', async () => {
+    const cutoff = new Date('2026-11-13T15:00:00Z');
+    mocks.seenRuns.mockResolvedValue(Array.from({ length: 4 }, (_, i) => ({ status: 'COMPLETED', messageId: `${i}`, rowSeenRecordedAt: updatedAt, sourceReceivedAt: new Date('2026-11-14T03:00:00Z'), startedAt: updatedAt })));
     const allWinnerIds = [...winnerIds, ...Array.from({ length: 107_000 }, (_, i) => `unrelated-${i}`)];
     const queries: Prisma.Sql[] = [];
     mocks.queryRaw.mockImplementation(async (first: Prisma.Sql | TemplateStringsArray, ...values: unknown[]) => {
@@ -77,6 +80,9 @@ describe('planning source bounded winner scope', () => {
       expect(JSON.stringify(query.values)).not.toContain('unrelated-');
       if (query.sql.includes('ORDER BY "CsvDashboardRow"."id" ASC')) {
         expect(query.values).toContainEqual(['ORDER-A']);
+        expect(query.sql).toContain('SELECT 1 FROM "ProductionScheduleRowSeen" s');
+        expect(query.sql).toContain('s."dataHash" = "CsvDashboardRow"."dataHash"');
+        expect(query.values).toContainEqual(cutoff);
         return candidates.filter((r) => !query.values.includes('305') || r.rowData.FSIGENCD === '305');
       }
       // Hydration still receives explicit IDs only, all already winner-filtered.
