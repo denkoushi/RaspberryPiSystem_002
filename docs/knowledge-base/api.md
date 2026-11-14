@@ -4572,6 +4572,12 @@ docker compose -f docker-compose.server.yml restart api
   - 対策: `computeCsvDashboardDedupDiff` の `skipUnchangedRowsWithinRefreshWindow`。既存行が読み手から見え（取り込み回が null か COMPLETED）、`rowData` が同じ（キー順に依存しない比較）で、`occurredAt` が行ごとの期限（`dataHash` から決まる 23〜37 日）より新しければ書かない。対象は `csv-dashboard-ingestor.ts` の `UNCHANGED_ROW_REFRESH_DASHBOARD_IDS`（OrderSupplement と FKOBAINO）。生産日程（Mishima）は効果を見てから足す。FKOJUNST_Status は取り込み回を世代として読むので対象外。
   - 約束: 対象ダッシュボードの `occurredAt` は「CSV に最後に出てきた日時」から最大 37 日遅れる。`occurredAt` で古い行を消す処理は、37 日より十分長い期限にする（FKOBAINO の古い行削除は 90 日）。表示期間の短い可視化に対象ダッシュボードを使わない。
   - 効果の確かめ方: 取り込み完了ログ `[CsvDashboardIngestor] CSV ingestion completed` の `rowsCreated` / `rowsUpdated` / `rowsSkippedUnchanged`。
+- **10) 追記（APPEND）取り込みの生の行が溜まり続ける（2026-11-14）**:
+  - 原因: APPEND は毎回 CSV の全行を `CsvDashboardRow` に足すだけで、古い行を消さない。本番 11/14 は吊具点検 119,108 行（中身の違う行は 3,167）、製番の機種名補足 71,771 行、CustomerSCAW 35,772 行。各同期は「その回に作った行」だけを createdAt の窓で読むので、古い行は使われていない。
+  - 対策: `csv-dashboard-append-raw-row-prune.service.ts`。同期が成功した後に、後処理（`runAfterSuccessfulIngest`）から裏で動かす（応答を待たせない。同じダッシュボードでは重ねない）。基準の回は「COMPLETED、completedAt あり、rowsAdded > 0」の最新回（CustomerSCAW は 0 行の回が続くため、0 行の回を基準にしない）。その startedAt より前の行を消す。吊具は backfill で全履歴を作り直せるよう、中身（rowData）ごとに最初の1行を残す（backfill は createdAt の古い順に読み、同じ点検日時では先に来た行を採るため、最新を残すと結果が変わり得る）。1回の DELETE は 1,000 行、1回の後処理で最大 20,000 行で、残りは次の回に続ける。止めるときは `CSV_APPEND_RAW_ROW_PRUNE_ENABLED=false`。
+  - 守り: ダッシュボードの ingestMode が APPEND でなければ消さない。基準の回の窓の行数が rowsAdded と合わなければ消さない（時刻の受け渡しのずれ対策）。6時間以内の PROCESSING の回が基準より前に始まっていれば、その startedAt を上限にする（並行して走る回の行を消さない）。候補の id は1回だけ取り、ORDER BY は付けない。
+  - 確認用: `pnpm prune:csv-append-raw-rows:prod`（既定は dry-run、`--execute` で削除）。後処理のログは `[CsvDashboardPostIngestService] append raw row prune completed`（`deletedCount` / `hasRemaining`）。
+  - 前提: `CsvDashboardRow` を onDelete Cascade で参照する9表（生産日程の備考・進捗・外部完了・全体順位など。本番の外部キーも同じ9つ）に、3種の行への参照は無い（11/14 本番で 0 件）。この3種を可視化やサイネージに使うと、表示は最新の回の分だけになる。
 
 ---
 

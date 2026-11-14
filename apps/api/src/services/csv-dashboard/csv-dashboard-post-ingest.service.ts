@@ -1,3 +1,4 @@
+import { APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS, CsvDashboardAppendRawRowPruneService, type PruneResult } from './csv-dashboard-append-raw-row-prune.service.js';
 import { pruneCompletedGrindingPlanningBoardSeibans } from '../production-schedule/grinding-planning-board/completion.js';
 import { markProductionScheduleResourceCdsCacheStale } from '../production-schedule/production-schedule-query/resources.js';
 import { logger } from '../../lib/logger.js';
@@ -63,8 +64,28 @@ export class CsvDashboardPostIngestService {
     private readonly customerScawSyncService: ProductionScheduleCustomerScawSyncService = new ProductionScheduleCustomerScawSyncService(),
     private readonly purchaseOrderLookupSyncService: PurchaseOrderLookupSyncService = new PurchaseOrderLookupSyncService(),
     private readonly riggingInspectionProjectionService: RiggingInspectionProjectionService = new RiggingInspectionProjectionService(),
-    private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService()
+    private readonly scawStfutekigoSyncService: ScawStfutekigoSyncService = new ScawStfutekigoSyncService(),
+    private readonly appendRawRowPruneService: CsvDashboardAppendRawRowPruneService = new CsvDashboardAppendRawRowPruneService()
   ) {}
+
+  private static readonly appendRawRowPruneInFlight = new Set<string>();
+
+  private async runAppendRawRowPrune(dashboardId: string): Promise<void> {
+    if (CsvDashboardPostIngestService.appendRawRowPruneInFlight.has(dashboardId)) {
+      logger.info({ dashboardId }, '[CsvDashboardPostIngestService] append raw row prune skipped: already running');
+      return;
+    }
+    CsvDashboardPostIngestService.appendRawRowPruneInFlight.add(dashboardId);
+    let pruneResult: PruneResult = { deletedCount: 0, hasRemaining: null };
+    try {
+      pruneResult = await this.appendRawRowPruneService.prune(dashboardId);
+    } catch (error) {
+      logger.error({ err: error, dashboardId }, '[CsvDashboardPostIngestService] append raw row prune failed');
+    } finally {
+      CsvDashboardPostIngestService.appendRawRowPruneInFlight.delete(dashboardId);
+    }
+    logger.info({ dashboardId, ...pruneResult }, '[CsvDashboardPostIngestService] append raw row prune completed');
+  }
 
   async runAfterSuccessfulIngest(params: {
     dashboardId: string;
@@ -213,6 +234,11 @@ export class CsvDashboardPostIngestService {
         },
         '[CsvDashboardPostIngestService] scawSTFUTEKIGO sync completed'
       );
+    }
+
+    if ((APPEND_RAW_ROW_PRUNE_DASHBOARD_IDS as readonly string[]).includes(params.dashboardId)) {
+      // Housekeeping can take minutes (1,000-row batches with pauses); do not hold the upload response or ingest scheduler.
+      void this.runAppendRawRowPrune(params.dashboardId);
     }
 
     if (
