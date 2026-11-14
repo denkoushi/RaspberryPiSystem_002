@@ -171,4 +171,4 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - `apps/api/src/services/production-schedule/grinding-planning-board.service.ts`
 - `apps/api/src/services/production-schedule/grinding-planning-board-load-summary.ts`
 - `apps/api/src/services/production-schedule/leaderboard/leaderboard-shell-snapshot-generation.ts`
-- Stage timing log: `GRINDING_PLANNING_BOARD_PERF_LOG=true` (off in production)
+- Stage timing log: `GRINDING_PLANNING_BOARD_PERF_LOG=true` (off in production). The production API reads `apps/api/.env.example` as an env_file, so the default there must stay `false`; it had been left `true` after the September measurement and was turned off on 2026-11-14.
