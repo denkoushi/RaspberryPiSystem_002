@@ -5,7 +5,7 @@ import { disposeVoiceSession, startVoiceTranscription, type VoiceInputError, typ
 // Both Hermes entry points share one microphone, including while permission or STT is pending.
 let activeSession: VoiceSession | null = null;
 
-export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: string) => void) {
+export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: string) => void, silenceStopMs = 1200) {
   const sessionRef = useRef<VoiceSession | null>(null);
   const [state, setState] = useState<'idle' | 'preparing' | 'recording' | 'processing'>('idle');
   const [error, setError] = useState<VoiceInputError | null>(null);
@@ -31,7 +31,7 @@ export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: strin
   }, [cancel]);
 
   const start = useCallback(() => {
-    if (!enabled || activeSession) return;
+    if (!enabled || activeSession) return false;
     const session: VoiceSession = { abort: new AbortController() };
     sessionRef.current = session;
     activeSession = session;
@@ -47,7 +47,7 @@ export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: strin
       cancel();
       setError(message);
     }, 'kiosk-navigation', {
-      silenceStopMs: 1200,
+      silenceStopMs,
       onRecording: microphone => {
         if (!active()) return;
         setState('recording');
@@ -55,7 +55,8 @@ export function useHermesVoiceInput(enabled: boolean, onTranscript: (text: strin
       },
       onLevel: (level, seconds) => setMeter(current => ({ ...current, level, seconds }))
     });
-  }, [enabled, onTranscript, cancel]);
+    return true;
+  }, [enabled, onTranscript, cancel, silenceStopMs]);
   const toggle = () => { if (sessionRef.current) stop(); else start(); };
   return { state, error, meter, toggle, start, stop, cancel };
 }

@@ -4,10 +4,13 @@ import { useHermesVoiceInput } from './useHermesVoiceInput';
 
 export function useHermesHoldVoice(enabled: boolean, onTranscript: (text: string) => boolean) {
   const [feedback, setFeedback] = useState<'success' | 'error' | null>(null);
-  const voice = useHermesVoiceInput(enabled, text => setFeedback(onTranscript(text) ? 'success' : null));
+  const voice = useHermesVoiceInput(enabled, text => setFeedback(onTranscript(text) ? 'success' : null), 0);
   const cancelVoice = voice.cancel;
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const stopTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const held = useRef(false);
+  const ownsRecording = useRef(false);
+  const [confirmed, setConfirmed] = useState(false);
   useEffect(() => {
     if (voice.error) setFeedback('error');
   }, [voice.error]);
@@ -18,10 +21,17 @@ export function useHermesHoldVoice(enabled: boolean, onTranscript: (text: string
   }, [feedback]);
   const cancel = useCallback(() => {
     clearTimeout(timer.current);
+    clearTimeout(stopTimer.current);
+    stopTimer.current = undefined;
+    ownsRecording.current = false;
+    setConfirmed(false);
     cancelVoice();
     setFeedback(null);
   }, [cancelVoice]);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => () => {
+    clearTimeout(timer.current);
+    clearTimeout(stopTimer.current);
+  }, []);
   useEffect(() => {
     if (!enabled) cancel();
     const onBlur = () => cancel();
@@ -30,17 +40,31 @@ export function useHermesHoldVoice(enabled: boolean, onTranscript: (text: string
   }, [enabled, cancel]);
   const press = () => {
     clearTimeout(timer.current);
+    if (stopTimer.current !== undefined) {
+      clearTimeout(stopTimer.current);
+      stopTimer.current = undefined;
+      voice.stop();
+    }
     held.current = false;
+    setConfirmed(false);
+    setFeedback(null);
+    ownsRecording.current = voice.start();
     timer.current = setTimeout(() => {
       held.current = true;
-      setFeedback(null);
-      voice.start();
+      setConfirmed(true);
     }, 400);
   };
   const release = () => {
     clearTimeout(timer.current);
-    if (held.current) voice.stop();
+    if (ownsRecording.current) {
+      if (held.current) {
+        stopTimer.current = setTimeout(() => {
+          stopTimer.current = undefined;
+          voice.stop();
+        }, 350);
+      } else cancel();
+    }
     return held.current;
   };
-  return { press, release, cancel, state: voice.state === 'preparing' ? null : voice.state === 'idle' ? feedback : voice.state, level: voice.meter.level };
+  return { press, release, cancel, state: voice.state === 'preparing' || (voice.state === 'recording' && !confirmed) ? null : voice.state === 'idle' ? feedback : voice.state, level: voice.meter.level };
 }
