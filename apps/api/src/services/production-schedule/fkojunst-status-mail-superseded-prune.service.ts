@@ -12,23 +12,44 @@ import { logger } from '../../lib/logger.js';
 
 import { PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from './constants.js';
 import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
-import {
-  fetchFkojunstStatusMailGenerationSignals,
-  fetchFkojunstStatusMailSourceRowsWithGenerationSignals
-} from './fkojunst-status-mail-generation-signals.js';
+import { fetchFkojunstStatusMailGenerationSignals } from './fkojunst-status-mail-generation-signals.js';
 import {
   collectFkojunstMailNormalizedRowsFromSourceRows,
   dedupeFkojunstMailRowsByLatest
 } from './fkojunst-status-mail-sync.pipeline.js';
-import { ProductionScheduleFkojunstMailStatusSyncService } from './fkojunst-status-mail-sync.service.js';
-
-import type { FkojunstStatusMailSourceRow } from './fkojunst-status-mail-source-rows.reader.js';
+import {
+  fetchFkojunstStatusMailSourceRowsOrdered,
+  type FkojunstStatusMailSourceRow
+} from './fkojunst-status-mail-source-rows.reader.js';
 
 // 1 塊ずつ確定し、塊の間は待って他のクエリを先に通す（Pi5 本番で 5,000 件の塊は 20 秒前後かかった）。
 const DEFAULT_DELETE_CHUNK_SIZE = 2_000;
 const DEFAULT_PAUSE_BETWEEN_CHUNKS_MS = 1_000;
 const CHUNK_TX_TIMEOUT_MS = 120_000;
 const CHUNK_TX_MAX_WAIT_MS = 15_000;
+
+// 約100万行なら平均約3.2万行/バケット。同じキーへの極端な偏りは別途 dry-run で確認する。
+export const FKOJUNST_MAIL_PRUNE_BUCKET_COUNT = 32;
+
+// ECMAScript String.trim() の WhiteSpace + LineTerminator（PostgreSQL btrim の既定は空白のみ）。
+export const FKOJUNST_MAIL_PRUNE_TRIM_CHARACTERS = '\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff';
+
+/**
+ * FSEZONO は trim のみ。FKOTEICD の JS toUpperCase と DB の Unicode/照合順序差を避け、
+ * FSEZONO へ射影してハッシュする。同じ正規化キーは必ず同じ値となり、ハッシュ衝突は安全。
+ * 論理キーはタブ連結なので、キー内にタブがある場合の別 triple の衝突も同居させるため、
+ * 末尾タブ以降だけを使う（reverse 後の先頭部分）。dedupe 自体は既存の JS 正本を使う。
+ */
+export function buildFkojunstMailPruneBucketWhere(bucket: number): Prisma.Sql {
+  if (!Number.isInteger(bucket) || bucket < 0 || bucket >= FKOJUNST_MAIL_PRUNE_BUCKET_COUNT) {
+    throw new Error('[FkojunstMailSupersededPrune] invalid bucket');
+  }
+  return Prisma.sql`
+    (('x' || substr(md5(split_part(reverse(btrim(
+      COALESCE(r."rowData"->>'FSEZONO', ''), ${FKOJUNST_MAIL_PRUNE_TRIM_CHARACTERS}
+    )), chr(9), 1)), 1, 8))::bit(32)::bigint % ${FKOJUNST_MAIL_PRUNE_BUCKET_COUNT}) = ${bucket}
+  `;
+}
 
 export type FkojunstMailSupersededPrunePlan = {
   rowsRevision: string;
@@ -43,12 +64,15 @@ export type FkojunstMailSupersededPrunePlan = {
 export type FkojunstMailSupersededPruneResult =
   | ({ status: 'dry_run'; referencingRows: number } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'nothing_to_delete' } & FkojunstMailSupersededPruneSummary)
-  | ({ status: 'over_limit'; maxDelete: number } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'deleted'; deleted: number } & FkojunstMailSupersededPruneSummary)
   | ({ status: 'stopped'; deleted: number; reason: string } & FkojunstMailSupersededPruneSummary);
 
 export type FkojunstMailSupersededPruneSummary = Omit<FkojunstMailSupersededPrunePlan, 'deleteIds'> & {
+  /** execute は停止までに計画したバケットだけを集計する。dry-run は全バケット。 */
   deleteCandidates: number;
+  hasRemaining: boolean;
+  /** 本番 dry-run でキーの偏りと1バケット約5万行以下の目安を確認する。 */
+  maxBucketScanned: number;
 };
 
 type PruneClient = Pick<PrismaClient, '$queryRaw' | '$transaction'>;
@@ -167,80 +191,91 @@ async function deleteChunk(
   );
 }
 
-/**
- * 塊ごとに確定する。途中で他の変更（取り込み等）があれば止める。
- * 止まっても消した行はすべて計画時点の敗者なので、勝者（計算結果）は変わらない。
- */
-async function deleteSupersededRows(
-  client: PruneClient,
-  plan: FkojunstMailSupersededPrunePlan,
-  options: { chunkSize: number; pauseMs: number; sleep: (ms: number) => Promise<void> }
-): Promise<{ deleted: number; stoppedReason?: string }> {
-  let expectedRevision = plan.rowsRevision;
-  let deleted = 0;
-  for (let i = 0; i < plan.deleteIds.length; i += options.chunkSize) {
-    if (i > 0 && options.pauseMs > 0) await options.sleep(options.pauseMs);
-    const chunk = plan.deleteIds.slice(i, i + options.chunkSize);
-    const outcome = await deleteChunk(client, chunk, expectedRevision);
-    if (outcome.kind === 'stopped') {
-      logger.warn({ deleted, reason: outcome.reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
-      return { deleted, stoppedReason: outcome.reason };
-    }
-    deleted += outcome.deleted;
-    expectedRevision = outcome.revisionAfter;
-  }
-  return { deleted };
-}
-
-function summarize(plan: FkojunstMailSupersededPrunePlan): FkojunstMailSupersededPruneSummary {
-  const { deleteIds, ...rest } = plan;
-  return { ...rest, deleteCandidates: deleteIds.length };
+/** バケットの raw rows は計画後に手放し、次のバケットと同時に保持しない。 */
+async function planBucket(client: PruneClient, bucket: number, rowsRevision: string) {
+  const sourceRows = await fetchFkojunstStatusMailSourceRowsOrdered(client, {
+    where: buildFkojunstMailPruneBucketWhere(bucket)
+  });
+  return planFkojunstMailSupersededPrune({ sourceRows, rowsRevision });
 }
 
 /**
- * dry-run は候補の集計と参照確認だけを行う。execute は maxDelete を超える場合は何もしない。
- * 削除すると raw revision が進むため、1 件でも消したらメール同期を 1 回走らせて evidence snapshot を新しい revision に揃える。
+ * バケットごとに計画・勝者再確認・削除を終えてから次へ進む。上限まで削除し、残候補を返す。
+ * dry-run は全バケットの候補・参照を数える。execute の集計は停止までに読んだ範囲。
+ * 敗者だけの削除では勝者は変わらないため全件同期は呼ばない。evidence snapshot の revision
+ * 不一致は residual の raw 再計算へフォールバックし、次の取り込み同期で snapshot が揃う。
  */
 export async function runFkojunstMailSupersededPrune(options: {
   mode: 'dry-run' | 'execute';
   maxDelete?: number;
   client?: PruneClient;
-  syncService?: Pick<ProductionScheduleFkojunstMailStatusSyncService, 'syncFromStatusMailDashboard'>;
   chunkSize?: number;
   pauseMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }): Promise<FkojunstMailSupersededPruneResult> {
   const client = options.client ?? (defaultPrisma as unknown as PruneClient);
-  const { sourceRows, signals } = await fetchFkojunstStatusMailSourceRowsWithGenerationSignals(client);
-  const plan = planFkojunstMailSupersededPrune({ sourceRows, rowsRevision: signals.rowsRevision });
-  const summary = summarize(plan);
-
+  const maxDelete = options.maxDelete ?? 20_000;
+  const chunkSize = options.chunkSize ?? DEFAULT_DELETE_CHUNK_SIZE;
+  const pauseMs = options.pauseMs ?? DEFAULT_PAUSE_BETWEEN_CHUNKS_MS;
+  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  if (!Number.isSafeInteger(maxDelete) || maxDelete < 0 || !Number.isSafeInteger(chunkSize) || chunkSize < 1) {
+    throw new Error('[FkojunstMailSupersededPrune] invalid delete limit or chunk size');
+  }
+  const { rowsRevision } = await fetchFkojunstStatusMailGenerationSignals(client);
+  let expectedRevision = rowsRevision;
+  const summary: FkojunstMailSupersededPruneSummary = {
+    rowsRevision, scanned: 0, normalized: 0, winners: 0,
+    deleteCandidates: 0, deleteCountByCreatedMonth: {}, hasRemaining: false, maxBucketScanned: 0
+  };
+  let deleted = 0;
+  let referencingRows = 0;
+  for (let bucket = 0; bucket < FKOJUNST_MAIL_PRUNE_BUCKET_COUNT; bucket += 1) {
+    // 前バケットの削除後からの取り込み変更も、次の計画を受け入れる前に検出する。
+    if (options.mode === 'execute') {
+      const current = await fetchFkojunstStatusMailGenerationSignals(client);
+      if (current.rowsRevision !== expectedRevision) {
+        return {
+          status: 'stopped', deleted, ...summary, hasRemaining: true,
+          reason: `raw source revision changed: expected ${expectedRevision}, got ${current.rowsRevision}`
+        };
+      }
+    }
+    const plan = await planBucket(client, bucket, expectedRevision);
+    summary.scanned += plan.scanned;
+    summary.maxBucketScanned = Math.max(summary.maxBucketScanned, plan.scanned);
+    summary.normalized += plan.normalized;
+    summary.winners += plan.winners;
+    summary.deleteCandidates += plan.deleteIds.length;
+    for (const [month, count] of Object.entries(plan.deleteCountByCreatedMonth)) {
+      summary.deleteCountByCreatedMonth[month] = (summary.deleteCountByCreatedMonth[month] ?? 0) + count;
+    }
+    if (options.mode === 'dry-run') {
+      referencingRows += await countReferencesToCsvDashboardRows(client, plan.deleteIds);
+      continue;
+    }
+    const allowed = Math.min(plan.deleteIds.length, maxDelete - deleted);
+    for (let i = 0; i < allowed; i += chunkSize) {
+      // バケット境界でも、前の塊を確定済みなら待って他のクエリを通す。
+      if (deleted > 0 && pauseMs > 0) await sleep(pauseMs);
+      const chunk = plan.deleteIds.slice(i, Math.min(i + chunkSize, allowed));
+      const outcome = await deleteChunk(client, chunk, expectedRevision);
+      if (outcome.kind === 'stopped') {
+        logger.warn({ deleted, reason: outcome.reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
+        return { status: 'stopped', deleted, reason: outcome.reason, ...summary, hasRemaining: true };
+      }
+      deleted += outcome.deleted;
+      expectedRevision = outcome.revisionAfter;
+    }
+    if (allowed < plan.deleteIds.length) {
+      return { status: 'deleted', deleted, ...summary, hasRemaining: true };
+    }
+    // 上限ちょうどなら、残候補があるバケットまで確認して hasRemaining を正確に返す。
+  }
   if (options.mode === 'dry-run') {
-    const references = await countReferencesToCsvDashboardRows(client, plan.deleteIds);
-    return { status: 'dry_run', referencingRows: references, ...summary };
+    return { status: 'dry_run', referencingRows, ...summary, hasRemaining: summary.deleteCandidates > 0 };
   }
-  if (plan.deleteIds.length === 0) {
-    return { status: 'nothing_to_delete', ...summary };
-  }
-  if (options.maxDelete != null && plan.deleteIds.length > options.maxDelete) {
-    logger.warn(
-      { deleteCandidates: plan.deleteIds.length, maxDelete: options.maxDelete },
-      '[FkojunstMailSupersededPrune] over the per-run limit; nothing deleted'
-    );
-    return { status: 'over_limit', maxDelete: options.maxDelete, ...summary };
-  }
-
-  const { deleted, stoppedReason } = await deleteSupersededRows(client, plan, {
-    chunkSize: options.chunkSize ?? DEFAULT_DELETE_CHUNK_SIZE,
-    pauseMs: options.pauseMs ?? DEFAULT_PAUSE_BETWEEN_CHUNKS_MS,
-    sleep: options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
-  });
-  if (deleted > 0) {
-    const syncService = options.syncService ?? new ProductionScheduleFkojunstMailStatusSyncService();
-    await syncService.syncFromStatusMailDashboard();
-  }
-  logger.info({ deleted, winners: plan.winners, stoppedReason }, '[FkojunstMailSupersededPrune] superseded mail rows deleted');
-  return stoppedReason != null
-    ? { status: 'stopped', deleted, reason: stoppedReason, ...summary }
+  logger.info({ deleted, winners: summary.winners }, '[FkojunstMailSupersededPrune] superseded mail rows deleted');
+  return deleted === 0
+    ? { status: 'nothing_to_delete', ...summary }
     : { status: 'deleted', deleted, ...summary };
 }

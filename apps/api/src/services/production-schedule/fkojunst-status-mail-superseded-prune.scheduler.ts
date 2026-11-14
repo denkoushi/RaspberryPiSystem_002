@@ -5,7 +5,7 @@ import { logger } from '../../lib/logger.js';
 
 import { runFkojunstMailSupersededPrune } from './fkojunst-status-mail-superseded-prune.service.js';
 
-/** FKOJUNST_Status mail raw の上書き済み旧行を夜間に削除する。1 回の上限を超える大量削除は手動スクリプトで行う。 */
+/** FKOJUNST_Status mail raw の上書き済み旧行を、夜間に1回の上限まで削除する。 */
 export class FkojunstMailSupersededPruneScheduler {
   private task: cron.ScheduledTask | null = null;
   private active: Promise<void> | null = null;
@@ -24,7 +24,7 @@ export class FkojunstMailSupersededPruneScheduler {
       try {
         const result = await this.run({ mode: 'execute', maxDelete: env.FKOJUNST_MAIL_PRUNE_MAX_DELETE });
         logger.info(
-          { status: result.status, deleteCandidates: result.deleteCandidates, winners: result.winners },
+          { status: result.status, deleteCandidates: result.deleteCandidates, winners: result.winners, hasRemaining: result.hasRemaining },
           '[FkojunstMailSupersededPruneScheduler] tick completed'
         );
       } catch (error) {

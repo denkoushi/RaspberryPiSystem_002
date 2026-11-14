@@ -1,15 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
+import cron from 'node-cron';
 
 import { env } from '../../../config/env.js';
 import { FkojunstMailSupersededPruneScheduler } from '../fkojunst-status-mail-superseded-prune.scheduler.js';
 
 describe('FkojunstMailSupersededPruneScheduler', () => {
-  it('is disabled by default until the prune stops loading every raw row into the API process', () => {
+  it('stays disabled by default until a new production dry-run has been reviewed', () => {
     expect(env.FKOJUNST_MAIL_PRUNE_ENABLED).toBe(false);
+    const schedule = vi.spyOn(cron, 'schedule');
+    const run = vi.fn();
+    new FkojunstMailSupersededPruneScheduler(run as never).start();
+    expect(schedule).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+    schedule.mockRestore();
   });
 
   it('runs the prune in execute mode with the per-run limit', async () => {
-    const run = vi.fn().mockResolvedValue({ status: 'over_limit', deleteCandidates: 200_000, winners: 1, maxDelete: 20_000 });
+    const run = vi.fn().mockResolvedValue({ status: 'deleted', deleted: 20_000, deleteCandidates: 25_000, winners: 1, hasRemaining: true });
     const scheduler = new FkojunstMailSupersededPruneScheduler(run as never);
 
     await scheduler.runTick();

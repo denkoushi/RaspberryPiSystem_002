@@ -24,8 +24,8 @@ export const ingestTuningEnvShape = {
     (v) => (typeof v === 'string' ? v.trim() : v),
     z.string().min(1).default('rps_processed')
   ),
-  // FKOJUNST_Status mail raw の上書き済み旧行を夜間に削除（上限超過時は何もしない）。
-  // 全 raw 行を API プロセスへ読み込むため、メモリを抑えた作りにするまで既定 OFF（2026-09-29 Pi5 でメモリ枯渇）。
+  // FKOJUNST_Status mail raw の上書き済み旧行を32バケットに分け、1回あたり上限まで削除する。
+  // 削除後の全件同期は省略。既定 OFF のまま、本番の新しい dry-run を確認して別 PR で有効化する。
   FKOJUNST_MAIL_PRUNE_ENABLED: z.preprocess(
     (v) => (typeof v === 'string' ? v.trim().toLowerCase() : v),
     z.enum(['true', 'false']).default('false')
