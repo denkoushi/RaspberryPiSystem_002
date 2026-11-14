@@ -40,6 +40,8 @@ export const FKOJUNST_MAIL_PRUNE_TRIM_CHARACTERS = '\u0009\u000a\u000b\u000c\u00
  * FSEZONO へ射影してハッシュする。同じ正規化キーは必ず同じ値となり、ハッシュ衝突は安全。
  * 論理キーはタブ連結なので、キー内にタブがある場合の別 triple の衝突も同居させるため、
  * 末尾タブ以降だけを使う（reverse 後の先頭部分）。dedupe 自体は既存の JS 正本を使う。
+ * rowData は CSV 由来で値は JSON 文字列（本番 2026-11-14 で全行 string）。数値などが混ざって JS の String() と
+ * DB の ->> が食い違っても、同じキーが別バケットに分かれて旧行が消え残るだけで、勝者は消さない。
  */
 export function buildFkojunstMailPruneBucketWhere(bucket: number): Prisma.Sql {
   if (!Number.isInteger(bucket) || bucket < 0 || bucket >= FKOJUNST_MAIL_PRUNE_BUCKET_COUNT) {
@@ -294,7 +296,7 @@ export async function runFkojunstMailSupersededPrune(options: {
     if (limitReached) {
       const reason = 'max delete limit reached before next key';
       logger.warn({ deleted, reason }, '[FkojunstMailSupersededPrune] stopped before finishing');
-      return { status: 'deleted', deleted, ...summary, hasRemaining: true, reason };
+      return { status: deleted === 0 ? 'stopped' : 'deleted', deleted, ...summary, hasRemaining: true, reason };
     }
     // 上限ちょうどなら、残候補があるバケットまで確認して hasRemaining を正確に返す。
   }

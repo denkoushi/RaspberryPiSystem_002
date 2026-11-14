@@ -158,7 +158,7 @@ describe('runFkojunstMailSupersededPrune', () => {
   it('keeps an oversized key intact and returns hasRemaining', async () => {
     const { client, deletedIds } = fixture([...pair('a', 'PCR-1'), ...pair('b', 'PCR-1')]);
     const result = await execute(client, { maxDelete: 2, chunkSize: 1 });
-    expect(result).toMatchObject({ status: 'deleted', deleted: 0, hasRemaining: true, deleteCandidates: 3, reason: expect.stringContaining('limit') });
+    expect(result).toMatchObject({ status: 'stopped', deleted: 0, hasRemaining: true, deleteCandidates: 3, reason: expect.stringContaining('limit') });
     expect(deletedIds).toHaveLength(0);
   });
 
