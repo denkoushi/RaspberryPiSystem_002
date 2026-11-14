@@ -1632,13 +1632,31 @@ class BusinessQwenRoutingTests(unittest.TestCase):
         self.assertEqual(json.loads(body)['model'], 'system-prod-primary')
         self.assertEqual([call[1] for call in self.calls], [
             self.config.runtime_control_base_url + '/system/resource-state',
-            'http://127.0.0.1:38083/v1/models', 'http://127.0.0.1:38083/reset_prefix_cache',
+            'http://127.0.0.1:38083/v1/models',
             'http://127.0.0.1:38083/v1/chat/completions'])
         self.assertEqual(self.calls[0][3], {'X-Runtime-Control-Token': 'control-key'})
         sent = json.loads(self.calls[-1][2])
         self.assertEqual(sent, {**payload, 'model': 'system-prod-primary',
             'chat_template_kwargs': {'enable_thinking': False}})
         self.assertNotIn('Authorization', self.calls[-1][3])
+
+    def test_business_posts_skip_owner_gate_and_reset_when_sharing_disabled(self):
+        for flag in ('', 'false', '0', 'TRUE'):
+            with self.subTest(flag=flag), patch.dict(os.environ, {'DGX_PRIVATE_SHARED_QWEN38_ENABLED': flag}), \
+                    patch.object(self.module.QwenOwnerExclusive, 'request') as gate, \
+                    patch.object(self.module, 'reset_qwen_caches') as reset:
+                self.assertEqual(self.request(payload={'messages': []})[0], 200)
+                gate.assert_not_called()
+                reset.assert_not_called()
+
+    def test_first_business_post_resets_once_when_sharing_enabled(self):
+        for flag in ('true', '1'):
+            self.enable_sharing()
+            with self.subTest(flag=flag), patch.dict(os.environ, {'DGX_PRIVATE_SHARED_QWEN38_ENABLED': flag}), \
+                    patch.object(self.module, 'reset_qwen_caches', return_value=True) as reset:
+                for _ in range(2):
+                    self.assertEqual(self.request(payload={'messages': []})[0], 200)
+                reset.assert_called_once()
 
     def test_thinking_default_preserves_explicit_value_and_other_kwargs(self):
         for kwargs, expected in (({}, {'enable_thinking': False}),
@@ -1869,7 +1887,7 @@ class BusinessQwenRoutingTests(unittest.TestCase):
     def test_business_salt_removed_even_with_sharing_disabled(self):
         self.assertEqual(self.request(payload={'messages': [], 'cache_salt': 'untrusted'})[0], 200)
         self.assertNotIn('cache_salt', json.loads(self.calls[-1][2]))
-        self.assertEqual(sum('/reset_' in call[1] for call in self.calls), 1)
+        self.assertEqual(sum('/reset_' in call[1] for call in self.calls), 0)
 
     def test_shared_attestation_exact_fields_types_and_generation(self):
         self.enable_sharing()
@@ -2120,7 +2138,48 @@ class QwenOwnerExclusiveTests(unittest.TestCase):
                     self.assertEqual(self.gate.uncleared, not success)
             reset.assert_called_once()
 
-    def test_private_reset_yields_to_business_between_retries_and_each_reset(self):
+    def test_reset_failure_logs_only_one_fixed_line(self):
+        for owner in ('business', 'private'):
+            for failure in (False, RuntimeError('secret body /private/path profile generation')):
+                with self.subTest(owner=owner, failure=type(failure).__name__):
+                    self.gate = self.module.QwenOwnerExclusive()
+                    reset = Mock(side_effect=failure) if isinstance(failure, Exception) else Mock(return_value=failure)
+                    with patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs:
+                        if owner == 'private':
+                            with self.assertRaisesRegex(ValueError, 'private_shared_isolation_failed'):
+                                with self.request(owner, reset=reset):
+                                    self.fail('private admitted')
+                        else:
+                            with self.request(owner, reset=reset):
+                                pass
+                    self.assertEqual(logs.getvalue(), '[dgx-local-llm-gateway] qwen_cache_reset_failed\n')
+                    reset.assert_called_once()
+
+    def test_reset_deadline_failure_logs_only_one_fixed_line(self):
+        proxy = Mock()
+        with patch.object(self.module, 'QWEN_CACHE_RESET_SECONDS', 0), \
+                patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs:
+            with self.request('business', reset=lambda cancelled:
+                    self.module.reset_qwen_caches('http://engine', proxy, cancelled)):
+                self.assertTrue(self.gate.uncleared)
+        proxy.assert_not_called()
+        self.assertEqual(logs.getvalue(), '[dgx-local-llm-gateway] qwen_cache_reset_failed\n')
+
+    def test_successful_or_cancelled_reset_does_not_log(self):
+        for result in (True, None):
+            with self.subTest(result=result):
+                self.gate = self.module.QwenOwnerExclusive()
+                with patch.object(self.module.sys, 'stderr', new_callable=io.StringIO) as logs:
+                    if result is None:
+                        with self.assertRaisesRegex(ValueError, 'private_shared_busy'):
+                            with self.request('private', reset=Mock(return_value=result)):
+                                self.fail('private admitted')
+                    else:
+                        with self.request('private', reset=Mock(return_value=result)):
+                            pass
+                self.assertEqual(logs.getvalue(), '')
+
+    def test_private_reset_yields_to_business_between_retries_and_each_reset_and_next_private_resets(self):
         for initial_owner in ('unknown', 'business'):
             for interrupt_at in ('/reset_prefix_cache', '/reset_mm_cache', '/reset_encoder_cache'):
                 self.gate = self.module.QwenOwnerExclusive()
@@ -2168,6 +2227,13 @@ class QwenOwnerExclusiveTests(unittest.TestCase):
                 self.assertEqual(business_errors, [])
                 business_reset.assert_not_called()
                 self.assertEqual(len(calls), {'/reset_prefix_cache': 1, '/reset_mm_cache': 2, '/reset_encoder_cache': 3}[interrupt_at])
+                self.assertEqual(self.gate.owner, 'business')
+                self.assertEqual(self.gate.uncleared, uncleared)
+                retry_reset = Mock(side_effect=self.reset)
+                with self.request('private', reset=retry_reset):
+                    retry_reset.assert_called_once()
+                    self.assertEqual(self.gate.owner, 'private')
+                    self.assertFalse(self.gate.uncleared)
 
     def test_identity_change_with_active_private_preempts_and_bounds_business_wait(self):
         self.assertEqual(self.module.QWEN_BUSINESS_DRAIN_SECONDS, 2)

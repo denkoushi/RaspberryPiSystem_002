@@ -184,6 +184,8 @@ class QwenOwnerExclusive:
                             cleared = False
                         finally:
                             self.condition.acquire()
+                        if cleared is False:
+                            sys.stderr.write('[dgx-local-llm-gateway] qwen_cache_reset_failed\n')
                         if not business and (cleared is None or cancelled()):
                             # No private inference was admitted. Keep the previous
                             # isolation state and let business skip another reset.
@@ -1856,7 +1858,9 @@ def make_handler(
                         (snapshot['selectionRevision'], generation), self,
                         lambda cancelled: reset_qwen_caches(base, proxy_impl, cancelled),
                         lambda: business_draining(config.active_model_state_path))
-                        if profile == BUSINESS_QWEN38_PROFILE_ID and method == 'POST' else nullcontext())
+                        if (profile == BUSINESS_QWEN38_PROFILE_ID and method == 'POST'
+                            and os.environ.get('DGX_PRIVATE_SHARED_QWEN38_ENABLED', '') in {'true', '1'})
+                        else nullcontext())
                     if profile == BUSINESS_QWEN38_PROFILE_ID:
                         status, runtime_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
                             {"X-Runtime-Control-Token": config.runtime_control_token})
