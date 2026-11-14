@@ -346,7 +346,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const flaggedIndex = useRef(-1);
   const previousSingleKey = useRef<string | null>(null); const previousAxis = useRef<{ start: number; dayWidth: number; scale: number; forward: boolean; homeKey: number; step: number; today: number } | null>(null);
   const width = singleGroup ? Math.max(1, viewportWidth - labelWidth) : (layout.end - layout.start) * dayWidth;
-  const { window: ganttWindow, onScroll: updateWindow, measure: measureWindow } = usePlanningBoardGanttWindow(viewport, labelWidth);
+  const { window: ganttWindow, onScroll: updateWindow, measure: measureWindow } = usePlanningBoardGanttWindow(viewport, labelWidth, `${scale}:${dayWidth}:${width}`);
   const showHours = dayWidth >= HOUR_TICK_MIN_DAY_WIDTH;
   const hourTicks = scale === 1 ? EVERY_HOUR : HOUR_TICKS;
   useLayoutEffect(() => {
@@ -422,9 +422,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const top = Math.max(0, element.scrollTop + rowTop - 36,
       element.scrollTop + rowTop + rect.height - visibleHeight + bottomInset);
     if (typeof element.scrollTo === 'function') element.scrollTo({ left, top, behavior: 'smooth' });
-    else { element.scrollLeft = left; element.scrollTop = top; }
+    else { element.scrollLeft = left; element.scrollTop = top; measureWindow(); }
     return true;
-  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset]);
+  }, [barRows, barLocations, layout.start, dayWidth, forward, singleMode, labelWidth, viewportWidth, viewportHeight, bottomInset, measureWindow]);
   useImperativeHandle(ref, () => ({ scrollToItem: (itemId) => { const bar = currentBars.get(itemId); return bar ? scrollToBar(bar) : false; }, scrollToNextOverlap: () => {
     const element = viewport.current;
     const rows = layout.groups.flatMap((group) => group.rows).filter((row) => row.flagged);
