@@ -1808,6 +1808,7 @@ def make_handler(
                     profile = snapshot["selectedBusinessProfileId"]
                     generation = snapshot.get("businessGeneration")
                     base, auth, profile = business_route(config)
+                    resource_status = resource_body = None
                     if shared is not None:
                         state = business_selection_state(config.active_model_state_path)
                         if (profile not in {DEEPSEEK_PROFILE, BUSINESS_QWEN38_PROFILE_ID}
@@ -1816,9 +1817,9 @@ def make_handler(
                                 or shared != f"{state['selectionRevision']}:{state['businessGeneration']}"):
                             self._send(409, b"", "application/json")
                             return
-                        status, runtime_snapshot, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                        resource_status, resource_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
                             {"X-Runtime-Control-Token": config.runtime_control_token})
-                        runtime = attest_private_sharing(config, json.loads(runtime_snapshot)['businessRuntime']) if status == 200 else {}
+                        runtime = attest_private_sharing(config, json.loads(resource_body)['businessRuntime']) if resource_status == 200 else {}
                         proof = runtime.get('privateSharing', {})
                         if shared != f"{proof.get('selectionRevision')}:{proof.get('generation')}":
                             self._send(409, b"", "application/json")
@@ -1863,9 +1864,10 @@ def make_handler(
                             and os.environ.get('DGX_PRIVATE_SHARED_QWEN38_ENABLED', '') in {'true', '1'})
                         else nullcontext())
                     if profile == BUSINESS_QWEN38_PROFILE_ID:
-                        status, runtime_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
-                            {"X-Runtime-Control-Token": config.runtime_control_token})
-                        runtime = json.loads(runtime_body).get("businessRuntime", {}) if status == 200 else {}
+                        if resource_status is None:
+                            resource_status, resource_body, _ = proxy_impl("GET", config.runtime_control_base_url + "/system/resource-state", b"",
+                                {"X-Runtime-Control-Token": config.runtime_control_token})
+                        runtime = json.loads(resource_body).get("businessRuntime", {}) if resource_status == 200 else {}
                         ranks = runtime.get("ranks", [])
                         if (runtime.get("modelProfileId") != profile
                                 or type(runtime.get("selectionRevision")) is not int

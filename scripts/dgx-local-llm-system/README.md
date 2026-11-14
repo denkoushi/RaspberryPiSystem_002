@@ -222,6 +222,7 @@ manifest 例は [`model-registry.examples/`](./model-registry.examples/) に置�
 - **`businessOrchestrationEligible`**（manifest・既定 `true`）: `false` の profile は業務復帰 orchestration では選択不可（例: `qwen36_35b_uncensored`）。
 - **`runtimeProfile`**: profile 別の運用予算。vLLM は `vllm.gpuMemoryUtilization` / `maxModelLen` / `maxNumSeqs` / `quantization` / `disableCustomAllReduce` / `tensorParallelSize`、llama.cpp は `llamaCpp.ctxSize` / `parallel` / `nGpuLayers` を持つ。`0.65` は各 profile の known-good default であり、グローバル値ではない。
 - **resource-state**: `control-server.py` は `/start` / `/stop` / `/stop-force` 後に `/srv/dgx/system-prod/state/dgx-resource-state.json` を更新する。`GET /system/resource-state` と `GET /system/model-profiles` の `resourceState` で、業務Pi5 UI と Private Pi5 直通 route が同じ owner/state を見られる。
+- **業務 Qwen3.8 の実行確認の ssh**: `business_qwen38._run` は node2 への ssh を ControlMaster で使い回す(ソケットは `~/.ssh/dgx-mux`、`DGX_BUSINESS_SSH_CONTROL_DIR` で変更可、0700・本人所有でなければ素の ssh)。観測は毎回新しく取る。多重化経由で ssh 自体が失敗したらマスターを落として素の ssh で1回だけ再試行し、それも失敗なら従来どおり fail-closed。
 
 ```bash
 TOKEN="$(cat /srv/dgx/system-prod/secrets/api-token)"

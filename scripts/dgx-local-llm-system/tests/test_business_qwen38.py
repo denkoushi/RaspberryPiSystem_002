@@ -1,11 +1,13 @@
 from dataclasses import replace
 import json
+import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import business_qwen38 as qwen
@@ -16,6 +18,12 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.mux_tmp = tempfile.TemporaryDirectory(dir='/tmp')
+        self.addCleanup(self.mux_tmp.cleanup)
+        self.control_dir = str(Path(self.mux_tmp.name) / 'mux')
+        env = patch.dict(os.environ, {'DGX_BUSINESS_SSH_CONTROL_DIR': self.control_dir})
+        env.start()
+        self.addCleanup(env.stop)
         self.state = str(Path(self.tmp.name) / 'active.json')
         value = json.loads((Path(__file__).resolve().parent / 'fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json').read_text())
         value['modelProfileId'] = qwen.PROFILE
@@ -38,6 +46,100 @@ class BusinessQwenRuntimeTests(unittest.TestCase):
             status = qwen.runtime_status(self.profile, 'generation-1', self.state, sharing=sharing)
         prepared.assert_not_called()
         return status
+
+    def test_remote_run_uses_secure_multiplexing_and_preserves_ssh_contract(self):
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='fresh'))
+        for _ in range(2):
+            self.assertEqual(qwen._run('docker inspect example', 'user@node2', runner), 'fresh')
+        self.assertEqual(runner.call_count, 2)
+        command = runner.call_args.args[0]
+        self.assertEqual(command[:5], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10'])
+        self.assertEqual(command[-3:], ['--', 'user@node2', "bash -eu -c 'docker inspect example'"])
+        for option in ('ControlMaster=auto', 'ControlPath=' + self.control_dir + '/%C',
+                       'ControlPersist=120', 'ServerAliveInterval=5', 'ServerAliveCountMax=2'):
+            self.assertIn(option, command)
+        self.assertEqual(stat.S_IMODE(os.lstat(self.control_dir).st_mode), 0o700)
+        self.assertEqual(os.lstat(self.control_dir).st_uid, os.geteuid())
+
+    def test_insecure_control_directory_falls_back_to_plain_ssh(self):
+        os.mkdir(self.control_dir, 0o700)
+        for info in (Mock(st_mode=stat.S_IFDIR | 0o700, st_uid=os.geteuid() + 1),
+                     Mock(st_mode=stat.S_IFDIR | 0o755, st_uid=os.geteuid()),
+                     Mock(st_mode=stat.S_IFLNK | 0o700, st_uid=os.geteuid())):
+            with self.subTest(info=info), patch.object(qwen.os, 'lstat', return_value=info):
+                runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='fresh'))
+                qwen._run('inspect', 'user@node2', runner)
+                self.assertEqual(runner.call_count, 1)
+                self.assertEqual(runner.call_args.args[0][:6],
+                                 ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--'])
+
+    def test_actual_symlink_control_directory_falls_back(self):
+        Path(self.control_dir).symlink_to(self.mux_tmp.name, target_is_directory=True)
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='fresh'))
+        qwen._run('inspect', 'user@node2', runner)
+        self.assertNotIn('ControlMaster=auto', runner.call_args.args[0])
+
+    def test_long_or_uncreatable_control_directory_falls_back(self):
+        for directory, failure in ((self.control_dir, OSError('unavailable')),
+                                   ('/tmp/' + 'x' * 61, None),
+                                   ('/tmp/' + 'あ' * 20, None)):
+            with self.subTest(directory=directory), patch.dict(os.environ, {'DGX_BUSINESS_SSH_CONTROL_DIR': directory}), \
+                    patch.object(qwen.os, 'makedirs', side_effect=failure) as mkdir:
+                runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='fresh'))
+                qwen._run('inspect', 'user@node2', runner)
+                self.assertNotIn('ControlMaster=auto', runner.call_args.args[0])
+                if failure is None:
+                    mkdir.assert_not_called()
+
+    def test_mux_transport_failure_exits_master_and_retries_plain_once(self):
+        for error in (subprocess.CalledProcessError(255, 'ssh'), subprocess.TimeoutExpired('ssh', 30)):
+            with self.subTest(error=error):
+                runner = Mock(side_effect=[error, subprocess.CalledProcessError(255, 'exit'),
+                                          subprocess.CompletedProcess([], 0, stdout='fresh')])
+                with patch('active_model_state.request_timeout', side_effect=[20, 2, 17]) as timeout:
+                    self.assertEqual(qwen._run('inspect', 'user@node2', runner), 'fresh')
+                self.assertEqual([call.args for call in timeout.call_args_list], [(30,), (2,), (30,)])
+                commands = [call.args[0] for call in runner.call_args_list]
+                self.assertIn('ControlMaster=auto', commands[0])
+                self.assertEqual(commands[1], ['ssh', '-o', 'ControlPath=' + self.control_dir + '/%C',
+                                               '-O', 'exit', '--', 'user@node2'])
+                self.assertEqual(commands[2][:6], ['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', '--'])
+                self.assertEqual([call.kwargs['timeout'] for call in runner.call_args_list], [20, 2, 17])
+
+    def test_failed_plain_retry_propagates_and_runtime_status_fails_closed(self):
+        for retry_error in (subprocess.CalledProcessError(255, 'plain'), subprocess.TimeoutExpired('plain', 10)):
+            with self.subTest(error=retry_error):
+                runner = Mock(side_effect=[subprocess.CompletedProcess([], 0, stdout=json.dumps(self.nodes[0]) + '\nfalse\n'),
+                    subprocess.CalledProcessError(255, 'mux'), subprocess.CompletedProcess([], 0), retry_error])
+                with self.assertRaises(type(retry_error)) as caught:
+                    qwen.runtime_status(self.profile, 'generation-1', self.state, runner=runner, sharing=True)
+                self.assertIs(caught.exception, retry_error)
+                self.assertEqual(runner.call_count, 4)
+
+    def test_remote_script_failure_is_not_retried(self):
+        error = subprocess.CalledProcessError(1, 'script')
+        runner = Mock(side_effect=error)
+        with self.assertRaises(subprocess.CalledProcessError) as caught:
+            qwen._run('inspect', 'user@node2', runner)
+        self.assertIs(caught.exception, error)
+        self.assertEqual(runner.call_count, 1)
+
+    def test_plain_ssh_failure_is_not_retried(self):
+        runner = Mock(side_effect=subprocess.CalledProcessError(255, 'plain'))
+        with patch.object(qwen.os, 'makedirs', side_effect=OSError('unavailable')):
+            with self.assertRaises(subprocess.CalledProcessError):
+                qwen._run('inspect', 'user@node2', runner)
+        self.assertEqual(runner.call_count, 1)
+
+    def test_local_run_and_invalid_target_do_not_prepare_mux(self):
+        runner = Mock(return_value=subprocess.CompletedProcess([], 0, stdout='local'))
+        with patch.object(qwen.os, 'makedirs') as mkdir:
+            self.assertEqual(qwen._run('inspect', None, runner), 'local')
+            self.assertEqual(runner.call_args.args[0], ['bash', '-eu', '-c', 'inspect'])
+            with self.assertRaisesRegex(RuntimeError, 'business_qwen38_unprepared'):
+                qwen._run('inspect', '-invalid', runner)
+            mkdir.assert_not_called()
+        self.assertEqual(runner.call_count, 1)
 
     def test_runtime_evidence_covers_both_ranks_and_never_offers_private_sharing(self):
         status = self.status()
