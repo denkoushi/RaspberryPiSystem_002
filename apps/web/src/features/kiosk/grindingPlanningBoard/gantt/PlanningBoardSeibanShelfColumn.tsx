@@ -41,9 +41,10 @@ export const PlanningBoardSeibanShelfColumn = memo(function PlanningBoardSeibanS
         if (!units.length) return null;
         return <div key={part.key} className="flex flex-col gap-[3px]">
           <button type="button" onClick={() => toggle(part.units.flat().filter(tile => !tile.placed).map(tile => tile.item.itemId))}
-            className="flex items-baseline gap-1.5 py-0.5 text-left text-slate-200">
-            <b className="max-w-28 truncate text-sm">{part.name}</b><span className="font-mono text-xs text-slate-400">{part.code}</span>
-            <span className="ml-auto font-mono text-xs font-bold text-slate-400">×{part.quantity ?? '—'}</span>
+            className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-1.5 py-0.5 text-left text-slate-200">
+            <b className="min-w-0 text-sm leading-tight [overflow-wrap:anywhere]">{part.name}</b>
+            <span className="col-span-2 row-start-2 font-mono text-xs text-slate-400">{part.code}</span>
+            <span className="col-start-2 row-start-1 font-mono text-xs font-bold text-slate-400">×{part.quantity ?? '—'}</span>
           </button>
           <div className="flex flex-wrap gap-1">
             {units.map(({ visible, connected }) => <div key={connected[0]!.item.itemId} className="flex gap-px">
