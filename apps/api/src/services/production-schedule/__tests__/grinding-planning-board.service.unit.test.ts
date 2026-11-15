@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => {
     productionScheduleGrindingPlanningBoardResourceCapacity: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceMinutesSource: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn(), aggregate: vi.fn() },
+    productionScheduleSameModelResourceGroup: { findMany: vi.fn(), aggregate: vi.fn() },
     productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) },
     $transaction: vi.fn(),
     csvDashboardRow: { findMany: vi.fn() },
@@ -195,7 +196,7 @@ function configurePersistence(): void {
   });
   prisma.productionScheduleGrindingPlanningBoardState.findUnique.mockResolvedValue(state);
   prisma.productionScheduleSessakuPieceSet.findMany.mockResolvedValue([]);
-  for (const table of [prisma.productionScheduleGrindingPlanningBoardResourceCapacity, prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource, prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes]) {
+  for (const table of [prisma.productionScheduleSameModelResourceGroup, prisma.productionScheduleGrindingPlanningBoardResourceCapacity, prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource, prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes]) {
     table.findMany.mockResolvedValue([]);
     table.aggregate.mockResolvedValue({ _count: { _all: 0 }, _max: { updatedAt: null } });
   }

@@ -20,6 +20,7 @@ import type {
 } from '../client';
 
 export const productionScheduleQueryKeys = {
+  sameModelResourceGroups: (location: string) => ['production-schedule-same-model-resource-groups', location] as const,
   scheduleAll: ['kiosk-production-schedule'] as const,
   schedule: (params?: Parameters<typeof getKioskProductionSchedule>[0]) =>
     ['kiosk-production-schedule', params] as const,

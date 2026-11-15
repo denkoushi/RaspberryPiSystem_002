@@ -94,7 +94,7 @@ export function isPlanningSnapshotPayload(value: unknown): value is PlanningSnap
 }
 
 export async function readPlanningSnapshotGenerationDetails(siteKey: string, pieceScope?: SessakuPieceGenerationScope | Promise<SessakuPieceGenerationScope | undefined>): Promise<PlanningSnapshotGenerationDetails & { loadGenerationToken: string }> {
-  const [leaderboardGeneration, state, overrides, loadOverrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity, presence] = await Promise.all([
+  const [leaderboardGeneration, state, overrides, loadOverrides, resources, machineNames, pieces, minuteSources, partMinutes, capacity, presence, sameModelGroups] = await Promise.all([
     readGrindingPlanningBoardSnapshotGenerationToken(),
     prisma.productionScheduleGrindingPlanningBoardState.findUnique({
       where: { csvDashboardId_siteKey: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey } },
@@ -138,7 +138,10 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey },
       _count: { _all: true }, _max: { updatedAt: true }
     }),
-    readScheduleRowPresence()
+    readScheduleRowPresence(),
+    prisma.productionScheduleSameModelResourceGroup.aggregate({
+      where: { siteKey }, _count: { _all: true }, _max: { updatedAt: true }
+    })
   ]);
   const boardVersion = state?.version ?? 0;
   const boardUpdatedAt = state?.updatedAt?.toISOString() ?? '';
@@ -156,6 +159,8 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       machineNameCount: machineNames._count._all,
       machineNameUpdatedAt: machineNames._max.updatedAt?.toISOString() ?? '',
       pieceSetFingerprint: pieces,
+      sameModelGroupCount: sameModelGroups._count._all,
+      sameModelGroupUpdatedAt: sameModelGroups._max.updatedAt?.toISOString() ?? '',
       minuteSourceCount: minuteSources._count._all,
       minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
       partMinutesCount: partMinutes._count._all,
@@ -171,6 +176,8 @@ export async function readPlanningSnapshotGenerationDetails(siteKey: string, pie
       missingStandardHoursGeneration: loadOverrides[0]?.missingStandardHoursGeneration ?? '',
       overrideResourceFingerprint: loadOverrides[0]?.fingerprint ?? '',
       pieceSetFingerprint: pieces,
+      sameModelGroupCount: sameModelGroups._count._all,
+      sameModelGroupUpdatedAt: sameModelGroups._max.updatedAt?.toISOString() ?? '',
       minuteSourceCount: minuteSources._count._all,
       minuteSourceUpdatedAt: minuteSources._max.updatedAt?.toISOString() ?? '',
       partMinutesCount: partMinutes._count._all,

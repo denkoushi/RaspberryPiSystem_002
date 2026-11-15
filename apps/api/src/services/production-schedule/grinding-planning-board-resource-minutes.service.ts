@@ -1,3 +1,5 @@
+import { readSameModelResourceGroups, sameModelResourceCds, representativeResourceCd } from './same-model-resource-resolver.js';
+import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-status-mail-critical-lock.js';
 import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces } from './sessaku-pieces/piece-operation-definitions.js';
 import type { Prisma } from '@prisma/client';
 import type {
@@ -63,36 +65,45 @@ function resolveOperations(
 }
 
 type MinutesClient = Pick<Prisma.TransactionClient,
-  'productionScheduleGrindingPlanningBoardResourceMinutesSource' | 'productionScheduleGrindingPlanningBoardResourcePartMinutes'>;
+  'productionScheduleGrindingPlanningBoardResourceMinutesSource' | 'productionScheduleGrindingPlanningBoardResourcePartMinutes' | 'productionScheduleSameModelResourceGroup'>;
 
 export async function getGrindingPlanningBoardResourceMinutes(
   params: { siteKey: string }, client: MinutesClient = prisma
 ): Promise<GrindingPlanningBoardResourceMinutesResponse> {
   const where = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey };
-  const [sources, values] = await Promise.all([
+  const [sources, values, groups] = await Promise.all([
     client.productionScheduleGrindingPlanningBoardResourceMinutesSource.findMany({
       where, select: { resourceCd: true }, orderBy: { resourceCd: 'asc' }
     }),
     client.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany({
       where, select: { resourceCd: true, fhincd: true, perUnitMinutes: true, setupMinutes: true, ops: { select: { id: true, opNo: true, minutes: true, setupMinutes: true }, orderBy: { opNo: 'asc' } } },
       orderBy: [{ resourceCd: 'asc' }, { fhincd: 'asc' }]
-    })
+    }),
+    readSameModelResourceGroups(params.siteKey, client)
   ]);
-  return { ownSourceResourceCds: sources.map((row) => row.resourceCd), values };
+  return { siteKey: params.siteKey, sameModelResourceGroups: groups,
+    ownSourceResourceCds: [...new Set(sources.flatMap((row) => sameModelResourceCds(groups, row.resourceCd)))],
+    values: values.flatMap((value) => representativeResourceCd(groups, value.resourceCd) === value.resourceCd
+      ? sameModelResourceCds(groups, value.resourceCd).map((resourceCd) => ({ ...value, resourceCd })) : []) };
 }
 
 export async function updateGrindingPlanningBoardResourceMinutesSource(
   params: GrindingPlanningBoardResourceMinutesSourceRequest & { siteKey: string }
 ): Promise<GrindingPlanningBoardResourceMinutesResponse> {
   const { resourceCd, source } = resourceMinutesSourceSchema.parse(params);
-  const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, resourceCd };
-  if (source === 'original') {
-    await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: key });
-  } else {
-    await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert({
-      where: { csvDashboardId_siteKey_resourceCd: key }, create: { ...key, source }, update: { source }
-    });
-  }
+  await prisma.$transaction(async (tx) => {
+    await acquireFkojunstStatusMailCriticalTransactionLock(tx);
+    const groups = await readSameModelResourceGroups(params.siteKey, tx);
+    const resourceCds = sameModelResourceCds(groups, resourceCd);
+    const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey };
+    if (source === 'original') {
+      await tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { ...key, resourceCd: { in: resourceCds } } });
+    } else for (const resourceCd of resourceCds) {
+      await tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert({
+        where: { csvDashboardId_siteKey_resourceCd: { ...key, resourceCd } }, create: { ...key, resourceCd, source }, update: { source }
+      });
+    }
+  });
   return getGrindingPlanningBoardResourceMinutes(params);
 }
 
@@ -114,12 +125,14 @@ export async function saveGrindingPlanningBoardResourcePartMinutes(
   params: GrindingPlanningBoardResourcePartMinutesRequest & { siteKey: string },
   keys: Awaited<ReturnType<typeof lockOperationDefinitionPieces>>
 ) {
-  const { resourceCd, fhincd, perUnitMinutes, setupMinutes, ops, expectedOpIds, expectedMinutes } = resourcePartMinutesSchema.parse(params);
+  const { resourceCd: requestedResourceCd, fhincd, perUnitMinutes, setupMinutes, ops, expectedOpIds, expectedMinutes } = resourcePartMinutesSchema.parse(params);
+  const groups = await readSameModelResourceGroups(params.siteKey, tx);
+  const resourceCd = representativeResourceCd(groups, requestedResourceCd);
   const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey, resourceCd, fhincd };
-  const enableOwnSource = () => tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert({
+  const enableOwnSource = () => Promise.all(sameModelResourceCds(groups, resourceCd).map((resourceCd) => tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.upsert({
     where: { csvDashboardId_siteKey_resourceCd: { csvDashboardId: key.csvDashboardId, siteKey: key.siteKey, resourceCd } },
     create: { csvDashboardId: key.csvDashboardId, siteKey: key.siteKey, resourceCd, source: 'own' }, update: {}
-  });
+  })));
   if (expectedOpIds !== undefined || expectedMinutes !== undefined) {
     const current = await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findUnique({
       where: { csvDashboardId_siteKey_resourceCd_fhincd: key }, include: { ops: true }

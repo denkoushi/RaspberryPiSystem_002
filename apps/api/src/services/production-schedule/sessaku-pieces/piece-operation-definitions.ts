@@ -1,3 +1,4 @@
+import { readSameModelResourceGroups, representativeResourceCd } from '../same-model-resource-resolver.js';
 import { reconcileSessakuPieceQuantities } from './piece-quantity.js';
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 import type { GrindingPlanningBoardResourcePartOpMinutes } from '@raspi-system/shared-types';
@@ -40,10 +41,12 @@ export async function lockOperationDefinitionPieces(tx: Prisma.TransactionClient
 }
 
 export async function readPieceOperationNumbers(tx: Prisma.TransactionClient, siteKey: string, item: { effectiveResourceCd: string | null; fhincd: string }) {
+  const groups = await readSameModelResourceGroups(siteKey, tx);
+  const resourceCd = item.effectiveResourceCd === null ? null : representativeResourceCd(groups, item.effectiveResourceCd);
   const [part] = await tx.$queryRaw<Array<{ id: string }>>`
     SELECT "id" FROM "ProductionScheduleGrindingPlanningBoardResourcePartMinutes"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "siteKey" = ${siteKey}
-      AND "resourceCd" = ${item.effectiveResourceCd} AND "fhincd" = ${item.fhincd.trim()} FOR SHARE`;
+      AND "resourceCd" = ${resourceCd} AND "fhincd" = ${item.fhincd.trim()} FOR SHARE`;
   return part ? tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany({
     where: { partMinutesId: part.id }, select: { opNo: true }, orderBy: { opNo: 'asc' }
   }) : [];
@@ -74,6 +77,8 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
       where: { pieceId: { in: completedIds } }
     })).count > 0;
   }
+  const groups = await readSameModelResourceGroups(siteKey, tx);
+  const resolve = (cd: string | null) => cd === null ? null : representativeResourceCd(groups, cd);
   const intervals = pieces.flatMap((piece) => {
     const splits = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo);
     if (!splits.length) return [{ ...piece, fromOpNo: 1, toOpNo: Infinity }];
@@ -81,7 +86,8 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
       .map((effectiveResourceCd, index) => ({ ...piece, effectiveResourceCd,
         fromOpNo: index === 0 ? 1 : splits[index - 1].fromOpNo, toOpNo: splits[index] ? splits[index].fromOpNo - 1 : Infinity }));
   });
-  const pairs = new Map(intervals.filter((piece) => piece.effectiveResourceCd !== null)
+  const resolvedIntervals = intervals.map((piece) => ({ ...piece, effectiveResourceCd: resolve(piece.effectiveResourceCd) }));
+  const pairs = new Map(resolvedIntervals.filter((piece) => piece.effectiveResourceCd !== null)
     .map((piece) => [JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()]), piece]));
   if (!pairs.size) return false;
   const parts = await tx.$queryRaw<Array<{ id: string; resourceCd: string; fhincd: string }>>(Prisma.sql`
@@ -95,7 +101,7 @@ export async function syncWholePiecesOperationCompletions(tx: Prisma.Transaction
   });
   const byPair = new Map(parts.map((part) => [JSON.stringify([part.resourceCd, part.fhincd]),
     definitions.filter((op) => op.partMinutesId === part.id)]));
-  const data = intervals.flatMap((piece) => (byPair.get(JSON.stringify([piece.effectiveResourceCd, piece.fhincd.trim()])) ?? [])
+  const data = intervals.flatMap((piece) => (byPair.get(JSON.stringify([resolve(piece.effectiveResourceCd), piece.fhincd.trim()])) ?? [])
     .filter(({ opNo }) => opNo >= piece.fromOpNo && opNo <= piece.toOpNo)
     .map(({ opNo }) => ({ pieceId: piece.id, opNo })));
   return data.length > 0 && (await tx.productionScheduleSessakuPieceOpCompletion.createMany({ data, skipDuplicates: true })).count > 0;
@@ -146,6 +152,10 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
   const registeredSites = await tx.site.findMany({ select: { key: true } });
   const siteKeys = new Set([params.siteKey, ...registeredSites.map((site) => site.key), ...scopes.keys(), ...overridesBySite.keys(),
     ...definitions.map((definition) => definition.siteKey)]);
+  const siteGroups = new Map(await Promise.all([...siteKeys].map(async (siteKey) =>
+    [siteKey, await readSameModelResourceGroups(siteKey, tx)] as const)));
+  const resolve = (siteKey: string, resourceCd: string) => representativeResourceCd(siteGroups.get(siteKey) ?? [], resourceCd);
+  const targetResource = resolve(params.siteKey, params.resourceCd);
   const targets = sets.flatMap((set) => {
     const row = rowsByKey.get(encodeSessakuPieceKey(set));
     // Without a live, open board row a piece only loses obsolete evidence (never filled or completed).
@@ -166,28 +176,28 @@ export async function reconcileOperationDefinitionPieces(tx: Prisma.TransactionC
         const retained = new Set<number>();
         const fill = new Set<number>();
         for (const siteKey of siteKeys) for (const [index, resource] of resources.entries()) {
-          const numbers = siteKey === params.siteKey && resource === params.resourceCd ? opNos
-            : definitions.find((definition) => definition.siteKey === siteKey && definition.resourceCd === resource && definition.fhincd === set.fhincd.trim())?.ops.map((op) => op.opNo) ?? [];
+          const numbers = siteKey === params.siteKey && resolve(siteKey, resource) === targetResource ? opNos
+            : definitions.find((definition) => definition.siteKey === siteKey && definition.resourceCd === resolve(siteKey, resource) && definition.fhincd === set.fhincd.trim())?.ops.map((op) => op.opNo) ?? [];
           for (const opNo of numbers.filter((opNo) => inRange(opNo, index))) {
             retained.add(opNo);
-            if (siteKey === params.siteKey && resource === params.resourceCd) fill.add(opNo);
+            if (siteKey === params.siteKey && resolve(siteKey, resource) === targetResource) fill.add(opNo);
           }
         }
-        const rangeOf = (opNo: number) => resources.findIndex((resource, index) => resource === params.resourceCd && inRange(opNo, index));
+        const rangeOf = (opNo: number) => resources.findIndex((resource, index) => resolve(params.siteKey, resource) === targetResource && inRange(opNo, index));
         return [{ piece, retained, fill: onBoard ? [...fill] : [], onBoard, rangeOf }];
       }
-      const matches = (siteKey: string) => scopes.get(siteKey)?.has(set.fseiban.trim()) && effective(siteKey) === params.resourceCd;
+      const matches = (siteKey: string) => scopes.get(siteKey)?.has(set.fseiban.trim()) && resolve(siteKey, effective(siteKey)) === targetResource;
       const partDefinitions = definitions.filter((definition) => definition.fhincd === set.fhincd.trim()
-        && !(definition.siteKey === params.siteKey && definition.resourceCd === params.resourceCd));
+        && !(definition.siteKey === params.siteKey && definition.resourceCd === targetResource));
       if (onBoard && [...scopes.keys()].some(matches)) {
-        const retained = new Set(partDefinitions.filter((definition) => definition.resourceCd === effective(definition.siteKey))
+        const retained = new Set(partDefinitions.filter((definition) => definition.resourceCd === resolve(definition.siteKey, effective(definition.siteKey)))
           .flatMap((definition) => definition.ops.map((op) => op.opNo)));
-        if (effective(params.siteKey) === params.resourceCd) for (const opNo of opNos) retained.add(opNo);
+        if (resolve(params.siteKey, effective(params.siteKey)) === targetResource) for (const opNo of opNos) retained.add(opNo);
         return [{ piece, retained, fill: matches(params.siteKey) ? opNos : [], onBoard: true, rangeOf: () => 0 }];
       }
       // Delete-only: keep numbers defined for any resource this piece is effectively on (at any site),
       // plus the replacement; never skip on resource mismatch, since the evidence may predate an override change.
-      const resources = new Set([...siteKeys].map(effective));
+      const resources = new Set([...siteKeys].flatMap((siteKey) => [effective(siteKey), resolve(siteKey, effective(siteKey))]));
       const retained = new Set([...partDefinitions.filter((definition) => resources.has(definition.resourceCd))
         .flatMap((definition) => definition.ops.map((op) => op.opNo)), ...opNos]);
       return [{ piece, retained, fill: [] as number[], onBoard: false, rangeOf: () => -1 }];

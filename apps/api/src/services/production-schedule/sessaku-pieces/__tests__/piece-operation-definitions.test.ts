@@ -14,12 +14,13 @@ vi.mock('../../grinding-planning-board/source.js', () => ({ readOverrides: mocks
 vi.mock('../piece-key.js', async (importOriginal) => ({ ...await importOriginal<typeof import('../piece-key.js')>(),
   acquireSessakuPieceLogicalLocks: mocks.logical, acquireSessakuPieceBoardStateLocks: mocks.board
 }));
-import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces, syncWholePiecesOperationCompletions } from '../piece-operation-definitions.js';
+import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces, syncWholePiecesOperationCompletions, readPieceOperationNumbers } from '../piece-operation-definitions.js';
 import { encodeSessakuPieceKey, sessakuPieceParentItemId } from '../piece-key.js';
 
 const key = { fseiban: 'S', fhincd: 'PART', fsigencd: '021', fkojun: '10' };
 const row = { id: 'row', rowData: { FSEIBAN: 'S', FHINCD: 'PART', FSIGENCD: '021', FKOJUN: '10' } };
 const tx = {
+  productionScheduleSameModelResourceGroup: { findMany: vi.fn() },
   $queryRaw: vi.fn(), productionScheduleSessakuPiece: { update: vi.fn(), updateMany: vi.fn() },
   productionScheduleGrindingPlanningBoardResourcePartMinutes: { findMany: vi.fn() },
   productionScheduleGrindingPlanningBoardResourcePartOpMinutes: { findMany: vi.fn() },
@@ -36,7 +37,7 @@ let external: boolean;
 const reconcile = (opNos: number[]) => reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '021' }, [key], opNos);
 
 beforeEach(() => {
-  vi.resetAllMocks(); external = false; records = [{ pieceId: 'p', opNo: 1 }];
+  vi.resetAllMocks(); tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([]); external = false; records = [{ pieceId: 'p', opNo: 1 }];
   const now = new Date(0);
   set = { id: 'set', ...key, csvDashboardId: 'd', version: 1, nextPosition: 2, plannedQuantity: 1, quantityWarning: null, sourcePieceSetId: null,
     createdAt: now, updatedAt: now, pieces: [{ id: 'p', pieceSetId: 'set', position: 1, quantity: 1, sourcePieceId: null, isCompleted: false,
@@ -339,9 +340,9 @@ describe('operation definition replacement', () => {
     mocks.overrides.mockResolvedValue([
       { siteKey: 'other', itemKey: 'piece:p', overrideResourceCd: '022' }
     ]);
-    // The third site itself uses 021. A 022 definition still belongs to the union.
+    // Keep each effective resource paired with the site that uses it.
     tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
-      { siteKey: 'third', resourceCd, fhincd: 'PART', ops: [{ opNo: 2 }] },
+      { siteKey: resourceCd === '022' ? 'other' : 'third', resourceCd, fhincd: 'PART', ops: [{ opNo: 2 }] },
       { siteKey: 'third', resourceCd: '023', fhincd: 'PART', ops: [{ opNo: 3 }] },
       { siteKey: 'third', resourceCd, fhincd: 'OTHER', ops: [{ opNo: 4 }] }
     ]);
@@ -377,7 +378,7 @@ describe('operation definition replacement', () => {
       { siteKey: 'other', itemKey: 'piece:p', overrideResourceCd: ownResource }
     ]);
     tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
-      { siteKey: 'site', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 1 }] },
+      { siteKey: 'other', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 1 }] },
       { siteKey: 'site', resourceCd: '023', fhincd: 'PART', ops: [{ opNo: 3 }] }
     ]);
     records.push({ pieceId: 'p', opNo: 3 });
@@ -390,7 +391,7 @@ describe('operation definition replacement', () => {
       { siteKey: 'other', itemKey: sessakuPieceParentItemId(key), overrideResourceCd: '022' }
     ]);
     tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
-      { siteKey: 'site', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 1 }] }
+      { siteKey: 'other', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 1 }] }
     ]);
     await reconcile([2]);
     expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
@@ -597,11 +598,66 @@ describe('parent-row operation batching', () => {
     tx.productionScheduleGrindingPlanningBoardState.findMany.mockResolvedValue([{ siteKey: 'site', seibanOrder: ['OTHER'] }]);
     mocks.overrides.mockResolvedValue([{ siteKey: 'site', itemKey: 'piece:p', overrideResourceCd: '022' }]);
     tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
-      { siteKey: 'site', resourceCd: '021', fhincd: 'PART', ops: [{ opNo: 2 }] },
+      { siteKey: 'idle', resourceCd: '021', fhincd: 'PART', ops: [{ opNo: 2 }] },
       { siteKey: 'site', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 1 }, { opNo: 3 }] }
     ]);
     records = [{ pieceId: 'p', opNo: 2 }, { pieceId: 'p', opNo: 3 }];
     await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '022' }, [key], [1]);
     expect(records).toEqual([{ pieceId: 'p', opNo: 2 }]);
   });
+});
+
+describe('same-model operation definitions', () => {
+  const grouped = () => tx.productionScheduleSameModelResourceGroup.findMany.mockImplementation(async ({ where }) => where.siteKey === 'site'
+    ? [{ members: [{ resourceCd: '021' }, { resourceCd: '022' }] }] : []);
+  it('locks the representative definition for an individual piece on 022', async () => {
+    grouped();
+    tx.$queryRaw.mockResolvedValue([{ id: 'definition' }]);
+    tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany.mockResolvedValue([{ opNo: 1 }]);
+    await expect(readPieceOperationNumbers(client, 'site', { effectiveResourceCd: '022', fhincd: ' PART ' })).resolves.toEqual([{ opNo: 1 }]);
+    expect(tx.$queryRaw.mock.calls[0].slice(1)).toEqual([expect.any(String), 'site', '021', 'PART']);
+  });
+  it('uses representative keys for split-source reads and whole-piece completion maps', async () => {
+    grouped();
+    tx.$queryRaw.mockResolvedValue([{ id: 'definition', resourceCd: '021', fhincd: 'PART' }]);
+    tx.productionScheduleGrindingPlanningBoardResourcePartOpMinutes.findMany.mockResolvedValue([
+      { partMinutesId: 'definition', opNo: 1 }, { partMinutesId: 'definition', opNo: 2 }
+    ]);
+    await syncWholePiecesOperationCompletions(client, 'site', [{ id: 'p', isCompleted: false, effectiveResourceCd: '022', fhincd: 'PART',
+      opSplits: [{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '021' }] }], true);
+    expect(tx.$queryRaw.mock.calls[0][0].values).toContain('021');
+    expect(tx.$queryRaw.mock.calls[0][0].values).not.toContain('022');
+    expect(tx.productionScheduleSessakuPieceOpCompletion.createMany).toHaveBeenCalledWith({
+      data: [{ pieceId: 'p', opNo: 1 }, { pieceId: 'p', opNo: 2 }], skipDuplicates: true
+    });
+  });
+  it('reconciles split-source operations on another member and preserves completed work', async () => {
+    grouped();
+    set.pieces[0].opSplits = [{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '022' }];
+    set.pieces[0].isCompleted = true;
+    records = [{ pieceId: 'p', opNo: 1 }];
+    await reconcile([1, 2]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }, { pieceId: 'p', opNo: 2 }]);
+    expect(tx.productionScheduleSessakuPiece.updateMany).not.toHaveBeenCalled();
+  });
+  it('reopens the absorbing operation for removed work on a grouped split source', async () => {
+    grouped();
+    set.pieces[0].opSplits = [{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '022' }];
+    records = [{ pieceId: 'p', opNo: 1 }, { pieceId: 'p', opNo: 2 }];
+    await reconcileOperationDefinitionPieces(client, { siteKey: 'site', resourceCd: '021' }, [key], [1, 2], [1, 2, 3]);
+    expect(records).toEqual([{ pieceId: 'p', opNo: 1 }]);
+  });
+});
+
+it('retains delete-only evidence for a raw effective resource defined at any site', async () => {
+  tx.productionScheduleGrindingPlanningBoardState.findMany.mockResolvedValue([]);
+  mocks.overrides.mockResolvedValue([{ siteKey: 'other', itemKey: 'piece:p', overrideResourceCd: '022' }]);
+  tx.productionScheduleSameModelResourceGroup.findMany.mockImplementation(async ({ where }) => where.siteKey === 'site'
+    ? [{ members: [{ resourceCd: '021' }, { resourceCd: '022' }] }] : []);
+  tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany.mockResolvedValue([
+    { siteKey: 'third', resourceCd: '022', fhincd: 'PART', ops: [{ opNo: 9 }] }
+  ]);
+  records = [{ pieceId: 'p', opNo: 9 }];
+  await reconcile([]);
+  expect(records).toEqual([{ pieceId: 'p', opNo: 9 }]);
 });

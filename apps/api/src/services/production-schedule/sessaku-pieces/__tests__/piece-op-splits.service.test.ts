@@ -8,6 +8,7 @@ import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-pl
 const mocks = vi.hoisted(() => ({
   tx: {
     $queryRaw: vi.fn(), $executeRaw: vi.fn(),
+    productionScheduleSameModelResourceGroup: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn(), updateMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(), groupBy: vi.fn(), deleteMany: vi.fn() },
@@ -98,6 +99,7 @@ describe('piece operation boundary mutations', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => {
     vi.resetAllMocks(); vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
+    mocks.tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([]);
     mocks.tx.productionScheduleSessakuPieceOpSplit.findMany.mockResolvedValue([]);
     completed = new Set(); overrides = new Map();
     set = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 2, plannedQuantity: 1, quantityWarning: null,
@@ -393,7 +395,7 @@ describe('piece operation boundary mutations', () => {
       where.piece.isCompleted === outside.isCompleted && where.fromOpNo.in.includes(3) && !where.pieceId.notIn.includes(outside.id) ? { pieceId: outside.id } : null);
     const before = structuredClone({ set, values: settings.values });
     await expect(configureSessakuPieceOps(configuration())).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
-    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mock.calls[0][0].where.sourceResourceCd).toBe(configuration().resourceCd);
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mock.calls[0][0].where.sourceResourceCd).toEqual({ in: [configuration().resourceCd] });
     expect({ set, values: settings.values }).toEqual(before);
     expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
@@ -410,6 +412,42 @@ describe('piece operation boundary mutations', () => {
     expect(other.opSplits).toEqual([]);
     expect(overrides.get(`piece:${other.id}`)?.overrideResourceCd).toBe('022');
     expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])('configures same-lot units on 022 from 021 while preserving 022 placement (existing intervals=%s)', async (splitBeforeMove) => {
+    installDefinitionWrites();
+    mocks.tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([
+      { members: [{ resourceCd: '021' }, { resourceCd: '022' }] }
+    ]);
+    const moved = { ...set.pieces[0], id: randomUUID(), position: 2, opCompletions: [],
+      opSplits: splitBeforeMove ? [{ fromOpNo: 3, sourceResourceCd: '021', leadingSourceResourceCd: '021' }] : [] };
+    set.pieces.push(moved); set.plannedQuantity = 2; detail.orderSupplements[0].plannedQuantity = 2;
+    const movedHeadId = `piece:${moved.id}`;
+    overrides.set(movedHeadId, override(movedHeadId, { overrideResourceCd: '022', orderPinned: true }));
+    if (splitBeforeMove) overrides.set(`pieceops:${moved.id}:3`, override(`pieceops:${moved.id}:3`, { overrideResourceCd: '022' }));
+    const response = await configureSessakuPieceOps(configuration([12, 18]));
+    expect(set.pieces.map((piece) => piece.opSplits!.map((split) => split.fromOpNo))).toEqual([[2], [2]]);
+    expect(moved.opSplits).toMatchObject([{ fromOpNo: 2, sourceResourceCd: '022', leadingSourceResourceCd: '022' }]);
+    expect(overrides.get(movedHeadId)).toMatchObject({ overrideResourceCd: '022', orderPinned: true });
+    expect(overrides.get(`pieceops:${moved.id}:2`)).toMatchObject({ overrideResourceCd: '022', orderPinned: true });
+    expect(response.pieces.filter((piece) => piece.itemId === movedHeadId || piece.itemId.startsWith(`pieceops:${moved.id}:`))
+      .map((piece) => piece.effectiveResourceCd)).toEqual(['022', '022']);
+    expect(overrides.has(`pieceops:${moved.id}:3`)).toBe(false);
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ sourceResourceCd: { in: ['021', '022'] }, pieceId: { notIn: set.pieces.map((piece) => piece.id) } })
+    }));
+  });
+
+  it('rejects a disappearing boundary used by another lot on a same-model member', async () => {
+    installDefinitionWrites();
+    mocks.tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([
+      { members: [{ resourceCd: '021' }, { resourceCd: '022' }] }
+    ]);
+    mocks.tx.productionScheduleSessakuPieceOpSplit.findFirst.mockImplementation(async ({ where }) =>
+      where.sourceResourceCd.in.includes('022') && where.fromOpNo.in.includes(3) ? { pieceId: 'other-lot-piece' } : null);
+    await expect(configureSessakuPieceOps(configuration())).rejects.toMatchObject({ statusCode: 409, code: 'OPERATION_SPLIT_IN_USE' });
+    expect(mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany).not.toHaveBeenCalled();
+    expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.upsert).not.toHaveBeenCalled();
   });
 
   it('does not configure a unit whose leading bar is on another machine even when a later bar is here', async () => {
@@ -473,11 +511,14 @@ describe('piece operation boundary mutations', () => {
     mocks.tx.productionScheduleSessakuPieceSet.updateMany.mockImplementation(async () => { set.version += 1; });
   }
 
-  it('removes disappearing completed boundaries and overrides before reconciliation without reopening the piece', async () => {
+  it.each(['021', '022'])('removes disappearing completed boundaries on %s before reconciliation without reopening the piece', async (resourceCd) => {
     installCompletionReconciliation();
+    if (resourceCd === '022') mocks.tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([
+      { members: [{ resourceCd: '021' }, { resourceCd: '022' }] }
+    ]);
     const done = set.pieces[0];
     done.isCompleted = true; done.completedAt = now;
-    done.opSplits = [2, 3].map((fromOpNo) => ({ fromOpNo, sourceResourceCd: '021', leadingSourceResourceCd: '021' }));
+    done.opSplits = [2, 3].map((fromOpNo) => ({ fromOpNo, sourceResourceCd: resourceCd, leadingSourceResourceCd: resourceCd }));
     completed = new Set([1, 2, 3, 4]); syncCompletionRecords();
     overrides.set(barId(2), override(barId(2)));
     overrides.set(barId(3), override(barId(3)));
@@ -488,7 +529,7 @@ describe('piece operation boundary mutations', () => {
       where.piece.isCompleted === done.isCompleted ? { pieceId: done.id } : null);
     mocks.tx.productionScheduleSessakuPieceOpSplit.findMany.mockImplementation(async ({ where }) =>
       done.opSplits!.filter((split) => where.piece.isCompleted === done.isCompleted
-        && split.sourceResourceCd === where.sourceResourceCd && where.fromOpNo.in.includes(split.fromOpNo))
+        && where.sourceResourceCd.in.includes(split.sourceResourceCd) && where.fromOpNo.in.includes(split.fromOpNo))
         .map((split) => ({ pieceId: done.id, fromOpNo: split.fromOpNo })));
     mocks.tx.productionScheduleSessakuPieceOpSplit.deleteMany.mockImplementation(async ({ where }) => {
       if (!where.OR) return;

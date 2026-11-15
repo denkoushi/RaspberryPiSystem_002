@@ -1,3 +1,4 @@
+import { readSameModelResourceGroups, sameModelResourceCds, representativeResourceCd } from '../same-model-resource-resolver.js';
 import { randomUUID } from 'node:crypto';
 import type { SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPiecesMutationResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
@@ -40,15 +41,18 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
     if (c.set.quantityWarning) conflict('PIECE_QUANTITY_CONFLICT');
     if (configure && piece.isCompleted) conflict('COMPLETED_PIECE');
     if (piece.quantity !== 1) conflict('PIECE_NOT_UNIT');
+    const groups = await readSameModelResourceGroups(params.siteKey, tx);
+    const resolve = (cd: string) => representativeResourceCd(groups, cd);
+    const resourceCds = 'resourceCd' in params ? sameModelResourceCds(groups, params.resourceCd) : [];
     if (configure) {
       const firstSplit = [...(piece.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo)[0];
-      if (firstSplit && (firstSplit.leadingSourceResourceCd ?? firstSplit.sourceResourceCd) !== ('resourceCd' in params ? params.resourceCd : null)) conflict();
+      if (firstSplit && resolve(firstSplit.leadingSourceResourceCd ?? firstSplit.sourceResourceCd) !== ('resourceCd' in params ? resolve(params.resourceCd) : null)) conflict();
       const capacity = await getGrindingPlanningBoardResourceCapacity({ siteKey: params.siteKey }, tx);
       if (!piece.opSplits?.length && !isUnitSplitEnabled(item.effectiveResourceCd, capacity)) conflict('PIECE_NOT_UNIT');
     }
-    // A unit belongs to the machine of its leading bar; units whose later bars were moved here stay untouched.
+    // Configure units whose leading bars are on any member of the same-model group.
     const targets = configure ? c.set.pieces.filter((candidate) => candidate.quantity === 1 && !candidate.isCompleted && (candidate.id === piece.id
-      || c.current.pieces.find((bar) => bar.itemId === `piece:${candidate.id}`)?.effectiveResourceCd === ('resourceCd' in params ? params.resourceCd : null)))
+      || resourceCds.includes(c.current.pieces.find((bar) => bar.itemId === `piece:${candidate.id}`)?.effectiveResourceCd ?? '')))
       : 'scope' in params && params.scope === 'set' ? c.set.pieces.filter((candidate) => !candidate.isCompleted) : [piece];
     if (targets.some((candidate) => candidate.isCompleted)) conflict('COMPLETED_PIECE');
     if (configure && (!item.effectiveResourceCd || !('resourceCd' in params) || params.resourceCd !== item.effectiveResourceCd)) conflict();
@@ -69,7 +73,7 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
       }
       const removedOpNos = previousOps.filter((op) => !opNos.includes(op.opNo)).map((op) => op.opNo);
       if (removedOpNos.length && await tx.productionScheduleSessakuPieceOpSplit.findFirst({ where: {
-        fromOpNo: { in: removedOpNos }, sourceResourceCd: params.resourceCd, pieceId: { notIn: targets.map((target) => target.id) },
+        fromOpNo: { in: removedOpNos }, sourceResourceCd: { in: resourceCds }, pieceId: { notIn: targets.map((target) => target.id) },
         piece: { isCompleted: false, pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
           fhincd: { in: [...new Set([c.key.fhincd, ...(c.definitionKeys ?? []).map((key) => key.fhincd)])] } } }
       }, select: { pieceId: true } })) {
@@ -77,7 +81,7 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
       }
       if (removedOpNos.length) {
         const obsoleteCompletedSplits = await tx.productionScheduleSessakuPieceOpSplit.findMany({ where: {
-          fromOpNo: { in: removedOpNos }, sourceResourceCd: params.resourceCd,
+          fromOpNo: { in: removedOpNos }, sourceResourceCd: { in: resourceCds },
           piece: { isCompleted: true, pieceSet: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID,
             fhincd: { in: [...new Set([c.key.fhincd, ...(c.definitionKeys ?? []).map((key) => key.fhincd)])] } } }
         }, select: { pieceId: true, fromOpNo: true } });
@@ -105,13 +109,14 @@ export async function mutateSessakuPieceOperationConfiguration(input: Request, d
         expectedOpIds: params.expectedOpIds, expectedMinutes: params.expectedMinutes };
     }
     for (const target of targets) {
+      const headId = `piece:${target.id}`;
+      const targetResourceCd = c.current.pieces.find((bar) => bar.itemId === headId)?.effectiveResourceCd ?? item.effectiveResourceCd!;
       const oldIds = sessakuPieceItemIds(target);
       const boundaries = [...(target.opSplits ?? [])].sort((a, b) => a.fromOpNo - b.fromOpNo);
       await tx.productionScheduleSessakuPieceOpSplit.deleteMany({ where: { pieceId: target.id } });
       if (opNos.length > 1) await tx.productionScheduleSessakuPieceOpSplit.createMany({ data: opNos.slice(1).map((fromOpNo, index) => ({
-        pieceId: target.id, fromOpNo, sourceResourceCd: item.effectiveResourceCd!, leadingSourceResourceCd: index === 0 ? item.effectiveResourceCd! : null
+        pieceId: target.id, fromOpNo, sourceResourceCd: targetResourceCd, leadingSourceResourceCd: index === 0 ? targetResourceCd : null
       })) });
-      const headId = `piece:${target.id}`;
       const newIds = [headId, ...opNos.slice(1).map((opNo) => `pieceops:${target.id}:${opNo}`)];
       for (const site of c.sites) {
         // Clearing only removes suffix bars, preserving the head's placement on every site.

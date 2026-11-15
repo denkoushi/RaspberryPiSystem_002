@@ -13,7 +13,8 @@ const mocks = vi.hoisted(() => ({
     productionScheduleSeibanMachineNameSupplement: { aggregate: vi.fn() },
     productionScheduleGrindingPlanningBoardResourceMinutesSource: { aggregate: vi.fn() },
     productionScheduleGrindingPlanningBoardResourcePartMinutes: { aggregate: vi.fn() },
-    productionScheduleGrindingPlanningBoardResourceCapacity: { aggregate: vi.fn() }
+    productionScheduleGrindingPlanningBoardResourceCapacity: { aggregate: vi.fn() },
+    productionScheduleSameModelResourceGroup: { aggregate: vi.fn() }
   },
   readGrindingPlanningBoardSnapshotGenerationToken: vi.fn()
 }));
@@ -76,6 +77,23 @@ describe('load generation token', () => {
     expect(await readPlanningLoadGenerationToken('site-a')).not.toBe(before);
   });
 
+  it('invalidates board and load on group creation, replacement timestamp and removal', async () => {
+    let previous = await readPlanningSnapshotGenerationDetails('site-a');
+    for (const aggregate of [
+      { _count: { _all: 1 }, _max: { updatedAt: new Date('2026-11-01') } },
+      { _count: { _all: 1 }, _max: { updatedAt: new Date('2026-11-02') } },
+      { _count: { _all: 0 }, _max: { updatedAt: null } }
+    ]) {
+      mocks.prisma.productionScheduleSameModelResourceGroup.aggregate.mockResolvedValue(aggregate);
+      const next = await readPlanningSnapshotGenerationDetails('site-a');
+      expect(next.generationToken).not.toBe(previous.generationToken);
+      expect(next.loadGenerationToken).not.toBe(previous.loadGenerationToken);
+      previous = next;
+    }
+    expect(mocks.prisma.productionScheduleSameModelResourceGroup.aggregate).toHaveBeenCalledWith({
+      where: { siteKey: 'site-a' }, _count: { _all: true }, _max: { updatedAt: true }
+    });
+  });
   it('invalidates board and load caches on replacement, update and clear of missing processes', async () => {
     const baseline = await readPlanningSnapshotGenerationDetails('site-a');
     for (const value of ['[1,"2026-11-01"]', '[1,"2026-11-02"]']) {

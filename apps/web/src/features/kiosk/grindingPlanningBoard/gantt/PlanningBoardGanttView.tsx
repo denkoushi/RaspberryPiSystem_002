@@ -294,7 +294,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
   }, [showChain, valueSheetContainer]);
   const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} resourceCds={minutesResourceCds} resourceNameMap={resourceNameMap} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
-    values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
+    siteKey={resourceMinutes?.siteKey} sameModelResourceGroups={resourceMinutes?.sameModelResourceGroups} values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
   const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
   useLayoutEffect(() => {
     const pane = viewport.current;

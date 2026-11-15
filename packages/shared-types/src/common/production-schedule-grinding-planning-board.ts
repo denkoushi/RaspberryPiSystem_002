@@ -463,7 +463,17 @@ export interface SessakuPiecesMutationResponse {
 }
 
 export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
+export interface ProductionScheduleSameModelResourceGroup {
+  resourceCds: string[];
+}
+export interface ProductionScheduleSameModelResourceGroupsResponse {
+  siteKey: string;
+  groups: ProductionScheduleSameModelResourceGroup[];
+  resources: Array<{ resourceCd: string; resourceName: string }>;
+}
 export interface GrindingPlanningBoardResourceMinutesResponse {
+  siteKey?: string;
+  sameModelResourceGroups?: ProductionScheduleSameModelResourceGroup[];
   ownSourceResourceCds: string[];
   values: Array<{ resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number; ops?: GrindingPlanningBoardResourcePartOpMinutes[] }>;
   /** Updated row's operations read within the save transaction, in matching order. */

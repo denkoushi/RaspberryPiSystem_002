@@ -9,6 +9,7 @@ import type { PieceAuditContext } from '../piece-audit.js';
 const mocks = vi.hoisted(() => ({
   tx: {
     $queryRaw: vi.fn(), $executeRaw: vi.fn(),
+    productionScheduleSameModelResourceGroup: { findMany: vi.fn() },
     productionScheduleGrindingPlanningBoardState: { findMany: vi.fn(), findUniqueOrThrow: vi.fn(), update: vi.fn() },
     productionScheduleGrindingPlanningBoardTestBar: { findMany: vi.fn(), updateMany: vi.fn() },
     productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn() },
@@ -67,6 +68,7 @@ describe('piece operation completion transaction', () => {
   afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   beforeEach(() => {
     vi.resetAllMocks(); completed = new Set(); definitions = [{ opNo: 1 }, { opNo: 2 }];
+    mocks.tx.productionScheduleSameModelResourceGroup.findMany.mockResolvedValue([]);
     const now = new Date('2026-11-09');
     set = { ...key, id: 'set', csvDashboardId: 'dashboard', version: 1, nextPosition: 2, plannedQuantity: 1, quantityWarning: null,
       sourcePieceSetId: null, createdAt: now, updatedAt: now, pieces: [{ id: randomUUID(), pieceSetId: 'set', quantity: 1, position: 1,

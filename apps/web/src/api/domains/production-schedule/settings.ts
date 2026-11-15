@@ -1,5 +1,7 @@
 import { api } from '../../http';
 
+import type { ProductionScheduleSameModelResourceGroupsResponse, ProductionScheduleSameModelResourceGroup } from '@raspi-system/shared-types';
+
 export interface ProductionScheduleResourceCategorySettings {
   location: string;
   cuttingExcludedResourceCds: string[];
@@ -148,4 +150,13 @@ export async function updateProductionScheduleDueManagementAccessPassword(payloa
     settings: ProductionScheduleDueManagementAccessPasswordSettings;
   }>('/production-schedule-settings/due-management-access-password', payload);
   return data.settings;
+}
+
+export async function getProductionScheduleSameModelResourceGroups(location: string) {
+  const { data } = await api.get<ProductionScheduleSameModelResourceGroupsResponse>('/production-schedule-settings/same-model-resource-groups', { params: { location } });
+  return data;
+}
+export async function updateProductionScheduleSameModelResourceGroups(payload: { location: string; groups: ProductionScheduleSameModelResourceGroup[] }) {
+  const { data } = await api.put<ProductionScheduleSameModelResourceGroupsResponse>('/production-schedule-settings/same-model-resource-groups', payload);
+  return data;
 }

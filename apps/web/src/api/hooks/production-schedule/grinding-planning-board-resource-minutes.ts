@@ -16,13 +16,18 @@ export const PLANNING_BOARD_SETTINGS_REFETCH_MS = 60_000;
 export function useKioskGrindingPlanningBoardResourceMinutes(enabled: boolean) {
   return useQuery({ queryKey: key, queryFn: getKioskGrindingPlanningBoardResourceMinutes, enabled, staleTime: 10 * 60_000, refetchInterval: PLANNING_BOARD_SETTINGS_REFETCH_MS });
 }
+function targetResourceCds(settings: Settings, resourceCd: string) {
+  return settings.sameModelResourceGroups?.find((group) => group.resourceCds.includes(resourceCd))?.resourceCds ?? [resourceCd];
+}
 function mergeTarget(current: Settings, next: Settings, payload: Source | Value): Settings {
-  if ('source' in payload) return { ...current, ownSourceResourceCds: [
-    ...current.ownSourceResourceCds.filter((cd) => cd !== payload.resourceCd),
-    ...next.ownSourceResourceCds.filter((cd) => cd === payload.resourceCd)
+  const resourceCds = [...new Set([...targetResourceCds(current, payload.resourceCd), ...targetResourceCds(next, payload.resourceCd)])];
+  const metadata = { siteKey: next.siteKey ?? current.siteKey, sameModelResourceGroups: next.sameModelResourceGroups ?? current.sameModelResourceGroups };
+  if ('source' in payload) return { ...current, ...metadata, ownSourceResourceCds: [
+    ...current.ownSourceResourceCds.filter((cd) => !resourceCds.includes(cd)),
+    ...next.ownSourceResourceCds.filter((cd) => resourceCds.includes(cd))
   ] };
-  const matches = (value: Settings['values'][number]) => value.resourceCd === payload.resourceCd && value.fhincd === payload.fhincd;
-  return { ...current, values: [...current.values.filter((value) => !matches(value)), ...next.values.filter(matches)] };
+  const matches = (value: Settings['values'][number]) => resourceCds.includes(value.resourceCd) && value.fhincd === payload.fhincd;
+  return { ...current, ...metadata, values: [...current.values.filter((value) => !matches(value)), ...next.values.filter(matches)] };
 }
 function useUpdateMinutes<T extends Source | Value>(mutationFn: (payload: T) => Promise<Settings>, scope: string) {
   const client = useQueryClient();
@@ -33,8 +38,8 @@ function useUpdateMinutes<T extends Source | Value>(mutationFn: (payload: T) => 
       await client.cancelQueries({ queryKey: key });
       const previous = client.getQueryData<Settings>(key) ?? empty;
       const next: Settings = 'source' in payload
-        ? { ...empty, ownSourceResourceCds: payload.source === 'own' ? [payload.resourceCd] : [] }
-        : { ...empty, values: payload.perUnitMinutes === null ? [] : [{ ...payload, perUnitMinutes: payload.perUnitMinutes }] };
+        ? { ...empty, ownSourceResourceCds: payload.source === 'own' ? targetResourceCds(previous, payload.resourceCd) : [] }
+        : { ...empty, values: payload.perUnitMinutes === null ? [] : targetResourceCds(previous, payload.resourceCd).map((resourceCd) => ({ resourceCd, fhincd: (payload as Value).fhincd, setupMinutes: (payload as Value).setupMinutes, ops: (payload as Value).ops, perUnitMinutes: (payload as Value).perUnitMinutes! })) };
       client.setQueryData<Settings>(key, (current = empty) => mergeTarget(current, next, payload));
       return { previous };
     },
@@ -62,6 +67,9 @@ function useUpdateMinutes<T extends Source | Value>(mutationFn: (payload: T) => 
 export function useUpdateKioskGrindingPlanningBoardResourceMinutesSource() {
   return useUpdateMinutes(updateKioskGrindingPlanningBoardResourceMinutesSource, 'planning-board-minutes-source');
 }
-export function useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceCd: string, fhincd: string) {
-  return useUpdateMinutes(updateKioskGrindingPlanningBoardResourcePartMinutes, `planning-board-minutes:${resourceCd}:${fhincd}`);
+export function useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceCd: string, fhincd: string, siteKey?: string) {
+  const client = useQueryClient();
+  const settings = client.getQueryData<Settings>(key) ?? empty;
+  const representative = [...targetResourceCds(settings, resourceCd)].sort()[0];
+  return useUpdateMinutes(updateKioskGrindingPlanningBoardResourcePartMinutes, `planning-board-minutes:${siteKey ?? settings.siteKey ?? ''}:${representative}:${fhincd}`);
 }
