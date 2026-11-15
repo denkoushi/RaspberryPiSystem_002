@@ -6,7 +6,7 @@ import { EditorIconButton } from './EditorIconButton';
 
 import type { AssemblyProcedureOverlayAssetDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
-import type { RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 
 type Props = {
   elements: AssemblyProcedureOverlayElement[];
@@ -22,6 +22,7 @@ type Props = {
   readOnly: boolean;
   busy: boolean;
   locked?: boolean;
+  materials?: ReactNode;
 };
 
 function previewBounds(bbox: AssemblyProcedureOverlayBBox) {
@@ -36,8 +37,8 @@ function previewBounds(bbox: AssemblyProcedureOverlayBBox) {
   return { crop, width, height };
 }
 
-export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy, locked = false }: Props) {
-  const [source, setSource] = useState<'current' | 'other'>('current');
+export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyProcedureDocumentEditorPartsPane({ elements, pageIndex, onDuplicate, assets, selectedOverlayId, hiddenOverlayIds, onSelect, onBringForward, onSendBackward, onToggleHidden, readOnly, busy, locked = false, materials }: Props) {
+  const [source, setSource] = useState<'current' | 'other' | 'material'>('current');
   const sorted = useMemo(() => elements
     .map((element, index) => ({ element, index }))
     .sort((a, b) => b.element.zIndex - a.element.zIndex || b.index - a.index), [elements]);
@@ -56,16 +57,16 @@ export const AssemblyProcedureDocumentEditorPartsPane = memo(function AssemblyPr
   const showCurrent = useCallback(() => setSource('current'), []);
 
   return <aside aria-label="部品" className="grid min-h-0 grid-rows-[56px_minmax(0,1fr)_auto] border-r border-[#27313b] bg-[#161c22]">
-    <div className="flex h-14 items-center gap-2.5 border-b border-[#27313b] pl-4 pr-3">
-      <h2 className="whitespace-nowrap text-[19px] font-black tracking-[0.06em]">部品</h2>
+    <div className="flex h-14 items-center gap-1 border-b border-[#27313b] px-2">
+      <h2 className="whitespace-nowrap text-base font-black tracking-[0.06em]">部品</h2>
       <div role="group" aria-label="部品の表示元" className="flex w-max gap-0.5 rounded-lg border border-[#344252] p-[3px]">
-        {(['current', 'other'] as const).map(value => <button key={value} type="button" disabled={locked} aria-pressed={source === value} onClick={() => setSource(value)} className={`h-[34px] whitespace-nowrap rounded-[5px] px-2 text-sm ${source === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`}>
-          {value === 'current' ? 'このページ' : 'ほか'}<span className="ml-[5px] font-mono text-[#9fadb9]">{value === 'current' ? currentRows.length : otherRows.length}</span>
+        {(['current', 'other', 'material'] as const).map(value => <button key={value} type="button" disabled={locked} aria-pressed={source === value} onClick={() => setSource(value)} className={`h-[34px] whitespace-nowrap rounded-[5px] px-1.5 text-sm ${source === value ? 'bg-[#27313b] text-[#eef3f6]' : 'text-[#9fadb9]'}`}>
+          {value === 'current' ? 'このページ' : value === 'other' ? 'ほか' : '素材'}{value !== 'material' ? <span className="ml-[5px] font-mono text-[#9fadb9]">{value === 'current' ? currentRows.length : otherRows.length}</span> : null}
         </button>)}
       </div>
     </div>
-    <div role="listbox" aria-label={source === 'current' ? 'このページの部品' : 'ほかのページの部品'} className="grid min-h-0 content-start gap-1.5 overflow-y-auto p-2">
-      {rows.map(({ element }, index) => {
+    <div role="listbox" aria-label={source === 'current' ? 'このページの部品' : source === 'other' ? 'ほかのページの部品' : '素材'} className="grid min-h-0 content-start gap-1.5 overflow-y-auto p-2">
+      {source === 'material' ? materials : rows.map(({ element }, index) => {
         const pageStart = index === 0 || rows[index - 1].element.pageIndex !== element.pageIndex;
         const number = (pageNumbers.get(element.pageIndex) ?? 0) + 1;
         pageNumbers.set(element.pageIndex, number);

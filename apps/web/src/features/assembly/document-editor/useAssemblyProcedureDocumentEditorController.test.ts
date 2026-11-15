@@ -1,4 +1,5 @@
-import { act, renderHook, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { createElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const apiMocks = vi.hoisted(() => ({
@@ -13,7 +14,8 @@ const apiMocks = vi.hoisted(() => ({
   discardRevision: vi.fn(),
   addBlankPage: vi.fn(),
   suggestLayout: vi.fn(),
-  placeMaterial: vi.fn()
+  placeMaterial: vi.fn(),
+  unplaceMaterial: vi.fn()
 }));
 
 const leaseMocks = vi.hoisted(() => ({ acquire: vi.fn(), release: vi.fn() }));
@@ -27,6 +29,7 @@ vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
   suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
+  unplaceProcedureMaterial: apiMocks.unplaceMaterial,
   verifyAssemblyTemplateAccessPassword: apiMocks.verifyPassword,
   getAssemblyProcedureDocument: apiMocks.getDocument,
   createAssemblyProcedureDocumentRevision: apiMocks.createRevision,
@@ -38,14 +41,19 @@ vi.mock('../../../api/client', () => ({
   discardAssemblyProcedureDocumentRevision: apiMocks.discardRevision
 }));
 
+import { api, getResolvedClientKey } from '../../../api/http';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { createOverlayForRange } from './assemblyDocumentEditorDraft';
-import { readAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
+import { readAssemblyDocumentEditorRecovery, writeAssemblyDocumentEditorRecovery } from './assemblyDocumentEditorRecovery';
+import { AssemblyProcedureDocumentEditorCanvas } from './AssemblyProcedureDocumentEditorCanvas';
 import { useAssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
+import type { ReactNode } from 'react';
+
+vi.mock('../AssemblyProcedureCanvas', () => ({ AssemblyProcedureCanvas: ({ overlay }: { overlay: ReactNode }) => createElement('div', null, overlay) }));
 
 const range = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 };
 
@@ -74,16 +82,19 @@ async function authenticate(result: { current: ReturnType<typeof useAssemblyProc
   expect(result.current.accessGranted).toBe(true);
 }
 
-function renderEditor(document: AssemblyProcedureDocumentDto) {
+function renderEditor(document: AssemblyProcedureDocumentDto, onNavigateBack?: () => void) {
   apiMocks.getDocument.mockResolvedValue(document);
   apiMocks.verifyPassword.mockResolvedValue({ success: true });
   apiMocks.createRevision.mockResolvedValue(document);
-  return renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: document.id }));
+  return renderHook(() => useAssemblyProcedureDocumentEditorController({ documentId: document.id, onNavigateBack }));
 }
 
 describe('useAssemblyProcedureDocumentEditorController', () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}')));
+    vi.spyOn(api, 'post').mockResolvedValue({ data: {} });
+    apiMocks.unplaceMaterial.mockResolvedValue(undefined);
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear(); clearProcedureEditorAccess();
@@ -413,7 +424,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       const unload = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(unload);
       expect(unload.defaultPrevented).toBe(true);
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
-      expect(hook.result.current.confirmNavigation()).toBe(false);
+      expect(await hook.result.current.confirmNavigation()).toBe(false);
       expect(confirm).toHaveBeenCalled(); confirm.mockRestore();
       await act(async () => { await hook.result.current.verifyEditorPassword('2520'); });
       expect(hook.result.current.accessGranted).toBe(true);
@@ -652,7 +663,471 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.document?.assets?.asset).toMatchObject({ assetId: 'asset' });
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
   });
-  it('replaces only the selected image asset, preserves all other properties and supports undo/redo', async () => {
+  it('places at a supplied drop center with server dimensions in a single undo step', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element: AssemblyProcedureOverlayElement = { id: 'placed', kind: 'TEXT', text: '文章', pageIndex: 0, zIndex: 0, bbox: { ...range, widthRatio: 0.4, heightRatio: 0.3 } };
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => { await hook.result.current.placeMaterial({ id: 'material' }, { bbox: { xRatio: 0.98, yRatio: 0.01, widthRatio: 0, heightRatio: 0 } }); });
+    expect(hook.result.current.elements[0].bbox).toEqual({ xRatio: 0.6, yRatio: 0, widthRatio: 0.4, heightRatio: 0.3 });
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(hook.result.current.canUndo).toBe(false);
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...element, bbox: { xRatio: 0.6, yRatio: 0, widthRatio: 0.4, heightRatio: 0.3 } }]);
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(2);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+  });
+
+  it('re-places a photo after undo and keeps edited geometry through repeated history changes', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const image = { ...createOverlayForRange('IMAGE', 0, range), assetId: 'old' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: image });
+    await act(async () => hook.result.current.placeMaterial({ id: 'photo' }));
+    const moved = { ...image, bbox: { ...range, xRatio: 0.55 }, zIndex: 8 };
+    act(() => hook.result.current.updateElement(moved));
+    act(() => hook.result.current.undo());
+    act(() => hook.result.current.undo());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('photo');
+    const asset = { assetId: 'fresh', url: '/fresh.png' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, id: 'server-new-id', assetId: asset.assetId }, asset });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: 'fresh' }]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...moved, assetId: 'fresh' }]);
+    expect(hook.result.current.document?.assets?.fresh).toEqual(asset);
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'photo', pageIndex: 0, accessPassword: '1234' });
+    act(() => hook.result.current.undo());
+    act(() => hook.result.current.undo());
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, assetId: 'fresh-again' } });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: 'fresh-again' }]);
+    hook.unmount();
+  });
+
+  it.each([new Error('offline'), { isAxiosError: true, response: { status: 409, data: {} } }])('skips a failed redo placement and continues editing: %s', async error => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    act(() => hook.result.current.undo());
+    apiMocks.placeMaterial.mockRejectedValueOnce(error);
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(hook.result.current.canRedo).toBe(false);
+    expect(hook.result.current.messageIsError).toBe(true);
+    expect(hook.result.current.message).toContain(error instanceof Error ? error.message : '素材を再配置できませんでした');
+    expect(hook.result.current.busy).toBe(false);
+    expect(hook.result.current.readOnly).toBe(false);
+    act(() => hook.result.current.addOverlay('TEXT'));
+    expect(hook.result.current.elements).toHaveLength(1);
+    hook.unmount();
+  });
+
+  it('keeps later redo history usable after a material placement fails', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const first = { ...createOverlayForRange('TEXT', 0, range), id: 'first' };
+    const second = { ...first, id: 'second' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: first }).mockResolvedValueOnce({ element: second });
+    await act(async () => hook.result.current.placeMaterial({ id: 'first-material' }));
+    await act(async () => hook.result.current.placeMaterial({ id: 'second-material' }));
+    act(() => hook.result.current.undo());
+    act(() => hook.result.current.undo());
+    apiMocks.placeMaterial.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ element: second });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(hook.result.current.canRedo).toBe(true);
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...second, zIndex: 1 }]);
+    expect(hook.result.current.canRedo).toBe(false);
+    hook.unmount();
+  });
+
+  it('waits for undo unplace and prevents duplicate redo requests while placement is pending', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    let finishUnplace!: () => void;
+    apiMocks.unplaceMaterial.mockImplementationOnce(() => new Promise(resolve => { finishUnplace = () => resolve(undefined); }));
+    act(() => hook.result.current.undo());
+    let finishPlace!: () => void;
+    apiMocks.placeMaterial.mockImplementationOnce(() => new Promise(resolve => { finishPlace = () => resolve({ element }); }));
+    let redo!: Promise<void> | undefined;
+    act(() => { redo = hook.result.current.redo(); void hook.result.current.redo(); });
+    expect(hook.result.current.busy).toBe(true);
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(1);
+    await act(async () => { finishUnplace(); });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(2);
+    act(() => { void hook.result.current.redo(); hook.result.current.addOverlay('TEXT'); });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.elements).toEqual([]);
+    await act(async () => { finishPlace(); await redo; });
+    expect(hook.result.current.elements).toEqual([element]);
+    expect(hook.result.current.busy).toBe(false);
+    hook.unmount();
+  });
+
+  it.each(['lease', 'unmount', 'pagehide'] as const)('does not restore a late redo response after %s', async action => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    await act(async () => hook.result.current.undo());
+    let finish!: () => void;
+    apiMocks.placeMaterial.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ element }); }));
+    let redo!: Promise<void> | undefined;
+    await act(async () => { redo = hook.result.current.redo(); });
+    if (action === 'lease') act(() => { hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } }); });
+    if (action === 'unmount') hook.unmount();
+    if (action === 'pagehide') act(() => window.dispatchEvent(new Event('pagehide')));
+    await act(async () => { finish(); await redo; });
+    expect(hook.result.current.elements).toEqual([]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledTimes(2);
+    if (action !== 'unmount') hook.unmount();
+  });
+
+  it('restores an unsaved duplicate without placing a material that still has another copy', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    const copies = hook.result.current.elements;
+    act(() => hook.result.current.undo());
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual(copies);
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(1);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    hook.unmount();
+  });
+
+  it('unplaces only unsaved tracked materials once on pagehide with the existing authentication headers', async () => {
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const saved = { ...createOverlayForRange('TEXT', 0, range), id: 'saved' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: saved });
+    await act(async () => hook.result.current.placeMaterial({ id: 'saved-material' }));
+    apiMocks.saveOverlays.mockResolvedValue(makeDocument({ pages: [{ ...document.pages[0], overlays: [saved] }] }));
+    await act(async () => hook.result.current.save());
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    const unsaved = { ...saved, id: 'unsaved' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: unsaved });
+    await act(async () => hook.result.current.placeMaterial({ id: 'unsaved/material' }));
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    act(() => hook.result.current.deleteSelectedOverlay());
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    const originalBaseURL = api.defaults.baseURL;
+    api.defaults.baseURL = 'https://pagehide.test/api';
+    api.defaults.headers.common.Authorization = 'Bearer pagehide-user';
+    vi.mocked(api.post).mockRestore();
+    try {
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'));
+      await act(async () => { window.dispatchEvent(new Event('pagehide')); window.dispatchEvent(new Event('pagehide')); });
+      expect(fetch).toHaveBeenCalledOnce();
+      const request = vi.mocked(fetch).mock.calls[0][0] as Request;
+      expect(request.url).toBe('https://pagehide.test/api/assembly/procedure-materials/unsaved%2Fmaterial/unplace');
+      expect(request.method).toBe('POST');
+      expect(request.keepalive).toBe(true);
+      expect(request.headers.get('x-client-key')).toBe(getResolvedClientKey());
+      expect(request.headers.get('Authorization')).toBe('Bearer pagehide-user');
+      expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.materialPlacements).toEqual([{ elementId: unsaved.id, materialId: 'unsaved/material' }]);
+      expect(hook.result.current.busy).toBe(false);
+      hook.unmount();
+      expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    } finally { delete api.defaults.headers.common.Authorization; api.defaults.baseURL = originalBaseURL; }
+  });
+
+  it.each(['TEXT', 'IMAGE'] as const)('unplaces an unsaved %s material on manual deletion and preserves unrelated history', async kind => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    act(() => hook.result.current.addOverlay('SHAPE'));
+    const shape = hook.result.current.elements[0];
+    const element = kind === 'TEXT'
+      ? { ...createOverlayForRange('TEXT', 0, range), id: 'material-element' }
+      : { ...createOverlayForRange('IMAGE', 0, range), id: 'material-element', assetId: 'photo' };
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    act(() => hook.result.current.deleteSelectedOverlay());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    expect(hook.result.current.elements).toEqual([shape]);
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([shape, { ...element, zIndex: 1 }]);
+    act(() => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([shape]);
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(2);
+    hook.unmount();
+  });
+
+  it.each(['undo', 'delete'] as const)('does not unplace committed material on %s', async action => {
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const element = { ...createOverlayForRange('TEXT', 0, range), id: 'material-element' };
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    apiMocks.saveOverlays.mockResolvedValue(makeDocument({ editVersion: 1, pages: [{ ...document.pages[0], overlays: hook.result.current.elements }] }));
+    await act(async () => hook.result.current.save());
+    act(() => action === 'undo' ? hook.result.current.undo() : hook.result.current.deleteSelectedOverlay());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    act(() => action === 'undo' ? hook.result.current.redo() : hook.result.current.undo());
+    expect(hook.result.current.elements).toHaveLength(1);
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(1);
+    hook.unmount();
+  });
+
+  it.each(['undo', 'delete'] as const)('continues editing when unplace fails during %s', async action => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    apiMocks.unplaceMaterial.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => action === 'undo' ? hook.result.current.undo() : hook.result.current.deleteSelectedOverlay());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(hook.result.current.messageIsError).toBe(true);
+    expect(hook.result.current.message).toContain('素材を未配置に戻せませんでした');
+    expect(hook.result.current.busy).toBe(false);
+    expect(hook.result.current.readOnly).toBe(false);
+    act(() => hook.result.current.addOverlay('TEXT'));
+    expect(hook.result.current.elements).toHaveLength(1);
+    hook.unmount();
+  });
+
+  it('retains pending placement tracking after a failed save', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    apiMocks.saveOverlays.mockRejectedValueOnce(new Error('offline'));
+    await act(async () => hook.result.current.save());
+    act(() => hook.result.current.undo());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    hook.unmount();
+  });
+
+  it('unplaces only unsaved additions before navigating back and removes them from recovery', async () => {
+    const onBack = vi.fn();
+    const document = makeDocument();
+    const hook = renderEditor(document, onBack);
+    await authenticate(hook.result);
+    const saved = { ...createOverlayForRange('TEXT', 0, range), id: 'saved' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: saved });
+    await act(async () => hook.result.current.placeMaterial({ id: 'saved-material' }));
+    apiMocks.saveOverlays.mockResolvedValue(makeDocument({ pages: [{ ...document.pages[0], overlays: [saved] }] }));
+    await act(async () => hook.result.current.save());
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...saved, id: 'unsaved' } });
+    await act(async () => hook.result.current.placeMaterial({ id: 'unsaved-material' }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await act(async () => hook.result.current.navigateBack());
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    expect(onBack).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await act(async () => hook.result.current.navigateBack());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('unsaved-material');
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.elements).toEqual([saved]);
+    confirm.mockRestore(); hook.unmount();
+  });
+
+  it('reports a failed unplace and still navigates back', async () => {
+    const onBack = vi.fn();
+    const hook = renderEditor(makeDocument(), onBack);
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    apiMocks.unplaceMaterial.mockRejectedValueOnce(new Error('offline'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    await act(async () => hook.result.current.navigateBack());
+    expect(alert).toHaveBeenCalledWith(expect.stringContaining('素材を未配置に戻せませんでした'));
+    expect(onBack).toHaveBeenCalledOnce();
+    confirm.mockRestore(); alert.mockRestore(); hook.unmount();
+  });
+
+  it('waits for an earlier undo unplace before leaving and reports its failure', async () => {
+    const onBack = vi.fn();
+    const hook = renderEditor(makeDocument(), onBack);
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    let rejectUnplace!: (error: Error) => void;
+    apiMocks.unplaceMaterial.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectUnplace = reject; }));
+    act(() => hook.result.current.undo());
+    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    let leaving!: Promise<void>;
+    act(() => { leaving = hook.result.current.navigateBack(); });
+    expect(onBack).not.toHaveBeenCalled();
+    await act(async () => { rejectUnplace(new Error('offline')); await leaving; });
+    expect(alert).toHaveBeenCalledOnce();
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(hook.result.current.busy).toBe(false);
+    alert.mockRestore(); hook.unmount();
+  });
+
+  it('preserves flushed inline text when back navigation releases a pending material', async () => {
+    const document = makeDocument();
+    const hook = renderEditor(document, vi.fn());
+    await authenticate(hook.result);
+    act(() => hook.result.current.addOverlay('TEXT'));
+    const text = hook.result.current.elements[0];
+    const edited = { ...text, text: '確定した文章' } as AssemblyProcedureOverlayElement;
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    act(() => hook.result.current.registerInlineTextFlush(() => {
+      hook.result.current.commitInlineText(edited);
+      hook.result.current.registerInlineTextFlush(null);
+      return edited;
+    }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await act(async () => hook.result.current.navigateBack());
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.elements).toEqual([edited]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    confirm.mockRestore(); hook.unmount();
+  });
+
+  it('unplaces pending materials on lease loss and sanitizes recovery while retaining other edits', async () => {
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    act(() => hook.result.current.addOverlay('TEXT'));
+    const other = hook.result.current.elements[0];
+    apiMocks.placeMaterial.mockResolvedValue({ element: createOverlayForRange('TEXT', 0, range) });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    await act(async () => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } }));
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    expect(hook.result.current.elements).toEqual([other]);
+    const recovered = readAssemblyDocumentEditorRecovery(window.localStorage, document.id);
+    expect(recovered?.elements).toEqual([other]);
+    expect(recovered?.materialPlacements).toEqual([]);
+    expect(hook.result.current.messageIsError).toBe(true);
+    expect(hook.result.current.message).toContain('置いた素材を外しました');
+    hook.unmount();
+  });
+
+  it('keeps a material placed while another unsaved copy still uses it', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    act(() => hook.result.current.duplicateSelectedOverlay());
+    act(() => hook.result.current.deleteSelectedOverlay());
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    act(() => hook.result.current.setSelectedOverlayId(element.id));
+    act(() => hook.result.current.deleteSelectedOverlay());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    hook.unmount();
+  });
+
+  it('releases successive unsaved replacements and falls back to the saved asset', async () => {
+    const image = { ...createOverlayForRange('IMAGE', 0, range), assetId: 'saved' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [image] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(image.id));
+    for (const id of ['first', 'second']) {
+      apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, id }, asset: { assetId: id } });
+      await act(async () => hook.result.current.replaceSelectedImageMaterial({ id, kind: 'PHOTO' }));
+    }
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('first');
+    expect(hook.result.current.elements[0]).toMatchObject({ assetId: 'second' });
+    act(() => hook.result.current.undo());
+    expect(apiMocks.unplaceMaterial).toHaveBeenLastCalledWith('second');
+    expect(hook.result.current.elements).toEqual([image]);
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, assetId: 'redo' }, asset: { assetId: 'redo' } });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: 'redo' }]);
+    hook.unmount();
+  });
+
+  it('releases a replaced unsaved addition without losing the new element', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const image = { ...createOverlayForRange('IMAGE', 0, range), assetId: 'first' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: image });
+    await act(async () => hook.result.current.placeMaterial({ id: 'first' }));
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, id: 'unused' }, asset: { assetId: 'second' } });
+    await act(async () => hook.result.current.replaceSelectedImageMaterial({ id: 'second', kind: 'PHOTO' }));
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: 'second' }]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('first');
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenLastCalledWith('second');
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, assetId: 'redo' }, asset: { assetId: 'redo' } });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: 'redo' }]);
+    hook.unmount();
+  });
+
+  it('unplaces a placement response that arrives after lease loss without adding it to the draft', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    let resolvePlacement!: (value: { element: AssemblyProcedureOverlayElement }) => void;
+    apiMocks.placeMaterial.mockImplementationOnce(() => new Promise(resolve => { resolvePlacement = resolve; }));
+    let placing!: Promise<void>;
+    await act(async () => { placing = hook.result.current.placeMaterial({ id: 'material' }); });
+    act(() => hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } }));
+    await act(async () => {
+      resolvePlacement({ element: createOverlayForRange('TEXT', 0, range) });
+      await placing;
+    });
+    expect(hook.result.current.elements).toEqual([]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    hook.unmount();
+  });
+
+  it('flushes a clean inline draft into the save request and exposes saving until completion', async () => {
+    const text: AssemblyProcedureOverlayElement = { id: 'text', kind: 'TEXT', text: '元の文章', pageIndex: 0, zIndex: 0, bbox: range };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const next = { ...text, text: 'その場で直した文章' };
+    act(() => hook.result.current.registerInlineTextFlush(() => { hook.result.current.commitInlineText(next); hook.result.current.registerInlineTextFlush(null); return next; }));
+    let resolve!: (value: AssemblyProcedureDocumentDto) => void;
+    apiMocks.saveOverlays.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    let saving!: Promise<void>;
+    act(() => { saving = hook.result.current.save(); });
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ elements: [next] }));
+    expect(hook.result.current.saving).toBe(true);
+    await act(async () => { resolve({ ...document, pages: [{ ...document.pages[0], overlays: [next] }] }); await saving; });
+    expect(hook.result.current.saving).toBe(false);
+    expect(hook.result.current.isDirty).toBe(false);
+  });
+
+  it.each(['page', 'selection', 'back', 'lease', 'access'])('flushes inline text before %s', async action => {
+    const text: AssemblyProcedureOverlayElement = { id: 'text', kind: 'TEXT', text: '元の文章', pageIndex: 0, zIndex: 0, bbox: range };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [text] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const next = { ...text, text: '確定する文章' };
+    const flush = vi.fn(() => { hook.result.current.commitInlineText(next); hook.result.current.registerInlineTextFlush(null); return next; });
+    act(() => { hook.result.current.setSelectedOverlayId('text'); hook.result.current.registerInlineTextFlush(flush); });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    act(() => {
+      if (action === 'page') hook.result.current.setSelectedPageIndex(1);
+      if (action === 'selection') hook.result.current.setSelectedOverlayId(null);
+      if (action === 'back') hook.result.current.navigateBack();
+      if (action === 'lease') hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 409, data: { code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED', lease: { holderLabel: '別端末', acquiredAt: 'now', heartbeatAt: 'now' } } } });
+      if (action === 'access') hook.result.current.onEditLeaseError({ isAxiosError: true, response: { status: 401 } });
+    });
+    expect(flush).toHaveBeenCalledOnce();
+    expect(hook.result.current.elements[0]).toEqual(next);
+    if (action === 'back') expect(confirm).toHaveBeenCalledOnce();
+    if (action === 'lease' || action === 'access') {
+      const recovered = readAssemblyDocumentEditorRecovery(window.localStorage, document.id, { baseUpdatedAt: document.updatedAt, editVersion: 0 });
+      expect(recovered?.elements).toEqual([next]);
+    }
+    confirm.mockRestore(); hook.unmount();
+  });
+
+  it('replaces only the selected image asset and re-places it on redo with the new asset', async () => {
     const image: AssemblyProcedureOverlayElement = {
       id: 'selected-image', kind: 'IMAGE', assetId: 'old-asset', pageIndex: 0,
       bbox: range, zIndex: 7, opacity: 0.6, objectFit: 'cover',
@@ -681,8 +1156,12 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
     act(() => hook.result.current.undo());
     expect(hook.result.current.elements).toEqual([image, other]);
-    act(() => hook.result.current.redo());
-    expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
+    const redoAsset = { ...asset, assetId: 'redo-asset' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: { ...image, assetId: redoAsset.assetId }, asset: redoAsset });
+    await act(async () => hook.result.current.redo());
+    expect(hook.result.current.elements).toEqual([{ ...image, assetId: redoAsset.assetId }, other]);
+    expect(hook.result.current.document?.assets?.[redoAsset.assetId]).toEqual(redoAsset);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material-photo');
   });
 
   it.each(['TEXT', 'SHAPE', null] as const)('does not call the material API when the selected kind is %s', async (kind) => {
@@ -821,11 +1300,21 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       await act(async () => { await hook.result.current.placeMaterial({ id: 'material-photo' }); });
       act(() => vi.advanceTimersByTime(750));
       expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+      expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.materialPlacements).toEqual([
+        { elementId: element.id, materialId: 'material-photo', assetId: asset.assetId }
+      ]);
+      act(() => window.dispatchEvent(new Event('pagehide')));
+      expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledWith('/assembly/procedure-materials/material-photo/unplace', undefined, { adapter: 'fetch', fetchOptions: { keepalive: true } });
+      expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.materialPlacements).toHaveLength(1);
     } finally {
       hook.unmount();
       vi.useRealTimers();
     }
-    // The API returns no persisted overlay, but includes the ownerDocumentId lease.
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    apiMocks.unplaceMaterial.mockClear();
+    writeAssemblyDocumentEditorRecovery(localStorage, { version: 1, documentId: document.id, baseUpdatedAt: document.updatedAt, editVersion: 0, savedAt: 'now', elements: [element as AssemblyProcedureOverlayElement], materialPlacements: [{ elementId: element.id, materialId: 'material-photo', assetId: asset.assetId }] });
+    // Simulate a draft retained by an interrupted browser session.
     const reloaded = renderEditor({ ...document, assets: { [asset.assetId]: asset } });
     await authenticate(reloaded.result);
     expect(reloaded.result.current.elements).toEqual([]);
@@ -835,7 +1324,109 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(restored).toMatchObject(element);
     expect(restored?.kind === 'IMAGE' && reloaded.result.current.document?.assets?.[restored.assetId]?.url).toBe(asset.url);
     expect(apiMocks.saveOverlays).not.toHaveBeenCalled();
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    act(() => reloaded.result.current.setSelectedOverlayId(element.id));
+    await act(async () => reloaded.result.current.deleteSelectedOverlay());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material-photo');
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.elements).toEqual([]);
     reloaded.unmount();
+  });
+
+  it.each([0, 99])('unplaces recovery materials before discarding a record at editVersion %s', async editVersion => {
+    const document = makeDocument();
+    const element = createOverlayForRange('TEXT', 0, range);
+    writeAssemblyDocumentEditorRecovery(localStorage, { version: 1, documentId: document.id, baseUpdatedAt: document.updatedAt, editVersion, savedAt: 'now', elements: [element], materialPlacements: [{ elementId: element.id, materialId: 'recovery-material' }] });
+    let resolve!: () => void;
+    apiMocks.unplaceMaterial.mockImplementation(() => new Promise<void>(done => { resolve = done; }));
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    let discarded: Promise<void> | undefined;
+    if (editVersion === 0) act(() => { discarded = hook.result.current.discardRecovery(); });
+    await waitFor(() => expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('recovery-material'));
+    expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.materialPlacements).toEqual([{ elementId: element.id, materialId: 'recovery-material' }]);
+    await act(async () => { resolve(); await discarded; });
+    await waitFor(() => expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)).toBeNull());
+  });
+
+  it('rejects removal and edits while saving, including callbacks retained before save began', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    const update = hook.result.current.updateElement;
+    let resolve!: (document: AssemblyProcedureDocumentDto) => void;
+    apiMocks.saveOverlays.mockImplementation(() => new Promise<AssemblyProcedureDocumentDto>(done => { resolve = done; }));
+    let saved!: Promise<void>;
+    act(() => { saved = hook.result.current.save(); hook.result.current.deleteSelectedOverlay(); update({ ...element, kind: 'TEXT', text: '拒否' }); hook.result.current.addOverlay('TEXT'); hook.result.current.undo(); });
+    act(() => { hook.result.current.commitInlineText({ ...element, kind: 'TEXT', text: '拒否' }); hook.result.current.nudgeElement(element.id, 0.2, 0.2); hook.result.current.deleteSelectedOverlay(); });
+    expect(hook.result.current.elements).toEqual([element]);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+    await act(async () => { resolve(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] })); await saved; });
+    expect(hook.result.current.elements).toEqual([element]);
+  });
+
+  it('starts inline editing after a 6px jitter without creating move history', async () => {
+    const element = { ...createOverlayForRange('TEXT', 0, range), kind: 'TEXT' as const, text: '元の文章' };
+    const hook = renderEditor(makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] }));
+    await authenticate(hook.result);
+    act(() => hook.result.current.setSelectedOverlayId(element.id));
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1000, height: 1000 } as DOMRect);
+    vi.stubGlobal('PointerEvent', MouseEvent);
+    const controller = hook.result.current;
+    const view = render(createElement(AssemblyProcedureDocumentEditorCanvas, { pageUrl: '/page.png', pageIndex: 0, elements: controller.elements, selectedOverlayId: element.id, editable: true, selectionMode: false,
+      onSelectOverlay: controller.setSelectedOverlayId, onNudgeOverlay: controller.nudgeElement, onUpdateOverlayBBox: controller.updateElementBBox, onInteractionStart: controller.beginOverlayDrag, onInteractionEnd: controller.endOverlayDrag, onRangeSelected: controller.handleRangeSelected, onUpdateText: controller.commitInlineText }));
+    try {
+      const part = screen.getByTestId(`assembly-procedure-overlay-${element.id}`);
+      fireEvent.pointerDown(part, { button: 0, clientX: 200, clientY: 300 });
+      fireEvent.pointerMove(part, { clientX: 206, clientY: 300 });
+      fireEvent.pointerUp(part, { clientX: 206, clientY: 300 });
+      expect(hook.result.current.elements).toEqual([element]);
+      expect(hook.result.current.canUndo).toBe(false);
+      await waitFor(() => expect(screen.getByRole('textbox')).toBeInTheDocument());
+      expect(hook.result.current.canUndo).toBe(false);
+    } finally { view.unmount(); rect.mockRestore(); vi.unstubAllGlobals(); }
+  });
+
+  it('silently releases only unsaved tracked materials on unmount', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    apiMocks.unplaceMaterial.mockRejectedValue(new Error('offline'));
+    await act(async () => hook.unmount());
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+  });
+
+  it('guards and persists uncommitted inline text on pagehide and beforeunload', async () => {
+    const element = { ...createOverlayForRange('TEXT', 0, range), kind: 'TEXT' as const, text: '元の文章' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/pages/1.png', overlays: [element] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    act(() => hook.result.current.onInlineDraftChange({ ...element, text: '編集中の文章' }));
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(hook.result.current.elements).toEqual([element]);
+    const unload = new Event('beforeunload', { cancelable: true });
+    act(() => window.dispatchEvent(unload));
+    expect(unload.defaultPrevented).toBe(true);
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.elements).toEqual([{ ...element, text: '編集中の文章' }]);
+    act(() => hook.result.current.onInlineDraftChange(null));
+    expect(hook.result.current.isDirty).toBe(false);
+  });
+
+  it('uses the same material cleanup for confirmNavigation as for back navigation', async () => {
+    const hook = renderEditor(makeDocument());
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material' }));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await act(async () => expect(await hook.result.current.confirmNavigation()).toBe(true));
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material');
+    expect(readAssemblyDocumentEditorRecovery(localStorage, 'source-draft')?.materialPlacements).toEqual([]);
+    confirm.mockRestore();
   });
 
   it('authenticates and uses create-or-get for a root draft, then handles text candidates and manual fallback', async () => {

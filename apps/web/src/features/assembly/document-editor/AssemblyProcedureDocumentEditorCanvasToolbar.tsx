@@ -10,6 +10,8 @@ import type { ReactNode } from 'react';
 const icons: Record<string, ReactNode> = {
   back: <><path d="M9 4h11v16H9M14 12H3M6 8l-4 4 4 4" /></>,
   save: <><path d="M5 4h11l3 3v13H5z" /><path d="M8 4v5h7V4M8 20v-6h8v6" /></>,
+  saving: <><circle cx="12" cy="12" r="8" strokeDasharray="30 20" /><path d="M12 7v5l3 2" /></>,
+  saved: <path d="M4 12l5 5L20 6" />,
   publish: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M7 12h10M12 9v6" /></>,
   material: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></>,
   video: <><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></>,
@@ -27,6 +29,9 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
   controller: Pick<AssemblyProcedureDocumentEditorController,
     'readOnly' | 'busy' | 'canSave' | 'canPublish' | 'canDiscard' | 'canUndo' | 'canRedo' |
     'selectionMode' | 'navigateBack' | 'save' | 'addOverlay' | 'setSelectionMode' | 'undo' | 'redo'> & {
+      isDirty?: boolean;
+      saving?: boolean;
+      saveUnsettled?: boolean;
       selectedKind?: NonNullable<AssemblyProcedureDocumentEditorController['selectedElement']>['kind'];
       documentStatus?: string;
       supersedesDocumentId?: string | null;
@@ -53,7 +58,7 @@ export const AssemblyProcedureDocumentEditorCanvasToolbar = memo(function Assemb
   return <nav aria-label="エディタ操作" className="flex min-h-0 flex-col items-center gap-2 overflow-y-auto border-l border-[#27313b] bg-[#161c22] pb-[84px] pt-2.5">
     {button(workshop ? '工房へ戻る' : '一覧へ戻る', 'back', c.navigateBack, { disabled: c.layoutLocked, color: '!border-transparent !text-[#9fadb9]' })}
     {separator}
-    {button('保存する', 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: '!border-[#3ba776] !bg-[#3ba776] !text-[#0b1a12]', target: 'assembly-document-editor-save' })}
+    {button(c.saving ? '保存中' : c.isDirty ? '未保存の変更を保存する' : c.isDirty === false ? '保存済み' : '保存する', c.saving ? 'saving' : c.isDirty === false ? 'saved' : 'save', () => void c.save(), { disabled: disabled || !c.canSave, color: c.saving ? '!border-[#5fc3e8] !text-[#5fc3e8]' : c.isDirty ? '!border-[#f6b93b] !bg-[#f6b93b] !text-[#0b1a12]' : '!border-[#3ba776] !text-[#3ba776]', target: 'assembly-document-editor-save' })}
     {button('公開する', 'publish', onPublish, { disabled: disabled || !c.canPublish, color: '!border-[#f6b93b] !text-[#f6b93b]', target: 'assembly-document-editor-publish' })}
     {separator}
     {button('素材を置く', 'material', onMaterial, { disabled, pressed: materialOpen, badge: materialCount })}

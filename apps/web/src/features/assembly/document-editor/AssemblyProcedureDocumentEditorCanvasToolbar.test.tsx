@@ -7,9 +7,9 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
-function renderToolbar({ workshop = false, revision = false, locked = false, readOnly = false } = {}) {
+function renderToolbar({ workshop = false, revision = false, locked = false, readOnly = false, isDirty = false, saving = false, saveUnsettled = false } = {}) {
   const controller = {
-    readOnly, busy: false, canSave: true, canPublish: true, canDiscard: true, canUndo: true, canRedo: true,
+    readOnly, isDirty, saving, saveUnsettled, busy: saving, canSave: true, canPublish: true, canDiscard: true, canUndo: true, canRedo: true,
     documentStatus: 'draft', supersedesDocumentId: revision ? 'previous' : null,
     layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
@@ -27,7 +27,7 @@ describe('document editor toolbar navigation', () => {
     const back = screen.getByRole('button', { name: revision ? '工房へ戻る' : '一覧へ戻る' });
     const destructive = screen.getByRole('button', { name: revision ? '改版を破棄する' : '削除する' });
     expect(buttons[0]).toBe(back);
-    expect(buttons[1]).toHaveAccessibleName('保存する');
+    expect(buttons[1]).toHaveAccessibleName('保存済み');
     expect(rail.children[1]).toHaveClass('h-px');
     expect(buttons.at(-1)).toBe(destructive);
     expect(rail.children[rail.children.length - 2]).toHaveClass('flex-1');
@@ -45,12 +45,29 @@ describe('document editor toolbar navigation', () => {
     const { controller, onDelete } = renderToolbar({ locked: true, readOnly: true });
     const back = screen.getByRole('button', { name: '一覧へ戻る' });
     expect(back).toBeDisabled();
-    expect(screen.getByRole('button', { name: '保存する' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '保存済み' })).toBeDisabled();
     const destructive = screen.getByRole('button', { name: '削除する' });
     expect(destructive).toBeDisabled();
     fireEvent.click(back);
     fireEvent.click(destructive);
     expect(controller.navigateBack).not.toHaveBeenCalled();
     expect(onDelete).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('document editor save status', () => {
+  it.each([
+    { isDirty: true, label: '未保存の変更を保存する', color: '!bg-[#f6b93b]' },
+    { saving: true, label: '保存中', color: '!text-[#5fc3e8]' },
+    { saveUnsettled: true, label: '保存済み', color: '!text-[#3ba776]' },
+    { label: '保存済み', color: '!text-[#3ba776]' }
+  ])('shows $label through appearance and accessible name', ({ label, color, ...options }) => {
+    renderToolbar(options);
+    const button = screen.getByRole('button', { name: label });
+    expect(button).toHaveClass(color);
+    expect(button).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
+    expect(button.querySelector('svg')?.innerHTML).not.toBe(screen.getByRole('button', { name: '公開する' }).querySelector('svg')?.innerHTML);
+    if ('saving' in options) expect(button).toBeDisabled();
   });
 });

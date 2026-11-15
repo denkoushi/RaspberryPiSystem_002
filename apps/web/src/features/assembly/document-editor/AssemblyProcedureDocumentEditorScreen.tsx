@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { listProcedureMaterials } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from '../procedure-manuals/ProcedureVideoShelfDialog';
 
@@ -17,12 +18,14 @@ import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocum
 import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayoutSuggestionPanel';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
 import { AssemblyProcedureTextCandidateDialog } from './AssemblyProcedureTextCandidateDialog';
+import { DocumentEditorMaterials } from './DocumentEditorMaterials';
+import { useMaterialDrag } from './useMaterialDrag';
 
 import type { AssemblyProcedureDocumentPageDto } from '../types';
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
-  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, elements: controllerElements, pages: controllerPages } = controller;
+  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, elements: controllerElements, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
     : processNames.some(name => name.startsWith('研削')) ? 'procedure-grinding' : undefined;
@@ -62,6 +65,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }, [hiddenOverlayIds, setSelectedOverlayId]);
   const [materialShelfOpen, setMaterialShelfOpen] = useState(false);
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
+  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
+  const overlayLayerRef = useRef<HTMLDivElement>(null);
+  const [materialRevision, setMaterialRevision] = useState(0);
+  const refreshMaterials = useCallback(() => setMaterialRevision(value => value + 1), []);
   const [materialCount, setMaterialCount] = useState<number | null>(null);
   const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -69,7 +76,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     let cancelled = false;
     void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then(rows => { if (!cancelled) setMaterialCount(rows.length); }).catch(() => { if (!cancelled) setMaterialCount(null); });
     return () => { cancelled = true; };
-  }, [controller.accessGranted, materialShelfOpen]);
+  }, [controller.accessGranted, controller.materialRevision, materialShelfOpen, materialRevision]);
   useEffect(() => {
     setDismissedMessage(null);
     if (!controller.message || controller.messageIsError || controller.conflict || controller.busy) return;
@@ -116,6 +123,23 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     (controller.layoutSuggestions.locked ? controller.selectedPageElements :
       controller.selectedPageElements.filter(element => !hiddenOverlayIds.has(element.id))),
   [controller.layoutSuggestions.previewElements, controller.layoutSuggestions.locked, controller.selectedPageElements, hiddenOverlayIds]);
+  const placeMaterial = useCallback(async (...args: Parameters<typeof placeControllerMaterial>) => {
+    if (args[1]) await placeControllerMaterial(args[0], args[1]);
+    else await placeControllerMaterial(args[0]);
+    refreshMaterials();
+  }, [placeControllerMaterial, refreshMaterials]);
+  const replaceImageMaterial = useCallback(async (material: Parameters<typeof replaceControllerImageMaterial>[0]) => {
+    await replaceControllerImageMaterial(material);
+    refreshMaterials();
+  }, [replaceControllerImageMaterial, refreshMaterials]);
+  const materialDrag = useMaterialDrag({
+    layerRef: overlayLayerRef,
+    elements: visibleElements,
+    enabled: !controller.readOnly && !controller.busy && !controller.conflict && !controller.layoutSuggestions.locked && controller.editLeaseMine,
+    pageIndex: controller.selectedPageIndex,
+    place: placeMaterial,
+    onError: error => controller.setErrorMessage(readAssemblyApiErrorMessage(error, '素材の配置に失敗しました。'))
+  });
   const closeInspector = useCallback(() => setSelectedOverlayId(null), [setSelectedOverlayId]);
   const replaceImage = useCallback(() => { setMaterialShelfMode('replace'); setMaterialShelfOpen(true); }, []);
   const openMaterial = useCallback(() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }, []);
@@ -125,7 +149,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const openDiscard = useCallback(() => setDiscardOpen(true), []);
   const addBlankPage = useCallback(() => void addControllerBlankPage(), [addControllerBlankPage]);
   const toolbarController = useMemo(() => ({
-    readOnly: controller.readOnly, busy: controller.busy,
+    readOnly: controller.readOnly, busy: controller.busy, saving: controller.saving, isDirty: controller.isDirty,
     canSave: controller.canSave, canPublish: controller.canPublish, canDiscard: controller.canDiscard,
     canUndo: controller.canUndo, canRedo: controller.canRedo,
     selectionMode: controller.selectionMode, selectedKind: controller.selectedElement?.kind,
@@ -134,7 +158,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     startLayout: controller.layoutSuggestions.start,
     navigateBack: controller.navigateBack, save: controller.save, addOverlay: controller.addOverlay,
     setSelectionMode: controller.setSelectionMode, undo: controller.undo, redo: controller.redo
-  }), [controller.readOnly, controller.busy, controller.canSave, controller.canPublish, controller.canDiscard,
+  }), [controller.readOnly, controller.busy, controller.saving, controller.isDirty, controller.canSave, controller.canPublish, controller.canDiscard,
     controller.canUndo, controller.canRedo, controller.selectionMode, controller.selectedElement?.kind,
     controller.document?.status, controller.document?.supersedesDocumentId, controller.layoutSuggestions.locked,
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
@@ -168,6 +192,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           </Button>
         </div>
       ) : null}
+      {materialDrag.shadow ? <span aria-hidden="true" data-testid="material-drag-shadow" className="pointer-events-none fixed h-10 w-14 -translate-x-1/2 -translate-y-1/2 rounded border-2 border-blue-400 bg-white/80 shadow-xl" style={{ left: materialDrag.shadow.x, top: materialDrag.shadow.y, zIndex: 1_000_003 }} /> : null}
       {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onError={controller.onEditLeaseError} onClose={() => setVideoLinkOpen(false)} /> : null}
         <AssemblyProcedureDocumentEditorPageList
           pages={pages}
@@ -179,6 +204,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />
         {partsPaneOpen ? <AssemblyProcedureDocumentEditorPartsPane
+          materials={<DocumentEditorMaterials revision={materialRevision + (controller.materialRevision ?? 0)} disabled={controller.readOnly || controller.busy || controller.conflict || !controller.editLeaseMine || controller.layoutSuggestions.locked} drag={materialDrag} />}
           elements={controller.elements}
           pageIndex={selectedPage.pageIndex}
           onDuplicate={controller.duplicateOverlayToCurrentPage}
@@ -198,6 +224,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </button>
         <section className={`relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4 ${controller.selectedElement ? 'pr-[372px]' : ''}`} aria-label="手順書キャンバス">
           <AssemblyProcedureDocumentEditorCanvas
+            saving={controller.saving || controller.busy || !controller.editLeaseMine}
+            onUpdateText={controller.commitInlineText}
+            registerInlineTextFlush={controller.registerInlineTextFlush}
+            onInlineEditingChange={setInlineEditingId}
+            onDraftChange={controller.onInlineDraftChange}
+            layerRef={overlayLayerRef}
+            materialPreview={materialDrag.preview}
             pageUrl={selectedPage.imageRelativePath}
             pageIndex={selectedPage.pageIndex}
             elements={visibleElements}
@@ -246,6 +279,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
+          textReadOnly={inlineEditingId === controller.selectedElement.id}
           voiceInputEnabled={voiceInputEnabled}
           voiceContext={voiceContext}
           element={controller.selectedElement}
@@ -264,9 +298,9 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         />
         </div> : null}
 
-      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? controller.replaceSelectedImageMaterial : controller.placeMaterial} onCreatedDocument={(documentId) => {
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {
         setMaterialShelfOpen(false);
-        if (controller.confirmNavigation()) onNavigateToDocument(documentId);
+        if (await controller.confirmNavigation()) onNavigateToDocument(documentId);
       }} /> : null}
       <AssemblyProcedureOverlayTypeDialog
         isOpen={controller.pendingRange != null}
