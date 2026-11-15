@@ -522,7 +522,7 @@ test('published source authenticates into a draft, edits TEXT/ROI IMAGE/ARROW, s
       .locator('marker')
   ).toHaveCount(1);
 
-  const saveButton = page.getByRole('button', { name: '保存する', exact: true });
+  const saveButton = page.getByRole('button', { name: /^(保存する|未保存の変更を保存する|保存済み|保存中)$/ });
   await expect(saveButton).toBeEnabled();
   await saveButton.click();
   await expect.poll(() => evidence.saveBodies.length).toBe(1);
@@ -611,7 +611,7 @@ test('reuses another page’s part independently on the current page with one-st
   await page.getByRole('button', { name: 'やり直す', exact: true }).click();
   await expect(current.getByRole('option')).toHaveCount(1);
   await page.getByRole('complementary', { name: 'オーバーレイ編集' }).locator('textarea').fill('このページだけの手順');
-  await page.getByRole('button', { name: '保存する', exact: true }).click();
+  await page.getByRole('button', { name: /^(保存する|未保存の変更を保存する|保存済み|保存中)$/ }).click();
   await expect.poll(() => evidence.saveBodies.length).toBe(1);
   const saved = evidence.saveBodies[0].elements as OverlayElement[];
   expect(saved.find(element => element.id === source.id)).toEqual(source);
