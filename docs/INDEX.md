@@ -10,6 +10,7 @@
 
 - 10年安定稼働に向けた予防の計画（保守期限と更新の習慣、機械の寿命、データの増え方、期限のあるもの、100台の性能、担当の引き継ぎ）: [ExecPlan](./plans/ten-year-prevention-lifecycle-execplan.md)
 - 端末100台規模に向けた不足点と改善計画（サーバーの予備機、全台の監視、停止中の記録、更新の並列化、使い捨て端末、SD保護、非力な機種）: [ExecPlan](./plans/fleet-100-scale-gap-execplan.md)
+- 業務用 Pi5 の予備機と PostgreSQL 18 の複製、手動切り替え（100台計画の M2）: [ExecPlan](./plans/pi5-standby-replication-execplan.md)
 - キオスクのパレットバーコード送信待ち・重複防止: [Plan](./plans/2026-11-04-kiosk-pallet-offline-queue.md)
 - 機種ごとの役割と資源（Pi5・Pi4・Pi3・Zero W / Zero 2W、搭載制限とM0実測）: [Runbook](./runbooks/device-model-roles.md)
 - Pi Zero棚スキャナーの独立配備・運用: [Runbook](./runbooks/zero-edge-agent.md)
