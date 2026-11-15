@@ -18,10 +18,13 @@ import {
 import { useAssemblyProcedureContainBox } from './useAssemblyProcedureContainBox';
 
 import type { AssemblyProcedureCropRect, AssemblyProcedurePoint } from '@raspi-system/shared-types';
-import type { MouseEvent, ReactNode, RefObject } from 'react';
+import type { MouseEvent, ReactNode, RefObject, SyntheticEvent } from 'react';
 
 export type { AssemblyCanvasBolt, AssemblyCanvasCheckItem } from './AssemblyProcedureMarkerLayer';
 export { AssemblyMarkerOverlay, AssemblyProcedureMarkerLayer } from './AssemblyProcedureMarkerLayer';
+
+const NATURAL_SIZE_CACHE_MAX_ENTRIES = 60;
+const naturalSizeCache = new Map<string, { width: number; height: number }>();
 
 type Props = {
   imageRelativePath: string | null | undefined;
@@ -151,9 +154,23 @@ export function AssemblyProcedureCanvas({
   }, [fitGeneration, imageRelativePath]);
 
   useLayoutEffect(() => {
-    setNatural(current => current.width === 0 && current.height === 0 ? current : { width: 0, height: 0 });
+    const next = (blobUrl && naturalSizeCache.get(blobUrl)) || { width: 0, height: 0 };
+    setNatural(current => current.width === next.width && current.height === next.height ? current : next);
     pendingPointerRef.current = null;
   }, [blobUrl]);
+
+  const handleImageLoad = (event: SyntheticEvent<HTMLImageElement>) => {
+    const { naturalWidth: width, naturalHeight: height } = event.currentTarget;
+    if (!blobUrl || width <= 0 || height <= 0) return;
+    const next = { width, height };
+    naturalSizeCache.delete(blobUrl);
+    naturalSizeCache.set(blobUrl, next);
+    if (naturalSizeCache.size > NATURAL_SIZE_CACHE_MAX_ENTRIES) {
+      const oldest = naturalSizeCache.keys().next().value;
+      if (oldest !== undefined) naturalSizeCache.delete(oldest);
+    }
+    setNatural(current => current.width === width && current.height === height ? current : next);
+  };
 
   const placementHandler = placementAction === 'callout'
     ? onPlaceCallout
@@ -344,6 +361,7 @@ export function AssemblyProcedureCanvas({
                 alt=""
                 className="pointer-events-none block h-full w-full select-none"
                 draggable={false}
+                onLoad={handleImageLoad}
               />
               {overlay}
               <AssemblyProcedureMarkerLayer
@@ -405,12 +423,7 @@ export function AssemblyProcedureCanvas({
             alt=""
             className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain opacity-0"
             draggable={false}
-            onLoad={(event) => {
-              const img = event.currentTarget;
-              if (img.naturalWidth > 0 && img.naturalHeight > 0) {
-                setNatural({ width: img.naturalWidth, height: img.naturalHeight });
-              }
-            }}
+            onLoad={handleImageLoad}
           />
         )
       ) : (
