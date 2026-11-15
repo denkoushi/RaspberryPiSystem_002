@@ -66,6 +66,8 @@ vi.mock('../../../../api/hooks', async () => {
     useUpdateKioskGrindingPlanningBoardResourceOrderBulk: mutation,
     useKioskGrindingPlanningBoardResourceMinutes: () => useStore('partMinutes'),
     useUpdateKioskGrindingPlanningBoardResourceMinutesSource: mutation,
+    useKioskSameModelResourceGroups: () => ({ data: undefined }),
+    useReplaceKioskSameModelResourceGroups: mutation,
     useUpdateKioskGrindingPlanningBoardResourcePartMinutes: mutation,
     useUpdateKioskGrindingPlanningBoardSeibanChecks: mutation,
     useUpdateKioskGrindingPlanningBoardSeibanOrder: mutation

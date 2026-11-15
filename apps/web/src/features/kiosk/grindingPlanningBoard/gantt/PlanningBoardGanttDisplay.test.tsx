@@ -28,6 +28,11 @@ vi.mock('../../../../api/hooks', async importOriginal => ({
   useKioskGrindingPlanningBoardResourceCapacity: () => ({ data: capacityState.data }),
   useUpdateKioskGrindingPlanningBoardResourceCapacity: () => ({ mutate: vi.fn(), isPending: false, isError: false })
 }));
+vi.mock('../../../../api/hooks/production-schedule', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../api/hooks/production-schedule')>(),
+  useKioskSameModelResourceGroups: () => ({ data: undefined }),
+  useReplaceKioskSameModelResourceGroups: () => ({ mutateAsync: vi.fn(), isPending: false })
+}));
 afterEach(() => { vi.restoreAllMocks(); capacityState.data = undefined; });
 
 function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttProps {
@@ -128,7 +133,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   expect(sheet).toHaveClass('absolute', 'inset-x-0', 'bottom-0');
   expect(sheet).toHaveStyle({ height: 'min(80%, 760px)' });
   expect(within(screen.getByRole('region', { name: '021' })).queryByRole('region', { name: '品番の値' })).toBeNull();
-  expect(within(within(sheet).getByText('021').parentElement!).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
+  expect(within(within(sheet).getByText('021').parentElement!.parentElement!).getByText(values.layout.groups[0]!.rows[0]!.bars[0]!.item.fhincd)).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /品番の値/ }));
   expect(screen.queryByRole('region', { name: '品番の値' })).not.toBeInTheDocument();
 });
@@ -846,8 +851,8 @@ it('totals both machines and groups their parts in pane order, excluding other r
   const sheet = within(screen.getByRole('region', { name: '品番の値' }));
   const upper = sheet.getByText('021 上段機');
   const lower = sheet.getByText('022 下段機');
-  expect(within(upper.parentElement!).getByText('PART-021')).toBeInTheDocument();
-  expect(within(lower.parentElement!).getByText('PART-022')).toBeInTheDocument();
+  expect(within(upper.parentElement!.parentElement!).getByText('PART-021')).toBeInTheDocument();
+  expect(within(lower.parentElement!.parentElement!).getByText('PART-022')).toBeInTheDocument();
   expect(upper.compareDocumentPosition(lower) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(sheet.queryByText('PART-023')).toBeNull();
   expect(sheet.queryByText('MISSING-PART')).toBeNull();
@@ -863,7 +868,7 @@ it('keeps minutes controls and the ungrouped sheet scoped to one machine', () =>
   expect(onSource.mock.calls).toEqual([[[{ resourceCd: '021', source: 'own' }]]]);
   const sheet = screen.getByRole('region', { name: '品番の値' });
   expect(within(sheet).getAllByRole('table')).toHaveLength(1);
-  expect(within(sheet).queryByText('021')).toBeNull();
+  expect(within(sheet).getByText('021').parentElement).toContainElement(within(sheet).getByRole('combobox', { name: '機械を足す' }));
 });
 
 it('passes unit split controls through the display and view in single and two-machine modes', () => {

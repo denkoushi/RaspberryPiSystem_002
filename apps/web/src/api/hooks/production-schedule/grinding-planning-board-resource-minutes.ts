@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { isAxiosError } from 'axios';
 
-import { getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes } from '../../client';
+import { getKioskSameModelResourceGroups, replaceKioskSameModelResourceGroups, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes } from '../../client';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
 import type { GrindingPlanningBoardResourceMinutesResponse as Settings, GrindingPlanningBoardResourceMinutesSourceRequest as Source, GrindingPlanningBoardResourcePartMinutesRequest as Value } from '@raspi-system/shared-types';
@@ -72,4 +72,19 @@ export function useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceC
   const settings = client.getQueryData<Settings>(key) ?? empty;
   const representative = [...targetResourceCds(settings, resourceCd)].sort()[0];
   return useUpdateMinutes(updateKioskGrindingPlanningBoardResourcePartMinutes, `planning-board-minutes:${siteKey ?? settings.siteKey ?? ''}:${representative}:${fhincd}`);
+}
+
+const groupsKey = ['kiosk-same-model-resource-groups'] as const;
+export function useKioskSameModelResourceGroups(enabled: boolean) {
+  return useQuery({ queryKey: groupsKey, queryFn: getKioskSameModelResourceGroups, enabled, refetchInterval: PLANNING_BOARD_SETTINGS_REFETCH_MS });
+}
+export function useReplaceKioskSameModelResourceGroups() {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: replaceKioskSameModelResourceGroups, onSuccess: async (response) => {
+    client.setQueryData(groupsKey, response);
+    await Promise.all([
+      client.invalidateQueries({ queryKey: key }),
+      client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll })
+    ]);
+  } });
 }

@@ -15,6 +15,7 @@ An operator can enter 品番の値 on either 021 or 022 and use that definition 
 - [x] 2026-11-15: Generate Prisma Client, pass API/Web type checks and focused unit/UI validation.
 - [x] 2026-11-15: Repair empty-group transaction mocks; restrict the management card to registered factories and reject resolved `shared` writes with 400.
 - [x] Limit value migration and piece locking to changed memberships; restore parallel minutes reads and configure same-lot pieces across the group while preserving placement.
+- [x] 2026-11-15: Add group create/add/remove/dissolve to the kiosk value sheet (agreed mock), with per-part conflict choice (`resolutions`) on save; the admin card stays.
 - [ ] Execute the two new real-DB integration cases against a dedicated migrated test database (not available locally).
 
 ## Surprises & Discoveries

@@ -295,3 +295,12 @@ export async function configureKioskSessakuPieceOps(payload: SessakuPieceOpsConf
 export async function clearKioskSessakuPieceOps(payload: SessakuPieceOpsClearRequest) {
   return (await api.post<SessakuPiecesMutationResponse>('/kiosk/production-schedule/grinding-planning-board/pieces/ops/clear', payload)).data;
 }
+
+export async function getKioskSameModelResourceGroups() {
+  const { data } = await api.get<import('@raspi-system/shared-types').ProductionScheduleSameModelResourceGroupsResponse>('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups');
+  return data;
+}
+export async function replaceKioskSameModelResourceGroups(payload: import('@raspi-system/shared-types').KioskSameModelResourceGroupsRequest) {
+  const { data } = await api.put<import('@raspi-system/shared-types').ProductionScheduleSameModelResourceGroupsResponse>('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', payload);
+  return data;
+}

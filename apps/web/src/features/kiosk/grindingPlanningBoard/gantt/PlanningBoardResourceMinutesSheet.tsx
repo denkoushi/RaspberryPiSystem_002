@@ -1,13 +1,13 @@
 import { isAxiosError } from 'axios';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../../../api/hooks/production-schedule';
+import { useKioskSameModelResourceGroups, useReplaceKioskSameModelResourceGroups, useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../../../api/hooks/production-schedule';
 import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import { PLANNING_BOARD_SHEET_MAX_HEIGHT, PLANNING_BOARD_SHEET_RATIO } from './planningBoardSheetGeometry';
 
-import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
+import type { KioskSameModelResourceGroupsRequest, ProductionScheduleSameModelMinutesConflictDetails, GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourcePartMinutesRequest } from '@raspi-system/shared-types';
 
 type Op = { opNo: number; minutes: number | null; setupMinutes: number | null };
 type Snapshot = NonNullable<GrindingPlanningBoardResourcePartMinutesRequest['expectedMinutes']>;
@@ -391,20 +391,90 @@ type SheetProps = {
   resourceCds?: readonly string[]; resourceNameMap?: Record<string, string[]>;
 };
 export function PlanningBoardResourceMinutesSheet({ resourceCds, resourceNameMap, sameModelResourceGroups = [], ...props }: SheetProps) {
+  const offline = usePlanningBoardOffline();
+  const query = useKioskSameModelResourceGroups(!offline.frozen);
+  const mutation = useReplaceKioskSameModelResourceGroups();
+  const groups = query.data?.groups ?? sameModelResourceGroups;
+  const [pending, setPending] = useState<{ heading: string; body: KioskSameModelResourceGroupsRequest; details: ProductionScheduleSameModelMinutesConflictDetails; choices: Record<string, string> } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const saving = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
   const visible = resourceCds?.length ? resourceCds : [props.resourceCd];
   const tables = new Map<string, string[]>();
   for (const cd of visible) {
-    const group = sameModelResourceGroups.find((group) => group.resourceCds.includes(cd));
+    const group = groups.find((group) => group.resourceCds.includes(cd));
     const representative = group ? [...group.resourceCds].sort()[0] : cd;
     tables.set(representative, [...(tables.get(representative) ?? []), cd]);
   }
+  const blocked = props.disabled || offline.frozen || isSaving || mutation.isPending;
+  const name = (cd: string) => {
+    const resourceName = query.data?.resources.find((row) => row.resourceCd === cd)?.resourceName ?? resourceNameMap?.[cd]?.join(' / ');
+    return `${cd}${resourceName ? ` ${resourceName}` : ''}`;
+  };
+  const saveGroups = async (heading: string, body: KioskSameModelResourceGroupsRequest) => {
+    if (saving.current || !offline.gate.attempt()) return;
+    saving.current = true;
+    setIsSaving(true);
+    setError(null);
+    const generation = offline.gate.generation();
+    try {
+      await offline.gate.run(() => mutation.mutateAsync(body));
+      if (generation !== offline.gate.generation()) return;
+      setPending(null);
+      if (offline.enabled) {
+        const results = await Promise.allSettled(['board', 'load', 'resource-minutes'].map((key) => offline.refreshRead(key)));
+        results.forEach((result) => {
+          if (result.status === 'rejected') console.warn('Planning board refresh after saving groups failed', result.reason);
+        });
+      }
+    } catch (error: unknown) {
+      if (generation !== offline.gate.generation()) return;
+      if (isAxiosError(error) && error.response?.status === 409 && error.response.data?.errorCode === 'SAME_MODEL_MINUTES_CONFLICT') {
+        setPending({ heading, body, details: error.response.data.details, choices: {} });
+      } else setError(heading);
+    } finally { saving.current = false; setIsSaving(false); }
+  };
+  const button = 'h-11 rounded-lg border-2 border-slate-700 px-3 text-base font-normal text-slate-400 disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300';
   return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: `min(${PLANNING_BOARD_SHEET_RATIO * 100}%, ${PLANNING_BOARD_SHEET_MAX_HEIGHT}px)` }}>
-    {visible.length > 1 ? <div className="min-h-0 overflow-auto">{[...tables].map(([representative, members]) => <div key={representative}>
-      <div className="px-4 py-2 font-bold">{members.map((cd) => `${cd}${resourceNameMap?.[cd]?.length ? ` ${resourceNameMap[cd]!.join(' / ')}` : ''}`).join(' / ')}</div>
-      <ResourceMinutesTable {...props} shared={sameModelResourceGroups.some((group) => group.resourceCds.includes(representative))} resourceCd={representative} resourceCds={members} items={props.items.filter(item => members.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? ''))} />
-    </div>)}</div> : <ResourceMinutesTable {...props} resourceCd={[...tables.keys()][0]} resourceCds={visible} />}
+    <div className="min-h-0 overflow-auto">{[...tables].map(([representative, members]) => {
+      const group = groups.find((group) => group.resourceCds.includes(representative));
+      const others = groups.filter((entry) => entry !== group);
+      const conflict = pending?.heading === representative ? pending : null;
+      return <div key={representative} className="border-slate-700 [&+&]:border-t-2">
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2 font-bold">
+          {group ? group.resourceCds.map((cd) => <span key={cd} className={`inline-flex h-11 items-center gap-1.5 rounded-full border-2 border-slate-700 pl-3.5 pr-1.5 ${visible.includes(cd) ? '' : 'text-slate-400'}`}>
+            {name(cd)}<button type="button" aria-label={`${cd}を組から外す`} disabled={blocked || !!pending} className="h-8 w-8 rounded-full text-xl text-slate-400 disabled:opacity-35" onClick={() => {
+              const rest = group.resourceCds.filter((member) => member !== cd);
+              void saveGroups(representative, { groups: [...others, ...(rest.length > 1 ? [{ resourceCds: rest }] : [])] });
+            }}>×</button>
+          </span>) : <span>{name(representative)}</span>}
+          <select aria-label="機械を足す" className={`${button} border-dashed bg-transparent`} value="" disabled={blocked || !!pending || !query.data} onChange={(event) => {
+            if (event.target.value) void saveGroups(representative, { groups: [...others, { resourceCds: [...(group?.resourceCds ?? [representative]), event.target.value] }] });
+          }}>
+            <option value="">＋機械</option>{query.data?.resources.filter(({ resourceCd }) => resourceCd !== representative && !groups.some((group) => group.resourceCds.includes(resourceCd))).map(({ resourceCd }) => <option key={resourceCd} value={resourceCd} className="bg-slate-900 text-slate-100">{name(resourceCd)}</option>)}
+          </select>
+          {group && <button type="button" className={`${button} ml-auto`} disabled={blocked || !!pending} onClick={() => void saveGroups(representative, { groups: others })}>組を解く</button>}
+          {error === representative && <span role="alert" className="text-xs text-rose-200">保存できませんでした。</span>}
+        </div>
+        {conflict && <div role="alert" className="mx-4 mb-3 grid gap-2.5 rounded-[10px] border-2 border-rose-400 p-3">
+          <h4 className="text-[17px] font-bold text-rose-400">品番の値が食い違っています</h4>
+          {conflict.details.fhincds.map((fhincd) => <div key={fhincd} className="flex flex-wrap items-center gap-2">
+            <div className="min-w-[170px]"><b className="block font-mono text-[17px]">{fhincd}</b><span className="text-[13px] text-slate-400">{props.items.find((item) => item.fhincd.trim() === fhincd)?.fhinmei}</span></div>
+            {Object.entries(conflict.details.values[fhincd]).map(([cd, value]) => <button key={cd} type="button" disabled={blocked} aria-pressed={conflict.choices[fhincd] === cd}
+              className={`grid min-h-14 gap-0.5 rounded-lg border-2 px-3 py-1.5 text-left disabled:opacity-35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 ${conflict.choices[fhincd] === cd ? 'border-amber-400 bg-[#13213a]' : 'border-slate-700'}`}
+              onClick={() => setPending({ ...conflict, choices: { ...conflict.choices, [fhincd]: cd } })}>
+              <b className="font-mono">{name(cd)}</b><span className={`text-sm ${conflict.choices[fhincd] === cd ? 'text-amber-400' : 'text-slate-400'}`}>{(value.ops.length ? value.ops : [{ opNo: 1, setupMinutes: value.setupMinutes, minutes: value.perUnitMinutes }]).map((op) => `${op.opNo}工程 ${op.setupMinutes ?? 0}+${op.minutes}`).join('　')}</span>
+            </button>)}
+          </div>)}
+          <div className="flex flex-wrap gap-2"><button type="button" className={`${button} border-amber-400 bg-amber-400 font-bold text-slate-900`} disabled={blocked || conflict.details.fhincds.some((fhincd) => !conflict.choices[fhincd])} onClick={() => void saveGroups(representative, { ...conflict.body, resolutions: conflict.choices })}>組にする</button>
+            <button type="button" className={button} disabled={blocked} onClick={() => setPending(null)}>やめる</button></div>
+        </div>}
+        <ResourceMinutesTable {...props} disabled={props.disabled || isSaving || mutation.isPending || !!pending} shared={!!group} resourceCd={representative} resourceCds={members} items={visible.length === 1 ? props.items : props.items.filter(item => members.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? ''))} />
+      </div>;
+    })}</div>
   </div>;
 }
+
 function ResourceMinutesTable({ resourceCd, siteKey, shared, resourceCds, items, values, disabled, unitSplitEnabledByResource }: SheetProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [opOverrides, setOpOverrides] = useState<Record<string, number[] | undefined>>({});

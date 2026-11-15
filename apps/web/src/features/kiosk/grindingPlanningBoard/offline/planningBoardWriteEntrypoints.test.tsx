@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({ offline: {} as { gate: PlanningBoardWriteGate;
 vi.mock('./PlanningBoardOfflineProvider', () => ({ usePlanningBoardOffline: () => state.offline }));
 vi.mock('../gantt/usePlanningBoardGantt', () => ({ usePlanningBoardGantt: () => ({ scale: 1, layout: null, capacityPending: false, mode: 'forward' }) }));
 vi.mock('../../../../api/hooks/production-schedule', () => ({
+  useKioskSameModelResourceGroups: () => ({ data: undefined }),
+  useReplaceKioskSameModelResourceGroups: () => ({ mutateAsync: vi.fn(), isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourcePartMinutes: () => ({ mutateAsync: state.save })
 }));
 const item = (part: string) => ({ itemId: part, fhincd: part, fhinmei: part, quantity: 4, plannedQuantity: 4, originalRequiredMinutes: 60 } as GrindingPlanningBoardItem);
