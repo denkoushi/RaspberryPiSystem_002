@@ -84,7 +84,7 @@ describe('procedure-manuals', () => {
     render(<MemoryRouter><ProcedureManualBrowser /></MemoryRouter>);
     const list = screen.getByRole('region', { name: '要領書一覧' });
     const row = await within(list).findByRole('button', { name: names[0] });
-    const cells = Array.from(row.children).slice(1, 6);
+    const cells = Array.from(row.children).slice(0, 5);
     expect(cells.map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
     cells.forEach(cell => expect(cell).toHaveClass('truncate'));
     expect(cells[0]).toHaveClass('font-bold', 'text-[21px]');
@@ -93,10 +93,10 @@ describe('procedure-manuals', () => {
     expect(row).toHaveClass('min-h-[72px]');
     expect(row).toHaveAttribute('title', names[0]);
     const header = within(list).getByText('頁').parentElement!;
-    expect(Array.from(header.children).slice(1).map(cell => cell.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', '頁']);
+    expect(Array.from(header.children).map(cell => cell.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', '頁']);
     expect(header).not.toHaveClass('sr-only');
-    expect(header).toHaveClass('grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px]');
-    expect(row).toHaveClass('grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px]');
+    expect(header).toHaveClass('grid-cols-[minmax(0,1fr)_190px_64px_64px_150px_48px]');
+    expect(row).toHaveClass('grid-cols-[minmax(0,1fr)_190px_64px_64px_150px_48px]');
     expect(within(list).queryByText('名前', { exact: true })).not.toBeInTheDocument();
     expect(within(list).queryByText('機種・部品')).not.toBeInTheDocument();
     for (const [index, expected] of [
@@ -104,7 +104,7 @@ describe('procedure-manuals', () => {
       [2, ['旧名称', 'DFD1', '組立', '検査', '—']],
       [3, ['親工程の旧名称', 'DFD1', '', '組立', '—']]
     ] as const) {
-      expect(Array.from(within(list).getByTitle(names[index]).children).slice(1, 6).map(cell => cell.textContent)).toEqual(expected);
+      expect(Array.from(within(list).getByTitle(names[index]).children).slice(0, 5).map(cell => cell.textContent)).toEqual(expected);
     }
   });
 

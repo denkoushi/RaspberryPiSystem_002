@@ -8,7 +8,6 @@ import { kioskAssemblyManualsWorkshopPath } from '../assemblyRoutes';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 
-import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
@@ -178,8 +177,8 @@ export function ProcedureManualBrowser() {
             {selectedAxis || selectedName ? <button type="button" className={`${procedureManualButtonBase} ${procedureManualButtonUnselected} mt-3 h-12 w-full text-[#9fadb9]`} onClick={() => { setSelectedAxis(''); setSelectedName(''); }}>絞り込みを解除</button> : null}
           </aside> : null}
           <div className="min-h-0 min-w-0 overflow-auto">
-          <div className="grid grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
-            <span aria-hidden="true" /><span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>頁</span>
+          <div className="grid grid-cols-[minmax(0,1fr)_190px_64px_64px_150px_48px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-[17px] font-bold text-[#9fadb9]">
+            <span>品名</span><span>品番</span><span>工程</span><span>作業</span><span>補足</span><span>頁</span>
           </div>
           {filteredItems.map(item => {
             const child = processes.find(process => process.id === item.processId);
@@ -188,9 +187,8 @@ export function ProcedureManualBrowser() {
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
             return <button type="button" key={item.assignmentId} aria-label={item.title} title={item.title}
-            className="grid min-h-[72px] w-full grid-cols-[64px_minmax(0,1fr)_190px_64px_64px_150px_48px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
+            className="grid min-h-[72px] w-full grid-cols-[minmax(0,1fr)_190px_64px_64px_150px_48px] items-center gap-3 border-b border-[#27313b] px-5 py-3 text-left text-[19px] hover:bg-[#1b222a]"
             onClick={() => { setAllKind(processes.find(row => row.id === item.processId)?.subjectKind ?? 'MODEL'); setInitialDocumentId(item.documentId); setUserSelectedModel(true); setModelCodeKey(item.modelCodeKey); setProcessId(item.processId); }}>
-            <ManualThumbnail url={item.thumbnailPageUrl} />
             <span className="min-w-0 truncate text-[21px] font-bold">{name.partName}</span>
             <span className="min-w-0 truncate font-mono font-bold">{name.subjectKey}</span>
             <span className="min-w-0 truncate">{name.process}</span>
