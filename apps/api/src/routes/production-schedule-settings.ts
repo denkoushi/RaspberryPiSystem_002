@@ -1,3 +1,4 @@
+import { getSameModelResourceGroups, replaceSameModelResourceGroups, sameModelGroupsSchema } from '../services/production-schedule/same-model-resource-groups.service.js';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -163,6 +164,14 @@ const loadBalancingWorkCalendarBodySchema = z.object({
 
 export function registerProductionScheduleSettingsRoutes(app: FastifyInstance): void {
   const canManage = authorizeRoles('ADMIN', 'MANAGER');
+
+  app.get('/production-schedule-settings/same-model-resource-groups', { preHandler: canManage }, async (request) => {
+    const { location } = z.object({ location: z.string().trim().min(1).max(100) }).parse(request.query);
+    return getSameModelResourceGroups(location);
+  });
+  app.put('/production-schedule-settings/same-model-resource-groups', { preHandler: canManage }, async (request) => {
+    return replaceSameModelResourceGroups(sameModelGroupsSchema.parse(request.body));
+  });
 
   app.get('/production-schedule-settings/resource-categories', { preHandler: canManage }, async (request) => {
     const query = resourceCategoryQuerySchema.parse(request.query);

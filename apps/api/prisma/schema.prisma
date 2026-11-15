@@ -2041,6 +2041,27 @@ model ProductionScheduleGrindingPlanningBoardState {
   @@index([csvDashboardId, updatedAt], map: "PSGrindingPlanningState_dashboard_updated_idx")
 }
 
+model ProductionScheduleSameModelResourceGroup {
+  id        String   @id @default(uuid())
+  siteKey   String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   ProductionScheduleSameModelResourceMember[]
+
+  @@unique([id, siteKey], map: "PSSameModelGroup_id_site_key")
+  @@index([siteKey], map: "PSSameModelGroup_site_idx")
+}
+
+model ProductionScheduleSameModelResourceMember {
+  groupId    String
+  siteKey    String @db.VarChar(100)
+  resourceCd String @db.VarChar(20)
+  group ProductionScheduleSameModelResourceGroup @relation(fields: [groupId, siteKey], references: [id, siteKey], onDelete: Cascade, map: "PSSameModelMember_group_fkey")
+
+  @@id([siteKey, resourceCd])
+  @@index([groupId, siteKey], map: "PSSameModelMember_group_idx")
+}
+
 model ProductionScheduleGrindingPlanningBoardResourceMinutesSource {
   id             String   @id @default(uuid())
   csvDashboardId String

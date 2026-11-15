@@ -17,6 +17,7 @@ import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 
 import { ProductionScheduleLoadBalancingSettingsSection } from './ProductionScheduleLoadBalancingSettingsSection';
+import { ProductionScheduleSameModelResourceGroupsCard } from './ProductionScheduleSameModelResourceGroupsCard';
 
 const DEFAULT_LOCATION = 'shared';
 const LOCATION_SEGMENT_DELIMITER = ' - ';
@@ -174,6 +175,7 @@ export function ProductionScheduleSettingsPage() {
 
   return (
     <div className="space-y-6">
+      <ProductionScheduleSameModelResourceGroupsCard />
       <Card title="生産スケジュール設定（切削除外リスト）">
         <div className="space-y-4">
           <p className="text-xs font-semibold text-slate-700">

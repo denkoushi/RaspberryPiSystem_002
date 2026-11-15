@@ -59,6 +59,7 @@ describe('sessaku affected lane discovery', () => {
     const pieceLookup = vi.fn().mockResolvedValue([{ pieceSet: inboundPiece }]);
     const tx = {
       $queryRaw: vi.fn(),
+      productionScheduleSameModelResourceGroup: { findMany: vi.fn().mockResolvedValue([]) },
       productionScheduleGrindingPlanningBoardState: { findMany: vi.fn().mockResolvedValue(states), findUniqueOrThrow: vi.fn().mockResolvedValue(states[0]) },
       productionScheduleGrindingPlanningBoardOverride: { findMany: vi.fn(async (query) => {
         if (query.select?.siteKey) return sites.map((siteKey) => ({ siteKey }));

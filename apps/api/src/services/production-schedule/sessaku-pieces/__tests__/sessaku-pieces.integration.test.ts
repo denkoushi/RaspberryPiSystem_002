@@ -1,3 +1,4 @@
+import { replaceSameModelResourceGroups } from '../../same-model-resource-groups.service.js';
 import pg from 'pg';
 import * as laneWrites from '../piece-lane-writes.js';
 import { legacyReplaceSiteItems } from './legacy-site-items.js';
@@ -109,6 +110,8 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     await prisma.productionScheduleGrindingPlanningBoardState.createMany({ data: [site, other].map((siteKey) => ({ csvDashboardId: dashboardId, siteKey, seibanOrder: [seiban] })) });
   });
   afterEach(async () => {
+    await prisma.productionScheduleSameModelResourceGroup.deleteMany({ where: { siteKey: { in: [site, other] } } });
+    await prisma.productionScheduleResourceMaster.deleteMany({ where: { resourceName: `${site}-same-model` } });
     await prisma.productionScheduleSessakuPiece.deleteMany({ where: { pieceSet: { csvDashboardId: dashboardId, fseiban: seiban }, sourcePieceId: { not: null } } });
     await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: { in: [site, other] } } });
     await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: { in: [site, other] } } });
@@ -124,6 +127,58 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     vi.unstubAllEnvs();
   });
   afterAll(async () => { await reader.$disconnect(); await prisma.$disconnect(); });
+  it('same-model migration is atomic, preserves IDs and leaves copies when detached', async () => {
+    const save = (resourceCd: string, fhincd: string, minutes: number) => updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site,
+      resourceCd, fhincd, perUnitMinutes: minutes, setupMinutes: 10, ops: [{ opNo: 1, setupMinutes: 10, minutes }] });
+    await save('022', 'PART-A', 5);
+    const original = await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.findFirstOrThrow({ where: { siteKey: site }, include: { ops: true } });
+    await replaceSameModelResourceGroups({ location: site, groups: [{ resourceCds: ['021', '022'] }] });
+    const moved = await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.findUniqueOrThrow({ where: { id: original.id }, include: { ops: true } });
+    expect(moved.resourceCd).toBe('021'); expect(moved.ops[0].id).toBe(original.ops[0].id);
+    await save('023', 'PART-A', 7);
+    await expect(replaceSameModelResourceGroups({ location: site, groups: [{ resourceCds: ['021', '022', '023'] }] }))
+      .rejects.toMatchObject({ statusCode: 409, details: { fhincds: ['PART-A'] } });
+    expect(await prisma.productionScheduleSameModelResourceMember.count({ where: { siteKey: site } })).toBe(2);
+    await replaceSameModelResourceGroups({ location: site, groups: [{ resourceCds: ['022', '024'] }] });
+    const read = await getGrindingPlanningBoardResourceMinutes({ siteKey: site });
+    expect(read.values.filter((row) => row.fhincd === 'PART-A').map((row) => [row.resourceCd, row.perUnitMinutes])).toEqual([
+      ['021', 5], ['022', 5], ['024', 5], ['023', 7]
+    ]);
+  });
+  it('same-model split bars keep definitions and completions when moved from 021 to 022', async () => {
+    await prisma.productionScheduleResourceMaster.create({ data: { resourceCd: '022', resourceName: `${site}-same-model`, resourceClassCd: '', resourceGroupCd: '' } });
+    await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: { csvDashboardId: dashboardId,
+      siteKey: site, itemKey: (await parent()).itemId, overrideResourceCd: '021' } });
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '021', fhincd: 'PART-A', perUnitMinutes: 30, setupMinutes: 10,
+      ops: [{ opNo: 1, setupMinutes: 10, minutes: 10 }, { opNo: 2, setupMinutes: 0, minutes: 20 }] });
+    await replaceSameModelResourceGroups({ location: site, groups: [{ resourceCds: ['021', '022'] }] });
+    const p = await parent();
+    const units = await splitSessakuPieces({ siteKey: site, parentItemId: p.itemId, itemRevision: p.itemRevision,
+      expectedPieceSetVersion: p.pieceSetVersion ?? 0, quantities: [1, 1, 1, 1, 1] });
+    let item = (await board()).items.find((item) => item.itemId === units.pieces[0].itemId)!;
+    await pieceOperations.splitSessakuPieceOps({ siteKey: site, itemId: item.itemId, itemRevision: item.itemRevision,
+      expectedPieceSetVersion: item.pieceSetVersion!, fromOpNo: 2 });
+    item = (await board()).items.find((item) => item.itemId === units.pieces[0].itemId)!;
+    await pieceOperations.setSessakuPieceOpCompletion({ siteKey: site, pieceId: item.pieceId!, itemRevision: item.itemRevision,
+      expectedPieceSetVersion: item.pieceSetVersion!, opNo: 1, intent: 'complete' });
+    const before = await board();
+    const suffix = before.items.find((item) => item.pieceId === units.pieces[0].pieceId && item.opRange?.fromOpNo === 2)!;
+    const completions = await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: suffix.pieceId! } });
+    const splits = await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: suffix.pieceId! } });
+    await prisma.productionScheduleGrindingPlanningBoardOverride.upsert({
+      where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: site, itemKey: suffix.itemId } },
+      create: { csvDashboardId: dashboardId, siteKey: site, itemKey: suffix.itemId, overrideResourceCd: '022' },
+      update: { overrideResourceCd: '022' } });
+    const moved = (await board()).items.find((item) => item.itemId === suffix.itemId)!;
+    expect(moved.effectiveResourceCd).toBe('022'); expect(moved.ops).toEqual(suffix.ops);
+    expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: suffix.pieceId! } })).toEqual(completions);
+    expect(await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: suffix.pieceId! } })).toEqual(splits);
+    await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: site, resourceCd: '022', fhincd: 'PART-A', perUnitMinutes: 50, setupMinutes: 10,
+      ops: [{ opNo: 1, setupMinutes: 10, minutes: 15 }, { opNo: 2, setupMinutes: 0, minutes: 35 }] });
+    const after = await board();
+    expect(after.items.find((item) => item.itemId === suffix.itemId)?.unitRequiredMinutes).toBe(35);
+    expect(after.items.find((item) => item.itemId === units.pieces[1].itemId)?.unitRequiredMinutes).toBe(50);
+  });
   it('preserves a piece-free sibling save across a ReadCommitted split lane rewrite', async () => {
     const siblingRow = await prisma.csvDashboardRow.create({ data: {
       csvDashboardId: dashboardId, rowData: { ...rowData, FHINCD: 'PART-S' },

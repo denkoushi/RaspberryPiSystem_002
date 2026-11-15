@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../fkojunst-status-mail-critical-lock.js', () => ({ acquireFkojunstStatusMailCriticalTransactionLock: vi.fn() }));
 vi.mock('../sessaku-pieces/piece-operation-definitions.js', () => ({ lockOperationDefinitionPieces: vi.fn(), reconcileOperationDefinitionPieces: vi.fn() }));
 import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces } from '../sessaku-pieces/piece-operation-definitions.js';
 
 const mocks = vi.hoisted(() => ({
+  groups: { findMany: vi.fn() },
   sources: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
   values: { findUnique: vi.fn(), findMany: vi.fn(), upsert: vi.fn(), update: vi.fn(), deleteMany: vi.fn() },
   ops: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), update: vi.fn() }, transaction: vi.fn()
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
+  productionScheduleSameModelResourceGroup: mocks.groups,
   productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
   productionScheduleGrindingPlanningBoardResourcePartMinutes: mocks.values,
   productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops, $transaction: mocks.transaction
@@ -24,12 +27,14 @@ describe('resource minutes storage', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(lockOperationDefinitionPieces).mockResolvedValue([]);
+    mocks.groups.findMany.mockResolvedValue([]);
     mocks.sources.findMany.mockResolvedValue([]);
     mocks.values.findMany.mockResolvedValue([]);
     mocks.values.upsert.mockResolvedValue({ id: 'part-id', ops: [] });
     mocks.ops.findMany.mockResolvedValue([]);
     mocks.transaction.mockImplementation((callback) => callback({
-      productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
+      productionScheduleSameModelResourceGroup: mocks.groups,
+  productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
       productionScheduleGrindingPlanningBoardResourcePartMinutes: mocks.values,
       productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops
     }));
@@ -201,7 +206,8 @@ describe('resource minutes storage', () => {
     mocks.transaction.mockImplementation(async (callback) => {
       inTransaction = true;
       const result = await callback({
-        productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
+        productionScheduleSameModelResourceGroup: mocks.groups,
+  productionScheduleGrindingPlanningBoardResourceMinutesSource: mocks.sources,
         productionScheduleGrindingPlanningBoardResourcePartMinutes: mocks.values,
         productionScheduleGrindingPlanningBoardResourcePartOpMinutes: mocks.ops
       });
@@ -218,7 +224,7 @@ describe('resource minutes storage', () => {
     });
     const remote = [{ ...value, ops: [{ id: 'remote-3', opNo: 3, minutes: 9 }] }];
     mocks.values.findMany.mockImplementation(async () => {
-      expect(inTransaction).toBe(false);
+      expect(mocks.transaction).toHaveBeenCalledTimes(1);
       return remote;
     });
     const response = await updateGrindingPlanningBoardResourcePartMinutes({ siteKey: key.siteKey, ...value,
@@ -226,7 +232,7 @@ describe('resource minutes storage', () => {
     expect(mocks.ops.findMany).toHaveBeenCalledExactlyOnceWith({
       where: { partMinutesId: 'part-id' }, select: { id: true, opNo: true }, orderBy: { opNo: 'asc' }
     });
-    expect(response).toEqual({ ownSourceResourceCds: [], values: remote, savedOpIds: ['created-3'], savedOpNos: [3], savedMinutes: { perUnitMinutes: 2, setupMinutes: 0, ops: [{ opNo: 3, minutes: 2, setupMinutes: 0 }] } });
+    expect(response).toEqual({ siteKey: key.siteKey, sameModelResourceGroups: [], ownSourceResourceCds: [], values: remote, savedOpIds: ['created-3'], savedOpNos: [3], savedMinutes: { perUnitMinutes: 2, setupMinutes: 0, ops: [{ opNo: 3, minutes: 2, setupMinutes: 0 }] } });
   });
   it.each([false, true])('returns empty saved operation metadata after clearing operations, row deletion: %s', async (deletion) => {
     mocks.values.findMany.mockResolvedValue([{ ...value, ops: [{ id: 'remote-2', opNo: 2, minutes: 9 }] }]);
@@ -306,7 +312,8 @@ describe('resource minutes storage', () => {
     mocks.sources.findMany.mockResolvedValue([{ resourceCd: '305' }]);
     mocks.values.findMany.mockResolvedValue([value]);
     expect(await getGrindingPlanningBoardResourceMinutes({ siteKey: 'site-a' }))
-      .toEqual({ ownSourceResourceCds: ['305'], values: [value] });
+      .toEqual({ siteKey: key.siteKey, sameModelResourceGroups: [], ownSourceResourceCds: ['305'], values: [value] });
+    expect(mocks.transaction).not.toHaveBeenCalled();
     for (const table of [mocks.sources, mocks.values]) expect(table.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { csvDashboardId: key.csvDashboardId, siteKey: 'site-a' }
     }));
@@ -318,7 +325,7 @@ describe('resource minutes storage', () => {
     expect(mocks.sources.upsert).toHaveBeenCalledWith({ where: { csvDashboardId_siteKey_resourceCd: key },
       create: { ...key, source: 'own' }, update: { source: 'own' } });
     await updateGrindingPlanningBoardResourceMinutesSource({ ...key, source: 'original' });
-    expect(mocks.sources.deleteMany).toHaveBeenCalledWith({ where: key });
+    expect(mocks.sources.deleteMany).toHaveBeenCalledWith({ where: { csvDashboardId: key.csvDashboardId, siteKey: key.siteKey, resourceCd: { in: [key.resourceCd] } } });
     expect(mocks.values.deleteMany).not.toHaveBeenCalled();
   });
   it.each([0, 0.5, 100000])('upserts per-unit minutes %s and setup', async (perUnitMinutes) => {

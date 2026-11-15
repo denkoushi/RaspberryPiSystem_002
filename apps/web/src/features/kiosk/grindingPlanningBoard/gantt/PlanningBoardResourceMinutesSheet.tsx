@@ -100,14 +100,14 @@ function Stepper({ label, value, ghost, setup, disabled, invalid, draft, positiv
       onClick={() => { if (!gate.attempt()) return; setEditing(null); onChange(normalize(value === null ? (setup ? 5 : ghost ?? 0.5) : value + (setup ? 5 : 0.5))); }}>＋</button>
   </div>;
 }
-const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabled, columns, selected, select, onOpsChange, hasOps }: {
-  resourceCd: string; fhincd: string; items: GrindingPlanningBoardItem[]; saved?: Saved; disabled: boolean; columns: number[];
+const PartRow = memo(function PartRow({ resourceCd, siteKey, shared = false, fhincd, items, saved, disabled, columns, selected, select, onOpsChange, hasOps }: {
+  resourceCd: string; siteKey?: string; shared?: boolean; fhincd: string; items: GrindingPlanningBoardItem[]; saved?: Saved; disabled: boolean; columns: number[];
   selected: boolean; select: (fhincd: string) => void; onOpsChange: (fhincd: string, ops: number[] | undefined) => void; hasOps: boolean;
 }) {
   const offline = usePlanningBoardOffline();
   const { gate, frozen } = offline;
-  const key = `${resourceCd}:${fhincd}`;
-  const mutation = useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceCd, fhincd);
+  const key = `${siteKey ?? ''}:${resourceCd}:${fhincd}`;
+  const mutation = useUpdateKioskGrindingPlanningBoardResourcePartMinutes(resourceCd, fhincd, siteKey);
   const [draft, setDraft] = useState<Value | null>(() => drafts.get(key) ?? null);
   const [error, setError] = useState(() => queueFor(key).failed);
   const [inputVersion, setInputVersion] = useState(0);
@@ -307,7 +307,7 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
     timer.current = setTimeout(() => { pending.current = null; save.current(next); }, 400);
   };
   const quantity = items.reduce((sum, item) => sum + (item.quantity ?? item.plannedQuantity ?? 0), 0);
-  const count = new Set(items.map((item) => item.parentItemId ?? item.itemId)).size;
+  const count = new Set(items.map((item) => shared ? JSON.stringify([item.effectiveResourceCd ?? item.originalResourceCd, item.parentItemId ?? item.itemId]) : item.parentItemId ?? item.itemId)).size;
   const original = items.some((item) => item.originalRequiredMinutes !== null) ? items.reduce((sum, item) => sum + (item.originalRequiredMinutes ?? 0), 0) : null;
   const base = original !== null && quantity > 0 ? Math.min(100000, Math.max(0.5, half((original - setupOf(value) * count) / quantity))) : null;
   const unit = unitOf(value) ?? base;
@@ -387,17 +387,25 @@ const PartRow = memo(function PartRow({ resourceCd, fhincd, items, saved, disabl
 });
 type SheetProps = {
   resourceCd: string; items: GrindingPlanningBoardItem[]; values: GrindingPlanningBoardResourceMinutesResponse['values']; disabled: boolean; unitSplitEnabledByResource?: Readonly<Record<string, boolean>>;
+  shared?: boolean; siteKey?: string; sameModelResourceGroups?: GrindingPlanningBoardResourceMinutesResponse['sameModelResourceGroups'];
   resourceCds?: readonly string[]; resourceNameMap?: Record<string, string[]>;
 };
-export function PlanningBoardResourceMinutesSheet({ resourceCds, resourceNameMap, ...props }: SheetProps) {
+export function PlanningBoardResourceMinutesSheet({ resourceCds, resourceNameMap, sameModelResourceGroups = [], ...props }: SheetProps) {
+  const visible = resourceCds?.length ? resourceCds : [props.resourceCd];
+  const tables = new Map<string, string[]>();
+  for (const cd of visible) {
+    const group = sameModelResourceGroups.find((group) => group.resourceCds.includes(cd));
+    const representative = group ? [...group.resourceCds].sort()[0] : cd;
+    tables.set(representative, [...(tables.get(representative) ?? []), cd]);
+  }
   return <div data-planning-board-value-sheet role="region" aria-label="品番の値" className="absolute inset-x-0 bottom-0 z-[60] flex flex-col border-t-[3px] border-amber-400 bg-slate-900 shadow-2xl" style={{ height: `min(${PLANNING_BOARD_SHEET_RATIO * 100}%, ${PLANNING_BOARD_SHEET_MAX_HEIGHT}px)` }}>
-    {resourceCds && resourceCds.length > 1 ? <div className="min-h-0 overflow-auto">{resourceCds.map(resourceCd => <div key={resourceCd}>
-      <div className="px-4 py-2 font-bold">{resourceCd}{resourceNameMap?.[resourceCd]?.length ? ` ${resourceNameMap[resourceCd]!.join(' / ')}` : ''}</div>
-      <ResourceMinutesTable {...props} resourceCd={resourceCd} items={props.items.filter(item => (item.effectiveResourceCd ?? item.originalResourceCd) === resourceCd)} />
-    </div>)}</div> : <ResourceMinutesTable {...props} />}
+    {visible.length > 1 ? <div className="min-h-0 overflow-auto">{[...tables].map(([representative, members]) => <div key={representative}>
+      <div className="px-4 py-2 font-bold">{members.map((cd) => `${cd}${resourceNameMap?.[cd]?.length ? ` ${resourceNameMap[cd]!.join(' / ')}` : ''}`).join(' / ')}</div>
+      <ResourceMinutesTable {...props} shared={sameModelResourceGroups.some((group) => group.resourceCds.includes(representative))} resourceCd={representative} resourceCds={members} items={props.items.filter(item => members.includes(item.effectiveResourceCd ?? item.originalResourceCd ?? ''))} />
+    </div>)}</div> : <ResourceMinutesTable {...props} resourceCd={[...tables.keys()][0]} resourceCds={visible} />}
   </div>;
 }
-function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEnabledByResource }: SheetProps) {
+function ResourceMinutesTable({ resourceCd, siteKey, shared, resourceCds, items, values, disabled, unitSplitEnabledByResource }: SheetProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [opOverrides, setOpOverrides] = useState<Record<string, number[] | undefined>>({});
   const select = useCallback((fhincd: string) => setSelected(fhincd), []);
@@ -418,10 +426,10 @@ function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEn
   }, [items]);
   const used = new Set<number>();
   for (const fhincd of groups.keys()) {
-    const nos = opOverrides[fhincd] ?? drafts.get(`${resourceCd}:${fhincd}`)?.ops.map((op) => op.opNo) ?? values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)?.ops?.map((op) => op.opNo) ?? [];
+    const nos = opOverrides[fhincd] ?? drafts.get(`${siteKey ?? ''}:${resourceCd}:${fhincd}`)?.ops.map((op) => op.opNo) ?? values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)?.ops?.map((op) => op.opNo) ?? [];
     nos.forEach((no) => used.add(no));
   }
-  const hasOps = isPlanningBoardUnitSplitEnabled(resourceCd, unitSplitEnabledByResource) || used.size > 0;
+  const hasOps = (resourceCds ?? [resourceCd]).some((cd) => isPlanningBoardUnitSplitEnabled(cd, unitSplitEnabledByResource)) || used.size > 0;
   const columnKey = used.size ? [...used].sort((a, b) => a - b).join(',') : '1';
   const columns = useMemo(() => columnKey.split(',').map(Number), [columnKey]);
   const header = 'sticky top-0 z-20 border-b border-slate-700 bg-slate-950 px-2 py-2 text-[15px] font-normal text-slate-400';
@@ -431,7 +439,7 @@ function ResourceMinutesTable({ resourceCd, items, values, disabled, unitSplitEn
       <th className={`${header} sticky left-0 z-30`}>品番</th><th className={`${header} text-right`}>個数</th><th className={`${header} whitespace-nowrap text-right`}>元の1台</th><th className={`${header} min-w-[150px] text-right`}>合計</th>
       {columns.map((no) => <th key={no} colSpan={2} className={header}>{hasOps && <b className="mb-1 block border-b border-slate-700 pb-1 text-base text-sky-300">{no}工程</b>}<div className="grid grid-cols-[184px_220px]"><span>段取り</span><span>1台</span></div></th>)}
       <th className={`${header} sticky right-0 z-30`} aria-label="操作" />
-    </tr></thead><tbody>{[...groups].map(([fhincd, members]) => <PartRow key={`${resourceCd}:${fhincd}`} resourceCd={resourceCd} fhincd={fhincd} items={members}
+    </tr></thead><tbody>{[...groups].map(([fhincd, members]) => <PartRow key={`${siteKey ?? ''}:${resourceCd}:${fhincd}`} siteKey={siteKey} shared={shared} resourceCd={resourceCd} fhincd={fhincd} items={members}
       saved={values.find((value) => value.resourceCd === resourceCd && value.fhincd === fhincd)} disabled={disabled} columns={columns} hasOps={hasOps} selected={selected === fhincd}
       select={select} onOpsChange={onOpsChange} />)}</tbody></table></div>
   </>;

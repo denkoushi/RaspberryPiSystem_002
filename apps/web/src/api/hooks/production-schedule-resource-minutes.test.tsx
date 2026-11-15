@@ -156,3 +156,23 @@ describe('resource minutes hooks', () => {
     expect((client.getQueryData(key) as Settings).values).toEqual([other, ...initial.values]);
   });
 });
+
+it('updates all grouped resource caches and serializes either member with one mutation scope', async () => {
+  vi.resetAllMocks();
+  const { client, wrapper } = setup();
+  const settings: Settings = { siteKey: 'site', sameModelResourceGroups: [{ resourceCds: ['021', '022'] }], ownSourceResourceCds: [],
+    values: ['021', '022'].map((resourceCd) => ({ resourceCd, fhincd: 'P', perUnitMinutes: 5, setupMinutes: 10 })) };
+  client.setQueryData(key, settings);
+  let finish!: (value: Settings) => void;
+  mocks.value.mockImplementationOnce(() => new Promise<Settings>((resolve) => { finish = resolve; })).mockResolvedValue({ ...settings, ownSourceResourceCds: ['021', '022'] });
+  const { result } = renderHook(() => ({ a: useUpdateKioskGrindingPlanningBoardResourcePartMinutes('021', 'P'), b: useUpdateKioskGrindingPlanningBoardResourcePartMinutes('022', 'P') }), { wrapper });
+  let first!: Promise<Settings>, second!: Promise<Settings>;
+  act(() => { first = result.current.a.mutateAsync({ resourceCd: '021', fhincd: 'P', perUnitMinutes: 8, setupMinutes: 10 }); });
+  await waitFor(() => expect(mocks.value).toHaveBeenCalledTimes(1));
+  expect(client.getQueryData<Settings>(key)?.values.map((v) => v.perUnitMinutes)).toEqual([8, 8]);
+  act(() => { second = result.current.b.mutateAsync({ resourceCd: '022', fhincd: 'P', perUnitMinutes: 5, setupMinutes: 10 }); });
+  await waitFor(() => expect(result.current.b.isPaused).toBe(true)); expect(mocks.value).toHaveBeenCalledTimes(1);
+  await act(async () => { finish({ ...settings, ownSourceResourceCds: ['021', '022'] }); await first; await second; });
+  expect(client.getQueryData<Settings>(key)?.ownSourceResourceCds).toEqual(['021', '022']);
+  expect(client.getQueryData<Settings>(key)?.values.map((v) => v.resourceCd)).toEqual(['021', '022']);
+});

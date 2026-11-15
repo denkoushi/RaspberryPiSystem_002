@@ -1,5 +1,7 @@
 # ドキュメント索引
 
+- **製番ボードの同型機の品番の値共有**: site別の組、代表機への値統合、管理設定と共有値シート。正本: [ExecPlan](./plans/same-model-resource-minutes.md)
+
 - 生産日程・負荷調整ボードの標準工数入力忘れ表示: [ExecPlan](./plans/grinding-planning-board-missing-standard-hours.md)
 
 - 日程会議議事録の2形式取込・種類別自動登録: [ExecPlan](./plans/2026-11-09-d-schedule-second-excel.md)

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import {
+import { getProductionScheduleSameModelResourceGroups, updateProductionScheduleSameModelResourceGroups ,
   getProductionScheduleResourceCategorySettings,
   getProductionScheduleResourceCodeMappings,
   importProductionScheduleResourceCodeMappingsFromCsv,
@@ -112,4 +112,17 @@ export function useImportProductionScheduleResourceCodeMappingsFromCsv() {
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.dueManagementSeibanDetailAll });
     }
   });
+}
+
+export function useProductionScheduleSameModelResourceGroups(location: string) {
+  return useQuery({ queryKey: productionScheduleQueryKeys.sameModelResourceGroups(location),
+    queryFn: () => getProductionScheduleSameModelResourceGroups(location), enabled: Boolean(location.trim()) });
+}
+export function useUpdateProductionScheduleSameModelResourceGroups() {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: updateProductionScheduleSameModelResourceGroups, onSuccess: (_data, payload) => {
+    void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.sameModelResourceGroups(payload.location) });
+    void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll });
+    void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+  } });
 }
