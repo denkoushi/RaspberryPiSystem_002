@@ -685,7 +685,7 @@ test('readonly template procedure view renders the source without ROI or OCR req
 
 test.describe('overlay elements receive taps on the editor canvas', () => {
   test.use({ hasTouch: true });
-  test('a created overlay is the topmost element at its centre and a touch tap keeps it selected', async ({ page }) => {
+  test('a created overlay is the topmost element at its centre and a touch tap on it starts in-place editing', async ({ page }) => {
     const evidence = makeEditorEvidence();
     await page.setViewportSize({ width: 1920, height: 1080 });
     await installEditorApiMocks(page, evidence);
@@ -700,7 +700,8 @@ test.describe('overlay elements receive taps on the editor canvas', () => {
     const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-overlay-id]')?.getAttribute('data-overlay-id') ?? null, centre);
     expect(hit).toBe(await element.getAttribute('data-overlay-id'));
     await page.touchscreen.tap(centre[0], centre[1]);
-    await expect(element).toHaveAttribute('aria-pressed', 'true');
+    // 選択中の文字部品を押すと、その場の編集に入る(部品のボタンは編集欄に置き換わる)。
+    await expect(page.getByRole('textbox', { name: '本文をその場で編集' })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'オーバーレイ編集' })).toBeVisible();
   });
 });
