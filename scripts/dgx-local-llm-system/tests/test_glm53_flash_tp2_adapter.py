@@ -153,6 +153,8 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
         runs = [e for e in events if e["args"][0] == "run" and "--rm" not in e["args"]]
         drops = [i for i, e in enumerate(events) if "drop_caches" in " ".join(e["args"])]
         self.assertEqual([events[i]["node"] for i in drops], ["worker", "head"])
+        for i in drops:
+            self.assertNotIn("sync", events[i]["args"][-1])
         self.assertEqual([e["node"] for e in runs], ["worker", "head"])
         self.assertLess(max(drops), min(events.index(e) for e in runs))
         for event in runs:
@@ -253,6 +255,10 @@ class Glm53FlashTp2AdapterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         events = self.docker_events()
         self.assertEqual(events[0]["args"][0], "ps")
+        drops = [e for e in events if "drop_caches" in " ".join(e["args"])]
+        self.assertEqual([e["node"] for e in drops], ["worker", "head"])
+        for event in drops:
+            self.assertNotIn("sync", event["args"][-1])
         self.assertEqual([(e["node"], e["args"][0]) for e in events[1:]], [
             ("head", "rm"), ("worker", "stop"), ("worker", "rm"), ("worker", "run"),
             ("worker", "inspect"), ("worker", "run"), ("head", "run"), ("head", "run"),

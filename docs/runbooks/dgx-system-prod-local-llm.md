@@ -1134,6 +1134,7 @@ worker の停止情報は `/srv/dgx/system-prod/state/blue-remote-worker.json`
 （起動・停止共通の `BLUE_REMOTE_WORKER_MARKER_PATH` で変更可）に残す。
 SSH 停止失敗時は marker を保持して非0を返すため、接続を復旧して停止を再実行する。
 drop_caches は両ノードで特権一時コンテナから実行し、失敗は stderr に記録して起動を続ける。
+sync はしない（遅いディスクの書き出しを待って止まるため）。
 
 ### 私用 Qwen3.8 Flash Next FP8 の2台レシピ
 
@@ -1143,6 +1144,7 @@ drop_caches は両ノードで特権一時コンテナから実行し、失敗�
 契約 fixture は `scripts/dgx-local-llm-system/tests/fixtures/private_qwen38_flash_next_orcarouter_fp8_tp2/manifest.json`。
 launcher はレシピと vLLM 設定を環境変数へ変換し、adapter は固定レシピとの不一致を起動前に拒否する。
 Qwen は両 rank の起動前に両ノードの drop_caches を試み、失敗時は警告して続行する。
+sync はしない（遅いディスクの書き出しを待って止まるため）。
 レシピ未指定・空は従来の GLM 引数と起動順序を維持する。業務 profile の切替は対象外。
 検証は偽 SSH / Docker によるローカル起動契約のみで、実機の readiness は未確認。
 
