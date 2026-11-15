@@ -12,6 +12,7 @@ import {
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
 import { reportSessakuPieceError } from '../../features/kiosk/errorTelemetry';
 import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingPlanningBoard/createPlanningBoardSeibanActions';
+import { PlanningBoardUnitOpMutationContext, usePlanningBoardUnitOpMutation } from '../../features/kiosk/grindingPlanningBoard/gantt/usePlanningBoardUnitOpMutation';
 import { PlanningBoardOfflineMinutesProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineMinutesProvider';
 import { PlanningBoardOfflineProvider, usePlanningBoardOffline, useFrozenValue } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
 import { usePlanningBoardPageQueries, usePlanningBoardPageChips } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineQueries';
@@ -325,6 +326,8 @@ export function PlanningBoardPage() {
     });
   }, [category, scopeReady, gate]);
   const refetchBoard = boardQuery.refetch;
+  const unitOpMutation = usePlanningBoardUnitOpMutation({ refreshBoard: () => refetchBoard({ loadAlreadyInvalidated: true }), gate, isBlocked: () => piecePendingRef.current || !bulkReady || interactionLocked || writeBlocked || writeQueue.pending || completionPendingRef.current.size > 0 || Boolean(orderPreview),
+    begin: (item) => { setPieceMutationResult(null); piecePendingParentRef.current = item.parentItemId ?? item.itemId; piecePendingRef.current = true; setPiecePhase('saving'); }, end: () => { piecePendingRef.current = false; setPiecePhase('idle'); } });
   const splitPieces = pieceMutations.split.mutateAsync; const mergePieces = pieceMutations.merge.mutateAsync;
   const changePieces = useCallback(async (items: GrindingPlanningBoardItem[], quantities?: number[], opMutation?: { fromOpNo?: number }) => {
     if (!gate.attempt()) return; if (!bulkReady || refreshRequired || Boolean(orderPreview) || piecePendingRef.current || interactionLocked || writeBlocked || writeQueue.pending || completionPendingRef.current.size) {
@@ -665,6 +668,7 @@ export function PlanningBoardPage() {
   return (
     <MinutesProvider dueSource={dueSource}><PlanningBoardProcessChipsContext.Provider value={chipsByPart}>
     <PlanningBoardPlacementContext.Provider value={placementByPart}>
+    <PlanningBoardUnitOpMutationContext.Provider value={unitOpMutation}>
     <PlanningBoardPiecesContext.Provider value={pieceActions}>
     <main className="relative min-h-0 w-full shrink-0 overflow-hidden bg-slate-950 px-2 py-2 text-white sm:px-3">
       <PlanningBoardToolbar arrivalFilterEnabled={arrivalFilterEnabled} onToggleArrivalFilter={toggleArrivalFilter} scawEnabled={scawEnabled} onToggleScawMode={() => { if (!offline.frozen || gate.attempt()) toggleScawMode(); }}
@@ -802,7 +806,7 @@ export function PlanningBoardPage() {
         offsetDays={offsetDays} setOffsetDays={(value) => { if (gate.attempt()) setOffsetDays(value); }} applyEditor={applyEditor}
       />
     </main>
-    </PlanningBoardPiecesContext.Provider></PlanningBoardPlacementContext.Provider>
+    </PlanningBoardPiecesContext.Provider></PlanningBoardUnitOpMutationContext.Provider></PlanningBoardPlacementContext.Provider>
     </PlanningBoardProcessChipsContext.Provider></MinutesProvider>
   );
 }

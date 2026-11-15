@@ -42,7 +42,7 @@ vi.mock('../../features/kiosk/errorTelemetry', async (importOriginal) => ({ ...a
 
 const mocks = vi.hoisted(() => ({
   completion: vi.fn(),
-  pieceCompletion: vi.fn(), pieceSplit: vi.fn(), pieceMerge: vi.fn(), opSplit: vi.fn(), opMerge: vi.fn(), opClear: vi.fn(),
+  pieceCompletion: vi.fn(), pieceSplit: vi.fn(), pieceMerge: vi.fn(), opSplit: vi.fn(), opMerge: vi.fn(), opClear: vi.fn(), opConfigure: vi.fn(),
   arrival: vi.fn(),
   capacity: vi.fn(),
   snapshot: vi.fn(),
@@ -69,7 +69,7 @@ vi.mock('../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover', 
 });
 
 vi.mock('../../api/domains/production-schedule/grinding-planning-board', async (importOriginal) => ({
-  ...await importOriginal<object>(), getKioskGrindingPlanningBoardSnapshot: vi.fn().mockResolvedValue({ items: [] }), clearKioskSessakuPieceOps: (args: unknown) => mocks.opClear(args)
+  ...await importOriginal<object>(), getKioskGrindingPlanningBoardSnapshot: vi.fn().mockResolvedValue({ items: [] }), configureKioskSessakuPieceOps: (args: unknown) => mocks.opConfigure(args), clearKioskSessakuPieceOps: (args: unknown) => mocks.opClear(args)
 }));
 
 vi.mock('../../api/hooks/production-schedule/d-schedule-minutes', () => ({ useKioskDScheduleMinutes: () => mocks.minutes() }));
@@ -239,6 +239,62 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
   describe('piece interactions', () => {
     beforeEach(() => {
       vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
+    });
+    it.each(['success', 'failure', 'conflict'] as const)('keeps configure gated through the board refresh with unchanged bars and messages (%s)', async (outcome) => {
+      let data = splitBoard();
+      const head = { ...data.items[0]!, itemId: 'piece:id-0', plannedQuantity: 1, quantity: 1,
+        effectiveResourceCd: '305', unitRequiredMinutes: 30, setupMinutes: 0 };
+      data = { ...data, items: [head] };
+      mocks.capacity.mockReturnValue({ data: { dailyHoursByResource: {}, runsThroughBreaksResources: [], unitSplitEnabledByResource: { '305': true } }, isLoading: false });
+      mocks.snapshot.mockImplementation(() => ({ data, isLoading: false, isError: false, refetch: mocks.refetch }));
+      let save!: (value: unknown) => void; let fail!: (error: unknown) => void; let refresh!: (value: unknown) => void;
+      mocks.opConfigure.mockReturnValue(new Promise((resolve, reject) => { save = resolve; fail = reject; }));
+      mocks.refetch.mockImplementation(() => new Promise(resolve => { refresh = resolve; }));
+      const actions = vi.spyOn(piecePopover, 'usePlanningBoardPieceActions');
+      const gantt = vi.spyOn(pageGanttHook, 'usePlanningBoardPageGantt');
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      fireEvent.click(screen.getByRole('button', { name: '1台', exact: true }));
+      fireEvent.click(within(screen.getByRole('group', { name: '1台の資源CD' })).getByRole('button', { name: '305 研削機Ａ' }));
+      const bar = screen.getAllByTestId('planning-gantt-bar-piece:id-0')[0]!;
+      fireEvent.pointerDown(bar, { clientX: 100, clientY: 20, button: 0 });
+      fireEvent.pointerUp(bar, { clientX: 107, clientY: 20 });
+      fireEvent.click(bar);
+      fireEvent.click(screen.getAllByRole('button', { name: /の数量/ })[0]!);
+      const submit = await screen.findByRole('button', { name: '2工程にする' });
+      await waitFor(() => expect(submit).toBeEnabled());
+      const oldBars = gantt.mock.lastCall![0].ganttItems;
+      fireEvent.click(submit);
+      await waitFor(() => expect(mocks.opConfigure).toHaveBeenCalledTimes(1));
+      const expectLocked = () => {
+        expect(submit).toBeDisabled();
+        expect(actions.mock.lastCall![0].blocked).toBe(true);
+        expect(gantt.mock.lastCall![0].writeBlocked).toBe(true);
+        expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: false });
+        expect(gantt.mock.lastCall![0].ganttItems).toEqual(oldBars);
+      };
+      expectLocked(); expect(mocks.refetch).not.toHaveBeenCalled();
+      if (outcome !== 'success') {
+        await act(async () => { fail(outcome === 'conflict' ? { isAxiosError: true, response: { status: 409 } } : new Error('save failed')); });
+        expect(await screen.findByRole('alert')).toHaveTextContent(outcome === 'conflict'
+          ? '表示中のデータが更新されています。最新状態を取得してください。' : '保存できませんでした。時間をおいて再試行してください。');
+        expect(screen.getByRole('dialog', { name: '数量' })).toBeInTheDocument();
+        expect(gantt.mock.lastCall![0].ganttItems).toEqual(oldBars);
+        expect(gantt.mock.lastCall![0].writeBlocked).toBe(false);
+        expect(submit).toBeEnabled();
+        return;
+      }
+      // Even exact returned parent bars cannot describe reranks/definition changes elsewhere.
+      const saved = [head, { ...head, itemId: 'pieceops:id-0:2', opRange: { fromOpNo: 2, toOpNo: 2 } }];
+      await act(async () => { save({ parentItemId: head.parentItemId, pieces: saved, pieceSetVersion: 5 }); });
+      await waitFor(() => expect(mocks.refetch).toHaveBeenCalledExactlyOnceWith({ loadAlreadyInvalidated: true }));
+      expectLocked(); expect(screen.getByRole('dialog', { name: '数量' })).toBeInTheDocument();
+      data = { ...data, snapshotId: 'configured', items: saved };
+      await act(async () => { refresh({ data, isError: false }); });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: '数量' })).not.toBeInTheDocument());
+      expect(gantt.mock.lastCall![0].ganttItems).toEqual(saved);
+      expect(gantt.mock.lastCall![0].writeBlocked).toBe(false);
+      expect(actions.mock.lastCall![0].blocked).toBe(false);
+      expect(mocks.snapshot).toHaveBeenLastCalledWith(expect.anything(), { refetchIntervalMs: undefined });
     });
     it('saves operation split with the current bar revision and selects the resulting interval', async () => {
       let data = splitBoard(); const head = { ...data.items[0]!, itemId: 'piece:id-0', plannedQuantity: 1, quantity: 1,
@@ -1394,7 +1450,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     localStorage.removeItem(CATEGORY_STORAGE_KEY);
     localStorage.removeItem(SCHEDULE_SOURCE_STORAGE_KEY);
     for (const category of ['grinding', 'cutting', 'all']) localStorage.removeItem(`kiosk.planning-board.single-resource:site-1:${category}`);
-    mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset(); mocks.opSplit.mockReset(); mocks.opMerge.mockReset(); mocks.opClear.mockReset();
+    mocks.pieceCompletion.mockReset(); mocks.pieceSplit.mockReset(); mocks.pieceMerge.mockReset(); mocks.opSplit.mockReset(); mocks.opMerge.mockReset(); mocks.opClear.mockReset(); mocks.opConfigure.mockReset();
     mocks.completion.mockReset();
     mocks.completion.mockResolvedValue({});
     mocks.capacity.mockReset();
