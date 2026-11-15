@@ -1,6 +1,5 @@
 import { normalizeProcedureManualCommonSubject } from '@raspi-system/shared-types';
 
-import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualProcessDto } from '../types';
@@ -24,8 +23,7 @@ export function ProcedureManualCommonList({ items, processes, categoryId, kanaRo
       <h2 className="rounded-full border border-[#344252] px-3.5 py-1.5 text-lg">共通{category ? ` › ${category}` : ''}{kanaRow ? ` › ${kanaRow}行` : ''}</h2><span>{items.length} 件</span>
     </div>
     <div role="table" aria-label="共通の手順" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
-      {items.map(item => <div role="row" aria-label={item.title} key={item.assignmentId} className="grid h-[60px] shrink-0 items-center gap-3.5 rounded-lg border border-[#27313b] bg-[#161c22] px-3.5 text-xl" style={{ gridTemplateColumns: `64px minmax(0,1fr) 170px 110px 90px 64px${onFix ? ' 64px' : ''}${onRemove ? ' 56px' : ''}` }}>
-        <div role="cell" className="[&>div]:h-[42px] [&>div]:w-14"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
+      {items.map(item => <div role="row" aria-label={item.title} key={item.assignmentId} className="grid h-[60px] shrink-0 items-center gap-3.5 rounded-lg border border-[#27313b] bg-[#161c22] px-3.5 text-xl" style={{ gridTemplateColumns: `minmax(0,1fr) 170px 110px 90px 64px${onFix ? ' 64px' : ''}${onRemove ? ' 56px' : ''}` }}>
         <b role="cell" className="truncate">{item.title}</b>
         <span role="cell" className="truncate text-base text-[#9fadb9]">{item.category ?? processes.find(row => row.id === item.processId)?.name}</span>
         <span role="cell" className="text-base text-[#9fadb9]">{item.pageCount ?? '—'} ページ</span>

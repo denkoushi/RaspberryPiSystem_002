@@ -11,7 +11,6 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
 
-import { ManualThumbnail } from './ManualThumbnail';
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { clearManualLists, fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
@@ -310,7 +309,7 @@ export function ProcedureManualWorkshop() {
           </div>
           <div role="table" aria-label={process ? shortName(process) : '全工程'} className="min-w-[1100px]">
           <div role="row" className="sr-only">
-            {['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
+            {['品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作'].map(label => <div role="columnheader" key={label}>{label}</div>)}
           </div>
           {filteredItems.map(item => {
             const fullName = item.label || item.title;
@@ -319,8 +318,7 @@ export function ProcedureManualWorkshop() {
               partName: fullName, subjectKey: item.modelCode,
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
-            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `36px minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
-            <div role="cell"><ManualThumbnail url={item.thumbnailPageUrl} /></div>
+            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell" className="min-w-0 truncate text-xl font-bold" title={fullName}>{name.partName}</div>
             <div role="cell" className="min-w-0 truncate font-mono text-[17px] font-bold">{name.subjectKey}</div>
             <div role="cell" className="min-w-0 truncate text-[17px]">{name.process}</div>

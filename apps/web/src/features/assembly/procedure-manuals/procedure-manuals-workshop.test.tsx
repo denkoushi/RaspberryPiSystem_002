@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
@@ -9,7 +9,7 @@ import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { AssemblyProcedureSequenceDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ rename: vi.fn(), partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), image: vi.fn(), verify: vi.fn() }));
+const mocks = vi.hoisted(() => ({ rename: vi.fn(), partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), verify: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   renameAssemblyProcedureDocument: mocks.rename,
   verifyAssemblyTemplateAccessPassword: mocks.verify,
@@ -21,7 +21,6 @@ vi.mock('../../../api/client', () => ({
   deleteAssemblyProcedureDocument: mocks.delete,
   listProcedureMaterials: mocks.materials, listProcedureVideos: mocks.videos
 }));
-vi.mock('../../../hooks/useProtectedImageBlobUrl', () => ({ useProtectedImageBlobUrl: mocks.image }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence, onClose }: { sequence: AssemblyProcedureSequenceDto; onClose?: () => void }) => <div data-testid="pdf-sequence-viewer"><button onClick={onClose}>閉じる</button>{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));
 vi.mock('./ProcedureManualBlankDialog', () => ({ ProcedureManualBlankDialog: ({ modelCode, processId, subjectKind }: { modelCode: string; processId: string; subjectKind: string }) => <div role="dialog" aria-label="白紙から作る" data-subject-kind={subjectKind}>{modelCode} / {processId}</div> }));
 vi.mock('./ProcedureManualAssignmentDialog', async importOriginal => ({
@@ -50,8 +49,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   clearProcedureEditorAccess(); saveProcedureEditorAccess('2520');
   mocks.verify.mockResolvedValue({ success: true });
-  vi.stubGlobal('IntersectionObserver', undefined);
-  mocks.image.mockImplementation((url: string) => ({ blobUrl: url }));
   mocks.partCandidates.mockImplementation(async ({ q, digitQuery }: { q: string; digitQuery: string }) => {
     const key = q.normalize('NFKC').trim().toUpperCase();
     return ['PART-12', 'NEW-1'].filter(code => code.includes(key) && code.replace(/\D/g, '').includes(digitQuery)).map(code => ({ partNumber: code, partNumberKey: code, partName: null, hasManual: false }));
@@ -73,7 +70,6 @@ beforeEach(() => {
     { id: 'pdf', assemblyProcedureDocumentId: null, kioskDocumentId: 'pdf', sortOrder: 2, label: 'PDF' }
   ] });
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe('procedure-manuals workshop', () => {
   it('displays initial results without waiting for unrelated counts', async () => {
@@ -127,7 +123,7 @@ describe('procedure-manuals workshop', () => {
     await waitFor(() => expect(mocks.allOverview).toHaveBeenCalledTimes(2));
     await act(async () => { finish({ processes: [{ processId: 'assembly', items: [{ ...published, title: '保存後の手順', modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly' }] }] }); });
     const row = await screen.findByRole('row', { name: '保存後の手順' });
-    expect(within(row).getAllByRole('cell').slice(3, 5).map(cell => cell.textContent)).toEqual(['組立', '組立']);
+    expect(within(row).getAllByRole('cell').slice(2, 4).map(cell => cell.textContent)).toEqual(['組立', '組立']);
     expect(screen.getByRole('button', { name: '組立' })).toBeInTheDocument();
     expect(mocks.processes).toHaveBeenCalledTimes(1);
   });
@@ -220,16 +216,16 @@ describe('procedure-manuals workshop', () => {
     expect(pane.getByRole('heading', { name: '工程' })).toBeInTheDocument();
     expect(pane.getByRole('heading', { name: '機種' })).toBeInTheDocument();
     const cells = within(row).getAllByRole('cell');
-    expect(cells.slice(1, 6).map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
-    cells.slice(1, 6).forEach(cell => expect(cell).toHaveClass('truncate'));
-    expect(cells[1]).toHaveClass('font-bold');
-    expect(cells[2]).toHaveClass('font-bold', 'font-mono');
-    expect(cells[5]).toHaveClass('text-[#9fadb9]');
+    expect(cells.slice(0, 5).map(cell => cell.textContent)).toEqual(['主軸', 'P-123', '加工', '研削', '仕上げ 確認']);
+    cells.slice(0, 5).forEach(cell => expect(cell).toHaveClass('truncate'));
+    expect(cells[0]).toHaveClass('font-bold');
+    expect(cells[1]).toHaveClass('font-bold', 'font-mono');
+    expect(cells[4]).toHaveClass('text-[#9fadb9]');
     expect(row).toHaveClass('h-14');
     expect(row).toHaveAttribute('title', namedItems[0].label);
     expect(screen.getByRole('table')).toHaveClass('min-w-[1100px]');
-    expect(within(screen.getByRole('row', { name: namedItems[1].title })).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual(['軸受', 'P-456', '組立', '圧入', '—']);
-    expect(within(screen.getByRole('row', { name: '旧名称' })).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual(['旧名称', 'DFD1', '組立', '組立', '—']);
+    expect(within(screen.getByRole('row', { name: namedItems[1].title })).getAllByRole('cell').slice(0, 5).map(cell => cell.textContent)).toEqual(['軸受', 'P-456', '組立', '圧入', '—']);
+    expect(within(screen.getByRole('row', { name: '旧名称' })).getAllByRole('cell').slice(0, 5).map(cell => cell.textContent)).toEqual(['旧名称', 'DFD1', '組立', '組立', '—']);
     expect(screen.queryByRole('columnheader', { name: '名前', exact: true })).not.toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: '機種・部品' })).not.toBeInTheDocument();
     expect(screen.getAllByRole('columnheader', { name: '工程' })).toHaveLength(1);
@@ -239,7 +235,7 @@ describe('procedure-manuals workshop', () => {
     mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'parent', items: [published] }] });
     show('');
     const row = await screen.findByRole('row', { name: published.title });
-    expect(within(row).getAllByRole('cell').slice(1, 6).map(cell => cell.textContent)).toEqual([published.title, 'DFD1', '', '組立', '—']);
+    expect(within(row).getAllByRole('cell').slice(0, 5).map(cell => cell.textContent)).toEqual([published.title, 'DFD1', '', '組立', '—']);
   });
 
   it.each([
@@ -428,7 +424,7 @@ describe('procedure-manuals workshop', () => {
     const row = await screen.findByRole('row', { name: '公開手順' });
     expect(within(row).getByRole('button', { name: action })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: action === '削除' ? '外す' : '削除' })).not.toBeInTheDocument();
-    const usage = within(row).getAllByRole('cell')[7];
+    const usage = within(row).getAllByRole('cell')[6];
     expect(usage).toHaveTextContent(shared ? 'DFD2 · 検査、DFD3 · 切削' : '—');
     expect(usage).toHaveClass('truncate'); expect(usage).not.toHaveAttribute('title');
     expect(row.style.gridTemplateColumns).toContain(shared ? '150px 180px' : '150px 0px');
@@ -497,58 +493,13 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
     expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.delete).not.toHaveBeenCalled();
   });
-  it('starts image hooks only for visible rows and retains loaded thumbnails offscreen', async () => {
-    const observers: { notify: (visible: boolean) => void; observe: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }[] = [];
-    const options: (IntersectionObserverInit | undefined)[] = [];
-    vi.stubGlobal('IntersectionObserver', class {
-      observe = vi.fn();
-      disconnect = vi.fn();
-      constructor(callback: IntersectionObserverCallback, init?: IntersectionObserverInit) {
-        options.push(init);
-        observers.push({ notify: visible => callback([{ isIntersecting: visible } as IntersectionObserverEntry], this as unknown as IntersectionObserver), observe: this.observe, disconnect: this.disconnect });
-      }
-    });
-    const lazyItems = [published, { ...published, assignmentId: 'second', title: '画面外手順', thumbnailPageUrl: '/second.png' }];
-    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 2, items: lazyItems }] });
-    const view = show();
-    const first = await screen.findByRole('row', { name: '公開手順' });
-    const second = screen.getByRole('row', { name: '画面外手順' });
-    // 行の描画で findBy は解決するが、IntersectionObserver はその後の effect で作られる。
-    await waitFor(() => expect(observers).toHaveLength(2));
-    expect(options).toEqual([{ rootMargin: '200px' }, { rootMargin: '200px' }]);
-    expect(observers[0].observe).toHaveBeenCalledWith(within(first).getAllByRole('cell')[0].firstChild);
-    act(() => observers.forEach(observer => observer.notify(false)));
-    expect(mocks.image).not.toHaveBeenCalled();
-    act(() => observers[0].notify(true));
-    const image = within(first).getByRole('img');
-    expect(image).toHaveAttribute('src', '/page.png');
-    expect(mocks.image).toHaveBeenCalledTimes(1);
-    expect(mocks.image).toHaveBeenCalledWith('/page.png');
-    expect(within(second).queryByRole('img')).not.toBeInTheDocument();
-    expect(observers[0].disconnect).toHaveBeenCalled();
-    act(() => observers[0].notify(false));
-    expect(within(first).getByRole('img')).toBe(image);
-    expect(mocks.image).toHaveBeenCalledTimes(1);
-    act(() => observers[1].notify(true));
-    expect(within(second).getByRole('img')).toHaveAttribute('src', '/second.png');
-    view.unmount();
-    expect(observers[1].disconnect).toHaveBeenCalled();
-  });
-
-  it('starts image hooks immediately without IntersectionObserver', async () => {
-    show();
-    const row = await screen.findByRole('row', { name: '公開手順' });
-    expect(within(row).getByRole('img')).toHaveAttribute('src', '/page.png');
-    expect(mocks.image).toHaveBeenCalledWith('/page.png');
-  });
-
-  it('exposes eleven visually hidden column headers and reads the page count with its unit', async () => {
+  it('exposes ten visually hidden column headers and reads the page count with its unit', async () => {
     show();
     const row = await screen.findByRole('row', { name: '公開手順' });
     const headers = screen.getAllByRole('columnheader');
-    expect(headers.map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
+    expect(headers.map(header => header.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     expect(headers[0].parentElement).toHaveClass('sr-only');
-    const cell = within(row).getAllByRole('cell')[9];
+    const cell = within(row).getAllByRole('cell')[8];
     expect(cell.textContent).toBe('3 ページ');
     expect(within(cell).getByText('ページ')).toHaveClass('sr-only');
   });
@@ -563,10 +514,10 @@ describe('procedure-manuals workshop', () => {
     const revision = screen.getByRole('row', { name: '改版手順' });
     expect(within(revision).getByText(/改版中 · 佐藤/)).toBeInTheDocument();
     expect(within(revision).queryByText(/承認/)).not.toBeInTheDocument();
-    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[8]).toBeEmptyDOMElement();
+    expect(within(screen.getByRole('row', { name: '承認なし' })).getAllByRole('cell')[7]).toBeEmptyDOMElement();
   });
 
-  it('uses dense accessible rows, status colors, thumbnails and valid symbol actions', async () => {
+  it('uses dense accessible rows, status colors and valid symbol actions without images', async () => {
     show();
     expect(screen.getByTestId('procedure-manuals-workshop')).toHaveClass('grid-rows-[64px_minmax(0,1fr)]');
     const modelColumn = screen.getByRole('region', { name: '機種一覧' });
@@ -595,14 +546,13 @@ describe('procedure-manuals workshop', () => {
     expect(screen.getByRole('button', { name: '検査' })).toBeInTheDocument();
     const pub = screen.getByRole('row', { name: '公開手順' });
     expect(pub).toHaveClass('h-14');
-    expect(within(pub).getAllByRole('cell')).toHaveLength(11);
+    expect(within(pub).getAllByRole('cell')).toHaveLength(10);
     expect(within(pub).getByText('公開手順')).toHaveAttribute('title', '公開手順');
     expect(within(pub).getByText('公開手順')).toHaveClass('font-bold', 'truncate');
     expect(within(pub).getByText('公開 第2版')).toHaveClass('text-[#3ba776]');
     expect(within(pub).getByText('改版中 · 佐藤 09:12〜')).toHaveClass('bg-[#f6b93b1f]');
     expect(within(pub).getByText('3')).toBeInTheDocument();
-    expect(within(pub).getByRole('img')).toHaveAttribute('src', '/page.png');
-    expect(within(pub).getByRole('img').parentElement).toHaveClass('h-[26px]', 'w-9');
+    for (const row of screen.getAllByRole('row')) expect(within(row).queryByRole('img')).not.toBeInTheDocument();
     expect(within(pub).getByRole('link', { name: '使う' })).toHaveAttribute('href', '/kiosk/assembly/templates/new?procedureDocumentId=v2');
     const draft = screen.getByRole('row', { name: '初版下書き' });
     expect(within(draft).getByText('下書き')).toHaveClass('text-[#f6b93b]');
@@ -617,7 +567,7 @@ describe('procedure-manuals workshop', () => {
       expect(within(row).queryByRole('link', { name: '使う' })).not.toBeInTheDocument();
       expect(within(row).getByRole('button', { name: '外す' })).toBeInTheDocument();
     }
-    expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[9]).toHaveTextContent('—');
+    expect(within(screen.getByRole('row', { name: '無効手順' })).getAllByRole('cell')[8]).toHaveTextContent('—');
     for (const control of [within(pub).getByRole('button', { name: '直す' }), within(pub).getByRole('link', { name: '使う' }), within(pub).getByRole('button', { name: '外す' }), within(draft).getByRole('button', { name: '削除' })]) {
       expect(control).toHaveClass('min-h-12', 'w-11');
       expect(control).toHaveAttribute('aria-label');
@@ -734,7 +684,7 @@ describe('procedure-manuals workshop', () => {
     expect(screen.queryByText('工程を選択')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '作る' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '既存の要領書を割り当てる' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['サムネイル', '品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
+    expect(screen.getAllByRole('columnheader').map(header => header.textContent)).toEqual(['品名', '品番', '工程', '作業', '補足', '状態', '他の使用先', '担当・承認', 'ページ', '操作']);
     fireEvent.click(screen.getByRole('button', { name: '組立' }));
     expect(screen.getByRole('button', { name: '組立' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.queryByRole('columnheader', { name: '機種・部品' })).not.toBeInTheDocument();
