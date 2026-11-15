@@ -1,3 +1,4 @@
+import { updateGrindingPlanningBoardResourceMove } from '../../../services/production-schedule/grinding-planning-board/write.js';
 import { createPlanningTestBar, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
@@ -141,6 +142,25 @@ const resourceOrderBulkBodySchema = z.object({
     overrideVersion: z.number().int().min(0).optional()
   })).min(1).max(500)
 }).refine((value) => new Set(value.items.map((item) => item.itemId)).size === value.items.length, { message: 'アイテムIDが重複しています' });
+
+const resourceMoveBodySchema = z.object({
+  dueSource: grindingPlanningBoardDueSourceSchema,
+  scheduleSource: scheduleSourceSchema,
+  sourceRevision: sourceRevisionSchema,
+  move: z.object({
+    itemId: z.string().min(1).max(2_000),
+    itemRevision: z.string().min(1).max(200),
+    overrideVersion: z.number().int().min(0).optional(),
+    resourceCd: z.string().trim().min(1).max(20)
+  }),
+  items: z.array(z.object({
+    itemId: z.string().min(1).max(2_000),
+    itemRevision: z.string().min(1).max(200),
+    overrideVersion: z.number().int().min(0).optional()
+  })).min(1).max(500)
+}).refine((value) => new Set(value.items.map((item) => item.itemId)).size === value.items.length &&
+  value.items.some((item) => item.itemId === value.move.itemId && item.itemRevision === value.move.itemRevision && item.overrideVersion === value.move.overrideVersion),
+{ message: '移動するアイテムを含む重複しない並び順を指定してください' });
 
 const orderBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
@@ -360,6 +380,15 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = resourceOrderBodySchema.parse(request.body);
     const result = await updateGrindingPlanningBoardResourceOrder({ siteKey: scope.siteKey, ...body });
+    void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
+    return result;
+  });
+
+  app.put('/kiosk/production-schedule/grinding-planning-board/resource-move', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const body = resourceMoveBodySchema.parse(request.body);
+    const result = await updateGrindingPlanningBoardResourceMove({ siteKey: scope.siteKey, ...body });
     void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });
     return result;
   });

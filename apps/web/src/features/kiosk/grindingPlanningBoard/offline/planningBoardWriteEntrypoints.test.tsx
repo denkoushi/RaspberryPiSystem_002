@@ -81,7 +81,7 @@ describe('offline write entrypoints', () => {
     const options = { focusedFseiban: null, sortedItemsBySeiban: new Map(), view: 'resource', visibleItems: [], ganttItems: [],
       nowMs: Date.now(), resourceOrderHistory: [], registeredFseibans: [], writeQueue: { pending: false }, orderPreview: null,
       setOrderPreview: changed, setPinMode: changed, setResourceOrderHistory: changed, enqueueWrite: changed,
-      enqueueOverrides: changed, updatePinsAsync: changed, updateResourceOrderBulkAsync: changed
+      enqueueOverrides: changed, updateResourceMoveAsync: changed, updatePinsAsync: changed, updateResourceOrderBulkAsync: changed
     } as unknown as Parameters<typeof usePlanningBoardPageGantt>[0];
     const { result } = renderHook(() => usePlanningBoardPageGantt(options));
     const fake = item('GANTT');

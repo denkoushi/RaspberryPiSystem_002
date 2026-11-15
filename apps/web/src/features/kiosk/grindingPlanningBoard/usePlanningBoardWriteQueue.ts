@@ -21,6 +21,8 @@ export type PlanningBoardWriteContext = {
 };
 export type PlanningBoardWrite = {
   label: string;
+  successLabel?: string;
+  affectsLoad?: boolean;
   itemIds: readonly string[];
   seibans: readonly string[];
   wholeSeiban?: boolean;
@@ -38,7 +40,7 @@ type Options = {
   order: string[];
   uncheckedFseibans?: string[];
   sourceRevision: string;
-  refresh: () => Promise<unknown>;
+  refresh: (affectsLoad?: boolean) => Promise<unknown>;
   onStart: (label: string) => void;
   onSuccess: (label: string) => void;
   onError: (error: unknown) => void;
@@ -152,11 +154,13 @@ export function usePlanningBoardWriteQueue(options: Options) {
     latest.current.onStart(write.label);
     const run = async () => {
       let failed = false;
+      let affectsLoad = false;
       let lastLabel = write.label;
       try {
         while (mounted.current && current === state.current && current.writes.length > 0) {
           const next = current.writes[0];
-          lastLabel = next.label;
+          lastLabel = next.successLabel ?? next.label;
+          affectsLoad ||= next.affectsLoad !== false;
           const requestRevision = current.sourceRevision;
           const requestItems = latest.current.items;
           try {
@@ -207,7 +211,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
             latest.current.onError(error);
             changed();
             try {
-              const refreshed = await latest.current.refresh();
+              const refreshed = await latest.current.refresh(affectsLoad);
               if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
               if (refreshed && typeof refreshed === 'object' && 'isError' in refreshed && refreshed.isError) throw new Error('Refresh failed');
               const data = refreshed && typeof refreshed === 'object' && 'data' in refreshed ? refreshed.data : null;
@@ -234,7 +238,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
         if (!failed) {
           latest.current.onSuccess(lastLabel);
           // One reconciliation per drained batch, rather than one refetch per click.
-          void Promise.resolve().then(() => { if (current === state.current && generation === gate.generation()) return latest.current.refresh(); }).catch(() => {
+          void Promise.resolve().then(() => { if (current === state.current && generation === gate.generation()) return latest.current.refresh(affectsLoad); }).catch(() => {
             // Keep confirmed writes visible until polling or explicit refresh reconciles them.
           });
         }

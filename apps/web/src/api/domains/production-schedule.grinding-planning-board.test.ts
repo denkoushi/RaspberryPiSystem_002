@@ -9,9 +9,17 @@ const put = vi.hoisted(() => vi.fn());
 const remove = vi.hoisted(() => vi.fn());
 vi.mock('../http', () => ({ api: { get, post, put, delete: remove } }));
 
-import { splitKioskSessakuPieceOps, mergeKioskSessakuPieceOps, autoUnitSplitKioskSessakuPieces, setKioskSessakuPieceOpCompletion, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
+import { updateKioskGrindingPlanningBoardResourceMove, splitKioskSessakuPieceOps, mergeKioskSessakuPieceOps, autoUnitSplitKioskSessakuPieces, setKioskSessakuPieceOpCompletion, getKioskGrindingPlanningBoardResourceMinutes, updateKioskGrindingPlanningBoardResourceMinutesSource, updateKioskGrindingPlanningBoardResourcePartMinutes, updateKioskGrindingPlanningBoardFirstProcessArrival, splitKioskSessakuPieces, mergeKioskSessakuPieces, setKioskSessakuPieceCompletion, updateKioskGrindingPlanningBoardArrival, getKioskGrindingPlanningBoard, getKioskGrindingPlanningBoardLoad, getKioskGrindingPlanningBoardProcessChips, getKioskGrindingPlanningBoardSnapshot } from './production-schedule';
 
 describe('grinding planning board requests', () => {
+  it('sends a resource move and destination ranks in a single PUT', async () => {
+    const item = { itemId: 'row:a', itemRevision: 'r', overrideVersion: 1 };
+    const payload = { sourceRevision: 'board', dueSource: 'scaw' as const, scheduleSource: 'general' as const,
+      move: { ...item, resourceCd: '581' }, items: [item] };
+    const data = { sourceRevision: 'board', items: [] }; put.mockResolvedValue({ data });
+    await expect(updateKioskGrindingPlanningBoardResourceMove(payload)).resolves.toEqual(data);
+    expect(put).toHaveBeenCalledExactlyOnceWith('/kiosk/production-schedule/grinding-planning-board/resource-move', payload);
+  });
   it('posts an empty body for bounded automatic unit splitting', async () => {
     const data = { splitCount: 5, skippedCount: 2, hasMore: true };
     post.mockResolvedValue({ data });

@@ -7,7 +7,7 @@ import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } 
 
 import type { OrderPreview } from './planningBoardPageModel';
 import type { usePlanningBoardPageGantt } from './usePlanningBoardPageGantt';
-import type { GrindingPlanningBoardResponse, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardResponse, GrindingPlanningBoardResourceMoveRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 vi.mock('../../../api/hooks', () => ({
   useKioskGrindingPlanningBoardResourceMinutes: () => ({ data: { ownSourceResourceCds: ['305'], values: [] } }),
@@ -161,5 +161,71 @@ describe('planning board due order', () => {
     expect(h.result.current.queue.pending).toBe(false);
     expect(h.result.current.queue.items.filter((item) => item.itemRevision.startsWith('saved-0-'))).toHaveLength(20);
     h.unmount();
+  });
+});
+
+
+describe('gantt atomic resource move', () => {
+  function moveSetup(options: PageOptions = {}) {
+    const fixture = productionFixture(4, 2);
+    fixture.items = fixture.items.map((item) => ({ ...item, specialDue: null }));
+    const data = { siteKey: 'site', category: 'grinding', view: 'resource', sourceRevision: 'source-0', boardVersion: 1,
+      registeredFseibans: fixture.seibans, seibanOrder: fixture.seibans, resources: fixture.resources, items: fixture.items,
+      testBars: [], load: [], unknownRequiredMinutesCount: 0, seibanProgress: {} } as const;
+    let resolve!: (result: GrindingPlanningBoardResourceOrderResponse) => void;
+    let reject!: (error: Error) => void;
+    const move = vi.fn((_payload: GrindingPlanningBoardResourceMoveRequest) => new Promise<GrindingPlanningBoardResourceOrderResponse>((done, fail) => { resolve = done; reject = fail; }));
+    const enqueueOverrides = vi.fn().mockReturnValue(true);
+    const h = setup(fixture, { data: data as unknown as GrindingPlanningBoardResponse, enqueueOverrides, updateResourceMoveAsync: move, ...options });
+    return { ...h, fixture, move, enqueueOverrides, finish: async (fail = false) => {
+      await act(async () => {
+        if (fail) reject(new Error('failed'));
+        else { const payload = move.mock.calls[0][0]; resolve({ sourceRevision: 'source-0', items: payload.items.map((ref, index) => ({
+          ...fixture.items.find((item) => item.itemId === ref.itemId)!, effectiveResourceCd: '301', alternateRank: index + 1,
+          version: 3, itemRevision: `saved-${ref.itemId}` })) }); }
+      });
+    } };
+  }
+  it('sends one move, optimistically ranks the destination, and records undo history on success', async () => {
+    const h = moveSetup();
+    const item = h.fixture.items[0]!, target = h.fixture.items[1]!;
+    act(() => h.result.current.page.moveResourceInGantt(item, '301', target, 'before'));
+    expect(h.move).toHaveBeenCalledOnce();
+    expect(h.save).not.toHaveBeenCalled(); expect(h.enqueueOverrides).not.toHaveBeenCalled();
+    expect(h.move.mock.calls[0][0]).toMatchObject({ sourceRevision: 'source-0', move: { itemId: item.itemId, resourceCd: '301' } });
+    expect(h.result.current.queue.items[0]).toMatchObject({ effectiveResourceCd: '301', alternateRank: 1 });
+    expect(h.result.current.history).toHaveLength(0);
+    await h.finish();
+    expect(h.result.current.history).toHaveLength(1);
+    expect(h.result.current.history[0].restoreResources).toEqual([{ itemId: item.itemId, resourceCd: '300' }]);
+    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(true);
+    h.unmount();
+  });
+  it('rolls back both optimistic fields and leaves history unchanged on failure', async () => {
+    const h = moveSetup(); const item = h.fixture.items[0]!;
+    act(() => h.result.current.page.moveResourceInGantt(item, '301', h.fixture.items[1]!, 'before'));
+    await h.finish(true);
+    expect(h.result.current.queue.items[0]).toMatchObject({ effectiveResourceCd: item.effectiveResourceCd, alternateRank: item.alternateRank });
+    expect(h.result.current.history).toHaveLength(0);
+    h.unmount();
+  });
+  it('keeps only the override path across special-due bands', () => {
+    const h = moveSetup(); h.fixture.items[1]!.specialDue = { kind: 'today', expiresAt: '2026-11-05T17:00:00+09:00' };
+    act(() => h.result.current.page.moveResourceInGantt(h.fixture.items[0]!, '301', h.fixture.items[1]!, 'before'));
+    expect(h.enqueueOverrides).toHaveBeenCalledOnce(); expect(h.move).not.toHaveBeenCalled(); expect(h.save).not.toHaveBeenCalled();
+    h.unmount();
+  });
+  it('keeps the two-stage path for destinations with test bars', () => {
+    const { data, test } = mixedLane();
+    const h = moveSetup({ data: { ...data, resources: ['300', '301'], testBars: [{ ...test, resourceCd: '301' }] } });
+    act(() => h.result.current.page.moveResourceInGantt(h.fixture.items[0]!, '301', h.fixture.items[1]!, 'before'));
+    expect(h.enqueueOverrides).toHaveBeenCalledOnce(); expect(h.move).not.toHaveBeenCalled(); expect(h.save).toHaveBeenCalledOnce();
+    expect(h.requests[0].request.items.some((item) => item.itemId === test.itemId)).toBe(true);
+    h.unmount();
+  });
+  it.each(['standardHoursMissing', 'isCompleted'] as const)('blocks a destination member with %s', (field) => {
+    const h = moveSetup(); h.fixture.items[1]![field] = true;
+    act(() => h.result.current.page.moveResourceInGantt(h.fixture.items[0]!, '301', h.fixture.items[1]!, 'before'));
+    expect(h.move).not.toHaveBeenCalled(); expect(h.enqueueOverrides).not.toHaveBeenCalled(); h.unmount();
   });
 });

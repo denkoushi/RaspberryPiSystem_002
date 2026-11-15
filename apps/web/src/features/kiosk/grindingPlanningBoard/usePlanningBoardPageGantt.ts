@@ -19,7 +19,7 @@ import type { UnitOrderMethod } from './gantt/planningBoardUnitOrder';
 import type { FeedbackKind, OrderPreview, ResourceOrderHistory, ResourceOrderSnapshot } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
 import type { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
-import type { useUpdateKioskGrindingPlanningBoardPins, useUpdateKioskGrindingPlanningBoardResourceOrderBulk } from '../../../api/hooks';
+import type { useUpdateKioskGrindingPlanningBoardPins, useUpdateKioskGrindingPlanningBoardResourceMove, useUpdateKioskGrindingPlanningBoardResourceOrderBulk } from '../../../api/hooks';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardResponse, GrindingPlanningBoardView } from '@raspi-system/shared-types';
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 
@@ -47,6 +47,7 @@ type Options = {
   currentItemsRef: MutableRefObject<GrindingPlanningBoardItem[]>;
   hasPendingSeiban: ReturnType<typeof usePlanningBoardWriteQueue>['hasPendingSeiban'];
   enqueueWrite: ReturnType<typeof usePlanningBoardWriteQueue>['enqueue'];
+  updateResourceMoveAsync: ReturnType<typeof useUpdateKioskGrindingPlanningBoardResourceMove>['mutateAsync'];
   updateResourceOrderBulkAsync: ReturnType<typeof useUpdateKioskGrindingPlanningBoardResourceOrderBulk>['mutateAsync'];
   setColorBySeiban: Dispatch<SetStateAction<boolean>>;
   setFocusedFseiban: Dispatch<SetStateAction<string | null>>;
@@ -77,7 +78,7 @@ type Options = {
 export function usePlanningBoardPageGantt({
   focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
   data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
-  resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
+  resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync, updateResourceMoveAsync,
   setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
   scopeReady, pinMode, canMoveResource, snapshotResourceOrder: normalSnapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
   setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict,
@@ -139,7 +140,7 @@ export function usePlanningBoardPageGantt({
       (resolveGrindingPlanningBoardResource(item, 'alternate') ?? '未設定') !== snapshot.resourceCd || (item.kind !== 'test' && hasPendingSeiban(item.fseiban, true)))) return false;
     const members = items as GrindingPlanningBoardBar[];
     const ranks = new Map(snapshot.itemIds.map((id, index) => [id, index + 1]));
-    return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.flatMap((item) => item.kind === 'test' ? [] : [item.fseiban]))], order: true,
+    return enqueueWrite({ label, itemIds: snapshot.itemIds, seibans: [...new Set(members.flatMap((item) => item.kind === 'test' ? [] : [item.fseiban]))], order: true, affectsLoad: false,
       apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
       save: (context) => gate.run(() => updateResourceOrderBulkAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: preview?.sourceRevision ?? context.sourceRevision, resourceCd: snapshot.resourceCd,
         items: members.map((original) => { const item = original.kind === 'test' ? tests.bars.find((item) => item.itemId === original.itemId) ?? original : context.item(original); return { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version }; }) })),
@@ -184,10 +185,32 @@ export function usePlanningBoardPageGantt({
     proposed.splice(target ? proposed.indexOf(target.itemId) + (placement === 'after' ? 1 : 0) : proposed.length, 0, item.itemId);
     const id = ++resourceOrderHistoryId.current;
     const request = { itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version, resourceCd: targetResource };
-    if (!enqueueOverrides([item], [request], '資源CD', undefined, undefined, { onSaved: () => {
-      setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: before,
-        restoreResources: [{ itemId: item.itemId, resourceCd: previousResource }] }].slice(-10));
-    } })) return;
+    const rememberMove = () => setResourceOrderHistory((history) => [...history, { id, scope: historyScope, orders: before,
+      restoreResources: [{ itemId: item.itemId, resourceCd: previousResource }] }].slice(-10));
+    if (sameBand && !tests.bars.some((bar) => bar.resourceCd === targetResource && !bar.isCompleted && !bar.deletedAt)) {
+      const byId = new Map(currentItemsRef.current.map((candidate) => [candidate.itemId, candidate]));
+      const members = proposed.map((itemId) => byId.get(itemId));
+      if (members.some((member) => !member || member.standardHoursMissing || member.isCompleted || hasPendingSeiban(member.fseiban, true) ||
+        (member.itemId !== item.itemId && (resolveGrindingPlanningBoardResource(member, 'alternate') ?? '未設定') !== targetResource))) return;
+      const ranks = new Map(proposed.map((itemId, index) => [itemId, index + 1]));
+      enqueueWrite({ label: '資源CD', successLabel: '資源CDと順番', itemIds: proposed,
+        seibans: [...new Set(members.map((member) => member!.fseiban))], order: true,
+        apply: (display) => ({ ...display, items: display.items.map((candidate) => {
+          const moved = candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate;
+          return ranks.has(candidate.itemId) ? { ...moved, alternateRank: ranks.get(candidate.itemId)! } : moved;
+        }) }),
+        save: (context) => {
+          const moved = context.item(item);
+          return gate.run(() => updateResourceMoveAsync({ ...(scheduleSource == null ? {} : { scheduleSource }), sourceRevision: context.sourceRevision,
+            move: { itemId: moved.itemId, itemRevision: moved.itemRevision, overrideVersion: moved.version, resourceCd: targetResource },
+            items: members.map((member) => { const current = context.item(member!);
+              return { itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version }; }) }));
+        },
+        onSaved: rememberMove
+      });
+      return;
+    }
+    if (!enqueueOverrides([item], [request], '資源CD', undefined, undefined, { onSaved: rememberMove })) return;
     // A resource change clears alternateRank. Queue the complete destination order after its override acknowledgement.
     if (sameBand) enqueueResourceOrder({ resourceCd: targetResource, itemIds: proposed }, '資源CDと順番', () => {}, undefined, undefined,
       currentItemsRef.current.map((candidate) => candidate.itemId === item.itemId ? applyOptimisticOverride(candidate, request) : candidate));
@@ -334,7 +357,7 @@ export function usePlanningBoardPageGantt({
     const item = currentItemsRef.current.find((candidate) => candidate.itemId === original.itemId);
     if (!item) return;
     const pinned = !item.orderPinned;
-    enqueueWrite({ label: pinned ? '固定' : '固定の解除', itemIds: [item.itemId], seibans: [item.fseiban],
+    enqueueWrite({ affectsLoad: false, label: pinned ? '固定' : '固定の解除', itemIds: [item.itemId], seibans: [item.fseiban],
       apply: (display) => ({ ...display, items: display.items.map((entry) => entry.itemId === item.itemId ? { ...entry, orderPinned: pinned } : entry) }),
       save: (context) => { const current = context.item(item); return gate.run(() => updatePinsAsync({ sourceRevision: context.sourceRevision, pinned,
         items: [{ itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version }] })); }

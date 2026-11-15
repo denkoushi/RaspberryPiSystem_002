@@ -26,6 +26,7 @@ import {
   updateKioskGrindingPlanningBoardPins,
   updateKioskGrindingPlanningBoardRank,
   updateKioskGrindingPlanningBoardResourceOrder,
+  updateKioskGrindingPlanningBoardResourceMove,
   updateKioskGrindingPlanningBoardResourceOrderBulk,
   updateKioskGrindingPlanningBoardSeibanOrder,
   updateKioskGrindingPlanningBoardSeibanChecks,
@@ -48,6 +49,7 @@ import type {
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceMoveRequest,
   GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
@@ -428,6 +430,17 @@ export function useUpdateKioskGrindingPlanningBoardResourceOrder(options?: { inv
   return useMutation({
     mutationFn: (payload: GrindingPlanningBoardResourceOrderRequest) => updateKioskGrindingPlanningBoardResourceOrder({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
     onSuccess: (_result: GrindingPlanningBoardResourceOrderResponse) => {
+      if (options?.invalidateOnSuccess === false) return;
+      void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+    }
+  });
+}
+
+export function useUpdateKioskGrindingPlanningBoardResourceMove(options?: { invalidateOnSuccess?: boolean; dueSource?: 'excel' | 'scaw' }) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: GrindingPlanningBoardResourceMoveRequest) => updateKioskGrindingPlanningBoardResourceMove({ ...payload, ...(options?.dueSource == null ? {} : { dueSource: options.dueSource }) }),
+    onSuccess: () => {
       if (options?.invalidateOnSuccess === false) return;
       void queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     }

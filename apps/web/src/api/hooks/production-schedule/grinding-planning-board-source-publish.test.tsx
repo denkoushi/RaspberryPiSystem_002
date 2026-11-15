@@ -92,3 +92,25 @@ it('keeps the complete display while refreshing and rejects an older continuatio
   expect(hook.result.current.appendError).toBeNull();
   hook.unmount(); client.clear();
 });
+
+
+it.each([false, true])('suppresses revision-triggered load invalidation on write reconciliation (affects load: %s)', async (affectsLoad) => {
+  let revision = 'before';
+  mocks.board.mockImplementation(() => Promise.resolve({ ...page('a', 60, null), sourceRevision: revision }));
+  const { hook, client } = setup();
+  await flush();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  revision = 'after';
+  let complete!: Promise<unknown>;
+  act(() => { complete = hook.result.current.refetch({ loadAlreadyInvalidated: true });
+    if (affectsLoad) void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false }); });
+  await flush();
+  await act(async () => { await complete; });
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(affectsLoad ? 1 : 0);
+  // An unrelated future board revision must continue to refresh load.
+  revision = 'external';
+  await act(async () => { await client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll }); });
+  await flush();
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(affectsLoad ? 2 : 1);
+  hook.unmount(); client.clear();
+});

@@ -12,15 +12,15 @@ const items = ['a', 'b'].map((itemId) => ({ itemId, itemRevision: `${itemId}-0`,
 function setup() {
   const requests: { resolve: (value: PlanningBoardWriteResult) => void; reject: (error: Error) => void }[] = [];
   const save = vi.fn((_context: PlanningBoardWriteContext) => new Promise<PlanningBoardWriteResult>((resolve, reject) => requests.push({ resolve, reject })));
-  const refresh = vi.fn().mockResolvedValue({ isError: false });
+  const refresh = vi.fn(async (_affectsLoad?: boolean) => ({ isError: false }));
   const onError = vi.fn();
   const failed = vi.fn();
   const hook = renderHook(({ data, scope, order, sourceRevision }) => usePlanningBoardWriteQueue({
     scope, items: data, order, sourceRevision, refresh, onStart: vi.fn(), onSuccess: vi.fn(), onError
   }), { initialProps: { data: items, scope: 'site:grinding', order: ['a', 'b'], sourceRevision: 'board-0' } });
-  const change = (id: string, rank: number) => {
+  const change = (id: string, rank: number, affectsLoad?: boolean) => {
     const original = hook.result.current.items.find((item) => item.itemId === id)!;
-    act(() => { hook.result.current.enqueue({ label: '順位', itemIds: [id], seibans: [id],
+    act(() => { hook.result.current.enqueue({ label: '順位', itemIds: [id], seibans: [id], affectsLoad,
       apply: (display) => ({ ...display, items: display.items.map((item) => item.itemId === id ? { ...item, alternateRank: rank } : item) }),
       save: (context) => save({ ...context, item: () => context.item(original) }), onFailed: failed
     }); });
@@ -30,6 +30,30 @@ function setup() {
   return { ...hook, save, requests, refresh, onError, failed, change, saved };
 }
 describe('planning board background writes', () => {
+  it.each([false, true])('invalidates load once per drained batch only when affected: %s', async (withMove) => {
+    const h = setup();
+    const invalidateLoad = vi.fn();
+    h.refresh.mockImplementation(async (affectsLoad = true) => { if (affectsLoad) invalidateLoad(); return { isError: false }; });
+    h.change('a', 1, false); h.change('b', 2, withMove ? undefined : false); h.change('a', 3, false);
+    for (const [index, id] of ['a', 'b', 'a'].entries()) {
+      await act(async () => h.requests[index].resolve(h.saved(id, index + 1, index + 1)));
+    }
+    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(withMove);
+    expect(invalidateLoad).toHaveBeenCalledTimes(withMove ? 1 : 0);
+    h.unmount();
+  });
+
+  it('keeps distinct start and success labels for an atomic move', async () => {
+    const start = vi.fn(), success = vi.fn();
+    const h = renderHook(() => usePlanningBoardWriteQueue({ scope: 'labels', items, order: [], sourceRevision: 'r',
+      refresh: async () => {}, onStart: start, onSuccess: success, onError: vi.fn() }));
+    await act(async () => { h.result.current.enqueue({ label: '資源CD', successLabel: '資源CDと順番', itemIds: [], seibans: [],
+      apply: (display) => display, save: async () => ({}) }); });
+    expect(start).toHaveBeenCalledExactlyOnceWith('資源CD');
+    expect(success).toHaveBeenCalledExactlyOnceWith('資源CDと順番');
+    h.unmount();
+  });
+
   it('shows repeated input before saving and uses acknowledged revisions without losing hydrated fields', async () => {
     const h = setup(); h.change('a', 1); h.change('a', 2);
     expect(h.result.current.items[0].alternateRank).toBe(2);
