@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { ProcedureVideoService } from '../../services/assembly/procedure-video.service.js';
 
+const querySchema = z.object({ state: z.enum(['active', 'discarded', 'all']).default('active'), q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(100) });
 const idParams = z.object({ id: z.string().guid() });
 const commentBody = z.array(z.object({ atSeconds: z.number().finite().min(0), text: z.string().trim().min(1).max(80) }).strict()).max(5);
 const pageParams = idParams.extend({ pageIndex: z.coerce.number().int().min(0) });
@@ -13,11 +14,12 @@ export function registerProcedureVideoRoutes(app: FastifyInstance, options: {
 }) {
   const service = options.service ?? new ProcedureVideoService();
   const path = '/assembly/procedure-videos';
+  app.get(`${path}/count`, { preHandler: options.allowView }, async (request) => ({ count: await service.count(querySchema.pick({ state: true }).parse(request.query)) }));
   app.post(`${path}/concat`, { preHandler: options.allowWriteKiosk }, async (request) => {
     const { sourceVideoIds, title } = z.object({ sourceVideoIds: z.array(z.string().guid()).min(2).max(5), title: z.string().trim().max(200).optional() }).strict().parse(request.body);
     return service.requestConcat(sourceVideoIds, title);
   });
-  app.get(path, { preHandler: options.allowView }, async (request) => ({ videos: await service.list(z.object({ state: z.enum(['active', 'discarded', 'all']).default('active'), q: z.string().trim().max(200).optional(), limit: z.coerce.number().int().min(1).max(500).default(100) }).parse(request.query)) }));
+  app.get(path, { preHandler: options.allowView }, async (request) => ({ videos: await service.list(querySchema.parse(request.query)) }));
   for (const type of ['file', 'poster'] as const) {
     app.get(`${path}/:id/${type}`, { preHandler: options.allowView, config: { rateLimit: { max: 120, timeWindow: '1 minute' } } }, async (request, reply) => {
       const { id } = idParams.parse(request.params);

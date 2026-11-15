@@ -12,12 +12,12 @@ import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 const mocks = vi.hoisted(() => ({ splits: vi.fn(), semantic: vi.fn(), thumbnail: vi.fn(), knowledgeThumbnail: vi.fn(), workInstructionThumbnail: vi.fn(), createDocument: vi.fn(), count: vi.fn(), list: vi.fn(), ingest: vi.fn(), file: vi.fn(), discard: vi.fn(), restore: vi.fn(), unplace: vi.fn(), knowledge: vi.fn(), knowledgeImage: vi.fn(), importKnowledge: vi.fn(), workInstructions: vi.fn(), workInstructionImage: vi.fn(), importWorkInstructions: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   getProcedureMaterialSplitSuggestions: mocks.splits,
-  listProcedureVideos: async () => [],
+  countProcedureVideos: async () => 0,
   getProcedureManualOverview: async () => ({ processes: [] }),
   listProcedureManualModels: async () => [], listProcedureManualProcesses: async () => [],
   getProcedureManualAssignments: vi.fn(), listAssemblyProcedureDocumentSummaries: vi.fn(),
   getAssemblyProcedureDocumentRevisions: vi.fn(), getKioskDocuments: vi.fn(), replaceProcedureManualAssignments: vi.fn(),
-  listProcedureMaterials: (params: { q?: string }) => params.q === undefined ? mocks.count(params) : mocks.list(params), ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file, getProcedureMaterialThumbnail: mocks.thumbnail, getProcedureKnowledgeThumbnail: mocks.knowledgeThumbnail, getProcedureWorkInstructionThumbnail: mocks.workInstructionThumbnail,
+  countProcedureMaterials: mocks.count, listProcedureMaterials: mocks.list, ingestProcedureMaterialsGmail: mocks.ingest, getProcedureMaterialFile: mocks.file, getProcedureMaterialThumbnail: mocks.thumbnail, getProcedureKnowledgeThumbnail: mocks.knowledgeThumbnail, getProcedureWorkInstructionThumbnail: mocks.workInstructionThumbnail,
   listProcedureKnowledgeCandidates: mocks.knowledge, getProcedureKnowledgeImage: mocks.knowledgeImage, importProcedureKnowledge: mocks.importKnowledge,
   createProcedureMaterialDocument: mocks.createDocument, semanticSearchProcedureMaterials: mocks.semantic,
   listProcedureWorkInstructionCandidates: mocks.workInstructions, getProcedureWorkInstructionImage: mocks.workInstructionImage, importProcedureWorkInstructions: mocks.importWorkInstructions,
@@ -30,7 +30,7 @@ const photo = { ...text, id: 'photo', kind: 'PHOTO', text: null, originalFileNam
 describe('procedure-manuals material shelf', () => {
   beforeEach(() => {
   clearManualLists();
-    vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue([]); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
+    vi.resetAllMocks(); localStorage.clear(); saveProcedureEditorAccess('2520'); mocks.count.mockResolvedValue(0); mocks.list.mockResolvedValue([text, photo]); mocks.file.mockResolvedValue(new Blob(['photo'], { type: 'image/png' }));
     mocks.ingest.mockResolvedValue({ scanned: 2, processed: 2, saved: 2, checkSheets: 1, duplicate: 0, skipped: 1, retryable: 0, deferred: 0, skippedAttachments: 1, errors: [], messages: [{ messageId: 'unsupported', reason: '本文が空で、対応する写真がありません', warnings: [] }] });
     mocks.knowledge.mockResolvedValue({ enabled: false, items: [] });
     mocks.knowledgeImage.mockResolvedValue(new Blob(['knowledge'])); mocks.knowledgeThumbnail.mockResolvedValue(new Blob(['knowledge-thumbnail']));
