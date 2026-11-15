@@ -772,6 +772,55 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(ranked.itemRevision).not.toBe(plain.itemRevision);
   });
 
+  it.each(['both', 'general', 'dCompany'] as const)('resource move matches legacy two-stage writes for %s, preserving other overrides', async (scheduleSource) => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A`, resourceCd: '305' }, { fseiban: `${fixture.prefix}-B`, resourceCd: '581' }]);
+    const initial = await boardFor(fixture, { view: 'resource' });
+    const original = boardItem(initial, (item) => item.originalResourceCd === '305');
+    await updateItem(fixture, original, { due: { kind: 'date', date: '2026-12-01' }, specialDue: 'today' }, initial.sourceRevision);
+    const board = await boardFor(fixture, { view: 'resource' });
+    const moved = boardItem(board, (item) => item.itemId === original.itemId);
+    const neighbour = boardItem(board, (item) => item.originalResourceCd === '581');
+    const ref = (item: GrindingPlanningBoardItem) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version });
+    const before = await db().productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: fixture.siteKey } });
+    const changed = await updateItem(fixture, moved, { resourceCd: '581' }, board.sourceRevision);
+    const legacy = await service().updateGrindingPlanningBoardResourceOrderBulk({ siteKey: fixture.siteKey, scheduleSource,
+      sourceRevision: changed.sourceRevision, resourceCd: '581', items: [ref(neighbour), ref(changed.items[0]!)] });
+    // Restore exactly the same fixture and versions, then exercise the atomic path.
+    await db().productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: fixture.siteKey } });
+    await db().productionScheduleGrindingPlanningBoardOverride.createMany({ data: before });
+    const { updateGrindingPlanningBoardResourceMove } = await import('../grinding-planning-board/write.js');
+    const atomic = await updateGrindingPlanningBoardResourceMove({ siteKey: fixture.siteKey, scheduleSource,
+      sourceRevision: board.sourceRevision, move: { ...ref(moved), resourceCd: '581' }, items: [ref(neighbour), ref(moved)] });
+    expect(atomic.items).toEqual(legacy.items);
+    expect(atomic.items.map((item) => [item.effectiveResourceCd, item.alternateRank])).toEqual([['581', 1], ['581', 2]]);
+    expect(atomic.items[1]).toMatchObject({ effectiveDueDate: '2026-12-01', specialDue: moved.specialDue });
+  });
+
+  it.each(['moveRevision', 'neighbourRevision', 'board', 'version', 'completed', 'moveCompleted', 'resource', 'testBars'] as const)('atomic resource move rejects %s and rolls back all writes', async (failure) => {
+    const fixture = await createFixture();
+    await addRows(fixture, [{ fseiban: `${fixture.prefix}-A`, resourceCd: '305', completed: failure === 'moveCompleted' },
+      { fseiban: `${fixture.prefix}-B`, resourceCd: failure === 'resource' ? '305' : '581', completed: failure === 'completed' }]);
+    if (failure === 'testBars') {
+      const { createPlanningTestBar } = await import('../grinding-planning-board/test-bars.js');
+      const initial = await boardFor(fixture, { view: 'resource', completionFilter: 'all' });
+      await createPlanningTestBar({ siteKey: fixture.siteKey, sourceRevision: initial.sourceRevision, resourceCd: '581', minutes: 30 });
+    }
+    const board = await boardFor(fixture, { view: 'resource', completionFilter: 'all' });
+    const moved = boardItem(board, (item) => item.fseiban.endsWith('-A'));
+    const neighbour = boardItem(board, (item) => item.fseiban.endsWith('-B'));
+    const ref = (item: GrindingPlanningBoardItem) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version });
+    const move = { ...ref(moved), resourceCd: '581', ...(failure === 'moveRevision' ? { itemRevision: 'stale' } : {}),
+      ...(failure === 'version' ? { overrideVersion: moved.version + 1 } : {}) };
+    const { updateGrindingPlanningBoardResourceMove } = await import('../grinding-planning-board/write.js');
+    const before = await db().productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: fixture.siteKey } });
+    await expect(updateGrindingPlanningBoardResourceMove({ siteKey: fixture.siteKey,
+      sourceRevision: failure === 'board' ? 'stale' : board.sourceRevision, move,
+      items: [move, { ...ref(neighbour), ...(failure === 'neighbourRevision' ? { itemRevision: 'stale' } : {}) }]
+    })).rejects.toMatchObject({ statusCode: 409, ...(failure === 'testBars' ? { code: 'RESOURCE_MOVE_TEST_BARS_UNSUPPORTED' } : {}) });
+    expect(await db().productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: fixture.siteKey } })).toEqual(before);
+  });
+
   it('bulk resource order persists ranks atomically and returns current revisions', async () => {
     const fixture = await createFixture();
     await addRows(fixture, [{ fseiban: `${fixture.prefix}-A` }, { fseiban: `${fixture.prefix}-B` }]);

@@ -7,6 +7,7 @@ import {
   useKioskSessakuPieceMutations,
   useUpdateKioskGrindingPlanningBoardOverrides, useUpdateKioskGrindingPlanningBoardPins,
   useUpdateKioskGrindingPlanningBoardDueScope, useUpdateKioskGrindingPlanningBoardRank, useUpdateKioskGrindingPlanningBoardResourceOrder,
+  useUpdateKioskGrindingPlanningBoardResourceMove,
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk, useUpdateKioskGrindingPlanningBoardSeibanOrder, useUpdateKioskGrindingPlanningBoardSeibanChecks
 } from '../../api/hooks';
 import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSchedule';
@@ -135,6 +136,7 @@ export function PlanningBoardPage() {
   const updateDueScope = useUpdateKioskGrindingPlanningBoardDueScope({ invalidateOnSuccess: false });
   const { mutateAsync: updateRankAsync } = useUpdateKioskGrindingPlanningBoardRank({ invalidateOnSuccess: false, dueSource });
   const { mutateAsync: updateResourceOrderAsync } = useUpdateKioskGrindingPlanningBoardResourceOrder({ invalidateOnSuccess: false, dueSource });
+  const { mutateAsync: updateResourceMoveAsync } = useUpdateKioskGrindingPlanningBoardResourceMove({ invalidateOnSuccess: false, dueSource });
   const { mutateAsync: updateResourceOrderBulkAsync } = useUpdateKioskGrindingPlanningBoardResourceOrderBulk({ invalidateOnSuccess: false, dueSource });
   const updateOrder = useUpdateKioskGrindingPlanningBoardSeibanOrder({ invalidateOnSuccess: false });
   const updateChecks = useUpdateKioskGrindingPlanningBoardSeibanChecks({ invalidateOnSuccess: false });
@@ -199,10 +201,11 @@ export function PlanningBoardPage() {
     order: data?.registeredFseibans ?? EMPTY_ORDER,
     uncheckedFseibans: data?.uncheckedFseibans ?? data?.excelNonMachineFseibans ?? EMPTY_ORDER,
     sourceRevision,
-    refresh: async () => {
+    refresh: async (affectsLoad = true, savedSourceRevision?: string) => {
       const [result] = await Promise.all([
-        boardQuery.refetch(),
-        queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false })
+        // A load-neutral batch keeps load only if no other change moved the board past its own saved revision.
+        boardQuery.refetch(affectsLoad ? { loadAlreadyInvalidated: true } : { loadUnaffectedRevision: savedSourceRevision }),
+        affectsLoad ? queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false }) : Promise.resolve()
       ]);
       await queryClient.invalidateQueries({
         queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll,
@@ -534,7 +537,7 @@ export function PlanningBoardPage() {
     proposed.splice(proposed.indexOf(targetItem.itemId) + (placement === 'after' ? 1 : 0), 0, item.itemId);
     if (proposed.every((id, index) => id === before.itemIds[index])) return;
     const historyId = ++resourceOrderHistoryId.current;
-    enqueueWrite({ label: '資源CD内の順序', itemIds: affected.map((candidate) => candidate.itemId),
+    enqueueWrite({ affectsLoad: false, label: '資源CD内の順序', itemIds: affected.map((candidate) => candidate.itemId),
       seibans: [...new Set(affected.map((candidate) => candidate.fseiban))], order: true,
       onSaved: () => { if (ganttEnabled) rememberResourceOrder(historyId, before); },
       apply: (display) => {
@@ -586,7 +589,7 @@ export function PlanningBoardPage() {
 
   const changeRank = useCallback((item: GrindingPlanningBoardItem, rank: number | null) => {
     if (!gate.attempt()) return; if (!data || !rankMutationReady || allocation === 'original' || item.isCompleted || writeBlocked || hasPendingSeiban(item.fseiban, true)) return;
-    enqueueWrite({ label: '個別順位', itemIds: [item.itemId], seibans: [item.fseiban],
+    enqueueWrite({ affectsLoad: false, label: '個別順位', itemIds: [item.itemId], seibans: [item.fseiban],
       apply: (display) => ({ ...display, items: display.items.map((candidate) => candidate.itemId === item.itemId ? { ...candidate, alternateRank: rank } : candidate) }),
       save: async (context) => {
         const current = context.item(item);
@@ -600,7 +603,7 @@ export function PlanningBoardPage() {
 
   const persistChecks = (uncheckedFseibans: string[]) => {
     if (!gate.attempt()) return; if (!data || interactionLocked || writeBlocked) return;
-    enqueueWrite({ label: '製番チェック', itemIds: [], seibans: [], order: true,
+    enqueueWrite({ affectsLoad: false, label: '製番チェック', itemIds: [], seibans: [], order: true,
       apply: (display) => ({ ...display, uncheckedFseibans }),
       save: (context) => updateChecks.mutateAsync({ sourceRevision: context.sourceRevision, uncheckedFseibans }),
       onFailed: (error) => setOrderConflict(isAxiosError(error) && error.response?.status === 409)
@@ -608,7 +611,7 @@ export function PlanningBoardPage() {
   };
 
   const { refreshAfterOrderConflict, addSeibans, addSeiban, moveSeiban } = createPlanningBoardSeibanActions({
-    gate, data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite,
+    gate, data, scopeReady, writeBlocked, allocation, setOrderRegistrationError, enqueueWrite: (write) => enqueueWrite({ ...write, affectsLoad: false }),
     registeredFseibans, updateOrder, setOrderConflict, notify, boardQuery, setRankConflict,
     acceptRefreshedState, setOpenFseibans
   });
@@ -619,7 +622,7 @@ export function PlanningBoardPage() {
   } = usePlanningBoardPageGantt({
     focusedFseiban, sortedItemsBySeiban, view, visibleItems, ganttItems, arrivalFilterEnabled, nowMs, ganttEnabled, allocation, category,
     data, registeredFseibans, scheduleSource, bulkReady, rankMutationReady, writeBlocked, writeQueue, orderPreview,
-    resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync,
+    resourceOrderHistory, historyScope, currentItemsRef, hasPendingSeiban, enqueueWrite, updateResourceOrderBulkAsync, updateResourceMoveAsync,
     setColorBySeiban, setFocusedFseiban, setOpenFseibans, setFocusedSeiban, setScanFocusKey, setScanNotice,
     scopeReady, pinMode, canMoveResource, snapshotResourceOrder, notify, resourceOrderHistoryId, enqueueOverrides,
     setResourceOrderHistory, rememberResourceOrder, setPinMode, setOrderPreview, sourceRevision, rankConflict, orderConflict, updatePinsAsync

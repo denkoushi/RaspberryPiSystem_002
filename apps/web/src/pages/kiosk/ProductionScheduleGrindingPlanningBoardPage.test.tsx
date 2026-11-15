@@ -58,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   rank: vi.fn(),
   resourceOrder: vi.fn(),
   resourceOrderBulk: vi.fn(),
+  resourceMove: vi.fn(),
   checks: vi.fn(),
   order: vi.fn()
 }));
@@ -133,6 +134,7 @@ vi.mock('../../api/hooks', () => ({
   useUpdateKioskGrindingPlanningBoardOverrides: vi.fn(() => ({ mutateAsync: mocks.overrides, isPending: false })),
   useUpdateKioskGrindingPlanningBoardDueScope: () => ({ mutateAsync: mocks.dueScope, isPending: false }),
   useUpdateKioskGrindingPlanningBoardRank: () => ({ mutateAsync: mocks.rank, isPending: false }),
+  useUpdateKioskGrindingPlanningBoardResourceMove: vi.fn(() => ({ mutateAsync: mocks.resourceMove, isPending: false })),
   useUpdateKioskGrindingPlanningBoardResourceOrderBulk: () => ({ mutateAsync: mocks.resourceOrderBulk, isPending: false }),
   useUpdateKioskGrindingPlanningBoardResourceOrder: () => ({ mutateAsync: mocks.resourceOrder, isPending: false }),
   useUpdateKioskGrindingPlanningBoardSeibanChecks: () => ({ mutateAsync: mocks.checks, isPending: false }),
@@ -1413,6 +1415,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.rank.mockReset();
     mocks.resourceOrder.mockReset();
     mocks.resourceOrderBulk.mockReset();
+    mocks.resourceMove.mockReset();
     mocks.pins.mockReset();
     mocks.order.mockReset();
     mocks.checks.mockReset();
@@ -1420,6 +1423,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     mocks.refetch.mockResolvedValue({ data: fixture() });
     mocks.snapshot.mockReturnValue({ data: fixture(), isLoading: false, isError: false, refetch: mocks.refetch });
     mocks.overrides.mockResolvedValue({ sourceRevision: 'board-2' });
+    mocks.resourceMove.mockResolvedValue({ sourceRevision: 'board-2' });
     mocks.dueDetail.mockReturnValue({ data: undefined, isLoading: false, isError: false, refetch: vi.fn() });
     mocks.dueScope.mockResolvedValue({});
     mocks.candidates.mockReturnValue({
@@ -2143,7 +2147,8 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
   });
 
-  it.each(['305', '306'])('moves a gantt bar between target bars and restores resource %s plus both orders', async (previousResource) => {
+  it.each(['305', '306'])('moves a gantt bar atomically between target bars and restores resource %s plus both orders', async (previousResource) => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     const data = fixture();
     data.resources.push('306');
     data.resourceCategories['306'] = 'grinding';
@@ -2155,8 +2160,15 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const server = new Map(items.map((item) => [item.itemId, item]));
     mocks.snapshot.mockReturnValue({ data: { ...data, items }, isLoading: false, isError: false, refetch: mocks.refetch });
     let finishMove!: () => void;
+    mocks.resourceMove.mockImplementation(async (payload) => {
+      await new Promise<void>((resolve) => { finishMove = resolve; });
+      return { sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => {
+        const saved = { ...server.get(request.itemId)!, effectiveResourceCd: payload.move.resourceCd, alternateRank: index + 1,
+          version: request.overrideVersion + 1, itemRevision: `move-${request.itemId}-${request.overrideVersion + 1}` };
+        server.set(saved.itemId, saved); return saved;
+      }) };
+    });
     mocks.overrides.mockImplementation(async (payload) => {
-      if (mocks.overrides.mock.calls.length === 1) await new Promise<void>((resolve) => { finishMove = resolve; });
       return { sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; resourceCd: string; overrideVersion: number }) => {
         const saved = { ...server.get(request.itemId)!, effectiveResourceCd: request.resourceCd, alternateRank: null,
           version: request.overrideVersion + 1, itemRevision: `override-${request.itemId}-${request.overrideVersion + 1}` };
@@ -2180,29 +2192,45 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       .map((element) => element.dataset.testid!.replace('planning-gantt-bar-', '')).filter((id) => !id.includes('-segment-'));
     expect(laneIds('584')).toEqual(['c', 'a', 'd']);
     expect(laneIds(previousResource)).toEqual(['b']);
-    expect(mocks.overrides).toHaveBeenCalledWith(expect.objectContaining({ items: [expect.objectContaining({ itemId: 'a', resourceCd: '584' })] }));
+    expect(mocks.resourceMove).toHaveBeenCalledExactlyOnceWith({ scheduleSource: 'both', sourceRevision: 'board-1',
+      move: { itemId: 'a', resourceCd: '584', itemRevision: 'revision-a', overrideVersion: 2 },
+      items: [
+        { itemId: 'c', itemRevision: 'revision-c', overrideVersion: 2 },
+        { itemId: 'a', itemRevision: 'revision-a', overrideVersion: 2 },
+        { itemId: 'd', itemRevision: 'revision-d', overrideVersion: 2 }
+      ] });
+    expect(mocks.overrides).not.toHaveBeenCalled();
     expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
     await act(async () => finishMove());
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
-    expect(mocks.resourceOrderBulk.mock.calls[0]![0]).toMatchObject({ resourceCd: '584', items: [
-      { itemId: 'c' }, { itemId: 'a', itemRevision: 'override-a-3', overrideVersion: 3 }, { itemId: 'd' }
-    ] });
+    expect(mocks.resourceMove).toHaveBeenCalledTimes(1);
+    expect(mocks.overrides).not.toHaveBeenCalled();
+    expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+    expect(laneIds('584')).toEqual(['c', 'a', 'd']);
+    await waitFor(() => expect(invalidate.mock.calls.filter(([filters]) =>
+      filters?.queryKey === productionScheduleQueryKeys.grindingPlanningBoardLoadAll)).toHaveLength(1));
+    expect(screen.getByRole('status')).toHaveTextContent('資源CDと順番を保存しました');
     fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
     expect(laneIds(previousResource)).toEqual(['b', 'a']);
     expect(laneIds('584')).toEqual(['c', 'd']);
-    await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(3));
-    expect(mocks.overrides.mock.calls[1]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: previousResource, itemRevision: 'rank-a-4', overrideVersion: 4 }] });
-    expect(mocks.resourceOrderBulk.mock.calls.slice(1).map(([request]) => [request.resourceCd, request.items.map((item: { itemId: string }) => item.itemId)])).toEqual([
+    await waitFor(() => expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(2));
+    expect(mocks.resourceMove).toHaveBeenCalledTimes(1);
+    expect(mocks.overrides).toHaveBeenCalledTimes(1);
+    expect(mocks.overrides.mock.calls[0]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: previousResource, itemRevision: 'move-a-3', overrideVersion: 3 }] });
+    expect(mocks.resourceOrderBulk.mock.calls.map(([request]) => [request.resourceCd, request.items.map((item: { itemId: string }) => item.itemId)])).toEqual([
       [previousResource, ['b', 'a']], ['584', ['c', 'd']]
     ]);
-    expect(mocks.resourceOrderBulk.mock.calls[1]![0].items[1]).toMatchObject({ itemId: 'a', itemRevision: 'override-a-5', overrideVersion: 5 });
+    expect(mocks.resourceOrderBulk.mock.calls[0]![0].items[1]).toMatchObject({ itemId: 'a', itemRevision: 'override-a-4', overrideVersion: 4 });
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled());
     expect(laneIds(previousResource)).toEqual(['b', 'a']);
     expect(laneIds('584')).toEqual(['c', 'd']);
   });
 
-  it.each(['special band', 'empty lane', 'override failure', 'order failure', 'unlisted resource', 'different category'])('handles gantt resource movement with %s', async (scenario) => {
-    const data = fixture();
+  it.each(['special band', 'empty lane', 'move failure', 'order failure', 'unlisted resource', 'different category'])('handles gantt resource movement with %s', async (scenario) => {
+    const data = { ...fixture(), testBars: scenario === 'order failure' ? [{
+      kind: 'test' as const, itemId: 'test:00000000-0000-4000-8000-000000000584', itemRevision: 'test-r1', version: 1,
+      sequence: 1, name: 'テスト1', resourceCd: '584', minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null
+    }] : [] };
     if (scenario !== 'empty lane') data.items[3]!.originalResourceCd = '584';
     if (scenario === 'special band') data.items[3]!.specialDue = { kind: 'today', expiresAt: '2099-10-14T15:00:00Z' };
     if (scenario === 'unlisted resource') data.resources = ['305'];
@@ -2212,28 +2240,43 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: request.resourceCd, alternateRank: null,
       version: request.overrideVersion + 1, itemRevision: `override-${request.itemId}-${request.overrideVersion + 1}`
     })) }));
-    mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => ({
-      ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: payload.resourceCd, alternateRank: index + 1,
-      version: request.overrideVersion + 1, itemRevision: `rank-${request.itemId}-${request.overrideVersion + 1}`
+    mocks.resourceOrderBulk.mockImplementation(async (payload) => ({ sourceRevision: 'board-1',
+      items: payload.items.flatMap((request: { itemId: string; overrideVersion: number }, index: number) => request.itemId.startsWith('test:') ? [] : [{
+        ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: payload.resourceCd, alternateRank: index + 1,
+        version: request.overrideVersion + 1, itemRevision: `rank-${request.itemId}-${request.overrideVersion + 1}`
+      }]),
+      testBars: data.testBars.map((bar) => {
+        const index = payload.items.findIndex((request: { itemId: string }) => request.itemId === bar.itemId);
+        return index < 0 ? bar : { ...bar, alternateRank: index + 1, version: bar.version + 1, itemRevision: `rank-${bar.itemId}` };
+      })
+    }));
+    mocks.resourceMove.mockImplementation(async (payload) => ({ sourceRevision: 'board-1', items: payload.items.map((request: { itemId: string; overrideVersion: number }, index: number) => ({
+      ...data.items.find((item) => item.itemId === request.itemId)!, effectiveResourceCd: payload.move.resourceCd, alternateRank: index + 1,
+      version: request.overrideVersion + 1, itemRevision: `move-${request.itemId}-${request.overrideVersion + 1}`
     })) }));
-    if (scenario === 'override failure') mocks.overrides.mockRejectedValueOnce(new Error('move failed'));
+    if (scenario === 'move failure') mocks.resourceMove.mockRejectedValueOnce(new Error('move failed'));
     if (scenario === 'order failure') mocks.resourceOrderBulk.mockRejectedValueOnce(new Error('order failed'));
     render(<ProductionScheduleGrindingPlanningBoardPage />);
     const target = screen.getByTestId('planning-forward-lane-584');
-    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
+    const dropTarget = scenario === 'order failure' ? screen.getByTestId('planning-gantt-bar-d') : target;
+    const x = scenario === 'order failure' ? parseFloat(dropTarget.style.left) : 0;
+    Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [dropTarget]) });
     const bar = screen.getByTestId('planning-gantt-bar-a');
-    fireEvent.pointerDown(bar, { pointerId: 42, clientX: 0, clientY: 20, button: 0 });
-    fireEvent.pointerMove(bar, { pointerId: 42, clientX: 0, clientY: 120 });
+    fireEvent.pointerDown(bar, { pointerId: 42, clientX: x, clientY: 20, button: 0 });
+    fireEvent.pointerMove(bar, { pointerId: 42, clientX: x, clientY: 120 });
     if (scenario === 'unlisted resource' || scenario === 'different category') {
       expect(target.closest('[data-gantt-lane]')).toHaveStyle({ opacity: '0.3' });
       expect(screen.queryByTestId('planning-gantt-insertion')).not.toBeInTheDocument();
-      fireEvent.pointerUp(bar, { pointerId: 42, clientX: 0, clientY: 120 });
+      fireEvent.pointerUp(bar, { pointerId: 42, clientX: x, clientY: 120 });
+      expect(mocks.resourceMove).not.toHaveBeenCalled();
       expect(mocks.overrides).not.toHaveBeenCalled();
       expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
       return;
     }
-    fireEvent.pointerUp(bar, { pointerId: 42, clientX: 0, clientY: 120 });
-    if (scenario === 'override failure') {
+    fireEvent.pointerUp(bar, { pointerId: 42, clientX: x, clientY: 120 });
+    if (scenario === 'move failure') {
+      expect(mocks.resourceMove).toHaveBeenCalledTimes(1);
+      expect(mocks.overrides).not.toHaveBeenCalled();
       await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした'));
       expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
       expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled();
@@ -2241,12 +2284,25 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       return;
     }
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeEnabled());
-    if (scenario === 'special band') expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
-    else if (scenario === 'empty lane') expect(mocks.resourceOrderBulk.mock.calls[0]![0]).toMatchObject({ resourceCd: '584', items: [{ itemId: 'a' }] });
-    else expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+    if (scenario === 'empty lane') {
+      expect(mocks.resourceMove).toHaveBeenCalledExactlyOnceWith({ scheduleSource: 'both', sourceRevision: 'board-1',
+        move: { itemId: 'a', resourceCd: '584', itemRevision: 'revision-a', overrideVersion: 2 },
+        items: [{ itemId: 'a', itemRevision: 'revision-a', overrideVersion: 2 }] });
+      expect(mocks.overrides).not.toHaveBeenCalled();
+      expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+    } else {
+      expect(mocks.resourceMove).not.toHaveBeenCalled();
+      expect(mocks.overrides).toHaveBeenCalledTimes(1);
+      if (scenario === 'special band') expect(mocks.resourceOrderBulk).not.toHaveBeenCalled();
+      else {
+        expect(mocks.resourceOrderBulk).toHaveBeenCalledTimes(1);
+        expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+      }
+    }
     fireEvent.click(screen.getByRole('button', { name: '↶ 戻す' }));
-    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(2));
-    expect(mocks.overrides.mock.calls[1]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: '305' }] });
+    const undoOverrideCount = scenario === 'empty lane' ? 1 : 2;
+    await waitFor(() => expect(mocks.overrides).toHaveBeenCalledTimes(undoOverrideCount));
+    expect(mocks.overrides.mock.calls[undoOverrideCount - 1]![0]).toMatchObject({ items: [{ itemId: 'a', resourceCd: '305' }] });
     await waitFor(() => expect(screen.getByRole('button', { name: '↶ 戻す' })).toBeDisabled());
     expect(screen.getByTestId('planning-forward-lane-305')).toContainElement(screen.getByTestId('planning-gantt-bar-a'));
   });
@@ -3390,17 +3446,16 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
   });
 
-  it('write-queue refresh explicitly revalidates load even when the board revision is unchanged', async () => {
+  it('rank-only write-queue refresh keeps load only for its own saved board revision', async () => {
     const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
 
     await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
-    expect(invalidate).toHaveBeenCalledWith(
-      { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
-      { cancelRefetch: false }
-    );
+    expect(mocks.refetch).toHaveBeenCalledExactlyOnceWith({ loadUnaffectedRevision: 'board-1' });
+    expect(invalidate.mock.calls.filter(([filters]) =>
+      filters?.queryKey === productionScheduleQueryKeys.grindingPlanningBoardLoadAll)).toHaveLength(0);
   });
 
   it('保存後は別表示のキャッシュを再取得せずstaleにする', async () => {

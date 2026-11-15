@@ -92,6 +92,7 @@ export const useUpdateKioskGrindingPlanningBoardOverrides = mutation;
 export const useUpdateKioskGrindingPlanningBoardDueScope = mutation;
 export const useUpdateKioskGrindingPlanningBoardRank = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrder = mutation;
+export const useUpdateKioskGrindingPlanningBoardResourceMove = mutation;
 export const useUpdateKioskGrindingPlanningBoardResourceOrderBulk = mutation;
 export const useUpdateKioskGrindingPlanningBoardSeibanOrder = mutation;
 export const useUpdateKioskGrindingPlanningBoardSeibanChecks = mutation;
