@@ -1,35 +1,27 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ list: vi.fn(), delete: vi.fn() }));
+const store = vi.hoisted(() => ({ delete: vi.fn() }));
 vi.mock('../../services/file-storage/file-storage-runtime.js', () => ({
   getFileStorageRuntime: () => ({ store }),
 }));
 
 import { PhotoStorage } from '../photo-storage.js';
 
-describe('PhotoStorage.deletePhotosByYear', () => {
+describe('PhotoStorage.deletePhoto', () => {
   beforeEach(() => vi.resetAllMocks());
 
-  it('lists through the store, preserves filters and counts only original photos', async () => {
-    store.list.mockResolvedValueOnce(['photo.jpg', 'photo_thumb.jpg', 'keep.png'])
-      .mockResolvedValueOnce(['photo_thumb.jpg', 'keep.jpg']);
-    expect(await PhotoStorage.deletePhotosByYear(2024)).toBe(1);
-    expect(store.list.mock.calls).toEqual([['photos/2026/01'], ['thumbnails/2026/01']]);
+  it('deletes original and thumbnail with integrity tracking', async () => {
+    await PhotoStorage.deletePhoto('/api/storage/photos/2025/11/photo.jpg');
     expect(store.delete.mock.calls).toEqual([
-      ['photos/2026/01/photo.jpg', { integrity: true }],
-      ['thumbnails/2026/01/photo_thumb.jpg', { integrity: true }],
+      ['photos/2025/11/photo.jpg', { integrity: true }],
+      ['thumbnails/2025/11/photo_thumb.jpg', { integrity: true }],
     ]);
   });
 
-  it('still cleans thumbnails when the original namespace is missing', async () => {
-    store.list.mockResolvedValueOnce([]).mockResolvedValueOnce(['photo_thumb.jpg']);
-    expect(await PhotoStorage.deletePhotosByYear(2024)).toBe(0);
-    expect(store.delete).toHaveBeenCalledExactlyOnceWith('thumbnails/2026/01/photo_thumb.jpg', { integrity: true });
-  });
-
-  it('returns zero when both namespaces are missing', async () => {
-    store.list.mockResolvedValue([]);
-    expect(await PhotoStorage.deletePhotosByYear(2024)).toBe(0);
+  it('uses an injected store', async () => {
+    const injected = { delete: vi.fn() };
+    await PhotoStorage.deletePhoto('/api/storage/photos/2025/11/photo.jpg', injected);
+    expect(injected.delete).toHaveBeenCalledTimes(2);
     expect(store.delete).not.toHaveBeenCalled();
   });
 });

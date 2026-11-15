@@ -2,6 +2,7 @@ import path from 'path';
 import { randomUUID } from 'node:crypto';
 
 import sharp from 'sharp';
+import type { DurableFileStorePort } from '../services/file-storage/durable-file-store.port.js';
 import { getFileStorageRoot } from '../services/file-storage/file-storage-config.js';
 import { getFileStorageRuntime } from '../services/file-storage/file-storage-runtime.js';
 
@@ -136,7 +137,10 @@ export class PhotoStorage {
    * 
    * @param photoUrl 写真のURL（例: /api/storage/photos/2025/11/20251127_123456_employee-uuid.jpg）
    */
-  static async deletePhoto(photoUrl: string): Promise<void> {
+  static async deletePhoto(
+    photoUrl: string,
+    store: Pick<DurableFileStorePort, 'delete'> = getFileStorageRuntime().store
+  ): Promise<void> {
     // URLからファイルパスを抽出
     // /api/storage/photos/YYYY/MM/filename.jpg -> /opt/RaspberryPiSystem_002/storage/photos/YYYY/MM/filename.jpg
     const relativePath = photoUrl.replace('/api/storage/photos/', '');
@@ -147,41 +151,8 @@ export class PhotoStorage {
       .replace('/api/storage/photos/', '/storage/thumbnails/')
       .replace('.jpg', '_thumb.jpg');
     const thumbnailKey = `thumbnails/${thumbnailRelativePath.replace('/storage/thumbnails/', '')}`;
-    const store = getFileStorageRuntime().store;
     await store.delete(photoKey, { integrity: true });
     await store.delete(thumbnailKey, { integrity: true });
-  }
-
-  /**
-   * 指定年の2年後の1月に該当する写真を削除する
-   * 
-   * @param year 撮影年（例: 2025）
-   */
-  static async deletePhotosByYear(year: number): Promise<number> {
-    const targetYear = year + 2; // 2年後
-    const targetMonth = '01'; // 1月
-
-    const store = getFileStorageRuntime().store;
-    let deletedCount = 0;
-
-    // 元画像を削除
-    const files = await store.list(`photos/${targetYear}/${targetMonth}`);
-    for (const file of files) {
-      if (file.endsWith('.jpg') && !file.endsWith('_thumb.jpg')) {
-        await store.delete(`photos/${targetYear}/${targetMonth}/${file}`, { integrity: true });
-        deletedCount++;
-      }
-    }
-
-    // サムネイルを削除
-    const thumbnailFiles = await store.list(`thumbnails/${targetYear}/${targetMonth}`);
-    for (const file of thumbnailFiles) {
-      if (file.endsWith('_thumb.jpg')) {
-        await store.delete(`thumbnails/${targetYear}/${targetMonth}/${file}`, { integrity: true });
-      }
-    }
-
-    return deletedCount;
   }
 
   /**

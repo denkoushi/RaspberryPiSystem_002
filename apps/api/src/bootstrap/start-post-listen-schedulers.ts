@@ -1,4 +1,5 @@
 import { createSessakuAutoUnitSplitScheduler } from '../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js';
+import { getLoanPhotoRetentionScheduler } from '../services/tools/loan-photo-retention.scheduler.js';
 import { getWatchCameraRetentionScheduler } from '../services/watch-camera/watch-camera-retention.scheduler.js';
 import { getProcedureMaterialImageDescriptionScheduler } from '../services/assembly/procedure-material-image-description.scheduler.js';
 import { getSystemNoticeEvaluator } from '../services/kiosk-inquiry/system-notice-evaluator.js';
@@ -291,6 +292,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
         await getAlertsDbDispatcher().stop();
         await getAlertsDispatcher().stop();
       },
+    },
+    {
+      name: 'loan-photo-retention',
+      start: () => getLoanPhotoRetentionScheduler().start(),
+      stop: () => getLoanPhotoRetentionScheduler().stop(),
     },
     {
       name: 'watch-camera-retention',
