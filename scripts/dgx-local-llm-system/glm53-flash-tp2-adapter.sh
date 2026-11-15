@@ -202,12 +202,14 @@ tmp = path.with_suffix(path.suffix + ".tmp")
 tmp.write_text(json.dumps({"sshTarget": sys.argv[2], "containerName": sys.argv[3]}) + "\n", encoding="utf-8")
 tmp.replace(path)
 PY
+# Drop only clean cache: read-only models need no sync, which waits on slow disks.
+# Cap Dirty separately via DGX-side sysctl.
 # Qwen needs both nodes' page caches cleared before either rank starts.
 if [[ "${RECIPE}" == "qwen38_fp8_tp2" ]]; then
-if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: worker drop_caches failed; continuing launch" >&2
 fi
-if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: head drop_caches failed; continuing launch" >&2
 fi
 fi
@@ -219,10 +221,10 @@ worker docker "${DOCKER_ARGS[@]}" --name "${WORKER_NAME}" -e "VLLM_HOST_IP=${WOR
 [[ "$(worker docker inspect --format '{{.State.Running}}' "${WORKER_NAME}")" == "true" ]] || fail "worker is not running"
 
 if [[ -z "${RECIPE}" ]]; then
-if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+if ! worker docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: worker drop_caches failed; continuing launch" >&2
 fi
-if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'sync; echo 3 > /proc/sys/vm/drop_caches'; then
+if ! docker run --rm --privileged --entrypoint sh "${IMAGE}" -c 'echo 3 > /proc/sys/vm/drop_caches'; then
   echo "GLM TP2 adapter: head drop_caches failed; continuing launch" >&2
 fi
 fi
