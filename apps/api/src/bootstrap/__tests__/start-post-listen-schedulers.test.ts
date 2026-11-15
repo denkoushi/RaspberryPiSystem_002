@@ -200,6 +200,7 @@ const EXPECTED_SCHEDULER_NAMES = [
   'gmail-trash-cleanup',
   'due-management-tuning',
   'alerts-dispatcher',
+  'loan-photo-retention',
   'watch-camera-retention',
   'client-network-log-retention',
   'client-heartbeat-monitor',

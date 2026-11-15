@@ -45,6 +45,9 @@ const envSchema = z
     ...inferenceEnvShape,
     ...inspectionDrawingEnvShape,
     ...photoToolEnvShape,
+    LOAN_PHOTO_RETENTION_MODE: z.enum(['disabled', 'report', 'delete']).default('report'),
+    LOAN_PHOTO_RETENTION_DAYS: z.coerce.number().int().min(1).max(36500).default(365),
+    LOAN_PHOTO_RETENTION_BATCH_LIMIT: z.coerce.number().int().min(1).max(10000).default(500),
     ...procedureMaterialEnvShape,
     ...procedureVideoEnvShape,
   })

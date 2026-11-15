@@ -3,6 +3,9 @@ import { ApiError } from '../../../lib/errors.js';
 import { ItemLoanAnalyticsService } from '../item-loan-analytics.service.js';
 import type { IItemLoanAnalyticsRepository } from '../item-loan-analytics.types.js';
 
+// This service test injects its repository and never needs the default DB adapter.
+vi.mock('../item-loan-analytics.repository.js', () => ({ ItemLoanAnalyticsRepository: vi.fn() }));
+
 describe('ItemLoanAnalyticsService', () => {
   it('periodFrom が periodTo より後なら 400', async () => {
     const repo: IItemLoanAnalyticsRepository = {

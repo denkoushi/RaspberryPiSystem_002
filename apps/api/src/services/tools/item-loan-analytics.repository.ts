@@ -19,7 +19,7 @@ function timeZoneSql(tz: ItemLoanAnalyticsTimeZone): Prisma.Sql {
 
 /** 写真持出のみ（VLM/人レビュー表示名で集約）。ギャラリー教師行・NFC Item・吊具・計測は除外 */
 const PHOTO_LOAN_WHERE = Prisma.raw(`
-  l."photoUrl" IS NOT NULL
+  l."photoTakenAt" IS NOT NULL
   AND l."itemId" IS NULL
   AND l."riggingGearId" IS NULL
   AND l."measuringInstrumentId" IS NULL
@@ -39,7 +39,7 @@ function stablePhotoToolRowId(toolLabel: string): string {
 }
 
 const photoLoanPrismaWhere = {
-  photoUrl: { not: null },
+  photoTakenAt: { not: null },
   itemId: null,
   riggingGearId: null,
   measuringInstrumentId: null,
