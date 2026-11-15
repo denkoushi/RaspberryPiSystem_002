@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -55,6 +55,91 @@ describe('planning board settings refresh', () => {
     expect(mocks[action]).toHaveBeenCalledTimes(1);
     expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll });
+    hook.unmount(); client.clear();
+  });
+
+  const configurePayload = { itemId: 'piece:unit', itemRevision: 'revision', expectedPieceSetVersion: 1,
+    resourceCd: '021', minutes: [10, 20] };
+  const secondaryKeys = [
+    productionScheduleQueryKeys.grindingPlanningBoardLoad('all'),
+    productionScheduleQueryKeys.grindingPlanningBoardProcessChips([]),
+    productionScheduleQueryKeys.grindingPlanningBoardSnapshot({ category: 'all', view: 'resource' }),
+    productionScheduleQueryKeys.planningBoardResourceMinutesAll,
+    productionScheduleQueryKeys.scheduleAll, productionScheduleQueryKeys.orderUsageAll,
+    productionScheduleQueryKeys.historyProgressAll, productionScheduleQueryKeys.grindingPlanningBoardDueDetail('26-1')
+  ];
+
+  it.each(['mounted', 'category changed', 'unmounted', 'board failed'] as const)(
+    'refreshes only board first, then every secondary once without waiting (%s)', async (transition) => {
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const invalidate = vi.spyOn(client, 'invalidateQueries');
+      const save = deferred<object>(); const board = deferred<unknown>(); const secondary = deferred<object>();
+      mocks.configure.mockReturnValueOnce(save.promise);
+      const reads = secondaryKeys.map(() => vi.fn().mockResolvedValue({}));
+      const refreshBoard = vi.fn(() => board.promise);
+      const changedScopeRefresh = vi.fn().mockResolvedValue({});
+      // Active consumers make invalidation counts observable as actual GET counts.
+      const consumers = renderHook(() => secondaryKeys.map((queryKey, i) => useQuery({ queryKey, queryFn: reads[i] })),
+        { wrapper: wrapperFor(client) });
+      await waitFor(() => expect(reads.every((read) => read.mock.calls.length === 1)).toBe(true));
+      reads.forEach((read) => read.mockReturnValue(secondary.promise));
+      const hook = renderHook(({ changed }) => useConfigureKioskSessakuPieceOps('scaw', {
+        refreshBoard: changed ? changedScopeRefresh : refreshBoard
+      }), { initialProps: { changed: false }, wrapper: wrapperFor(client) });
+      let settled = false; let mutation!: Promise<unknown>;
+      act(() => { mutation = hook.result.current.mutateAsync(configurePayload).finally(() => { settled = true; }); });
+      await waitFor(() => expect(mocks.configure).toHaveBeenCalledWith({ ...configurePayload, dueSource: 'scaw' }));
+      expect(refreshBoard).not.toHaveBeenCalled(); expect(invalidate).not.toHaveBeenCalled();
+      if (transition === 'category changed') hook.rerender({ changed: true });
+      if (transition === 'unmounted') hook.unmount();
+      await act(async () => { save.resolve({}); });
+      await waitFor(() => expect(refreshBoard).toHaveBeenCalledTimes(1));
+      expect(changedScopeRefresh).not.toHaveBeenCalled();
+      expect(settled).toBe(false);
+      reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1));
+      expect(invalidate).toHaveBeenCalledExactlyOnceWith({
+        queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll, refetchType: 'none'
+      });
+      await act(async () => { board.resolve(transition === 'board failed' ? { isError: true } : { isError: false }); await mutation; });
+      expect(settled).toBe(true);
+      await waitFor(() => reads.forEach((read) => expect(read).toHaveBeenCalledTimes(2)));
+      expect(client.isFetching()).toBe(secondaryKeys.length);
+      expect(invalidate).toHaveBeenCalledTimes(7);
+      await act(async () => { secondary.resolve({}); });
+      if (transition !== 'unmounted') hook.unmount();
+      consumers.unmount(); client.clear();
+    });
+
+  it.each(['configure', 'clear'] as const)('preserves the default %s refresh and wait behavior', async (action) => {
+    mocks[action].mockResolvedValueOnce({});
+    const client = new QueryClient(); const fetch = deferred<void>();
+    const invalidate = vi.spyOn(client, 'invalidateQueries').mockReturnValue(fetch.promise);
+    const refreshBoard = vi.fn();
+    const hook = renderHook(() => useConfigureKioskSessakuPieceOps(undefined, action === 'clear' ? { refreshBoard } : undefined),
+      { wrapper: wrapperFor(client) });
+    let settled = false; let mutation!: Promise<unknown>;
+    act(() => { mutation = hook.result.current.mutateAsync(action === 'configure' ? configurePayload : {
+      itemId: 'piece:unit', itemRevision: 'revision', expectedPieceSetVersion: 1, scope: 'piece'
+    }).then(() => { settled = true; }); });
+    await waitFor(() => expect(invalidate).toHaveBeenCalledTimes(5));
+    expect(settled).toBe(false); expect(refreshBoard).not.toHaveBeenCalled();
+    await act(async () => { fetch.resolve(); await mutation; });
+    expect(settled).toBe(true); hook.unmount(); client.clear();
+  });
+
+  it.each([409, 500])('preserves configure failure invalidations for status %s', async (status) => {
+    const error = { isAxiosError: true, response: { status } };
+    mocks.configure.mockRejectedValueOnce(error);
+    const client = new QueryClient(); const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const refreshBoard = vi.fn();
+    const hook = renderHook(() => useConfigureKioskSessakuPieceOps(undefined, { refreshBoard }), { wrapper: wrapperFor(client) });
+    await act(async () => { await expect(hook.result.current.mutateAsync(configurePayload)).rejects.toEqual(error); });
+    expect(refreshBoard).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledTimes(status === 409 ? 2 : 0);
+    if (status === 409) {
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: productionScheduleQueryKeys.planningBoardResourceMinutesAll });
+    }
     hook.unmount(); client.clear();
   });
 

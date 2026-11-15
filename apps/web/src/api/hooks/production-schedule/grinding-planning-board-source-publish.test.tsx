@@ -5,13 +5,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { usePlanningBoardQueryData } from '../../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
-import { useKioskGrindingPlanningBoardProgressive } from './grinding-planning-board';
+import { useConfigureKioskSessakuPieceOps, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgressive } from './grinding-planning-board';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';
 
-const mocks = vi.hoisted(() => ({ board: vi.fn() }));
-vi.mock('../../client', async (original) => ({ ...await original<typeof import('../../client')>(), getKioskGrindingPlanningBoard: mocks.board }));
+const mocks = vi.hoisted(() => ({ board: vi.fn(), load: vi.fn(), configure: vi.fn() }));
+vi.mock('../../client', async (original) => ({ ...await original<typeof import('../../client')>(), getKioskGrindingPlanningBoard: mocks.board, getKioskGrindingPlanningBoardLoad: mocks.load }));
+vi.mock('../../domains/production-schedule/grinding-planning-board', () => ({ configureKioskSessakuPieceOps: mocks.configure }));
 const params = { category: 'cutting', view: 'resource', scheduleSource: 'dCompany' } as const;
 function item(id: string, minutes: number): GrindingPlanningBoardItem {
   return {
@@ -93,6 +94,45 @@ it('keeps the complete display while refreshing and rejects an older continuatio
   hook.unmount(); client.clear();
 });
 
+it('defers load exactly once until every page settles, suppressing revision-driven invalidation', async () => {
+  mocks.board.mockImplementation(({ cursor }: { cursor?: number }) => Promise.resolve(cursor ? page('b', 120, null) : page('a', 60, '160')));
+  mocks.load.mockResolvedValue({ load: [] });
+  mocks.configure.mockResolvedValue({ pieces: [] });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  function Wrapper({ children }: { children: ReactNode }) { return <QueryClientProvider client={client}>{children}</QueryClientProvider>; }
+  const hook = renderHook(() => {
+    const board = useKioskGrindingPlanningBoardProgressive(params, { refetchIntervalMs: false });
+    const load = useKioskGrindingPlanningBoardLoad('cutting', 'dCompany');
+    const configure = useConfigureKioskSessakuPieceOps(undefined, {
+      refreshBoard: () => board.refetch({ loadAlreadyInvalidated: true })
+    });
+    return { board, load, configure };
+  }, { wrapper: Wrapper });
+  await flush();
+  expect(hook.result.current.board.isComplete).toBe(true);
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  const tail = deferred<GrindingPlanningBoardResponse>();
+  mocks.board.mockImplementation(({ cursor }: { cursor?: number }) => cursor ? tail.promise
+    : Promise.resolve({ ...page('a', 10, '160', 'configured'), sourceRevision: 'configured-revision' }));
+  let settled = false;
+  act(() => { void hook.result.current.configure.mutateAsync({ itemId: 'piece:a', itemRevision: 'r',
+    expectedPieceSetVersion: 1, resourceCd: '021', minutes: [10, 20] }).then(() => { settled = true; }); });
+  await flush();
+  expect(mocks.board).toHaveBeenCalledTimes(4); // Initial head/tail and refreshing head/tail.
+  expect(hook.result.current.configure.isPending).toBe(true);
+  expect(hook.result.current.board.data?.snapshotId).toBe('same-snapshot');
+  expect(mocks.load).toHaveBeenCalledTimes(1);
+  expect(settled).toBe(false);
+  await act(async () => { tail.resolve({ ...page('b', 20, null, 'configured'), sourceRevision: 'configured-revision' }); });
+  await flush();
+  expect(hook.result.current.board.data?.snapshotId).toBe('configured');
+  expect(hook.result.current.board.data?.items.map(({ requiredMinutes }) => requiredMinutes)).toEqual([10, 20]);
+  expect(settled).toBe(true);
+  expect(mocks.load).toHaveBeenCalledTimes(2);
+  expect(invalidate.mock.calls.filter(([filters]) => filters?.queryKey === productionScheduleQueryKeys.grindingPlanningBoardLoadAll)).toHaveLength(0);
+  hook.unmount(); client.clear();
+});
 
 it.each([
   ['own saved revision', 'saved', 0],

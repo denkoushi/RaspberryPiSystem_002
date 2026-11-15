@@ -1,4 +1,4 @@
-import { fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -10,7 +10,7 @@ import { PlanningBoardPiecePopover, PlanningBoardPiecesContext, usePlanningBoard
 import { planningBoardChainPairs } from './PlanningBoardChainLinks';
 import { ganttBarGeometry } from './planningBoardGanttGeometry';
 import { buildPlanningBoardGanttLayout, isNormalGanttBar } from './planningBoardGanttLayout';
-import { PlanningBoardUnitOpEditor, PlanningBoardUnitOpContext, unitOpDraft, unitOpGhost } from './PlanningBoardUnitOpEditor';
+import { PlanningBoardUnitOpEditor, PlanningBoardUnitOpContext, PlanningBoardUnitOpMutationContext, unitOpDraft, unitOpGhost } from './PlanningBoardUnitOpEditor';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 
@@ -248,5 +248,38 @@ it('refreshes all three offline reads after a 409 and preserves its failure mess
   expect(refresh.mock.calls.map(([key]) => key)).toEqual(['board', 'load', 'resource-minutes']);
   reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1));
   expect(onClose).not.toHaveBeenCalled();
+  expect(onPending).toHaveBeenLastCalledWith(false);
+});
+
+it('keeps offline configure waiting for board, load and resource minutes, bypassing the page flow', async () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ status: 200, data: { dailyHoursByResource: {}, runsThroughBreaksResources: [] } });
+  mutation.mockResolvedValueOnce({});
+  let offline!: ReturnType<typeof usePlanningBoardOffline>;
+  const reads = ['board', 'load', 'resource-minutes'].map(() => vi.fn().mockResolvedValue({}));
+  const run = vi.fn(); const refreshBoard = vi.fn(); const onClose = vi.fn(); const onPending = vi.fn();
+  function Harness() {
+    offline = usePlanningBoardOffline();
+    const { registerRead } = offline;
+    useLayoutEffect(() => {
+      const unregister = ['board', 'load', 'resource-minutes'].map((key, index) =>
+        registerRead(key, { read: reads[index], commit: () => undefined }));
+      return () => unregister.forEach((remove) => remove());
+    }, [registerRead]);
+    return <PlanningBoardUnitOpMutationContext.Provider value={{ run, refreshBoard }}>
+      <PlanningBoardUnitOpEditor item={item} canConfigure disabled={false} onClose={onClose} onPending={onPending} onFailure={vi.fn()} />
+    </PlanningBoardUnitOpMutationContext.Provider>;
+  }
+  render(<PlanningBoardOfflineProvider config={{ ...DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG, enabled: true }}><Harness /></PlanningBoardOfflineProvider>);
+  await waitFor(() => expect(offline.snapshot.phase).toBe('online'));
+  const finish: (() => void)[] = [];
+  reads.forEach((read) => { read.mockClear(); read.mockReturnValue(new Promise<void>((resolve) => finish.push(resolve))); });
+  fireEvent.click(screen.getByRole('button', { name: '2工程にする' }));
+  await waitFor(() => reads.forEach((read) => expect(read).toHaveBeenCalledTimes(1)));
+  expect(run).not.toHaveBeenCalled(); expect(refreshBoard).not.toHaveBeenCalled();
+  expect(onClose).not.toHaveBeenCalled(); expect(onPending).toHaveBeenLastCalledWith(true);
+  for (const resolve of finish.slice(0, 2)) await act(async () => { resolve(); });
+  expect(onClose).not.toHaveBeenCalled();
+  await act(async () => { finish[2]!(); });
+  await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
   expect(onPending).toHaveBeenLastCalledWith(false);
 });

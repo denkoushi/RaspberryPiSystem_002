@@ -15,6 +15,12 @@ export const PlanningBoardUnitOpContext = createContext<{
   loading: boolean;
 } | null>(null);
 
+// The page owns write gates while the editor waits for its complete board refresh.
+export const PlanningBoardUnitOpMutationContext = createContext<{
+  refreshBoard: () => Promise<unknown>;
+  run: (item: GrindingPlanningBoardItem, save: () => Promise<unknown>) => Promise<unknown>;
+} | null>(null);
+
 const half = (value: number) => Math.round(value * 2) / 2;
 export function unitOpDraft(total: number | null, count: number, registered: readonly { minutes: number }[]) {
   if (registered.length === count) return registered.map((op) => op.minutes);
@@ -44,8 +50,9 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
 }) {
   const context = useContext(PlanningBoardUnitOpContext) ?? { items: [item], loading: false };
   const { dueSource } = useContext(DScheduleMinutesContext);
-  const mutation = useConfigureKioskSessakuPieceOps(dueSource);
   const offline = usePlanningBoardOffline();
+  const pageMutation = useContext(PlanningBoardUnitOpMutationContext);
+  const mutation = useConfigureKioskSessakuPieceOps(dueSource, offline.enabled ? undefined : pageMutation ?? undefined);
   const { gate } = offline;
   // Freeze the definition snapshot until the dialog closes: concurrent edits must conflict.
   const [saved] = useState(() => context.minutes?.values.find((value) => value.resourceCd === item.effectiveResourceCd && value.fhincd === item.fhincd.trim()));
@@ -75,7 +82,9 @@ export function PlanningBoardUnitOpEditor({ item, canConfigure, disabled, onClos
         expectedMinutes: saved ? { perUnitMinutes: saved.perUnitMinutes, setupMinutes: saved.setupMinutes,
           ops: registered.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) } : null
       };
-      await gate.run(() => mutation.mutateAsync(payload));
+      const save = () => gate.run(() => mutation.mutateAsync(payload));
+      if (!scope && !offline.enabled && pageMutation) await pageMutation.run(item, save);
+      else await save();
       if (generation !== gate.generation()) return;
       if (offline.enabled) await Promise.all(['board', 'load', 'resource-minutes'].map((key) => offline.refreshRead(key)));
       if (generation === gate.generation()) onClose();
