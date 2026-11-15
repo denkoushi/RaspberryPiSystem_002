@@ -1,3 +1,4 @@
+import type { PendingMaterialPlacement } from './documentEditorMaterialPlacements';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
 export type AssemblyDocumentEditorRecoveryRecord = {
@@ -7,6 +8,7 @@ export type AssemblyDocumentEditorRecoveryRecord = {
   editVersion: number;
   savedAt: string;
   elements: AssemblyProcedureOverlayElement[];
+  materialPlacements?: PendingMaterialPlacement[];
 };
 
 export type AssemblyDocumentEditorRecoveryMatch = Pick<

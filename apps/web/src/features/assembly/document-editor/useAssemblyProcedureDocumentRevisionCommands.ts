@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef, useState } from 'react';
 
 import {
   approvePublishAssemblyProcedureDocument,
@@ -64,6 +64,8 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   setSelectedOverlayId: StateSetter<string | null>;
   dispatch: Dispatch<OverlayDraftAction>;
   recovery: { clear: () => void; saveImmediately?: (next: { baseUpdatedAt: string | null; editVersion: number }) => void };
+  onSaved?: () => void;
+  releaseUnsavedMaterials?: () => Promise<void>;
   onNavigateAfterDelete?: () => void;
   onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
@@ -72,6 +74,8 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
 export function useAssemblyProcedureDocumentRevisionCommands(
   session: AssemblyProcedureDocumentRevisionCommandSession
 ) {
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
   const loadDocument = useCallback(
     (documentId: string) => getAssemblyProcedureDocument(documentId),
     []
@@ -132,11 +136,11 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     }
   }, [session]);
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (flushedElements?: AssemblyProcedureOverlayElement[]) => {
     const {
       busy,
       document,
-      elements,
+      elements: sessionElements,
       isDirty,
       passwordInput,
       readOnly,
@@ -149,11 +153,14 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       setMessage,
       dispatch
     } = session;
-    if (!document || readOnly || busy || !isDirty) return;
+    const elements = flushedElements ?? sessionElements;
+    if (!document || readOnly || busy || savingRef.current || (!isDirty && !flushedElements)) return;
     if (!isOverlayDraftSaveable(elements)) {
       (session.setErrorMessage ?? setMessage)('画像オーバーレイにはasset IDを指定し、文章を空にしないでください。');
       return;
     }
+    savingRef.current = true;
+    setSaving(true);
     setBusy(true);
     setMessage(null);
     setConflict(false);
@@ -167,6 +174,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
+      session.onSaved?.();
       setDocument(saved);
       dispatch({ type: 'replace', elements: nextElements, preserveHistory: true });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
@@ -183,6 +191,8 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, 'オーバーレイの保存に失敗しました。'));
       }
     } finally {
+      savingRef.current = false;
+      setSaving(false);
       setBusy(false);
     }
   }, [session]);
@@ -204,7 +214,9 @@ export function useAssemblyProcedureDocumentRevisionCommands(
       setMessage,
       dispatch
     } = session;
-    if (!document || readOnly || busy || conflictEditVersion == null) return;
+    if (!document || readOnly || busy || savingRef.current || conflictEditVersion == null) return;
+    savingRef.current = true;
+    setSaving(true);
     setBusy(true);
     setMessage('保持中の内容を最新editVersionへ再保存しています…');
     try {
@@ -217,6 +229,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         ...(session.appliedCaptionElementIds ? { appliedCaptionElementIds: session.appliedCaptionElementIds.slice(-200) } : {})
       });
       const nextElements = selectDocumentOverlayElements(saved);
+      session.onSaved?.();
       setDocument(saved);
       dispatch({ type: 'replace', elements: nextElements, preserveHistory: true });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
@@ -235,6 +248,8 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '保持中の内容の再保存に失敗しました。'));
       }
     } finally {
+      savingRef.current = false;
+      setSaving(false);
       setBusy(false);
     }
   }, [session]);
@@ -259,6 +274,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     try {
       const latest = await getAssemblyProcedureDocument(document.id);
       const nextElements = selectDocumentOverlayElements(latest);
+      await session.releaseUnsavedMaterials?.();
       setDocument(latest);
       dispatch({ type: 'replace', elements: nextElements });
       setBaselineSnapshot(overlayDraftSnapshot(nextElements));
@@ -353,6 +369,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
         accessPassword: passwordInput,
         expectedEditVersion: document.editVersion ?? 0
       });
+      await session.releaseUnsavedMaterials?.();
       recovery.clear();
       onNavigateAfterDiscard?.();
     } catch (error: unknown) {
@@ -376,6 +393,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     session.setMessage(null);
     try {
       await deleteAssemblyProcedureDocument(session.document.id, readProcedureEditorAccess()?.pin ?? '', session.holderToken);
+      await session.releaseUnsavedMaterials?.();
       session.recovery.clear();
       session.onNavigateAfterDelete?.();
     } catch (error: unknown) {
@@ -390,6 +408,7 @@ export function useAssemblyProcedureDocumentRevisionCommands(
   }, [session]);
 
   return {
+    saving,
     loadDocument,
     deleteDocument,
     verifyEditorPassword,

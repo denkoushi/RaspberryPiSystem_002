@@ -2,7 +2,7 @@ import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
 import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
-import { useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
+import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
 
@@ -10,13 +10,13 @@ import {
   createOverlayForRange,
   createOverlayId,
   isOverlayDraftSaveable,
-  overlayDraftReducer,
   overlayDraftSnapshot,
   shiftOverlayPages,
-  updateOverlayBBox,
-  type OverlayDraftAction
+  updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
 import { readDocumentEditorConflict } from './documentEditorConflict';
+import { historyReducer } from './documentEditorHistory';
+import { removeMaterialPlacements } from './documentEditorMaterialPlacements';
 import {
   selectDocumentElement,
   selectDocumentPage,
@@ -29,37 +29,12 @@ import { useAssemblyProcedureDocumentEditLease } from './useAssemblyProcedureDoc
 import { useAssemblyProcedureDocumentOverlayCommands } from './useAssemblyProcedureDocumentOverlayCommands';
 import { useAssemblyProcedureDocumentRevisionCommands } from './useAssemblyProcedureDocumentRevisionCommands';
 import { useAssemblyProcedureLayoutSuggestions } from './useAssemblyProcedureLayoutSuggestions';
+import { useDocumentEditorHistoryCommands } from './useDocumentEditorHistoryCommands';
+import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterialPlacements';
 
+import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
-
-type OverlayHistory = { past: AssemblyProcedureOverlayElement[][]; present: AssemblyProcedureOverlayElement[]; future: AssemblyProcedureOverlayElement[][]; dragStart: AssemblyProcedureOverlayElement[] | null };
-function historyReducer(state: OverlayHistory, action: OverlayDraftAction | { type: 'shiftPages'; afterPageIndex: number } | { type: 'undo' } | { type: 'redo' } | { type: 'beginDrag' } | { type: 'endDrag' }): OverlayHistory {
-  if (action.type === 'shiftPages') {
-    const shift = (elements: AssemblyProcedureOverlayElement[]) => shiftOverlayPages(elements, action.afterPageIndex);
-    return { past: state.past.map(shift), present: shift(state.present), future: state.future.map(shift), dragStart: state.dragStart ? shift(state.dragStart) : null };
-  }
-  if (action.type === 'beginDrag') return { ...state, dragStart: state.present };
-  if (action.type === 'endDrag') {
-    if (!state.dragStart) return state;
-    if (overlayDraftSnapshot(state.dragStart) === overlayDraftSnapshot(state.present)) return { ...state, dragStart: null };
-    return { dragStart: null, past: [...state.past.slice(-49), state.dragStart], present: state.present, future: [] };
-  }
-  if (action.type === 'undo') {
-    if (!state.past.length) return state;
-    return { dragStart: null, past: state.past.slice(0, -1), present: state.past[state.past.length - 1], future: [state.present, ...state.future] };
-  }
-  if (action.type === 'redo') {
-    if (!state.future.length) return state;
-    return { dragStart: null, past: [...state.past, state.present], present: state.future[0], future: state.future.slice(1) };
-  }
-  const present = overlayDraftReducer(state.present, action);
-  if (action.type === 'replace' && action.preserveHistory) return { ...state, present };
-  if (action.type === 'replace' || action.type === 'clear') return { dragStart: null, past: [], present, future: [] };
-  if (overlayDraftSnapshot(present) === overlayDraftSnapshot(state.present)) return state;
-  if (state.dragStart) return { ...state, present };
-  return { dragStart: null, past: [...state.past.slice(-49), state.present], present, future: [] };
-}
 
 // Event callbacks keep their identity while reading the latest editor state.
 function useEditorCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
@@ -80,15 +55,31 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const [document, setDocument] = useState<AssemblyProcedureDocumentDto | null>(null);
   const [history, dispatch] = useReducer(historyReducer, { past: [], present: [], future: [], dragStart: null });
   const elements = history.present;
+  const inlineTextFlush = useRef<InlineTextFlush | null>(null);
+  const registerInlineTextFlush = useCallback((flush: InlineTextFlush | null) => { inlineTextFlush.current = flush; }, []);
+  const flushInlineText = useEditorCallback(() => {
+    const changed = inlineTextFlush.current?.();
+    return changed ? elements.map(element => element.id === changed.id ? changed : element) : undefined;
+  });
+  const [inlineDraft, setInlineDraft] = useState<InlineTextElement | null>(null);
+  const onInlineDraftChange = useEditorCallback((element: InlineTextElement | null) => { if (!busyRef.current) setInlineDraft(element); });
+  const commitInlineText = useEditorCallback((element: AssemblyProcedureOverlayElement) => { if (!busyRef.current) dispatch({ type: 'update', element }); });
   const [baselineSnapshot, setBaselineSnapshot] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [accessGranted, setAccessGranted] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusyState] = useState(false);
+  const busyRef = useRef(false);
+  const setBusy = useCallback((value: import('react').SetStateAction<boolean>) => {
+    busyRef.current = typeof value === 'function' ? value(busyRef.current) : value;
+    setBusyState(busyRef.current);
+  }, []);
   const [message, setMessageState] = useState<string | null>(null);
   const [messageIsError, setMessageIsError] = useState(false);
   const setMessage = useCallback((value: import('react').SetStateAction<string | null>) => { setMessageIsError(false); setMessageState(value); }, []);
   const setErrorMessage = useCallback((value: import('react').SetStateAction<string | null>) => { setMessageIsError(true); setMessageState(value); }, []);
+  const materials = useDocumentEditorMaterialPlacements({ documentId: document?.id ?? input.documentId, elements, dispatch, setErrorMessage });
+  const { pendingMaterials, materialRevision, materialScope, materialPlacements, releaseAllMaterials, beforeMaterialPlacement, cancelMaterialPlacement, trackMaterialPlacement, commitMaterialPlacements, discardMaterialPlacements } = materials;
   const [selectedPageIndex, setSelectedPageIndex] = useState(0);
   const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -101,7 +92,8 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   } | null>(null);
   const [conflict, setConflict] = useState(false);
   const [conflictEditVersion, setConflictEditVersion] = useState<number | null>(null);
-  const snapshot = useMemo(() => overlayDraftSnapshot(elements), [elements]);
+  const draftElements = useMemo(() => inlineDraft ? elements.map(element => element.id === inlineDraft.id ? inlineDraft : element) : elements, [elements, inlineDraft]);
+  const snapshot = useMemo(() => overlayDraftSnapshot(draftElements), [draftElements]);
   const isDirty = baselineSnapshot != null && baselineSnapshot !== snapshot;
   const selectedPage = useMemo(
     () => selectDocumentPage(document, selectedPageIndex),
@@ -123,7 +115,9 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     documentId: document?.id ?? input.documentId,
     baseUpdatedAt: document?.updatedAt ?? null,
     editVersion: document?.editVersion ?? 0,
-    elements,
+    elements: draftElements,
+    materialPlacements,
+    onDiscardMaterials: discardMaterialPlacements,
     enabled: accessGranted,
     dirty: isDirty,
     onStorageError
@@ -133,23 +127,26 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     documentId: document?.id ?? input.documentId,
     enabled: accessGranted && document?.status === 'draft',
     onLost: (lease) => {
-      if (isDirty) saveRecoveryImmediately({ baseUpdatedAt: document?.updatedAt ?? null, editVersion: document?.editVersion ?? 0 });
+      const flushed = flushInlineText();
+      const released = releaseAllMaterials();
+      if (isDirty || flushed) saveRecoveryImmediately({ baseUpdatedAt: document?.updatedAt ?? null, editVersion: document?.editVersion ?? 0 }, removeMaterialPlacements(flushed ?? elements, released.placements), []);
       setSelectionMode(false);
       setPendingRange(null);
       setTextCandidates([]);
-      setErrorMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています`);
+      setErrorMessage(`${lease.holderLabel}に引き継がれました。未保存の内容は端末に保持しています${released.placements.length ? '。置いた素材を外しました' : ''}`);
     }
   });
   const expiryRecovery = useRef({ isDirty, document, saveRecoveryImmediately });
   expiryRecovery.current = { isDirty, document, saveRecoveryImmediately };
   const revokeAccess = useCallback(() => {
+    const flushed = flushInlineText();
     const current = expiryRecovery.current;
-    if (current.isDirty) current.saveRecoveryImmediately({ baseUpdatedAt: current.document?.updatedAt ?? null, editVersion: current.document?.editVersion ?? 0 });
+    if (current.isDirty || flushed) current.saveRecoveryImmediately({ baseUpdatedAt: current.document?.updatedAt ?? null, editVersion: current.document?.editVersion ?? 0 }, flushed);
     dispatch({ type: 'endDrag' });
     clearProcedureEditorAccess();
     setAccessGranted(false);
     setPasswordInput('');
-  }, []);
+  }, [flushInlineText]);
   const handleLeaseError = editLease.handleError;
   const onEditLeaseError = useCallback((error: unknown) => {
     const status = isAxiosError(error) ? error.response?.status : undefined;
@@ -225,11 +222,14 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectedOverlayId,
     dispatch,
     recovery,
+    onSaved: commitMaterialPlacements,
+    releaseUnsavedMaterials: async () => { await releaseAllMaterials().done; },
     onNavigateAfterDelete: input.onNavigateAfterDelete,
     onNavigateAfterDiscard: input.onNavigateAfterDiscard,
     onNavigateAfterPublish: input.onNavigateAfterPublish
   }), [
     layoutSuggestions.appliedCaptionElementIds,
+    setBusy,
     busy,
     baselineSnapshot,
     conflictEditVersion,
@@ -245,16 +245,23 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     passwordInput,
     readOnly,
     recovery,
+    commitMaterialPlacements,
+    releaseAllMaterials,
     setMessage,
     setErrorMessage
   ]);
   const revisionCommands = useAssemblyProcedureDocumentRevisionCommands(revisionSession);
   const { loadDocument } = revisionCommands;
   const overlaySession = useMemo(() => ({
+    materialPlacementAllowed: !conflict && editLease.mine,
+    materialPlacementScope: materialScope.current,
+    beforeMaterialPlacement,
+    cancelMaterialPlacement,
+    trackMaterialPlacement,
     document,
     elements,
     passwordInput,
-    busy,
+    get busy() { return busyRef.current; },
     pendingRange,
     readOnly,
     selectedElement,
@@ -273,7 +280,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     onEditLeaseError,
     holderToken: editLease.holderToken
   }), [
-    busy,
     document,
     onEditLeaseError,
     editLease.holderToken,
@@ -283,9 +289,15 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     selectedElement,
     selectedPage,
     textCandidateRange,
+    conflict,
+    editLease.mine,
     elements,
     setMessage,
-    setErrorMessage
+    setErrorMessage,
+    beforeMaterialPlacement,
+    cancelMaterialPlacement,
+    trackMaterialPlacement,
+    materialScope, setBusy
   ]);
   const overlayCommands = useAssemblyProcedureDocumentOverlayCommands(overlaySession);
   useEffect(() => {
@@ -333,17 +345,27 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   }, [input.documentId, loadDocument, revokeAccess, setMessage, setErrorMessage]);
 
   const restoreRecovery = useCallback(() => {
+    for (const placement of recovery.pending?.materialPlacements ?? []) pendingMaterials.current.set(placement.elementId, placement);
     const recovered = recovery.restore();
     if (!recovered) return;
     dispatch({ type: 'replace', elements: recovered });
     setMessage('端末に残っていた下書きを復元しました。保存して確定してください。');
-  }, [recovery, setMessage]);
+  }, [recovery, setMessage, pendingMaterials]);
 
   const { confirmNavigation } = useUnsavedChangesGuard(isDirty);
-  const onNavigateBack = input.onNavigateBack;
-  const navigateBack = useEditorCallback(() => {
-    if (layoutSuggestions.locked) return;
-    if (confirmNavigation()) onNavigateBack?.();
+  const confirmEditorNavigation = useEditorCallback(async () => {
+    if (layoutSuggestions.locked || busyRef.current) return false;
+    const flushed = flushInlineText();
+    if (!(flushed && !isDirty ? window.confirm(DEFAULT_UNSAVED_NAVIGATION_MESSAGE) : confirmNavigation())) return false;
+    setBusy(true);
+    const released = releaseAllMaterials();
+    if (isDirty || flushed) saveRecoveryImmediately({ baseUpdatedAt: document?.updatedAt ?? null, editVersion: document?.editVersion ?? 0 }, removeMaterialPlacements(flushed ?? draftElements, released.placements), []);
+    if (!await released.done) window.alert('素材を未配置に戻せませんでした。素材棚で配置を取り消してください。');
+    setBusy(false);
+    return true;
+  });
+  const navigateBack = useEditorCallback(async () => {
+    if (await confirmEditorNavigation()) input.onNavigateBack?.();
   });
 
   const handleRangeSelected = useCallback((bbox: AssemblyProcedureOverlayBBox) => {
@@ -356,42 +378,43 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   }, []);
   const setSelectedPage = useCallback((pageIndex: number) => {
     if (layoutSuggestions.locked) return;
+    flushInlineText();
     setSelectedPageIndex(pageIndex);
     setSelectedOverlayId(null);
     setPendingRange(null);
-  }, [layoutSuggestions.locked]);
+  }, [layoutSuggestions.locked, flushInlineText]);
 
   const updateElement = useCallback((element: AssemblyProcedureOverlayElement) => {
-    if (!readOnly) dispatch({ type: 'update', element });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'update', element });
   }, [readOnly]);
   const bringForward = useCallback((id: string) => {
-    if (!readOnly) dispatch({ type: 'bringForward', id });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'bringForward', id });
   }, [readOnly]);
   const sendBackward = useCallback((id: string) => {
-    if (!readOnly) dispatch({ type: 'sendBackward', id });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'sendBackward', id });
   }, [readOnly]);
   const bringToFront = useCallback((id: string) => {
-    if (!readOnly) dispatch({ type: 'bringToFront', id });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'bringToFront', id });
   }, [readOnly]);
   const sendToBack = useCallback((id: string) => {
-    if (!readOnly) dispatch({ type: 'sendToBack', id });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'sendToBack', id });
   }, [readOnly]);
   const nudgeElement = useCallback((id: string, dxRatio: number, dyRatio: number) => {
-    if (!readOnly) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
+    if (!readOnly && !busyRef.current) dispatch({ type: 'nudge', id, dxRatio, dyRatio });
   }, [readOnly]);
   const updateElementBBox = useEditorCallback((id: string, bbox: AssemblyProcedureOverlayBBox) => {
-    if (readOnly) return;
+    if (readOnly || busyRef.current) return;
     const element = elements.find((candidate) => candidate.id === id);
     if (element) dispatch({ type: 'update', element: updateOverlayBBox(element, bbox) });
   });
   const deleteSelectedOverlay = useEditorCallback(() => {
-    if (!selectedOverlayId || readOnly) return;
+    if (!selectedOverlayId || readOnly || busyRef.current) return;
     dispatch({ type: 'remove', id: selectedOverlayId });
     setSelectedOverlayId(null);
   });
 
   const addBlankPage = useEditorCallback(async () => {
-    if (!document || readOnly || busy || conflict) return;
+    if (!document || readOnly || busyRef.current || conflict) return;
     setBusy(true);
     try {
       const next = await addBlankAssemblyProcedurePage({ id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
@@ -411,22 +434,26 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   });
 
   const duplicateOverlayToCurrentPage = useEditorCallback((sourceId: string) => {
-    if (readOnly || busy || !selectedPage) return;
+    if (readOnly || busyRef.current || !selectedPage) return;
     const source = elements.find((element) => element.id === sourceId);
     if (!source || source.pageIndex === selectedPage.pageIndex) return;
     const id = createOverlayId();
+    const placement = pendingMaterials.current.get(sourceId);
+    if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
     dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
     setSelectedOverlayId(id);
   });
 
   const duplicateSelectedOverlay = useEditorCallback(() => {
-    if (!selectedElement || readOnly) return;
+    if (!selectedElement || readOnly || busyRef.current) return;
     const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    const placement = pendingMaterials.current.get(selectedElement.id);
+    if (placement) pendingMaterials.current.set(copy.id, { ...placement, elementId: copy.id, fallbackAssetId: undefined });
     dispatch({ type: 'add', element: copy });
     setSelectedOverlayId(copy.id);
   });
   const addOverlay = useEditorCallback((kind: 'TEXT' | 'SHAPE') => {
-    if (readOnly || busy) return;
+    if (readOnly || busyRef.current) return;
     // Toolbar creation uses a visible starter box; range creation retains OCR/cropping.
     const element = createOverlayForRange(kind, selectedPageIndex, { xRatio: 0.25, yRatio: 0.25, widthRatio: 0.3, heightRatio: 0.15 }, elements);
     dispatch({ type: 'add', element });
@@ -434,17 +461,20 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     setSelectionMode(false);
   });
 
-  const beginOverlayDrag = useCallback(() => { if (!readOnly) dispatch({ type: 'beginDrag' }); }, [readOnly]);
+  const beginOverlayDrag = useCallback(() => { if (!readOnly && !busyRef.current) dispatch({ type: 'beginDrag' }); }, [readOnly]);
   const endOverlayDrag = useCallback(() => dispatch({ type: 'endDrag' }), []);
-  const undo = useCallback(() => { if (!readOnly && !busy) dispatch({ type: 'undo' }); }, [readOnly, busy]);
-  const redo = useCallback(() => { if (!readOnly && !busy) dispatch({ type: 'redo' }); }, [readOnly, busy]);
-  const selectOverlay = useCallback((id: string | null) => { if (!layoutSuggestions.locked) setSelectedOverlayId(id); }, [layoutSuggestions.locked]);
+  const { undo, redo } = useDocumentEditorHistoryCommands({ history, dispatch, materials, document, setDocument, passwordInput, holderToken: editLease.holderToken, readOnly, materialPlacementAllowed: !conflict && editLease.mine, get busy() { return busyRef.current; }, setBusy, setErrorMessage, onEditLeaseError });
+  const selectOverlay = useEditorCallback((id: string | null) => { if (!layoutSuggestions.locked) { if (id !== selectedOverlayId) flushInlineText(); setSelectedOverlayId(id); } });
   const selectMode = useCallback((value: boolean) => { if (!layoutSuggestions.locked) setSelectionMode(value); }, [layoutSuggestions.locked]);
-  const save = useEditorCallback(revisionCommands.save);
+  const save = useEditorCallback(() => revisionCommands.save(flushInlineText()));
   const refetchTextCandidates = useEditorCallback(overlayCommands.refetchTextCandidates);
   const startLayoutSuggestions = useEditorCallback(layoutSuggestions.start);
 
   return {
+    registerInlineTextFlush,
+    onInlineDraftChange,
+    commitInlineText,
+    setErrorMessage,
     layoutSuggestions: { ...layoutSuggestions, start: startLayoutSuggestions },
     onEditLeaseError,
     beginOverlayDrag,
@@ -458,12 +488,14 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     duplicateOverlayToCurrentPage,
     addBlankPage,
     placeMaterial: overlayCommands.placeMaterial,
+    materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,
     document,
     pages: selectDocumentPages(document),
     loading,
     accessGranted,
     busy,
+    saving: revisionCommands.saving,
     message,
     messageIsError,
     conflict,
@@ -517,7 +549,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     sendToBack,
     nudgeElement,
     updateElementBBox,
-    confirmNavigation,
+    confirmNavigation: confirmEditorNavigation,
     recoveryPending: recovery.pending,
     restoreRecovery,
     discardRecovery: recovery.discard

@@ -47,6 +47,7 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onRefetchTextCandidates,
   readOnly = false,
   busy = false,
+  textReadOnly = false,
   voiceInputEnabled = false,
   voiceContext
 }: {
@@ -63,11 +64,12 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
   onRefetchTextCandidates: () => void;
   readOnly?: boolean;
   busy?: boolean;
+  textReadOnly?: boolean;
   voiceInputEnabled?: boolean;
   voiceContext?: string;
 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const voice = useProcedureVoiceInput(element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy, onUpdate, voiceContext);
+  const voice = useProcedureVoiceInput(element?.kind === 'TEXT' ? element : null, voiceInputEnabled && !readOnly && !busy && !textReadOnly, onUpdate, voiceContext);
   if (!element) return null;
 
   const patch = (next: Partial<AssemblyProcedureOverlayElement>) => onUpdate({ ...element, ...next } as AssemblyProcedureOverlayElement);
@@ -96,11 +98,12 @@ export const AssemblyProcedureDocumentEditorInspector = memo(function AssemblyPr
           <legend>文章</legend>
           <textarea
             data-kiosk-sop-target="assembly-document-editor-text-value"
+            readOnly={textReadOnly}
             value={element.text}
             onChange={(event) => { voice.manualEdit(); patch({ text: event.target.value }); }}
             className="min-h-24 min-w-0 rounded border border-slate-500 bg-white px-2 py-2 text-lg text-slate-900"
           />
-          {voiceInputEnabled ? <ProcedureVoiceInput voice={voice} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy} /> : null}
+          {voiceInputEnabled ? <ProcedureVoiceInput voice={voice} empty={!element.text.trim() || element.text.trim() === 'ここに文章を入力'} disabled={readOnly || busy || textReadOnly} /> : null}
           <Button
             type="button"
             variant="ghostOnDark"
