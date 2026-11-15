@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
+  getGroups: vi.fn(),
+  replaceGroups: vi.fn(),
   get: vi.fn(),
   getLoad: vi.fn(),
   processChips: vi.fn(),
@@ -25,6 +27,12 @@ const mocks = vi.hoisted(() => ({
   updateResourceOrderBulk: vi.fn(),
   updateChecks: vi.fn(),
   updateOrder: vi.fn()
+}));
+
+vi.mock('../../../../services/production-schedule/same-model-resource-groups.service.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../../services/production-schedule/same-model-resource-groups.service.js')>(),
+  getSameModelResourceGroupsForSite: mocks.getGroups,
+  replaceSameModelResourceGroupsForSite: mocks.replaceGroups
 }));
 
 vi.mock('../../../../services/production-schedule/d-schedule-minutes/kind-membership.js', () => ({ listDScheduleMinutesKinds: mocks.listKinds }));
@@ -71,7 +79,7 @@ vi.mock('../../../../services/production-schedule/grinding-planning-board-resour
 import { createInMemoryLeaderboardShellSnapshotStore } from '../../../../services/production-schedule/leaderboard/leaderboard-shell-snapshot.store.js';
 import { registerProductionScheduleGrindingPlanningBoardRoute } from '../grinding-planning-board.js';
 
-function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unknown>) {
+function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unknown>, siteKey = 'site-a') {
   const app = Fastify();
   app.setErrorHandler((error, _request, reply) => {
     const statusCode = error instanceof ZodError
@@ -84,7 +92,7 @@ function createApp(requireClientDevice: (rawClientKey: unknown) => Promise<unkno
   const clientDevice = { id: 'device-1', apiKey: 'key-1', name: 'terminal-1', location: 'site-a', statusClientId: null };
   const scope = {
     deviceScopeKey: 'site-a - terminal-1',
-    siteKey: 'site-a',
+    siteKey,
     deviceName: 'terminal-1',
     infraHost: 'terminal-1',
     credentialIdentity: { clientDeviceId: 'device-1', apiKey: 'key-1', statusClientId: null }
@@ -818,6 +826,46 @@ describe('resource move route', () => {
     try {
       expect((await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload })).statusCode).toBe(409);
       expect(mocks.rewarm).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+});
+
+describe('kiosk same model groups', () => {
+  afterEach(() => vi.resetAllMocks());
+  it('GET and PUT use resolved siteKey and PUT forwards resolutions', async () => {
+    const requireDevice = vi.fn(async () => ({ id: 'device', location: 'different-label' }));
+    const app = await createApp(requireDevice, 'canonical-site');
+    const body = { groups: [{ resourceCds: ['021', '022'] }], resolutions: { P: '022' } };
+    mocks.getGroups.mockResolvedValue({ groups: [], resources: [] });
+    mocks.replaceGroups.mockResolvedValue({ groups: body.groups, resources: [] });
+    try {
+      for (const method of ['GET', 'PUT'] as const) {
+        const result = await app.inject({ method, url: '/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups?siteKey=foreign', headers: { 'x-client-key': 'key' }, ...(method === 'PUT' ? { payload: body } : {}) });
+        expect(result.statusCode).toBe(200);
+      }
+      expect(requireDevice).toHaveBeenCalledWith('key');
+      expect(mocks.getGroups).toHaveBeenCalledWith('canonical-site');
+      expect(mocks.replaceGroups).toHaveBeenCalledWith('canonical-site', body);
+    } finally { await app.close(); }
+  });
+  it.each(['GET', 'PUT'] as const)('rejects shared site for %s', async (method) => {
+    const app = await createApp(async () => ({ id: 'device' }), 'shared');
+    try {
+      expect((await app.inject({ method, url: '/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', ...(method === 'PUT' ? { payload: { groups: [] } } : {}) })).statusCode).toBe(400);
+      expect(mocks.getGroups).not.toHaveBeenCalled(); expect(mocks.replaceGroups).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('does not accept location in kiosk PUT', async () => {
+    const app = await createApp(async () => ({ id: 'device' }));
+    try {
+      expect((await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', payload: { groups: [], location: 'foreign' } })).statusCode).toBe(400);
+      expect(mocks.replaceGroups).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it.each(['GET', 'PUT'] as const)('requires a device for %s', async (method) => {
+    const app = await createApp(async () => { throw Object.assign(new Error('unauthorized'), { statusCode: 401 }); });
+    try {
+      expect((await app.inject({ method, url: '/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', ...(method === 'PUT' ? { payload: { groups: [] } } : {}) })).statusCode).toBe(401);
     } finally { await app.close(); }
   });
 });

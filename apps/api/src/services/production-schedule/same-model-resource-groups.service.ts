@@ -8,21 +8,28 @@ import { acquireFkojunstStatusMailCriticalTransactionLock } from './fkojunst-sta
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, isProductionScheduleCuttingResourceCd } from './policies/resource-category-policy.service.js';
 import { readSameModelResourceGroups, representativeResourceCd, sameModelResourceCds } from './same-model-resource-resolver.js';
 import { lockOperationDefinitionPieces, reconcileOperationDefinitionPieces } from './sessaku-pieces/piece-operation-definitions.js';
-import type { ProductionScheduleSameModelResourceGroupsResponse } from '@raspi-system/shared-types';
+import type { ProductionScheduleSameModelResourceGroupsResponse, ProductionScheduleSameModelMinutesConflictDetails } from '@raspi-system/shared-types';
 
-export const sameModelGroupsSchema = z.object({
-  location: z.string().trim().min(1).max(100),
+const groupFields = {
+  resolutions: z.record(z.string().trim().min(1), resourceCdSchema).optional(),
   groups: z.array(z.object({ resourceCds: z.array(resourceCdSchema).min(2, '組には機械を2台以上入れてください').max(300) })).max(300)
-}).superRefine(({ groups }, ctx) => {
+};
+const validateGroups = ({ groups }: { groups: Array<{ resourceCds: string[] }> }, ctx: z.RefinementCtx) => {
   const used = new Set<string>();
   for (const group of groups) for (const cd of group.resourceCds) {
     if (used.has(cd)) ctx.addIssue({ code: z.ZodIssueCode.custom, message: '同じ機械を複数の組に入れることはできません' });
     used.add(cd);
   }
-});
+};
+export const sameModelGroupsSchema = z.object({ location: z.string().trim().min(1).max(100), ...groupFields }).superRefine(validateGroups);
+export const kioskSameModelGroupsSchema = z.object(groupFields).strict().superRefine(validateGroups);
 
 export async function getSameModelResourceGroups(location: string): Promise<ProductionScheduleSameModelResourceGroupsResponse> {
   const siteKey = resolveSiteKeyForScopeKey(location.trim());
+  return getSameModelResourceGroupsForSite(siteKey);
+}
+
+export async function getSameModelResourceGroupsForSite(siteKey: string): Promise<ProductionScheduleSameModelResourceGroupsResponse> {
   const [groups, master, policy] = await Promise.all([
     readSameModelResourceGroups(siteKey),
     prisma.productionScheduleResourceMaster.findMany({ select: { resourceCd: true, resourceName: true }, orderBy: [{ resourceCd: 'asc' }, { resourceName: 'asc' }] }),
@@ -34,9 +41,13 @@ export async function getSameModelResourceGroups(location: string): Promise<Prod
 }
 
 export async function replaceSameModelResourceGroups(input: z.input<typeof sameModelGroupsSchema>) {
-  const { location, groups: rawGroups } = sameModelGroupsSchema.parse(input);
+  const { location, ...body } = sameModelGroupsSchema.parse(input);
+  return replaceSameModelResourceGroupsForSite(resolveSiteKeyForScopeKey(location), body);
+}
+
+export async function replaceSameModelResourceGroupsForSite(siteKey: string, input: z.input<typeof kioskSameModelGroupsSchema>) {
+  const { groups: rawGroups, resolutions = {} } = kioskSameModelGroupsSchema.parse(input);
   const groups = rawGroups.map((group) => ({ resourceCds: [...group.resourceCds].sort() }));
-  const siteKey = resolveSiteKeyForScopeKey(location);
   if (siteKey === 'shared') throw new ApiError(400, '同型機の組には工場を選択してください');
   await prisma.$transaction(async (tx) => {
     // The same first lock as definition/piece writers serializes regrouping with edits and moves.
@@ -45,7 +56,10 @@ export async function replaceSameModelResourceGroups(input: z.input<typeof sameM
     const resources = [...new Set([...previousGroups, ...groups].flatMap((group) => group.resourceCds))]
       .filter((cd) => JSON.stringify([...sameModelResourceCds(previousGroups, cd)].sort())
         !== JSON.stringify(sameModelResourceCds(groups, cd)));
-    if (!resources.length) return;
+    if (!resources.length) {
+      if (Object.keys(resolutions).length) throw new ApiError(400, '食い違い元の機械を選択してください');
+      return;
+    }
     const where = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey };
     const values = await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.findMany({
       where: { ...where, resourceCd: { in: resources } }, include: { ops: { orderBy: { opNo: 'asc' } } }
@@ -67,13 +81,55 @@ export async function replaceSameModelResourceGroups(input: z.input<typeof sameM
       }
       desired.set(representative, parts);
     }
-    if (conflicts.size) throw new ApiError(409, '品番の値が食い違っています', { fhincds: [...conflicts].sort() }, 'SAME_MODEL_MINUTES_CONFLICT');
+    const details: ProductionScheduleSameModelMinutesConflictDetails = { fhincds: [...conflicts].sort(), values: {} };
+    for (const fhincd of details.fhincds) {
+      details.values[fhincd] = {};
+      for (const cd of resources) {
+        const representative = representativeResourceCd(groups, cd);
+        const candidates = resources.filter((member) => representativeResourceCd(groups, member) === representative)
+          .flatMap((member) => byResource.get(member)?.filter((row) => row.fhincd === fhincd) ?? []);
+        if (new Set(candidates.map(content)).size < 2) continue;
+        const value = byResource.get(cd)?.find((row) => row.fhincd === fhincd);
+        if (value) details.values[fhincd][cd] = { perUnitMinutes: value.perUnitMinutes, setupMinutes: value.setupMinutes,
+          ops: value.ops.map(({ opNo, setupMinutes, minutes }) => ({ opNo, setupMinutes, minutes })) };
+      }
+    }
+    for (const [fhincd, cd] of Object.entries(resolutions)) {
+      if (!details.values[fhincd]?.[cd]) throw new ApiError(400, '食い違い元の機械を選択してください');
+    }
+    const unresolved = details.fhincds.filter((fhincd) => !resolutions[fhincd]);
+    if (unresolved.length) throw new ApiError(409, '品番の値が食い違っています', details, 'SAME_MODEL_MINUTES_CONFLICT');
+    for (const [resourceCd, parts] of desired) for (const fhincd of parts.keys()) {
+      const cd = resolutions[fhincd];
+      if (!cd) continue;
+      const candidates = resources.filter((member) => representativeResourceCd(groups, member) === resourceCd)
+        .flatMap((member) => byResource.get(member)?.filter((row) => row.fhincd === fhincd) ?? []);
+      if (new Set(candidates.map(content)).size < 2) continue;
+      const selected = candidates.find((row) => row.resourceCd === representativeResourceCd(previousGroups, cd));
+      if (!selected) throw new ApiError(400, '食い違い元の機械を選択してください');
+      parts.set(fhincd, selected);
+    }
     const keys = new Map<string, Awaited<ReturnType<typeof lockOperationDefinitionPieces>>>();
     for (const fhincd of [...new Set(values.map((value) => value.fhincd))].sort()) keys.set(fhincd, await lockOperationDefinitionPieces(tx, fhincd));
     const retainedIds: string[] = [];
     for (const [resourceCd, parts] of desired) for (const [fhincd, value] of parts) {
       const existing = values.find((row) => row.resourceCd === resourceCd && row.fhincd === fhincd);
-      if (existing) { retainedIds.push(existing.id); continue; }
+      if (existing) {
+        if (content(existing) !== content(value)) {
+          // Keep operation row IDs for matching operation numbers; reconciliation below handles changed numbers.
+          const nextNos = new Set(value.ops.map((op) => op.opNo));
+          await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.update({
+            where: { id: existing.id }, data: { perUnitMinutes: value.perUnitMinutes, setupMinutes: value.setupMinutes, ops: {
+              deleteMany: existing.ops.filter((op) => !nextNos.has(op.opNo)).map((op) => ({ id: op.id })),
+              update: value.ops.filter((op) => existing.ops.some((row) => row.opNo === op.opNo))
+                .map(({ opNo, setupMinutes, minutes }) => ({ where: { id: existing.ops.find((row) => row.opNo === opNo)!.id }, data: { setupMinutes, minutes } })),
+              create: value.ops.filter((op) => !existing.ops.some((row) => row.opNo === op.opNo))
+                .map(({ opNo, setupMinutes, minutes }) => ({ opNo, setupMinutes, minutes }))
+            } }
+          });
+        }
+        retainedIds.push(existing.id); continue;
+      }
       // Move the original row (and its operation IDs) when its former key is no longer needed.
       if (!retainedIds.includes(value.id) && !desired.get(value.resourceCd)?.has(fhincd)) {
         await tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.update({ where: { id: value.id }, data: { resourceCd } });
@@ -109,5 +165,5 @@ export async function replaceSameModelResourceGroups(input: z.input<typeof sameM
       if (changed) await reconcileOperationDefinitionPieces(tx, { siteKey, resourceCd }, keys.get(fhincd) ?? [], nextNos);
     }
   }, { timeout: 30000, maxWait: 15000 });
-  return getSameModelResourceGroups(location);
+  return getSameModelResourceGroupsForSite(siteKey);
 }

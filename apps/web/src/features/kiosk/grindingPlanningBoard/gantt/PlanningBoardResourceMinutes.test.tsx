@@ -14,7 +14,9 @@ vi.mock('../offline/PlanningBoardOfflineProvider', async (original) => {
   const actual = await original<typeof import('../offline/PlanningBoardOfflineProvider')>();
   return { ...actual, usePlanningBoardOffline: () => ({ ...actual.usePlanningBoardOffline(), ...offline }) };
 });
-vi.mock('../../../../api/hooks/production-schedule', () => ({ useUpdateKioskGrindingPlanningBoardResourcePartMinutes: (resource: string, part: string) => { rowRender(resource, part); return { mutateAsync: save, isError: false }; } }));
+vi.mock('../../../../api/hooks/production-schedule', () => ({
+  useKioskSameModelResourceGroups: () => ({ data: undefined }),
+  useReplaceKioskSameModelResourceGroups: () => ({ mutateAsync: vi.fn(), isPending: false }), useUpdateKioskGrindingPlanningBoardResourcePartMinutes: (resource: string, part: string) => { rowRender(resource, part); return { mutateAsync: save, isError: false }; } }));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlanningBoardItem => ({
   itemId: 'a', kind: 'row', itemRevision: 'r', version: 1, sourceRowId: 'a', fseiban: '26-1', fhincd: ' P1 ', fhinmei: '部品', machineName: null,

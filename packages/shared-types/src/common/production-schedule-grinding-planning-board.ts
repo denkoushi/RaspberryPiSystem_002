@@ -466,6 +466,18 @@ export type GrindingPlanningBoardRequiredMinutesSource = 'original' | 'own';
 export interface ProductionScheduleSameModelResourceGroup {
   resourceCds: string[];
 }
+export interface KioskSameModelResourceGroupsRequest {
+  groups: ProductionScheduleSameModelResourceGroup[];
+  resolutions?: Record<string, string>;
+}
+export interface ProductionScheduleSameModelMinutesConflictDetails {
+  fhincds: string[];
+  values: Record<string, Record<string, {
+    perUnitMinutes: number;
+    setupMinutes: number;
+    ops: Array<{ opNo: number; setupMinutes: number | null; minutes: number }>;
+  }>>;
+}
 export interface ProductionScheduleSameModelResourceGroupsResponse {
   siteKey: string;
   groups: ProductionScheduleSameModelResourceGroup[];

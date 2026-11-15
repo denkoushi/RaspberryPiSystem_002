@@ -45,7 +45,19 @@ beforeEach(() => {
   mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes = {
     findMany: vi.fn(async ({ where }: any) => structuredClone(values.filter((row) => matches(row, where)))),
     findUnique: vi.fn(async ({ where }: any) => values.find((row) => matches(row, where.csvDashboardId_siteKey_resourceCd_fhincd)) ?? null),
-    update: vi.fn(async ({ where, data }: any) => Object.assign(values.find((row) => row.id === where.id)!, data)),
+    update: vi.fn(async ({ where, data }: any) => {
+      const { ops, ...parent } = data;
+      const row = values.find((row) => row.id === where.id)!;
+      Object.assign(row, parent);
+      if (ops) {
+        const removed = new Set((ops.deleteMany ?? []).map((op: any) => op.id));
+        row.ops = row.ops.filter((op) => !removed.has(op.id));
+        for (const { where: target, data: patch } of ops.update ?? []) Object.assign(row.ops.find((op) => op.id === target.id)!, patch);
+        row.ops.push(...(ops.create ?? []).map((op: any, index: number) => ({ ...op, id: `updated-${index}` })));
+        row.ops.sort((a, b) => a.opNo - b.opNo);
+      }
+      return row;
+    }),
     deleteMany: vi.fn(async ({ where }: any) => { values = values.filter((row) => !matches(row, where)); }),
     create: vi.fn(async ({ data }: any) => { const row = { ...data, id: `copy-${values.length}`, ops: data.ops.create.map((op: any, i: number) => ({ ...op, id: `copy-op-${i}` })) }; values.push(row); return row; }),
     upsert: vi.fn(async ({ where, create, update }: any) => {
@@ -180,4 +192,42 @@ it('uses the same explicit site as the kiosk even when the location label has a 
   expect(result.siteKey).toBe(resolveSiteKey(client));
   expect(result.siteKey).toBe('canonical-site');
   resetSiteDirectoryForTest();
+});
+
+it('returns each machine value for unresolved conflicts and does not write', async () => {
+  values = [value('021'), { ...value('022'), perUnitMinutes: 9 }];
+  await expect(saveGroups(['021', '022'])).rejects.toMatchObject({ statusCode: 409, details: {
+    fhincds: ['P'], values: { P: { '021': { perUnitMinutes: 5, setupMinutes: 10, ops: [{ opNo: 1, setupMinutes: 10, minutes: 2 }, { opNo: 2, setupMinutes: null, minutes: 3 }] }, '022': { perUnitMinutes: 9 } } }
+  } });
+  expect(mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes.update).not.toHaveBeenCalled();
+});
+it.each(['021', '022'])('uses the selected %s values including operations at the existing representative', async (selected) => {
+  values = [value('021'), { ...value('022'), perUnitMinutes: 9, setupMinutes: 20, ops: [{ id: 'selected-op', opNo: 3, setupMinutes: 20, minutes: 9 }] }];
+  const expected = structuredClone(values.find((row) => row.resourceCd === selected)!);
+  await replaceSameModelResourceGroups({ location: siteKey, groups: [{ resourceCds: ['021', '022'] }], resolutions: { P: selected } });
+  expect(values).toHaveLength(1);
+  expect(values[0]).toMatchObject({ resourceCd: '021', perUnitMinutes: expected.perUnitMinutes, setupMinutes: expected.setupMinutes });
+  expect(values[0].ops.map(({ opNo, setupMinutes, minutes }) => ({ opNo, setupMinutes, minutes }))).toEqual(expected.ops.map(({ opNo, setupMinutes, minutes }) => ({ opNo, setupMinutes, minutes })));
+});
+it('keeps the representative operation IDs when the selected value has the same operation numbers', async () => {
+  values = [value('021'), { ...value('022'), ops: [{ id: '022-op1', opNo: 1, setupMinutes: 10, minutes: 4 }, { id: '022-op2', opNo: 2, setupMinutes: null, minutes: 3 }] }];
+  await replaceSameModelResourceGroups({ location: siteKey, groups: [{ resourceCds: ['021', '022'] }], resolutions: { P: '022' } });
+  expect(values).toHaveLength(1);
+  expect(values[0].ops).toMatchObject([{ id: '021-op1', opNo: 1, minutes: 4 }, { id: '021-op2', opNo: 2, minutes: 3 }]);
+});
+it('uses a selected member previous representative row', async () => {
+  values = [value('021'), { ...value('023'), perUnitMinutes: 9 }];
+  await saveGroups(['021', '022']);
+  await replaceSameModelResourceGroups({ location: siteKey, groups: [{ resourceCds: ['021', '022', '023'] }], resolutions: { P: '022' } });
+  expect(values).toHaveLength(1);
+  expect(values[0]).toMatchObject({ resourceCd: '021', perUnitMinutes: 5 });
+});
+it.each(['099', '023'])('rejects a resolution without a conflicting source row: %s', async (resourceCd) => {
+  values = [value('021'), { ...value('022'), perUnitMinutes: 9 }];
+  await expect(replaceSameModelResourceGroups({ location: siteKey, groups: [{ resourceCds: ['021', '022', '023'] }], resolutions: { P: resourceCd } })).rejects.toMatchObject({ statusCode: 400 });
+  expect(mocks.tx.productionScheduleSameModelResourceGroup.deleteMany).not.toHaveBeenCalled();
+});
+it('keeps unselected conflicts at 409 even with a partial resolution', async () => {
+  values = [value('021'), { ...value('022'), perUnitMinutes: 9 }, value('021', 'Q'), { ...value('022', 'Q'), perUnitMinutes: 8 }];
+  await expect(replaceSameModelResourceGroups({ location: siteKey, groups: [{ resourceCds: ['021', '022'] }], resolutions: { P: '022' } })).rejects.toMatchObject({ statusCode: 409, details: { fhincds: ['P', 'Q'], values: { Q: { '022': { perUnitMinutes: 8 } } } } });
 });

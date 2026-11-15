@@ -1,3 +1,5 @@
+import { getSameModelResourceGroupsForSite, replaceSameModelResourceGroupsForSite, kioskSameModelGroupsSchema } from '../../../services/production-schedule/same-model-resource-groups.service.js';
+import { ApiError } from '../../../lib/errors.js';
 import { updateGrindingPlanningBoardResourceMove } from '../../../services/production-schedule/grinding-planning-board/write.js';
 import { createPlanningTestBar, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
@@ -239,6 +241,19 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
       ...(query.includePieces ? { includePieces: true } : {}),
       snapshotStore: deps.leaderboardShellSnapshotStore
     });
+  });
+
+  app.get('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    if (siteKey === 'shared') throw new ApiError(400, '同型機の組には工場を選択してください');
+    return getSameModelResourceGroupsForSite(siteKey);
+  });
+  app.put('/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const { siteKey } = deps.resolveLocationScopeContext(clientDevice);
+    if (siteKey === 'shared') throw new ApiError(400, '同型機の組には工場を選択してください');
+    return replaceSameModelResourceGroupsForSite(siteKey, kioskSameModelGroupsSchema.parse(request.body));
   });
 
   app.get('/kiosk/production-schedule/grinding-planning-board/resource-minutes', { config: { rateLimit: false } }, async (request) => {
