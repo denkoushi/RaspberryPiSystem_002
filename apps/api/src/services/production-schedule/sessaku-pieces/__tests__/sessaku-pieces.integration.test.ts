@@ -165,8 +165,10 @@ describeDatabase('sessaku pieces persistence and concurrency', () => {
     const suffix = before.items.find((item) => item.pieceId === units.pieces[0].pieceId && item.opRange?.fromOpNo === 2)!;
     const completions = await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: suffix.pieceId! } });
     const splits = await prisma.productionScheduleSessakuPieceOpSplit.findMany({ where: { pieceId: suffix.pieceId! } });
-    await updateGrindingPlanningBoardOverrides({ siteKey: site, sourceRevision: before.sourceRevision,
-      items: [{ itemId: suffix.itemId, itemRevision: suffix.itemRevision, overrideVersion: suffix.version, resourceCd: '022' }] });
+    await prisma.productionScheduleGrindingPlanningBoardOverride.upsert({
+      where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: site, itemKey: suffix.itemId } },
+      create: { csvDashboardId: dashboardId, siteKey: site, itemKey: suffix.itemId, overrideResourceCd: '022' },
+      update: { overrideResourceCd: '022' } });
     const moved = (await board()).items.find((item) => item.itemId === suffix.itemId)!;
     expect(moved.effectiveResourceCd).toBe('022'); expect(moved.ops).toEqual(suffix.ops);
     expect(await prisma.productionScheduleSessakuPieceOpCompletion.findMany({ where: { pieceId: suffix.pieceId! } })).toEqual(completions);
