@@ -1,5 +1,5 @@
 import Fastify from 'fastify';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   updatePins: vi.fn(),
   updateRank: vi.fn(),
   updateResourceOrder: vi.fn(),
+  updateResourceMove: vi.fn(),
   updateResourceOrderBulk: vi.fn(),
   updateChecks: vi.fn(),
   updateOrder: vi.fn()
@@ -31,6 +32,8 @@ vi.mock('../../../../services/production-schedule/d-schedule-minutes/kind-member
 vi.mock('../../../../services/production-schedule/leaderboard/leaderboard-part-footer-processes.service.js', () => ({
   buildLeaderboardFooterChipsByPartKeyForScheduleRows: mocks.processChips
 }));
+
+vi.mock('../../../../services/production-schedule/grinding-planning-board/write.js', () => ({ updateGrindingPlanningBoardResourceMove: mocks.updateResourceMove }));
 
 vi.mock('../../../../services/production-schedule/grinding-planning-board.service.js', () => ({
   getGrindingPlanningBoard: mocks.get,
@@ -212,6 +215,7 @@ describe('grinding planning board route scope', () => {
     { path: 'pins', write: mocks.updatePins, payload: { sourceRevision: 'revision', items: [item], pinned: true } },
     { path: 'rank', write: mocks.updateRank, payload: { sourceRevision: 'revision', ...item, alternateRank: 1 } },
     { path: 'resource-order', write: mocks.updateResourceOrder, payload: { sourceRevision: 'revision', ...item, targetItemId: 'item-2', targetItemRevision: 'revision-2', placement: 'before' } },
+    { path: 'resource-move', write: mocks.updateResourceMove, payload: { sourceRevision: 'revision', move: { ...item, resourceCd: '305' }, items: [item] } },
     { path: 'resource-order/bulk', write: mocks.updateResourceOrderBulk, payload: { sourceRevision: 'revision', resourceCd: '305', items: [item] } },
     { path: 'seiban-order', write: mocks.updateOrder, payload: { sourceRevision: 'revision', fseibans: ['ORDER-A'] } },
     { path: 'seiban/ORDER-A/due-scope', write: mocks.updateDueScope, payload: { sourceGenerationToken: 'generation', scopeRevision: 'a'.repeat(64), scope: { kind: 'seiban' }, dueDate: '2026-10-20' } }
@@ -770,6 +774,50 @@ describe('resource unit split setting route', () => {
         payload: { resourceCd: '021', unitSplitEnabled, siteKey: 'foreign' } });
       expect(response.statusCode).toBe(200);
       expect(mocks.updateCapacity).toHaveBeenLastCalledWith({ resourceCd: '021', unitSplitEnabled, siteKey: 'site-a' });
+    } finally { await app.close(); }
+  });
+});
+
+
+describe('resource move route', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const item = { itemId: 'row:a', itemRevision: 'r1', overrideVersion: 2 };
+  const payload = { sourceRevision: 'board', dueSource: 'scaw', scheduleSource: 'general', move: { ...item, resourceCd: '581' }, items: [item] };
+  afterEach(() => vi.clearAllMocks());
+  it('uses authenticated scope, preserves sources and returns all confirmed items', async () => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    const result = { sourceRevision: 'board', items: [{ ...item, version: 4, alternateRank: 1 }] };
+    mocks.updateResourceMove.mockResolvedValue(result);
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload: { ...payload, siteKey: 'foreign' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(result);
+      expect(mocks.updateResourceMove).toHaveBeenCalledExactlyOnceWith({ ...payload, siteKey: 'site-a' });
+      expect(mocks.rewarm).toHaveBeenCalledOnce();
+    } finally { await app.close(); }
+  });
+  it.each([[], [item, item], [{ ...item, itemId: 'other' }], [{ ...item, itemRevision: 'different' }], Array(501).fill(item)])('rejects invalid destination items %#', async (items) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      const response = await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload: { ...payload, items } });
+      expect(response.statusCode).toBe(400);
+      expect(mocks.updateResourceMove).not.toHaveBeenCalled();
+      expect(mocks.rewarm).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('rejects unauthenticated writes before calling the service', async () => {
+    const app = await createApp(async () => { throw Object.assign(new Error('unauthorized'), { statusCode: 401 }); });
+    try {
+      expect((await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload })).statusCode).toBe(401);
+      expect(mocks.updateResourceMove).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it.each(['STALE_PLANNING_BOARD_ITEM', 'COMPLETED_ITEM', 'RESOURCE_ORDER_PANE_MISMATCH', 'RESOURCE_MOVE_TEST_BARS_UNSUPPORTED'])('propagates %s without rewarming', async (code) => {
+    mocks.updateResourceMove.mockRejectedValueOnce(Object.assign(new Error(code), { statusCode: 409 }));
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      expect((await app.inject({ method: 'PUT', url: '/kiosk/production-schedule/grinding-planning-board/resource-move', payload })).statusCode).toBe(409);
+      expect(mocks.rewarm).not.toHaveBeenCalled();
     } finally { await app.close(); }
   });
 });

@@ -133,3 +133,42 @@ it('defers load exactly once until every page settles, suppressing revision-driv
   expect(invalidate.mock.calls.filter(([filters]) => filters?.queryKey === productionScheduleQueryKeys.grindingPlanningBoardLoadAll)).toHaveLength(0);
   hook.unmount(); client.clear();
 });
+
+it.each([
+  ['own saved revision', 'saved', 0],
+  ['another change on top of the saved revision', 'external', 1]
+] as const)('load-neutral reconciliation keeps load only for its %s', async (_label, refetched, expected) => {
+  let revision = 'before';
+  mocks.board.mockImplementation(() => Promise.resolve({ ...page('a', 60, null), sourceRevision: revision }));
+  const { hook, client } = setup();
+  await flush();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  revision = refetched;
+  let complete!: Promise<unknown>;
+  act(() => { complete = hook.result.current.refetch({ loadUnaffectedRevision: 'saved' }); });
+  await flush();
+  await act(async () => { await complete; });
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(expected);
+  hook.unmount(); client.clear();
+});
+
+it.each([false, true])('suppresses revision-triggered load invalidation on write reconciliation (affects load: %s)', async (affectsLoad) => {
+  let revision = 'before';
+  mocks.board.mockImplementation(() => Promise.resolve({ ...page('a', 60, null), sourceRevision: revision }));
+  const { hook, client } = setup();
+  await flush();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  revision = 'after';
+  let complete!: Promise<unknown>;
+  act(() => { complete = hook.result.current.refetch({ loadAlreadyInvalidated: true });
+    if (affectsLoad) void client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false }); });
+  await flush();
+  await act(async () => { await complete; });
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(affectsLoad ? 1 : 0);
+  // An unrelated future board revision must continue to refresh load.
+  revision = 'external';
+  await act(async () => { await client.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardAll }); });
+  await flush();
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(affectsLoad ? 2 : 1);
+  hook.unmount(); client.clear();
+});

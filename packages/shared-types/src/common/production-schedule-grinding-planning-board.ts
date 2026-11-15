@@ -311,6 +311,19 @@ export interface GrindingPlanningBoardResourceOrderBulkRequest {
   items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
 }
 
+export interface GrindingPlanningBoardResourceMoveRequest {
+  dueSource?: 'excel' | 'scaw';
+  scheduleSource?: GrindingPlanningBoardScheduleSource;
+  sourceRevision: string;
+  move: { itemId: string; itemRevision: string; overrideVersion?: number; resourceCd: string };
+  items: { itemId: string; itemRevision: string; overrideVersion?: number }[];
+}
+
+export interface GrindingPlanningBoardResourceMoveResponse {
+  sourceRevision: string;
+  items: GrindingPlanningBoardItem[];
+}
+
 export interface GrindingPlanningBoardResourceOrderResponse {
   testBars?: GrindingPlanningBoardTestBar[];
   sourceRevision: string;

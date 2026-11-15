@@ -13,7 +13,7 @@ import { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 import type { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import type { OrderPreview, ResourceOrderHistory, ResourceOrderSnapshot } from './planningBoardPageModel';
 import type { PlanningBoardWriteResult } from './usePlanningBoardWriteQueue';
-import type { GrindingPlanningBoardBar, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceMoveRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
 type Options = Parameters<typeof usePlanningBoardPageGantt>[0];
 const selection = vi.hoisted(() => ({ resource: '021' as string | null, scale: 14 }));
@@ -53,11 +53,14 @@ function bandFixture() {
   return { ...input, testBars: [testBar()] };
 }
 function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanningBoardTestBar[] } = fixture(), pending = new Set<string>()) {
-  const calls: { kind: 'order' | 'override'; sourceRevision: string; resourceCd?: string;
+  const calls: { kind: 'order' | 'override' | 'move'; move?: GrindingPlanningBoardResourceMoveRequest['move']; sourceRevision: string; resourceCd?: string;
     items: (GrindingPlanningBoardOverrideItemRequest | GrindingPlanningBoardResourceOrderBulkRequest['items'][number])[];
     resolve: (value: PlanningBoardWriteResult) => void; reject: (error: Error) => void }[] = [];
   const saveOrder = vi.fn((request: GrindingPlanningBoardResourceOrderBulkRequest) => new Promise<PlanningBoardWriteResult>((resolve, reject) => {
     calls.push({ kind: 'order', ...request, resolve, reject });
+  }));
+  const saveMove = vi.fn((request: GrindingPlanningBoardResourceMoveRequest) => new Promise<PlanningBoardWriteResult>((resolve, reject) => {
+    calls.push({ kind: 'move', ...request, resolve, reject });
   }));
   const saveOverrides = vi.fn((sourceRevision: string, items: GrindingPlanningBoardOverrideItemRequest[]) => new Promise<PlanningBoardWriteResult>((resolve, reject) => {
     calls.push({ kind: 'override', sourceRevision, items, resolve, reject });
@@ -94,6 +97,7 @@ function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanning
       bulkReady: true, rankMutationReady: true, writeBlocked: false, writeQueue: queue, orderPreview: preview,
       resourceOrderHistory: history, historyScope: 'unit', currentItemsRef,
       hasPendingSeiban: (seiban, wholeOnly) => pending.has(seiban) || queue.hasPendingSeiban(seiban, wholeOnly), enqueueWrite: queue.enqueue,
+      updateResourceMoveAsync: saveMove as Options['updateResourceMoveAsync'],
       updateResourceOrderBulkAsync: saveOrder as Options['updateResourceOrderBulkAsync'], setColorBySeiban: noop,
       setFocusedFseiban: noop, setOpenFseibans: noop, setFocusedSeiban: noop, setScanFocusKey: noop, setScanNotice: noop,
       scopeReady: true, pinMode: false, canMoveResource: item => item.itemId !== 'blocked', snapshotResourceOrder, notify,
@@ -116,11 +120,11 @@ function setup(input: ReturnType<typeof fixture> & { testBars?: GrindingPlanning
     await act(async () => call.resolve({ sourceRevision: `source-${index + 1}`, testBars, items: call.items.flatMap((request, rank) => {
       if (request.itemId.startsWith('test:')) return [];
       const item = hook.result.current.queue.items.find(item => item.itemId === request.itemId)!;
-      return [{ ...(call.kind === 'override' ? applyOptimisticOverride(item, request) : { ...item, alternateRank: rank + 1 }),
+      return [{ ...(call.kind === 'override' ? applyOptimisticOverride(item, request) : { ...item, ...(call.kind === 'move' && item.itemId === call.move!.itemId ? { effectiveResourceCd: call.move!.resourceCd } : {}), alternateRank: rank + 1 }),
         itemRevision: `saved-${index}-${item.itemId}`, version: (request.overrideVersion ?? 0) + 1 }];
     }) }));
   };
-  return { ...hook, calls, saveOrder, saveOverrides, enqueueOverrides, acknowledge, notify };
+  return { ...hook, calls, saveOrder, saveMove, saveOverrides, enqueueOverrides, acknowledge, notify };
 }
 beforeEach(() => { selection.resource = '021'; selection.scale = 14; vi.clearAllMocks(); });
 
@@ -407,17 +411,27 @@ describe('unit order preview and writes', () => {
     h.unmount();
   });
 
-  it('supports the existing single resource move and undo through restoreResources', async () => {
+  it('saves a single resource move atomically and undoes it through restoreResources', async () => {
     const input = fixture(2);
     const h = setup(input);
     act(() => h.result.current.page.moveResourceInGantt(h.result.current.queue.items[0]!, '022', null, 'after'));
-    expect(h.enqueueOverrides).toHaveBeenCalledOnce();
+    expect(h.saveMove).toHaveBeenCalledExactlyOnceWith({ sourceRevision: 'source-0',
+      move: { itemId: input.items[0]!.itemId, itemRevision: input.items[0]!.itemRevision, overrideVersion: input.items[0]!.version, resourceCd: '022' },
+      items: [{ itemId: input.items[0]!.itemId, itemRevision: input.items[0]!.itemRevision, overrideVersion: input.items[0]!.version }] });
+    expect(h.enqueueOverrides).not.toHaveBeenCalled();
+    expect(h.saveOverrides).not.toHaveBeenCalled();
+    expect(h.saveOrder).not.toHaveBeenCalled();
+    expect(h.result.current.queue.items[0]).toMatchObject({ effectiveResourceCd: '022', alternateRank: 1 });
+    expect(h.result.current.history).toEqual([]);
     await h.acknowledge(0);
-    await h.acknowledge(1);
     expect(h.result.current.history[0]!.restoreResources).toEqual([{ itemId: input.items[0]!.itemId, resourceCd: '021' }]);
     act(() => h.result.current.page.undoResourceOrder());
+    expect(h.enqueueOverrides).toHaveBeenCalledOnce();
+    await h.acknowledge(1);
     await h.acknowledge(2);
-    await h.acknowledge(3);
+    expect(h.saveMove).toHaveBeenCalledOnce();
+    expect(h.saveOverrides).toHaveBeenCalledOnce();
+    expect(h.saveOrder).toHaveBeenCalledOnce();
     expect(h.result.current.history).toEqual([]);
     expect(h.result.current.queue.items[0]!.effectiveResourceCd).toBe('021');
     h.unmount();

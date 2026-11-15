@@ -23,6 +23,8 @@ import type { GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTe
   GrindingPlanningBoardRankRequest,
   GrindingPlanningBoardRankResponse,
   GrindingPlanningBoardResourceOrderRequest,
+  GrindingPlanningBoardResourceMoveRequest,
+  GrindingPlanningBoardResourceMoveResponse,
   GrindingPlanningBoardResourceOrderBulkRequest,
   GrindingPlanningBoardPinsRequest,
   GrindingPlanningBoardResourceOrderResponse,
@@ -152,6 +154,13 @@ export async function updateKioskGrindingPlanningBoardResourceOrder(payload: Gri
   const { data } = await api.put<GrindingPlanningBoardResourceOrderResponse>(
     '/kiosk/production-schedule/grinding-planning-board/resource-order',
     payload
+  );
+  return data;
+}
+
+export async function updateKioskGrindingPlanningBoardResourceMove(payload: GrindingPlanningBoardResourceMoveRequest) {
+  const { data } = await api.put<GrindingPlanningBoardResourceMoveResponse>(
+    '/kiosk/production-schedule/grinding-planning-board/resource-move', payload
   );
   return data;
 }

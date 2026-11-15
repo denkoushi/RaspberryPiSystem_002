@@ -1,23 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma, ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
 import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
-import { updateGrindingPlanningBoardOverrides, writeOverrideIfChanged } from '../grinding-planning-board/write.js';
+import { updateGrindingPlanningBoardResourceMove, updateGrindingPlanningBoardResourceOrderBulk, updateGrindingPlanningBoardOverrides, writeOverrideIfChanged } from '../grinding-planning-board/write.js';
 
 const mocks = vi.hoisted(() => ({
-  tx: { $queryRaw: vi.fn(), $transaction: vi.fn(), productionScheduleGrindingPlanningBoardOverride: { upsert: vi.fn() } },
-  source: { readWinnerRowsByIds: vi.fn(), readWinnerRowsByLogicalKeyFseibans: vi.fn(), readRowDetails: vi.fn(), readRanks: vi.fn(), readOverrides: vi.fn(), readMasterResourceCds: vi.fn() }
+  tx: { $queryRaw: vi.fn(), $transaction: vi.fn(), productionScheduleGrindingPlanningBoardOverride: { upsert: vi.fn() }, productionScheduleGrindingPlanningBoardTestBar: { count: vi.fn().mockResolvedValue(0) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } },
+  excluded: vi.fn().mockResolvedValue([]),
+  source: { readWinnerRowsByIds: vi.fn(), readWinnerRowsByFseibans: vi.fn(), readWinnerRowsByLogicalKeyFseibans: vi.fn(), readRowDetails: vi.fn(), readRanks: vi.fn(), readOverrides: vi.fn(), readMasterResourceCds: vi.fn() }
 }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.tx }));
 vi.mock('../grinding-planning-board/source.js', () => mocks.source);
+vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({ ...await original<typeof import('../grinding-planning-board/schedule-source.js')>(), readScheduleSourceExcludedFseibans: mocks.excluded }));
 vi.mock('../grinding-planning-board/state.js', () => ({
-  ensurePlanningBoardState: vi.fn(), lockState: vi.fn(), readState: vi.fn().mockResolvedValue({ seibanOrder: ['S'] }),
-  stateOrder: () => ['S'], boardRevision: () => 'board', assertBoardRevision: vi.fn()
+  ensurePlanningBoardState: vi.fn(), getOrCreateState: vi.fn().mockResolvedValue({ seibanOrder: ['S', 'H'] }), lockState: vi.fn().mockResolvedValue({ seibanOrder: ['S', 'H'] }), readState: vi.fn().mockResolvedValue({ seibanOrder: ['S'] }),
+  stateOrder: (state?: { seibanOrder: string[] }) => state?.seibanOrder ?? ['S'], boardRevision: () => 'board', assertBoardRevision: vi.fn()
 }));
 vi.mock('../sessaku-pieces/piece-key.js', async (original) => ({
   ...await original<typeof import('../sessaku-pieces/piece-key.js')>(),
   readSessakuPieceSets: vi.fn().mockResolvedValue(new Map()), acquireSessakuPieceLogicalLocks: vi.fn()
 }));
-vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn() }));
+vi.mock('../order-assignment/production-schedule-parent-row-lock.service.js', () => ({ acquireProductionScheduleParentRowLockInTransaction: vi.fn(), acquireProductionScheduleParentRowLocksInTransaction: vi.fn() }));
 vi.mock('../grinding-planning-board-resource-minutes.service.js', () => ({ getGrindingPlanningBoardResourceMinutes: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({
   getResourceCategoryPolicy: vi.fn().mockResolvedValue({ cuttingExcludedResourceCds: [] }),
@@ -91,7 +93,7 @@ describe('missing standard hours is read-only', () => {
   const base = { ...ref, siteKey: 'site', sourceRevision: 'board' };
   it.each(['due', 'resource', 'special due', 'rank', 'pins', 'arrival', 'first arrival', 'order source', 'order target', 'bulk order', 'test insertion', 'test restoration'])('rejects %s before DB work', async (operation) => {
     vi.clearAllMocks();
-    const writes = await import('../grinding-planning-board/write.js');
+    const writes = { ...await import('../grinding-planning-board/write.js'), ...await import('../grinding-planning-board/write-arrival.js') };
     const tests = await import('../grinding-planning-board/test-bars.js');
     let action: Promise<unknown>;
     switch (operation) {
@@ -123,5 +125,93 @@ describe('missing standard hours is read-only', () => {
   it('rejects missing marker IDs for piece splitting and merging', async () => {
     const { decodeSessakuPieceParentItemId } = await import('../sessaku-pieces/piece-key.js');
     expect(() => decodeSessakuPieceParentItemId(id)).toThrow();
+  });
+});
+
+
+describe('atomic resource move with real item projection', () => {
+  const other = { ...row, id: 'other', rowData: { ...row.rowData, FHINCD: 'OTHER', FSIGENCD: '581' } };
+  const otherKey = buildGrindingPlanningBoardRowItemId(other.rowData);
+  let overrides: Map<string, Override>;
+  const ref = (item: import('@raspi-system/shared-types').GrindingPlanningBoardItem) => ({ itemId: item.itemId, itemRevision: item.itemRevision, overrideVersion: item.version });
+  const project = () => projectGrindingPlanningBoard({ rows: [row, other], details: new Map([['row', detail], ['other', detail]]),
+    ranks: { rows: new Map() }, overrides, seibanOrder: ['S'], category: 'grinding', isResourceInCategory: () => true }).items;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    overrides = new Map([[itemKey, savedOverride({ alternateRank: 9, orderPinned: true, specialDueKind: 'today', specialDueExpiresAt: new Date('2099-01-01') })]]);
+    mocks.source.readWinnerRowsByIds.mockResolvedValue([row, other]);
+    mocks.source.readWinnerRowsByLogicalKeyFseibans.mockResolvedValue([row, other]);
+    mocks.source.readRowDetails.mockResolvedValue(new Map([['row', detail], ['other', detail]]));
+    mocks.source.readRanks.mockResolvedValue({ rows: new Map() });
+    mocks.source.readOverrides.mockImplementation(async () => new Map(overrides));
+    mocks.source.readMasterResourceCds.mockResolvedValue(new Set(['305', '581']));
+    mocks.tx.productionScheduleGrindingPlanningBoardTestBar.count.mockResolvedValue(0);
+    mocks.tx.$queryRaw.mockResolvedValue([{ id: 'row' }, { id: 'other' }]);
+    mocks.tx.$transaction.mockImplementation(async (callback) => {
+      const before = new Map(overrides);
+      try { return await callback(mocks.tx); } catch (error) { overrides = before; throw error; }
+    });
+    mocks.tx.productionScheduleGrindingPlanningBoardOverride.upsert.mockImplementation(async ({ create, update }) => {
+      const previous = overrides.get(create.itemKey);
+      const saved = { ...savedOverride(), ...create, ...(previous ? update : {}), version: previous ? previous.version + 1 : 1 };
+      overrides.set(create.itemKey, saved); return saved;
+    });
+  });
+  it('matches overrides then bulk, checks the moving revision only before the override, and takes union locks once', async () => {
+    const before = new Map(overrides);
+    const items = project(); const moved = items.find((item) => item.itemId === itemKey)!;
+    const neighbour = items.find((item) => item.itemId === otherKey)!;
+    const changed = await updateGrindingPlanningBoardOverrides({ siteKey: 'site', sourceRevision: 'board', items: [{ ...ref(moved), resourceCd: '581' }] });
+    const legacy = await updateGrindingPlanningBoardResourceOrderBulk({ siteKey: 'site', sourceRevision: 'board', resourceCd: '581', items: [ref(neighbour), ref(changed.items[0]!)] });
+    overrides = before; vi.clearAllMocks();
+    const atomic = await updateGrindingPlanningBoardResourceMove({ siteKey: 'site', sourceRevision: 'board', move: { ...ref(moved), resourceCd: '581' }, items: [ref(neighbour), ref(moved)] });
+    expect(atomic.items).toEqual(legacy.items);
+    expect(atomic.items.map((item) => [item.effectiveResourceCd, item.alternateRank])).toEqual([['581', 1], ['581', 2]]);
+    expect(atomic.items[1]).toMatchObject({ orderPinned: true, specialDue: moved.specialDue, effectiveDueDate: moved.effectiveDueDate });
+    expect(mocks.tx.$transaction).toHaveBeenCalledExactlyOnceWith(expect.any(Function), { isolationLevel: 'RepeatableRead', timeout: 30000, maxWait: 15000 });
+    const pieces = await import('../sessaku-pieces/piece-key.js');
+    const state = await import('../grinding-planning-board/state.js');
+    const locks = await import('../order-assignment/production-schedule-parent-row-lock.service.js');
+    expect(pieces.acquireSessakuPieceLogicalLocks).toHaveBeenCalledOnce(); expect(state.lockState).toHaveBeenCalledOnce();
+    expect(locks.acquireProductionScheduleParentRowLocksInTransaction).toHaveBeenCalledExactlyOnceWith(mocks.tx, ['other', 'row']);
+    expect(locks.acquireProductionScheduleParentRowLockInTransaction).not.toHaveBeenCalled();
+    expect(mocks.tx.$queryRaw).toHaveBeenCalledOnce();
+    const calls = [pieces.acquireSessakuPieceLogicalLocks, state.lockState, locks.acquireProductionScheduleParentRowLocksInTransaction, mocks.tx.$queryRaw]
+      .map((fn) => vi.mocked(fn).mock.invocationCallOrder[0]!);
+    expect(calls).toEqual([...calls].sort((a, b) => a - b));
+  });
+  it('matches legacy filtered-source order including an excluded destination slot after the old rank clears', async () => {
+    const hidden = { ...other, id: 'hidden', rowData: { ...other.rowData, FSEIBAN: 'H' } };
+    const hiddenKey = buildGrindingPlanningBoardRowItemId(hidden.rowData);
+    overrides = new Map([[itemKey, savedOverride({ alternateRank: 1 })],
+      [otherKey, savedOverride({ itemKey: otherKey, alternateRank: 3 })], [hiddenKey, savedOverride({ itemKey: hiddenKey, alternateRank: 2 })]]);
+    const before = new Map(overrides);
+    mocks.excluded.mockResolvedValueOnce(['H']).mockResolvedValueOnce(['H']);
+    mocks.source.readWinnerRowsByIds.mockResolvedValue([row, other, hidden]);
+    mocks.source.readWinnerRowsByFseibans.mockResolvedValue([row, other, hidden]);
+    mocks.source.readRowDetails.mockResolvedValue(new Map([['row', detail], ['other', detail], ['hidden', detail]]));
+    mocks.tx.$queryRaw.mockResolvedValue([{ id: 'row' }, { id: 'other' }, { id: 'hidden' }]);
+    const items = project(), moved = items.find((item) => item.itemId === itemKey)!, neighbour = items.find((item) => item.itemId === otherKey)!;
+    const changed = await updateGrindingPlanningBoardOverrides({ siteKey: 'site', sourceRevision: 'board', items: [{ ...ref(moved), resourceCd: '581' }] });
+    const legacy = await updateGrindingPlanningBoardResourceOrderBulk({ siteKey: 'site', sourceRevision: 'board', scheduleSource: 'general', resourceCd: '581', items: [ref(changed.items[0]!), ref(neighbour)] });
+    const hiddenRank = overrides.get(hiddenKey)?.alternateRank;
+    overrides = before;
+    const atomic = await updateGrindingPlanningBoardResourceMove({ siteKey: 'site', sourceRevision: 'board', scheduleSource: 'general',
+      move: { ...ref(moved), resourceCd: '581' }, items: [ref(moved), ref(neighbour)] });
+    expect(atomic.items).toEqual(legacy.items);
+    expect(overrides.get(hiddenKey)?.alternateRank).toBe(hiddenRank);
+    expect(atomic.items.map((item) => item.alternateRank)).toEqual([2, 3]);
+  });
+  it.each(['moveRevision', 'neighbourRevision', 'version', 'completed', 'resource', 'testBars'] as const)('rejects %s without persisting a partial move', async (failure) => {
+    if (failure === 'completed') mocks.source.readRowDetails.mockResolvedValue(new Map([['row', detail], ['other', { ...detail, productionScheduleProgress: { isCompleted: true } }]]));
+    if (failure === 'testBars') mocks.tx.productionScheduleGrindingPlanningBoardTestBar.count.mockResolvedValue(1);
+    const items = project(); const moved = items.find((item) => item.itemId === itemKey)!;
+    const neighbour = items.find((item) => item.itemId === otherKey)!;
+    const move = { ...ref(moved), resourceCd: failure === 'resource' ? '305' : '581',
+      ...(failure === 'moveRevision' ? { itemRevision: 'stale' } : {}), ...(failure === 'version' ? { overrideVersion: 99 } : {}) };
+    const before = new Map(overrides);
+    await expect(updateGrindingPlanningBoardResourceMove({ siteKey: 'site', sourceRevision: 'board', move,
+      items: [move, { ...ref(neighbour), ...(failure === 'neighbourRevision' ? { itemRevision: 'stale' } : {}) }] })).rejects.toMatchObject({ statusCode: 409 });
+    expect(overrides).toEqual(before);
   });
 });

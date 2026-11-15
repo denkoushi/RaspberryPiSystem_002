@@ -3,10 +3,9 @@ import { assertWritablePlanningItemIds } from '../missing-standard-hours-process
 import { hasPlanningTestBars, reorderPlanningTestBarLane } from './test-bars.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-board-resource-minutes.service.js';
-import { enrichRowsWithProcessArrival } from '../process-arrival.service.js';
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, sessakuPieceIdFromItemId, sessakuPieceItemIds, readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
-import type { GrindingPlanningBoardFirstProcessArrivalRequest, GrindingPlanningBoardFirstProcessArrivalResponse, GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardArrivalRequest, GrindingPlanningBoardArrivalResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceMoveRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
 import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
@@ -17,11 +16,11 @@ import { projectGrindingPlanningBoard, buildGrindingPlanningBoardRowItemId, sort
 import { buildWorkCalendarModeMap, listLoadBalancingWorkCalendarsResolved } from '../load-balancing/load-balancing-settings.service.js';
 import { DEFAULT_WORK_CALENDAR_MODE, type WorkCalendarMode } from '../load-balancing/work-calendar-policy.js';
 import { isGrindingPlanningBoardSpecialDueKind, resolveGrindingPlanningBoardSpecialDueExpiresAt } from '../grinding-planning-board-special-due.js';
-import { assertItemRevision, MAX_ALTERNATE_RANK, planningBoardArrivalDate, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
+import { assertItemRevision, MAX_ALTERNATE_RANK, asRowData, isCategoryResource, normalizeUniqueFseibans, resolvePlanningBoardDueRequest, type AppliedOverrides, type CurrentProjection, type OverrideRequest, type PersistedSpecialDue, type PlanningState, type WinnerRow, valueAsString, ymd } from './shared.js';
 import { readMasterResourceCds, readOverrides, readRanks, readRowDetails, readWinnerRowsByFseibans, readWinnerRowsByIds } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, getOrCreateState, lockState, readState, readStateUncheckedFseibans, stateUncheckedFseibans, stateOrder } from './state.js';
 
-async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: readonly string[]): Promise<SessakuPieceLogicalKey[]> {
+export async function readLivePieceKeys(client: Prisma.TransactionClient, rowIds: readonly string[]): Promise<SessakuPieceLogicalKey[]> {
   const rows = await readWinnerRowsByIds(client, rowIds);
   const sets = await readSessakuPieceSets(client, rows);
   return [...sets.values()].filter((set) => set.pieces.length);
@@ -95,17 +94,19 @@ async function readSpecialDueCalendarModes(siteKey: string, requests: readonly O
   return buildWorkCalendarModeMap(settings.items);
 }
 
-async function applyOverridesInTransaction(params: { dueSource?: 'excel' | 'scaw'; pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
+async function applyOverridesInTransaction(params: { lockedCurrent?: CurrentProjection; dueSource?: 'excel' | 'scaw'; pieceKeys: readonly SessakuPieceLogicalKey[]; client: Prisma.TransactionClient; siteKey: string; sourceRevision: string; requests: readonly OverrideRequest[]; sourceRowIds: ReadonlyMap<string, string>; policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>; workCalendarModeByResource: ReadonlyMap<string, WorkCalendarMode> }): Promise<AppliedOverrides> {
   const rowsToLock = Array.from(new Set(params.sourceRowIds.values())).sort();
-  await acquireSessakuPieceLogicalLocks(params.client, params.pieceKeys);
-  // Serialize every override read/write with lane rewrites, including piece-free rows.
-  await lockState(params.client, params.siteKey);
-  for (const sourceRowId of rowsToLock) {
-    await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
-    const locked = await params.client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
-    if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+  if (!params.lockedCurrent) {
+    await acquireSessakuPieceLogicalLocks(params.client, params.pieceKeys);
+    // Serialize every override read/write with lane rewrites, including piece-free rows.
+    await lockState(params.client, params.siteKey);
+    for (const sourceRowId of rowsToLock) {
+      await acquireProductionScheduleParentRowLockInTransaction(params.client, sourceRowId);
+      const locked = await params.client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "id" = ${sourceRowId} AND "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} FOR UPDATE`;
+      if (!locked[0]) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
+    }
   }
-  const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
+  const current = params.lockedCurrent ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client: params.client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds: params.requests.map((request) => request.itemId), policy: params.policy });
   // Non-position edits are guarded only by itemRevision/overrideVersion; rank edits also need the board revision (unchanged neighbours keep their revision).
   const desired: Array<{ request: OverrideRequest; currentOverride: ProductionScheduleGrindingPlanningBoardOverride | undefined; next: { overrideResourceCd: string | null; overrideDueDate: Date | null; dueDateCleared: boolean | null; alternateRank: number | null; orderPinned?: boolean; overrideDueDateSetAt?: Date | null } & PersistedSpecialDue }> = [];
   for (const request of params.requests) {
@@ -434,8 +435,21 @@ export async function updateGrindingPlanningBoardResourceOrder(params: {
 export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
   siteKey: string;
 } & GrindingPlanningBoardResourceOrderBulkRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  return saveGrindingPlanningBoardResourceOrderBulk(params);
+}
+
+export async function updateGrindingPlanningBoardResourceMove(params: { siteKey: string } & GrindingPlanningBoardResourceMoveRequest): Promise<GrindingPlanningBoardResourceOrderResponse> {
+  const member = params.items.find((item) => item.itemId === params.move.itemId);
+  if (!member || member.itemRevision !== params.move.itemRevision || member.overrideVersion !== params.move.overrideVersion) {
+    throw new ApiError(400, '移動するアイテムを同じリビジョンで並び順に含めてください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
+  }
+  return saveGrindingPlanningBoardResourceOrderBulk({ ...params, resourceCd: params.move.resourceCd }, params.move);
+}
+
+async function saveGrindingPlanningBoardResourceOrderBulk(params: { siteKey: string } & GrindingPlanningBoardResourceOrderBulkRequest,
+  move?: GrindingPlanningBoardResourceMoveRequest['move']): Promise<GrindingPlanningBoardResourceOrderResponse> {
   assertWritablePlanningItemIds(params.items.map((item) => item.itemId));
-  if (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd))) return reorderPlanningTestBarLane(params);
+  if (!move && (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd)))) return reorderPlanningTestBarLane(params);
   const itemIds = params.items.map((item) => item.itemId);
   if (itemIds.length < 1 || itemIds.length > 500 || new Set(itemIds).size !== itemIds.length) {
     throw new ApiError(400, '1〜500件の重複しないアイテムを指定してください', undefined, 'INVALID_RESOURCE_ORDER_ITEMS');
@@ -443,8 +457,10 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
   const sourceRows = await discoverSourceRows(itemIds);
   await ensurePlanningBoardState(params.siteKey);
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const movePieceKeys = move && params.scheduleSource && params.scheduleSource !== 'both'
+    ? await readLivePieceKeys(prisma, [sourceRows.get(move.itemId)!]) : [];
   const pieceKeys = params.scheduleSource && params.scheduleSource !== 'both'
-    ? await prisma.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(await getOrCreateState(params.siteKey, [], prisma)) }, pieces: { some: {} } } })
+    ? [...movePieceKeys, ...await prisma.productionScheduleSessakuPieceSet.findMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: stateOrder(await getOrCreateState(params.siteKey, [], prisma)) }, pieces: { some: {} } } })]
     : await readLivePieceKeys(prisma, [...sourceRows.values()]);
   const resource = params.resourceCd === '未設定' ? null : normalizeProductionScheduleResourceCd(params.resourceCd);
   const excluded = new Set(await readScheduleSourceExcludedFseibans(params.scheduleSource));
@@ -453,6 +469,9 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
       await acquireSessakuPieceLogicalLocks(client, pieceKeys);
       const state = await lockState(client, params.siteKey);
       assertBoardRevision(params.sourceRevision, state);
+      if (move && (params.items.some((item) => item.itemId.startsWith('test:')) || await hasPlanningTestBars(params.siteKey, resource, client))) {
+        throw new ApiError(409, 'テスト加工のある資源CDへの移動は個別に保存してください', undefined, 'RESOURCE_MOVE_TEST_BARS_UNSUPPORTED');
+      }
       let fullPane: CurrentProjection | undefined; let rankedItemIds = itemIds;
       if (params.scheduleSource && params.scheduleSource !== 'both') {
         const rows = await readWinnerRowsByFseibans(client, stateOrder(state));
@@ -460,7 +479,9 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
         const first = fullPane.byItemId.get(itemIds[0]!);
         if (!first) throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
         const category = isCategoryResource(first.originalResourceCd, 'grinding', policy) ? 'grinding' : 'cutting';
-        const pane = sortGrindingPlanningBoardProjectionItems([...fullPane.byItemId.values()].filter((item) =>
+        const paneItems = [...fullPane.byItemId.values()].map((item) => move?.itemId === item.itemId ? { ...item, effectiveResourceCd: resource,
+          alternateRank: item.effectiveResourceCd === resource ? item.alternateRank : null } : item);
+        const pane = sortGrindingPlanningBoardProjectionItems(paneItems.filter((item) =>
           isCategoryResource(item.originalResourceCd, category, policy) && (item.effectiveResourceCd ?? item.originalResourceCd) === resource), stateOrder(state), 'resource', 'alternate');
         const requested = new Set(itemIds); rankedItemIds = mergeScheduleSourceOrder(pane.map((item) => item.itemId), itemIds);
         if (pane.filter((item) => requested.has(item.itemId)).length !== itemIds.length) throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
@@ -470,14 +491,20 @@ export async function updateGrindingPlanningBoardResourceOrderBulk(params: {
       const locked = await client.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "CsvDashboardRow" WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID} AND "id" = ANY(${rowsToLock}::text[]) ORDER BY "id" FOR UPDATE`;
       const lockedIds = new Set(locked.map((row) => row.id));
       if (rowsToLock.some((id) => !lockedIds.has(id))) throw new ApiError(409, '元行が消滅しています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
-      const current = fullPane ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
+      let current = fullPane ?? await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey, sourceRowIds: rowsToLock, itemIds, policy });
+      if (move) {
+        const applied = await applyOverridesInTransaction({ lockedCurrent: current, dueSource: params.dueSource, pieceKeys, client,
+          siteKey: params.siteKey, sourceRevision: params.sourceRevision, requests: [move], sourceRowIds: sourceRows, policy, workCalendarModeByResource: new Map() });
+        current = { ...current, overrides: applied.overrides, byItemId: projectCurrentItems(current, applied.overrides) };
+      }
       const registered = new Set(stateOrder(state));
       for (const request of params.items) {
         const item = current.byItemId.get(request.itemId)!;
         if (!registered.has(item.fseiban) || excluded.has(item.fseiban) || item.sourceRowId !== sourceRows.get(item.itemId)) {
           throw new ApiError(409, '対象アイテムが更新されています。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ITEM');
         }
-        assertItemRevision(request.itemRevision, item, request.overrideVersion);
+        // The move was checked before changing its resource/version; neighbours still use their original revisions.
+        if (request.itemId !== move?.itemId) assertItemRevision(request.itemRevision, item, request.overrideVersion);
         if (item.isCompleted) throw new ApiError(409, '完了済みの工程は並べ替えできません', undefined, 'COMPLETED_ITEM');
         if ((item.effectiveResourceCd ?? item.originalResourceCd) !== resource) {
           throw new ApiError(409, '同じ資源CDの中でのみ並べ替えできます', undefined, 'RESOURCE_ORDER_PANE_MISMATCH');
@@ -552,71 +579,4 @@ export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: 
     if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === 'P2034' || error.code === 'P2002')) throw new ApiError(409, '同時更新がありました。再読み込みしてください', undefined, 'STALE_PLANNING_BOARD_ORDER');
     throw error;
   }
-}
-
-export async function updateGrindingPlanningBoardArrival(params: GrindingPlanningBoardArrivalRequest & {
-  siteKey: string; recorded: boolean;
-}): Promise<GrindingPlanningBoardArrivalResponse> {
-  const sourceRowIds = await discoverSourceRows([params.itemId]);
-  await ensurePlanningBoardState(params.siteKey);
-  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
-  const pieceKeys = await readLivePieceKeys(prisma, [...sourceRowIds.values()]);
-  return prisma.$transaction(async (client) => {
-    const sourceRowId = sourceRowIds.get(params.itemId)!;
-    await acquireSessakuPieceLogicalLocks(client, pieceKeys);
-    if (pieceKeys.length) await lockState(client, params.siteKey);
-    await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
-    const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey,
-      sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy, allowPieceParent: true });
-    const item = current.byItemId.get(params.itemId)!;
-    assertItemRevision(params.itemRevision, item, params.overrideVersion);
-    if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
-    const arrivalDate = planningBoardArrivalDate();
-    const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: item.parentItemId ?? item.itemId, arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`) };
-    if (params.recorded) {
-      await client.productionScheduleGrindingPlanningBoardArrival.upsert({
-        where: { csvDashboardId_siteKey_arrivalDate_itemKey: key }, create: key, update: {}
-      });
-    } else {
-      await client.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: key });
-    }
-    return { itemId: params.itemId, manualArrivalDate: params.recorded ? arrivalDate : null };
-  }, { timeout: 30000, maxWait: 15000 });
-}
-
-export async function updateGrindingPlanningBoardFirstProcessArrival(params: GrindingPlanningBoardFirstProcessArrivalRequest & {
-  siteKey: string;
-}): Promise<GrindingPlanningBoardFirstProcessArrivalResponse> {
-  const sourceRowIds = await discoverSourceRows([params.itemId]);
-  await ensurePlanningBoardState(params.siteKey);
-  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
-  const pieceKeys = await readLivePieceKeys(prisma, [...sourceRowIds.values()]);
-  return prisma.$transaction(async (client) => {
-    const sourceRowId = sourceRowIds.get(params.itemId)!;
-    await acquireSessakuPieceLogicalLocks(client, pieceKeys);
-    if (pieceKeys.length) await lockState(client, params.siteKey);
-    await acquireProductionScheduleParentRowLockInTransaction(client, sourceRowId);
-    const current = await resolveCurrentProjectionInTransaction({ dueSource: params.dueSource, client, siteKey: params.siteKey,
-      sourceRowIds: [sourceRowId], itemIds: [params.itemId], policy, allowPieceParent: true });
-    const item = current.byItemId.get(params.itemId)!;
-    assertItemRevision(params.itemRevision, item, params.overrideVersion);
-    if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
-    const [arrival] = await enrichRowsWithProcessArrival([{
-      id: item.itemId, sourceRowId: item.sourceRowId,
-      rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
-    }], { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(), client, policy });
-    if (!arrival?.isFirstProcess) throw new ApiError(409, '最初の工程ではありません', undefined, 'NOT_FIRST_PROCESS');
-    const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: item.parentItemId ?? item.itemId };
-    if (params.state !== null) {
-      const data = { state: params.state, recordedAt: new Date() };
-      await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.upsert({
-        where: { csvDashboardId_siteKey_itemKey: key }, create: { ...key, ...data }, update: data
-      });
-    } else {
-      await client.productionScheduleGrindingPlanningBoardFirstProcessArrival.deleteMany({ where: key });
-    }
-    return { itemId: params.itemId, firstProcessState: params.state };
-  }, { timeout: 30000, maxWait: 15000 });
 }

@@ -62,6 +62,7 @@ vi.mock('../../../../api/hooks', async () => {
     useUpdateKioskGrindingPlanningBoardDueScope: mutation,
     useUpdateKioskGrindingPlanningBoardRank: mutation,
     useUpdateKioskGrindingPlanningBoardResourceOrder: mutation,
+    useUpdateKioskGrindingPlanningBoardResourceMove: mutation,
     useUpdateKioskGrindingPlanningBoardResourceOrderBulk: mutation,
     useKioskGrindingPlanningBoardResourceMinutes: () => useStore('partMinutes'),
     useUpdateKioskGrindingPlanningBoardResourceMinutesSource: mutation,
