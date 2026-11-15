@@ -1,11 +1,80 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  AssemblyProcedureCanvas,
   AssemblyProcedureImageWithMarkers,
   AssemblyProcedureMarkerLayer
 } from './AssemblyProcedureCanvas';
+
+describe('AssemblyProcedureCanvas', () => {
+  beforeEach(() => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(900);
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  const canvas = (path: string) => (
+    <AssemblyProcedureCanvas
+      imageRelativePath={path}
+      bolts={[]}
+      overlay={<div data-testid="canvas-overlay" />}
+    />
+  );
+  const loadImage = (width: number, height: number) => {
+    const img = screen.getByTestId('assembly-procedure-canvas').querySelector('img')!;
+    Object.defineProperties(img, {
+      naturalWidth: { configurable: true, value: width },
+      naturalHeight: { configurable: true, value: height }
+    });
+    fireEvent.load(img);
+  };
+
+  it('keeps the overlay DOM node when returning to a previously loaded page', () => {
+    const view = render(canvas('blob:canvas-return-a'));
+    loadImage(300, 600);
+    view.rerender(canvas('blob:canvas-return-b'));
+    loadImage(600, 300);
+    const overlay = screen.getByTestId('canvas-overlay');
+
+    view.rerender(canvas('blob:canvas-return-a'));
+    expect(screen.getByTestId('canvas-overlay')).toBe(overlay);
+    expect(overlay.parentElement).toHaveStyle({ width: '300px', height: '600px' });
+    view.rerender(canvas('blob:canvas-return-b'));
+    expect(screen.getByTestId('canvas-overlay')).toBe(overlay);
+    expect(overlay.parentElement).toHaveStyle({ width: '900px', height: '450px' });
+  });
+
+  it('waits for onLoad for an image with no remembered natural size', () => {
+    const view = render(canvas('blob:canvas-first-a'));
+    expect(screen.queryByTestId('canvas-overlay')).not.toBeInTheDocument();
+    loadImage(300, 600);
+    expect(screen.getByTestId('canvas-overlay')).toBeInTheDocument();
+
+    view.rerender(canvas('blob:canvas-first-b'));
+    expect(screen.queryByTestId('canvas-overlay')).not.toBeInTheDocument();
+    loadImage(600, 300);
+    expect(screen.getByTestId('canvas-overlay')).toBeInTheDocument();
+  });
+
+  it('corrects and remembers natural size from the visible image load', () => {
+    const view = render(canvas('blob:canvas-correct-a'));
+    loadImage(300, 600);
+    view.rerender(canvas('blob:canvas-correct-b'));
+    loadImage(600, 300);
+    const overlay = screen.getByTestId('canvas-overlay');
+    view.rerender(canvas('blob:canvas-correct-a'));
+    loadImage(600, 300);
+    expect(screen.getByTestId('canvas-overlay')).toBe(overlay);
+    expect(overlay.parentElement).toHaveStyle({ width: '900px', height: '450px' });
+
+    view.rerender(canvas('blob:canvas-correct-b'));
+    view.rerender(canvas('blob:canvas-correct-a'));
+    expect(screen.getByTestId('canvas-overlay')).toBe(overlay);
+    expect(overlay.parentElement).toHaveStyle({ width: '900px', height: '450px' });
+  });
+});
 
 describe('AssemblyProcedureImageWithMarkers', () => {
   afterEach(() => vi.restoreAllMocks());
