@@ -19,7 +19,7 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocument: mocks.document,
   getProcedureManualAssignments: mocks.detail, replaceProcedureManualAssignments: mocks.replace,
   deleteAssemblyProcedureDocument: mocks.delete,
-  listProcedureMaterials: mocks.materials, listProcedureVideos: mocks.videos
+  countProcedureMaterials: mocks.materials, countProcedureVideos: mocks.videos
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence, onClose }: { sequence: AssemblyProcedureSequenceDto; onClose?: () => void }) => <div data-testid="pdf-sequence-viewer"><button onClick={onClose}>閉じる</button>{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));
 vi.mock('./ProcedureManualBlankDialog', () => ({ ProcedureManualBlankDialog: ({ modelCode, processId, subjectKind }: { modelCode: string; processId: string; subjectKind: string }) => <div role="dialog" aria-label="白紙から作る" data-subject-kind={subjectKind}>{modelCode} / {processId}</div> }));
@@ -61,7 +61,7 @@ beforeEach(() => {
   });
   mocks.document.mockResolvedValue({ id: 'v2', name: '公開手順', status: 'published', pages: [{ pageIndex: 0, imageRelativePath: '/page.png' }], assets: [], imageRelativePath: '/page.png' });
   mocks.candidates.mockResolvedValue({ candidates: ['ｄｆｄ６３', ' DFD63 ', 'DFD63'], hasMore: false });
-  mocks.materials.mockResolvedValue([{}, {}]); mocks.videos.mockResolvedValue([{}]);
+  mocks.materials.mockResolvedValue(2); mocks.videos.mockResolvedValue(1);
   mocks.replace.mockResolvedValue(undefined);
   mocks.delete.mockResolvedValue(undefined);
   mocks.detail.mockResolvedValue({ assignments: [
@@ -73,18 +73,42 @@ beforeEach(() => {
 
 describe('procedure-manuals workshop', () => {
   it('displays initial results without waiting for unrelated counts', async () => {
-    let finish!: (rows: unknown[]) => void;
+    let finish!: (count: number) => void;
     mocks.videos.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     show();
     await waitFor(() => expect(mocks.videos).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole('row', { name: '公開手順' })).toBeInTheDocument();
-    await act(async () => { finish([{}]); });
+    await act(async () => { finish(1); });
     expect(await screen.findByRole('row', { name: '公開手順' })).toBeInTheDocument();
     expect(mocks.processes).toHaveBeenCalledTimes(1);
     expect(mocks.models).toHaveBeenCalledTimes(1);
     expect(mocks.allOverview).toHaveBeenCalledTimes(1);
     expect(mocks.materials).toHaveBeenCalledTimes(1);
     expect(mocks.videos).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows uncapped counts, caches them and refreshes after closing each shelf', async () => {
+    mocks.materials.mockResolvedValueOnce(501).mockResolvedValueOnce(502).mockResolvedValue(503);
+    mocks.videos.mockResolvedValueOnce(101).mockResolvedValueOnce(102).mockResolvedValue(103);
+    show();
+    expect(await screen.findByRole('button', { name: '素材 501' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '動画 101' })).toBeInTheDocument();
+    expect(mocks.materials).toHaveBeenCalledExactlyOnceWith({ state: 'unplaced' });
+    expect(mocks.videos).toHaveBeenCalledExactlyOnceWith({ state: 'active' });
+    expect(readManualList('materialCount')).toBe(501);
+    expect(readManualList('videoCount')).toBe(101);
+    fireEvent.click(screen.getByRole('button', { name: '素材 501' }));
+    await waitFor(() => expect(readManualList('materialCount')).toBe(502));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '素材' })).getByRole('button', { name: '閉じる' }));
+    expect(await screen.findByRole('button', { name: '素材 503' })).toBeInTheDocument();
+    expect(readManualList('materialCount')).toBe(503);
+    expect(mocks.materials).toHaveBeenCalledTimes(3);
+    fireEvent.click(screen.getByRole('button', { name: '動画 101' }));
+    await waitFor(() => expect(readManualList('videoCount')).toBe(102));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '動画' })).getByRole('button', { name: '閉じる' }));
+    expect(await screen.findByRole('button', { name: '動画 103' })).toBeInTheDocument();
+    expect(readManualList('videoCount')).toBe(103);
+    expect(mocks.videos).toHaveBeenCalledTimes(3);
   });
 
   it('keeps successful initial results when models and counts fail', async () => {

@@ -52,6 +52,38 @@ function setup(deny: 'view' | 'write' | null = null) { const h = harness(deny); 
 afterEach(async () => { await Promise.all(apps.splice(0).map((app) => app.close())); vi.restoreAllMocks(); });
 
 describe('procedure-video routes', () => {
+  it.each([
+    ['active', { discardedAt: null }], ['discarded', { discardedAt: { not: null } }], ['all', {}],
+  ])('counts state=%s with the same shelf filter as the list', async (state, where) => {
+    const { app, db } = setup();
+    const response = await app.inject(`/assembly/procedure-videos/count?state=${state}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ count: 2 });
+    expect(db.procedureVideo.count).toHaveBeenCalledExactlyOnceWith({ where });
+    expect(db.procedureVideo.findMany).not.toHaveBeenCalled();
+    expect(db.procedureVideo.findUnique).not.toHaveBeenCalled();
+    await app.inject(`/assembly/procedure-videos?state=${state}`);
+    expect(db.procedureVideo.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+  });
+  it('defaults count state and returns zero without loading records', async () => {
+    const { app, db } = setup();
+    db.procedureVideo.count.mockResolvedValue(0);
+    const response = await app.inject('/assembly/procedure-videos/count');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ count: 0 });
+    expect(db.procedureVideo.count).toHaveBeenCalledExactlyOnceWith({ where: { discardedAt: null } });
+    expect(db.procedureVideo.findMany).not.toHaveBeenCalled();
+  });
+  it('rejects an invalid count state before querying Prisma', async () => {
+    const { app, db } = setup();
+    expect((await app.inject('/assembly/procedure-videos/count?state=invalid')).statusCode).toBe(400);
+    expect(db.procedureVideo.count).not.toHaveBeenCalled();
+  });
+  it('requires list view permission to count', async () => {
+    const { app, db } = setup('view');
+    expect((await app.inject('/assembly/procedure-videos/count')).statusCode).toBe(403);
+    expect(db.procedureVideo.count).not.toHaveBeenCalled();
+  });
   it('creates a new pending concat in order, allows duplicates and long totals without changing sources', async () => {
     const h = setup(); h.video.durationSeconds = 40;
     const response = await h.app.inject({ method: 'POST', url: '/assembly/procedure-videos/concat', payload: { sourceVideoIds: [id, id] } });

@@ -21,6 +21,18 @@ function publicMaterial(material: ProcedureMaterial) {
 }
 
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
+
+function materialShelfWhere(state: ProcedureMaterialState, origin?: ProcedureMaterialOrigin): Prisma.ProcedureMaterialWhereInput {
+  const where: Prisma.ProcedureMaterialWhereInput = {};
+  if (state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
+  if (state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
+  if (state === 'discarded') where.discardedAt = { not: null };
+  // This shelf exclusion applies only to the ordinary shelf list and count, never semantic search.
+  if (origin) where.origin = origin;
+  else if (state === 'unplaced') where.origin = { not: 'APP' };
+  return where;
+}
+
 export class ProcedureMaterialService {
   constructor(
     private readonly db = defaultPrisma,
@@ -28,14 +40,12 @@ export class ProcedureMaterialService {
     private readonly importer: Pick<AssemblyProcedureDraftImportService, 'importDraft'> = new AssemblyProcedureDraftImportService(),
   ) {}
 
+  async count(options: { state: ProcedureMaterialState }) {
+    return this.db.procedureMaterial.count({ where: materialShelfWhere(options.state) });
+  }
+
   async list(options: { state: ProcedureMaterialState; origin?: ProcedureMaterialOrigin; q?: string; limit: number }) {
-    const where: Prisma.ProcedureMaterialWhereInput = {};
-    if (options.state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
-    if (options.state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
-    if (options.state === 'discarded') where.discardedAt = { not: null };
-    // This shelf exclusion applies only to the ordinary list, never semantic search.
-    if (options.origin) where.origin = options.origin;
-    else if (options.state === 'unplaced') where.origin = { not: 'APP' };
+    const where = materialShelfWhere(options.state, options.origin);
     const matchedParts = new Map<string, string>();
     if (options.q) {
       const queries = [...new Set([options.q, options.q.normalize('NFKC')])];

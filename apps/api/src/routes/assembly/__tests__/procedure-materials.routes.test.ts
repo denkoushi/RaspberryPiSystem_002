@@ -17,7 +17,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   function harness(deny: 'view' | 'write' | null = null) {
     const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
     const db = { employee: { findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
-      findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
+      count: vi.fn().mockResolvedValue(501), findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
       update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     } };
@@ -38,6 +38,40 @@ describe('procedure-material routes with mocked Prisma', () => {
     });
     return { db, store, importer, ingestion, loadConfig, material, gc, pdfText };
   }
+  it.each([
+    ['unplaced', { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }],
+    ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
+    ['discarded', { discardedAt: { not: null } }], ['all', {}],
+  ])('counts state=%s with the same shelf filter as the list', async (state, where) => {
+    const { db } = harness();
+    const response = await app.inject(`/assembly/procedure-materials/count?state=${state}`);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ count: 501 });
+    expect(db.procedureMaterial.count).toHaveBeenCalledExactlyOnceWith({ where });
+    expect(db.procedureMaterial.findMany).not.toHaveBeenCalled();
+    expect(db.procedureMaterial.findUnique).not.toHaveBeenCalled();
+    await app.inject(`/assembly/procedure-materials?state=${state}`);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+  });
+  it('defaults count state and returns zero without loading records', async () => {
+    const { db } = harness();
+    db.procedureMaterial.count.mockResolvedValue(0);
+    const response = await app.inject('/assembly/procedure-materials/count');
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ count: 0 });
+    expect(db.procedureMaterial.count).toHaveBeenCalledExactlyOnceWith({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null } });
+    expect(db.procedureMaterial.findMany).not.toHaveBeenCalled();
+  });
+  it('rejects an invalid count state before querying Prisma', async () => {
+    const { db } = harness();
+    expect((await app.inject('/assembly/procedure-materials/count?state=invalid')).statusCode).toBe(400);
+    expect(db.procedureMaterial.count).not.toHaveBeenCalled();
+  });
+  it('requires list view permission to count', async () => {
+    const { db } = harness('view');
+    expect((await app.inject('/assembly/procedure-materials/count')).statusCode).toBe(403);
+    expect(db.procedureMaterial.count).not.toHaveBeenCalled();
+  });
   it('keeps PDF and page text out of the list payload', async () => {
     const { db, material } = harness();
     db.procedureMaterial.findMany.mockResolvedValue([material, { ...material, id: 'pdf', kind: 'PDF', text: 'PDF の文字' }, { ...material, id: 'page', kind: 'PHOTO', text: 'ページの文字' }]);
