@@ -2,6 +2,11 @@ import { api } from '../../http';
 
 import { procedureEditHeaders } from './shared';
 
+export async function countProcedureVideos(params: { state?: import('../../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoState } = {}) {
+  const { data } = await api.get<{ count: number }>('/assembly/procedure-videos/count', { params });
+  return data.count;
+}
+
 export async function listProcedureVideos(params: { state?: import('../../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoState; q?: string; limit?: number } = {}) {
   const { data } = await api.get<{ videos: import('../../../features/assembly/procedure-manuals/procedure-video-types').ProcedureVideoDto[] }>('/assembly/procedure-videos', { params });
   return data.videos;

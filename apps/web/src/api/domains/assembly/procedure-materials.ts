@@ -5,6 +5,11 @@ import { procedureEditHeaders } from './shared';
 import type { AssemblyProcedureOverlayAssetDto } from '../../../features/assembly/types';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
+export async function countProcedureMaterials(params: { state?: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialState } = {}) {
+  const { data } = await api.get<{ count: number }>('/assembly/procedure-materials/count', { params });
+  return data.count;
+}
+
 export async function listProcedureMaterials(params: { state?: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialState; origin?: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto['origin']; q?: string; limit?: number } = {}) {
   const { data } = await api.get<{ materials: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto[] }>('/assembly/procedure-materials', { params });
   return data.materials;

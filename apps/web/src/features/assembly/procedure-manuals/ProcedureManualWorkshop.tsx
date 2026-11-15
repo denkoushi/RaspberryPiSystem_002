@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { listProcedureManualCommon, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, listProcedureMaterials, listProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { listProcedureManualCommon, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, countProcedureMaterials, countProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
@@ -175,13 +175,13 @@ export function ProcedureManualWorkshop() {
   }, [isCommon, version]);
   useEffect(() => {
     let cancelled = false;
-    void fetchManualList('materialCount', async () => (await listProcedureMaterials({ state: 'unplaced', limit: 500 })).length).then(count => { if (!cancelled) setMaterialCount(count); })
+    void fetchManualList('materialCount', () => countProcedureMaterials({ state: 'unplaced' })).then(count => { if (!cancelled) setMaterialCount(count); })
       .catch(() => { if (!cancelled) setMaterialCount(null); });
     return () => { cancelled = true; };
   }, [materialOpen]);
   useEffect(() => {
     let cancelled = false;
-    void fetchManualList('videoCount', async () => (await listProcedureVideos({ state: 'active', limit: 100 })).length).then(count => { if (!cancelled) setVideoCount(count); })
+    void fetchManualList('videoCount', () => countProcedureVideos({ state: 'active' })).then(count => { if (!cancelled) setVideoCount(count); })
       .catch(() => { if (!cancelled) setVideoCount(null); });
     return () => { cancelled = true; };
   }, [videoOpen]);
@@ -275,8 +275,8 @@ export function ProcedureManualWorkshop() {
       <h1 className="text-[26px] font-black tracking-widest">要領書</h1>
       <span className="inline-flex h-10 items-center gap-2 rounded-full bg-[#f6b93b29] px-3.5 text-[19px] font-bold text-[#f6b93b]"><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg>作る・直す</span>
       <div className="ml-auto flex gap-4">
-        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setMaterialOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}{materialCount === 500 ? '+' : ''}</button>
-        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setVideoOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}{videoCount === 100 ? '+' : ''}</button>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setMaterialOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 10h18" /></svg>素材 {materialCount ?? '—'}</button>
+        <button className={`${action} gap-2 text-[19px]`} onClick={() => { clearManualLists(); setVideoOpen(true); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="6" width="13" height="12" rx="2" /><path d="M16 10l5-3v10l-5-3z" /></svg>動画 {videoCount ?? '—'}</button>
         <Link to="/kiosk/assembly" className={`${action} gap-2 text-[19px]`}>組立へ戻る</Link>
       </div>
     </header>

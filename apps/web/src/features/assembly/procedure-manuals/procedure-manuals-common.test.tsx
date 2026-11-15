@@ -19,7 +19,7 @@ vi.mock('../../../api/client', () => ({
   listProcedureManualProcesses: async () => processes,
   listProcedureManualModels: async () => [], listProcedureManualParts: async () => [],
   listProcedureManualPartCandidates: async () => [], listAssemblyMachineNameCandidates: async () => ({ candidates: [] }),
-  listProcedureMaterials: async () => [], listProcedureVideos: async () => [],
+  countProcedureMaterials: async () => 0, countProcedureVideos: async () => 0,
   getProcedureManualAssignments: api.assignments, replaceProcedureManualAssignments: api.replace,
   deleteAssemblyProcedureDocument: api.deleteDocument, getAssemblyProcedureDocument: api.document,
 }));

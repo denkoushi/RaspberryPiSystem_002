@@ -59,6 +59,11 @@ function normalizeVideoComments(comments: Array<{ atSeconds: number; text: strin
   return normalized;
 }
 
+type ProcedureVideoState = 'active' | 'discarded' | 'all';
+function videoShelfWhere(state: ProcedureVideoState): Prisma.ProcedureVideoWhereInput {
+  return state === 'active' ? { discardedAt: null } : state === 'discarded' ? { discardedAt: { not: null } } : {};
+}
+
 export class ProcedureVideoService {
   constructor(
     private readonly db = defaultPrisma,
@@ -88,9 +93,13 @@ export class ProcedureVideoService {
     }
   }
 
-  async list(params: { state: 'active' | 'discarded' | 'all'; q?: string; limit: number }) {
+  async count(params: { state: ProcedureVideoState }) {
+    return this.db.procedureVideo.count({ where: videoShelfWhere(params.state) });
+  }
+
+  async list(params: { state: ProcedureVideoState; q?: string; limit: number }) {
     const rows = await this.db.procedureVideo.findMany({
-      where: { ...(params.state === 'active' ? { discardedAt: null } : params.state === 'discarded' ? { discardedAt: { not: null } } : {}), ...(params.q ? { OR: [{ title: { contains: params.q, mode: 'insensitive' as const } }, { subjectHint: { contains: params.q, mode: 'insensitive' as const } }] } : {}) },
+      where: { ...videoShelfWhere(params.state), ...(params.q ? { OR: [{ title: { contains: params.q, mode: 'insensitive' as const } }, { subjectHint: { contains: params.q, mode: 'insensitive' as const } }] } : {}) },
       orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }], take: params.limit, include: { _count: { select: { links: true, scenes: true } }, autoEditSuggestions: env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED ? { orderBy: autoEditLatestOrder, take: 1, select: { status: true, decision: true } } : false }
     });
     return rows.map((row) => ({ autoEdit: env.PROCEDURE_VIDEO_AUTO_EDIT_ENABLED ? row.autoEditSuggestions?.[0] ?? null : null, id: row.id, title: row.title, origin: row.origin ?? 'GMAIL', status: row.status, durationSeconds: row.durationSeconds, hasPoster: Boolean(row.posterStorageKey), linkCount: row._count.links, sceneCount: row._count.scenes, errorCode: row.errorCode, errorMessage: row.errorMessage, discardedAt: row.discardedAt?.toISOString() ?? null }));
