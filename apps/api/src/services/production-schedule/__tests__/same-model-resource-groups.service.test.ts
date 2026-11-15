@@ -19,7 +19,7 @@ import { resolveRequiredMinutes } from '../grinding-planning-board-required-minu
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 
 type Value = { id: string; siteKey: string; resourceCd: string; fhincd: string; perUnitMinutes: number; setupMinutes: number; ops: Array<{ id: string; opNo: number; minutes: number; setupMinutes: number | null }> };
-let values: Value[], groups: Array<{ siteKey: string; members: Array<{ resourceCd: string }> }>, sources: Array<{ siteKey: string; resourceCd: string; source: string }>;
+let values: Value[], groups: Array<{ id?: string; siteKey: string; members: Array<{ resourceCd: string }> }>, sources: Array<{ siteKey: string; resourceCd: string; source: string }>;
 const siteKey = 'same-model-site';
 const where = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey };
 const value = (resourceCd: string, fhincd = 'P'): Value => ({ id: `${resourceCd}-${fhincd}`, siteKey, resourceCd, fhincd, perUnitMinutes: 5, setupMinutes: 10,
@@ -36,7 +36,10 @@ beforeEach(() => {
   mocks.tx.productionScheduleSameModelResourceGroup = {
     findMany: vi.fn(async ({ where }: any) => groups.filter((g) => matches(g, where))),
     deleteMany: vi.fn(async ({ where }: any) => { groups = groups.filter((g) => !matches(g, where)); }),
-    create: vi.fn(async ({ data }: any) => { groups.push({ siteKey: data.siteKey, members: data.members.create }); })
+    create: vi.fn(async ({ data }: any) => { const group = { id: `group-${groups.length}`, siteKey: data.siteKey, members: [] }; groups.push(group); return group; })
+  };
+  mocks.tx.productionScheduleSameModelResourceMember = {
+    createMany: vi.fn(async ({ data }: any) => { for (const member of data) groups.find((g: any) => g.id === member.groupId)!.members.push({ resourceCd: member.resourceCd }); })
   };
   mocks.tx.productionScheduleResourceMaster = { findMany: vi.fn(async () => ['021', '022', '023', '305', '10'].map((resourceCd) => ({ resourceCd, resourceName: `Machine ${resourceCd}` }))) };
   mocks.tx.productionScheduleGrindingPlanningBoardResourcePartMinutes = {

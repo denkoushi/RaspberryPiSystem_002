@@ -92,8 +92,10 @@ export async function replaceSameModelResourceGroups(input: z.input<typeof sameM
     const sources = await tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.findMany({ where: { ...where, resourceCd: { in: resources } } });
     await tx.productionScheduleSameModelResourceGroup.deleteMany({ where: { siteKey } });
     for (const group of groups) {
-      await tx.productionScheduleSameModelResourceGroup.create({ data: { siteKey,
-        members: { create: group.resourceCds.map((resourceCd) => ({ siteKey, resourceCd })) } } });
+      const created = await tx.productionScheduleSameModelResourceGroup.create({ data: { siteKey } });
+      await tx.productionScheduleSameModelResourceMember.createMany({
+        data: group.resourceCds.map((resourceCd) => ({ groupId: created.id, siteKey, resourceCd }))
+      });
       if (group.resourceCds.some((cd) => sources.some((source) => source.resourceCd === cd))) {
         await tx.productionScheduleGrindingPlanningBoardResourceMinutesSource.createMany({
           data: group.resourceCds.map((resourceCd) => ({ ...where, resourceCd, source: 'own' })), skipDuplicates: true
