@@ -125,6 +125,8 @@ Review validation completed locally in a few minutes: `python3 -m pytest scripts
 
 Weekly triage (2026-11-09, `summary --days 7`, 2026-11-03 to 2026-11-09): 7 nights, 0 skipped; 126 findings, 28 confirmed, 96 false alarms, 1 known, 0 refused chunks, 3 fixed; confirmed ratio 0.23.
 
+Weekly triage (2026-11-16, `summary --days 7`, 2026-11-10 to 2026-11-16): 7 nights, 0 skipped; 88 findings, 8 confirmed, 69 false alarms, 0 known, 0 refused chunks, 0 fixed; confirmed ratio 0.10.
+
 ## Context and Orientation
 
 Data flows through four parts: the Pi5 host, the Pi5 API containers, the DGX gateway, and Claude in the morning.
