@@ -8,6 +8,7 @@
 - 切削の片操作・障害時のrequestId追跡・監査ログ: [Plan](./plans/2026-11-05-sessaku-split-pieces.md#不具合時に操作を追う)
 - 在庫の準備（取込エラー取消・検索・タグ交換・課別選択肢）: [Plan](./plans/kiosk-inventory-setup-seigi.md)
 
+- 10年安定稼働に向けた予防の計画（保守期限と更新の習慣、機械の寿命、データの増え方、期限のあるもの、100台の性能、担当の引き継ぎ）: [ExecPlan](./plans/ten-year-prevention-lifecycle-execplan.md)
 - 端末100台規模に向けた不足点と改善計画（サーバーの予備機、全台の監視、停止中の記録、更新の並列化、使い捨て端末、SD保護、非力な機種）: [ExecPlan](./plans/fleet-100-scale-gap-execplan.md)
 - キオスクのパレットバーコード送信待ち・重複防止: [Plan](./plans/2026-11-04-kiosk-pallet-offline-queue.md)
 - 機種ごとの役割と資源（Pi5・Pi4・Pi3・Zero W / Zero 2W、搭載制限とM0実測）: [Runbook](./runbooks/device-model-roles.md)
