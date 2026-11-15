@@ -40,7 +40,8 @@ type Options = {
   order: string[];
   uncheckedFseibans?: string[];
   sourceRevision: string;
-  refresh: (affectsLoad?: boolean) => Promise<unknown>;
+  /** savedSourceRevision: the board revision after this batch's own saves; load may be kept only if the refetch returns it. */
+  refresh: (affectsLoad?: boolean, savedSourceRevision?: string) => Promise<unknown>;
   onStart: (label: string) => void;
   onSuccess: (label: string) => void;
   onError: (error: unknown) => void;
@@ -211,7 +212,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
             latest.current.onError(error);
             changed();
             try {
-              const refreshed = await latest.current.refresh(affectsLoad);
+              const refreshed = await latest.current.refresh(affectsLoad, current.sourceRevision);
               if (!mounted.current || current !== state.current || generation !== gate.generation()) return;
               if (refreshed && typeof refreshed === 'object' && 'isError' in refreshed && refreshed.isError) throw new Error('Refresh failed');
               const data = refreshed && typeof refreshed === 'object' && 'data' in refreshed ? refreshed.data : null;
@@ -238,7 +239,7 @@ export function usePlanningBoardWriteQueue(options: Options) {
         if (!failed) {
           latest.current.onSuccess(lastLabel);
           // One reconciliation per drained batch, rather than one refetch per click.
-          void Promise.resolve().then(() => { if (current === state.current && generation === gate.generation()) return latest.current.refresh(affectsLoad); }).catch(() => {
+          void Promise.resolve().then(() => { if (current === state.current && generation === gate.generation()) return latest.current.refresh(affectsLoad, current.sourceRevision); }).catch(() => {
             // Keep confirmed writes visible until polling or explicit refresh reconciles them.
           });
         }

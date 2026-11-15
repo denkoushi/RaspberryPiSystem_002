@@ -94,6 +94,24 @@ it('keeps the complete display while refreshing and rejects an older continuatio
 });
 
 
+it.each([
+  ['own saved revision', 'saved', 0],
+  ['another change on top of the saved revision', 'external', 1]
+] as const)('load-neutral reconciliation keeps load only for its %s', async (_label, refetched, expected) => {
+  let revision = 'before';
+  mocks.board.mockImplementation(() => Promise.resolve({ ...page('a', 60, null), sourceRevision: revision }));
+  const { hook, client } = setup();
+  await flush();
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  revision = refetched;
+  let complete!: Promise<unknown>;
+  act(() => { complete = hook.result.current.refetch({ loadUnaffectedRevision: 'saved' }); });
+  await flush();
+  await act(async () => { await complete; });
+  expect(invalidate.mock.calls.filter(([query]) => JSON.stringify(query?.queryKey) === JSON.stringify(productionScheduleQueryKeys.grindingPlanningBoardLoadAll))).toHaveLength(expected);
+  hook.unmount(); client.clear();
+});
+
 it.each([false, true])('suppresses revision-triggered load invalidation on write reconciliation (affects load: %s)', async (affectsLoad) => {
   let revision = 'before';
   mocks.board.mockImplementation(() => Promise.resolve({ ...page('a', 60, null), sourceRevision: revision }));

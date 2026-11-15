@@ -103,6 +103,8 @@ export function useKioskGrindingPlanningBoardLoad(category: GrindingPlanningBoar
 
 type PlanningBoardRefetchOptions = NonNullable<Parameters<ReturnType<typeof useKioskGrindingPlanningBoard>['refetch']>[0]> & {
   loadAlreadyInvalidated?: boolean;
+  /** Skip load invalidation only when the refetched board is exactly this revision (own load-neutral saves). */
+  loadUnaffectedRevision?: string;
 };
 
 export type KioskGrindingPlanningBoardProgressiveResult = {
@@ -141,6 +143,7 @@ export function useKioskGrindingPlanningBoardProgressive(
   const queryClient = useQueryClient();
   const previousRevisionRef = useRef<{ paramsKey: string; revision: string } | undefined>(undefined);
   const loadAlreadyInvalidatedRef = useRef<string | null>(null);
+  const loadUnaffectedRevisionRef = useRef<{ paramsKey: string; revision: string } | null>(null);
   const paramsKey = useMemo(() => JSON.stringify(params ?? null), [params]);
   const mergedParamsKeyRef = useRef<string | null>(null);
   const [mergedData, setMergedData] = useState<GrindingPlanningBoardResponse>();
@@ -181,9 +184,11 @@ export function useKioskGrindingPlanningBoardProgressive(
   const refetch = query.refetch;
   // Refresh consumers must not clear confirmed writes before the replacement is complete.
   const refetchComplete = useCallback(async (options?: PlanningBoardRefetchOptions) => {
-    const { loadAlreadyInvalidated, ...queryOptions } = options ?? {};
+    const { loadAlreadyInvalidated, loadUnaffectedRevision, ...queryOptions } = options ?? {};
     // Piece mutations refresh load independently, including when this board request fails.
     if (loadAlreadyInvalidated) loadAlreadyInvalidatedRef.current = paramsKey;
+    const unaffected = loadUnaffectedRevision ? { paramsKey, revision: loadUnaffectedRevision } : null;
+    if (unaffected) loadUnaffectedRevisionRef.current = unaffected;
     try {
       const previousSettlement = settledRef.current;
       const result = await refetch(queryOptions);
@@ -201,6 +206,7 @@ export function useKioskGrindingPlanningBoardProgressive(
       });
     } finally {
       if (loadAlreadyInvalidated && loadAlreadyInvalidatedRef.current === paramsKey) loadAlreadyInvalidatedRef.current = null;
+      if (unaffected && loadUnaffectedRevisionRef.current === unaffected) loadUnaffectedRevisionRef.current = null;
     }
   }, [paramsKey, refetch]);
   useEffect(() => {
@@ -225,7 +231,10 @@ export function useKioskGrindingPlanningBoardProgressive(
     if (!firstDataIsFresh || !firstData || query.isFetching || query.isError) return;
     const previous = previousRevisionRef.current;
     previousRevisionRef.current = { paramsKey, revision: firstData.sourceRevision };
-    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision && loadAlreadyInvalidatedRef.current !== paramsKey) {
+    const unaffected = loadUnaffectedRevisionRef.current;
+    const ownLoadNeutralRevision = unaffected?.paramsKey === paramsKey && unaffected.revision === firstData.sourceRevision;
+    if (previous?.paramsKey === paramsKey && previous.revision !== firstData.sourceRevision
+      && loadAlreadyInvalidatedRef.current !== paramsKey && !ownLoadNeutralRevision) {
       void queryClient.invalidateQueries(
         { queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll },
         { cancelRefetch: false }

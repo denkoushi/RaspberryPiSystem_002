@@ -198,7 +198,7 @@ describe('gantt atomic resource move', () => {
     await h.finish();
     expect(h.result.current.history).toHaveLength(1);
     expect(h.result.current.history[0].restoreResources).toEqual([{ itemId: item.itemId, resourceCd: '300' }]);
-    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(true);
+    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(true, 'source-0');
     h.unmount();
   });
   it('rolls back both optimistic fields and leaves history unchanged on failure', async () => {

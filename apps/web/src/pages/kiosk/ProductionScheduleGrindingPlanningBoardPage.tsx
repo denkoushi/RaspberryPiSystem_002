@@ -201,9 +201,10 @@ export function PlanningBoardPage() {
     order: data?.registeredFseibans ?? EMPTY_ORDER,
     uncheckedFseibans: data?.uncheckedFseibans ?? data?.excelNonMachineFseibans ?? EMPTY_ORDER,
     sourceRevision,
-    refresh: async (affectsLoad = true) => {
+    refresh: async (affectsLoad = true, savedSourceRevision?: string) => {
       const [result] = await Promise.all([
-        boardQuery.refetch({ loadAlreadyInvalidated: true }),
+        // A load-neutral batch keeps load only if no other change moved the board past its own saved revision.
+        boardQuery.refetch(affectsLoad ? { loadAlreadyInvalidated: true } : { loadUnaffectedRevision: savedSourceRevision }),
         affectsLoad ? queryClient.invalidateQueries({ queryKey: productionScheduleQueryKeys.grindingPlanningBoardLoadAll }, { cancelRefetch: false }) : Promise.resolve()
       ]);
       await queryClient.invalidateQueries({

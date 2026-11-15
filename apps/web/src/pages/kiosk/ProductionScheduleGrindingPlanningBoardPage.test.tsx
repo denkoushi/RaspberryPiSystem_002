@@ -3446,14 +3446,14 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     expect(screen.getAllByRole('button', { name: '資源CD 584を変更' })).toHaveLength(4);
   });
 
-  it('rank-only write-queue refresh keeps load cached even when the board revision is unchanged', async () => {
+  it('rank-only write-queue refresh keeps load only for its own saved board revision', async () => {
     const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     renderSeibanBoard();
     fireEvent.click(screen.getByRole('button', { name: '資源CD' }));
     chooseResourceRank('部品b', 1);
 
     await waitFor(() => expect(mocks.refetch).toHaveBeenCalledTimes(1));
-    expect(mocks.refetch).toHaveBeenCalledExactlyOnceWith({ loadAlreadyInvalidated: true });
+    expect(mocks.refetch).toHaveBeenCalledExactlyOnceWith({ loadUnaffectedRevision: 'board-1' });
     expect(invalidate.mock.calls.filter(([filters]) =>
       filters?.queryKey === productionScheduleQueryKeys.grindingPlanningBoardLoadAll)).toHaveLength(0);
   });

@@ -38,7 +38,7 @@ describe('planning board background writes', () => {
     for (const [index, id] of ['a', 'b', 'a'].entries()) {
       await act(async () => h.requests[index].resolve(h.saved(id, index + 1, index + 1)));
     }
-    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(withMove);
+    expect(h.refresh).toHaveBeenCalledExactlyOnceWith(withMove, 'board-0');
     expect(invalidateLoad).toHaveBeenCalledTimes(withMove ? 1 : 0);
     h.unmount();
   });
