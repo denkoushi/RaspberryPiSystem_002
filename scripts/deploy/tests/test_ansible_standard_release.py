@@ -670,6 +670,8 @@ class StandardReleaseAnsibleTests(unittest.TestCase):
         self.assertIn("api_business_qwen38_switch_enabled | default(false)", bindings["BUSINESS_QWEN38_SWITCH_ENABLED"])
         # The sessaku piece creation gate reaches the API the same way, off unless the inventory sets it
         self.assertIn("api_sessaku_pieces_create_enabled | default(false)", bindings["SESSAKU_PIECES_CREATE_ENABLED"])
+        # The DGX backup notice flag reaches the API the same way, off unless the inventory sets it
+        self.assertIn("api_dgx_backup_notice_enabled | default(false)", bindings["DGX_BACKUP_NOTICE_ENABLED"])
         self.assertIn("hermes_search_typesafe_api_key | default('')", bindings["TYPESAFE_API_KEY"])
         self.assertEqual(sum(item["key"] == "TYPESAFE_API_KEY" for item in task["loop"]), 1)
         self.assertEqual(task["ansible.builtin.lineinfile"]["regexp"], "^{{ item.key }}=")
