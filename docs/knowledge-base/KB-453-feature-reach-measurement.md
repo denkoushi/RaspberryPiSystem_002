@@ -114,6 +114,20 @@ head -10 /tmp/fr/o-api.txt /tmp/fr/o-sched.txt
 
 cycles は輪のファイル数の降順であり、トークン量の順ではない。
 
+あわせて、直前の1か月の変更の多さと広さを数える(2026-11-16 追加。読むだけで1秒前後)。起点は測る日の1か月前にする。結果は下の「変更の多さと広さ」の表に1行足す。
+
+```sh
+sh scripts/analysis/feature-reach/change-width.sh <1か月前の日付> apps/web/src/features/kiosk/grindingPlanningBoard apps/api/src/services/production-schedule/grinding-planning-board apps/web/src/features/assembly apps/api/src/services/assembly apps/api/src/services/imports apps/api/src/services/signage apps/api/src/services/business-hermes
+```
+
+コミットが多く、ファイル数の75%点が大きい機能が、区切り直しの次の候補になる。量の表は、その機能のどこを読むかを探すときに使う。
+
+変更の多さと広さ(件数はコミット数、数字は1件あたりのファイル数の中央値・75%点):
+
+| 測った日 | SHA | 起点 | ボード画面 | ボード API | 組立 画面/API | 取り込み | サイネージ | 業務 Hermes |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2026-11-16 | `83678cbf` | 2026-10-17 | 101件、5・12 | 43件、8・21 | 26件 7・12 / 35件 11・16 | 24件、9・24 | 7件 | 8件 |
+
 ## Validation
 
 1行目は計画書の Context and Orientation から写した基準。2行目以降は上の手順で測った結果。
