@@ -75,8 +75,8 @@ const item = (itemId: string, resource: string): GrindingPlanningBoardItem => ({
 
 it('skips acknowledged rows with fresh equal contexts and uses the latest callback and item revisions', async () => {
   const items = [item('a', '305'), item('b', '306')];
-  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+  const props = { scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set<string>(), resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true, pinMode: true };
   const draw = (items: GrindingPlanningBoardItem[], toggle: ReturnType<typeof vi.fn>, selectedItemIds = new Set<string>()) => <PlanningBoardProcessChipsContext.Provider
     value={new Map([[planningBoardPartKey(items[0]!), [{ rowId: 'a', resourceCd: '305', isCompleted: false }]]])}>
@@ -134,11 +134,12 @@ it('renders only the source and lanes whose insertion marker changes during a dr
   Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: () => hit });
   try {
     const items = [item('a', '305'), item('b', '306'), item('c', '307')];
+    const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
     render(<PlanningBoardGanttView layout={buildPlanningBoardGanttLayout({ items, resources: ['305', '306', '307'],
       allocation: 'alternate', view: 'resource', dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05',
       now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' })}
-      scale={2} dailyHoursByResource={{}} resourceNameMap={{}} capacityPending={false} capacityError={false}
-      onCapacityChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()} disabled={false} dragDisabled={false}
+      scale={2} capacity={capacity} resourceNameMap={{}}
+      onToggleItem={vi.fn()} onDueDrop={vi.fn()} disabled={false} dragDisabled={false}
       selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()} canMoveResource={() => true} />);
     const source = screen.getByTestId('planning-gantt-bar-a');
     hit = [screen.getByTestId('planning-gantt-bar-b')];
@@ -173,8 +174,8 @@ it('renders only the source and lanes whose insertion marker changes during a dr
 
 it('keeps folded rows without the selected item memoized, including equal refreshes', () => {
   const items = [item('first', '305'), { ...item('later', '305'), requiredMinutes: 6000 }];
-  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+  const props = { scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true, singleResourceCd: '305' };
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
@@ -197,8 +198,8 @@ it('keeps folded rows without the selected item memoized, including equal refres
 
 it.each([false, true])('only rerenders rows containing the legend seiban (folded=%s)', folded => {
   const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
-  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+  const props = { scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, onFocusedSeibanChange: vi.fn(), colorBySeiban: true, selectedItemIds: new Set<string>(),
     singleResourceCd: folded ? '305' : null };
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
@@ -225,8 +226,8 @@ it.each([false, true])('only rerenders rows containing the legend seiban (folded
 
 it('keeps the partner pane and unrelated date rows memoized on selection and equal refresh', () => {
   const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
-  const props = { scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+  const props = { scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true,
     singleResourceCd: '305+306', resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true } };
   const build = (items: GrindingPlanningBoardItem[]) => buildPlanningBoardGanttLayout({ items, resources: ['305', '306'],
@@ -284,8 +285,9 @@ it.each([false, true])('keeps Gantt rows memoized when shelf tiles, filters, and
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
   const toggle = vi.fn();
-  render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
-    capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={toggle} onDueDrop={vi.fn()}
+  const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+  render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} capacity={capacity} resourceNameMap={{}}
+    onToggleItem={toggle} onDueDrop={vi.fn()}
     disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
     colorBySeiban singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']} unitSplitEnabledByResource={{ '305': true, '306': true }} />);
   renders.length = 0;
@@ -309,8 +311,9 @@ it.each([false, true])('does not render the shelf when drag previews change (pai
     const items = [item('a', '305'), item('b', '306')];
     const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
       dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
-    render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
-      capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()}
+    const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+    render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} capacity={capacity} resourceNameMap={{}}
+      onToggleItem={vi.fn()} onDueDrop={vi.fn()}
       disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
       colorBySeiban canMoveResource={() => true} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']}
       unitSplitEnabledByResource={{ '305': true, '306': true }} />);
@@ -346,8 +349,8 @@ it.each([false, true])('rerenders only the affected shelf columns for Gantt bar 
   const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }, { ...item('c', '305'), fseiban: '26-1003' }, { ...item('d', '305'), fseiban: '26-1002' }];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
-  const props = { layout, resourceMinutesItems: items, scale: 2, dailyHoursByResource: {}, resourceNameMap: {},
-    capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(),
+  const props = { layout, resourceMinutesItems: items, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(),
     disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true,
     singleResourceCd: pair ? '305+306' : '305', resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true } };
   const draw = (ids: string[]) => <PlanningBoardGanttDisplay {...props} selectedItemIds={new Set(ids)} />;
@@ -377,8 +380,8 @@ it('builds one shelf projection per machine mode, without building unused pane s
   const items = [item('a', '305'), item('b', '306')];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
-  const props = { layout, resourceMinutesItems: items, scale: 2, dailyHoursByResource: {}, resourceNameMap: {},
-    capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(),
+  const props = { layout, resourceMinutesItems: items, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(),
     disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(),
     resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true }, selectedItemIds: new Set<string>() };
   const draw = (singleResourceCd: string, colorBySeiban: boolean | undefined = true) => <PlanningBoardGanttDisplay {...props}
@@ -401,13 +404,14 @@ it('fixes backward row render counts for unrelated props and selection in anothe
   const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', scale: 2, mode: 'backward' });
-  const props = { layout, scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+  const props = { layout, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
   const empty = new Set<string>();
   const selected = new Set(['a']);
   const rowKeys = layout.groups.flatMap(group => group.rows.map(row => row.key));
-  const draw = (ids: ReadonlySet<string>, capacityPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={ids} capacityPending={capacityPending} />;
+  const pendingCapacity = { ...props.capacity, capacityPending: true };
+  const draw = (ids: ReadonlySet<string>, capacityPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={ids} capacity={capacityPending ? pendingCapacity : props.capacity} />;
   backwardRenders.length = 0;
   const { rerender } = render(draw(empty));
   expect(backwardRenders).toEqual(expect.arrayContaining(rowKeys));

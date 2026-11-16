@@ -130,8 +130,8 @@ it('measures production-size due sort, real queue commits/layouts and jsdom view
     const all = { stateUpdates: stats.stateUpdates, queueUpdates: stats.queueUpdates, commits: [...stats.commits], applyCalls: stats.applies.length,
       applyMs: sum(stats.applies), layoutMs: sum(stats.layouts), layouts: stats.layouts.length };
     hook.unmount();
-    const viewProps = { scale: 1, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-      onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    const viewProps = { scale: 1, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() },
+      resourceNameMap: {}, onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
       selectedItemIds: new Set<string>(), resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
     const beforeLayout = buildForwardPlanningBoardGanttLayout(fixture.options);
     const mountStart = performance.now();

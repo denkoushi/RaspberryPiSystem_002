@@ -23,8 +23,8 @@ it('preserves the original bar, star, now-line, heading and track geometry at ev
     const rows = new Map(fixture.seibans.map((fseiban) => [fseiban, { fseiban, outsourceMarks: [], memo: null,
       surfaceSendOutDates: [{ date: '2026-11-05', note: null }, { date: '2026-11-07', note: null }] }]));
     const view = render(<DScheduleMinutesContext.Provider value={{ dueSource: 'scaw', rows }}>
-      <PlanningBoardGanttView layout={layout} scale={scale} dailyHoursByResource={Object.fromEntries(fixture.resources.map((resource) => [resource, hours]))}
-        resourceNameMap={{}} capacityPending={false} capacityError={false} onCapacityChange={vi.fn()}
+      <PlanningBoardGanttView layout={layout} scale={scale} capacity={{ dailyHoursByResource: Object.fromEntries(fixture.resources.map((resource) => [resource, hours])),
+        capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }} resourceNameMap={{}}
         onToggleItem={vi.fn()} onDueDrop={vi.fn()} disabled={false} dragDisabled={false} selectedItemIds={new Set(['item-0000'])}
         resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()} colorBySeiban />
     </DScheduleMinutesContext.Provider>);

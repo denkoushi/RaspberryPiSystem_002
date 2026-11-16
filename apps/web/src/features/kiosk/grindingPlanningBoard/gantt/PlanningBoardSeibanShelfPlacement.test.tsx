@@ -53,8 +53,9 @@ function Board({ pair = false, disabled = false, outside = true, noop = false, r
     return current.map(item => order.includes(item.itemId) ? { ...item, effectiveResourceCd: resource, alternateRank: order.indexOf(item.itemId) + 1,
       version: item.version + 1 } : item);
   });
-  return <PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={refresh ? items.map(item => ({ ...item })) : items} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
-    capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={(item, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(item.itemId); else next.delete(item.itemId); return next; })} onDueDrop={vi.fn()}
+  const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+  return <PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={refresh ? items.map(item => ({ ...item })) : items} scale={2} capacity={capacity} resourceNameMap={{}}
+    onToggleItem={(item, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(item.itemId); else next.delete(item.itemId); return next; })} onDueDrop={vi.fn()}
     disabled={disabled} dragDisabled={false} selectedItemIds={selected} onClearSelection={clear} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
     colorBySeiban canMoveResource={() => true} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306', '503']}
     unitSplitEnabledByResource={{ '305': true, '306': true, '503': true }}
