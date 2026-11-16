@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { listProcedureMaterials } from '../../../api/client';
+import { countProcedureMaterials } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
+import { useShelfResources } from '../procedure-manuals/procedure-material-shelf-search';
 import { ProcedureMaterialShelfDialog } from '../procedure-manuals/ProcedureMaterialShelfDialog';
 import { ProcedureVideoShelfDialog } from '../procedure-manuals/ProcedureVideoShelfDialog';
 
@@ -25,6 +26,7 @@ import type { AssemblyProcedureDocumentPageDto } from '../types';
 
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
+  const shelfResources = useShelfResources(controller.accessGranted);
   const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, elements: controllerElements, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
@@ -74,7 +76,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   useEffect(() => {
     if (!controller.accessGranted) return;
     let cancelled = false;
-    void listProcedureMaterials({ state: 'unplaced', limit: 500 }).then(rows => { if (!cancelled) setMaterialCount(rows.length); }).catch(() => { if (!cancelled) setMaterialCount(null); });
+    void countProcedureMaterials({ state: 'unplaced' }).then(count => { if (!cancelled) setMaterialCount(count); }).catch(() => { if (!cancelled) setMaterialCount(null); });
     return () => { cancelled = true; };
   }, [controller.accessGranted, controller.materialRevision, materialShelfOpen, materialRevision]);
   useEffect(() => {
@@ -298,7 +300,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         />
         </div> : null}
 
-      {materialShelfOpen ? <ProcedureMaterialShelfDialog mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {
+      {materialShelfOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {
         setMaterialShelfOpen(false);
         if (await controller.confirmNavigation()) onNavigateToDocument(documentId);
       }} /> : null}

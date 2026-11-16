@@ -13,12 +13,17 @@ export class ProcedureMaterialGcService {
       if (!/^[a-f0-9]{64}$/.test(entry)) continue;
       const key = `procedure-materials/${entry}/original`;
       let stat;
+      let originalMissing = false;
       try { stat = await this.store.stat(key); }
       catch (error) {
         // Listing includes files and symlinks as well as candidate directories.
         if (error instanceof FileStorageInvalidPathError || (error as NodeJS.ErrnoException).code === 'ENOTDIR') continue;
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-        throw error;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          const thumbnails = (await this.store.list(`procedure-materials/${entry}`)).filter(name => /^thumbnail-\d+\.webp$/.test(name));
+          if (!thumbnails.length) continue;
+          originalMissing = true;
+          stat = await this.store.stat(`procedure-materials/${entry}/${thumbnails[0]}`);
+        } else throw error;
       }
       if (!stat.isFile()) continue;
       result.scanned++;
@@ -26,7 +31,13 @@ export class ProcedureMaterialGcService {
       if (await this.db.procedureMaterial.count({ where: { storageKey: key } })) continue;
       // Ingestion may have registered a reference after candidate selection.
       if (await this.db.procedureMaterial.count({ where: { storageKey: key } })) continue;
-      await this.store.delete(key, { integrity: true });
+      const thumbnails = (await this.store.list(`procedure-materials/${entry}`)).filter(name => /^thumbnail-\d+\.webp$/.test(name));
+      for (const [index, name] of thumbnails.entries()) {
+        const last = originalMissing && index === thumbnails.length - 1;
+        await this.store.delete(`procedure-materials/${entry}/${name}`, { integrity: true, pruneEmptyParent: last });
+      }
+      // Leftover thumbnails only: never delete an original that ingestion may have just written.
+      if (!originalMissing) await this.store.delete(key, { integrity: true, pruneEmptyParent: true });
       result.deleted++;
     }
     return result;

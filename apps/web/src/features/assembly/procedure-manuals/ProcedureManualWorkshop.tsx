@@ -14,6 +14,7 @@ import { PROCEDURE_EDITOR_ACCESS_HOURS, readProcedureEditorAccess, saveProcedure
 import { procedureManualButtonBase, procedureManualButtonSelected, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 import { clearManualLists, fetchManualList, readManualList, retainEqual } from './procedure-manual-list-cache';
 import { splitProcedureManualName } from './procedure-manual-name';
+import { useShelfResources } from './procedure-material-shelf-search';
 import { ProcedureManualAssignmentDialog, procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
 import { ProcedureManualCommonDialog } from './ProcedureManualCommonDialog';
@@ -41,6 +42,7 @@ const normalizeModels = (rows: ProcedureManualModelDto[]) => [...new Map(rows.ma
 })).values()].filter(row => row.modelCodeKey);
 
 export function ProcedureManualWorkshop() {
+  const shelfResources = useShelfResources();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const modelCodeKey = params.has('common') ? '' : params.has('part') ? normalizeWorkInstructionPartNumber(params.get('part')) : procedureManualModelKey(params.get('model') ?? '');
@@ -365,7 +367,7 @@ export function ProcedureManualWorkshop() {
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
       beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}
       onSaved={(key, id, message) => { setReattaching(null); select(key, id); setVersion(value => value + 1); setOperationMessage(message); }} /> : null}
-    {materialOpen ? <ProcedureMaterialShelfDialog onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {
+    {materialOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} onClose={() => { clearManualLists(); setMaterialOpen(false); }} onCreatedDocument={(documentId) => {
       clearManualLists();
       setMaterialOpen(false);
       navigate(kioskAssemblyProcedureDocumentEditPath(documentId), { state: { returnTo: isCommon ? commonReturnTo : kioskAssemblyManualsWorkshopPath({ [subjectKind === 'PART' ? 'part' : 'model']: modelCodeKey, process: processId }) } });

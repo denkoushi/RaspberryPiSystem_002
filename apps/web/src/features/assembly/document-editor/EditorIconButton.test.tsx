@@ -21,7 +21,11 @@ describe('EditorIconButton', () => {
     expect(button).toHaveAttribute('aria-pressed', 'true');
     expect(button).toHaveAttribute('data-kiosk-sop-target', 'save');
     expect(screen.getByText('2')).toBeInTheDocument();
-    expect(screen.getByRole('tooltip')).toHaveClass('[@media(hover:hover)]:group-hover:visible', 'group-focus-visible:visible', 'pointer-events-none');
+    if (tipSide === 'left') {
+      fireEvent.pointerEnter(button);
+      expect(screen.getByRole('tooltip').parentElement).toBe(document.body);
+      expect(screen.getByRole('tooltip')).toHaveStyle({ position: 'fixed', zIndex: 60 });
+    } else expect(screen.getByRole('tooltip')).toHaveClass('[@media(hover:hover)]:group-hover:visible', 'group-focus-visible:visible', 'pointer-events-none');
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledOnce();
   });
@@ -43,6 +47,27 @@ describe('EditorIconButton', () => {
     expect(button).toHaveAttribute('data-tip', 'true');
     act(() => vi.advanceTimersByTime(1));
     expect(button).not.toHaveAttribute('data-tip');
+  });
+
+  it('shows a disabled rail tooltip outside overflow and hides it on scroll', () => {
+    render(<div style={{ overflow: 'hidden' }}><EditorIconButton label="戻す" icon={<path />} onClick={vi.fn()} tipSide="left" disabled /></div>);
+    const button = screen.getByRole('button', { name: '戻す' });
+    fireEvent.pointerEnter(button.parentElement!);
+    expect(screen.getByRole('tooltip').parentElement).toBe(document.body);
+    expect(screen.getByRole('tooltip')).not.toHaveClass('invisible');
+    fireEvent.scroll(window);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('supports long press on disabled rail buttons', () => {
+    render(<EditorIconButton label="戻す" icon={<path />} onClick={vi.fn()} tipSide="left" disabled />);
+    const wrapper = screen.getByRole('button', { name: '戻す' }).parentElement!;
+    pointerDown(wrapper, 'touch');
+    act(() => vi.advanceTimersByTime(500));
+    expect(screen.getByRole('tooltip').parentElement).toBe(document.body);
+    fireEvent.pointerUp(wrapper);
+    act(() => vi.advanceTimersByTime(1200));
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
   it('does not start a long press for a mouse or a short touch', () => {

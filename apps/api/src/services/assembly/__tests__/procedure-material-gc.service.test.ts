@@ -23,9 +23,23 @@ describe('procedure-material GC', () => {
     const db = { procedureMaterial: { count: vi.fn(async ({ where }: { where: { storageKey: string } }) => where.storageKey === keys[1] ? 2 : 0) } };
     const store = { list: (namespace: string) => readdir(path.join(root, namespace)), stat: (key: string) => stat(path.join(root, key)), delete: vi.fn(async () => undefined) };
     expect(await new ProcedureMaterialGcService(db as never, store as never).collect(now)).toEqual({ scanned: 4, deleted: 1 });
-    expect(store.delete).toHaveBeenCalledExactlyOnceWith(keys[0], { integrity: true });
+    expect(store.delete).toHaveBeenCalledExactlyOnceWith(keys[0], { integrity: true, pruneEmptyParent: true });
     expect(db.procedureMaterial.count).toHaveBeenCalledTimes(3);
     expect(db.procedureMaterial.count).toHaveBeenCalledWith({ where: { storageKey: keys[1] } });
+  });
+  it.each([true, false])('removes thumbnails, integrity records and the empty hash directory (original: %s)', async (original) => {
+    root = await mkdtemp(path.join(os.tmpdir(), 'procedure-material-gc-'));
+    const store = new LocalDurableFileStore(root, new FileStorageIntegrityCatalog(root), { minimumFreeBytes: 1 });
+    await store.initialize(['procedure-materials']);
+    const directory = `procedure-materials/${'a'.repeat(64)}`;
+    for (const name of [...(original ? ['original'] : []), 'thumbnail-640.webp']) {
+      await store.write({ key: `${directory}/${name}`, data: Buffer.from('image'), mode: 'create', integrity: true });
+      await utimes(path.join(root, directory, name), new Date(0), new Date(0));
+    }
+    const db = { procedureMaterial: { count: vi.fn().mockResolvedValue(0) } };
+    expect(await new ProcedureMaterialGcService(db as never, store).collect()).toEqual({ scanned: 1, deleted: 1 });
+    expect(await store.list('procedure-materials')).toEqual([]);
+    expect(await new FileStorageIntegrityCatalog(root).get(`${directory}/thumbnail-640.webp`)).toBeNull();
   });
   it('retains an original when ingestion registers a row just before deletion', async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'procedure-material-gc-'));

@@ -40,5 +40,5 @@ export interface DurableFileStorePort {
   copyToFile(key: string, destination: string, options: { verifyIntegrity: boolean }): Promise<void>;
   hash(key: string): Promise<StoredFileResult>;
   stat(key: string): Promise<Stats>;
-  delete(key: string, options: { integrity: boolean }): Promise<void>;
+  delete(key: string, options: { integrity: boolean; pruneEmptyParent?: boolean }): Promise<void>;
 }

@@ -9,10 +9,10 @@ import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { groupMaterials, groupWorkInstructionCandidates, materialSource } from './procedure-material-grouping';
 import { ProcedureMaterialPhotoCache } from './procedure-material-photo-cache';
-import { emptyShelfFilters, filterShelfKnowledge, filterShelfMaterials, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, normalizeShelfQuery, shelfMatchExcerpt, shelfTabs, useShelfLists, workHasDates } from './procedure-material-shelf-search';
+import { emptyShelfFilters, prefetchShelfWorkInstructions, filterShelfKnowledge, filterShelfMaterials, filterShelfWorkInstructions, ShelfFilterChips, ShelfHighlight, normalizeShelfQuery, shelfMatchExcerpt, shelfTabs, useShelfLists, workHasDates } from './procedure-material-shelf-search';
 import { MaterialSplitContents, MaterialSplitLoadingChip, useMaterialSplitSuggestions } from './procedure-material-split-suggestions';
 
-import type { ShelfFilters, ShelfTab } from './procedure-material-shelf-search';
+import type { ShelfFilters, ShelfTab, ShelfResources } from './procedure-material-shelf-search';
 import type { ProcedureWorkInstructionCandidate, ProcedureKnowledgeCandidate, ProcedureKnowledgeImportResult, ProcedureMaterialDto, ProcedureMaterialIngestResult } from './procedure-material-types';
 import type { ReactNode } from 'react';
 
@@ -129,7 +129,7 @@ const shelfColumns = { small: 6, medium: 4, large: 3 };
 const emptyMaterials: ProcedureMaterialDto[] = [];
 
 
-export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocument, mode = 'place' }: { onCreatedDocument?: (documentId: string) => void; onClose: () => void; onSelect?: (material: ProcedureMaterialDto) => Promise<void>; mode?: 'place' | 'replace' }) {
+export function ProcedureMaterialShelfDialog({ resources, onClose, onSelect, onCreatedDocument, mode = 'place' }: { resources?: ShelfResources; onCreatedDocument?: (documentId: string) => void; onClose: () => void; onSelect?: (material: ProcedureMaterialDto) => Promise<void>; mode?: 'place' | 'replace' }) {
   const selectionMode = Boolean(onSelect);
   const [size, setSize] = useState<ShelfSize>(() => {
     try { const saved = localStorage.getItem(shelfSizeKey); if (saved === 'small' || saved === 'large') return saved; } catch { /* Storage is optional on kiosks. */ }
@@ -140,9 +140,11 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
     try { localStorage.setItem(shelfSizeKey, next); } catch { /* Keep the in-memory setting. */ }
   };
   const [lightbox, setLightbox] = useState<{ url: string | null; title: string; failed?: boolean } | null>(null);
-  const [photoCache] = useState(() => new ProcedureMaterialPhotoCache());
+  const [ownPhotoCache] = useState(() => new ProcedureMaterialPhotoCache());
+  const photoCache = resources?.photos ?? ownPhotoCache;
   const zoomSequence = useRef(0);
-  useEffect(() => () => { photoCache.clear(); zoomSequence.current++; }, [photoCache]);
+  useEffect(() => () => { ownPhotoCache.clear(); zoomSequence.current++; }, [ownPhotoCache]);
+  useEffect(() => () => { if (resources) prefetchShelfWorkInstructions(resources); }, [resources]);
   useEffect(() => { const url = lightbox?.url; return () => { if (url) URL.revokeObjectURL(url); }; }, [lightbox?.url]);
   const [discardConfirm, setDiscardConfirm] = useState(false);
   const closeLightbox = () => { zoomSequence.current++; setLightbox(null); };
@@ -172,7 +174,7 @@ export function ProcedureMaterialShelfDialog({ onClose, onSelect, onCreatedDocum
   const [error, setError] = useState<string | null>(null);
   const [createdMessage, setCreatedMessage] = useState<string | null>(null);
   const [result, setResult] = useState<ProcedureMaterialIngestResult | null>(null);
-  const lists = useShelfLists(state, query, filtered, version);
+  const lists = useShelfLists(state, query, filtered, version, resources);
   const [semanticResult, setSemanticResult] = useState<Awaited<ReturnType<typeof semanticSearchProcedureMaterials>> | null>(null);
   const [semanticLoading, setSemanticLoading] = useState(false);
   const [semanticError, setSemanticError] = useState<string | null>(null);
