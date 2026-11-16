@@ -2115,7 +2115,7 @@ describe('forward PlanningBoardGanttView', () => {
     const special = forwardProps([item({ specialDue: { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' }, requiredMinutes: 60 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60 })]);
     rerender(<PlanningBoardGanttView {...special} />);
     dragBar();
-    expect(special.onResourceReorder).not.toHaveBeenCalled();
+    expect(special.resourceMove.onResourceReorder).not.toHaveBeenCalled();
   });
   it('fits six hours at the one-day scale, ticks every hour, and opens just before now but not before 8:00', () => {
     const sixHourDay = (1120 - 168) / (6 / 24);
