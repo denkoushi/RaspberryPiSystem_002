@@ -2,7 +2,7 @@ import { isAxiosError } from 'axios';
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskSameModelResourceGroups, useReplaceKioskSameModelResourceGroups, useUpdateKioskGrindingPlanningBoardResourcePartMinutes } from '../../../../api/hooks/production-schedule';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { isPlanningBoardUnitSplitEnabled } from '../planningBoardUnitSplitPolicy';
 
 import { PLANNING_BOARD_SHEET_MAX_HEIGHT, PLANNING_BOARD_SHEET_RATIO } from './planningBoardSheetGeometry';

@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { comparePlanningBoardBarOrder } from '../sortGrindingPlanningBoardItems';
 
 import { canReorderForwardBars } from './planningBoardForwardQueue';

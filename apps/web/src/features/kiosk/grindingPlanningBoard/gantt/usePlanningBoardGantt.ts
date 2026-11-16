@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useKioskGrindingPlanningBoardResourceMinutes, useUpdateKioskGrindingPlanningBoardResourceMinutesSource, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from '../../../../api/hooks';
-import { useFrozenValue, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { useFrozenValue, usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { useOfflineResourceMinutes, useOfflineResourceCapacity } from '../offline/planningBoardOfflineQueries';
 import { planningBoardResourceMatches } from '../planningBoardTwoMachine';
 import { resolveGrindingPlanningBoardResource } from '../sortGrindingPlanningBoardItems';

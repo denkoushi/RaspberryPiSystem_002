@@ -4,7 +4,7 @@ import { Dialog } from '../../../components/ui/Dialog';
 
 import { PlanningBoardUnitOpContext, PlanningBoardUnitOpEditor } from './gantt/PlanningBoardUnitOpEditor';
 import { isUnitPiece } from './gantt/planningBoardUnitSegments';
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardCategory, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 

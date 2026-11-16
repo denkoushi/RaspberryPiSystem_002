@@ -6,7 +6,7 @@ import { KioskDigitTenkey } from '../KioskDigitTenkey';
 import { normalizeMachineName } from '../productionSchedule/machineName';
 import { SeibanSearchRegister } from '../productionSchedule/SeibanSearchRegister';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardSeibanCandidate } from '@raspi-system/shared-types';
 

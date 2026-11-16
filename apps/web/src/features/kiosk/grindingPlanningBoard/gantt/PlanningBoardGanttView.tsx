@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 
 import { useMachineSignalResourceUptime } from '../../../../api/hooks/machine-signal';
 import { normalizeMachineName } from '../../productionSchedule/machineName';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { useOfflineUptime } from '../offline/planningBoardOfflineQueries';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';

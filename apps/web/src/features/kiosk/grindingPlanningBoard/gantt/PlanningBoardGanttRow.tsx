@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { pageZoom } from '../pageZoom';
 import { PlanningBoardCompletionButton } from '../PlanningBoardCompletionButton';
 import { PlanningBoardPiecePopover } from '../PlanningBoardPiecePopover';

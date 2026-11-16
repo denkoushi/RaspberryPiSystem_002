@@ -14,7 +14,7 @@ import type {
 } from '@raspi-system/shared-types';
 
 const gateOverride = vi.hoisted(() => ({ current: undefined as PlanningBoardWriteGate | undefined }));
-vi.mock('./offline/PlanningBoardOfflineProvider', () => ({
+vi.mock('./offline/planningBoardOfflineContext', () => ({
   usePlanningBoardOffline: () => ({ gate: gateOverride.current ?? passThroughPlanningBoardWriteGate, frozen: false })
 }));
 afterEach(() => { gateOverride.current = undefined; });

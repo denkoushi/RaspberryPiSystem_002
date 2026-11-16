@@ -14,8 +14,9 @@ import { productionScheduleQueryKeys } from '../../api/queryKeys/productionSched
 import { reportSessakuPieceError } from '../../features/kiosk/errorTelemetry';
 import { createPlanningBoardSeibanActions } from '../../features/kiosk/grindingPlanningBoard/createPlanningBoardSeibanActions';
 import { PlanningBoardUnitOpMutationContext, usePlanningBoardUnitOpMutation } from '../../features/kiosk/grindingPlanningBoard/gantt/usePlanningBoardUnitOpMutation';
+import { usePlanningBoardOffline, useFrozenValue } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineContext';
 import { PlanningBoardOfflineMinutesProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineMinutesProvider';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline, useFrozenValue } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
+import { PlanningBoardOfflineProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
 import { usePlanningBoardPageQueries, usePlanningBoardPageChips } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineQueries';
 import { usePlanningBoardNow } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardNow';
 import { usePlanningBoardOfflineConfig } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardOfflineConfig';
@@ -54,8 +55,7 @@ import type { OrderPreview, ResourceOrderSnapshot, ResourceOrderHistory, DueMode
 import type { PlanningBoardAllocation, PlanningBoardStatus } from '../../features/kiosk/grindingPlanningBoard/types';
 import type { PlanningBoardDisplayItem } from '../../features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue';
 import type {
-  SessakuPiecesMutationResponse, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest,
-  GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
+  SessakuPiecesMutationResponse, GrindingPlanningBoardItem, GrindingPlanningBoardOverrideItemRequest, GrindingPlanningBoardResourceOrderPlacement, GrindingPlanningBoardDueRequest, GrindingPlanningBoardSpecialDueKind
 } from '@raspi-system/shared-types';
 
 export function ProductionScheduleGrindingPlanningBoardPage() { return <PlanningBoardOfflineProvider config={usePlanningBoardOfflineConfig()}><PlanningBoardPage /></PlanningBoardOfflineProvider>; }

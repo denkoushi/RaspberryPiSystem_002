@@ -2,7 +2,7 @@ import { GRINDING_PLANNING_BOARD_RESOURCE_DAILY_HOURS } from '@raspi-system/shar
 import clsx from 'clsx';
 import { useMemo } from 'react';
 
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 
 import { PlanningBoardUnitSplitButton } from './PlanningBoardUnitSplitButton';
 

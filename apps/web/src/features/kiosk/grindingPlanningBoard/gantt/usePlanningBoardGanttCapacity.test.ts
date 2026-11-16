@@ -4,7 +4,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { api } from '../../../../api/client';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from '../offline/planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from '../offline/PlanningBoardOfflineProvider';
 
 import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 

@@ -3,7 +3,8 @@ import { StrictMode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline, useFrozenValue } from './PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline, useFrozenValue } from './planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from './PlanningBoardOfflineProvider';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), board: vi.fn(), aux: vi.fn(), commit: vi.fn() }));
 vi.mock('../../../../api/client', () => ({ api: { get: mocks.get }, getResolvedClientKey: () => 'test-device' }));

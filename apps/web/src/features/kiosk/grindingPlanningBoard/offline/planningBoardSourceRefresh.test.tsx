@@ -6,7 +6,8 @@ import { productionScheduleQueryKeys } from '../../../../api/queryKeys/productio
 import { usePlanningBoardGantt } from '../gantt/usePlanningBoardGantt';
 
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from './PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from './PlanningBoardOfflineProvider';
 import { useOfflineBoard, useOfflineLoad } from './planningBoardOfflineQueries';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse, GrindingPlanningBoardResourceMinutesSourceRequest } from '@raspi-system/shared-types';

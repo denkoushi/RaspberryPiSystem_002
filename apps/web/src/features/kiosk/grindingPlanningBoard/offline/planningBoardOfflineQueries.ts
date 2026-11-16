@@ -4,7 +4,7 @@ import { api, getResolvedClientKey } from '../../../../api/client';
 import { useKioskGrindingPlanningBoardProgressive, useKioskGrindingPlanningBoardLoad, useKioskProductionScheduleResources, useKioskGrindingPlanningBoardSeibanCandidates, useKioskGrindingPlanningBoardDueDetail, useKioskGrindingPlanningBoardProcessChips } from '../../../../api/hooks';
 import { collectPlanningBoardProcessChipParts } from '../planningBoardProcessChipData';
 
-import { useFrozenValue, usePlanningBoardOffline } from './PlanningBoardOfflineProvider';
+import { useFrozenValue, usePlanningBoardOffline } from './planningBoardOfflineContext';
 
 import type { KioskGrindingPlanningBoardQuery } from '../../../../api/client';
 import type { MachineSignalResourceUptime } from '../../../../api/domains/machine-signal';

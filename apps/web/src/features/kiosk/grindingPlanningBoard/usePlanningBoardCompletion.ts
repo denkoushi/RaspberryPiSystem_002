@@ -6,7 +6,7 @@ import { useSetKioskProductionScheduleRowCompletion } from '../../../api/hooks';
 import { productionScheduleQueryKeys } from '../../../api/queryKeys/productionSchedule';
 import { reportSessakuPieceError } from '../errorTelemetry';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { planningBoardChainCompletedKey } from './usePlanningBoardChainItems';
 
 import type { CompletionOverlay, FeedbackKind } from './planningBoardPageModel';

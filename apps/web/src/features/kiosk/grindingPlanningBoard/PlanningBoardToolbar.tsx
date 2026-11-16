@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
 import { GANTT_SCALES, ganttScaleLabel } from './gantt/usePersistedPlanningBoardGanttScale';
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardDropdown } from './PlanningBoardDropdown';
 import { PlanningBoardOrderScan } from './PlanningBoardOrderScan';

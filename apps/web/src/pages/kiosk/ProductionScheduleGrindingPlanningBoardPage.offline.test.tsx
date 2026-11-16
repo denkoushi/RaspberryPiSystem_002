@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../api/client';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../../features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from '../../features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider';
 import { usePlanningBoardNow } from '../../features/kiosk/grindingPlanningBoard/offline/usePlanningBoardNow';
 
 import { PlanningBoardPage, ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';

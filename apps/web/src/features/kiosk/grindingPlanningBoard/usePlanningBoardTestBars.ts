@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { createKioskGrindingPlanningBoardTestBar, mutateKioskGrindingPlanningBoardTestBar } from '../../../api/domains/production-schedule/grinding-planning-board';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { comparePlanningBoardBarOrder, resolveGrindingPlanningBoardResource, resolvePlanningBoardOrderBand, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';
 
 
