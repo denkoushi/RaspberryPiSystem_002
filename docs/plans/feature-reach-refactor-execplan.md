@@ -189,7 +189,7 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 - [x] 段階2: 共有の型を読み出しの形と保存の形に分ける。保存の要求と応答の型44件を `production-schedule-grinding-planning-board-write.ts` へ移した PR #2847(2026-11-16 マージ、dbbb1d1e)。
 - [x] 段階2: 12件の直しで壊れた場面を、画面と API の境目のテストにする。保存の直し7件を守る結合テスト12件を足した PR #2849(2026-11-16 マージ、0ff5331b)。画面側だけの直し5件は対象外で、web のテストに任せる。
 - [x] 段階2: `FkojunstMailNormalizedRow` 型を移して9ファイルの輪をほどく。型を `fkojunst-mail-row.types.ts` へ移し、読み手10ファイルを付け替えた PR #2850(2026-11-16 マージ、700b8821)。0ff5331b との比較で9ファイルの輪が消え、その中にあった表示用の変換の2ファイルの輪が単独で出た。輪の数は前後とも12。
-- [ ] 段階2: `stateOrder` を外へ出すかを、測ってから決める。
+- [x] (2026-11-16) 段階2: `stateOrder` を外へ出すかを測り、見送ると決めた。700b8821 の写しで、`stateOrder`・`uniqueFseibans`・`normalizeUniqueFseibans` を外の処理を import しないファイルへ移し、`stateOrder` だけを読む2ファイル(`piece-quantity.ts`、`piece-operation-definitions.ts`)を付け替えて、`RUNTIME=1` で比べた。`piece-quantity.ts` 単独は 70ファイル 74k → 50ファイル 40k、`piece-operation-definitions.ts` は 114k → 104k に減るが、保存の流れのまとまりは 198k(自動分割を除くと約152k)のまま変わらない。`write.ts` などほかの7つの読み手は `state.ts` の別の関数も読むので、付け替えても減らない。入口168件のうち減ったのは、保存の流れの外の13件(`complete.ts`、`due-date.ts`、`note.ts`、`order.ts`、`processing.ts`、納期管理の5件、`leaderboard-phased-read.ts`、`production-schedule-settings.ts` など)で、各 9〜11k(約7%)にとどまり、ボードの窓口と切削の片の窓口は変わらない。この段階の目的である保存の流れが小さくならないので、9つの読み手を付け替える PR は作らない。
 - [ ] 段階2: API hooks のファイルと offline の Provider を分け、保存の流れのファイルの一覧を決める。
 - [ ] 段階2: 保存の流れのまとまりを測り直して記録する。
 - [ ] 段階3: work-instruction-service.factory.ts への依存を細くする。
