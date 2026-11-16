@@ -5,6 +5,8 @@ import { listProcedureKnowledgeCandidates, listProcedureMaterials, listProcedure
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 
 import { materialSource } from './procedure-material-grouping';
+import { ProcedureMaterialPhotoCache } from './procedure-material-photo-cache';
+
 
 import type { ProcedureKnowledgeCandidate, ProcedureKnowledgeCandidatesResult, ProcedureMaterialDto, ProcedureMaterialState, ProcedureWorkInstructionCandidate, ProcedureWorkInstructionCandidatesResult } from './procedure-material-types';
 
@@ -42,8 +44,39 @@ export function ShelfHighlight({ text, query }: { text: string; query: string })
   return <>{parts}{text.slice(start)}</>;
 }
 
-export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, version: number) {
+export type ShelfResources = {
+  photos: ProcedureMaterialPhotoCache;
+  workInstructions: Map<string, Promise<ProcedureWorkInstructionCandidatesResult>>;
+};
+
+function loadWorkInstructions(query: string, resources?: ShelfResources, consume = false) {
+  const cached = resources?.workInstructions.get(query);
+  // A prefetched list is used once; the next one is fetched when the shelf closes, so a reopened shelf is not stale.
+  if (cached) { if (consume) resources?.workInstructions.delete(query); return cached; }
+  const request = listProcedureWorkInstructionCandidates({ q: query, limit: 1000 }).catch((error: unknown) => {
+    if (resources?.workInstructions.get(query) === request) resources.workInstructions.delete(query);
+    throw error;
+  });
+  if (!query) resources?.workInstructions.set(query, request);
+  return request;
+}
+
+export function prefetchShelfWorkInstructions(resources: ShelfResources) {
+  void loadWorkInstructions('', resources).catch(() => {});
+}
+
+export function useShelfResources(enabled = true) {
+  const [resources] = useState<ShelfResources>(() => ({ photos: new ProcedureMaterialPhotoCache(), workInstructions: new Map() }));
+  useEffect(() => {
+    if (enabled) prefetchShelfWorkInstructions(resources);
+  }, [enabled, resources]);
+  useEffect(() => () => { resources.photos.clear(); resources.workInstructions.clear(); }, [resources]);
+  return resources;
+}
+
+export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, version: number, resources?: ShelfResources) {
   const { entries: cache } = useMemo(() => ({ version, entries: new Map<string, ShelfEntry>() }), [version]);
+  useEffect(() => { if (version) resources?.workInstructions.clear(); }, [version, resources]);
   const [, update] = useState(0);
   const [stale, setStale] = useState(0);
   const key = (value: ShelfTab) => JSON.stringify([value, query]);
@@ -56,7 +89,7 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
       if (!entry || entry.error) {
         const next: ShelfEntry = { promise: Promise.resolve() };
         next.promise = (value === 'knowledge' ? listProcedureKnowledgeCandidates({ q: query, limit: 100 }).then((knowledge) => ({ knowledge }))
-          : value === 'workInstruction' ? listProcedureWorkInstructionCandidates({ q: query, limit: 1000 }).then((workInstructions) => ({ workInstructions }))
+          : value === 'workInstruction' ? loadWorkInstructions(query, resources, true).then((workInstructions) => ({ workInstructions }))
             : listProcedureMaterials({ state: value === 'app' ? 'unplaced' : value, ...(value === 'app' ? { origin: 'APP' as const } : {}), q: query, limit: 500 }).then((materials) => ({ materials })))
           .then((data) => { next.data = data; }).catch((e: unknown) => { next.error = isAxiosError(e) && e.response?.status === 403 ? '権限がありません' : readAssemblyApiErrorMessage(e, value === 'knowledge' || value === 'workInstruction' ? '候補を取得できません' : '素材を取得できません'); });
         cache.set(entryKey, next); entry = next;
@@ -64,7 +97,7 @@ export function useShelfLists(tab: ShelfTab, query: string, filtered: boolean, v
       void entry.promise.then(() => { if (!cancelled) update((n) => n + 1); });
     }
     return () => { cancelled = true; };
-  }, [cache, filtered, query, stale, tab]);
+  }, [cache, filtered, query, stale, tab, resources]);
   const current = cache.get(key(tab));
   return { data: current?.data, loading: !current?.data && !current?.error, error: current?.error, getData: (value: ShelfTab) => cache.get(key(value))?.data, removeUnplaced: (id: string) => {
     for (const [entryKey, entry] of cache) {

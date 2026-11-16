@@ -118,6 +118,12 @@ export class ProcedureMaterialService {
       .map(publicMaterial);
   }
 
+  async readThumbnail(id: string, thumbnails: import('./procedure-material-thumbnail.service.js').ProcedureMaterialThumbnailService) {
+    const material = await this.db.procedureMaterial.findUnique({ where: { id } });
+    if (!material || material.kind !== 'PHOTO' || !material.storageKey) throw new ApiError(404, '写真がありません');
+    return thumbnails.readStored(material.storageKey, this.store);
+  }
+
   async readFile(id: string) {
     const material = await this.db.procedureMaterial.findUnique({ where: { id } });
     if (!material || material.kind !== 'PHOTO' || !material.storageKey) throw new ApiError(404, '写真がありません');

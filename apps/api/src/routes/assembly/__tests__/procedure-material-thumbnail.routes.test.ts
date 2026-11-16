@@ -53,6 +53,21 @@ describe('procedure material thumbnails', () => {
     expect((await app.inject(path)).statusCode).toBe(403);
     expect(store.read).not.toHaveBeenCalled(); expect(knowledge.readImage).not.toHaveBeenCalled(); expect(read.readAsset).not.toHaveBeenCalled();
   });
+  it('returns a durable thumbnail without reading the original, while rechecking material existence', async () => {
+    const saved = await sharp({ create: { width: 100, height: 80, channels: 3, background: 'white' } }).webp().toBuffer();
+    const { material, store } = harness(Buffer.from('unused'));
+    const directory = `procedure-materials/${'a'.repeat(64)}`;
+    material.findUnique.mockResolvedValue({ kind: 'PHOTO', storageKey: `${directory}/original`, contentType: 'image/jpeg' });
+    store.read.mockImplementation(async (key: string) => {
+      if (key !== `${directory}/thumbnail-640.webp`) throw new Error('original must not be read');
+      return saved;
+    });
+    expect((await app.inject(paths[0])).rawPayload).toEqual(saved);
+    expect(store.read).toHaveBeenCalledExactlyOnceWith(`${directory}/thumbnail-640.webp`, { verifyIntegrity: true });
+    material.findUnique.mockResolvedValue(null);
+    expect((await app.inject(paths[0])).statusCode).toBe(404);
+    expect(store.read).toHaveBeenCalledOnce();
+  });
   it('revalidates existence and ACTIVE status even after caching and retains original headers', async () => {
     const bytes = await sharp({ create: { width: 20, height: 30, channels: 3, background: 'white' } }).jpeg().toBuffer();
     const { material, knowledge, read, routes } = harness(bytes);

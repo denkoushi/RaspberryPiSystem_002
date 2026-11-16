@@ -64,8 +64,8 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
   const thumbnails = new ProcedureMaterialThumbnailService();
   const thumbnailOptions = { preHandler: options.allowView, config: { rateLimit: { max: 600, timeWindow: '1 minute' } } };
   app.get(`${path}/:id/thumbnail`, thumbnailOptions, async (request, reply) => {
-    const file = await service.readFile(paramsSchema.parse(request.params).id);
-    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(await thumbnails.read(file.bytes));
+    const thumbnail = await service.readThumbnail(paramsSchema.parse(request.params).id, thumbnails);
+    return reply.header('Cache-Control', 'private, max-age=3600').header('X-Content-Type-Options', 'nosniff').type('image/webp').send(thumbnail);
   });
   app.get(`${path}/knowledge-candidates/images/:imageId/thumbnail`, thumbnailOptions, async (request, reply) => {
     const { imageId } = z.object({ imageId: z.string().regex(/^[a-f0-9]{64}$/) }).parse(request.params);

@@ -38,3 +38,42 @@ describe('procedure material thumbnail conversion', () => {
     await service.read(images[0]); expect(resize).toHaveBeenCalledTimes(130);
   });
 });
+
+describe('durable material thumbnails', () => {
+  const original = `procedure-materials/${'a'.repeat(64)}/original`;
+  const key = original.replace('original', 'thumbnail-640.webp');
+  async function setup() {
+    const bytes = await sharp({ create: { width: 1200, height: 800, channels: 3, background: 'white' } }).png().toBuffer();
+    const files = new Map([[original, bytes]]);
+    const store = {
+      read: vi.fn(async (name: string) => { const data = files.get(name); if (!data) throw new Error('missing'); return data; }),
+      write: vi.fn(async ({ key: name, data }: { key: string; data: Buffer }) => { files.set(name, data); })
+    };
+    return { store, files };
+  }
+  it('persists once for concurrent requests and reuses the stored thumbnail after a service restart without reading the original', async () => {
+    const { store } = await setup();
+    const service = new ProcedureMaterialThumbnailService();
+    const [first, second] = await Promise.all([service.readStored(original, store as never), service.readStored(original, store as never)]);
+    expect(first).toBe(second);
+    expect(store.write).toHaveBeenCalledExactlyOnceWith({ key, data: first, mode: 'replace', integrity: true });
+    store.read.mockClear();
+    expect(await new ProcedureMaterialThumbnailService().readStored(original, store as never)).toEqual(first);
+    expect(store.read).toHaveBeenCalledExactlyOnceWith(key, { verifyIntegrity: true });
+  });
+  it.each(['invalid', 'unreadable'])('rebuilds a %s stored thumbnail', async (mode) => {
+    const { store, files } = await setup();
+    files.set(key, Buffer.from('broken'));
+    if (mode === 'unreadable') store.read.mockRejectedValueOnce(new Error('integrity mismatch'));
+    const result = await new ProcedureMaterialThumbnailService().readStored(original, store as never);
+    expect(await sharp(result).metadata()).toMatchObject({ format: 'webp', width: 640 });
+    expect(store.read).toHaveBeenCalledWith(original, { verifyIntegrity: true });
+    expect(files.get(key)).toEqual(result);
+  });
+  it('returns the generated thumbnail when durable storage is full', async () => {
+    const { store } = await setup();
+    store.write.mockRejectedValue(new Error('capacity reserve'));
+    const result = await new ProcedureMaterialThumbnailService().readStored(original, store as never);
+    expect(await sharp(result).metadata()).toMatchObject({ format: 'webp', width: 640 });
+  });
+});

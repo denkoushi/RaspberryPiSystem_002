@@ -42,9 +42,10 @@ type BubbleProps = {
   tipSide: 'left' | 'top';
   tipPosition?: { right: number; top: number } | null;
   floating?: { left: number; top: number; below: boolean };
+  portaled?: boolean;
 };
 
-export function IconTooltipBubble({ label, tipSide, tipPosition, floating }: BubbleProps) {
+export function IconTooltipBubble({ label, tipSide, tipPosition, floating, portaled }: BubbleProps) {
   const ref = useRef<HTMLSpanElement>(null);
   const [left, setLeft] = useState(floating?.left ?? 0);
   useLayoutEffect(() => {
@@ -54,12 +55,12 @@ export function IconTooltipBubble({ label, tipSide, tipPosition, floating }: Bub
   }, [floating]);
   const style: CSSProperties | undefined = floating
     ? { position: 'fixed', left, top: floating.top, maxWidth: 'calc(100vw - 16px)' }
-    : tipSide === 'left' && tipPosition ? { position: 'fixed', ...tipPosition } : undefined;
+    : tipSide === 'left' && tipPosition ? { position: 'fixed', ...tipPosition, ...(portaled ? { zIndex: 60 } : {}) } : undefined;
   return <span
       ref={ref}
       role="tooltip"
       style={style}
-      className={`pointer-events-none absolute z-50 flex h-10 items-center whitespace-nowrap rounded-lg border border-[#344252] bg-[#161c22]/[0.98] px-[14px] text-lg font-bold text-[#eef3f6] shadow-[0_10px_30px_rgba(0,0,0,0.45)] ${floating ? '' : 'invisible opacity-0 [@media(hover:hover)]:group-hover:visible [@media(hover:hover)]:group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100 group-data-[tip=true]:visible group-data-[tip=true]:opacity-100'} after:absolute after:h-[10px] after:w-[10px] after:border-r after:border-t after:border-[#344252] after:bg-[#161c22]/[0.98] after:content-[''] ${floating ? `-translate-x-1/2 ${floating.below ? 'after:-top-[6px] after:rotate-[-45deg]' : 'after:-bottom-[6px] after:rotate-[135deg]'} after:left-1/2 after:-translate-x-1/2` : tipSide === 'left'
+      className={`pointer-events-none absolute z-50 flex h-10 items-center whitespace-nowrap rounded-lg border border-[#344252] bg-[#161c22]/[0.98] px-[14px] text-lg font-bold text-[#eef3f6] shadow-[0_10px_30px_rgba(0,0,0,0.45)] ${floating || portaled ? '' : 'invisible opacity-0 [@media(hover:hover)]:group-hover:visible [@media(hover:hover)]:group-hover:opacity-100 group-focus-visible:visible group-focus-visible:opacity-100 group-data-[tip=true]:visible group-data-[tip=true]:opacity-100'} after:absolute after:h-[10px] after:w-[10px] after:border-r after:border-t after:border-[#344252] after:bg-[#161c22]/[0.98] after:content-[''] ${floating ? `-translate-x-1/2 ${floating.below ? 'after:-top-[6px] after:rotate-[-45deg]' : 'after:-bottom-[6px] after:rotate-[135deg]'} after:left-1/2 after:-translate-x-1/2` : tipSide === 'left'
         ? 'right-[62px] top-1/2 -translate-y-1/2 after:-right-[6px] after:top-1/2 after:-translate-y-1/2 after:rotate-45'
         : 'left-1/2 top-[-46px] -translate-x-1/2 after:-bottom-[6px] after:left-1/2 after:-translate-x-1/2 after:rotate-[135deg]'}`}
     >{label}</span>;
