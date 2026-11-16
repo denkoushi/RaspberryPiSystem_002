@@ -15,19 +15,19 @@
     ]
   },
   "summary": {
-    "documentCount": 808,
-    "totalLines": 194343,
-    "totalBytes": 16521681,
-    "withFrontmatter": 363,
+    "documentCount": 782,
+    "totalLines": 186530,
+    "totalBytes": 15519276,
+    "withFrontmatter": 362,
     "withStatus": 177,
     "sourceOfTruthDeclared": 116,
-    "execPlanReferences": 60,
+    "execPlanReferences": 59,
     "questionMarkCorruptionDocuments": 2,
     "replacementCharacterDocuments": 1,
-    "longLineDocuments": 48,
-    "localLinkCount": 5839,
+    "longLineDocuments": 46,
+    "localLinkCount": 5737,
     "brokenLocalLinkCount": 60,
-    "documentsOver1000Lines": 29,
+    "documentsOver1000Lines": 28,
     "documentsOver3000Lines": 6,
     "brokenLocalLinks": [
       {
@@ -391,19 +391,13 @@
     },
     {
       "path": ".cursor/rules/02-core-architecture.mdc",
-      "lineCount": 29,
-      "byteSize": 2143,
+      "lineCount": 19,
+      "byteSize": 942,
       "hasFrontmatter": true,
       "title": "コア: アーキテクチャ",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../../docs/decisions/ADR-20261116-refactoring-target-selection.md",
-          "targetPath": "docs/decisions/ADR-20261116-refactoring-target-selection.md",
-          "exists": true
-        }
-      ],
+      "localLinks": [],
       "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -412,8 +406,8 @@
     },
     {
       "path": ".cursor/rules/10-quality-ci-and-tests.mdc",
-      "lineCount": 82,
-      "byteSize": 7208,
+      "lineCount": 55,
+      "byteSize": 3868,
       "hasFrontmatter": true,
       "title": "品質: 上限のある検証",
       "status": null,
@@ -442,8 +436,8 @@
     },
     {
       "path": ".cursor/rules/20-git-workflow.mdc",
-      "lineCount": 66,
-      "byteSize": 6604,
+      "lineCount": 64,
+      "byteSize": 5966,
       "hasFrontmatter": true,
       "title": "Gitワークフロー（Agent Requested）",
       "status": null,
@@ -487,8 +481,8 @@
     },
     {
       "path": "AGENTS.md",
-      "lineCount": 72,
-      "byteSize": 6986,
+      "lineCount": 71,
+      "byteSize": 6813,
       "hasFrontmatter": false,
       "title": "AI Agent Entry Point",
       "status": null,
@@ -5780,8 +5774,8 @@
     },
     {
       "path": "docs/INDEX.md",
-      "lineCount": 2113,
-      "byteSize": 362639,
+      "lineCount": 2098,
+      "byteSize": 360460,
       "hasFrontmatter": false,
       "title": "ドキュメント索引",
       "status": null,
@@ -5825,11 +5819,6 @@
         {
           "href": "./analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md",
           "targetPath": "docs/analysis/production-schedule-fsigenshoyoryo-analysis-20260324.md",
-          "exists": true
-        },
-        {
-          "href": "./analysis/surface-treatment-process-codes-20261105.md",
-          "targetPath": "docs/analysis/surface-treatment-process-codes-20261105.md",
           "exists": true
         },
         {
@@ -7080,11 +7069,6 @@
         {
           "href": "./decisions/ADR-20261011-procedure-voice-input.md",
           "targetPath": "docs/decisions/ADR-20261011-procedure-voice-input.md",
-          "exists": true
-        },
-        {
-          "href": "./decisions/ADR-20261116-refactoring-target-selection.md",
-          "targetPath": "docs/decisions/ADR-20261116-refactoring-target-selection.md",
           "exists": true
         },
         {
@@ -10013,26 +9997,6 @@
           "exists": true
         },
         {
-          "href": "./plans/2026-11-05-sessaku-split-pieces.md#不具合時に操作を追う",
-          "targetPath": "docs/plans/2026-11-05-sessaku-split-pieces.md",
-          "exists": true
-        },
-        {
-          "href": "plans/2026-11-07-later-process-pieces.md",
-          "targetPath": "docs/plans/2026-11-07-later-process-pieces.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/2026-11-09-d-schedule-second-excel.md",
-          "targetPath": "docs/plans/2026-11-09-d-schedule-second-excel.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/2026-11-09-sessaku-unit-split-ops-pr1.md",
-          "targetPath": "docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md",
-          "exists": true
-        },
-        {
           "href": "./plans/alerts-platform-phase2.md",
           "targetPath": "docs/plans/alerts-platform-phase2.md",
           "exists": true
@@ -10230,11 +10194,6 @@
         {
           "href": "./plans/google-drive-disaster-recovery-execplan.md",
           "targetPath": "docs/plans/google-drive-disaster-recovery-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/grinding-planning-board-missing-standard-hours.md",
-          "targetPath": "docs/plans/grinding-planning-board-missing-standard-hours.md",
           "exists": true
         },
         {
@@ -10483,11 +10442,6 @@
           "exists": true
         },
         {
-          "href": "plans/kiosk-unprivileged-session-execplan.md",
-          "targetPath": "docs/plans/kiosk-unprivileged-session-execplan.md",
-          "exists": true
-        },
-        {
           "href": "./plans/leaderboard-defer-totals-performance-recovery.md",
           "targetPath": "docs/plans/leaderboard-defer-totals-performance-recovery.md",
           "exists": true
@@ -10525,11 +10479,6 @@
         {
           "href": "./plans/mobile-placement-main-page-preview-parity.md",
           "targetPath": "docs/plans/mobile-placement-main-page-preview-parity.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/mobile-placement-schedule-execplan.md",
-          "targetPath": "docs/plans/mobile-placement-schedule-execplan.md",
           "exists": true
         },
         {
@@ -10585,11 +10534,6 @@
         {
           "href": "./plans/pi5-blue-green-phase3.md",
           "targetPath": "docs/plans/pi5-blue-green-phase3.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/pi5-standby-replication-execplan.md",
-          "targetPath": "docs/plans/pi5-standby-replication-execplan.md",
           "exists": true
         },
         {
@@ -10678,11 +10622,6 @@
           "exists": true
         },
         {
-          "href": "./plans/same-model-resource-minutes.md",
-          "targetPath": "docs/plans/same-model-resource-minutes.md",
-          "exists": true
-        },
-        {
           "href": "./plans/scaw-nonconformity-self-inspection-execplan.md",
           "targetPath": "docs/plans/scaw-nonconformity-self-inspection-execplan.md",
           "exists": true
@@ -10760,11 +10699,6 @@
         {
           "href": "./plans/stability-improvement-plan.md",
           "targetPath": "docs/plans/stability-improvement-plan.md",
-          "exists": true
-        },
-        {
-          "href": "./plans/ten-year-prevention-lifecycle-execplan.md",
-          "targetPath": "docs/plans/ten-year-prevention-lifecycle-execplan.md",
           "exists": true
         },
         {
@@ -11253,92 +11187,92 @@
           "exists": true
         }
       ],
-      "inboundCount": 14,
+      "inboundCount": 13,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 363,
+          "line": 353,
           "length": 1140
         },
         {
-          "line": 379,
+          "line": 369,
           "length": 1250
         },
         {
-          "line": 383,
+          "line": 373,
           "length": 1022
         },
         {
-          "line": 394,
+          "line": 384,
           "length": 1147
         },
         {
-          "line": 398,
+          "line": 388,
           "length": 1073
         },
         {
-          "line": 446,
+          "line": 436,
           "length": 1165
         },
         {
-          "line": 452,
+          "line": 442,
           "length": 1458
         },
         {
-          "line": 478,
+          "line": 468,
           "length": 1332
         },
         {
-          "line": 480,
+          "line": 470,
           "length": 1141
         },
         {
-          "line": 484,
+          "line": 474,
           "length": 1178
         },
         {
-          "line": 492,
+          "line": 482,
           "length": 1059
         },
         {
-          "line": 500,
+          "line": 490,
           "length": 1129
         },
         {
-          "line": 504,
+          "line": 494,
           "length": 1135
         },
         {
-          "line": 508,
+          "line": 498,
           "length": 1117
         },
         {
-          "line": 623,
+          "line": 613,
           "length": 1013
         },
         {
-          "line": 810,
+          "line": 800,
           "length": 2039
         },
         {
-          "line": 826,
+          "line": 816,
           "length": 1496
         },
         {
-          "line": 832,
+          "line": 822,
           "length": 1177
         },
         {
-          "line": 1175,
+          "line": 1164,
           "length": 1419
         },
         {
-          "line": 1211,
+          "line": 1200,
           "length": 1136
         },
         {
-          "line": 1213,
+          "line": 1202,
           "length": 1239
         }
       ],
@@ -11574,27 +11508,6 @@
         }
       ],
       "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/analysis/surface-treatment-process-codes-20261105.md",
-      "lineCount": 85,
-      "byteSize": 4930,
-      "hasFrontmatter": false,
-      "title": "Surface treatment identification from FKOJUNST process codes (2026-11-05)",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20260508-fkojunst-status-sole-source.md",
-          "targetPath": "docs/decisions/ADR-20260508-fkojunst-status-sole-source.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18400,7 +18313,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 9,
+      "inboundCount": 8,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -18578,7 +18491,7 @@
     {
       "path": "docs/decisions/ADR-20260523-mobile-placement-shelf-layout-master.md",
       "lineCount": 59,
-      "byteSize": 3918,
+      "byteSize": 3801,
       "hasFrontmatter": false,
       "title": "ADR-20260523: 配膳棚レイアウトマスタ（キオスク shelf-master）",
       "status": null,
@@ -18592,11 +18505,6 @@
         {
           "href": "../knowledge-base/KB-368-zero2w-haizen-placement-tracking.md",
           "targetPath": "docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
-          "targetPath": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
           "exists": true
         },
         {
@@ -20121,32 +20029,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/decisions/ADR-20261116-refactoring-target-selection.md",
-      "lineCount": 67,
-      "byteSize": 8384,
-      "hasFrontmatter": false,
-      "title": "ADR-20261116: リファクタリングは「よく変わり、広く散らばる所」から、テストで固定してから小さく進める",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-453-feature-reach-measurement.md",
-          "targetPath": "docs/knowledge-base/KB-453-feature-reach-measurement.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/feature-reach-refactor-execplan.md",
-          "targetPath": "docs/plans/feature-reach-refactor-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 4,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/decisions/_template.md",
       "lineCount": 9,
       "byteSize": 310,
@@ -20979,7 +20861,7 @@
     {
       "path": "docs/guides/backup-and-restore.md",
       "lineCount": 488,
-      "byteSize": 33495,
+      "byteSize": 33579,
       "hasFrontmatter": true,
       "title": "バックアップ・リストア手順",
       "status": null,
@@ -21159,8 +21041,8 @@
     },
     {
       "path": "docs/guides/backup-configuration.md",
-      "lineCount": 712,
-      "byteSize": 32349,
+      "lineCount": 711,
+      "byteSize": 31671,
       "hasFrontmatter": true,
       "title": "バックアップ設定ガイド",
       "status": null,
@@ -21209,11 +21091,6 @@
         {
           "href": "./monitoring.md",
           "targetPath": "docs/guides/monitoring.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/backup-restore.md",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
         },
         {
@@ -21655,8 +21532,8 @@
     },
     {
       "path": "docs/guides/deployment.md",
-      "lineCount": 244,
-      "byteSize": 29154,
+      "lineCount": 201,
+      "byteSize": 24319,
       "hasFrontmatter": true,
       "title": "標準デプロイ手順",
       "status": "active",
@@ -21678,7 +21555,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 248,
+      "inboundCount": 246,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22048,8 +21925,8 @@
     },
     {
       "path": "docs/guides/gmail-setup-guide.md",
-      "lineCount": 480,
-      "byteSize": 28690,
+      "lineCount": 473,
+      "byteSize": 27585,
       "hasFrontmatter": true,
       "title": "Gmail連携セットアップガイド",
       "status": null,
@@ -22091,7 +21968,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 15,
+      "inboundCount": 14,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -22099,8 +21976,8 @@
     },
     {
       "path": "docs/guides/kiosk-production-schedule-load-balancing.md",
-      "lineCount": 334,
-      "byteSize": 31106,
+      "lineCount": 307,
+      "byteSize": 27538,
       "hasFrontmatter": false,
       "title": "キオスク 生産スケジュール 負荷調整（山崩し支援）",
       "status": null,
@@ -22194,16 +22071,6 @@
         {
           "href": "../knowledge-base/KB-437-load-balancing-production-system-reconciliation.md",
           "targetPath": "docs/knowledge-base/KB-437-load-balancing-production-system-reconciliation.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/load-balancing-outsource-vendors-execplan.md",
-          "targetPath": "docs/plans/load-balancing-outsource-vendors-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/load-balancing-outsource-vendors-execplan.md#named-outsourcing-2026-11-07",
-          "targetPath": "docs/plans/load-balancing-outsource-vendors-execplan.md",
           "exists": true
         },
         {
@@ -22484,7 +22351,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 10,
+      "inboundCount": 9,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -23033,8 +22900,8 @@
     },
     {
       "path": "docs/guides/status-agent.md",
-      "lineCount": 246,
-      "byteSize": 13959,
+      "lineCount": 244,
+      "byteSize": 13514,
       "hasFrontmatter": false,
       "title": "🛰️ status-agent セットアップガイド",
       "status": null,
@@ -23096,7 +22963,7 @@
     {
       "path": "docs/guides/verification-checklist.md",
       "lineCount": 1141,
-      "byteSize": 98982,
+      "byteSize": 98918,
       "hasFrontmatter": false,
       "title": "検証チェックリスト",
       "status": null,
@@ -24064,8 +23931,8 @@
     },
     {
       "path": "docs/kiosk-operation-guide/machine-signal.md",
-      "lineCount": 39,
-      "byteSize": 2340,
+      "lineCount": 37,
+      "byteSize": 2070,
       "hasFrontmatter": true,
       "title": "設備稼働",
       "status": null,
@@ -24098,21 +23965,6 @@
       "byteSize": 1981,
       "hasFrontmatter": true,
       "title": "部品名で棚を探す",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/kiosk-operation-guide/mobile-placement-schedule.md",
-      "lineCount": 41,
-      "byteSize": 2811,
-      "hasFrontmatter": true,
-      "title": "配膳の日程",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
@@ -24320,13 +24172,13 @@
     {
       "path": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
       "lineCount": 75,
-      "byteSize": 12476,
+      "byteSize": 11942,
       "hasFrontmatter": true,
       "title": "製番ボード",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -24561,8 +24413,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-297-kiosk-due-management-workflow.md",
-      "lineCount": 3284,
-      "byteSize": 453562,
+      "lineCount": 3241,
+      "byteSize": 446353,
       "hasFrontmatter": true,
       "title": "KB-297: キオスク納期管理（製番納期・部品優先・切削除外設定）の実装",
       "status": null,
@@ -24904,19 +24756,19 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 243,
+          "line": 228,
           "length": 1414
         },
         {
-          "line": 245,
+          "line": 230,
           "length": 1048
         },
         {
-          "line": 254,
+          "line": 239,
           "length": 1224
         },
         {
-          "line": 722,
+          "line": 689,
           "length": 1803
         }
       ],
@@ -25283,8 +25135,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-320-kiosk-part-measurement.md",
-      "lineCount": 1961,
-      "byteSize": 219233,
+      "lineCount": 1951,
+      "byteSize": 217700,
       "hasFrontmatter": false,
       "title": "KB-320: キオスク部品測定（テンプレ不一致・候補・スキャン）",
       "status": null,
@@ -25691,11 +25543,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 1810,
+          "line": 1808,
           "length": 1045
         },
         {
-          "line": 1817,
+          "line": 1815,
           "length": 1213
         }
       ],
@@ -26175,8 +26027,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-362-kiosk-load-balancing.md",
-      "lineCount": 1458,
-      "byteSize": 91760,
+      "lineCount": 1283,
+      "byteSize": 75740,
       "hasFrontmatter": true,
       "title": "KB-362 キオスク負荷調整（山崩し支援）画面",
       "status": "historical",
@@ -26285,16 +26137,6 @@
         {
           "href": "./KB-437-load-balancing-production-system-reconciliation.md",
           "targetPath": "docs/knowledge-base/KB-437-load-balancing-production-system-reconciliation.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/load-balancing-outsource-vendors-execplan.md",
-          "targetPath": "docs/plans/load-balancing-outsource-vendors-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/load-balancing-outsource-vendors-execplan.md#named-outsourcing-2026-11-07",
-          "targetPath": "docs/plans/load-balancing-outsource-vendors-execplan.md",
           "exists": true
         },
         {
@@ -26555,8 +26397,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-368-zero2w-haizen-placement-tracking.md",
-      "lineCount": 133,
-      "byteSize": 17036,
+      "lineCount": 125,
+      "byteSize": 15577,
       "hasFrontmatter": true,
       "title": "KB-368: Zero 2 W 配膳追跡（haizen API・エージェント・キオスク表示）",
       "status": null,
@@ -26612,7 +26454,7 @@
     {
       "path": "docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md",
       "lineCount": 485,
-      "byteSize": 77984,
+      "byteSize": 76810,
       "hasFrontmatter": true,
       "title": "KB-369 キオスク順位ボード API の内部レイテンシ（COUNT + 行取得）",
       "status": null,
@@ -26749,7 +26591,7 @@
         },
         {
           "line": 81,
-          "length": 1543
+          "length": 1101
         },
         {
           "line": 341,
@@ -27133,8 +26975,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-375-kiosk-leaderboard-completion-integrity.md",
-      "lineCount": 127,
-      "byteSize": 15461,
+      "lineCount": 121,
+      "byteSize": 14001,
       "hasFrontmatter": true,
       "title": "KB-375 順位ボード・生産日程の完了整合（明示完了API・CSV同期・実効完了）",
       "status": null,
@@ -27408,8 +27250,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-382-mobile-placement-shelf-layout-master.md",
-      "lineCount": 611,
-      "byteSize": 56669,
+      "lineCount": 607,
+      "byteSize": 56285,
       "hasFrontmatter": false,
       "title": "KB-382: 配膳棚レイアウトマスタ（キオスク shelf-master）",
       "status": null,
@@ -27496,7 +27338,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 31,
+      "inboundCount": 30,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -27570,8 +27412,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-384-kiosk-leaderboard-append-pagesize-scope-stuck-sync.md",
-      "lineCount": 250,
-      "byteSize": 13981,
+      "lineCount": 243,
+      "byteSize": 13000,
       "hasFrontmatter": true,
       "title": "KB-384: Kiosk leaderboard append completion stuck on background sync and pageSize scope drift",
       "status": "active",
@@ -27709,8 +27551,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-392-kiosk-leaderboard-spec-source-of-truth.md",
-      "lineCount": 87,
-      "byteSize": 10398,
+      "lineCount": 77,
+      "byteSize": 8387,
       "hasFrontmatter": false,
       "title": "KB-392: Kiosk leaderboard spec source of truth and doc drift prevention",
       "status": null,
@@ -27765,8 +27607,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-393-security-hardening-audit-2026-07.md",
-      "lineCount": 144,
-      "byteSize": 21272,
+      "lineCount": 139,
+      "byteSize": 20216,
       "hasFrontmatter": false,
       "title": "KB-393: Security hardening audit (2026-07) — API authz, path traversal, secrets, infra",
       "status": null,
@@ -28135,8 +27977,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-409-kiosk-inventory-daily-and-setup-screens.md",
-      "lineCount": 226,
-      "byteSize": 29658,
+      "lineCount": 211,
+      "byteSize": 26866,
       "hasFrontmatter": true,
       "title": "Kiosk inventory split into a daily NFC screen and a touch setup screen",
       "status": "accepted",
@@ -28161,8 +28003,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-410-pi5-nonroot-cutover-root-owned-storage-files.md",
-      "lineCount": 123,
-      "byteSize": 6790,
+      "lineCount": 114,
+      "byteSize": 6094,
       "hasFrontmatter": true,
       "title": "Pi5 non-root cutover left root-owned storage files (inspection drawing not shown)",
       "status": "active",
@@ -28264,8 +28106,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-415-ai-security-scan-2026-10.md",
-      "lineCount": 78,
-      "byteSize": 7215,
+      "lineCount": 76,
+      "byteSize": 6714,
       "hasFrontmatter": false,
       "title": "KB-415: AI security scan of the whole repository (2026-10) and the access-control fixes it led to",
       "status": null,
@@ -28337,8 +28179,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-418-planning-board-warm-reuse.md",
-      "lineCount": 174,
-      "byteSize": 24614,
+      "lineCount": 93,
+      "byteSize": 8642,
       "hasFrontmatter": false,
       "title": "KB-418: 製番ボード (grinding planning board) reopens were rebuilt every time",
       "status": null,
@@ -28558,8 +28400,8 @@
     },
     {
       "path": "docs/knowledge-base/KB-429-cve-2026-98432-mptcp-mitigation.md",
-      "lineCount": 39,
-      "byteSize": 3552,
+      "lineCount": 31,
+      "byteSize": 2609,
       "hasFrontmatter": false,
       "title": "KB-429: CVE-2026-98432 の暫定対策(MPTCP 停止)",
       "status": null,
@@ -28783,149 +28625,15 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/knowledge-base/KB-437-security-audit-2026-11-api-hardening.md",
-      "lineCount": 114,
-      "byteSize": 12670,
-      "hasFrontmatter": false,
-      "title": "KB-437: 2026-11 security audit — rate-limit bypass, kiosk key leaks, backup Ansible injection",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../guides/gmail-setup-guide.md",
-          "targetPath": "docs/guides/gmail-setup-guide.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/knowledge-base/KB-438-os-security-weekly-update.md",
-      "lineCount": 94,
-      "byteSize": 11658,
+      "lineCount": 92,
+      "byteSize": 10974,
       "hasFrontmatter": false,
       "title": "KB-438: 業務ラズパイの OS 安全更新を週1回夜間に入れる",
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-439-planning-board-due-sort-performance.md",
-      "lineCount": 460,
-      "byteSize": 46941,
-      "hasFrontmatter": false,
-      "title": "KB-439: Planning board 「納期順」 frontend performance",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/after.json",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/after.json",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/before.json",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/before.json",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/browser/README.md",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/browser/README.md",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/pieces-after.json",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/__perf__/pieces-after.json",
-          "exists": true
-        }
-      ],
-      "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-440-sessaku-piece-quantity-operations-audit.md",
-      "lineCount": 140,
-      "byteSize": 13493,
-      "hasFrontmatter": false,
-      "title": "KB-440: Sessaku piece quantity, operation completion and parent audit",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../../apps/api/src/services/production-schedule/production-schedule-command.service.ts",
-          "targetPath": "apps/api/src/services/production-schedule/production-schedule-command.service.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/sessaku-pieces/piece-operation-definitions.ts",
-          "targetPath": "apps/api/src/services/production-schedule/sessaku-pieces/piece-operation-definitions.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/sessaku-pieces/piece-quantity.ts",
-          "targetPath": "apps/api/src/services/production-schedule/sessaku-pieces/piece-quantity.ts",
-          "exists": true
-        }
-      ],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-452-postgres-jit-uninterruptible-sessaku-lane-read.md",
-      "lineCount": 65,
-      "byteSize": 6574,
-      "hasFrontmatter": false,
-      "title": "KB-452: PostgreSQL 18 JIT stalls the sessaku lane read for minutes and cannot be cancelled",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/knowledge-base/KB-453-feature-reach-measurement.md",
-      "lineCount": 163,
-      "byteSize": 11923,
-      "hasFrontmatter": false,
-      "title": "KB-453: 機能ごとに AI が読む量の月1回の測定記録",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20261116-refactoring-target-selection.md",
-          "targetPath": "docs/decisions/ADR-20261116-refactoring-target-selection.md",
-          "exists": true
-        },
-        {
-          "href": "../plans/feature-reach-refactor-execplan.md",
-          "targetPath": "docs/plans/feature-reach-refactor-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "../../scripts/analysis/feature-reach/",
-          "targetPath": "scripts/analysis/feature-reach/",
-          "exists": true
-        }
-      ],
-      "inboundCount": 3,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -28948,8 +28656,8 @@
     },
     {
       "path": "docs/knowledge-base/api.md",
-      "lineCount": 4937,
-      "byteSize": 368984,
+      "lineCount": 4921,
+      "byteSize": 363303,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - API関連",
       "status": null,
@@ -29264,8 +28972,8 @@
     },
     {
       "path": "docs/knowledge-base/ci-cd.md",
-      "lineCount": 886,
-      "byteSize": 65511,
+      "lineCount": 863,
+      "byteSize": 61117,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - CI/CD関連",
       "status": null,
@@ -29401,8 +29109,8 @@
     },
     {
       "path": "docs/knowledge-base/frontend.md",
-      "lineCount": 4661,
-      "byteSize": 281719,
+      "lineCount": 4657,
+      "byteSize": 281313,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - フロントエンド関連",
       "status": null,
@@ -29632,8 +29340,8 @@
     },
     {
       "path": "docs/knowledge-base/index.md",
-      "lineCount": 909,
-      "byteSize": 276458,
+      "lineCount": 903,
+      "byteSize": 274908,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - 索引",
       "status": null,
@@ -31065,11 +30773,6 @@
           "exists": true
         },
         {
-          "href": "./infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
-          "exists": true
-        },
-        {
           "href": "./infrastructure/backup-restore.md#kb-290-dropbox容量不足の恒久対策チャンクアップロード自動削除再試行",
           "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
@@ -32325,33 +32028,8 @@
           "exists": true
         },
         {
-          "href": "./KB-437-security-audit-2026-11-api-hardening.md",
-          "targetPath": "docs/knowledge-base/KB-437-security-audit-2026-11-api-hardening.md",
-          "exists": true
-        },
-        {
           "href": "./KB-438-os-security-weekly-update.md",
           "targetPath": "docs/knowledge-base/KB-438-os-security-weekly-update.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-439-planning-board-due-sort-performance.md",
-          "targetPath": "docs/knowledge-base/KB-439-planning-board-due-sort-performance.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-440-sessaku-piece-quantity-operations-audit.md",
-          "targetPath": "docs/knowledge-base/KB-440-sessaku-piece-quantity-operations-audit.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-452-postgres-jit-uninterruptible-sessaku-lane-read.md",
-          "targetPath": "docs/knowledge-base/KB-452-postgres-jit-uninterruptible-sessaku-lane-read.md",
-          "exists": true
-        },
-        {
-          "href": "./KB-453-feature-reach-measurement.md",
-          "targetPath": "docs/knowledge-base/KB-453-feature-reach-measurement.md",
           "exists": true
         },
         {
@@ -32832,8 +32510,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/backup-restore.md",
-      "lineCount": 2230,
-      "byteSize": 143077,
+      "lineCount": 2203,
+      "byteSize": 139196,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - バックアップ・リストア関連",
       "status": null,
@@ -32935,7 +32613,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 78,
+      "inboundCount": 75,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -32943,8 +32621,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/docker-caddy.md",
-      "lineCount": 382,
-      "byteSize": 21172,
+      "lineCount": 364,
+      "byteSize": 17375,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - Docker/Caddy関連",
       "status": null,
@@ -33051,8 +32729,8 @@
     },
     {
       "path": "docs/knowledge-base/infrastructure/security.md",
-      "lineCount": 1347,
-      "byteSize": 88009,
+      "lineCount": 1344,
+      "byteSize": 86771,
       "hasFrontmatter": true,
       "title": "トラブルシューティングナレッジベース - セキュリティ関連",
       "status": null,
@@ -33971,8 +33649,8 @@
     },
     {
       "path": "docs/modules/tools/photo-loan.md",
-      "lineCount": 310,
-      "byteSize": 22945,
+      "lineCount": 302,
+      "byteSize": 20980,
       "hasFrontmatter": true,
       "title": "写真撮影持出機能 - モジュール仕様",
       "status": null,
@@ -34091,163 +33769,6 @@
         }
       ],
       "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-05-sessaku-split-pieces.md",
-      "lineCount": 945,
-      "byteSize": 156157,
-      "hasFrontmatter": false,
-      "title": "切削の指示数を片に分け、製番ボードで順番と完了を管理する",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../knowledge-base/KB-439-planning-board-due-sort-performance.md#2026-11-06-片の操作と保存中切替の再描画削減",
-          "targetPath": "docs/knowledge-base/KB-439-planning-board-due-sort-performance.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-439-planning-board-due-sort-performance.md#2026-11-07-第三者レビュー-r1r5",
-          "targetPath": "docs/knowledge-base/KB-439-planning-board-due-sort-performance.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-07-later-process-pieces.md",
-      "lineCount": 341,
-      "byteSize": 62795,
-      "hasFrontmatter": false,
-      "title": "Carry cutting pieces into later processes",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [
-        {
-          "line": 136,
-          "length": 1450
-        },
-        {
-          "line": 149,
-          "length": 1601
-        }
-      ],
-      "referencesExecPlan": true
-    },
-    {
-      "path": "docs/plans/2026-11-09-d-schedule-second-excel.md",
-      "lineCount": 144,
-      "byteSize": 16118,
-      "hasFrontmatter": false,
-      "title": "Import both production schedule minutes formats",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md",
-      "lineCount": 895,
-      "byteSize": 100318,
-      "hasFrontmatter": false,
-      "title": "Sessaku 021/022 unit split and operations — PR1",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-10-planning-board-offline-readonly.md",
-      "lineCount": 269,
-      "byteSize": 52213,
-      "hasFrontmatter": false,
-      "title": "製番ボードを通信断でも開ける読み取り専用画面にする",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../guides/monitoring.md",
-          "targetPath": "docs/guides/monitoring.md",
-          "exists": true
-        },
-        {
-          "href": "../kiosk-operation-guide/production-schedule-planning-board.md",
-          "targetPath": "docs/kiosk-operation-guide/production-schedule-planning-board.md",
-          "exists": true
-        },
-        {
-          "href": "kiosk-grinding-planning-board.md",
-          "targetPath": "docs/plans/kiosk-grinding-planning-board.md",
-          "exists": true
-        },
-        {
-          "href": "planning-board-background-writes.md",
-          "targetPath": "docs/plans/planning-board-background-writes.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-10-sessaku-unit-gantt-pr2b.md",
-      "lineCount": 19,
-      "byteSize": 2617,
-      "hasFrontmatter": false,
-      "title": "切削の1台ずつ自動分割と工程ガント(PR2b)",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/2026-11-11-sessaku-piece-op-bars.md",
-      "lineCount": 96,
-      "byteSize": 13119,
-      "hasFrontmatter": false,
-      "title": "Sessaku piece operation bars",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "2026-11-09-sessaku-unit-split-ops-pr1.md",
-          "targetPath": "docs/plans/2026-11-09-sessaku-unit-split-ops-pr1.md",
-          "exists": true
-        },
-        {
-          "href": "2026-11-10-sessaku-unit-gantt-pr2b.md",
-          "targetPath": "docs/plans/2026-11-10-sessaku-unit-gantt-pr2b.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -34550,8 +34071,8 @@
     },
     {
       "path": "docs/plans/assembly-torque-cross-work-id-reuse-execplan.md",
-      "lineCount": 262,
-      "byteSize": 32668,
+      "lineCount": 261,
+      "byteSize": 32079,
       "hasFrontmatter": false,
       "title": "Reuse one physical torque-wrench confirmation across work IDs",
       "status": null,
@@ -34761,8 +34282,8 @@
     },
     {
       "path": "docs/plans/business-hermes-butler-phase1-execplan.md",
-      "lineCount": 531,
-      "byteSize": 34932,
+      "lineCount": 529,
+      "byteSize": 34730,
       "hasFrontmatter": false,
       "title": "Hermes business butler v1: gated phase 1 implementation",
       "status": null,
@@ -34848,7 +34369,7 @@
     {
       "path": "docs/plans/code-health-phase2-execplan.md",
       "lineCount": 217,
-      "byteSize": 39778,
+      "byteSize": 39660,
       "hasFrontmatter": false,
       "title": "コード健全化 第2期",
       "status": null,
@@ -34882,21 +34403,6 @@
         }
       ],
       "inboundCount": 4,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/d-schedule-excel-due-import-execplan.md",
-      "lineCount": 463,
-      "byteSize": 76893,
-      "hasFrontmatter": false,
-      "title": "D社日程会議議事録エクセルから製番ボード・順位ボードの最新納期を取り込む",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35366,35 +34872,9 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/feature-reach-refactor-execplan.md",
-      "lineCount": 340,
-      "byteSize": 58434,
-      "hasFrontmatter": false,
-      "title": "1回の修正が、AI の読める範囲で済むコードにする計画",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../decisions/ADR-20261116-refactoring-target-selection.md",
-          "targetPath": "docs/decisions/ADR-20261116-refactoring-target-selection.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/KB-453-feature-reach-measurement.md",
-          "targetPath": "docs/knowledge-base/KB-453-feature-reach-measurement.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/fleet-100-scale-gap-execplan.md",
-      "lineCount": 325,
-      "byteSize": 63038,
+      "lineCount": 257,
+      "byteSize": 43778,
       "hasFrontmatter": false,
       "title": "端末100台規模に向けた不足点と改善計画(効き目の大きい順)",
       "status": null,
@@ -35408,11 +34888,6 @@
         {
           "href": "kiosk-inventory-ux-execplan.md#inventory-nfc-offline-requests-2026-11-02",
           "targetPath": "docs/plans/kiosk-inventory-ux-execplan.md",
-          "exists": true
-        },
-        {
-          "href": "pi5-standby-replication-execplan.md",
-          "targetPath": "docs/plans/pi5-standby-replication-execplan.md",
           "exists": true
         },
         {
@@ -35431,7 +34906,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 6,
+      "inboundCount": 5,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -35563,247 +35038,6 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/grinding-planning-board-missing-standard-hours.md",
-      "lineCount": 150,
-      "byteSize": 21213,
-      "hasFrontmatter": false,
-      "title": "Show missing standard hours on the grinding planning board",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../../apps/api/prisma/migrations/20261114090000_add_missing_standard_hours_process/migration.sql",
-          "targetPath": "apps/api/prisma/migrations/20261114090000_add_missing_standard_hours_process/migration.sql",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/prisma/schema.prisma",
-          "targetPath": "apps/api/prisma/schema.prisma",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.pipeline.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.pipeline.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.service.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/fkojunst-status-mail-sync.service.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/grinding-planning-board-checks-completion.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/grinding-planning-board-checks-completion.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/grinding-planning-board-load-summary.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/grinding-planning-board-load-summary.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/grinding-planning-board-state.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/grinding-planning-board-state.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/grinding-planning-board-write.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/grinding-planning-board-write.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/grinding-planning-board.service.unit.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/grinding-planning-board.service.unit.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/__tests__/missing-standard-hours-process.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/__tests__/missing-standard-hours-process.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/external-completion/__tests__/fkojunst-external-completion-sync.service.test.ts",
-          "targetPath": "apps/api/src/services/production-schedule/external-completion/__tests__/fkojunst-external-completion-sync.service.test.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts",
-          "targetPath": "apps/api/src/services/production-schedule/external-completion/fkojunst-external-completion-sync.service.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts",
-          "targetPath": "apps/api/src/services/production-schedule/fkojunst-status-mail-sync.pipeline.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts",
-          "targetPath": "apps/api/src/services/production-schedule/fkojunst-status-mail-sync.service.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board-load-summary.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board-load-summary.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board-projection.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board-projection.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board/completion.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board/completion.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board/read.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board/read.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board/state.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board/state.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board/test-bars.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board/test-bars.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/grinding-planning-board/write.ts",
-          "targetPath": "apps/api/src/services/production-schedule/grinding-planning-board/write.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/api/src/services/production-schedule/missing-standard-hours-process.ts",
-          "targetPath": "apps/api/src/services/production-schedule/missing-standard-hours-process.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/__tests__/PlanningBoardItemTable.completion.test.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/__tests__/PlanningBoardItemTable.completion.test.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardChainStripBars.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardChainStripBars.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardQueuePopover.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardQueuePopover.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttDisplay.test.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttDisplay.test.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttGeometry.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/planningBoardGanttGeometry.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.test.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttView.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardCompletionButton.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardCompletionButton.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardFocusView.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardFocusView.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardItemTable.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardItemTable.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardSeibanPane.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/PlanningBoardSeibanPane.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardArrival.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardArrival.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt.test.tsx",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt.test.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardPageGantt.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardTestBars.ts",
-          "targetPath": "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardTestBars.ts",
-          "exists": true
-        },
-        {
-          "href": "../../apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx",
-          "targetPath": "apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx",
-          "exists": true
-        },
-        {
-          "href": "../../docs/INDEX.md",
-          "targetPath": "docs/INDEX.md",
-          "exists": true
-        },
-        {
-          "href": "../../docs/plans/grinding-planning-board-missing-standard-hours.md",
-          "targetPath": "docs/plans/grinding-planning-board-missing-standard-hours.md",
-          "exists": true
-        },
-        {
-          "href": "../../packages/shared-types/src/common/production-schedule-grinding-planning-board.ts",
-          "targetPath": "packages/shared-types/src/common/production-schedule-grinding-planning-board.ts",
-          "exists": true
-        }
-      ],
-      "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -36127,8 +35361,8 @@
     },
     {
       "path": "docs/plans/hermes-retrieval-accuracy-log.md",
-      "lineCount": 1060,
-      "byteSize": 172086,
+      "lineCount": 995,
+      "byteSize": 161535,
       "hasFrontmatter": false,
       "title": "Hermes retrieval accuracy log",
       "status": null,
@@ -36188,8 +35422,8 @@
     },
     {
       "path": "docs/plans/hermes-synthetic-question-flywheel-execplan.md",
-      "lineCount": 168,
-      "byteSize": 34327,
+      "lineCount": 167,
+      "byteSize": 33917,
       "hasFrontmatter": false,
       "title": "Hermes synthetic question flywheel for nonconformity retrieval",
       "status": null,
@@ -36200,15 +35434,15 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 132,
+          "line": 131,
           "length": 1248
         },
         {
-          "line": 142,
+          "line": 141,
           "length": 1162
         },
         {
-          "line": 144,
+          "line": 143,
           "length": 1021
         }
       ],
@@ -36416,8 +35650,8 @@
     },
     {
       "path": "docs/plans/inspection-drawing-rule-placement-execplan.md",
-      "lineCount": 127,
-      "byteSize": 24835,
+      "lineCount": 118,
+      "byteSize": 21814,
       "hasFrontmatter": false,
       "title": "似た図面から丸数字を「意味で」写す（業務LLM 版）",
       "status": null,
@@ -36740,8 +35974,8 @@
     },
     {
       "path": "docs/plans/kiosk-grinding-planning-board.md",
-      "lineCount": 240,
-      "byteSize": 43122,
+      "lineCount": 212,
+      "byteSize": 41272,
       "hasFrontmatter": false,
       "title": "Kiosk grinding planning board",
       "status": null,
@@ -36753,7 +35987,7 @@
           "exists": true
         }
       ],
-      "inboundCount": 1,
+      "inboundCount": 0,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -37695,21 +36929,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/kiosk-unprivileged-session-execplan.md",
-      "lineCount": 321,
-      "byteSize": 19314,
-      "hasFrontmatter": false,
-      "title": "Run the Pi4 screen session with a less privileged user",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/kiosk-white-screen-runtime-recovery-execplan.md",
       "lineCount": 181,
       "byteSize": 18819,
@@ -37785,21 +37004,6 @@
       "source_of_truth": null,
       "localLinks": [],
       "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/load-balancing-outsource-vendors-execplan.md",
-      "lineCount": 228,
-      "byteSize": 24185,
-      "hasFrontmatter": false,
-      "title": "Vendor-aware kiosk load balancing",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 4,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -38082,21 +37286,6 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/mobile-placement-schedule-execplan.md",
-      "lineCount": 129,
-      "byteSize": 13498,
-      "hasFrontmatter": false,
-      "title": "Connect Excel schedules to mobile placement",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/mobile-placement-shelf-layout-master.md",
       "lineCount": 55,
       "byteSize": 2597,
@@ -38189,8 +37378,8 @@
     },
     {
       "path": "docs/plans/nightly-security-review-execplan.md",
-      "lineCount": 242,
-      "byteSize": 44215,
+      "lineCount": 238,
+      "byteSize": 43819,
       "hasFrontmatter": false,
       "title": "Nightly security and error review by the business LLM",
       "status": null,
@@ -38212,11 +37401,11 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 138,
+          "line": 134,
           "length": 1016
         },
         {
-          "line": 150,
+          "line": 146,
           "length": 1003
         }
       ],
@@ -38546,30 +37735,9 @@
       "referencesExecPlan": false
     },
     {
-      "path": "docs/plans/pi5-standby-replication-execplan.md",
-      "lineCount": 369,
-      "byteSize": 35951,
-      "hasFrontmatter": false,
-      "title": "業務用 Pi5 の予備機、PostgreSQL 18 複製、手動切り替えを整える",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "fleet-100-scale-gap-execplan.md",
-          "targetPath": "docs/plans/fleet-100-scale-gap-execplan.md",
-          "exists": true
-        }
-      ],
-      "inboundCount": 2,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
       "path": "docs/plans/planning-board-auto-order.md",
-      "lineCount": 35,
-      "byteSize": 3945,
+      "lineCount": 22,
+      "byteSize": 1738,
       "hasFrontmatter": false,
       "title": "Planning board auto-order",
       "status": null,
@@ -38590,44 +37758,10 @@
       "status": null,
       "source_of_truth": null,
       "localLinks": [],
-      "inboundCount": 2,
+      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/planning-board-single-resource-execplan.md",
-      "lineCount": 108,
-      "byteSize": 22505,
-      "hasFrontmatter": false,
-      "title": "製番ボード: 1台表示と、資源CDごとの「独自の値」",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "../design-previews/planning-board-sorting-tray-preview.html",
-          "targetPath": "docs/design-previews/planning-board-sorting-tray-preview.html",
-          "exists": true
-        }
-      ],
-      "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [
-        {
-          "line": 61,
-          "length": 1523
-        },
-        {
-          "line": 67,
-          "length": 2604
-        },
-        {
-          "line": 69,
-          "length": 1728
-        }
-      ],
       "referencesExecPlan": false
     },
     {
@@ -38679,7 +37813,7 @@
     {
       "path": "docs/plans/procedure-tidy-learning-loop-execplan.md",
       "lineCount": 94,
-      "byteSize": 19200,
+      "byteSize": 19079,
       "hasFrontmatter": false,
       "title": "手順書「整える」が人の直しから学ぶ仕組み",
       "status": null,
@@ -39019,18 +38153,13 @@
     },
     {
       "path": "docs/plans/production-secrets-and-runtime-execplan.md",
-      "lineCount": 1010,
-      "byteSize": 60720,
+      "lineCount": 1004,
+      "byteSize": 60279,
       "hasFrontmatter": true,
       "title": "Remove production credential fallbacks and minimize the Pi5 runtime",
       "status": "in_progress",
       "source_of_truth": "true",
       "localLinks": [
-        {
-          "href": "../guides/deployment.md#client-server-certificate-pin",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
         {
           "href": "./standard-release-production-path-audit-execplan.md",
           "targetPath": "docs/plans/standard-release-production-path-audit-execplan.md",
@@ -39129,21 +38258,6 @@
         }
       ],
       "inboundCount": 3,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/same-model-resource-minutes.md",
-      "lineCount": 65,
-      "byteSize": 6742,
-      "hasFrontmatter": false,
-      "title": "Share production board part minutes across same-model machines",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -39393,19 +38507,13 @@
     },
     {
       "path": "docs/plans/signage-admin-unification-execplan.md",
-      "lineCount": 307,
-      "byteSize": 54810,
+      "lineCount": 305,
+      "byteSize": 54707,
       "hasFrontmatter": false,
       "title": "Signage Admin Unification, Web Page Capture Content, and Data Boards（サイネージ管理の1画面統合・ページ撮影・データボード統合）",
       "status": null,
       "source_of_truth": null,
-      "localLinks": [
-        {
-          "href": "signage-device-id-targets-stage1.md",
-          "targetPath": "docs/plans/signage-device-id-targets-stage1.md",
-          "exists": true
-        }
-      ],
+      "localLinks": [],
       "inboundCount": 2,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
@@ -39415,21 +38523,6 @@
           "length": 1070
         }
       ],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/signage-device-id-targets-stage1.md",
-      "lineCount": 78,
-      "byteSize": 7814,
-      "hasFrontmatter": false,
-      "title": "Signage device ID targets: stage one",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
       "referencesExecPlan": false
     },
     {
@@ -39697,21 +38790,6 @@
       "source_of_truth": "docs/plans/stonebase-local-executor-freeze.md",
       "localLinks": [],
       "inboundCount": 0,
-      "hasQuestionMarkCorruption": false,
-      "replacementCharacterCount": 0,
-      "longLines": [],
-      "referencesExecPlan": false
-    },
-    {
-      "path": "docs/plans/ten-year-prevention-lifecycle-execplan.md",
-      "lineCount": 709,
-      "byteSize": 50261,
-      "hasFrontmatter": false,
-      "title": "10年安定稼働に向けた「壊れない・古びない」ための計画",
-      "status": null,
-      "source_of_truth": null,
-      "localLinks": [],
-      "inboundCount": 1,
       "hasQuestionMarkCorruption": false,
       "replacementCharacterCount": 0,
       "longLines": [],
@@ -40405,8 +39483,8 @@
     },
     {
       "path": "docs/runbooks/deploy-status-recovery.md",
-      "lineCount": 85,
-      "byteSize": 7234,
+      "lineCount": 81,
+      "byteSize": 6474,
       "hasFrontmatter": true,
       "title": "デプロイ停止・復旧Runbook",
       "status": "active",
@@ -40577,8 +39655,8 @@
     },
     {
       "path": "docs/runbooks/dgx-system-prod-local-llm.md",
-      "lineCount": 1218,
-      "byteSize": 139287,
+      "lineCount": 1118,
+      "byteSize": 129725,
       "hasFrontmatter": true,
       "title": "Runbook: DGX Spark system-prod LocalLLM 段階切替",
       "status": null,
@@ -40935,35 +40013,35 @@
       "replacementCharacterCount": 0,
       "longLines": [
         {
-          "line": 220,
+          "line": 193,
           "length": 1193
         },
         {
-          "line": 236,
+          "line": 209,
           "length": 1093
         },
         {
-          "line": 240,
+          "line": 213,
           "length": 1533
         },
         {
-          "line": 260,
+          "line": 233,
           "length": 2015
         },
         {
-          "line": 436,
+          "line": 409,
           "length": 1228
         },
         {
-          "line": 441,
+          "line": 414,
           "length": 1128
         },
         {
-          "line": 446,
+          "line": 419,
           "length": 1106
         },
         {
-          "line": 448,
+          "line": 421,
           "length": 1153
         }
       ],
@@ -41184,8 +40262,8 @@
     },
     {
       "path": "docs/runbooks/kiosk-inquiry-inbox.md",
-      "lineCount": 131,
-      "byteSize": 20877,
+      "lineCount": 130,
+      "byteSize": 20508,
       "hasFrontmatter": true,
       "title": "キオスクお問い合わせ受信箱 Runbook",
       "status": null,
@@ -41719,8 +40797,8 @@
     },
     {
       "path": "docs/runbooks/mac-pi5-watchdog.md",
-      "lineCount": 91,
-      "byteSize": 6059,
+      "lineCount": 81,
+      "byteSize": 4624,
       "hasFrontmatter": false,
       "title": "Mac から業務用 Pi5 を見張る",
       "status": null,
@@ -42091,8 +41169,8 @@
     },
     {
       "path": "docs/runbooks/pi4-spare-swap.md",
-      "lineCount": 154,
-      "byteSize": 20218,
+      "lineCount": 137,
+      "byteSize": 18039,
       "hasFrontmatter": true,
       "title": "Pi4 キオスクの予備機差し替え手順",
       "status": null,
@@ -42115,11 +41193,6 @@
         },
         {
           "href": "../guides/deployment.md#L93",
-          "targetPath": "docs/guides/deployment.md",
-          "exists": true
-        },
-        {
-          "href": "../guides/deployment.md#空のpi4キオスクへの初回導入",
           "targetPath": "docs/guides/deployment.md",
           "exists": true
         },
@@ -42231,11 +41304,6 @@
         {
           "href": "../../infrastructure/ansible/inventory.yml#L482",
           "targetPath": "infrastructure/ansible/inventory.yml",
-          "exists": true
-        },
-        {
-          "href": "../../infrastructure/image/rpi-image-gen/README.md",
-          "targetPath": "infrastructure/image/rpi-image-gen/README.md",
           "exists": true
         },
         {
@@ -42421,8 +41489,8 @@
     },
     {
       "path": "docs/runbooks/security-hardening-remediation.md",
-      "lineCount": 226,
-      "byteSize": 19522,
+      "lineCount": 177,
+      "byteSize": 15768,
       "hasFrontmatter": false,
       "title": "Runbook: Security hardening remediation (Batch C — operator actions)",
       "status": null,
@@ -43720,8 +42788,8 @@
     },
     {
       "path": "docs/security/sharepoint-dropbox-integration-assessment.md",
-      "lineCount": 430,
-      "byteSize": 20356,
+      "lineCount": 428,
+      "byteSize": 20002,
       "hasFrontmatter": false,
       "title": "SharePoint → Dropbox → Pi5 データ連携スキームのセキュリティ評価",
       "status": null,
@@ -43730,11 +42798,6 @@
         {
           "href": "../guides/csv-import-export.md",
           "targetPath": "docs/guides/csv-import-export.md",
-          "exists": true
-        },
-        {
-          "href": "../knowledge-base/infrastructure/backup-restore.md#kb-199-dropbox証明書ピニング検証失敗によるバックアップ500エラー",
-          "targetPath": "docs/knowledge-base/infrastructure/backup-restore.md",
           "exists": true
         },
         {
