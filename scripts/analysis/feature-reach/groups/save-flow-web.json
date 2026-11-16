@@ -1,0 +1,9 @@
+[{"name":"製番ボード 保存の流れ(画面) 待ち行列だけ","entries":[
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue.ts"]},
+ {"name":"製番ボード 保存の流れ(画面) 待ち行列+offline+API hooks","entries":[
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/PlanningBoardOfflineProvider.tsx",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineQueries.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/planningBoardWriteGate.ts",
+ "apps/web/src/api/hooks/production-schedule/grinding-planning-board.ts"]},
+ {"name":"製番ボード 画面全体","entries":["apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx"]}]
