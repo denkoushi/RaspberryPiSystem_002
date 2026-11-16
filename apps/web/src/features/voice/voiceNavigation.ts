@@ -19,6 +19,45 @@ export const VOICE_NAVIGATION_SCREENS = [
   { names: ['生産スケジュール', '生産日程'], readings: ['seisansukejuuru', 'seisannittei'], path: KIOSK_INITIAL_ROUTE_PATHS.production_schedule, label: '生産スケジュール' }
 ] as const;
 
+function kanaToRomaji(value: string): string | null {
+  const kana = 'ぁあぃいぅうぇえぉおかがきぎくぐけげこごさざしじすずせぜそぞただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもゃやゅゆょよらりるれろゎわゐゑをんゔゕゖ';
+  const syllables = 'a a i i u u e e o o ka ga ki gi ku gu ke ge ko go sa za shi ji su zu se ze so zo ta da chi ji tsu zu te de to do na ni nu ne no ha ba pa hi bi pi fu bu pu he be pe ho bo po ma mi mu me mo ya ya yu yu yo yo ra ri ru re ro wa wa i e wo n vu ka ke'.split(' ');
+  const hiragana = value.replace(/[ァ-ヶ]/gu, letter => String.fromCharCode(letter.charCodeAt(0) - 0x60));
+  let result = '';
+  let doubleConsonant = false;
+  for (let index = 0; index < hiragana.length; index += 1) {
+    const letter = hiragana[index];
+    if (letter === 'っ') {
+      doubleConsonant = true;
+      continue;
+    }
+    if (letter === 'ー') {
+      result += result.match(/[aeiou](?=[^aeiou]*$)/u)?.[0] ?? '';
+      continue;
+    }
+    const position = kana.indexOf(letter);
+    if (position < 0) {
+      if (/[ぁ-ゖ]/u.test(letter)) return null;
+      result += letter;
+      continue;
+    }
+    let syllable = syllables[position];
+    const next = hiragana[index + 1];
+    if (syllable.endsWith('i') && next && 'ゃゅょ'.includes(next)) {
+      syllable = syllable.slice(0, -1) + (/^(?:sh|ch|j)$/u.test(syllable.slice(0, -1)) ? '' : 'y')
+        + ({ ゃ: 'a', ゅ: 'u', ょ: 'o' } as Record<string, string>)[next];
+      index += 1;
+    } else if (next && 'ぁぃぅぇぉ'.includes(next)) {
+      syllable = syllable.replace(/[aiueo]$/u, '') + syllables[kana.indexOf(next)];
+      index += 1;
+    }
+    if (doubleConsonant && /^[bcdfghjklmnpqrstvwxyz]/u.test(syllable)) result += syllable[0];
+    result += syllable;
+    doubleConsonant = false;
+  }
+  return result;
+}
+
 function normalizeRomaji(value: string): string {
   return value.toLowerCase().replace(/[^a-z]/gu, '')
     .replace(/v/gu, 'b').replace(/[gbdzl]/gu, letter => ({ g: 'k', b: 'p', d: 't', z: 's', l: 'r' })[letter]!)
@@ -43,11 +82,18 @@ function editDistance(left: string, right: string): number {
 
 function resolveRomajiNavigation(transcript: string): { path: string; label: string } | null {
   // Gate the original transcript before removing calls or commands.
-  const text = transcript.toLowerCase();
-  if (/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(text)
+  let text = transcript.toLowerCase();
+  const kanaOnly = /^[ぁ-ゖァ-ヶー\s\p{P}\p{S}]*$/u.test(text);
+  if (kanaOnly) {
+    const kanaCount = text.match(/[ぁ-ゖァ-ヶー]/gu)?.length ?? 0;
+    if (kanaCount < 1 || kanaCount > 10) return null;
+    const romaji = kanaToRomaji(text.replace(/^[\s\p{P}\p{S}]*(?:きっと|キット)\s*/u, ''));
+    if (romaji === null) return null;
+    text = romaji;
+  } else if (/[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Han}]/u.test(text)
     || !/^[a-z\s\p{P}\p{S}]*$/u.test(text)) return null;
   const words = text.match(/[a-z]+/gu) ?? [];
-  if (words.length < 1 || words.length > 3 || words.join('').length > 12) return null;
+  if (!kanaOnly && (words.length < 1 || words.length > 3 || words.join('').length > 12)) return null;
 
   let name = words.join(' ').replace(/^kitt?o\s+/u, '').replace(/\s/gu, '');
   name = name.replace(/(?:wohiraite|hiraite|wohiraku|hiraku|niidou|heidou|niitte|wohyouji)$/u, '');
