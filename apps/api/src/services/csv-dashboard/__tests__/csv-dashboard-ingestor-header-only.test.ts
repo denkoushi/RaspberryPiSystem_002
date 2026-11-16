@@ -113,6 +113,8 @@ describe('CsvDashboardIngestor APPEND header-only CSV', () => {
       expect(updateRun).toHaveBeenCalledExactlyOnceWith({ where: { id: 'run-1' }, data: { status: 'FAILED', errorMessage: 'CSV progress sync failed for 1 rows', completedAt: expect.any(Date) } });
       expect(transaction).not.toHaveBeenCalled();
       expect(cleanup).not.toHaveBeenCalled();
+      // 失敗前にコミットされた行の分も部品名の表に反映する
+      expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledOnce();
     } finally { sync.mockRestore(); cleanup.mockRestore(); }
   });
 

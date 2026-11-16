@@ -11,6 +11,8 @@ export class ProductionSchedulePartNameLookupScheduler {
 
   start(): void {
     if (this.task) return;
+    // 起動前(migration 適用後の旧 API など)の書き込みや、再起動で消えた依頼の分を取り戻す
+    void this.runTick();
     this.task = cron.schedule('35 3 * * *', () => void this.runTick(), { timezone: 'Asia/Tokyo' });
   }
 
@@ -18,8 +20,8 @@ export class ProductionSchedulePartNameLookupScheduler {
     if (this.active) return;
     this.active = (async () => {
       try {
+        // 失敗は作り直しの側でログに残る
         await this.run();
-        logger.info({}, '[ProductionSchedulePartNameLookupScheduler] Rebuild completed');
       } catch (err) {
         logger.warn({ err }, '[ProductionSchedulePartNameLookupScheduler] Rebuild failed');
       }

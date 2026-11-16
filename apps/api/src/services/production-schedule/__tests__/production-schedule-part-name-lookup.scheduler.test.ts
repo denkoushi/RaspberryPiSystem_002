@@ -18,8 +18,10 @@ describe('part name lookup scheduler', () => {
     scheduler.start(); scheduler.start();
     expect(cron.schedule).toHaveBeenCalledOnce();
     expect(cron.schedule).toHaveBeenCalledWith('35 3 * * *', expect.any(Function), { timezone: 'Asia/Tokyo' });
-    await scheduler.runTick(); expect(run).toHaveBeenCalledOnce();
+    // 起動時に1回だけ作り直す
+    expect(run).toHaveBeenCalledOnce();
     await scheduler.stop(); expect(stop).toHaveBeenCalledOnce();
+    await scheduler.runTick(); expect(run).toHaveBeenCalledTimes(2);
   });
   it('prevents overlap and waits for active cleanup during stop', async () => {
     let finish!: () => void;
