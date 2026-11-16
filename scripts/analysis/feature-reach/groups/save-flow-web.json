@@ -1,0 +1,14 @@
+[{"name":"製番ボード 保存の流れ(画面) 待ち行列だけ","entries":[
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue.ts"]},
+ {"name":"製番ボード 保存の流れ(画面) 一覧","entries":[
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardWriteQueue.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardCompletion.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardArrival.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardDueActions.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/usePlanningBoardTestBars.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/planningBoardPieceOps.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/planningBoardWriteGate.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/planningBoardConnectivity.ts",
+ "apps/web/src/features/kiosk/grindingPlanningBoard/offline/planningBoardOfflineContext.tsx",
+ "apps/web/src/api/hooks/production-schedule/grinding-planning-board-mutations.ts"]},
+ {"name":"製番ボード 画面全体","entries":["apps/web/src/pages/kiosk/ProductionScheduleGrindingPlanningBoardPage.tsx"]}]
