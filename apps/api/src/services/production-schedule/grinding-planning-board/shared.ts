@@ -7,7 +7,8 @@ import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS } from '../row-resolver/constants.js';
-import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buildGrindingPlanningBoardRowItemId, type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow, type GrindingPlanningBoardProjectionRow, type GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection.js';
+import { buildGrindingPlanningBoardLogicalKey as buildProjectionLogicalKey, buildGrindingPlanningBoardRowItemId } from '../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionRanks, GrindingPlanningBoardProgressRow, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection-input.types.js';
 
 
 // SQL BTRIM characters matching ECMAScript String.trim(), used by board keys/definitions.

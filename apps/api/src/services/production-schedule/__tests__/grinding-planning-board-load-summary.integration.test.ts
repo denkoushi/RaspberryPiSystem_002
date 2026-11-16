@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { GrindingPlanningBoardProjectionOverride, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionOverride, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection-input.types.js';
 import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
 import { readSessakuPieceSets } from '../sessaku-pieces/piece-key.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';

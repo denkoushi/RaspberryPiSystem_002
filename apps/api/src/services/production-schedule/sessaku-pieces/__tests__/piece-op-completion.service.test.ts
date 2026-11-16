@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import type { SessakuPieceSet } from '../piece-key.js';
-import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-planning-board-projection-input.types.js';
 import type { PieceAuditContext } from '../piece-audit.js';
 
 const mocks = vi.hoisted(() => ({
