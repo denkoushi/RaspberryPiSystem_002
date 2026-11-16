@@ -63,6 +63,8 @@ export async function parseDScheduleMinutesXlsx(input: {
     warnings.push({ code: 'FILENAME_DATE_MISMATCH', seiban: null, cell: null, rawText: null });
   }
   const seibanText = (cell: ExcelJS.Cell) => normalize(cellText(cell)).toUpperCase();
+  // The first A cell is sometimes left blank or overwritten with ★ instead of 1.
+  const isMissingFirstNumber = (cell: ExcelJS.Cell) => ['', '★'].includes(normalize(cellText(cell)).trim());
   const seibanPattern = /^([A-Z0-9]{8})(?=$|[\s(/])(.*)$/s;
   const aliasPattern = /^\s*\(([A-Z0-9]{8})\)$/;
   const shapeValid = (sheet: ExcelJS.Worksheet, row: number, col: number) => {
@@ -72,7 +74,7 @@ export async function parseDScheduleMinutesXlsx(input: {
       const seiban = sheet.getCell(row + offset, col);
       return Number(number.master.row) >= row && Number(number.master.row) <= row + 3
         && Number(seiban.master.row) >= row && Number(seiban.master.row) <= row + 3
-        && (normalize(cellText(number)) === String(offset + 1) || (offset === 0 && normalize(cellText(number)) === ''))
+        && (normalize(cellText(number)) === String(offset + 1) || (offset === 0 && isMissingFirstNumber(number)))
         && seibanText(seiban) === key;
     });
   };
@@ -180,7 +182,7 @@ export async function parseDScheduleMinutesXlsx(input: {
   const coveredRows = new Set<number>();
   for (let row = 1; row <= sheet.rowCount; row++) {
     const seibanCell = sheet.getCell(row, seibanColumn);
-    const missingFirst = normalize(cellText(sheet.getCell(row, 1))) === ''
+    const missingFirst = isMissingFirstNumber(sheet.getCell(row, 1))
       && !coveredRows.has(row) && shapeValid(sheet, row, seibanColumn);
     if (normalize(cellText(sheet.getCell(row, 1))) !== '1' && !missingFirst) {
       const match = seibanText(seibanCell).match(seibanPattern);
