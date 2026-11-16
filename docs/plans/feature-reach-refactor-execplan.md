@@ -191,7 +191,8 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 - [x] 段階2: `FkojunstMailNormalizedRow` 型を移して9ファイルの輪をほどく。型を `fkojunst-mail-row.types.ts` へ移し、読み手10ファイルを付け替えた PR #2850(2026-11-16 マージ、700b8821)。0ff5331b との比較で9ファイルの輪が消え、その中にあった表示用の変換の2ファイルの輪が単独で出た。輪の数は前後とも12。
 - [x] (2026-11-16) 段階2: `stateOrder` を外へ出すかを測り、見送ると決めた。700b8821 の写しで、`stateOrder`・`uniqueFseibans`・`normalizeUniqueFseibans` を外の処理を import しないファイルへ移し、`stateOrder` だけを読む2ファイル(`piece-quantity.ts`、`piece-operation-definitions.ts`)を付け替えて、`RUNTIME=1` で比べた。`piece-quantity.ts` 単独は 70ファイル 74k → 50ファイル 40k、`piece-operation-definitions.ts` は 114k → 104k に減るが、保存の流れのまとまりは 198k(自動分割を除くと約152k)のまま変わらない。`write.ts` などほかの7つの読み手は `state.ts` の別の関数も読むので、付け替えても減らない。入口168件のうち減ったのは、保存の流れの外の13件(`complete.ts`、`due-date.ts`、`note.ts`、`order.ts`、`processing.ts`、納期管理の5件、`leaderboard-phased-read.ts`、`production-schedule-settings.ts` など)で、各 9〜11k(約7%)にとどまり、ボードの窓口と切削の片の窓口は変わらない。この段階の目的である保存の流れが小さくならないので、9つの読み手を付け替える PR は作らない。
 - [x] 段階2: API hooks のファイルを分ける。`grinding-planning-board.ts` を読み出し(9 export)と `grinding-planning-board-mutations.ts`(保存 14 export)に分け、2ファイルは互いを import しない PR #2852(2026-11-16 マージ、017fcc21)。barrel `hooks/production-schedule.ts` は両方を再公開する。
-- [ ] 段階2: offline の Provider を分け、保存の流れのファイルの一覧を決める。
+- [x] 段階2: offline の Provider を分ける。Context と状態・書き込みの門を `offline/planningBoardOfflineContext.tsx` へ移し、`PlanningBoardOfflineProvider.tsx` はそれを包んで接続状態のバナーを出すだけにした PR #2853(2026-11-16 マージ、24004b6b)。保存の hook はバナーを依存に持たなくなった。
+- [ ] 段階2: 保存の流れのファイルの一覧を決める。
 - [ ] 段階2: 保存の流れのまとまりを測り直して記録する。
 - [ ] 段階3: work-instruction-service.factory.ts への依存を細くする。
 - [ ] 段階3: leaderboard-decoration.ts への依存を細くする。
