@@ -21,6 +21,7 @@ import * as writeQueueHook from '../../features/kiosk/grindingPlanningBoard/useP
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
+import type { ComponentProps } from 'react';
 
 function selectToolbarOption(label: '工程' | '区分', option: string) {
   fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
@@ -62,6 +63,24 @@ const mocks = vi.hoisted(() => ({
   checks: vi.fn(),
   order: vi.fn()
 }));
+
+const ganttRowRenders = vi.hoisted(() => ({ forward: [] as string[], backward: [] as string[] }));
+vi.mock('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow')>();
+  const { memo } = await import('react');
+  return { ...actual, PlanningBoardForwardGanttRow: memo(function CountedForwardRow(props: ComponentProps<typeof actual.PlanningBoardForwardGanttRow>) {
+    ganttRowRenders.forward.push(props.row.key);
+    return <actual.PlanningBoardForwardGanttRow {...props} />;
+  }) };
+});
+vi.mock('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow', async importOriginal => {
+  const actual = await importOriginal<typeof import('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow')>();
+  const { memo } = await import('react');
+  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: ComponentProps<typeof actual.PlanningBoardGanttRow>) {
+    ganttRowRenders.backward.push(props.row.key);
+    return <actual.PlanningBoardGanttRow {...props} />;
+  }) };
+});
 
 // Keep the counter on the mounted component, including its own context/store renders.
 vi.mock('../../features/kiosk/grindingPlanningBoard/PlanningBoardPiecePopover', async (importOriginal) => {
@@ -1510,6 +1529,48 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
+
+  it.each([{ mode: 'forward', pair: false }, { mode: 'forward', pair: true }, { mode: 'backward', pair: false }] as const)(
+    'fixes page drawer state render counts with the Gantt mounted (mode=$mode, pair=$pair)', async ({ mode, pair }) => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-05T08:00:00+09:00'));
+      vi.spyOn(machineSignalApi, 'getMachineSignalResourceUptime').mockResolvedValue({ endDate: null, days: 30, resources: [] });
+      const data = fixture();
+      data.resources = ['021', '022'];
+      data.resourceCategories = { '021': 'grinding', '022': 'grinding' };
+      data.items.forEach((item, index) => { item.originalResourceCd = index % 2 ? '022' : '021'; item.originalDueDate = '2026-11-06'; });
+      mocks.snapshot.mockReturnValue({ data, isLoading: false, isError: false, refetch: mocks.refetch });
+      localStorage.setItem('kiosk-planning-board-gantt-mode', JSON.stringify({ schemaVersion: 1, mode }));
+      // ページの1台/2台表示は常に前向き。後ろ向きは通常表示で測る。
+      if (mode === 'forward') localStorage.setItem('kiosk.planning-board.single-resource:site-1:grinding', JSON.stringify({ schemaVersion: 1, resourceCd: pair ? '021+022' : '021' }));
+      ganttRowRenders.forward.length = 0;
+      ganttRowRenders.backward.length = 0;
+      render(<ProductionScheduleGrindingPlanningBoardPage />);
+      await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+      const boards = screen.getAllByTestId('planning-board-gantt');
+      expect(boards).toHaveLength(pair ? 2 : 1);
+      expect(ganttRowRenders[mode].length).toBeGreaterThan(0);
+      ganttRowRenders.forward.length = 0;
+      ganttRowRenders.backward.length = 0;
+      const expectedRenders = { forward: [], backward: mode === 'backward' ? ['a', 'c', 'b', 'd'] : [] };
+      mocks.snapshot.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
+      expect(screen.getByRole('button', { name: '製番登録ペインを閉じる' })).toBeInTheDocument();
+      expect(mocks.snapshot).toHaveBeenCalled(); // ページ自身のstateが変わったことも確認する。
+      expect(ganttRowRenders).toEqual(expectedRenders);
+      ganttRowRenders.forward.length = 0;
+      ganttRowRenders.backward.length = 0;
+      mocks.snapshot.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを閉じる' }));
+      await act(async () => { await new Promise<void>(resolve => requestAnimationFrame(() => resolve())); });
+      expect(screen.queryByRole('button', { name: '製番登録ペインを閉じる' })).not.toBeInTheDocument();
+      expect(mocks.snapshot).toHaveBeenCalled();
+      const currentBoards = screen.getAllByTestId('planning-board-gantt');
+      boards.forEach((board, index) => expect(currentBoards[index]).toBe(board));
+      // 今の回数を固定：開く/閉じるそれぞれで前向き0回、後ろ向きは4行各1回。
+      expect(ganttRowRenders).toEqual(expectedRenders);
+    }
+  );
 
   it.each(['grinding', 'cutting'] as const)('dims unarrived %s bars, filters only list rows and retains special due/completed rows and ranks', (category) => {
     const data = fixture();
