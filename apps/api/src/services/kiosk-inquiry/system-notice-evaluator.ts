@@ -3,6 +3,7 @@ import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { isMonitoredClient, loadHeartbeatAlertConfig } from '../clients/client-heartbeat-alert-policy.js';
 
+import { evaluateDgxBackupNotice } from './dgx-backup-notice.js';
 import { terminalNoticeLabel } from './system-notice-sources.js';
 import { deliverSystemNotice, resolveInactiveFileNotices, resolveQuietKioskUiErrorNotices, resolveUnmonitoredTerminalNotices } from './system-notice.service.js';
 
@@ -13,6 +14,11 @@ export const TERMINAL_DISK_PERCENT = 90;
 export const TERMINAL_TEMPERATURE_C = 80;
 
 export async function evaluateSystemNotices(now = new Date()): Promise<void> {
+  try {
+    await evaluateDgxBackupNotice(now);
+  } catch (err) {
+    logger.warn({ err }, '[SystemNotice] DGX backup evaluation failed');
+  }
   try {
     await resolveQuietKioskUiErrorNotices(now);
   } catch (err) {

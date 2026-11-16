@@ -4,6 +4,11 @@ import { dgxResourceEnvShape } from './dgx-resource.js';
 
 describe('business switch flags', () => {
   it.each([[undefined, false], ['false', false], ['true', true]] as const)(
+    'DGX_BACKUP_NOTICE_ENABLED parses %s as %s', (value, expected) => {
+      expect(dgxResourceEnvShape.DGX_BACKUP_NOTICE_ENABLED.parse(value)).toBe(expected);
+    });
+
+  it.each([[undefined, false], ['false', false], ['true', true]] as const)(
     'BUSINESS_DEEPSEEK_SWITCH_ENABLED parses %s as %s', (value, expected) => {
       expect(dgxResourceEnvShape.BUSINESS_DEEPSEEK_SWITCH_ENABLED.parse(value)).toBe(expected);
     });

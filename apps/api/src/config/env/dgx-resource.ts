@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 export const dgxResourceEnvShape = {
+  DGX_BACKUP_NOTICE_ENABLED: z
+    .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false']).default('false'))
+    .transform((v) => v === 'true'),
   BUSINESS_QWEN38_SWITCH_ENABLED: z
     .preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), z.enum(['true', 'false', '1', '0']).default('false'))
     .transform((v) => v === 'true' || v === '1'),
