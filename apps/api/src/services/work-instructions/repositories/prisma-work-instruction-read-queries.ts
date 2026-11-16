@@ -179,7 +179,7 @@ function publishedOverlayAssets(
     } satisfies WorkInstructionOverlayAssetView]));
 }
 
-function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstructionRowView {
+export function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstructionRowView {
   const version = publication.publishedVersion;
   const overlaysByStep = publishedOverlaysByStep(publication);
   const overlayAssets = publishedOverlayAssets(publication);
@@ -208,7 +208,7 @@ function toPublishedRowView(publication: PublishedPublicationRecord): WorkInstru
   };
 }
 
-const publishedPublicationInclude = {
+export const publishedPublicationInclude = {
   row: { select: { id: true, sourceSystem: true, sourceList: true, sourceItemId: true, updatedAt: true } },
   publishedVersion: { include: workInstructionSourceVersionInclude },
   publishedRevision: { include: workInstructionEditRevisionInclude }
@@ -234,7 +234,7 @@ export function toWorkInstructionRowView(row: WorkInstructionRowRecord): WorkIns
   };
 }
 
-function compareSourceOrder(left: WorkInstructionSource, right: WorkInstructionSource): number {
+export function compareSourceOrder(left: WorkInstructionSource, right: WorkInstructionSource): number {
   return left.itemId - right.itemId
     || binaryCompare(left.list, right.list)
     || binaryCompare(left.system, right.system);

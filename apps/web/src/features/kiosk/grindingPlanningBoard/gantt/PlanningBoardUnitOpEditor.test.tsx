@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../../../api/client';
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from '../offline/planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from '../offline/PlanningBoardOfflineProvider';
 import { PlanningBoardPiecePopover, PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../PlanningBoardPiecePopover';
 
 import { planningBoardChainPairs } from './PlanningBoardChainLinks';
@@ -15,7 +16,7 @@ import { PlanningBoardUnitOpEditor, PlanningBoardUnitOpContext, PlanningBoardUni
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 
 const mutation = vi.hoisted(() => vi.fn().mockResolvedValue({}));
-vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-mutations', () => ({
   useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: mutation, isPending: false })
 }));
 const item = { itemId: 'piece:a', kind: 'piece', pieceId: 'a', piecePosition: 1, parentItemId: 'row:p',

@@ -2,7 +2,8 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, usePlanningBoardOffline } from './PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from './PlanningBoardOfflineProvider';
 import { useOfflineBoard } from './planningBoardOfflineQueries';
 
 const mocks = vi.hoisted(() => ({ get: vi.fn() }));

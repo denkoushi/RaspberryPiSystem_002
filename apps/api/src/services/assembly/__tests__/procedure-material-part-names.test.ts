@@ -5,12 +5,13 @@ import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../../wor
 
 describe('procedure material schedule part names', () => {
   it('normalizes and deduplicates parts in one lookup using the existing alias name selection', async () => {
-    const db = { $queryRaw: vi.fn().mockResolvedValue([{ partNumber: 'MH-1', partName: ' ホルダー ' }, { partNumber: 'EMPTY', partName: '' }]) };
+    const db = { $queryRaw: vi.fn().mockResolvedValueOnce([]).mockResolvedValueOnce([{ partNumber: 'MH-1', partName: ' ホルダー ' }, { partNumber: 'EMPTY', partName: '' }]) };
     const names = await readPartNamesByPartNumbers(db as never, [' ＭＨ－１ ', 'mh-1', 'EMPTY', 'MISSING', '']);
     expect([...names]).toEqual([['MH-1', 'ホルダー'], ['EMPTY', null]]);
     expect(names.get('MISSING') ?? null).toBeNull();
-    expect(db.$queryRaw).toHaveBeenCalledOnce();
-    const query = db.$queryRaw.mock.calls[0][0];
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.$queryRaw.mock.calls[0][0].sql).toContain('"ProductionSchedulePartNameLookupState"');
+    const query = db.$queryRaw.mock.calls[1][0];
     expect(query.values).toEqual([PRODUCTION_SCHEDULE_DASHBOARD_ID, 'MH-1', 'EMPTY', 'MISSING']);
     expect(query.sql).toContain(`MIN(NULLIF(TRIM("rowData"->>'FHINMEI'), ''))`);
     expect(query.sql).toContain(`UPPER(TRIM(NORMALIZE("rowData"->>'FHINCD', NFKC))) IN`);

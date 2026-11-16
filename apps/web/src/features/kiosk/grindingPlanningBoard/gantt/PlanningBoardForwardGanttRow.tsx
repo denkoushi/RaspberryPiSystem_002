@@ -5,7 +5,7 @@ import { PlacementLocationBadge } from '../../../../components/kiosk/PlacementLo
 import { KioskResourceProcessChips } from '../../../../components/kiosk/resourceProgress/KioskResourceProcessChips';
 import { IconActionTooltip } from '../../../../components/ui/IconActionTooltip';
 import { progressOverviewProcessChipClassName } from '../../productionSchedule/progressOverviewPresentation';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 
 import { CHIP_LINE_HEIGHT, CHIP_STRIP_FIT, chipCodes, doneChipLabel, layoutChipStrips, moreChipLabel, planningBoardBadgeWidth } from './planningBoardChipStrips';

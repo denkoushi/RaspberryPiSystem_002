@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { dedupeFkojunstMailRowsByLatest, type FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
+import { dedupeFkojunstMailRowsByLatest } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 import {
   buildProcessChangeResidualEvidenceCreateInputs,
   buildProcessChangeResidualStrongEvidenceFromDedupedRows,

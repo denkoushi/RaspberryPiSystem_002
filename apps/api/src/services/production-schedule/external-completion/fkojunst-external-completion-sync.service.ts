@@ -6,8 +6,8 @@ import { prisma } from '../../../lib/prisma.js';
 import {
   dedupeFkojunstMailRowsByLatest,
   loadFkojunstMailSourceRows,
-  type FkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 import { replaceAllWinnerExternalCompletionStatesFromMailSync } from './fkojunst-external-completion-sync.repository.js';
 import { ProductionScheduleOrderAssignmentReconciliationService } from '../order-assignment/order-assignment-reconciliation.service.js';
 

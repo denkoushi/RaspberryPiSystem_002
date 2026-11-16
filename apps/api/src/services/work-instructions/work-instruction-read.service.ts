@@ -8,6 +8,8 @@ import type {
   WorkInstructionRowView,
 } from './domain/types.js';
 import type {
+  WorkInstructionGroupLookup,
+  WorkInstructionPublishedGroupsByKeys,
   WorkInstructionGroupsQuery,
   WorkInstructionImportMessagesQuery,
   WorkInstructionPartCandidatesQuery,
@@ -38,6 +40,13 @@ export class WorkInstructionReadService {
     return this.repository.readPublishedGroup
       ? this.repository.readPublishedGroup(input)
       : this.repository.readGroup(input);
+  }
+
+  async readPublishedGroupsByKeys(keys: ReadonlyArray<WorkInstructionGroupLookup>): Promise<WorkInstructionPublishedGroupsByKeys> {
+    if (this.repository.readPublishedGroupsByKeys) return this.repository.readPublishedGroupsByKeys(keys);
+    return new Map(await Promise.all(keys.map(async (key) => [
+      JSON.stringify([key.partNumber, key.shootingTarget]), await this.readPublishedGroup(key)
+    ] as const)));
   }
 
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>> {

@@ -10,8 +10,8 @@ import {
   parseFkojunstStatusMailFupdteDt,
   runFkojunstMailReplacementTransaction,
   toFkojunstMailNormalizedRow,
-  type FkojunstMailNormalizedRow,
 } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 
 describe('fkojunst-status-mail-sync.pipeline', () => {
   it('orders raw mail rows by ingest generation before CSV row ordinal', () => {

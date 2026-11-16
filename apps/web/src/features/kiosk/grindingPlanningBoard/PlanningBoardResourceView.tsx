@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX } from '../../part-measurement/inspection-drawing/inspectionDrawingCanvasPointer';
 import { formatResourceCdWithJapaneseNames } from '../leaderOrderBoard/formatResourceCdWithJapaneseNames';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { pageZoom } from './pageZoom';
 import { PlanningBoardItemTable } from './PlanningBoardItemTable';
 import { resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems, sortPlanningBoardResources } from './sortGrindingPlanningBoardItems';

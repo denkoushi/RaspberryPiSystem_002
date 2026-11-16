@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useUpdateKioskGrindingPlanningBoardArrival, useUpdateKioskGrindingPlanningBoardFirstProcessArrival } from '../../../api/hooks';
 import { usePersistedArrivalFilter } from '../usePersistedArrivalFilter';
 
-import { useFrozenValue, usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { useFrozenValue, usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardFirstProcessState, GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 

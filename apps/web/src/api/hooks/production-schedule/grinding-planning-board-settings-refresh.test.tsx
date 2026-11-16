@@ -4,7 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
-import { useConfigureKioskSessakuPieceOps, useKioskGrindingPlanningBoard, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardResourceCapacity, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
+import { useKioskGrindingPlanningBoard, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board';
+import { useConfigureKioskSessakuPieceOps, useUpdateKioskGrindingPlanningBoardResourceCapacity } from './grinding-planning-board-mutations';
 import { PLANNING_BOARD_SETTINGS_REFETCH_MS, useKioskGrindingPlanningBoardResourceMinutes } from './grinding-planning-board-resource-minutes';
 
 import type { GrindingPlanningBoardResourceCapacityRequest, GrindingPlanningBoardResourceCapacityResponse as Capacity } from '@raspi-system/shared-types';

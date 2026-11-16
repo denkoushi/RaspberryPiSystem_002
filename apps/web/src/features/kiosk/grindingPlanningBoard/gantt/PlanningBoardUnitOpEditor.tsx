@@ -1,9 +1,9 @@
 import { isAxiosError } from 'axios';
 import { createContext, useContext, useState } from 'react';
 
-import { useConfigureKioskSessakuPieceOps } from '../../../../api/hooks/production-schedule/grinding-planning-board';
+import { useConfigureKioskSessakuPieceOps } from '../../../../api/hooks/production-schedule/grinding-planning-board-mutations';
 import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinutesContext';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 
 import { PlanningBoardMinutesStepper } from './PlanningBoardResourceMinutesSheet';
 

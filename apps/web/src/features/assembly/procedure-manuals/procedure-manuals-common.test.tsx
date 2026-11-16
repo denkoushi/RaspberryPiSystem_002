@@ -17,6 +17,7 @@ vi.mock('../../../api/client', () => ({
   listProcedureManualCommon: api.catalog, getProcedureManualOverview: api.overview,
   createProcedureManualCommon: api.create, saveProcedureManualCommonChoice: api.save, deleteProcedureManualCommonChoice: api.delete,
   listProcedureManualProcesses: async () => processes,
+  listProcedureWorkInstructionCandidates: async () => ({ items: [] }),
   listProcedureManualModels: async () => [], listProcedureManualParts: async () => [],
   listProcedureManualPartCandidates: async () => [], listAssemblyMachineNameCandidates: async () => ({ candidates: [] }),
   countProcedureMaterials: async () => 0, countProcedureVideos: async () => 0,

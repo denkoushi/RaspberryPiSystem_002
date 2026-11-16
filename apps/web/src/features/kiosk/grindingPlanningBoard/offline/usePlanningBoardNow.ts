@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { useFrozenValue, usePlanningBoardOffline } from './PlanningBoardOfflineProvider';
+import { useFrozenValue, usePlanningBoardOffline } from './planningBoardOfflineContext';
 
 /** Sample the server clock on the 30-second tick and connectivity changes, not on every UI render. */
 export function usePlanningBoardNow(): number {

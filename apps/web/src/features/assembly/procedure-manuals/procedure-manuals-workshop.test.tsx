@@ -19,6 +19,7 @@ vi.mock('../../../api/client', () => ({
   getAssemblyProcedureDocument: mocks.document,
   getProcedureManualAssignments: mocks.detail, replaceProcedureManualAssignments: mocks.replace,
   deleteAssemblyProcedureDocument: mocks.delete,
+  listProcedureWorkInstructionCandidates: async () => ({ items: [] }),
   countProcedureMaterials: mocks.materials, countProcedureVideos: mocks.videos
 }));
 vi.mock('../AssemblyProcedureSequenceViewer', () => ({ AssemblyProcedureSequenceViewer: ({ sequence, onClose }: { sequence: AssemblyProcedureSequenceDto; onClose?: () => void }) => <div data-testid="pdf-sequence-viewer"><button onClick={onClose}>閉じる</button>{sequence.documents.map(document => <span key={document.orderItemId}>{document.title}</span>)}{(sequence.steps ?? []).map(step => <span key={step.id}>{step.title}</span>)}</div> }));

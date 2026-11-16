@@ -4,9 +4,9 @@ import { prisma as defaultPrisma } from '../../../lib/prisma.js';
 import type { prisma as prismaSingleton } from '../../../lib/prisma.js';
 import {
   collectFkojunstMailNormalizedRowsFromSourceRows,
-  dedupeFkojunstMailRowsByLatest,
-  type FkojunstMailNormalizedRow
+  dedupeFkojunstMailRowsByLatest
 } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 import {
   fetchFkojunstStatusMailSourceRowsWithGenerationSignals,
 } from '../fkojunst-status-mail-generation-signals.js';

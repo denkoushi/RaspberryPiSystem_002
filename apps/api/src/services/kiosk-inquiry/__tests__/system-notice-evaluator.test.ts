@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ statuses: vi.fn(), device: vi.fn(), devices: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn(), resolveQuiet: vi.fn(), warn: vi.fn() }));
+const mocks = vi.hoisted(() => ({ backup: vi.fn(), statuses: vi.fn(), device: vi.fn(), devices: vi.fn(), deliver: vi.fn(), expire: vi.fn(), resolveUnmonitored: vi.fn(), resolveQuiet: vi.fn(), warn: vi.fn() }));
+vi.mock('../dgx-backup-notice.js', () => ({ evaluateDgxBackupNotice: mocks.backup }));
 vi.mock('../../../lib/logger.js', () => ({ logger: { warn: mocks.warn } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   clientStatus: { findMany: mocks.statuses }, clientDevice: { findFirst: mocks.device, findMany: mocks.devices }
@@ -17,6 +18,16 @@ beforeEach(() => {
   mocks.devices.mockResolvedValue([]);
 });
 describe('system notice evaluator', () => {
+  it('logs DGX backup failures and continues other evaluations', async () => {
+    const err = new Error('backup unavailable');
+    mocks.backup.mockRejectedValueOnce(err);
+    await evaluateSystemNotices(now);
+    expect(mocks.backup).toHaveBeenCalledWith(now);
+    expect(mocks.warn).toHaveBeenCalledWith({ err }, '[SystemNotice] DGX backup evaluation failed');
+    expect(mocks.resolveQuiet).toHaveBeenCalledWith(now);
+    expect(mocks.deliver).toHaveBeenCalled();
+    expect(mocks.expire).toHaveBeenCalledWith(now);
+  });
   it('resolves quiet kiosk errors on each evaluation', async () => {
     await evaluateSystemNotices(now);
     expect(mocks.resolveQuiet).toHaveBeenCalledWith(now);

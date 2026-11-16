@@ -7,7 +7,7 @@ import { PieceOperationBlockedError, PlanningBoardPiecePopover, PlanningBoardPie
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 const clearOps = vi.hoisted(() => vi.fn().mockResolvedValue({}));
-vi.mock('../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+vi.mock('../../../api/hooks/production-schedule/grinding-planning-board-mutations', () => ({
   useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: clearOps, isPending: false })
 }));
 

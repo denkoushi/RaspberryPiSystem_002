@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import { clearManualLists } from './procedure-manual-list-cache';
+import { useShelfResources } from './procedure-material-shelf-search';
 import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 import { ProcedureMaterialShelfDialog } from './ProcedureMaterialShelfDialog';
 
@@ -50,6 +52,29 @@ describe('procedure-manuals material shelf', () => {
     await waitFor(() => expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', q: value.trim(), limit: 500 }));
     await waitFor(() => expect(screen.getByRole('button', { name: '意味で探す' })).toBeEnabled());
   };
+  it('prefetches processing candidates before opening and retains photos until the owning screen unmounts', async () => {
+    function Owner() {
+      const resources = useShelfResources();
+      const [open, setOpen] = useState(false);
+      return <><button onClick={() => setOpen(value => !value)}>toggle shelf</button>{open ? <ProcedureMaterialShelfDialog resources={resources} onClose={() => setOpen(false)} /> : null}</>;
+    }
+    const view = render(<Owner />);
+    await waitFor(() => expect(mocks.workInstructions).toHaveBeenCalledOnce());
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('toggle shelf'));
+    await waitFor(() => expect(mocks.thumbnail).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByAltText('手順.png')).toHaveAttribute('src', 'blob:photo'));
+    fireEvent.click(screen.getByText('toggle shelf'));
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('toggle shelf'));
+    await screen.findByAltText('手順.png');
+    expect(mocks.thumbnail).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('tab', { name: /^加工の写真/ }));
+    await waitFor(() => expect(screen.queryByText('読込中…')).not.toBeInTheDocument());
+    expect(mocks.workInstructions).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:photo');
+  });
   it('places app photos from their dedicated mail bundle and moves them to placed results', async () => {
     const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', location: '工場',
       nameId: '007125', employeeName: '津田', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
@@ -636,7 +661,7 @@ describe('procedure-manuals material shelf', () => {
     expect(mocks.ingest).toHaveBeenCalledOnce(); await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(7));
     expect(screen.queryByRole('button', { name: '現在ページに配置' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '閉じる' })); expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:photo');
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
   });
   it('opens only the first bundle, restores expansion after search, and resets it when switching tabs', async () => {
     mocks.list.mockResolvedValue([
@@ -803,7 +828,7 @@ describe('procedure-manuals material shelf', () => {
     expect(await screen.findByText('見つけた 2 通・取込 0件・チェックシート 0件・保存済み 0件・スキップ 0通・再試行 0通・再試行待ち 2通・除外添付 0件')).toBeInTheDocument();
     expect(screen.queryByText('受信トレイに未読の対象メールがありません')).not.toBeInTheDocument();
   });
-  it('fetches only visible photos once and disconnects observers/revokes URLs on close', async () => {
+  it('fetches only visible photos once, disconnects on shelf close and revokes URLs on screen departure', async () => {
     const observers: Array<{ notify: (visible: boolean) => void; observe: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn> }> = [];
     vi.stubGlobal('IntersectionObserver', class {
       observe = vi.fn();
@@ -813,7 +838,7 @@ describe('procedure-manuals material shelf', () => {
       }
     });
     mocks.list.mockResolvedValue([photo, { ...photo, id: 'offscreen', originalFileName: '範囲外.png' }]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); const view = render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(observers).toHaveLength(2));
     expect(observers[0]!.observe).toHaveBeenCalledOnce();
     expect(mocks.thumbnail).not.toHaveBeenCalled();
@@ -824,15 +849,18 @@ describe('procedure-manuals material shelf', () => {
     expect(mocks.thumbnail).toHaveBeenCalledExactlyOnceWith('photo');
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
     expect(observers.every((observer) => observer.disconnect.mock.calls.length > 0)).toBe(true);
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    view.unmount();
     expect(URL.revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:photo');
   });
-  it('does not create an object URL if a photo response arrives after closing', async () => {
+  it('does not create an object URL if a photo response arrives after screen departure', async () => {
     let resolve: (blob: Blob) => void = () => undefined;
     mocks.thumbnail.mockReturnValue(new Promise<Blob>((done) => { resolve = done; }));
     mocks.list.mockResolvedValue([photo]);
-    localStorage.setItem('procedure-manuals-list-open', 'true'); render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
+    localStorage.setItem('procedure-manuals-list-open', 'true'); const view = render(<MemoryRouter><ProcedureManualWorkshop /></MemoryRouter>); fireEvent.click(screen.getByRole('button', { name: /^素材/ }));
     await waitFor(() => expect(mocks.thumbnail).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole('button', { name: '閉じる' }));
+    view.unmount();
     await act(async () => { resolve(new Blob(['photo'])); });
     expect(URL.createObjectURL).not.toHaveBeenCalled();
   });

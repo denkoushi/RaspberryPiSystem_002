@@ -1,8 +1,8 @@
 {
   "artifacts": {
-    "manual.html": "9689ac487223bf1b4bf8118f638cd22434f6175f98df58b1f191ad5bcb03168a",
+    "manual.html": "1d2616c342b25238c3326a249fb4a12e2c65a579fe7c949aa1e48fd9d3234a40",
     "screens/assembly-document-editor-auth.png": "a09e45d9c349adb50fab414983651d694687b31e9950af9d8b28f236fc243565",
-    "screens/assembly-document-editor-conflict.png": "ddb2d052191860cb2fee9f7ffce37d902cfefa43a018e4fe8164d1ed0870f7b5",
+    "screens/assembly-document-editor-conflict.png": "00a4808d7d93affd626ef406abaa142e7a4f2305ea29d85173ff16488202c4ed",
     "screens/assembly-document-editor-image-properties.png": "627b79f1d27f43bac83c754d30654248c0644589e44a7e6efbc44357e822a72c",
     "screens/assembly-document-editor-publish.png": "c4b1435fc6566720fdf493e215c46bc95db6f26fd00beece19a486e8b79c8563",
     "screens/assembly-document-editor-range.png": "113d64bd167862c3fabfc7d3fee82e8d25ef1d191971a6a17af0f3a59d1cf759",
@@ -20,7 +20,7 @@
     "screens/assembly-template-procedure.png": "a95b658bbc185665a64bb96a86ee2a889c97bf0643ee3ea56ff1f3857f5df8ca",
     "screens/assembly-template-save.png": "2bbd66beebfebac3cce4db8ee19456a63f7454eb3d571cccb3fafe8e5c0758b5",
     "sheets/assembly-document-editor-auth.png": "f226e19d7ed92cea1cd6929c75f3a8316485c0752e59fbedbef5e9d4376585e9",
-    "sheets/assembly-document-editor-conflict.png": "cf3258415576e1c6ab7f6f871b4bcc54eea0cc62959af06a82d6bce770b73cb9",
+    "sheets/assembly-document-editor-conflict.png": "1324aef848b9afd81b31168f22d56520153c8f35ecf53dfc2071677f99a3b08c",
     "sheets/assembly-document-editor-image-properties.png": "a15376656f6616c3da141b4b44d5073937bff3b243509e6cde47bbd38cb4ea00",
     "sheets/assembly-document-editor-publish.png": "878d1709a13ddbf27bedf9410b57eca860c8e435ea1f7d5497b5616bbdb45ae1",
     "sheets/assembly-document-editor-range.png": "818fbfd4c123fe0cba2cbbd9b636d70380b6ad57f318b41a231b7029cd43a65e",
@@ -125,7 +125,7 @@
           "ariaLabel": "公開する",
           "role": null,
           "tagName": "button",
-          "text": "公開する"
+          "text": ""
         },
         "target": {
           "x": 0.982796486090776,
@@ -155,7 +155,7 @@
           "ariaLabel": "範囲を選ぶ",
           "role": null,
           "tagName": "button",
-          "text": "範囲を選ぶ"
+          "text": ""
         },
         "target": {
           "x": 0.982796486090776,
@@ -229,7 +229,7 @@
           "ariaLabel": "未保存の変更を保存する",
           "role": null,
           "tagName": "button",
-          "text": "未保存の変更を保存する"
+          "text": ""
         },
         "target": {
           "x": 0.982796486090776,
@@ -499,7 +499,7 @@
       }
     ]
   },
-  "htmlSha256": "9689ac487223bf1b4bf8118f638cd22434f6175f98df58b1f191ad5bcb03168a",
+  "htmlSha256": "1d2616c342b25238c3326a249fb4a12e2c65a579fe7c949aa1e48fd9d3234a40",
   "schemaVersion": 1,
-  "sourceSha256": "58e3ff45c5d89e34e8073020e124dbfbed38aaafea547b24ce54d4ebf6f51d7e"
+  "sourceSha256": "9ecd1ba39f56e24b8b5ecd85bd339bc6b188f014647c55baadf652bf69a85487"
 }

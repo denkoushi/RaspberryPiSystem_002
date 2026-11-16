@@ -1,3 +1,5 @@
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const prismaMock = vi.hoisted(() => ({
@@ -5,6 +7,7 @@ const prismaMock = vi.hoisted(() => ({
   csvDashboardRow: { findMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
   csvDashboardIngestRun: { findMany: vi.fn(), deleteMany: vi.fn(), count: vi.fn() },
 }));
+vi.mock('../../production-schedule/production-schedule-part-name-lookup-rebuild.js', () => ({ requestProductionSchedulePartNameLookupRebuild: vi.fn() }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: prismaMock }));
 
 import {
@@ -85,4 +88,14 @@ describe('csv-dashboard-retention-sweep', () => {
     await runCsvDashboardRetentionSweep(new Date('2027-01-01T02:00:00Z'));
     expect(prismaMock.csvDashboardRow.findMany).toHaveBeenCalledTimes(1);
   });
+  it.each([0, 1])('requests rebuild only for actual production deletions: %s', async (count) => {
+    prismaMock.csvDashboardRow.findMany.mockResolvedValueOnce([
+      { id: 'production', csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID },
+      { id: 'other', csvDashboardId: 'other' },
+    ]);
+    prismaMock.csvDashboardRow.deleteMany.mockResolvedValueOnce({ count }).mockResolvedValueOnce({ count: 1 });
+    await runCsvDashboardRetentionSweep(new Date('2027-01-01T02:00:00Z'));
+    expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledTimes(count);
+  });
+
 });

@@ -10,8 +10,8 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-const approvalMocks = vi.hoisted(() => ({ read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
-vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
+const approvalMocks = vi.hoisted(() => ({ count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
+vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, countProcedureMaterials: approvalMocks.count, listProcedureWorkInstructionCandidates: async () => ({ items: [] }), listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
@@ -182,6 +182,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   });
 
   beforeEach(() => {
+    approvalMocks.count.mockReset().mockResolvedValue(0);
     approvalMocks.materials.mockReset().mockResolvedValue([]);
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: false }); localStorage.clear(); approvalMocks.read = null; approvalMocks.resolve.mockReset(); });
   it('redraws only the edited page thumbnail and keeps the toolbar stable while typing', () => {
@@ -420,16 +421,18 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('loads material cards lazily and refreshes the tab and toolbar after placement', async () => {
     const material = { id: 'unplaced', kind: 'TEXT', text: '新しい素材', placedAt: null, discardedAt: null, documentId: null };
     approvalMocks.materials.mockResolvedValue([material] as never);
-    const c = makeController({ placeMaterial: vi.fn(async () => { approvalMocks.materials.mockResolvedValue([]); }) });
+    approvalMocks.count.mockResolvedValue(1);
+    const c = makeController({ placeMaterial: vi.fn(async () => { approvalMocks.materials.mockResolvedValue([]); approvalMocks.count.mockResolvedValue(0); }) });
     renderScreen(c);
-    await waitFor(() => expect(approvalMocks.materials).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(approvalMocks.count).toHaveBeenCalledExactlyOnceWith({ state: 'unplaced' }));
     expect(screen.queryByRole('button', { name: '素材を置く: 新しい素材' })).not.toBeInTheDocument();
     await waitFor(() => expect(within(screen.getByRole('button', { name: '素材を置く', exact: true })).getByText('1', { exact: true })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: '素材', exact: true }));
     fireEvent.click(await screen.findByRole('button', { name: '素材を置く: 新しい素材' }));
     await waitFor(() => expect(c.placeMaterial).toHaveBeenCalledExactlyOnceWith(material));
     await waitFor(() => expect(screen.queryByRole('button', { name: '素材を置く: 新しい素材' })).not.toBeInTheDocument());
-    expect(approvalMocks.materials.mock.calls.length).toBeGreaterThanOrEqual(4);
+    expect(approvalMocks.materials).toHaveBeenCalledTimes(2);
+    expect(approvalMocks.count.mock.calls.length).toBeGreaterThanOrEqual(2);
     await waitFor(() => expect(within(screen.getByRole('button', { name: '素材を置く', exact: true })).queryByText('1', { exact: true })).not.toBeInTheDocument());
   });
 

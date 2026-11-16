@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../lib/prisma.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule/production-schedule-part-name-lookup-rebuild.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 
 type CleanupBatchOptions = {
+  /** Ingestor requests once after completion and all dedup transactions commit. */
+  deferPartNameLookupRebuild?: boolean;
   deleteBatchSize?: number;
   keyChunkSize?: number;
 };
@@ -121,6 +125,9 @@ export class CsvDashboardDedupCleanupService {
 
         const affectedCount = typeof affected === 'number' ? affected : 0;
         deletedCount += affectedCount;
+        if (affectedCount > 0 && params.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID && !params.deferPartNameLookupRebuild) {
+          void requestProductionSchedulePartNameLookupRebuild();
+        }
         if (affectedCount === 0) {
           break;
         }
@@ -199,6 +206,9 @@ export class CsvDashboardDedupCleanupService {
           DELETE FROM "CsvDashboardRow" WHERE "id" = ANY(${ids}::text[])
         `);
         deletedCount += typeof affected === 'number' ? affected : 0;
+        if (typeof affected === 'number' && affected > 0 && params.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+          void requestProductionSchedulePartNameLookupRebuild();
+        }
       }
     }
     return { deletedCount, stoppedReason: 'max_scans', scans };

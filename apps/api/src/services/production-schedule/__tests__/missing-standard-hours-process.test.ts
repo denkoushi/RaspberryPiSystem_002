@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 import { buildMissingStandardHoursProcesses, missingStandardHoursItemId, readMissingStandardHoursBoardRows,
   replaceMissingStandardHoursProcesses, type MissingStandardHoursBoardRow } from '../missing-standard-hours-process.js';
-import { runFkojunstMailReplacementTransaction, runFkojunstMailClearTransaction, dedupeFkojunstMailRowsByLatest, type FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
+import { runFkojunstMailReplacementTransaction, runFkojunstMailClearTransaction, dedupeFkojunstMailRowsByLatest } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 import { projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
 import { addMissingStandardHoursLoad, buildGrindingPlanningBoardLoadSummary } from '../grinding-planning-board-load-summary.js';
 

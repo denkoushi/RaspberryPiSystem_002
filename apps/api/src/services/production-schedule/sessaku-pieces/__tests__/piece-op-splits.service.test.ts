@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProductionScheduleGrindingPlanningBoardOverride as Override, Prisma } from '@prisma/client';
 import type { GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 import type { SessakuPieceSet } from '../piece-key.js';
-import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionRowDetail } from '../../grinding-planning-board-projection-input.types.js';
 
 const mocks = vi.hoisted(() => ({
   tx: {

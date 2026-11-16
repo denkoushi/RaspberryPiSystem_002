@@ -109,7 +109,7 @@ try {
   // No app config, proxy, .env loading, HMR, or development React instrumentation.
   const config = { configFile: false, envFile: false, envDir: false, root: here, base: '/',
     plugins: [react()], resolve: { alias: [
-      { find: /^.*\/api\/hooks(?:\/machine-signal|\/production-schedule\/(?:d-schedule-minutes|grinding-planning-board))?$/, replacement: resolve(here, 'hooks.jsx') }
+      { find: /^.*\/api\/hooks(?:\/machine-signal|\/production-schedule\/(?:d-schedule-minutes|grinding-planning-board(?:-mutations)?))?$/, replacement: resolve(here, 'hooks.jsx') }
     ] }, css: { postcss: { plugins: [tailwind({ ...loadConfig(resolve(web, 'tailwind.config.ts')), content: [resolve(web, 'src/**/*.{ts,tsx}')] }), autoprefixer()] } }, build: { outDir, emptyOutDir: false, minify: process.env.PROFILE !== '1' }, logLevel: 'warn' };
   await build(config);
   // Serve built bytes via routing, so no listening socket or upstream server is needed.

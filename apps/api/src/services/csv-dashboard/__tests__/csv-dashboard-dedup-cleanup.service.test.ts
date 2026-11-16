@@ -1,9 +1,13 @@
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { Prisma } from '@prisma/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { executeRawMock, queryRawMock, transactionMock, setTimeoutMock } = vi.hoisted(() => ({
   executeRawMock: vi.fn(), queryRawMock: vi.fn(), transactionMock: vi.fn(), setTimeoutMock: vi.fn(),
 }));
+
+vi.mock('../../production-schedule/production-schedule-part-name-lookup-rebuild.js', () => ({ requestProductionSchedulePartNameLookupRebuild: vi.fn() }));
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: { $executeRaw: executeRawMock, $transaction: transactionMock },
@@ -166,5 +170,30 @@ describe('CsvDashboardDedupCleanupService.deleteDuplicateLosersGlobally', () => 
     await expect(service.deleteDuplicateLosersGlobally({ ...baseParams, keyColumns: ["invalid'key"] }))
       .rejects.toThrow('Invalid rowData key column');
     expect(transactionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('part name rebuild after dedup deletion', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it.each([
+    [PRODUCTION_SCHEDULE_DASHBOARD_ID, 1, false, 1],
+    [PRODUCTION_SCHEDULE_DASHBOARD_ID, 0, false, 0],
+    [PRODUCTION_SCHEDULE_DASHBOARD_ID, 1, true, 0],
+    ['other-dashboard', 1, false, 0],
+  ])('key cleanup dashboard=%s deleted=%s deferred=%s', async (csvDashboardId, deleted, deferPartNameLookupRebuild, requests) => {
+    executeRawMock.mockResolvedValueOnce(deleted).mockResolvedValue(0);
+    await new CsvDashboardDedupCleanupService().deleteDuplicateLosersForKeys({
+      ...baseParams, csvDashboardId, deferPartNameLookupRebuild,
+    });
+    expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledTimes(requests);
+  });
+
+  it.each([0, 1])('global cleanup rebuilds only after committed actual deletes: %s', async (deleted) => {
+    transactionMock.mockImplementation(async (run) => run({ $queryRaw: queryRawMock, $executeRaw: setTimeoutMock }));
+    queryRawMock.mockResolvedValueOnce([{ id: 'loser' }]).mockResolvedValue([]);
+    executeRawMock.mockResolvedValue(deleted);
+    await new CsvDashboardDedupCleanupService().deleteDuplicateLosersGlobally({ ...baseParams, csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID });
+    expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledTimes(deleted);
   });
 });

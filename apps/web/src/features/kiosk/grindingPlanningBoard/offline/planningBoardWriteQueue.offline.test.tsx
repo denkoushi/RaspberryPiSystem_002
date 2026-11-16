@@ -6,7 +6,8 @@ import { api } from '../../../../api/client';
 import { usePlanningBoardWriteQueue } from '../usePlanningBoardWriteQueue';
 
 import { DEFAULT_PLANNING_BOARD_OFFLINE_CONFIG } from './planningBoardOfflineConfig';
-import { PlanningBoardOfflineProvider, useFrozenValue, usePlanningBoardOffline } from './PlanningBoardOfflineProvider';
+import { useFrozenValue, usePlanningBoardOffline } from './planningBoardOfflineContext';
+import { PlanningBoardOfflineProvider } from './PlanningBoardOfflineProvider';
 
 import type { PlanningBoardWriteResult } from '../usePlanningBoardWriteQueue';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';

@@ -58,6 +58,7 @@ PRIMARY_STORAGE_RELATIVE_SOURCES = (
     ("measuring-instrument-genres", Path("storage/measuring-instrument-genres")),
     ("pallet-machine-illustrations", Path("storage/pallet-machine-illustrations")),
     ("csv-dashboards", Path("storage/csv-dashboards")),
+    ("reports", Path("storage/reports")),
     ("integrity-catalog", Path("storage/.integrity")),
 )
 

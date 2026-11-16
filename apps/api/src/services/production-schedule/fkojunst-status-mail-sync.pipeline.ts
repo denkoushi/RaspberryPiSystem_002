@@ -23,6 +23,7 @@ import {
   fetchFkojunstStatusMailSourceRowsWithGenerationSignals
 } from './fkojunst-status-mail-generation-signals.js';
 import { PROCESS_CHANGE_RESIDUAL_EVIDENCE_ALGORITHM_VERSION } from './leaderboard/leaderboard-process-change-residual.version.js';
+import type { FkojunstMailNormalizedRow } from './fkojunst-mail-row.types.js';
 
 export { buildFkojunstMailStatusKey };
 
@@ -44,19 +45,6 @@ const ALLOWED_STATUS = new Set(['C', 'P', 'S', 'R', 'X', 'O']);
 const INVALID_STATUS_SENTINEL = '?';
 const EMPTY_STATUS_SENTINEL = '';
 const UNPARSEABLE_DATE_FALLBACK = new Date('1970-01-01T00:00:00.000Z');
-
-export type FkojunstMailNormalizedRow = {
-  sourceRowId: string;
-  sourceRowOrdinal?: number | null;
-  sourceIngestRunCompletedAt?: Date | null;
-  sourceIngestRunStartedAt?: Date | null;
-  fkojun: string;
-  fkoteicd: string;
-  fsezono: string;
-  statusCode: string;
-  sourceUpdatedAt: Date;
-  hasUnparseableDate: boolean;
-};
 
 export type FkojunstMailSyncResult = {
   scanned: number;

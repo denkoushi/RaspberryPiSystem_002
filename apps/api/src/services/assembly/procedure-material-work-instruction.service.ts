@@ -14,7 +14,7 @@ import { readPartNamesByPartNumbers } from '../work-instructions/repositories/pr
 import type { WorkInstructionReadService } from '../work-instructions/work-instruction-read.service.js';
 import { getWorkInstructionServices } from '../work-instructions/work-instruction-service.factory.js';
 
-type Reader = Pick<WorkInstructionReadService, 'readPublishedGroup' | 'readPublishedGroups' | 'searchPublishedGroups' | 'readPublishedGroupsByPartName' | 'readAsset'>;
+type Reader = Pick<WorkInstructionReadService, 'readPublishedGroup' | 'readPublishedGroupsByKeys' | 'readPublishedGroups' | 'searchPublishedGroups' | 'readPublishedGroupsByPartName' | 'readAsset'>;
 type Candidate = {
   candidateKey: string; partNumber: string; shootingTarget: string; step: number; memo: string;
   assetId: string; sourceModified: Date; originalFileName: string | null;
@@ -73,14 +73,14 @@ export class ProcedureMaterialWorkInstructionService {
     const items: Candidate[] = [];
     const summaries = await this.groups(read, options.q?.trim());
     for (let offset = 0; offset < summaries.length && items.length < limit;) {
-      const batch = summaries.slice(offset, offset + Math.min(6, limit - items.length));
-      const groups = await Promise.allSettled(batch.map(({ summary }) => read.readPublishedGroup(summary)));
+      const batch = summaries.slice(offset, offset + 100);
+      const groups = await read.readPublishedGroupsByKeys(batch.map(({ summary }) => summary));
       offset += batch.length;
-      for (const [index, result] of groups.entries()) {
-        if (result.status === 'rejected') throw result.reason;
-        if (result.value) {
+      for (const { summary, memoOnly } of batch) {
+        const group = groups.get(JSON.stringify([summary.partNumber, summary.shootingTarget]));
+        if (group) {
           const query = options.q?.normalize('NFKC').trim().toLowerCase();
-          const photos = candidates(result.value).filter((item) => !batch[index].memoOnly || item.memo.normalize('NFKC').toLowerCase().includes(query!));
+          const photos = candidates(group).filter((item) => !memoOnly || item.memo.normalize('NFKC').toLowerCase().includes(query!));
           items.push(...photos.slice(0, limit - items.length));
         }
         if (items.length >= limit) break;

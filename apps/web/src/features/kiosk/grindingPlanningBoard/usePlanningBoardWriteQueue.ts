@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardTestBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 

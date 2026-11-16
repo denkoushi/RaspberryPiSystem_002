@@ -358,7 +358,7 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     };
   }
 
-  async delete(key: string, options: { integrity: boolean }): Promise<void> {
+  async delete(key: string, options: { integrity: boolean; pruneEmptyParent?: boolean }): Promise<void> {
     const normalized = normalizeStorageKey(key);
     const file = await resolveSecureFile(this.root, normalized, { allowMissing: true });
     await fs.unlink(file).catch((error: NodeJS.ErrnoException) => {
@@ -367,6 +367,11 @@ export class LocalDurableFileStore implements DurableFileStorePort {
     await syncDirectory(path.dirname(file));
     if (options.integrity) {
       await this.catalog.delete(normalized);
+    }
+    if (options.pruneEmptyParent && normalized.split('/').length > 2) {
+      await fs.rmdir(path.dirname(file)).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== 'ENOENT' && error.code !== 'ENOTEMPTY' && error.code !== 'EEXIST') throw error;
+      });
     }
   }
 

@@ -10,9 +10,22 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 /**
  * This file intentionally has no localhost/database fallback. The production
  * schedule dashboard is shared by many tests and must never be modified by an
- * integration run that did not opt into an isolated database.
+ * integration run that did not opt into an isolated database. In CI, each
+ * Vitest worker owns `borrow_return_w<id>` (API_TEST_DB_PER_WORKER), which is
+ * isolated enough; the same rule as sessaku-pieces.integration.test.ts.
  */
-const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() ?? '';
+const ciWorkerDatabaseUrl = (() => {
+  const workerId = process.env.VITEST_POOL_ID;
+  const url = process.env.DATABASE_URL;
+  if (process.env.CI !== 'true' || process.env.API_TEST_DB_PER_WORKER !== '1') return '';
+  if (!/^[1-9]\d*$/.test(workerId ?? '') || !url) return '';
+  try {
+    return new URL(url).pathname === `/borrow_return_w${workerId}` ? url : '';
+  } catch {
+    return '';
+  }
+})();
+const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim() || ciWorkerDatabaseUrl;
 const databaseName = (() => {
   try {
     return new URL(testDatabaseUrl).pathname.replace(/^\//, '').split('?')[0] ?? '';
@@ -1233,12 +1246,15 @@ describeIntegration('grinding planning board service real Postgres integration',
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: splitFixture.siteKey,
       itemKey: `split:${splitId}`, overrideResourceCd: '581', alternateRank: 1
     } });
-    const beforeLegacyUpdate = await boardFor(splitFixture);
+    const legacyStore = snapshotStore();
+    const beforeLegacyUpdate = await boardFor(splitFixture, { snapshotStore: legacyStore });
     expect(beforeLegacyUpdate.items).toEqual(withLegacy.items);
     await db().productionScheduleOrderSplit.update({ where: { id: splitId }, data: { splitQuantity: 99 } });
-    const afterLegacyUpdate = await boardFor(splitFixture);
+    const afterLegacyUpdate = await boardFor(splitFixture, { snapshotStore: legacyStore });
     expect(afterLegacyUpdate.items).toEqual(withLegacy.items);
-    expect(afterLegacyUpdate.snapshotId).toBe(beforeLegacyUpdate.snapshotId);
+    expect(afterLegacyUpdate.sourceRevision).toBe(beforeLegacyUpdate.sourceRevision);
+    // Every first-page read issues a new snapshotId; a reader already paging must keep its snapshot.
+    await expect(boardFor(splitFixture, { cursor: 0, snapshotId: beforeLegacyUpdate.snapshotId, snapshotStore: legacyStore })).resolves.toMatchObject({ items: withLegacy.items });
     await db().productionScheduleOrderSplit.delete({ where: { id: splitId } });
     await expect(updateItem(splitFixture, parent, { resourceCd: '581' }, withLegacy.sourceRevision)).resolves.toBeDefined();
   });
