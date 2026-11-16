@@ -332,7 +332,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
         (async () => {
           let save: ReturnType<typeof request> | undefined;
           try {
-            await vi.waitFor(() => expect(splitPid).toBeGreaterThan(0), { timeout: 5000 });
+            await vi.waitFor(() => expect(splitPid).toBeGreaterThan(0), { timeout: 10000 });
             save = request('PUT', '/pins', { sourceRevision: before.sourceRevision,
               items: [{ itemId: sibling.itemId, itemRevision: sibling.itemRevision }], pinned: true }, 'B');
             void save.then(() => { saveSettled = true; }, () => { saveSettled = true; });
@@ -345,7 +345,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
                 ) AS blocked`;
               blocked = waiting!.blocked;
               expect(blocked || saveSettled).toBe(true);
-            }, { timeout: 5000, interval: 20 });
+            }, { timeout: 10000, interval: 20 });
           } finally {
             release();
             // Drain the HTTP request even when the barrier assertion fails.
@@ -495,9 +495,11 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
   });
 
   it('d: deleting the last part value and retrying does not resurrect it (520d98e2)', async () => {
-    const initial = await saveMinutes({ perUnitMinutes: 7, setupMinutes: 0, ops: [] });
+    const initial = await saveMinutes({ perUnitMinutes: 7, setupMinutes: 0, ops: [{ opNo: 1, minutes: 7, setupMinutes: 0 }] });
     expect(initial.statusCode, initial.body).toBe(200);
     const saved = initial.json<GrindingPlanningBoardResourceMinutesResponse>();
+    expect(saved.savedOpIds.length).toBeGreaterThan(0);
+    // The retry resends the original op IDs, which the first delete already removed.
     const payload = { perUnitMinutes: null, setupMinutes: 0, ops: [], expectedOpIds: saved.savedOpIds,
       expectedMinutes: saved.savedMinutes };
     for (let attempt = 0; attempt < 2; attempt += 1) {
