@@ -201,7 +201,7 @@ python3 ./probe-photo-label-vlm.py ./sample-tool.jpg --start-runtime --stop-runt
 
 - `business_qwen36_27b_nvfp4`
   - blue / vLLM / `sakamakismile/Qwen3.6-27B-NVFP4` / alias `system-prod-primary` / text only
-- `business_qwen38_flash_next_nvfp4`
+- `business_qwen38_flash_next_nvfp4`(2026-11-16 に無効化)
   - blue / pinned MiaAI-Lab Qwen3.8 Flash Next NVFP4 adapter / alias `system-prod-primary` / text + vision
 - `business_glm53_flash_fp4_tp2`: blue / GLM-5.3-Flash-FP4 / 2台 TP2 / alias `system-prod-primary` / text + vision（[切替・ロールバック](../../docs/runbooks/dgx-system-prod-local-llm.md#glm53-flash-tp2)）
 - `business_ornith_35b_nvfp4`
@@ -247,6 +247,8 @@ curl -sS -X POST http://127.0.0.1:38081/start \
 
 業務 Qwen3.8 FP8 TP2 の画像対応と、既定 off の `DGX_PRIVATE_SHARED_QWEN38_ENABLED` による
 業務優先・交代制の共用は [運用正本](../../docs/runbooks/dgx-system-prod-local-llm.md#業務-glm--deepseek--qwen38-切替既定-off) を参照。
+
+**2026-11-16 に重みを削除し、`business_qwen38_flash_next_nvfp4` は無効にした。以下の NVFP4 の導入・cache 準備・`/start` 手順は履歴として残すもので、今は使えない。**
 
 `business_qwen38_flash_next_nvfp4` は既存 `business_qwen36_27b_nvfp4` を上書きせず、別 profile として追加する。DGX の live checkout は git 管理されていないため、通常の DGX 反映手順（この runbook の profile 反映節にある `scp` と、実機の control/gateway 管理方式に応じた再読込）で、次の runtime ファイルを `/srv/dgx/system-prod/bin/` へ配置する。
 

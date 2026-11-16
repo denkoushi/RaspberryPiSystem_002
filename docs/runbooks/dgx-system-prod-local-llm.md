@@ -1120,8 +1120,8 @@ GLM 稼働中は Spark 2 の GPU も業務 worker が専有するため、私用
    起動コマンドはコンテナ起動だけで戻るため、`/v1/models` の `system-prod-primary` と
    active profile、priority 付き会話・画像・思考制御を別途確認して保守状態を解除する。
 4. ロールバックは同じ保守状態で `/stop-force` を送り、両コンテナの停止を確認する。
-   指す先を `business_qwen38_flash_next_nvfp4` に戻し、同 ID で `/start` して応答を確認する。
-   Qwen の重みは経過観察が終わるまで残す。2026-11-16 に Qwen の重みは削除し、profile を無効にしたので、この戻し先は使えない。
+   以前の戻し先 `business_qwen38_flash_next_nvfp4` は、2026-11-16 に重みを削除して profile を無効にしたため使えない。
+   この手順に戻し先は無い。業務の現行は `business_qwen38_flash_next_orcarouter_fp8_tp2` で、戻す場合はその切替手順に従う。
 5. GPU メモリ割合はマニフェストの `runtimeProfile.vllm.gpuMemoryUtilization` で決まる(既定 0.85、2026-10-23 から)。
    値を変えたら、標準制御経路の `/stop-force` と `/start` で入れ直す。CP を通さずに手で再起動すると、
    CP の起動監視が確認に失敗したと判断し、自動で入れ直すことがある(2026-10-23 に1回発生)。
