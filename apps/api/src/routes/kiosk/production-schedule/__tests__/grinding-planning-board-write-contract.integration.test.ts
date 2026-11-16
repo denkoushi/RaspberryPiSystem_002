@@ -1,3 +1,5 @@
+// 画面側だけの直しなので対象外（web のテストが守る）:
+// 9031af96, f302a0f4, c55f9e9a, 611241d3, 78d41a3f.
 import { randomUUID } from 'node:crypto';
 
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -48,7 +50,7 @@ if (hasDedicatedDatabase) {
 
 const base = '/kiosk/production-schedule/grinding-planning-board';
 let app: FastifyInstance | undefined;
-let deps: KioskRouteDeps;
+let deps: KioskRouteDeps | undefined;
 let site: string;
 let seiban: string;
 let part: string;
@@ -90,6 +92,8 @@ function expectConflict(response: { statusCode: number; body: string; json: () =
 
 describeDatabase('planning board HTTP write contract (real Postgres)', () => {
   beforeEach(async () => {
+    deps = undefined;
+    app = undefined;
     vi.stubEnv('SESSAKU_PIECES_CREATE_ENABLED', 'true');
     site = `write-contract-${randomUUID()}`;
     seiban = `WC${randomUUID().slice(0, 8)}`;
@@ -139,23 +143,46 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
   });
 
   afterEach(async () => {
-    await app?.close();
-    app = undefined;
-    // Drain the routes' asynchronous warm reads before removing this fixture.
-    await rewarm({ siteKey: site, snapshotStore: deps.leaderboardShellSnapshotStore, delayMs: 0 });
-    await prisma.productionScheduleSessakuPieceAuditLog.deleteMany({ where: { fseiban: seiban } });
-    await prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
-    await prisma.productionScheduleSessakuPieceHistory.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
-    await prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: site } });
-    await prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: site } });
-    await prisma.productionScheduleGrindingPlanningBoardTestBar.deleteMany({ where: { siteKey: site } });
-    await prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: site } });
-    await prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: site } });
-    await prisma.productionScheduleResourceMaster.deleteMany({ where: { resourceName: site } });
-    await prisma.productionScheduleDScheduleMinutes.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } });
-    await prisma.productionScheduleDScheduleMinutesImportRun.deleteMany({ where: { gmailMessageId: site } });
-    await prisma.csvDashboardRow.deleteMany({ where: { id: { in: rowIds } } });
-    vi.unstubAllEnvs();
+    try {
+      try {
+        await app?.close();
+      } finally {
+        if (app && deps) {
+          // Drain the routes' asynchronous warm reads before removing this fixture.
+          await rewarm({ siteKey: site, snapshotStore: deps.leaderboardShellSnapshotStore, delayMs: 0 });
+        }
+      }
+    } finally {
+      app = undefined;
+      deps = undefined;
+      const removals = [
+        () => prisma.productionScheduleSessakuPieceAuditLog.deleteMany({ where: { fseiban: seiban } }),
+        () => prisma.productionScheduleSessakuPieceSet.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } }),
+        () => prisma.productionScheduleSessakuPieceHistory.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } }),
+        () => prisma.productionScheduleGrindingPlanningBoardResourcePartMinutes.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardResourceMinutesSource.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardTestBar.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardOverride.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleGrindingPlanningBoardState.deleteMany({ where: { siteKey: site } }),
+        () => prisma.productionScheduleResourceMaster.deleteMany({ where: { resourceName: site } }),
+        () => prisma.productionScheduleDScheduleMinutes.deleteMany({ where: { csvDashboardId: dashboardId, fseiban: seiban } }),
+        () => prisma.productionScheduleDScheduleMinutesImportRun.deleteMany({ where: { gmailMessageId: site } }),
+        () => prisma.csvDashboardRow.deleteMany({ where: { id: { in: rowIds } } }),
+      ];
+      async function removeFixture(index = 0): Promise<void> {
+        if (index === removals.length) return;
+        try {
+          await removals[index]!();
+        } finally {
+          await removeFixture(index + 1);
+        }
+      }
+      try {
+        await removeFixture();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    }
   });
 
   afterAll(async () => {
@@ -164,7 +191,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
-  it('a: rejects A\'s stale item after B saves, and GET retains B (9b3f18df, 6c9dd60e)', async () => {
+  it('a: rejects A\'s stale item after B saves, and GET retains B', async () => {
     const before = await board();
     const item = itemFor(before);
     const saved = await request('PUT', '/pins', { sourceRevision: before.sourceRevision,
@@ -181,7 +208,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     expect(itemFor(latest).itemRevision).not.toBe(item.itemRevision);
   });
 
-  it.each(['excel', 'scaw'] as const)('b: %s save and immediate board GET agree on revision and content (6c9dd60e)', async (dueSource) => {
+  it.each([{ dueSource: 'excel', fix: '' }, { dueSource: 'scaw', fix: ' (6c9dd60e)' }] as const)('b: $dueSource save and immediate board GET agree on revision and content$fix', async ({ dueSource }) => {
     const before = await board(dueSource);
     const item = itemFor(before);
     if (dueSource === 'scaw') {
@@ -241,7 +268,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     expect((await minutes('B')).values).toEqual(saved.values);
   });
 
-  it('b/c: splitting keeps a saved sibling on the same lane and returns readable piece versions (9b3f18df, 1b87230d)', async () => {
+  it('b/c: splitting keeps a saved sibling on the same lane and returns readable piece versions (1b87230d)', async () => {
     const before = await board();
     const parent = itemFor(before);
     const sibling = itemFor(before, rowIds[1]);
@@ -275,7 +302,129 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
       .toEqual(saved.pieces.map((item) => item.itemId).sort());
   });
 
-  it('a/b: test-bar writes require the latest version and GET matches the acknowledgement (e7318fa3)', async () => {
+  it('b: concurrent split and same-lane sibling save retain both results or return 409 (9b3f18df)', async () => {
+    const before = await board();
+    const parent = itemFor(before);
+    const sibling = itemFor(before, rowIds[1]);
+    expect(sibling.effectiveResourceCd).toBe(parent.effectiveResourceCd);
+    const laneWrites = await import('../../../../services/production-schedule/sessaku-pieces/piece-lane-writes.js');
+    const originalReplace = laneWrites.replaceSiteItems;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let splitPid = 0;
+    // Pause after the split has read lane overrides, before it rewrites the sibling.
+    const spy = vi.spyOn(laneWrites, 'replaceSiteItems').mockImplementation(async (...args) => {
+      if (args[3] === site && !splitPid) {
+        const [backend] = await args[0].$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid() AS pid`;
+        splitPid = backend!.pid;
+        await gate;
+      }
+      return originalReplace(...args);
+    });
+    let saveSettled = false;
+    let blocked = false;
+    try {
+      const results = await Promise.allSettled([
+        request('POST', '/pieces/split', { parentItemId: parent.itemId, itemRevision: parent.itemRevision,
+          expectedPieceSetVersion: parent.pieceSetVersion ?? 0, quantities: [2, 3] }),
+        (async () => {
+          let save: ReturnType<typeof request> | undefined;
+          try {
+            await vi.waitFor(() => expect(splitPid).toBeGreaterThan(0), { timeout: 5000 });
+            save = request('PUT', '/pins', { sourceRevision: before.sourceRevision,
+              items: [{ itemId: sibling.itemId, itemRevision: sibling.itemRevision }], pinned: true }, 'B');
+            void save.then(() => { saveSettled = true; }, () => { saveSettled = true; });
+            await vi.waitFor(async () => {
+              const [waiting] = await prisma.$queryRaw<Array<{ blocked: boolean }>>`
+                SELECT EXISTS (
+                  SELECT 1 FROM pg_stat_activity
+                  WHERE ${splitPid} = ANY(pg_blocking_pids(pid))
+                    AND query LIKE '%ProductionScheduleGrindingPlanningBoardState%'
+                ) AS blocked`;
+              blocked = waiting!.blocked;
+              expect(blocked || saveSettled).toBe(true);
+            }, { timeout: 5000, interval: 20 });
+          } finally {
+            release();
+            // Drain the HTTP request even when the barrier assertion fails.
+            if (save) await Promise.allSettled([save]);
+          }
+          return save!;
+        })()
+      ]);
+      const responses = results.map((result) => {
+        expect(result.status).toBe('fulfilled');
+        if (result.status !== 'fulfilled') throw result.reason;
+        return result.value;
+      });
+      const [split, save] = responses;
+      expect(split!.statusCode, split!.body).toBe(200);
+      expect([200, 409], save!.body).toContain(save!.statusCode);
+      const after = await board('excel', true);
+      const pieces = split!.json<SessakuPiecesMutationResponse>().pieces;
+      expect(pieces.map((piece) => piece.quantity)).toEqual([2, 3]);
+      expect(after.items.filter((item) => item.pieceId).map((item) => item.itemId).sort())
+        .toEqual(pieces.map((piece) => piece.itemId).sort());
+      expect(itemFor(after, rowIds[1]).orderPinned).toBe(save!.statusCode === 200);
+      const persisted = await prisma.productionScheduleGrindingPlanningBoardOverride.findUniqueOrThrow({
+        where: { csvDashboardId_siteKey_itemKey: { csvDashboardId: dashboardId, siteKey: site, itemKey: sibling.itemId } }
+      });
+      expect(persisted.orderPinned).toBe(save!.statusCode === 200);
+      // Without the shared state lock, the successful save is overwritten by the paused split.
+      expect(blocked).toBe(true);
+    } finally {
+      release();
+      spy.mockRestore();
+    }
+  });
+
+  it('c: configuring a moved leading piece returns 409 without changing pieces or operations (d1903d19)', async () => {
+    for (const resourceCd of ['1', '2']) {
+      const saved = await request('PUT', '/resource-minutes/value', { resourceCd, fhincd: part,
+        perUnitMinutes: 7, setupMinutes: 0,
+        ops: [{ opNo: 1, minutes: 3, setupMinutes: 0 }, { opNo: 2, minutes: 4, setupMinutes: 0 }] });
+      expect(saved.statusCode, saved.body).toBe(200);
+    }
+    // Existing operation intervals allow configuration without enabling automatic unit splitting.
+    const set = await prisma.productionScheduleSessakuPieceSet.create({ data: {
+      csvDashboardId: dashboardId, fseiban: seiban, fhincd: part, fsigencd: '1', fkojun: '1',
+      plannedQuantity: 5, nextPosition: 3, pieces: { create: [
+        { position: 1, quantity: 1, opSplits: { create: { fromOpNo: 2, sourceResourceCd: '1', leadingSourceResourceCd: '1' } } },
+        { position: 2, quantity: 4 }
+      ] }
+    }, include: { pieces: { orderBy: { position: 'asc' } } } });
+    const headId = `piece:${set.pieces[0]!.id}`;
+    await prisma.productionScheduleGrindingPlanningBoardOverride.create({ data: {
+      csvDashboardId: dashboardId, siteKey: site, itemKey: headId, overrideResourceCd: '2'
+    } });
+    const before = await board('excel', true);
+    const head = before.items.find((item) => item.itemId === headId)!;
+    expect(head).toMatchObject({ effectiveResourceCd: '2', opSplitSourceResourceCd: '1', quantity: 1 });
+    const settings = await minutes();
+    const target = settings.values.find((value) => value.resourceCd === '2')!;
+    const readPersisted = async () => ({
+      set: await prisma.productionScheduleSessakuPieceSet.findUniqueOrThrow({ where: { id: set.id },
+        include: { pieces: { orderBy: { position: 'asc' }, include: { opSplits: true, opCompletions: true } } } }),
+      history: await prisma.productionScheduleSessakuPieceHistory.findMany({ where: { fseiban: seiban } }),
+      overrides: await prisma.productionScheduleGrindingPlanningBoardOverride.findMany({ where: { siteKey: site }, orderBy: { itemKey: 'asc' } }),
+      minutes: await minutes()
+    });
+    const persisted = await readPersisted();
+    const response = await request('POST', '/pieces/ops/configure', {
+      itemId: head.itemId, itemRevision: head.itemRevision, expectedPieceSetVersion: head.pieceSetVersion,
+      resourceCd: '2', minutes: [8, 9], expectedOpIds: target.ops!.map((op) => op.id!),
+      expectedMinutes: { perUnitMinutes: target.perUnitMinutes, setupMinutes: target.setupMinutes,
+        ops: target.ops!.map((op) => ({ opNo: op.opNo, minutes: op.minutes, setupMinutes: op.setupMinutes ?? null })) }
+    });
+    expectConflict(response, 'STALE_SESSAKU_PIECES');
+    expect(await readPersisted()).toEqual(persisted);
+    const after = await board('excel', true, 'B');
+    expect(after.sourceRevision).toBe(before.sourceRevision);
+    expect(after.items).toEqual(before.items);
+  });
+
+  it('a/b: test-bar writes reject stale versions and restore at the requested position (e7318fa3)', async () => {
+    // 資源マスタは拠点で分かれていない全体の表なので、他のテストと同じ DB を同時に使わないこと。
     await prisma.productionScheduleResourceMaster.create({ data: {
       resourceCd: '1', resourceName: site, resourceClassCd: 'M02', resourceGroupCd: 'IT'
     } });
@@ -298,9 +447,34 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     expect(after.sourceRevision).toBe(saved.sourceRevision);
     expect(after.testBars).toEqual([saved.testBar]);
     expect(saved.testBar.isCompleted).toBe(true);
+    const incomplete = await request('PUT', `/test-bars/${first.testBar.itemId.slice(5)}/completion`, {
+      sourceRevision: after.sourceRevision, expectedVersion: saved.testBar.version, intent: 'incomplete'
+    });
+    expect(incomplete.statusCode, incomplete.body).toBe(200);
+    const active = incomplete.json<GrindingPlanningBoardTestBarMutationResponse>();
+    const deleted = await request('DELETE', `/test-bars/${first.testBar.itemId.slice(5)}`, {
+      sourceRevision: active.sourceRevision, expectedVersion: active.testBar.version
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    const tombstone = deleted.json<GrindingPlanningBoardTestBarMutationResponse>();
+    const without = await board();
+    expect(without.testBars).toEqual([]);
+    const predecessor = itemFor(without, rowIds[1]);
+    const restored = await request('POST', `/test-bars/${first.testBar.itemId.slice(5)}/restore`, {
+      sourceRevision: without.sourceRevision, expectedVersion: tombstone.testBar.version,
+      restoreAfterItemId: predecessor.itemId
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    const restoredBoard = await board();
+    expect(restoredBoard.testBars).toEqual([restored.json<GrindingPlanningBoardTestBarMutationResponse>().testBar]);
+    // GET exposes the mixed lane's ordering as alternateRank on items and test bars.
+    const lane = [...restoredBoard.items, ...(restoredBoard.testBars ?? [])].sort((a, b) => a.alternateRank! - b.alternateRank!);
+    expect(lane.map((bar) => bar.itemId)).toEqual([
+      itemFor(without).itemId, predecessor.itemId, first.testBar.itemId
+    ]);
   });
 
-  it('b: own/original switches publish the saved minutes to another terminal\'s reads (611241d3, c55f9e9a, 78d41a3f)', async () => {
+  it('b: another terminal GET does not reuse stale board content after minutes or source saves', async () => {
     await board(); // Prime reusable board payloads before changing settings.
     const response = await saveMinutes({ perUnitMinutes: 7, setupMinutes: 0, ops: [] });
     expect(response.statusCode, response.body).toBe(200);
@@ -318,7 +492,7 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     });
   });
 
-  it('d: deleting the last part value and retrying does not resurrect it (f302a0f4, 520d98e2)', async () => {
+  it('d: deleting the last part value and retrying does not resurrect it (520d98e2)', async () => {
     const initial = await saveMinutes({ perUnitMinutes: 7, setupMinutes: 0, ops: [] });
     expect(initial.statusCode, initial.body).toBe(200);
     const saved = initial.json<GrindingPlanningBoardResourceMinutesResponse>();
