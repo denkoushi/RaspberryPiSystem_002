@@ -217,6 +217,7 @@ required = {
     '/app/storage/measuring-instrument-genres',
     '/app/storage/pallet-machine-illustrations',
     '/app/storage/csv-dashboards',
+    '/app/storage/reports',
     '/app/storage/hermes-search',
     '/app/storage/security-review',
     '/app/storage/.integrity',

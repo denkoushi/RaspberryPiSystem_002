@@ -87,6 +87,15 @@ File contents were not changed. No code change.
 
 ## Prevention
 
+- 2026-11-16 (local implementation): loan-photo-retention writes
+  `reports/loan-photo-retention/latest.json`; `reports` must be a durable writable
+  mount because the API root is read-only. Register it in the shared Pi5 storage
+  contract and server/Blue-Green Compose volumes, following `83fb130a` and the
+  `procedure-videos` addition (`b8cafa6b`). The existing `pi5_storage` role creates
+  the host directory with runtime ownership; release preparation materializes
+  the external volume. Keep Dockerfile, Mac override, runtime rehearsal and DR
+  source policy aligned. No report delivery route is added. Production deployment
+  and host verification have not been performed for this change.
 - When a permission migration and a runtime user change are applied in
   separate steps, re-scan (`find <tree> -user root`) right before or after the
   cutover, not only at the first migration.

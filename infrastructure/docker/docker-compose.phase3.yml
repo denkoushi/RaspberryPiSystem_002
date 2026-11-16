@@ -84,6 +84,7 @@ services:
       - measuring-instrument-genres-storage:/app/storage/measuring-instrument-genres
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
+      - reports-storage:/app/storage/reports
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/hermes-search:/app/storage/hermes-search
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/security-review:/app/storage/security-review
       - file-integrity-storage:/app/storage/.integrity
@@ -518,6 +519,9 @@ volumes:
   csv-dashboard-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_csv-dashboard-storage
+  reports-storage:
+    external: true
+    name: ${PI5_VOLUME_PREFIX:-docker}_reports-storage
   file-integrity-storage:
     external: true
     name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage

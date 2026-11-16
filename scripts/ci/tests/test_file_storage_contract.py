@@ -45,6 +45,28 @@ RUNTIME_PERMISSIONS = (
 
 
 class FileStorageContractTest(unittest.TestCase):
+    def test_reports_are_writable_on_read_only_api_roots_and_recoverable(self):
+        entry = next(item for item in STORAGE_CONTRACT if item['suffix'] == 'reports')
+        self.assertEqual(entry['logical_key'], 'reports-storage')
+        self.assertEqual(entry['runtime_path'], '/app/storage/reports')
+        self.assertEqual(entry['mode'], '0755')
+        for model, services in (
+            (SERVER_MODEL, ('api',)),
+            (PHASE3_MODEL, ('api-blue', 'api-green')),
+        ):
+            for service in services:
+                api = model['services'][service]
+                self.assertTrue(api['read_only'])
+                self.assertIn('reports-storage:/app/storage/reports', api['volumes'])
+            self.assertEqual(
+                model['volumes']['reports-storage']['name'],
+                '${PI5_VOLUME_PREFIX:-docker}_reports-storage',
+            )
+        self.assertIn('../../.docker/local/storage/reports:/app/storage/reports', MAC_OVERRIDE)
+        for relative in ('infrastructure/docker/Dockerfile.api', 'scripts/ci/rehearse-release-runtime.sh'):
+            self.assertIn('/app/storage/reports', (ROOT / relative).read_text())
+        self.assertIn('Path("storage/reports")', (ROOT / 'scripts/google_drive_dr/source_policy.py').read_text())
+
     def test_server_compose_mounts_catalog_and_csv_on_the_existing_host_root(self):
         self.assertIn("FILE_STORAGE_ROOT: /app/storage", SERVER_COMPOSE)
         self.assertIn(
@@ -131,7 +153,7 @@ class FileStorageContractTest(unittest.TestCase):
             {entry["logical_key"] for entry in STORAGE_CONTRACT},
             {key for key in SERVER_MODEL["volumes"] if key in expected_keys},
         )
-        self.assertEqual(len(STORAGE_CONTRACT), 19)
+        self.assertEqual(len(STORAGE_CONTRACT), 20)
         self.assertTrue({"knowledge-assets-storage", "knowledge-git-storage"} <= expected_keys)
         for entry in STORAGE_CONTRACT:
             key = entry["logical_key"]

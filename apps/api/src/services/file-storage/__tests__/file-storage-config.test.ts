@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { DURABLE_FILE_NAMESPACES, resolveFileStorageConfig } from '../file-storage-config.js';
 
 describe('resolveFileStorageConfig', () => {
+  it('keeps retention reports on the durable path', () => {
+    expect(DURABLE_FILE_NAMESPACES).toContain('reports');
+  });
+
   it('keeps assembly procedure source and overlay assets on the durable path', () => {
     expect(DURABLE_FILE_NAMESPACES).toContain('assembly-procedure-assets');
     expect(DURABLE_FILE_NAMESPACES).toContain('work-instruction-assets');

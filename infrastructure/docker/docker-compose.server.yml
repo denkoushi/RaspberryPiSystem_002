@@ -137,6 +137,7 @@ services:
       # パレット可視化・加工機イラスト（未マウントだとデプロイでコンテナ再作成時にファイル消失）
       - pallet-machine-illustrations-storage:/app/storage/pallet-machine-illustrations
       - csv-dashboard-storage:/app/storage/csv-dashboards
+      - reports-storage:/app/storage/reports
       - file-integrity-storage:/app/storage/.integrity
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/alerts:/app/alerts
       - ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/power-actions:/app/power-actions
@@ -357,6 +358,13 @@ volumes:
       type: none
       o: bind
       device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/csv-dashboards
+  reports-storage:
+    name: ${PI5_VOLUME_PREFIX:-docker}_reports-storage
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PI5_PROJECT_DIR:-/opt/RaspberryPiSystem_002}/storage/reports
   file-integrity-storage:
     name: ${PI5_VOLUME_PREFIX:-docker}_file-integrity-storage
     driver: local
