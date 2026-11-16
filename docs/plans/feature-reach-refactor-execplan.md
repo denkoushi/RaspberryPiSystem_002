@@ -68,7 +68,7 @@ API は、`apps/api/src/routes` 配下で窓口を登録するファイル168件
 
 ### 段階1: 測る道具
 
-この計画の PR で、道具を `scripts/analysis/feature-reach/` に置いた。残りは、月に1回流して、結果を knowledge-base の記録に残す運用を始めることである。最初の記録は、この計画の Context and Orientation の数を正本として写す。CI には組み込まない。
+この計画の PR で、道具を `scripts/analysis/feature-reach/` に置いた。月1回の測定手順と記録は [KB-453](../knowledge-base/KB-453-feature-reach-measurement.md) にあり、最初の基準の数はこの計画の Context and Orientation から引き継いでいる。CI には組み込まない。
 
 ### 段階2: 製番ボードの保存の流れ
 
@@ -122,7 +122,7 @@ API は、`apps/api/src/routes` 配下で窓口を登録するファイル168件
     node scripts/analysis/feature-reach/entries.cjs api /tmp/fr/e-api.json
     node scripts/analysis/feature-reach/entries.cjs sched /tmp/fr/e-sched.json
 
-それぞれ、標準エラーに `web 115 件`、`api 168 件`、`sched 28 件` のように件数が出る。`api` では、入口にしなかったファイルが1本ずつ「入口にしない(窓口の登録が無い)」として出る。
+標準エラーに画面は `web 115 件`、API は `api 168 件`、定期処理は `b4ae9625` では `sched 28 件`、`8cffcefb` では `sched 29 件` と件数が出る。`api` では、入口にしなかったファイルが1本ずつ「入口にしない(窓口の登録が無い)」として出る。
 
 量を測る。実行時のつながりだけを数えるときは `RUNTIME=1` を付ける。
 
@@ -175,7 +175,7 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 
 段階4は、3つの対象それぞれについて、調べた中身と、区切り直すかどうかの決定とその理由が knowledge-base の記録に書かれていれば完了とする。区切り直すと決めたものは、この計画に段階を足すか、別の計画を作る。
 
-効き目は、量ではなく作業の結果で判断する。段階2が終わってから90日の間の、製番ボードの保存系の直しを数える。見るのは、件数と、そのうち画面と API の両方を直したものの割合の2つである。今回の12件は4日間に集中した一時の山なので、件数を単純に比べず、同じ90日の現場の要望の直しの件数と並べて読む。
+効き目は、段階2が終わってから90日の間に、今回の12件と同じ型の保存の消失・上書きの不具合が再発したかで見る。fix の件数や割合を危険の指標にせず、件数や割合は比べない。
 
 ## Idempotence and Recovery
 

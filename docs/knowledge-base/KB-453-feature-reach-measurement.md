@@ -12,7 +12,7 @@
 ## Symptoms Or Trigger
 
 月1回、機能の入口から読む範囲を測り直す。fix の件数や割合は危険の指標にしない。
-保存の流れの区切り直しの効き目は、保存の消失・上書きという同じ型の不具合が再発するかで見る。
+保存の流れの区切り直しの効き目は、計画書の段階2完了後90日の間に、下記12件と同じ型の保存の消失・上書きの不具合が再発するかで見て、件数や割合は比べない。
 
 ## Investigation
 
@@ -24,12 +24,14 @@
 - `RUNTIME=1` は型だけの import / export を除き、実行時のつながりだけを数える。
 - `cycles.cjs` の最後の「輪の数 N」行も `^輪` に当たる。`grep -c '^輪'` では1多くなるため、数は最後の行で読む。
 
-2026-11-16 の大きい入口:
+2026-11-16 の大きい入口(測った SHA: `8cffcefb`):
 
-| 種類 | 対象と量 |
-| --- | --- |
-| API | 組立の手順資料 602k、サイネージ 587〜600k、CSV の取り込み 582k、業務 Hermes 521k |
-| 定期処理 | 起動するだけのファイル 約1170k、CSV の取り込み 574k、サイネージ描画 572k、業務 Hermes の夜間処理 416k |
+| SHA | 種類 | 対象と量 |
+| --- | --- | --- |
+| `8cffcefb` | API | 組立の手順資料 602k、サイネージ 584〜600k、CSV の取り込み 582k、業務 Hermes 521k |
+| `8cffcefb` | 定期処理 | 起動するだけのファイル 約1170k、CSV の取り込み 574k、サイネージ描画 572k、業務 Hermes の夜間処理 416k |
+
+サイネージの内訳は management-overview 600k、render 587k、visualization-image 586k、canvas-preview と kiosk/signage-preview 各584k。
 
 起動するだけのファイルの約1170kは、全部の定期処理を読み込むことによる見かけの量である。
 API で窓口を登録しないため入口にしないファイルは34本ある。
@@ -38,9 +40,15 @@ API で窓口を登録しないため入口にしないファイルは34本あ�
 
 | 外す依存 | 減る入口と例 |
 | --- | --- |
-| `work-instruction-service.factory.ts` | 12入口で減る(業務 Hermes 52万→38万) |
-| `leaderboard-decoration.ts` | 8入口で減る(27万→19万) |
-| サイネージ→生産日程 | 5入口で約7万減る |
+| `work-instruction-service.factory.ts` | 12入口の各入口で1万以上減る(業務 Hermes 52万→38万) |
+| `leaderboard-decoration.ts` | 8入口で減る(`leaderboard-phased-read.ts` 約27万→約19万) |
+| サイネージ→生産日程 | 5入口で約7万減るが、`signage-a2ui-data.service.ts` の先が約31万あるので51万台のまま残る |
+
+直しの数え方(90日間の製番ボード・切削の片の直し38件を件名で分類):
+
+- 約26件は表示や操作の要望対応(★、2台表示、凡例、半角など)、約12件は保存の消失・上書きという同じ型の不具合。12件は #2688〜#2788 の時期に集中した。
+- 12件の内訳: `9b3f18df` 保存が消える、`6c9dd60e` 毎回409で保存できない、`9031af96` 待ち行列が止まる、`02768544` 他端末の変更を上書き、`f302a0f4` 消した1台が戻る、`e7318fa3` / `520d98e2` 古い版の送信、`c55f9e9a` / `611241d3` / `d1903d19` / `1b87230d` 読み直し、`78d41a3f` 他端末に届かない。
+- 12件のうち5件は画面と API の両方を直した。サイネージ・assembly・imports・business-hermes は届く範囲が広くても、同じ90日の保存系の直しは0〜1件で、量だけでは説明できない。
 
 ## Root Cause
 
@@ -52,38 +60,59 @@ AI が一度に読み切れない範囲を直すと、見ていない所との�
 
 ## Prevention
 
-月1回、リポジトリ直下で以下を実行し、Validation の表に1行足す。出力先は一時フォルダでよい。CI には組み込まない。
-事前に `/tmp/fr` を用意する。測定はメモリ約1.8GB、1回1分前後を見込む。
+月1回、main の最新で測り、その SHA を Validation の表に書く。「大きい入口」の表も、reach の出力の上位を写して毎月更新する。CI には組み込まない。
+前提: リポジトリ直下で `pnpm install --frozen-lockfile` 済みであること。道具は `apps/api/node_modules/typescript` を使う(別の場所は環境変数 `TSPATH` で指定できる)。以下はすべてリポジトリ直下で実行する。メモリ約1.8GB、1回1分前後を見込む。
 
-入口の一覧(計画書のコマンドをそのまま使用):
+測った SHA と入口の一覧を出す(件数は標準エラー):
 
 ```sh
-node scripts/analysis/feature-reach/entries.cjs web /tmp/fr/e-web.json
-node scripts/analysis/feature-reach/entries.cjs api /tmp/fr/e-api.json
-node scripts/analysis/feature-reach/entries.cjs sched /tmp/fr/e-sched.json
+git rev-parse HEAD
+mkdir -p /tmp/fr
+node scripts/analysis/feature-reach/entries.cjs web /tmp/fr/e-web.json 2>/tmp/fr/e-web.err
+node scripts/analysis/feature-reach/entries.cjs api /tmp/fr/e-api.json 2>/tmp/fr/e-api.err
+node scripts/analysis/feature-reach/entries.cjs sched /tmp/fr/e-sched.json 2>/tmp/fr/e-sched.err
 ```
 
 実行時のつながりを測る。定期処理も API のプログラムで測る:
 
 ```sh
-RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs web /tmp/fr/e-web.json /tmp/fr/r-web.json
-RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-api.json /tmp/fr/r-api.json
-RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-sched.json /tmp/fr/r-sched.json
+RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs web /tmp/fr/e-web.json /tmp/fr/r-web.json > /tmp/fr/o-web.txt
+RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-api.json /tmp/fr/r-api.json > /tmp/fr/o-api.txt
+RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-sched.json /tmp/fr/r-sched.json > /tmp/fr/o-sched.txt
 ```
 
 保存の流れは入口の一覧を groups の定義に替える:
 
 ```sh
-RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs web scripts/analysis/feature-reach/groups/save-flow-web.json /tmp/fr/r-save-web.json
-RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api scripts/analysis/feature-reach/groups/save-flow-api.json /tmp/fr/r-save-api.json
+RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs web scripts/analysis/feature-reach/groups/save-flow-web.json /tmp/fr/r-save-web.json > /tmp/fr/o-save-web.txt
+RUNTIME=1 node scripts/analysis/feature-reach/reach.cjs api scripts/analysis/feature-reach/groups/save-flow-api.json /tmp/fr/r-save-api.json > /tmp/fr/o-save-api.txt
 ```
 
 輪は型も含めるため `RUNTIME` を付けず、DUMP→cycles の順で出す:
 
 ```sh
-DUMP=/tmp/fr/adj-api.json node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-api.json /tmp/fr/rt-api.json
-TOP=20 node scripts/analysis/feature-reach/cycles.cjs /tmp/fr/adj-api.json
+DUMP=/tmp/fr/adj-api.json node scripts/analysis/feature-reach/reach.cjs api /tmp/fr/e-api.json /tmp/fr/rt-api.json > /tmp/fr/o-type-api.txt
+TOP=20 node scripts/analysis/feature-reach/cycles.cjs /tmp/fr/adj-api.json > /tmp/fr/o-cyc.txt
 ```
+
+表の各列を埋める(区切りは実装の `join('\t')` によるタブ。区分は以後も丸めた4列目の表示値で数える):
+
+```sh
+# 画面/API: 総数と 5万未満 / 5〜10万 / 10〜20万 / 20万以上
+awk -F'\t' '{v=$4; sub(/k$/,"",v); v+=0; if(v<50)a++; else if(v<100)b++; else if(v<200)c++; else d++} END{print NR, a"/"b"/"c"/"d}' /tmp/fr/o-web.txt
+awk -F'\t' '{v=$4; sub(/k$/,"",v); v+=0; if(v<50)a++; else if(v<100)b++; else if(v<200)c++; else d++} END{print NR, a"/"b"/"c"/"d}' /tmp/fr/o-api.txt
+cat /tmp/fr/e-web.err /tmp/fr/e-sched.err
+tail -1 /tmp/fr/e-api.err
+grep -c 入口にしない /tmp/fr/e-api.err
+grep GrindingPlanningBoardPage /tmp/fr/o-web.txt
+cat /tmp/fr/o-save-web.txt /tmp/fr/o-save-api.txt
+head -1 /tmp/fr/o-cyc.txt
+tail -1 /tmp/fr/o-cyc.txt
+# 大きい入口の表: 上位を確認し、起動専用ファイルの見かけの量も区別して写す
+head -10 /tmp/fr/o-api.txt /tmp/fr/o-sched.txt
+```
+
+cycles は輪のファイル数の降順であり、トークン量の順ではない。
 
 ## Validation
 
@@ -92,15 +121,17 @@ TOP=20 node scripts/analysis/feature-reach/cycles.cjs /tmp/fr/adj-api.json
 
 | 測った日 | SHA | 画面の入口数と量の区分 | API の入口数と区分 | 製番ボード画面 | 保存の流れ(画面 一覧/待ち行列だけ) | 保存の流れ(API/自動分割を除く) | API の輪の数 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 2026-11-16(基準) | `b4ae9625` | 115件、74/28/12/1 | 168件、93/33/25/17 | 312k(174ファイル 20246行) | 旧定義 73k / 約20k | 約200k / 約155k | 12(最大 `輪 9 files 34k`) |
-| 2026-11-16 | `95b44853`(main `8cffcefb` を取り込んだ計画の枝) | 115件、74/28/12/1 | 168件、93/32/27/16 | 310k(176ファイル 20037行) | 一覧 60k(31ファイル) / 22k | 197k / 152k | 11(最大 `輪 4 files 2k`) |
+| 2026-11-16(基準) | `b4ae9625` | 115件、74/28/12/1 | 168件、93/33/25/17 | 312k(174ファイル 20246行) | 旧定義 73k / 約20k | 約200k / 約155k | 12(先頭行 `輪 9 files 34k`) |
+| 2026-11-16 | `8cffcefb`(main) | 115件、74/28/12/1 | 168件、93/32/27/16 | 310k(176ファイル 20037行) | 一覧 60k(31ファイル) / 22k | 197k / 152k | 11(先頭行 `輪 4 files 2k`) |
 
-- 定期処理の入口: 基準 `b4ae9625` は28件、`95b44853` は29件。
+- 計画の枝 95b44853 で測った。apps と packages は 8cffcefb と差分なし。
+- 2026-11-16 の行は表示値(丸めた4列目)で集計。丸めない値では API は93/33/26/16になる(`backup/restore.ts` が約99.7kで境目)。基準 `b4ae9625` の行がどちらで数えたかは記録が無い。
+- 定期処理の入口: 基準 `b4ae9625` は28件、`8cffcefb` は29件。
 - 保存の流れ(画面)は、基準の旧定義「待ち行列+offline+API hooks」73kと、段階2で作った新しい一覧60kで数え方が違う。単純な前後比較には使わない。
 
 ## Open Items
 
-- 担当: 進捗追跡の会話(調整中)
+- 担当: 進捗追跡の会話に依頼中(2026-11-16)。決まったらここに書く
 - 次の測定は 2026-12-16 頃。
 - 段階2〜4の残りは計画書を正本とし、ここに複製しない。
 
