@@ -17,3 +17,10 @@ alwaysApply: false
 - 表示用フィールドと、保存・検索・参照に使うキーを混同しない
 - 既存互換が必要な場合でも、legacy変換は adapter / boundary に閉じ込める
 - 新しい公開契約に、互換都合だけのフィールドや意味を持ち込まない
+
+## リファクタリングの進め方
+
+- 対象は量の大きさではなく、変更の多さと広さで選ぶ(`scripts/analysis/feature-reach/change-width.sh`、記録は KB-453)
+- 手を入れる前に今の動きをテストで固定し、1 PR で1種類の変更だけを行う。中継だけのファイルや層を作らない
+- 量や件数を目標にしない。遅くなる変更は採らない
+- 理由と採らなかった案は [ADR-20261116](../../docs/decisions/ADR-20261116-refactoring-target-selection.md)
