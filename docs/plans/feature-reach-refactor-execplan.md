@@ -186,7 +186,7 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 - [x] (2026-11-16 15:00Z) 段階1: 測る道具を `scripts/analysis/feature-reach/` に置き、窓口を登録するファイル168件を入口にした。
 - [ ] 段階1: 最初の記録を knowledge-base に置き、月1回の測定を始める。
 - [x] (2026-11-16 01:45Z) 段階2: ボードの結合テストを CI で流れるようにした(#2843、マージ済み)。
-- [ ] 段階2: 共有の型を読み出しの形と保存の形に分ける。保存の要求と応答の型44件を `production-schedule-grinding-planning-board-write.ts` へ移した PR #2847(CI 合格、マージ依頼済み)。
+- [x] 段階2: 共有の型を読み出しの形と保存の形に分ける。保存の要求と応答の型44件を `production-schedule-grinding-planning-board-write.ts` へ移した PR #2847(2026-11-16 マージ、dbbb1d1e)。
 - [ ] 段階2: 12件の直しで壊れた場面を、画面と API の境目のテストにする。
 - [ ] 段階2: `FkojunstMailNormalizedRow` 型を移して9ファイルの輪をほどく。
 - [ ] 段階2: `stateOrder` を外へ出すかを、測ってから決める。
