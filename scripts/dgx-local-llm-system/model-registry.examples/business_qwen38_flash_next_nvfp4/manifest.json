@@ -1,11 +1,11 @@
 {
   "modelProfileId": "business_qwen38_flash_next_nvfp4",
   "displayNameJa": "業務 Qwen3.8 Flash Next NVFP4",
-  "descriptionJa": "業務復帰時の推奨モデル。MiaAI-Lab の単一 DGX Spark 向け PLE offload launcher を blue backend で使用し、system-prod-primary として提供する。",
+  "descriptionJa": "2026-11-16 に重みを削除したため無効。MiaAI-Lab の単一 DGX Spark 向け PLE offload launcher を blue backend で使用し、system-prod-primary として提供する。",
   "backend": "blue",
   "servedAlias": "system-prod-primary",
-  "enabled": true,
-  "recommended": true,
+  "enabled": false,
+  "recommended": false,
   "declaredCapabilities": ["text", "vision"],
   "visionRequiresMmproj": false,
   "launcherHints": {
