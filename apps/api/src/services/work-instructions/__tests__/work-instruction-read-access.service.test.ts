@@ -183,6 +183,30 @@ describe('WorkInstructionReadService', () => {
     expect(repository.readGroups).toHaveBeenCalledWith(groupQuery);
   });
 
+  it('delegates batch reads when implemented by the repository', async () => {
+    const repository = repositoryMock();
+    const keys = [{ partNumber: ' md004 ', shootingTarget: '研削工程' }];
+    const result = new Map([[JSON.stringify([' md004 ', '研削工程']), group]]);
+    repository.readPublishedGroupsByKeys = vi.fn().mockResolvedValue(result);
+    const service = new WorkInstructionReadService(repository, {} as WorkInstructionFileStorePort);
+    await expect(service.readPublishedGroupsByKeys(keys)).resolves.toBe(result);
+    expect(repository.readPublishedGroupsByKeys).toHaveBeenCalledExactlyOnceWith(keys);
+    expect(repository.readPublishedGroup).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('falls back from batch to individual reads (published available: %s)', async (published) => {
+    const repository = repositoryMock();
+    const keys = [{ partNumber: ' md004 ', shootingTarget: '研削工程' }, { partNumber: '', shootingTarget: '研削' }];
+    const single = vi.fn().mockResolvedValueOnce(group).mockResolvedValueOnce(null);
+    repository.readPublishedGroup = published ? single : undefined;
+    if (!published) repository.readGroup = single;
+    const service = new WorkInstructionReadService(repository, {} as WorkInstructionFileStorePort);
+    await expect(service.readPublishedGroupsByKeys(keys)).resolves.toEqual(new Map([
+      [JSON.stringify([' md004 ', '研削工程']), group], [JSON.stringify(['', '研削']), null]
+    ]));
+    expect(single.mock.calls).toEqual(keys.map((key) => [key]));
+  });
+
   it('returns only active assets and reads their bytes from durable storage', async () => {
     const repository = repositoryMock();
     const files = { read: vi.fn().mockResolvedValue(Buffer.from('img')) } as unknown as WorkInstructionFileStorePort;

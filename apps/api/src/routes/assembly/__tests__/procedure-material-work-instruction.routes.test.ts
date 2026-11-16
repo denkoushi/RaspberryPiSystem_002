@@ -16,6 +16,7 @@ const base = '/assembly/procedure-materials';
 const assetId = '11111111-1111-4111-8111-111111111111';
 const key = `work-instruction:row-1:version-1:1:image:${assetId}`;
 const item = { candidateKey: key, partNumber: 'DFD1', shootingTarget: '外径' };
+const lookupKey = (input: { partNumber: string; shootingTarget: string }) => JSON.stringify([input.partNumber, input.shootingTarget]);
 const missing = () => Object.assign(new Error('missing'), { code: 'ENOENT' });
 
 describe('procedure-material work-instruction routes', () => {
@@ -32,16 +33,18 @@ describe('procedure-material work-instruction routes', () => {
     const group = { partNumber: summary.partNumber, shootingTarget: summary.shootingTarget, rows: [row], steps: [step] };
     const read = { readPublishedGroupsByPartName: vi.fn().mockResolvedValue([]), readPublishedGroups: vi.fn().mockResolvedValue([summary]), searchPublishedGroups: vi.fn().mockResolvedValue({ groups: [summary], hasMore: false, total: 1 }),
       readPublishedGroup: vi.fn().mockResolvedValue(group), readAsset: vi.fn().mockResolvedValue({ bytes, asset: { assetId, status: 'ACTIVE', mimeType: 'image/png' } }) };
+    const readPublishedGroupsByKeys = vi.fn(async (inputs: Array<typeof summary>) => new Map(inputs.map((input) => [lookupKey(input), group as typeof group | null])));
+    const batchRead = { ...read, readPublishedGroupsByKeys };
     const db = { $queryRaw: vi.fn().mockResolvedValue([]), procedureMaterial: { findMany: vi.fn().mockResolvedValue([]), findUnique: vi.fn().mockResolvedValue(null), create: vi.fn().mockResolvedValue({ id: 'material' }) } };
     const store = { write: vi.fn().mockResolvedValue({}), read: vi.fn().mockResolvedValue(bytes), stat: vi.fn().mockResolvedValue({}) };
-    const reader = vi.fn(() => read);
+    const reader = vi.fn(() => batchRead);
     const service = new ProcedureMaterialWorkInstructionService(db as never, store as never, reader as never);
     app = Fastify(); registerErrorHandler(app);
     registerProcedureMaterialRoutes(app, { service: new ProcedureMaterialService(db as never, store as never), workInstructions: service,
       allowView: async () => { if (deny === 'view') throw new ApiError(403, '権限がありません'); },
       allowWriteKiosk: async () => { if (deny === 'write') throw new ApiError(403, '権限がありません'); } });
     const post = (candidateKeys = [key]) => app.inject({ method: 'POST', url: `${base}/import-work-instructions`, payload: { items: candidateKeys.map((candidateKey) => ({ ...item, candidateKey })) } });
-    return { read, reader, db, store, bytes, summary, group, row, step, service, post };
+    return { read: batchRead, reader, db, store, bytes, summary, group, row, step, service, post };
   }
   it('lists public source photos with displayed memo and imported status without copying bytes', async () => {
     const { db, read, store } = await harness();
@@ -60,7 +63,7 @@ describe('procedure-material work-instruction routes', () => {
     expect((await app.inject(`${base}/work-instruction-candidates`)).json()).toEqual({ items: [] });
     row.steps = [step]; row.publication = undefined as never;
     expect((await app.inject(`${base}/work-instruction-candidates`)).json().items).toEqual([]);
-    group.rows = [row]; read.readPublishedGroup.mockResolvedValue(null);
+    group.rows = [row]; read.readPublishedGroupsByKeys.mockResolvedValue(new Map());
     expect((await app.inject(`${base}/work-instruction-candidates`)).json().items).toEqual([]);
   });
   it('uses original text for absent overrides, preserves an empty override and truncates only the preview', async () => {
@@ -83,11 +86,11 @@ describe('procedure-material work-instruction routes', () => {
     const { read, summary } = await harness();
     read.searchPublishedGroups.mockImplementation(async ({ query }) => ({ groups: query === '公開メモ' ? [summary] : [], hasMore: false, total: query === '公開メモ' ? 1 : 0 }));
     expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent('公開メモ')}`)).json().items[0].memo).toBe('公開メモ');
-    read.readPublishedGroup.mockClear();
+    read.readPublishedGroupsByKeys.mockClear();
     for (const query of ['下書きメモ', '非公開メモ']) {
       expect((await app.inject(`${base}/work-instruction-candidates?q=${encodeURIComponent(query)}`)).json().items).toEqual([]);
     }
-    expect(read.readPublishedGroup).not.toHaveBeenCalled();
+    expect(read.readPublishedGroupsByKeys).not.toHaveBeenCalled();
     expect(read.readPublishedGroups).not.toHaveBeenCalled();
   });
   it('resolves partial part names, merges public matches once and returns the name', async () => {
@@ -99,7 +102,7 @@ describe('procedure-material work-instruction routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().items).toHaveLength(1);
     expect(response.json().items[0]).toMatchObject({ partNumber: 'DFD1', partName: '軸受ホルダー' });
-    expect(read.readPublishedGroup).toHaveBeenCalledExactlyOnceWith(summary);
+    expect(read.readPublishedGroupsByKeys).toHaveBeenCalledExactlyOnceWith([summary]);
     expect(read.readPublishedGroupsByPartName).toHaveBeenCalledExactlyOnceWith('ホル');
     expect(read.readPublishedGroups).not.toHaveBeenCalled();
     read.readPublishedGroupsByPartName.mockResolvedValue([summary]);
@@ -123,40 +126,83 @@ describe('procedure-material work-instruction routes', () => {
     const { read, summary, group } = await harness();
     const newer = { ...summary, partNumber: 'NEW', latestModified: new Date('2026-10-07') };
     read.readPublishedGroups.mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => ({ ...summary, partNumber: `old-${i}` }))).mockResolvedValueOnce([newer]);
-    read.readPublishedGroup.mockImplementation(async (input) => input.partNumber === 'NEW' ? { ...group, partNumber: 'NEW' } : null);
+    read.readPublishedGroupsByKeys.mockImplementation(async (inputs) => new Map(inputs.map((input) => [lookupKey(input), input.partNumber === 'NEW' ? { ...group, partNumber: 'NEW' } : null])));
     const response = await app.inject(`${base}/work-instruction-candidates?limit=1`);
     expect(response.json().items[0].partNumber).toBe('NEW');
     expect(read.readPublishedGroups).toHaveBeenLastCalledWith({ limit: 500, offset: 500 });
-    expect(read.readPublishedGroup).toHaveBeenCalledOnce();
+    expect(read.readPublishedGroupsByKeys).toHaveBeenCalledOnce();
+    expect(read.readPublishedGroup).not.toHaveBeenCalled();
   });
-  it('reads at most six groups concurrently and preserves summary order after reverse completion', async () => {
+  it('reads 100 groups per batch and preserves summary order regardless of Map order', async () => {
     const { read, summary, group, service } = await harness();
-    const summaries = Array.from({ length: 8 }, (_, index) => ({ ...summary, partNumber: `part-${index}`, latestModified: new Date(1000 - index) }));
+    const summaries = Array.from({ length: 205 }, (_, index) => ({ ...summary, partNumber: `part-${index}`, latestModified: new Date(1000 - index) }));
     read.readPublishedGroups.mockResolvedValue(summaries);
-    const finish = new Map<string, () => void>();
-    read.readPublishedGroup.mockImplementation((input) => new Promise((resolve) => {
-      finish.set(input.partNumber, () => resolve({ ...group, partNumber: input.partNumber }));
-    }));
-    const result = service.list({ limit: 100 });
-    await vi.waitFor(() => expect(read.readPublishedGroup).toHaveBeenCalledTimes(6));
-    for (let index = 5; index >= 0; index--) finish.get(`part-${index}`)!();
-    await vi.waitFor(() => expect(read.readPublishedGroup).toHaveBeenCalledTimes(8));
-    finish.get('part-7')!(); finish.get('part-6')!();
-    expect(await result).toEqual({ items: summaries.map(({ partNumber }) => ({ candidateKey: key, partNumber, partName: null, shootingTarget: '外径', step: 1,
-      memo: '公開メモ', assetId, sourceModified: summary.latestModified, alreadyImported: false })) });
+    read.readPublishedGroupsByKeys.mockImplementation(async (inputs) => new Map([...inputs].reverse().map((input) => [lookupKey(input), { ...group, partNumber: input.partNumber }])));
+    const result = await service.list({ limit: 150 });
+    expect(result.items.map((item) => item.partNumber)).toEqual(summaries.slice(0, 150).map((summary) => summary.partNumber));
+    expect(read.readPublishedGroupsByKeys.mock.calls.map(([inputs]) => inputs.length)).toEqual([100, 100]);
+    expect(read.readPublishedGroup).not.toHaveBeenCalled();
   });
-  it('keeps exclusions and the partial-group limit, ignoring errors beyond the cutoff and stopping new batches', async () => {
+  it('keeps exclusions and the partial-group limit and stops new batches', async () => {
     const { read, summary, group, row, step, service, db } = await harness();
     read.readPublishedGroups.mockResolvedValue(Array.from({ length: 10 }, (_, index) => ({ ...summary, partNumber: `part-${index}`, latestModified: new Date(1000 - index) })));
-    read.readPublishedGroup.mockImplementation(async (input) => {
-      if (input.partNumber === 'part-0') return null;
-      if (input.partNumber === 'part-3') throw new Error('past cutoff');
-      return { ...group, partNumber: input.partNumber, rows: [{ ...row, steps: [step, { ...step, step: 2 }, ...(input.partNumber === 'part-2' ? [{ ...step, step: 3 }] : [])] }] };
-    });
+    read.readPublishedGroupsByKeys.mockImplementation(async (inputs) => new Map(inputs.map((input) => {
+      if (input.partNumber === 'part-0') return [lookupKey(input), null];
+      return [lookupKey(input), { ...group, partNumber: input.partNumber, rows: [{ ...row, steps: [step, { ...step, step: 2 }, ...(input.partNumber === 'part-2' ? [{ ...step, step: 3 }] : [])] }] }];
+    })));
     const result = await service.list({ limit: 4 });
     expect(result.items.map(({ partNumber, step }) => [partNumber, step])).toEqual([['part-1', 1], ['part-1', 2], ['part-2', 1], ['part-2', 2]]);
-    expect(read.readPublishedGroup).toHaveBeenCalledTimes(4);
+    expect(read.readPublishedGroupsByKeys).toHaveBeenCalledOnce();
+    expect(read.readPublishedGroup).not.toHaveBeenCalled();
     expect(db.procedureMaterial.findMany).toHaveBeenCalledWith({ where: { gmailDedupeKey: { in: result.items.map((item) => item.candidateKey) } }, select: { gmailDedupeKey: true } });
+  });
+  it.each([
+    { q: undefined, limit: 3 }, { q: undefined, limit: 20 },
+    { q: 'holder', limit: 3 }, { q: 'holder', limit: 20 },
+  ])('matches the individual-read candidate sequence for $q / limit $limit', async ({ q, limit }) => {
+    const { read, summary, group, row, step, service, db } = await harness();
+    const summaries = Array.from({ length: 5 }, (_, index) => ({ ...summary, partNumber: `PART-${index}`, latestModified: new Date(1000 - index) }));
+    const resolve = (input: typeof summary) => input.partNumber === 'PART-0' ? null : {
+      ...group, partNumber: input.partNumber, rows: [
+        { ...row, id: input.partNumber, steps: [
+          { ...step, imageAssetId: null }, { ...step, step: 2, memoOverride: '' },
+          { ...step, step: 3, memoOverride: 'ＨｏｌＤｅｒ' }, { ...step, step: 4, memoOverride: 'holder '.repeat(40) },
+        ] }, { ...row, publication: undefined, steps: [step] },
+      ],
+    };
+    read.readPublishedGroup.mockImplementation(async (input) => resolve(input));
+    read.readPublishedGroups.mockResolvedValue(summaries);
+    read.searchPublishedGroups.mockResolvedValue({ groups: summaries, hasMore: false, total: summaries.length });
+    read.readPublishedGroupsByPartName.mockResolvedValue(q ? [summaries[2]] : []);
+    read.readPublishedGroupsByKeys.mockImplementation(async (inputs) => new Map([...inputs].reverse().map((input) => [lookupKey(input), resolve(input)])) as never);
+    const importedKey = `work-instruction:PART-1:version-1:3:image:${assetId}`;
+    db.procedureMaterial.findMany.mockResolvedValue([{ gmailDedupeKey: importedKey }]);
+    db.$queryRaw.mockResolvedValue([{ partNumber: 'PART-1', partName: '部品名' }]);
+    // Reference traversal: read summaries individually, then apply exclusions,
+    // memoOnly and the partial-group cutoff in the original order.
+    const expected = [];
+    for (const summary of summaries) {
+      const current = await read.readPublishedGroup(summary);
+      if (!current) continue;
+      for (const row of current.rows) {
+        if (!row.publication?.publishedVersionId) continue;
+        for (const step of row.steps) {
+          if (expected.length >= limit) break;
+          if (!step.imageAssetId || !step.imageStorageKey || !step.imageMimeType) continue;
+          const memo = step.memoOverride ?? step.text;
+          if (q && summary.partNumber !== 'PART-2' && !memo.normalize('NFKC').toLowerCase().includes(q)) continue;
+          const candidateKey = `work-instruction:${row.id}:${row.publication.publishedVersionId}:${step.step}:image:${step.imageAssetId}`;
+          expected.push({ candidateKey, partNumber: current.partNumber, partName: current.partNumber === 'PART-1' ? '部品名' : null,
+            shootingTarget: current.shootingTarget, step: step.step, memo: memo.slice(0, 200), assetId: step.imageAssetId,
+            sourceModified: row.source.modified, alreadyImported: candidateKey === importedKey });
+        }
+      }
+      if (expected.length >= limit) break;
+    }
+    read.readPublishedGroup.mockClear();
+    expect((await service.list({ q, limit })).items).toEqual(expected);
+    expect(read.readPublishedGroup).not.toHaveBeenCalled();
+    expect(read.readPublishedGroupsByKeys).toHaveBeenCalledOnce();
   });
   it('defaults to 60, caps the route and service at 1000, validates list and import bounds', async () => {
     const { row, step, service } = await harness();
