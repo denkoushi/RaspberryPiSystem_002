@@ -12,6 +12,29 @@ describe('resolveVoiceNavigation', () => {
   it.each(['GUNDE', 'Kunle', 'Kunden', 'kunren', 'Kunren.', 'Kitto kunren', 'Kito, kunren!', 'kun ren', 'kun-ren', 'Kitto kun ren', 'kunre hiraite', 'kunren hiraku', 'kunren gamen'])('matches romaji training: %s', text => {
     expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/assembly/training', label: '組立 > 訓練' });
   });
+  it.each([
+    'くんで', 'くんれん', 'クンレン', 'くんれ', 'キット くんれん', 'きっとくんれん',
+    'くんれんひらいて', 'くんれんをひらいて', 'くんれんにいって', 'くんれん がめん',
+    'キット、クンレン！', 'きっとくんれんひらく'
+  ])('matches kana training: %s', text => {
+    expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/assembly/training', label: '組立 > 訓練' });
+  });
+  it.each(['くみたて', 'クミタテ'])('matches kana assembly: %s', text => {
+    expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/assembly', label: '組立' });
+  });
+  it.each(['ちぇっくしーと', 'チェックシートひらく'])('matches small kana and prolonged vowels: %s', text => {
+    expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/assembly/check-sheets', label: '組立 > チェックシート' });
+  });
+  it.each(['せいさんすけじゅーる', 'セイサンスケジュール'])('matches kana digraphs: %s', text => {
+    expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/production-schedule', label: '生産スケジュール' });
+  });
+  it.each([
+    'はい', 'いいえ', 'ありがとう', 'こんにちは', 'くるま', 'くみたてくみたてくみ',
+    'きっとくんれんひらいて', 'キットクンレンヒライテ', '組立の手順', 'くんれんを開いて',
+    'くんれんa', 'aくんれん', 'くんれん1', 'くんれんé', 'ー', 'っ'
+  ])('rejects unsafe kana fallback: %s', text => {
+    expect(resolveVoiceNavigation(text)).toBeNull();
+  });
   it.each(['kumitate', 'gumidade', 'bumitate', 'vumitate', 'zumitate', 'kumitale', 'koumitate', 'koomitate', 'kuumitate'])('normalizes romaji assembly: %s', text => {
     expect(resolveVoiceNavigation(text)).toEqual({ path: '/kiosk/assembly', label: '組立' });
   });
