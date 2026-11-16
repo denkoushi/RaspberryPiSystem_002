@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 import type { CSSProperties } from 'react';

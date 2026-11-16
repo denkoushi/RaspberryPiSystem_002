@@ -9,7 +9,7 @@ import { LeaderBoardRankPickerDropdown } from '../leaderOrderBoard/LeaderBoardRa
 import { normalizeMachineName } from '../productionSchedule/machineName';
 
 import { planningBoardPartKey } from './gantt/planningBoardGanttLayout';
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { PlanningBoardCompletionButton } from './PlanningBoardCompletionButton';
 import { formatPlanningBoardDate as formatDate } from './planningBoardDateLabel';
 import { formatPlanningBoardItemMinutes } from './planningBoardLoad';

@@ -8,7 +8,7 @@ import { mergeUnitOrderLane, planningBoardUnitOrder } from './gantt/planningBoar
 import { isUnitPiece } from './gantt/planningBoardUnitSegments';
 import { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 import { applyOptimisticOverride, EMPTY_ORDER, todayJst } from './planningBoardPageModel';
 import { planningBoardPair, planningBoardResourceMatches } from './planningBoardTwoMachine';
 import { comparePlanningBoardBarOrder, compareProcessOrder, resolveGrindingPlanningBoardDueDate, resolveGrindingPlanningBoardResource, sortGrindingPlanningBoardItems } from './sortGrindingPlanningBoardItems';

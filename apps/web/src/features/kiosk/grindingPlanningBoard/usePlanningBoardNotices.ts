@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { useFrozenValue } from './offline/PlanningBoardOfflineProvider';
+import { useFrozenValue } from './offline/planningBoardOfflineContext';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 

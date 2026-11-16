@@ -10,8 +10,8 @@ import { PlanningBoardSingleResourceHead } from './PlanningBoardSingleResourceHe
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 const { save, rowRender, offline } = vi.hoisted(() => ({ save: vi.fn(), rowRender: vi.fn(), offline: { enabled: false, frozen: false, refreshRead: vi.fn() } }));
-vi.mock('../offline/PlanningBoardOfflineProvider', async (original) => {
-  const actual = await original<typeof import('../offline/PlanningBoardOfflineProvider')>();
+vi.mock('../offline/planningBoardOfflineContext', async (original) => {
+  const actual = await original<typeof import('../offline/planningBoardOfflineContext')>();
   return { ...actual, usePlanningBoardOffline: () => ({ ...actual.usePlanningBoardOffline(), ...offline }) };
 });
 vi.mock('../../../../api/hooks/production-schedule', () => ({

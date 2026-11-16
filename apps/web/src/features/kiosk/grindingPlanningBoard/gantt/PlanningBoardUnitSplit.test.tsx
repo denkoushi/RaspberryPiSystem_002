@@ -20,8 +20,8 @@ vi.mock('../../../../api/hooks', () => ({
 vi.mock('../offline/planningBoardOfflineQueries', () => ({
   useOfflineResourceMinutes: () => ({ data: undefined }), useOfflineResourceCapacity: () => ({ data: undefined })
 }));
-vi.mock('../offline/PlanningBoardOfflineProvider', async original => ({
-  ...await original<typeof import('../offline/PlanningBoardOfflineProvider')>(),
+vi.mock('../offline/planningBoardOfflineContext', async original => ({
+  ...await original<typeof import('../offline/planningBoardOfflineContext')>(),
   usePlanningBoardOffline: () => ({ frozen: mocks.frozen, enabled: mocks.offline,
     gate: { attempt: mocks.attempt, run: mocks.run }, refreshRead: mocks.refresh })
 }));

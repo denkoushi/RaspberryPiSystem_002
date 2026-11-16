@@ -13,7 +13,7 @@ import type { PlanningBoardWriteGate } from './planningBoardWriteGate';
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
 const state = vi.hoisted(() => ({ offline: {} as { gate: PlanningBoardWriteGate; frozen: boolean }, save: vi.fn() }));
-vi.mock('./PlanningBoardOfflineProvider', () => ({ usePlanningBoardOffline: () => state.offline }));
+vi.mock('./planningBoardOfflineContext', () => ({ usePlanningBoardOffline: () => state.offline }));
 vi.mock('../gantt/usePlanningBoardGantt', () => ({ usePlanningBoardGantt: () => ({ scale: 1, layout: null, capacityPending: false, mode: 'forward' }) }));
 vi.mock('../../../../api/hooks/production-schedule', () => ({
   useKioskSameModelResourceGroups: () => ({ data: undefined }),

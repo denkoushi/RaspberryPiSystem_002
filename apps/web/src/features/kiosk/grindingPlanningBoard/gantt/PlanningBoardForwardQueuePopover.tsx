@@ -3,7 +3,7 @@ import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffec
 import { createPortal } from 'react-dom';
 
 import { normalizeMachineName } from '../../productionSchedule/machineName';
-import { usePlanningBoardOffline } from '../offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from '../offline/planningBoardOfflineContext';
 import { pageZoom } from '../pageZoom';
 import { formatPlanningBoardItemMinutes } from '../planningBoardLoad';
 

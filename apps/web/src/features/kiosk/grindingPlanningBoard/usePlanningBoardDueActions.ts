@@ -3,7 +3,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 
 import { normalizeDueDateInput } from '../productionSchedule/dueManagement';
 
-import { usePlanningBoardOffline } from './offline/PlanningBoardOfflineProvider';
+import { usePlanningBoardOffline } from './offline/planningBoardOfflineContext';
 
 import type { DuePickerState, FeedbackKind, PendingDueScopeUpdate } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
