@@ -66,13 +66,13 @@ API は、`apps/api/src/routes` 配下で窓口を登録するファイル168件
 
 ### 変更の多さと広さ(2026-11-16 追記)
 
-main の 83678cbf で、2026-10-17 以降の1か月の変更を `scripts/analysis/feature-reach/change-width.sh` で数えた。テスト、生成物、文書、画像は数えない。区画は `apps/<app>/src` の最上位フォルダと共有パッケージである。
+main の 83678cbf で、2026-10-17 の 00:00 以降の1か月の変更を `scripts/analysis/feature-reach/change-width.sh` で数えた。テスト、生成物、文書、画像、`pnpm-lock.yaml` は数えない。区画は `apps/<app>/src` の最上位フォルダで、それ以外は先頭2段(`packages/<名前>`、`scripts/deploy` など)である。
 
-製番ボードの画面のフォルダ(`apps/web/src/features/kiosk/grindingPlanningBoard`)を触ったコミットは101件で、1件あたりのファイル数は中央値5、75%点12、3区画以上にまたがったものが40件だった。ボードの API のフォルダ(`services/production-schedule/grinding-planning-board`)は43件で、中央値8、75%点21、3区画以上25件である。組立は画面26件・API 35件、CSV の取り込みは24件、サイネージは7件、業務 Hermes は8件だった。量が大きいサイネージ、取り込み、業務 Hermes は、ほとんど変わっていない。変更の大半は製番ボードに集まっている。
+製番ボードの画面のフォルダ(`apps/web/src/features/kiosk/grindingPlanningBoard`)を触ったコミットは102件で、1件あたりのファイル数は中央値5、75%点13、3区画以上にまたがったものが41件だった。ボードの API のフォルダ(`services/production-schedule/grinding-planning-board`)は43件で、中央値8、75%点21、3区画以上25件である。組立は画面26件・API 38件、CSV の取り込みは24件、サイネージは7件、業務 Hermes は9件だった。量が大きいサイネージと業務 Hermes は、ほとんど変わっていない。取り込みは組立と同じくらい変わっている。変更が最も多いのは製番ボードである。
 
-ボードの中では、ガントの画面 `gantt/PlanningBoardGanttView.tsx`(629行)がこの1か月に45回、ページ `ProductionScheduleGrindingPlanningBoardPage.tsx`(813行)が42回変わった。ガントの画面と一緒に変わったのは、前向きの行 `PlanningBoardForwardGanttRow.tsx`(22回)、ページ(16回)、待ちの一覧 `PlanningBoardForwardQueuePopover.tsx`(13回)、`PlanningBoardPageView.tsx`(13回)、`PlanningBoardGanttDisplay.tsx`(12回)、行 `PlanningBoardGanttRow.tsx`(11回)、受け渡しの型 `planningBoardGanttViewTypes.ts`(10回)である。ガントの画面は約66個の値を受け取り(`planningBoardGanttViewTypes.ts`)、`PlanningBoardPageView.tsx` はそれをページから受けて渡している。行に1つ機能を足すと、ページ、ページの表示、ガントの画面、行、受け渡しの型を順に直すことになる。変更が広がる主な理由は、この値の受け渡しの長さだと見ている。ガントのフォルダにはテストが30本あり(`PlanningBoardGanttView.test.tsx` など)、表示の動きはある程度固定されている。
+ボードの中では、ガントの画面 `gantt/PlanningBoardGanttView.tsx`(629行)がこの1か月に45回、ページ `ProductionScheduleGrindingPlanningBoardPage.tsx`(813行)が42回変わった。ガントの画面と一緒に変わったのは、前向きの行 `PlanningBoardForwardGanttRow.tsx`(22回)、ページ(16回)、待ちの一覧 `PlanningBoardForwardQueuePopover.tsx`(13回)、`PlanningBoardPageView.tsx`(13回)、`PlanningBoardGanttDisplay.tsx`(12回)、行 `PlanningBoardGanttRow.tsx`(11回)、受け渡しの型 `planningBoardGanttViewTypes.ts`(10回)である。ガントの画面は78個の値を受け取り(`planningBoardGanttViewTypes.ts` の `PlanningBoardGanttProps`。本体71個と `Pick` の7個)、`PlanningBoardPageView.tsx` はそれをページから受けて渡している。行に1つ機能を足すと、ページ、ページの表示、ガントの画面、行、受け渡しの型を順に直すことになる。変更が広がる主な理由は、この値の受け渡しの長さだと見ている。ガントのフォルダにはテストのファイルが34本あり(`PlanningBoardGanttView.test.tsx` など)、表示の動きはある程度固定されている。描き直しの回数を数えるテストも `PlanningBoardGanttMemo.test.tsx` に6本ある。
 
-API 側の保存の流れ(自動分割を除く約15万)の中身も分けた。1ファイルを外すと減る量で見ると、ボードの読み出し `grinding-planning-board/source.ts` が約3.3万で最も大きい。`write.ts` と `write-source.ts` は、行や順位や上書きを数件ずつ読む小さな関数(`readWinnerRowsByIds`、`readRowDetails`、`readRanks`、`readOverrides` など)だけを使うが、同じファイルにボード全体を読む `readPlanningSource`(125〜291行)があり、その先の順位ボードの読み込み(`leaderboard/` 約2.3万)まで届く。ただし小さな関数の側も順位ボードの読み込みの関数(`fetchLeaderboardScheduleHydratedRowsOrderedByIds` など)を使うので、ファイルを分けて減る量は測るまで分からない。次は、設定の読み込み `config/env.ts`(約1.7万。DB の接続 `lib/prisma.ts` 経由で全員が読む)、機械の能力 `grinding-planning-board-resource-minutes.service.ts`(約1.2万)、負荷調整の設定 `load-balancing/load-balancing-settings.service.ts`(約0.8万)である。設定の読み込みは、保存を直す AI が読む必要の無いファイルなので、手を入れない。
+API 側の保存の流れ(自動分割を除く約15万)の中身も分けた。1ファイルを外すと減る量で見ると、ボードの読み出し `grinding-planning-board/source.ts` が約3.3万で最も大きい。`write.ts` と `write-source.ts` は、行や順位や上書きを数件ずつ読む小さな関数(`readWinnerRowsByIds`、`readRowDetails`、`readRanks`、`readOverrides` など)だけを使うが、同じファイルにボード全体を読む `readPlanningSource`(125〜266行)があり、その先の順位ボードの読み込み(`leaderboard/` 約2.3万)まで届く。順位ボードの読み込みの関数 `fetchLeaderboardScheduleHydratedRowsOrderedByIds` を使うのは `readPlanningSource` の中だけで、小さな関数の側(`readRowDetails`、`readRanks`)は分け方の関数 `chunkLeaderboardRowIdsForHydrate`(`leaderboard/leaderboard-display-row-scope.ts`。import を持たない)しか使わない。だから分ければ減る見込みは高いが、ほかの import も絡むので、量は写しで測ってから決める。次は、設定の読み込み `config/env.ts`(約1.7万。DB の接続 `lib/prisma.ts` 経由で全員が読む)、機械の能力 `grinding-planning-board-resource-minutes.service.ts`(約1.2万)、負荷調整の設定 `load-balancing/load-balancing-settings.service.ts`(約0.8万)である。設定の読み込みは、保存を直す AI が読む必要の無いファイルなので、手を入れない。
 
 ## Plan of Work
 
@@ -114,17 +114,17 @@ API 側の保存の流れについては、`source.ts` を「数件ずつ読む�
 
 製番ボードは、この1か月で最もよく変わった機能であり、その変更は、ページからガントの行までの値の受け渡しに沿って広がっている(Context の「変更の多さと広さ」)。ここを短くすると、ふだんの機能追加で触るファイルが減る見込みがある。
 
-最初に、今の動きを固定する。ガントの30本のテストで足りない所を確かめ、足りなければテストだけを足す PR を先に出す。見る場面は、1台表示と2台表示、ドラッグ、待ちの一覧、加工時間シート、製番のフォーカスである。あわせて、ボードの描き直しの回数を数えるテストを1本置く。値をまとめて渡すと、関係の無い値が変わったときにも描き直しが起きて遅くなることがあるからである。この計画の大もとは「直し続けても遅くならないこと」なので、描き直しの回数が増える変更は採らない。
+最初に、今の動きを固定する。ガントの34本のテストのファイルで足りない所を確かめ、足りなければテストだけを足す PR を先に出す。見る場面は、1台表示と2台表示、ドラッグ、待ちの一覧、加工時間シート、製番のフォーカスである。描き直しの回数は、既存の `PlanningBoardGanttMemo.test.tsx`(行や棚の描き直しを数える6本)で足りない場面だけを足す。値をまとめて渡すと、関係の無い値が変わったときにも描き直しが起きて遅くなることがあるからである。この計画の大もとは「直し続けても遅くならないこと」なので、描き直しの回数が増える変更は採らない。
 
-次に、約66個の値を、何に使うかでまとめる。候補は、保存の操作、表示の設定、選択とフォーカス、機械の能力と日程である。まとめ方は、1つの PR で1つのまとまりだけを扱い、ページから値を1つずつ渡す代わりに、まとまりを1つ渡すか、ガントの中で直接読む形にする。何もせずに値を中継するだけのファイルは作らない。各 PR の前後で、描き直しの回数のテストと、ガントのテストが同じ結果になることを確かめる。
+次に、78個の値を、何に使うかでまとめる。候補は、保存の操作、表示の設定、選択とフォーカス、機械の能力と日程である。まとめ方は、1つの PR で1つのまとまりだけを扱い、ページから値を1つずつ渡す代わりに、まとまりを1つ渡すか、ガントの中で直接読む形にする。何もせずに値を中継するだけのファイルは作らない。各 PR の前後で、描き直しの回数のテストと、ガントのテストが同じ結果になることを確かめる。
 
 ページ `ProductionScheduleGrindingPlanningBoardPage.tsx` と `usePlanningBoardPageGantt.ts` の中身の整理は、値のまとまりが決まってから、まとまりごとに行う。
 
-効き目は、段階2bが終わってから1か月の変更を `change-width.sh` で数え、ガントの画面とページを触ったコミットのファイル数の中央値と75%点が、今回の数(画面のフォルダで中央値5・75%点12)より小さくなったかで見る。現場の要望の中身によって変わる数なので、この比較は判断の材料にとどめ、合否にはしない。
+効き目は、段階2bが終わってから1か月の変更を `change-width.sh` で数え、ガントの画面とページのそれぞれについて、触ったコミットのファイル数の中央値と75%点が、今回の数より小さくなったかで見る。今回の数は、`PlanningBoardGanttView.tsx` が45件・中央値6・75%点18、ページが42件・中央値11・75%点19である(KB-453)。現場の要望の中身によって変わる数なので、この比較は判断の材料にとどめ、合否にはしない。jsdom の描き直しの回数は実機の速さそのものではないので、まとめ方を変えた PR の後に Pi4 のキオスクで1回動きを見る。
 
 ### 段階3: 多くの入口を巻き込んでいるファイル
 
-この段階は後回しにする。対象の3つが量を大きくしている機能(業務 Hermes、生産日程の一覧の一部、サイネージ)は、この1か月にほとんど変わっていない(`services/business-hermes` 8件、`routes/assembly/business-hermes.ts` 4件、`services/work-instructions` 8件、`production-schedule-query` 6件、`leaderboard-phased-read.ts` 2件、`services/signage` 7件)。読む量を減らしても、それを読む作業がほとんど無いので、効き目が小さい。これらの機能に大きな変更の依頼が来たときに、その作業の前に該当する1つを行う。行うときの決まりは次のとおりである。
+この段階は後回しにする。対象の3つが量を大きくしている機能(業務 Hermes、生産日程の一覧の一部、サイネージ)は、この1か月にほとんど変わっていない(`services/business-hermes` 9件、`routes/assembly/business-hermes.ts` 5件、`services/work-instructions` 9件、`production-schedule-query` 6件、`leaderboard-phased-read.ts` 2件、`services/signage` 7件)。読む量を減らしても、それを読む作業がほとんど無いので、効き目が小さい。これらの機能に大きな変更の依頼が来たときに、その作業の前に該当する1つを行う。行うときの決まりは次のとおりである。
 
 対象は、試算で効果の大きい順に、`work-instruction-service.factory.ts`、`leaderboard-decoration.ts`、`signage.renderer.ts` から生産日程への依存の3つとする。どれも、使う側が実際に使っている関数だけを、小さな入口として受け取る形に変える。例えば業務 Hermes は、作業指示の全部品を組み立てる関数ではなく、必要な検索の関数だけを受け取る。
 
@@ -132,7 +132,7 @@ API 側の保存の流れについては、`source.ts` を「数件ずつ読む�
 
 ### 段階4: 大きい入口の調査
 
-この段階も、段階3と同じ理由で後回しにする。月1回の測定(KB-453)で `change-width.sh` も流し、変更が多く広く散らばる機能が新しく出てきたら、その機能をここの調査の対象にする。下は、サイネージ、取り込み、業務 Hermes に変更が増えたときのやり方として残す。
+この段階も、段階3と同じ理由で後回しにする。月1回の測定(KB-453)で `change-width.sh` も流し、変更が多く広く散らばる機能が新しく出てきたら、その機能をここの調査の対象にする。取り込みは組立と同じくらい変わっている(24件)ので、次の測定でも同じかそれ以上なら、取り込みを最初の対象にする。下は、サイネージ、取り込み、業務 Hermes を調べるときのやり方として残す。
 
 サイネージの `signage-a2ui-data.service.ts`、CSV の取り込みの定期処理、業務 Hermes の夜間処理を調べ、区切り直す価値があるかを決める。これらは保存系の不具合が少ないので、段階2と3より後にする。調べる中身は、対象ごとに、量の大きい先のファイル上位10本、そこへ至る道筋(道具の `path.cjs` で出す)、90日の直しのコミットのうちその対象を触ったものである。直しの多くが一部のファイルに集まっていて、その部分だけを読めば直せる形に分けられる見込みがあるなら、区切り直す。直しが散らばっている、または少ないなら、今のままにする。
 
@@ -142,7 +142,7 @@ API 側の保存の流れについては、`source.ts` を「数件ずつ読む�
 
 2つ目は、一斉に作り替えないことである。1つの PR では、ファイルを移すか、依存を1本付け替えるか、テストを足すかのどれか1つだけを行う。動きを変える PR と混ぜない。
 
-3つ目は、取り入れない案を蒸し返さないことである。調べた知見のうち次の3つは、このリポジトリでは取り入れない。index による再輸出をやめる作業は、道具が再輸出を定義のファイルまでたどって数えるので量が変わらず、段階2で試した付け替えでもテストの mock が増えただけだった。依存の向きの検査を新しく足すことは、API と画面のリント(`apps/api/eslint.config.mjs` と `apps/web/eslint.config.mjs` の `import/no-restricted-paths`)に層の向きと機能の境目の禁止がすでにあるので要らない。機能ごとに長い説明の文書を置くことは、効き目が小さく、AI に書かせた概要はかえって悪いという報告がある(Artifacts and Notes の出典。検証していない)。
+3つ目は、取り入れない案を蒸し返さないことである。調べた知見のうち次の3つは、このリポジトリでは取り入れない。index による再輸出をやめる作業は、道具が再輸出を定義のファイルまでたどって数えるので量が変わらず、段階2で試した付け替えでもテストの mock が増えただけだった。依存の向きの検査を新しく足すことは、API と画面のリント(`apps/api/eslint.config.mjs` と `apps/web/eslint.config.mjs` の `import/no-restricted-paths`)に層の向きの禁止が両方にあり、機能の境目の禁止も API の routes どうしにあるので要らない。画面側に機能の境目の禁止は無いが、段階2bは境目ではなく値の受け渡しの長さを扱うので、足さない。機能ごとに長い説明の文書を置くことは、効き目が小さく、AI に書かせた概要はかえって悪いという報告がある(Artifacts and Notes の出典。検証していない)。
 
 4つ目は、すべての PR に第三者レビューを入れることである。4つの段階のどれでも、1本ずつの PR ごとに、実装した者とは別のレビュー役(Fable。枠が足りないときは Codex)に、差分とコードだけを渡して読んでもらう。指摘は実物で確かめてから直し、レビューを通してからマージする。
 
@@ -185,9 +185,9 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 
 変更の多さと広さを数える。起点の日付と、数えたいフォルダかファイルを渡す。
 
-    sh scripts/analysis/feature-reach/change-width.sh 2026-10-17 apps/web/src/features/kiosk/grindingPlanningBoard
+    REV=83678cbf sh scripts/analysis/feature-reach/change-width.sh 2026-10-17 apps/web/src/features/kiosk/grindingPlanningBoard
 
-83678cbf では `apps/web/src/features/kiosk/grindingPlanningBoard: コミット 101、ファイル数 中央値 5・75%点 12・最大 95、3区画以上 40` と出る。
+`apps/web/src/features/kiosk/grindingPlanningBoard: コミット 102、ファイル数 中央値 5・75%点 13・最大 92、3区画以上 41` と出る。`REV` を省くと手元の `origin/main` を数えるので、記録には SHA を渡す。
 
 テストを流す。段階2の最初の PR より前は、ボードの結合テストは手元でしか流れない。手元では `scripts/ci/prepare-api-test-databases.sh` でテスト用 DB を用意し、`TEST_DATABASE_URL` にその接続先を入れてから、次を流す。
 
@@ -211,11 +211,11 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 
 量は完了の条件にしない。保存の流れのまとまりの量は、段階2の前と後で測って Progress に記録し、読み切れる大きさになったかを人が判断する材料にする。
 
-段階2bは、次の3つがそろえば完了とする。ガントの画面が受け取る値が、何に使うかのまとまりごとに分かれている。ガントのテストと描き直しの回数のテストが、各 PR の前後で同じ結果である。段階2bの後の1か月の `change-width.sh` の数が KB-453 に記録されている。
+段階2bは、次の3つがそろえば完了とする。ガントの画面が受け取る値が、何に使うかのまとまりごとに分かれている。ガントのテストと描き直しの回数のテスト(`PlanningBoardGanttMemo.test.tsx` と足した分)が、各 PR の前後で同じ結果である。段階2bの後の1か月の `change-width.sh` の数が KB-453 に記録されている。
 
 段階3は、付け替えた依存ごとに、着手前に測り直した見込みのとおり入口の量が減り、リントの禁止が1つ入っていれば完了とする。
 
-段階4は、3つの対象それぞれについて、調べた中身と、区切り直すかどうかの決定とその理由が knowledge-base の記録に書かれていれば完了とする。区切り直すと決めたものは、この計画に段階を足すか、別の計画を作る。
+段階4は、月1回の測定で対象に選んだ機能それぞれについて、調べた中身と、区切り直すかどうかの決定とその理由が knowledge-base の記録に書かれていれば完了とする。区切り直すと決めたものは、この計画に段階を足すか、別の計画を作る。
 
 効き目は、段階2が終わってから90日の間に、今回の12件と同じ型の保存の消失・上書きの不具合が再発したかで見る。fix の件数や割合を危険の指標にせず、件数や割合は比べない。
 
@@ -235,17 +235,17 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
 - [x] 段階2: API hooks のファイルを分ける。`grinding-planning-board.ts` を読み出し(9 export)と `grinding-planning-board-mutations.ts`(保存 14 export)に分け、2ファイルは互いを import しない PR #2852(2026-11-16 マージ、017fcc21)。barrel `hooks/production-schedule.ts` は両方を再公開する。
 - [x] 段階2: offline の Provider を分ける。Context と状態・書き込みの門を `offline/planningBoardOfflineContext.tsx` へ移し、`PlanningBoardOfflineProvider.tsx` はそれを包んで接続状態のバナーを出すだけにした PR #2853(2026-11-16 マージ、24004b6b。Pi5 へ反映済み、run 20261116-063807-9f667a)。保存の hook はバナーを依存に持たなくなった。
 - [x] (2026-11-16) 段階2: 保存の流れのファイルの一覧を決めた。`groups/save-flow-web.json` の「保存の流れ(画面) 一覧」に、候補の9ファイル(待ち行列、完了、到着、納期、テスト加工の棒、片の操作、書き込みの門、つながりの状態、offline の Context)と保存の hook のファイル `grinding-planning-board-mutations.ts` の10本を入口として書いた。`RUNTIME=1` の閉包は31ファイル 4369行 60k で、描画(`gantt/`、表、ツールバー、ダイアログ、接続状態のバナー)も `planningBoardOfflineQueries.ts` も含まない。`planningBoardOfflineQueries.ts` は保存の流れのどのファイルからも読まれていないので、移さずに読み出しの側として一覧から外した。閉包に混じる読み出しは、完了の hook が鍵のために読む `usePlanningBoardChainItems.ts` と、行の完了の保存がある `hooks/production-schedule/schedule.ts`(とキャッシュの書き換えのファイル)だけである。
-- [x] (2026-11-16) 段階2: 保存の流れのまとまりを 24004b6b で測り直した。旧定義の「待ち行列+offline+API hooks」は b4ae9625 の約73k から 36ファイル 67k に減った(#2852 と #2853 の分)。新しい一覧は 60k。保存の hook が barrel `api/hooks` を読む所(到着と完了の2本)を定義のファイルの直接 import へ付け替える案は、道具が barrel の再公開を定義のファイルまでたどって数えるので量が変わらず、テストの mock の二重化だけが増えるため、やらない。一覧の外で保存を始める所として、`gantt/usePlanningBoardGantt.ts`(40ファイル 71k)、`usePlanningBoardPageGantt.ts`(45ファイル 88k)、`gantt/PlanningBoardUnitOpEditor.tsx`(25ファイル 46k、描画の部品)がある。どれも配置の計算や読み出しと保存を1つの hook や部品で持つので、一覧には入れず、ほどくかは段階2の最後に決める。`createPlanningBoardSeibanActions.ts`、`planningBoardPageModel.ts`、`usePlanningBoardPageItems.ts` は待ち行列を受け取るだけで、各 2ファイル 3k 以下である。
+- [x] (2026-11-16) 段階2: 保存の流れのまとまりを 24004b6b で測り直した。旧定義の「待ち行列+offline+API hooks」は b4ae9625 の約73k から 36ファイル 67k に減った(#2852 と #2853 の分)。新しい一覧は 60k。保存の hook が barrel `api/hooks` を読む所(到着と完了の2本)を定義のファイルの直接 import へ付け替える案は、道具が barrel の再公開を定義のファイルまでたどって数えるので量が変わらず、テストの mock の二重化だけが増えるため、やらない。一覧の外で保存を始める所として、`gantt/usePlanningBoardGantt.ts`(40ファイル 71k)、`usePlanningBoardPageGantt.ts`(45ファイル 88k)、`gantt/PlanningBoardUnitOpEditor.tsx`(25ファイル 46k、描画の部品)がある。どれも配置の計算や読み出しと保存を1つの hook や部品で持つので、一覧には入れず、ほどくかは段階2の最後に決める(のちに段階2bへ移した)。`createPlanningBoardSeibanActions.ts`、`planningBoardPageModel.ts`、`usePlanningBoardPageItems.ts` は待ち行列を受け取るだけで、各 2ファイル 3k 以下である。
 - [x] 段階2: 表示用の変換の2ファイルの輪をほどく。入力側の8つの型を `grinding-planning-board-projection-input.types.ts` へ中身を変えずに移し、再公開せずに読み手(本番3ファイルとテスト4本)を付け替えた PR #2854(2026-11-16 マージ、8cffcefb)。2ファイルを1つにまとめる案は、`grinding-planning-board-projection.ts` が行数の上限(600)ちょうどなので取らなかった。輪の数は 12 から 11 に減った。
 - [x] (2026-11-16) 計画の見直し: 海外の知見を調べ、変更の多さと広さを数える道具 `change-width.sh` を足した。量が大きくてもほとんど変わらない機能が多いと分かったので、段階2bを足し、段階3と段階4を後回しにした。
 - [ ] 段階2: `source.ts` を分けて保存の流れが小さくなるかを測り、やるかを決める。
-- [ ] 段階2b: ガントの動きを固定するテストと、描き直しの回数のテストを足す。
+- [ ] 段階2b: ガントの動きを固定するテストと、描き直しの回数のテストで足りない場面を足す。
 - [ ] 段階2b: ガントの画面が受け取る値を、まとまりごとに1つずつ整理する。
 - [ ] 段階2b: 終わってから1か月の変更の広さを測り、KB-453 に記録する。
 - [ ] 段階3(後回し): work-instruction-service.factory.ts への依存を細くする。
-- [ ] 段階3: leaderboard-decoration.ts への依存を細くする。
-- [ ] 段階3: サイネージから生産日程への依存を細くする。
-- [ ] 段階4: サイネージ、CSV の取り込み、業務 Hermes の夜間処理を調べ、区切り直すかを決める。
+- [ ] 段階3(後回し): leaderboard-decoration.ts への依存を細くする。
+- [ ] 段階3(後回し): サイネージから生産日程への依存を細くする。
+- [ ] 段階4(後回し): サイネージ、CSV の取り込み、業務 Hermes の夜間処理を調べ、区切り直すかを決める。
 
 ## Surprises & Discoveries
 
@@ -297,7 +297,7 @@ b4ae9625 では、`輪 9 files 34k` から始まり、最後に `輪の数 12` �
   Date/Author: 2026-11-16 / Claude
 
 - Decision: 手を入れる順番を、量の大きさではなく、変更の多さと広さで選ぶ。段階2bを足し、段階3と段階4を後回しにする。
-  Rationale: import でたどれる量と AI の作業の出来を直接結んだ研究は見つからず、量は目安にとどまる(Artifacts and Notes の出典)。数えると、変更は製番ボードに集まり(画面のフォルダで1か月101件)、量の大きいサイネージ、取り込み、業務 Hermes はほとんど変わっていない。CodeScene などが勧める「よく変わる所から直す」考え方に合わせた。
+  Rationale: import でたどれる量と AI の作業の出来を直接結んだ研究は見つからず、量は目安にとどまる(Artifacts and Notes の出典)。数えると、変更は製番ボードに集まり(画面のフォルダで1か月102件)、量の大きいサイネージと業務 Hermes はほとんど変わっていない(取り込みは組立と同じくらい)。CodeScene などが勧める「よく変わる所から直す」考え方に合わせた。
   Date/Author: 2026-11-16 / Claude
 
 - Decision: ガントの値の受け渡しを整理するときは、描き直しの回数をテストで固定し、増える変更は採らない。
