@@ -11,19 +11,19 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 
 | Metric | Count |
 |--------|------:|
-| Documents | 782 |
-| Total lines | 186530 |
-| Total bytes | 15519276 |
-| With frontmatter | 362 |
+| Documents | 808 |
+| Total lines | 194343 |
+| Total bytes | 16521681 |
+| With frontmatter | 363 |
 | With status | 177 |
 | source_of_truth declared | 116 |
-| References to EXEC_PLAN.md | 59 |
+| References to EXEC_PLAN.md | 60 |
 | Question-mark corruption documents | 2 |
 | Replacement-character documents | 1 |
-| Long-line documents | 46 |
-| Local links | 5737 |
+| Long-line documents | 48 |
+| Local links | 5839 |
 | Broken local links | 60 |
-| Documents over 1,000 lines | 28 |
+| Documents over 1,000 lines | 29 |
 | Documents over 3,000 lines | 6 |
 
 ## Largest Documents
@@ -31,20 +31,20 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 | Path | Lines | Bytes |
 |------|------:|------:|
 | `docs/plans/docs-canonicalization-roadmap.md` | 5580 | 232496 |
-| `docs/knowledge-base/api.md` | 4921 | 363303 |
+| `docs/knowledge-base/api.md` | 4937 | 368984 |
+| `docs/knowledge-base/frontend.md` | 4661 | 281719 |
 | `EXEC_PLAN.md` | 4660 | 976722 |
-| `docs/knowledge-base/frontend.md` | 4657 | 281313 |
 | `docs/knowledge-base/infrastructure/ansible-deployment.md` | 4301 | 280115 |
-| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3241 | 446353 |
+| `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` | 3284 | 453562 |
 | `docs/archive/deployments/2026-05.md` | 2571 | 498771 |
 | `docs/archive/architecture/deployment-modules-legacy-through-2026-07.md` | 2522 | 128123 |
+| `docs/knowledge-base/infrastructure/backup-restore.md` | 2230 | 143077 |
 | `docs/knowledge-base/infrastructure/signage.md` | 2215 | 191786 |
-| `docs/knowledge-base/infrastructure/backup-restore.md` | 2203 | 139196 |
-| `docs/INDEX.md` | 2098 | 360460 |
-| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1951 | 217700 |
+| `docs/INDEX.md` | 2113 | 362639 |
+| `docs/knowledge-base/KB-320-kiosk-part-measurement.md` | 1961 | 219233 |
 | `docs/knowledge-base/KB-374-leaderboard-board-continue-cursor-contract.md` | 1654 | 153448 |
 | `docs/archive/deployments/legacy-operator-guide-through-2026-07.md` | 1600 | 106907 |
-| `docs/knowledge-base/infrastructure/security.md` | 1344 | 86771 |
+| `docs/knowledge-base/KB-362-kiosk-load-balancing.md` | 1458 | 91760 |
 
 ## EXEC_PLAN References
 
@@ -72,7 +72,7 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 ## Long-Line Documents
 
 - `EXEC_PLAN.md` (23:1093, 31:1026, 44:1017)
-- `docs/INDEX.md` (353:1140, 369:1250, 373:1022)
+- `docs/INDEX.md` (363:1140, 379:1250, 383:1022)
 - `docs/archive/deployments/2026-04.md` (83:1066)
 - `docs/archive/deployments/2026-05.md` (815:25087, 1642:1257, 2471:1119)
 - `docs/archive/guides/phase3/phase3-token-refresh-test-results.md` (94:1437)
@@ -80,17 +80,17 @@ Tracked text documentation files from docs/, root AI entrypoints, .agent/PLANS.m
 - `docs/decisions/ADR-20260707-assembly-kiosk-record-approval-and-ui-consistency.md` (43:1010, 44:1002, 49:1214)
 - `docs/decisions/ADR-20260930-pi4-sd-card-backup.md` (20:1251)
 - `docs/guides/verification-checklist.md` (614:1641)
-- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (228:1414, 230:1048, 239:1224)
+- `docs/knowledge-base/KB-297-kiosk-due-management-workflow.md` (243:1414, 245:1048, 254:1224)
 - `docs/knowledge-base/KB-313-kiosk-documents.md` (138:1274, 158:1178)
-- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1808:1045, 1815:1213)
-- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (15:1164, 81:1101, 341:1220)
+- `docs/knowledge-base/KB-320-kiosk-part-measurement.md` (1810:1045, 1817:1213)
+- `docs/knowledge-base/KB-369-leader-order-board-api-internal-latency.md` (15:1164, 81:1543, 341:1220)
 - `docs/knowledge-base/infrastructure/signage.md` (25:1023, 31:1221, 363:1060)
+- `docs/plans/2026-11-07-later-process-pieces.md` (136:1450, 149:1601)
 - `docs/plans/android-haizen-shell-ocr-execplan.md` (66:1550)
 - `docs/plans/assembly-check-sheet-execplan.md` (7:1057, 240:1145, 264:1662)
 - `docs/plans/assembly-torque-wrench-traceability-execplan.md` (10:1434, 447:1055)
 - `docs/plans/deployment-foundation-refactor-execplan.md` (99:1226, 893:1025, 899:1002)
 - `docs/plans/dgx-night-preparation-execplan.md` (91:1086)
-- `docs/plans/dgx-spark-local-llm-migration-execplan.md` (36:1127)
 
 ## Broken Local Links
 
