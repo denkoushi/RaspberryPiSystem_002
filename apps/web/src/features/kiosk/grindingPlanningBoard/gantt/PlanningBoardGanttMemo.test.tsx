@@ -9,7 +9,7 @@ import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 28080 }] } })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
@@ -56,10 +56,13 @@ const backwardRenders = vi.hoisted(() => [] as string[]);
 vi.mock('./PlanningBoardGanttRow', async importOriginal => {
   const actual = await importOriginal<typeof import('./PlanningBoardGanttRow')>();
   const { memo } = await import('react');
-  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: ComponentProps<typeof actual.PlanningBoardGanttRow>) {
+  type Props = ComponentProps<typeof actual.PlanningBoardGanttRow>;
+  // 行の本体の中で数える(Context による描き直しも入る)。memo の比較は本物を使う。
+  const row = actual.PlanningBoardGanttRow as unknown as { type: (props: Props) => ReactNode; compare: ((a: Props, b: Props) => boolean) | null };
+  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: Props) {
     backwardRenders.push(props.row.key);
-    return <actual.PlanningBoardGanttRow {...props} />;
-  }) };
+    return row.type(props);
+  }, row.compare ?? undefined) };
 });
 
 const item = (itemId: string, resource: string): GrindingPlanningBoardItem => ({

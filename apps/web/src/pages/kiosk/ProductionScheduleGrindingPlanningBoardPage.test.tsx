@@ -21,7 +21,7 @@ import * as writeQueueHook from '../../features/kiosk/grindingPlanningBoard/useP
 import { ProductionScheduleGrindingPlanningBoardPage } from './ProductionScheduleGrindingPlanningBoardPage';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardRankResponse } from '@raspi-system/shared-types';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 function selectToolbarOption(label: '工程' | '区分', option: string) {
   fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
@@ -68,18 +68,24 @@ const ganttRowRenders = vi.hoisted(() => ({ forward: [] as string[], backward: [
 vi.mock('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow', async importOriginal => {
   const actual = await importOriginal<typeof import('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardForwardGanttRow')>();
   const { memo } = await import('react');
-  return { ...actual, PlanningBoardForwardGanttRow: memo(function CountedForwardRow(props: ComponentProps<typeof actual.PlanningBoardForwardGanttRow>) {
+  type Props = ComponentProps<typeof actual.PlanningBoardForwardGanttRow>;
+  // 行の本体の中で数える(Context による描き直しも入る)。memo の比較は本物を使う。
+  const row = actual.PlanningBoardForwardGanttRow as unknown as { type: (props: Props) => ReactNode; compare: ((a: Props, b: Props) => boolean) | null };
+  return { ...actual, PlanningBoardForwardGanttRow: memo(function CountedForwardRow(props: Props) {
     ganttRowRenders.forward.push(props.row.key);
-    return <actual.PlanningBoardForwardGanttRow {...props} />;
-  }) };
+    return row.type(props);
+  }, row.compare ?? undefined) };
 });
 vi.mock('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow', async importOriginal => {
   const actual = await importOriginal<typeof import('../../features/kiosk/grindingPlanningBoard/gantt/PlanningBoardGanttRow')>();
   const { memo } = await import('react');
-  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: ComponentProps<typeof actual.PlanningBoardGanttRow>) {
+  type Props = ComponentProps<typeof actual.PlanningBoardGanttRow>;
+  // 行の本体の中で数える(Context による描き直しも入る)。memo の比較は本物を使う。
+  const row = actual.PlanningBoardGanttRow as unknown as { type: (props: Props) => ReactNode; compare: ((a: Props, b: Props) => boolean) | null };
+  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: Props) {
     ganttRowRenders.backward.push(props.row.key);
-    return <actual.PlanningBoardGanttRow {...props} />;
-  }) };
+    return row.type(props);
+  }, row.compare ?? undefined) };
 });
 
 // Keep the counter on the mounted component, including its own context/store renders.
@@ -1552,12 +1558,13 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       expect(ganttRowRenders[mode].length).toBeGreaterThan(0);
       ganttRowRenders.forward.length = 0;
       ganttRowRenders.backward.length = 0;
-      const expectedRenders = { forward: [], backward: mode === 'backward' ? ['a', 'c', 'b', 'd'] : [] };
+      const sortedRenders = () => ({ forward: [...ganttRowRenders.forward].sort(), backward: [...ganttRowRenders.backward].sort() });
+      const expectedRenders = { forward: [], backward: mode === 'backward' ? ['a', 'b', 'c', 'd'] : [] };
       mocks.snapshot.mockClear();
       fireEvent.click(screen.getByRole('button', { name: '製番登録ペインを開く' }));
       expect(screen.getByRole('button', { name: '製番登録ペインを閉じる' })).toBeInTheDocument();
       expect(mocks.snapshot).toHaveBeenCalled(); // ページ自身のstateが変わったことも確認する。
-      expect(ganttRowRenders).toEqual(expectedRenders);
+      expect(sortedRenders()).toEqual(expectedRenders);
       ganttRowRenders.forward.length = 0;
       ganttRowRenders.backward.length = 0;
       mocks.snapshot.mockClear();
@@ -1566,9 +1573,10 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
       expect(screen.queryByRole('button', { name: '製番登録ペインを閉じる' })).not.toBeInTheDocument();
       expect(mocks.snapshot).toHaveBeenCalled();
       const currentBoards = screen.getAllByTestId('planning-board-gantt');
+      expect(currentBoards).toHaveLength(boards.length);
       boards.forEach((board, index) => expect(currentBoards[index]).toBe(board));
       // 今の回数を固定：開く/閉じるそれぞれで前向き0回、後ろ向きは4行各1回。
-      expect(ganttRowRenders).toEqual(expectedRenders);
+      expect(sortedRenders()).toEqual(expectedRenders);
     }
   );
 
