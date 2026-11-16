@@ -221,7 +221,9 @@ describeDatabase('planning board HTTP write contract (real Postgres)', () => {
     const saved = response.json<GrindingPlanningBoardOverridesResponse>();
     const after = await board(dueSource, false, 'B');
     expect(after.sourceRevision).toBe(saved.sourceRevision);
-    expect(itemFor(after)).toMatchObject({ ...saved.items[0]!, orderPinned: true });
+    // machineName is display enrichment that only the board GET fills in (save responses return null).
+    const { machineName: _machineName, ...savedItem } = saved.items[0]!;
+    expect(itemFor(after)).toMatchObject({ ...savedItem, orderPinned: true });
   });
 
   it('c: stale part-value save cannot erase B\'s new operation definitions (02768544)', async () => {
