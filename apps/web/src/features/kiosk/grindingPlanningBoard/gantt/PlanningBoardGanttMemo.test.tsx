@@ -140,7 +140,7 @@ it('renders only the source and lanes whose insertion marker changes during a dr
       now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' })}
       scale={2} capacity={capacity} resourceNameMap={{}}
       onToggleItem={vi.fn()} onDueDrop={vi.fn()} disabled={false} dragDisabled={false}
-      selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()} canMoveResource={() => true} />);
+      selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()} resourceMove={{ canMoveResource: () => true }} />);
     const source = screen.getByTestId('planning-gantt-bar-a');
     hit = [screen.getByTestId('planning-gantt-bar-b')];
     renders.length = 0;
@@ -315,7 +315,7 @@ it.each([false, true])('does not render the shelf when drag previews change (pai
     render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} capacity={capacity} resourceNameMap={{}}
       onToggleItem={vi.fn()} onDueDrop={vi.fn()}
       disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
-      colorBySeiban canMoveResource={() => true} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']}
+      colorBySeiban resourceMove={{ canMoveResource: () => true }} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']}
       unitSplitEnabledByResource={{ '305': true, '306': true }} />);
     const source = screen.getByTestId('planning-gantt-bar-a');
     hit = [pair ? screen.getByTestId('planning-gantt-bar-b') : source];

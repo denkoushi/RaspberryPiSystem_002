@@ -77,11 +77,11 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
-  layout: currentLayout, scale, homeKey = 0, capacity, resourceNameMap,
+  layout: currentLayout, scale, homeKey = 0, capacity, resourceMove, resourceNameMap,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
-  const { dailyHoursByResource, runsThroughBreaks, capacityPending, capacityError, onCapacityChange, onBreaksChange } = capacity; const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
+  const { onResourceReorder, onResourceMove, canMoveResource } = resourceMove ?? {}; const { dailyHoursByResource, runsThroughBreaks, capacityPending, capacityError, onCapacityChange, onBreaksChange } = capacity; const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
   const uptime = useUptime(currentLayout.mode === 'forward'); const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
   const uptimeByResource = useMemo(() => {
     const next = new Map(uptime.data?.resources.map((entry) =>
@@ -107,8 +107,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   // Stable row handlers must still see current callbacks and acknowledgement revisions.
   const currentBars = useMemo(() => new Map(currentLayout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.map((bar) => [bar.item.itemId, bar] as const)))), [currentLayout]);
-  const latest = useRef({ interaction, currentBars, onSelectedBarResource });
-  useLayoutEffect(() => { latest.current = { interaction, currentBars, onSelectedBarResource }; });
+  const latest = useRef({ interaction, currentBars, onSelectedBarResource, onResourceReorder, onResourceMove, canMoveResource });
+  useLayoutEffect(() => { latest.current = { interaction, currentBars, onSelectedBarResource, onResourceReorder, onResourceMove, canMoveResource }; });
   const parentPieceActions = useContext(PlanningBoardPiecesContext);
   const pieceActions = useMemo(() => {
     if (!parentPieceActions) return null;
@@ -147,9 +147,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
         latest.current.interaction.onToggleItem(item(original), selected);
       },
       onTogglePin: (original: GrindingPlanningBoardItem) => latest.current.interaction.onTogglePin?.(normalItem(original)),
-      onResourceReorder: ((original, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceReorder?.(item(original), item(target), placement); }) as ForwardReorder,
-      onResourceMove: ((original, resource, target, placement) => { markMoved(original.itemId); latest.current.interaction.onResourceMove?.(normalItem(original), resource, target && normalItem(target), placement); }) as ForwardMove,
-      canMoveResource: (original: GrindingPlanningBoardItem, resource: string) => latest.current.interaction.canMoveResource?.(normalItem(original), resource) ?? false
+      onResourceReorder: ((original, target, placement) => { markMoved(original.itemId); latest.current.onResourceReorder?.(item(original), item(target), placement); }) as ForwardReorder,
+      onResourceMove: ((original, resource, target, placement) => { markMoved(original.itemId); latest.current.onResourceMove?.(normalItem(original), resource, target && normalItem(target), placement); }) as ForwardMove,
+      canMoveResource: (original: GrindingPlanningBoardItem, resource: string) => latest.current.canMoveResource?.(normalItem(original), resource) ?? false
     };
   }, []);
   // Dragging a machine name up or down reorders the lanes; the order is kept on this kiosk only.
@@ -615,7 +615,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           highlightedItemId={[...interaction.selectedItemIds].at(-1) ?? null} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={toggleSeiban} />
         : <PlanningBoardSeibanLegend ref={legend} seibanColors={seibanColors}
           focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} onFocusSeiban={focusSeiban} />)}
-      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} focusedSeiban={focusedSeiban} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
+      {forward && <PlanningBoardForwardQueuePopover ref={queuePopover} folded={Boolean(singleGroup)} layout={currentLayout} scale={scale} resourceNameMap={resourceNameMap} {...interaction} canMoveResource={canMoveResource} viewport={viewport} lanes={availableDragLanes} start={layout.start} dayWidth={dayWidth} focusedSeiban={focusedSeiban} onDragPreview={setDragPreview} draggedItemId={dragPreview?.bar.item.itemId ?? null} onResourceReorder={rowActions.onResourceReorder} onResourceMove={rowActions.onResourceMove} dragDisabled={interaction.dragDisabled || Boolean(interaction.pinMode)} />}
       {valueSheet && (valueSheetContainer === null ? null : valueSheetContainer ? createPortal(valueSheet, valueSheetContainer) : valueSheet)}
       {dragPreview && ownsDragPreview && <PlanningBoardDragArrow preview={dragPreview} viewport={viewport} subscribe={subscribePreview} />}
       {dragPreview && ownsDragPreview && createPortal(<div data-testid="planning-gantt-drag-ghost"
