@@ -38,7 +38,7 @@ const controls = (overrides: Partial<PlanningBoardTestBarControls> = {}): Planni
 });
 function ganttProps(mode: 'forward' | 'backward' = 'forward', singleResourceCd: string | null = '300') {
   const f = fixture();
-  return { layout: buildPlanningBoardGanttLayout({ ...f.options, mode }), resourceMinutesItems: f.items, resourceLanes: ['300', '301'], singleResourceCd,
+  return { layout: buildPlanningBoardGanttLayout({ ...f.options, mode }), minutes: { resourceMinutesItems: f.items }, resourceLanes: ['300', '301'], singleResourceCd,
     scale: 1, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
     onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set<string>(), resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), testBarCreationEnabled: true, testBarControls: controls() };

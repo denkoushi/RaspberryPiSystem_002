@@ -74,14 +74,14 @@ function laneAtPoint(x: number, y: number, resources: ReadonlySet<string>): HTML
 export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, PlanningBoardGanttProps & { minutesResourceCds?: readonly string[]; sharedDrag?: SharedForwardDrag; sharedShelfInteraction?: SharedShelfInteraction }>(function PlanningBoardGanttView({
   onChainPartChange, chainItems, chainAllocation = 'alternate', sharedDrag, sharedShelfInteraction, resourceOrderPending, onClearSelection, onClearChain,
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
-  minutesResourceCds, resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange, valueSheetOpen = false, onToggleValueSheet,
+  minutesResourceCds, minutes, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
   onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, capacity, resourceMove, resourceNameMap,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
 }, ref) {
-  const { onResourceReorder, onResourceMove, canMoveResource } = resourceMove ?? {}; const { dailyHoursByResource, runsThroughBreaks, capacityPending, capacityError, onCapacityChange, onBreaksChange } = capacity; const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
+  const { resourceMinutesItems, resourceMinutes, minutesPending = false, minutesError = false, onMinutesSourceChange } = minutes ?? {}; const { onResourceReorder, onResourceMove, canMoveResource } = resourceMove ?? {}; const { dailyHoursByResource, runsThroughBreaks, capacityPending, capacityError, onCapacityChange, onBreaksChange } = capacity; const { enabled: offlineEnabled } = usePlanningBoardOffline(); const useUptime = offlineEnabled ? useOfflineUptime : useMachineSignalResourceUptime;
   const uptime = useUptime(currentLayout.mode === 'forward'); const previousUptime = useRef<ReadonlyMap<string, number>>(new Map());
   const uptimeByResource = useMemo(() => {
     const next = new Map(uptime.data?.resources.map((entry) =>

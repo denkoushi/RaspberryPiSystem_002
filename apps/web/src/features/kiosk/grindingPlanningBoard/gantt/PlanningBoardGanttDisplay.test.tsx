@@ -113,7 +113,7 @@ it('opens the upper machine value sheet at the bottom of the shared Gantt contai
   const capacity = { ...values.capacity, onBreaksChange: onBreaks };
   function Board() {
     const [resource, setResource] = useState<string | null>(null);
-    return <PlanningBoardGanttDisplay {...values} onMinutesSourceChange={onSource} capacity={capacity} valueSheetResource={resource}
+    return <PlanningBoardGanttDisplay {...values} minutes={{ onMinutesSourceChange: onSource }} capacity={capacity} valueSheetResource={resource}
       onToggleValueSheet={(next) => setResource(current => current === next ? null : next ?? null)} />;
   }
   render(<QueryClientProvider client={new QueryClient()}><Board /></QueryClientProvider>);
@@ -826,7 +826,7 @@ it.each(['forward', 'backward'] as const)('scrolls each pane containing the sele
 
 it.each([[[]], [['021']], [['022']], [['021', '022']]])('reflects both machines minutes sources: %j', (ownSourceResourceCds) => {
   const onSource = vi.fn();
-  render(<PlanningBoardGanttDisplay {...props('forward')} resourceMinutes={{ ownSourceResourceCds, values: [] }} onMinutesSourceChange={onSource} />);
+  render(<PlanningBoardGanttDisplay {...props('forward')} minutes={{ resourceMinutes: { ownSourceResourceCds, values: [] }, onMinutesSourceChange: onSource }} />);
   const original = screen.getByRole('button', { name: /元の値/ });
   const own = screen.getByRole('button', { name: /独自の値/ });
   expect(original).toHaveAttribute('aria-pressed', String(ownSourceResourceCds.length === 0));
@@ -850,7 +850,7 @@ it('totals both machines and groups their parts in pane order, excluding other r
     originalResourceCd: resourceCd, effectiveResourceCd: resourceCd, originalRequiredMinutes: (index + 1) * 60, ownRequiredMinutes: (index + 1) * 120 }));
   const minutes = { ownSourceResourceCds: [], values: items.map(item => ({ resourceCd: item.originalResourceCd, fhincd: item.fhincd, perUnitMinutes: 5, setupMinutes: 0 })) };
   const missing = { ...items[0]!, itemId: 'missing', fhincd: 'MISSING-PART', standardHoursMissing: true, plannedQuantity: 999, requiredMinutes: null, requiredMinutesKnown: false, originalRequiredMinutes: null, ownRequiredMinutes: null };
-  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} resourceMinutesItems={[...items, items[0]!, missing]} resourceMinutes={minutes}
+  render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} minutes={{ resourceMinutesItems: [...items, items[0]!, missing], resourceMinutes: minutes }}
     resourceNameMap={{ '021': ['上段機'], '022': ['下段機'] }} valueSheetResource="021" /></QueryClientProvider>);
   expect(screen.getByRole('button', { name: /元の値/ })).toHaveTextContent('3.0h');
   expect(screen.getByRole('button', { name: /独自の値/ })).toHaveTextContent('6.0h');
@@ -869,7 +869,7 @@ it('keeps minutes controls and the ungrouped sheet scoped to one machine', () =>
   const values = props('forward');
   const onSource = vi.fn();
   render(<QueryClientProvider client={new QueryClient()}><PlanningBoardGanttDisplay {...values} singleResourceCd="021" valueSheetOpen
-    resourceMinutes={{ ownSourceResourceCds: ['022'], values: [] }} onMinutesSourceChange={onSource} /></QueryClientProvider>);
+    minutes={{ resourceMinutes: { ownSourceResourceCds: ['022'], values: [] }, onMinutesSourceChange: onSource }} /></QueryClientProvider>);
   expect(screen.getByRole('button', { name: /元の値/ })).toHaveAttribute('aria-pressed', 'true');
   fireEvent.click(screen.getByRole('button', { name: /独自の値/ }));
   expect(onSource.mock.calls).toEqual([[[{ resourceCd: '021', source: 'own' }]]]);

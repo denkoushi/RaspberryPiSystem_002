@@ -181,10 +181,10 @@ it('keeps the due mark of a selected bar whose body is outside the window', asyn
 it('keeps operation context stable on selection and updates its loading state', () => {
   const fixture = productionFixture(2, 1);
   const props = { layout: buildPlanningBoardGanttLayout({ ...fixture.options, mode: 'forward', scale: 2 }),
-    scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {}, resourceMinutes: { ownSourceResourceCds: [], values: [] },
+    scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {}, minutes: { resourceMinutes: { ownSourceResourceCds: [], values: [] } },
     onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
-  const draw = (selectedItemIds: ReadonlySet<string>, minutesPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={selectedItemIds} minutesPending={minutesPending} />;
+  const draw = (selectedItemIds: ReadonlySet<string>, minutesPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={selectedItemIds} minutes={{ ...props.minutes, minutesPending }} />;
   const { rerender } = render(draw(new Set()));
   contextValues.length = 0;
   rerender(draw(new Set(['outside-this-board'])));

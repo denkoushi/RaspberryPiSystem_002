@@ -286,7 +286,7 @@ it.each([false, true])('keeps Gantt rows memoized when shelf tiles, filters, and
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
   const toggle = vi.fn();
   const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
-  render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} capacity={capacity} resourceNameMap={{}}
+  render(<PlanningBoardGanttDisplay layout={layout} minutes={{ resourceMinutesItems: items }} scale={2} capacity={capacity} resourceNameMap={{}}
     onToggleItem={toggle} onDueDrop={vi.fn()}
     disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
     colorBySeiban singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']} unitSplitEnabledByResource={{ '305': true, '306': true }} />);
@@ -312,7 +312,7 @@ it.each([false, true])('does not render the shelf when drag previews change (pai
     const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
       dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
     const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
-    render(<PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={items} scale={2} capacity={capacity} resourceNameMap={{}}
+    render(<PlanningBoardGanttDisplay layout={layout} minutes={{ resourceMinutesItems: items }} scale={2} capacity={capacity} resourceNameMap={{}}
       onToggleItem={vi.fn()} onDueDrop={vi.fn()}
       disabled={false} dragDisabled={false} selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
       colorBySeiban resourceMove={{ canMoveResource: () => true }} singleResourceCd={pair ? '305+306' : '305'} resourceLanes={['305', '306']}
@@ -349,7 +349,7 @@ it.each([false, true])('rerenders only the affected shelf columns for Gantt bar 
   const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }, { ...item('c', '305'), fseiban: '26-1003' }, { ...item('d', '305'), fseiban: '26-1002' }];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
-  const props = { layout, resourceMinutesItems: items, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+  const props = { layout, minutes: { resourceMinutesItems: items }, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
     onToggleItem: vi.fn(), onDueDrop: vi.fn(),
     disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), colorBySeiban: true,
     singleResourceCd: pair ? '305+306' : '305', resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true } };
@@ -380,7 +380,7 @@ it('builds one shelf projection per machine mode, without building unused pane s
   const items = [item('a', '305'), item('b', '306')];
   const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
     dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', now: new Date('2026-11-05T08:00:00+09:00'), scale: 2, mode: 'forward' });
-  const props = { layout, resourceMinutesItems: items, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+  const props = { layout, minutes: { resourceMinutesItems: items }, scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
     onToggleItem: vi.fn(), onDueDrop: vi.fn(),
     disabled: false, dragDisabled: false, resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(),
     resourceLanes: ['305', '306'], unitSplitEnabledByResource: { '305': true, '306': true }, selectedItemIds: new Set<string>() };
