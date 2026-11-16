@@ -19,7 +19,7 @@ import { CHAIN_VIEW_STORAGE_KEY } from './usePersistedPlanningBoardChainView';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 
-vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-mutations', () => ({
   useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: vi.fn().mockResolvedValue({}), isPending: false })
 }));
 const uptimeQuery = vi.hoisted(() => vi.fn((): { data: { resources: Array<{ resourceCd: string; medianRunSeconds: number }> } | undefined } => ({ data: undefined })));
