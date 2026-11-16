@@ -19,6 +19,12 @@ export type PlanningBoardGanttResourceMove = {
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
 };
 
+export type PlanningBoardGanttMinutes = {
+  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
+  minutesPending?: boolean; minutesError?: boolean;
+  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest[]) => void;
+};
+
 export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   capacity: PlanningBoardGanttCapacity;
   resourceMove?: PlanningBoardGanttResourceMove;
@@ -33,9 +39,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   onChainPartChange?: (fseiban: string | null) => void;
   chainItems?: readonly GrindingPlanningBoardItem[];
   chainAllocation?: PlanningBoardAllocation;
-  resourceMinutesItems?: readonly GrindingPlanningBoardItem[]; resourceMinutes?: GrindingPlanningBoardResourceMinutesResponse;
-  minutesPending?: boolean; minutesError?: boolean;
-  onMinutesSourceChange?: (payload: GrindingPlanningBoardResourceMinutesSourceRequest[]) => void;
+  minutes?: PlanningBoardGanttMinutes;
   valueSheetOpen?: boolean; onToggleValueSheet?: (resourceCd?: string) => void;
   resourceLanes?: readonly string[];
   onUnitSplitChange?: (resourceCd: string, enabled: boolean) => void;

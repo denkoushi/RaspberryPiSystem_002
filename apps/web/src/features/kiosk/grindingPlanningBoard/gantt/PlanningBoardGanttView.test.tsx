@@ -1411,7 +1411,7 @@ describe('forward PlanningBoardGanttView', () => {
     const { result } = renderHook(() => usePlanningBoardPieceActions({ createEnabled: true, enabled: true,
       resourceCategories: { '305': 'cutting' }, selectedItems: [], changePieces: vi.fn() }));
     render(<PlanningBoardPiecesContext.Provider value={result.current}>
-      <PlanningBoardGanttView {...props([entry])} onCompleteToggle={vi.fn()} minutesPending={state === 'pending'} minutesError={state === 'error'} />
+      <PlanningBoardGanttView {...props([entry])} onCompleteToggle={vi.fn()} minutes={{ minutesPending: state === 'pending', minutesError: state === 'error' }} />
     </PlanningBoardPiecesContext.Provider>);
     fireEvent.click(screen.getByTestId('planning-gantt-bar-piece:a'));
     fireEvent.click(screen.getByRole('button', { name: /の数量/ }));

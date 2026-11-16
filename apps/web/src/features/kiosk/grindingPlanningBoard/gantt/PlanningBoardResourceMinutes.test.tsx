@@ -1218,7 +1218,7 @@ describe('resource minutes UI', () => {
     const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
     render(<PlanningBoardGanttView layout={layout} scale={1} capacity={capacity} resourceNameMap={{}}
       focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()} selectedItemIds={new Set()} disabled={false} dragDisabled={false} resourceView
-      resourceMinutes={{ ownSourceResourceCds: ['305'], values: [] }} />);
+      minutes={{ resourceMinutes: { ownSourceResourceCds: ['305'], values: [] } }} />);
     expect(screen.getAllByText('独自')).toHaveLength(1);
   });
 });

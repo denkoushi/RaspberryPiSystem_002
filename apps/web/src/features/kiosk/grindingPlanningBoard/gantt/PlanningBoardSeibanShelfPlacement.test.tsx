@@ -54,7 +54,7 @@ function Board({ pair = false, disabled = false, outside = true, noop = false, r
       version: item.version + 1 } : item);
   });
   const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
-  return <PlanningBoardGanttDisplay layout={layout} resourceMinutesItems={refresh ? items.map(item => ({ ...item })) : items} scale={2} capacity={capacity} resourceNameMap={{}}
+  return <PlanningBoardGanttDisplay layout={layout} minutes={{ resourceMinutesItems: refresh ? items.map(item => ({ ...item })) : items }} scale={2} capacity={capacity} resourceNameMap={{}}
     onToggleItem={(item, checked) => setSelected(current => { const next = new Set(current); if (checked) next.add(item.itemId); else next.delete(item.itemId); return next; })} onDueDrop={vi.fn()}
     disabled={disabled} dragDisabled={false} selectedItemIds={selected} onClearSelection={clear} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()}
     colorBySeiban resourceMove={{ canMoveResource: () => true,
