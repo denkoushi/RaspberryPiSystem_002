@@ -5,7 +5,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { usePlanningBoardQueryData } from '../../../features/kiosk/grindingPlanningBoard/usePlanningBoardQueryData';
 import { productionScheduleQueryKeys } from '../../queryKeys/productionSchedule';
 
-import { useConfigureKioskSessakuPieceOps, useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgressive } from './grinding-planning-board';
+import { useKioskGrindingPlanningBoardLoad, useKioskGrindingPlanningBoardProgressive } from './grinding-planning-board';
+import { useConfigureKioskSessakuPieceOps } from './grinding-planning-board-mutations';
 
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 import type { ReactNode } from 'react';

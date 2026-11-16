@@ -15,7 +15,7 @@ import { PlanningBoardUnitOpEditor, PlanningBoardUnitOpContext, PlanningBoardUni
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceMinutesResponse } from '@raspi-system/shared-types';
 
 const mutation = vi.hoisted(() => vi.fn().mockResolvedValue({}));
-vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board', () => ({
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-mutations', () => ({
   useConfigureKioskSessakuPieceOps: () => ({ mutateAsync: mutation, isPending: false })
 }));
 const item = { itemId: 'piece:a', kind: 'piece', pieceId: 'a', piecePosition: 1, parentItemId: 'row:p',
