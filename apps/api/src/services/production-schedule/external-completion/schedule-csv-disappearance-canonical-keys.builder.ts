@@ -1,7 +1,7 @@
 import { toTrimmedString as normalizeToken } from '../../../lib/string-normalize.js';
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
 import { buildFkojunstMailStatusKey } from '../fkojunst-mail-status-key.js';
-import type { FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../fkojunst-mail-row.types.js';
 import { normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { buildProductionScheduleExternalCompletionKeyFromRowData } from './production-schedule-external-completion-key.js';
 

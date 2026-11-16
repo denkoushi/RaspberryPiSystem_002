@@ -2,7 +2,7 @@ import * as pipeline from '../../fkojunst-status-mail-sync.pipeline.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { logger } from '../../../../lib/logger.js';
-import type { FkojunstMailNormalizedRow } from '../../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../../fkojunst-mail-row.types.js';
 import * as repo from '../fkojunst-external-completion-sync.repository.js';
 import { FkojunstExternalCompletionSyncService } from '../fkojunst-external-completion-sync.service.js';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NormalizedRowData } from '../../csv-dashboard/csv-dashboard.types.js';
-import type { FkojunstMailNormalizedRow } from '../fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from '../../fkojunst-mail-row.types.js';
 import {
   buildCanonicalScheduleDisappearanceKeysFromPairedMailSnapshot,
   buildMailStatusTripleKeyFromScheduleRowData,
