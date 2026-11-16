@@ -202,6 +202,7 @@ const EXPECTED_SCHEDULER_NAMES = [
   'alerts-dispatcher',
   'loan-photo-retention',
   'watch-camera-retention',
+  'production-schedule-part-name-lookup',
   'client-network-log-retention',
   'client-heartbeat-monitor',
   'system-notice-evaluator',
