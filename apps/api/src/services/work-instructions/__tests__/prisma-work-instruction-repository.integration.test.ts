@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
 import { BusinessHermesMcpService } from '../../business-hermes/business-hermes-mcp.service.js';
+import { rebuildProductionSchedulePartNameLookup } from '../../production-schedule/production-schedule-part-name-lookup.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import type {
   WorkInstructionAssetInput,
@@ -79,7 +80,8 @@ function imageStep(step: number, imageName: string, imageHash: string) {
 }
 
 async function cleanupFixtures(): Promise<void> {
-  await prisma.csvDashboardRow.deleteMany({ where: { dataHash: { startsWith: fixtureToken } } });
+  const deletedRows = await prisma.csvDashboardRow.deleteMany({ where: { dataHash: { startsWith: fixtureToken } } });
+  if (deletedRows.count > 0) await rebuildProductionSchedulePartNameLookup();
   await prisma.$transaction(async (tx) => {
     // Aliases intentionally do not reference a canonical work-instruction
     // row, so remove them before the source fixtures to keep each opt-in test
@@ -377,6 +379,7 @@ describeIntegration('Prisma work-instruction repository (isolated integration)',
         rowData: { FHINCD: 'MD004121632', FHINMEI: '候補部品A' }
       }
     });
+    await rebuildProductionSchedulePartNameLookup();
     const candidates = [
       { itemId: 1001, partNumber: 'MD004121632', shootingTarget: '研削' },
       { itemId: 1002, partNumber: 'MD004121632', shootingTarget: '581' },

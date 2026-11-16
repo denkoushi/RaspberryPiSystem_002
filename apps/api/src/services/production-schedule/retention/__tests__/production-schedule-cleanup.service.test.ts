@@ -1,7 +1,11 @@
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../constants.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../../production-schedule-part-name-lookup-rebuild.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../../lib/prisma.js';
 import { ProductionScheduleCleanupService } from '../production-schedule-cleanup.service.js';
+
+vi.mock('../../production-schedule-part-name-lookup-rebuild.js', () => ({ requestProductionSchedulePartNameLookupRebuild: vi.fn() }));
 
 vi.mock('../../../../lib/prisma.js', () => ({
   prisma: {
@@ -136,5 +140,24 @@ describe('production-schedule-cleanup.service', () => {
 
     expect(result).toEqual({ deletedCount: 0 });
     expect(prisma.$executeRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe('part name rebuild after production cleanup', () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it.each([0, 1])('expiration rebuilds only after actual deletions: %s', async (count) => {
+    vi.mocked(prisma.csvDashboardRow.findMany).mockResolvedValueOnce([
+      { id: 'old', occurredAt: new Date('2020-01-01'), rowData: {} },
+    ] as never);
+    vi.mocked(prisma.csvDashboardRow.deleteMany).mockResolvedValue({ count });
+    await new ProductionScheduleCleanupService().deleteExpiredRowsOneYear({ csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID });
+    expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledTimes(count);
+  });
+
+  it.each([0, 1])('global dedup rebuilds only after actual deletions: %s', async (count) => {
+    vi.mocked(prisma.$executeRaw).mockResolvedValueOnce(count).mockResolvedValue(0);
+    await new ProductionScheduleCleanupService().deleteDuplicateLosersGlobal({ csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID });
+    expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledTimes(count);
   });
 });

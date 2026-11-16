@@ -56,6 +56,21 @@ export async function readMaterialMatchesByPartName(db: Db, query: string, scope
 export async function readPartNamesByPartNumbers(db: Db, partNumbers: string[]): Promise<Map<string, string | null>> {
   const normalized = [...new Set(partNumbers.flatMap((part) => normalizeWorkInstructionPartNumber(part) ?? []))];
   if (!normalized.length) return new Map();
+  const states = await db.$queryRaw<Array<{ id: number }>>(Prisma.sql`
+    SELECT "id" FROM "ProductionSchedulePartNameLookupState" WHERE "id" = 1
+  `);
+  if (!states.length) return readPartNamesByPartNumbersLegacy(db, partNumbers);
+  const records = await db.$queryRaw<Array<{ partNumber: string; partName: string | null }>>(Prisma.sql`
+    SELECT "partNumberKey" AS "partNumber", "partName"
+    FROM "ProductionSchedulePartNameLookup"
+    WHERE "partNumberKey" IN (${Prisma.join(normalized)})
+  `);
+  return new Map(records.map((record) => [record.partNumber, record.partName?.trim() || null]));
+}
+
+export async function readPartNamesByPartNumbersLegacy(db: Db, partNumbers: string[]): Promise<Map<string, string | null>> {
+  const normalized = [...new Set(partNumbers.flatMap((part) => normalizeWorkInstructionPartNumber(part) ?? []))];
+  if (!normalized.length) return new Map();
   const records = await db.$queryRaw<Array<{ partNumber: string; partName: string | null }>>(Prisma.sql`
     SELECT UPPER(TRIM(NORMALIZE("rowData"->>'FHINCD', NFKC))) AS "partNumber", MIN(NULLIF(TRIM("rowData"->>'FHINMEI'), '')) AS "partName"
     FROM "CsvDashboardRow"

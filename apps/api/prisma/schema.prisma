@@ -1602,6 +1602,16 @@ model CsvDashboardIngestRun {
   @@index([completedAt])
 }
 
+model ProductionSchedulePartNameLookup {
+  partNumberKey String @id @db.Text
+  partName      String? @db.Text
+}
+
+model ProductionSchedulePartNameLookupState {
+  id      Int      @id @default(1)
+  builtAt DateTime
+}
+
 model CsvDashboardRow {
   id                                   String                                @id @default(uuid())
   csvDashboardId                       String

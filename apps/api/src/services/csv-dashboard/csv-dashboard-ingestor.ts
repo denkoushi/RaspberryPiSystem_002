@@ -1,3 +1,4 @@
+import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { readSessakuPieceSets } from '../production-schedule/sessaku-pieces/piece-key.js';
 import { publishSessakuPieceSourceCreates } from '../production-schedule/sessaku-pieces/piece-source-publication.js';
 import { prepareSessakuPiecePublication, publishSessakuPieceProgress } from '../production-schedule/sessaku-pieces/piece-sync.js';
@@ -430,6 +431,7 @@ export class CsvDashboardIngestor {
             keyColumns,
           });
           const cleanupParams = {
+            deferPartNameLookupRebuild: true,
             csvDashboardId: dashboardId,
             keyColumns,
             keys: dedupKeys,
@@ -470,6 +472,8 @@ export class CsvDashboardIngestor {
         }
       }
 
+      if (isProductionScheduleDashboard) void requestProductionSchedulePartNameLookupRebuild();
+
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
         logger.info(
           { dashboardId },
@@ -501,6 +505,8 @@ export class CsvDashboardIngestor {
         { err: error, dashboardId, dashboardName: dashboard.name },
         '[CsvDashboardIngestor] CSV ingestion failed'
       );
+      // 行の作成・更新は失敗より前にコミット済みのことがあるので、部品名の表も作り直す
+      if (dashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) void requestProductionSchedulePartNameLookupRebuild();
 
       // 取り込み実行ログを失敗として更新
       await prisma.csvDashboardIngestRun.update({

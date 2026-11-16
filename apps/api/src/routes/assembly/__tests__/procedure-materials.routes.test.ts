@@ -126,6 +126,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     const work = { ...material, id: 'work', kind: 'PHOTO', workInstructionRef: { partNumber: 'DFD1' }, subjectHint: null };
     const mail = { ...material, id: 'mail', subjectHint: 'DFD1 の資料', workInstructionRef: null };
     db.$queryRaw.mockResolvedValueOnce([{ id: 'work', partNumber: 'DFD1' }, { id: 'mail', partNumber: 'DFD1' }])
+      .mockResolvedValueOnce([{ id: 1 }])
       .mockResolvedValueOnce([{ partNumber: 'DFD1', partName: '軸受ホルダー' }]);
     db.procedureMaterial.findMany.mockResolvedValueOnce([]).mockImplementationOnce(async ({ where }) => {
       expect(where.AND[0].OR).toContainEqual({ id: { in: ['work', 'mail'] } });
@@ -135,7 +136,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().materials.map(({ id, partName }: { id: string; partName: string | null }) => [id, partName]))
       .toEqual([['work', '軸受ホルダー'], ['mail', '軸受ホルダー']]);
-    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.$queryRaw).toHaveBeenCalledTimes(3);
     expect(db.$queryRaw.mock.calls[0][0].sql).toContain('LIMIT 2000');
   });
   it.each(['unplaced', 'placed'])('skips reverse lookup for one normalized character in %s', async (state) => {
@@ -146,10 +147,10 @@ describe('procedure-material routes with mocked Prisma', () => {
   it('looks up all snapshot names once without reverse lookup when q is absent', async () => {
     const { db, material } = harness();
     db.procedureMaterial.findMany.mockResolvedValue([{ ...material, workInstructionRef: { partNumber: 'DFD1' } }, { ...material, workInstructionRef: { partNumber: 'OTHER' } }]);
-    db.$queryRaw.mockResolvedValue([{ partNumber: 'DFD1', partName: 'ホルダー' }]);
+    db.$queryRaw.mockResolvedValueOnce([{ id: 1 }]).mockResolvedValueOnce([{ partNumber: 'DFD1', partName: 'ホルダー' }]);
     expect((await app.inject(base)).json().materials.map(({ partName }: { partName: string | null }) => partName)).toEqual(['ホルダー', null]);
-    expect(db.$queryRaw).toHaveBeenCalledOnce();
-    expect(db.$queryRaw.mock.calls[0][0].values).toEqual(expect.arrayContaining(['DFD1', 'OTHER']));
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.$queryRaw.mock.calls[1][0].values).toEqual(expect.arrayContaining(['DFD1', 'OTHER']));
   });
   it('defaults to 100 unplaced materials and rejects invalid filters', async () => {
     const { db } = harness();

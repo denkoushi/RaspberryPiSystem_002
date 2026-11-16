@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client';
 
 import { prisma } from '../../../lib/prisma.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule-part-name-lookup-rebuild.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { logger } from '../../../lib/logger.js';
 import {
   PRODUCTION_SCHEDULE_LOGICAL_KEY_COLUMNS,
@@ -139,6 +141,9 @@ export class ProductionScheduleCleanupService {
           where: { id: { in: idsToDelete } },
         });
         deletedCount += result.count;
+        if (result.count > 0 && params.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+          void requestProductionSchedulePartNameLookupRebuild();
+        }
       }
 
       // 次のバッチへ
@@ -215,6 +220,9 @@ export class ProductionScheduleCleanupService {
 
         const affectedCount = typeof affected === 'number' ? affected : 0;
         deletedCount += affectedCount;
+        if (affectedCount > 0 && params.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+          void requestProductionSchedulePartNameLookupRebuild();
+        }
         if (affectedCount === 0) {
           break;
         }
@@ -263,6 +271,9 @@ export class ProductionScheduleCleanupService {
 
       const affectedCount = typeof affected === 'number' ? affected : 0;
       deletedCount += affectedCount;
+      if (affectedCount > 0 && params.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID) {
+        void requestProductionSchedulePartNameLookupRebuild();
+      }
       if (affectedCount === 0) {
         break;
       }

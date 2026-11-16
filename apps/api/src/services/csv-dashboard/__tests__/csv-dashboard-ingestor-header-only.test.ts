@@ -1,3 +1,4 @@
+import { requestProductionSchedulePartNameLookupRebuild } from '../../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { Prisma } from '@prisma/client';
 import { calculateProductionScheduleDataHash } from '../../production-schedule/row-resolver/index.js';
 import { ProductionScheduleCleanupService } from '../../production-schedule/retention/index.js';
@@ -17,6 +18,8 @@ const { findUnique, createRun, updateRun, createMany, transaction, pieceSets, cr
   findRows: vi.fn().mockResolvedValue([]),
   pieceSets: vi.fn().mockResolvedValue([]),
 }));
+
+vi.mock('../../production-schedule/production-schedule-part-name-lookup-rebuild.js', () => ({ requestProductionSchedulePartNameLookupRebuild: vi.fn().mockResolvedValue(undefined) }));
 
 vi.mock('../../../lib/prisma.js', () => ({
   prisma: {
@@ -110,6 +113,8 @@ describe('CsvDashboardIngestor APPEND header-only CSV', () => {
       expect(updateRun).toHaveBeenCalledExactlyOnceWith({ where: { id: 'run-1' }, data: { status: 'FAILED', errorMessage: 'CSV progress sync failed for 1 rows', completedAt: expect.any(Date) } });
       expect(transaction).not.toHaveBeenCalled();
       expect(cleanup).not.toHaveBeenCalled();
+      // 失敗前にコミットされた行の分も部品名の表に反映する
+      expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledOnce();
     } finally { sync.mockRestore(); cleanup.mockRestore(); }
   });
 
@@ -163,6 +168,22 @@ describe('CsvDashboardIngestor APPEND header-only CSV', () => {
     expect(transaction).not.toHaveBeenCalled();
     expect(updateRun).toHaveBeenCalledExactlyOnceWith({ where: { id: 'run-1' }, data: expect.objectContaining({ status: 'FAILED' }) });
     expect(updateRun.mock.calls[0]![0].data).not.toHaveProperty('rowSeenRecordedAt');
+  });
+
+  it('returns after completion and dedup cleanup without waiting for a slow rebuild', async () => {
+    await productionDashboard('DEDUP');
+    let finish!: () => void;
+    const slow = new Promise<void>((resolve) => { finish = resolve; });
+    vi.mocked(requestProductionSchedulePartNameLookupRebuild).mockReturnValueOnce(slow);
+    const cleanup = vi.spyOn(CsvDashboardDedupCleanupService.prototype, 'deleteDuplicateLosersForKeys').mockResolvedValue({ deletedCount: 3 });
+    try {
+      const result = await new CsvDashboardIngestor().ingestFromGmail(PRODUCTION_SCHEDULE_DASHBOARD_ID, 'ProductNo,FSEIBAN\n');
+      expect(result.rowsProcessed).toBe(0);
+      expect(requestProductionSchedulePartNameLookupRebuild).toHaveBeenCalledOnce();
+      expect(cleanup).toHaveBeenCalledWith(expect.objectContaining({ deferPartNameLookupRebuild: true }));
+      expect(updateRun.mock.invocationCallOrder[0]!).toBeLessThan(cleanup.mock.invocationCallOrder[0]!);
+      expect(cleanup.mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(requestProductionSchedulePartNameLookupRebuild).mock.invocationCallOrder[0]!);
+    } finally { finish(); cleanup.mockRestore(); }
   });
 
 });
