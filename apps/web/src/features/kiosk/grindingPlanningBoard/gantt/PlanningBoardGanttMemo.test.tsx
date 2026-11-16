@@ -9,7 +9,7 @@ import { PlanningBoardGanttView } from './PlanningBoardGanttView';
 import { usePlanningBoardDragPreview } from './usePlanningBoardSharedDrag';
 
 import type { GrindingPlanningBoardItem } from '@raspi-system/shared-types';
-import type { ComponentProps } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 
 const uptimeQuery = vi.hoisted(() => vi.fn(() => ({ data: { resources: [{ resourceCd: '305', medianRunSeconds: 28080 }] } })));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: uptimeQuery }));
@@ -52,6 +52,19 @@ vi.mock('./PlanningBoardForwardGanttRow', async (importOriginal) => {
     return <actual.PlanningBoardForwardGanttRow {...props} />;
   }) };
 });
+const backwardRenders = vi.hoisted(() => [] as string[]);
+vi.mock('./PlanningBoardGanttRow', async importOriginal => {
+  const actual = await importOriginal<typeof import('./PlanningBoardGanttRow')>();
+  const { memo } = await import('react');
+  type Props = ComponentProps<typeof actual.PlanningBoardGanttRow>;
+  // 行の本体の中で数える(Context による描き直しも入る)。memo の比較は本物を使う。
+  const row = actual.PlanningBoardGanttRow as unknown as { type: (props: Props) => ReactNode; compare: ((a: Props, b: Props) => boolean) | null };
+  return { ...actual, PlanningBoardGanttRow: memo(function CountedBackwardRow(props: Props) {
+    backwardRenders.push(props.row.key);
+    return row.type(props);
+  }, row.compare ?? undefined) };
+});
+
 const item = (itemId: string, resource: string): GrindingPlanningBoardItem => ({
   itemId, kind: 'row', itemRevision: 'r1', version: 1, sourceRowId: itemId,
   fseiban: '26-1001', fhincd: itemId, fhinmei: itemId, machineName: '機種', productNo: itemId, processOrder: '10',
@@ -382,4 +395,31 @@ it('builds one shelf projection per machine mode, without building unused pane s
   shelfBuilds.mockClear();
   rerender(<PlanningBoardGanttDisplay {...props} singleResourceCd="305+306" />);
   expect(shelfBuilds).not.toHaveBeenCalled();
+});
+
+it('fixes backward row render counts for unrelated props and selection in another row', () => {
+  const items = [item('a', '305'), { ...item('b', '306'), fseiban: '26-1002' }];
+  const layout = buildPlanningBoardGanttLayout({ items, resources: ['305', '306'], allocation: 'alternate', view: 'resource',
+    dailyHoursByResource: {}, seibanOrder: [], today: '2026-11-05', scale: 2, mode: 'backward' });
+  const props = { layout, scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
+    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
+  const empty = new Set<string>();
+  const selected = new Set(['a']);
+  const rowKeys = layout.groups.flatMap(group => group.rows.map(row => row.key));
+  const draw = (ids: ReadonlySet<string>, capacityPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={ids} capacityPending={capacityPending} />;
+  backwardRenders.length = 0;
+  const { rerender } = render(draw(empty));
+  expect(backwardRenders).toEqual(expect.arrayContaining(rowKeys));
+  backwardRenders.length = 0;
+  rerender(draw(empty, true));
+  expect(backwardRenders).toEqual([]);
+  rerender(draw(selected, true));
+  // 今の回数を固定：別の行を含め両行が1回ずつ再描画される。
+  expect(backwardRenders).toEqual(rowKeys);
+  expect(screen.getByTestId('planning-gantt-bar-a')).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByTestId('planning-gantt-bar-b')).toHaveAttribute('aria-pressed', 'false');
+  backwardRenders.length = 0;
+  rerender(draw(new Set(['a', 'outside-this-board']), true));
+  expect(backwardRenders).toEqual(rowKeys);
 });
