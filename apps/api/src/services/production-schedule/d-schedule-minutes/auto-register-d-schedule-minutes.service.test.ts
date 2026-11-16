@@ -42,7 +42,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
     update: vi.fn(({ where, data }: { where: { id: string }; data: object }) =>
       Object.assign(where.id === mocks.run.id ? mocks.run : mocks.otherRuns.find((run) => run.id === where.id)!, data))
   },
-  productionScheduleDScheduleMinutes: { findMany: () => mocks.minutes },
+  productionScheduleDScheduleMinutes: { findMany: vi.fn(() => mocks.minutes) },
   site: { findMany: () => mocks.sites.map((key) => ({ key })) },
   productionScheduleGrindingPlanningBoardState: { findMany: () => Object.keys(mocks.boards).map((siteKey) => ({ siteKey })) }
 } }));
@@ -382,6 +382,82 @@ describe('D schedule automatic registration', () => {
     expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'STALE', 'KEEP']);
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
+  });
+
+  it.each([1, 2, 3])('evicts only the %i oldest absent D company auto entries to make room', async (shortage) => {
+    const manual = Array.from({ length: 95 }, (_, i) => `M${i}`);
+    const absent = ['UNDATED', 'NEWER', 'TIE', 'OLDEST'];
+    const incoming = Array.from({ length: shortage }, (_, i) => `D${i}`);
+    const removed = ['OLDEST', 'NEWER', 'TIE'].slice(0, shortage);
+    const retained = absent.filter((seiban) => !removed.includes(seiban));
+    mocks.boards.A.seibanOrder = [...manual, ...absent, 'INTERNAL'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['UNDATED', 'NEWER', 'OLDEST'] }, searchHistory: [] } };
+    mocks.run.autoRegisteredSeibans.planningBoards.A = ['TIE'];
+    mocks.run.autoRegisteredSeibans.metrics = { seibansRead: shortage, dateChanged: shortage, unchanged: 0, registeredSeibans: [], unregisteredSeibans: [] };
+    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
+      autoRegisteredSeibans: { planningBoards: { A: ['INTERNAL'] }, searchHistory: [] } }];
+    mocks.minutes = absent.map((fseiban) => ({ fseiban, assigneesKnown: false, assignees: [],
+      partsCompleteDate: fseiban === 'UNDATED' ? null : new Date(fseiban === 'OLDEST' ? '2026-10-01Z' : '2026-11-01Z') }));
+
+    await register(incoming.map((seiban) => block(seiban)));
+
+    expect(mocks.boards.A.seibanOrder).toEqual([...manual, ...retained, 'INTERNAL', ...incoming]);
+    expect(mocks.boards.A.seibanOrder).toHaveLength(100);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual([...retained, ...incoming]);
+    expect(mocks.run.autoRegisteredSeibans.metrics.unregisteredSeibans).toEqual(absent.filter((seiban) => removed.includes(seiban)));
+    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual(['INTERNAL']);
+    expect(mocks.run.warnings).toEqual([]);
+    expect(prisma.productionScheduleDScheduleMinutes.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ fseiban: { in: expect.arrayContaining([...absent, ...incoming, 'INTERNAL']) } })
+    }));
+  });
+
+  it('exhausts absent D company entries before internal entries and warns when manual entries fill the remaining slots', async () => {
+    const manual = Array.from({ length: 97 }, (_, i) => `M${i}`);
+    mocks.boards.A.seibanOrder = [...manual, 'ABSENT', 'NEAR', 'FAR'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['ABSENT'] }, searchHistory: [] } };
+    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
+      autoRegisteredSeibans: { planningBoards: { A: ['NEAR', 'FAR'] }, searchHistory: [] } }];
+    mocks.minutes = ['NEAR', 'FAR'].map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
+      partsCompleteDate: new Date(i ? '2026-12-01Z' : '2026-11-01Z') }));
+
+    await register(['D1', 'D2', 'D3', 'D4'].map((seiban) => block(seiban)));
+
+    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'D1', 'D2', 'D3']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['D1', 'D2', 'D3']);
+    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual([]);
+    expect(mocks.run.warnings).toEqual([{ code: 'REGISTRATION_LIMIT', seiban: 'D4', cell: null, rawText: null }]);
+  });
+
+  it('releases an absent taken-over entry from the internal ownership when evicting it', async () => {
+    const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
+    mocks.boards.A.seibanOrder = [...manual, 'TAKEN', 'KEEP'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['TAKEN'] }, searchHistory: [] } };
+    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
+      autoRegisteredSeibans: { planningBoards: { A: ['TAKEN', 'KEEP'] }, searchHistory: [] } }];
+    mocks.minutes = [{ fseiban: 'TAKEN', assigneesKnown: false, assignees: [], partsCompleteDate: new Date('2026-10-01Z') }];
+
+    await register([block('KEEP'), block('D1')]);
+
+    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'KEEP', 'D1']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP', 'D1']);
+    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP']);
+  });
+
+  it('recalculates absent D company evictions after a planning board conflict', async () => {
+    const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
+    mocks.boards.A.seibanOrder = [...manual, 'NEWER', 'OLDEST'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['NEWER', 'OLDEST'] }, searchHistory: [] } };
+    mocks.minutes = ['NEWER', 'OLDEST'].map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
+      partsCompleteDate: new Date(i ? '2026-10-01Z' : '2026-11-01Z') }));
+    mocks.writeBoard.mockImplementationOnce(() => { mocks.boards.A.seibanOrder.push('CONCURRENT'); throw new ApiError(409, 'conflict'); });
+
+    await register([block('D1')]);
+
+    expect(mocks.writeBoard.mock.calls[0]![0].fseibans).toEqual([...manual, 'NEWER', 'D1']);
+    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'CONCURRENT', 'D1']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['D1']);
+    expect(mocks.run.warnings).toEqual([]);
   });
 
   it.each(['BLOCK_SHAPE', 'DUPLICATE_SEIBAN', 'UNREADABLE_ALIAS', 'FORMULA_NO_RESULT'])('retains warning-only ownership for %s until truly absent without adding warning-only keys', async (code) => {
