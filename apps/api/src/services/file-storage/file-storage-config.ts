@@ -15,6 +15,7 @@ export const DURABLE_FILE_NAMESPACES = [
   'measuring-instrument-genres',
   'pallet-machine-illustrations',
   'csv-dashboards',
+  'reports',
 ] as const;
 
 export const CACHE_FILE_NAMESPACES = [

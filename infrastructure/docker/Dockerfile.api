@@ -188,6 +188,7 @@ RUN mkdir -p /app/storage/photos \
   /app/storage/part-measurement-drawings \
   /app/storage/pallet-machine-illustrations \
   /app/storage/csv-dashboards \
+  /app/storage/reports \
   /app/storage/.integrity \
   && chown -R node:node /app/storage \
   && rm -rf /usr/local/lib/node_modules/npm

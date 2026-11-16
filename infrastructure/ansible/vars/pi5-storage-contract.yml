@@ -56,6 +56,10 @@ pi5_phase3_storage_contract:
     suffix: csv-dashboards
     runtime_path: /app/storage/csv-dashboards
     mode: '0755'
+  - logical_key: reports-storage
+    suffix: reports
+    runtime_path: /app/storage/reports
+    mode: '0755'
   - logical_key: file-integrity-storage
     suffix: .integrity
     runtime_path: /app/storage/.integrity
