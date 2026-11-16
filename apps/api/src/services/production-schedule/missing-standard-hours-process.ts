@@ -3,7 +3,7 @@ import { ApiError } from '../../lib/errors.js';
 import { Prisma } from '@prisma/client';
 import { FKOJUNST_MAIL_LIST_VISIBLE_STATUS_CODES } from './completion/fkojunst-mail-status-completion.policy.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
-import type { FkojunstMailNormalizedRow } from './fkojunst-status-mail-sync.pipeline.js';
+import type { FkojunstMailNormalizedRow } from './fkojunst-mail-row.types.js';
 import { compareProcessOrder } from './process-order.js';
 import { normalizeProductionScheduleResourceCd } from './policies/resource-category-policy.service.js';
 
