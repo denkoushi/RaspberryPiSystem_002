@@ -1154,7 +1154,7 @@ describe('two-machine forward dragging', () => {
     values.layout.groups[1]!.rows[0]!.key = values.layout.groups[0]!.rows[0]!.key;
     const onResourceMove = vi.fn();
     const onResourceReorder = vi.fn();
-    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...values} resourceMove={{ onResourceMove, onResourceReorder, canMoveResource: () => true }} />);
     const source = bar(sourceId); const target = bar(targetId);
     begin(source, target);
     const insertion = screen.getByTestId('planning-gantt-insertion');
@@ -1177,7 +1177,7 @@ describe('two-machine forward dragging', () => {
 
   it('uses the final pointerup coordinates in the partner pane before the pending preview frame', () => {
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     const source = bar('item-0000');
     begin(source, source);
     pointAt(bar('item-0001'));
@@ -1192,7 +1192,7 @@ describe('two-machine forward dragging', () => {
   });
 
   it('does not remeasure chain links for shared drag previews', () => {
-    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={vi.fn()} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} resourceMove={{ onResourceMove: vi.fn(), canMoveResource: () => true }} />);
     const source = bar('item-0000');
     fireEvent.click(source);
     const measure = vi.fn(() => new DOMRect(100, 100, 1000, 600));
@@ -1205,7 +1205,7 @@ describe('two-machine forward dragging', () => {
   });
 
   it('keeps the source pane still while dragging over the other pane, but scrolls it near its own edge', () => {
-    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={vi.fn()} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} resourceMove={{ onResourceMove: vi.fn(), canMoveResource: () => true }} />);
     const source = bar('item-0000');
     const upper = source.closest<HTMLElement>('[data-gantt-viewport]')!;
     upper.scrollTop = 0;
@@ -1228,7 +1228,7 @@ describe('two-machine forward dragging', () => {
     const values = props('forward');
     const capacity = { ...values.capacity, dailyHoursByResource };
     render(<PlanningBoardGanttDisplay {...values} layout={layout} scale={1} capacity={capacity}
-      onResourceMove={onResourceMove} canMoveResource={() => true} />);
+      resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     const source = bar(items[0]!.itemId); const target = bar(items[1]!.itemId);
     begin(source, target, 10000);
     const insertion = screen.getByTestId('planning-gantt-insertion');
@@ -1240,7 +1240,7 @@ describe('two-machine forward dragging', () => {
 
   it('moves to an empty partner pane', () => {
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward', true)} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward', true)} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     const source = bar('item-0000');
     const lane = screen.getByRole('region', { name: '022' }).querySelector<HTMLElement>('[data-gantt-window-row]')!;
     begin(source, lane);
@@ -1257,7 +1257,7 @@ describe('two-machine forward dragging', () => {
       items: values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test'),
       resources: ['021', '022'], testBars: [test] });
     const onResourceMove = vi.fn(); const onResourceReorder = vi.fn();
-    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...values} resourceMove={{ onResourceMove, onResourceReorder, canMoveResource: () => true }} />);
     const source = bar(test.itemId);
     begin(source, bar('item-0001'));
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
@@ -1283,8 +1283,7 @@ describe('two-machine forward dragging', () => {
     ];
     const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] });
     const onResourceMove = vi.fn(); const onResourceReorder = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} onResourceMove={onResourceMove}
-      onResourceReorder={onResourceReorder} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} resourceMove={{ onResourceMove, onResourceReorder, canMoveResource: () => true }} />);
     const source = bar(sourceId); const target = bar(targetId);
     begin(source, target);
     expect(screen.getByTestId('planning-gantt-insertion').closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
@@ -1303,7 +1302,7 @@ describe('two-machine forward dragging', () => {
       items: values.layout.groups.flatMap(group => group.rows.flatMap(row => row.bars.map(entry => entry.item))).filter(item => item.kind !== 'test'),
       resources: ['021', '022'], testBars: [test] });
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...values} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     const source = bar('item-0000');
     begin(source, bar(test.itemId));
     expect(screen.queryByTestId('planning-gantt-insertion')).toBeNull();
@@ -1319,7 +1318,7 @@ describe('two-machine forward dragging', () => {
     const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'] });
     const canMoveResource = vi.fn((item, resource) => allowed && item.itemId === items[0]!.itemId && resource === '022');
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} canMoveResource={canMoveResource} onResourceMove={onResourceMove} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} resourceMove={{ canMoveResource, onResourceMove }} />);
     const source = bar(items[0]!.itemId);
     begin(source, bar(items[1]!.itemId)); end(source);
     expect(canMoveResource).toHaveBeenCalledWith(items[0], '022');
@@ -1330,7 +1329,7 @@ describe('two-machine forward dragging', () => {
   it.each(['021+022', '021'])('preserves same-pane reordering in %s mode', selection => {
     const values = props('forward');
     const onResourceReorder = vi.fn(); const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} onResourceReorder={onResourceReorder} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...values} singleResourceCd={selection} resourceMove={{ onResourceReorder, onResourceMove, canMoveResource: () => true }} />);
     const source = bar('item-0000');
     begin(source, bar('item-0002'));
     expect(screen.getByTestId('planning-gantt-insertion').closest('[data-gantt-window-row]')).toBe(bar('item-0002').closest('[data-gantt-window-row]'));
@@ -1342,7 +1341,7 @@ describe('two-machine forward dragging', () => {
 
   it('starts at 8px and keeps a stationary 500ms long press as selection', () => {
     const values = props('forward'); const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...values} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     const source = bar('item-0000'); pointAt(bar('item-0001'));
     fireEvent.pointerDown(source, { button: 0, clientX: 100, clientY: 100 });
     act(() => vi.advanceTimersByTime(500));
@@ -1362,7 +1361,7 @@ describe('two-machine forward dragging', () => {
 
   it('moves a queue card across panes with the same insertion and arrow', () => {
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward')} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttDisplay {...props('forward')} resourceMove={{ onResourceMove, canMoveResource: () => true }} />);
     fireEvent.pointerEnter(bar('item-0000'));
     const source = screen.getByTestId('planning-forward-queue-card-item-0000');
     begin(source, bar('item-0001'), 0);

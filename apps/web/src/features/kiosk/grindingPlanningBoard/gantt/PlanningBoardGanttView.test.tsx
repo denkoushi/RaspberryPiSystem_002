@@ -825,7 +825,8 @@ describe('forward PlanningBoardGanttView', () => {
   });
   afterEach(() => { Reflect.deleteProperty(document, 'elementsFromPoint'); vi.unstubAllGlobals(); vi.useRealTimers(); });
   function forwardProps(items = [item({ requiredMinutes: 60, alternateRank: 1 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60, alternateRank: 2 })]) {
-    return { ...props(items), scale: 2, onResourceReorder: vi.fn(),
+    const resourceMove = { onResourceReorder: vi.fn() };
+    return { ...props(items), scale: 2, resourceMove,
       layout: buildPlanningBoardGanttLayout({ items, mode: 'forward', allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
         dailyHoursByResource: {}, today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00'), scale: 2 }) };
   }
@@ -858,7 +859,7 @@ describe('forward PlanningBoardGanttView', () => {
       expect(screen.getByTestId('planning-gantt-drag-ghost')).toBeInTheDocument();
       fireEvent.pointerUp(target, { pointerId: 1, clientX: 0, clientY: 100 });
       expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
-      expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
+      expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ itemId: 'b' }), expect.objectContaining({ itemId: 'a' }), 'before');
     });
     it.each(['pinned queue', 'bar'] as const)('cancels the %s drag when the dragged item disappears', (source) => {
@@ -870,7 +871,7 @@ describe('forward PlanningBoardGanttView', () => {
       rerender(<PlanningBoardGanttView {...values} layout={tickLayout(items.filter((entry) => entry.itemId !== 'b'))} />);
       expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
       if (source === 'pinned queue') expect(screen.getByRole('region', { name: /の次にやる順/ })).toBeInTheDocument();
-      expect(values.onResourceReorder).not.toHaveBeenCalled();
+      expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     });
     it.each([
       ['pinned queue', 'arrivalPending'], ['pinned queue', 'isCompleted'],
@@ -888,7 +889,7 @@ describe('forward PlanningBoardGanttView', () => {
       else bar.item = { ...bar.item, isCompleted: true };
       rerender(<PlanningBoardGanttView {...values} layout={layout} />);
       expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
-      expect(values.onResourceReorder).not.toHaveBeenCalled();
+      expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     });
   });
   function BlankBoard({ clear, mode = 'forward', pinMode = false }: { clear: () => void; mode?: 'forward' | 'backward'; pinMode?: boolean }) {
@@ -1076,7 +1077,7 @@ describe('forward PlanningBoardGanttView', () => {
     for (const bar of other.rows[0]!.bars) { bar.resource = '306'; bar.item.itemId = `other-${bar.item.itemId}`; }
     values.layout.groups.push(other);
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttView {...values} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource: () => true }} />);
     fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
     const card = screen.getByTestId('planning-forward-queue-card-b');
     vi.mocked(document.elementsFromPoint).mockReturnValue([document.querySelector('[data-gantt-lane-resource="306"]')!]);
@@ -1089,7 +1090,7 @@ describe('forward PlanningBoardGanttView', () => {
   it('blocks gantt drops over the queue for both bar and card drags', () => {
     const values = laterProps();
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} />);
+    render(<PlanningBoardGanttView {...values} resourceMove={{ ...values.resourceMove, onResourceMove }} />);
     fireEvent.click(screen.getByRole('button', { name: '305の先の待ち' }));
     const panel = screen.getByRole('region', { name: /の次にやる順/ });
     const card = screen.getByTestId('planning-forward-queue-card-b');
@@ -1122,7 +1123,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 400 });
     fireEvent.click(bar);
     expect(onTogglePin).toHaveBeenCalledOnce();
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     rerender(<PlanningBoardGanttView {...values} onTogglePin={onTogglePin} />);
     expect(bar).toHaveAttribute('data-gantt-pinned', 'true');
     fireEvent.click(bar);
@@ -1291,7 +1292,7 @@ describe('forward PlanningBoardGanttView', () => {
     const values = forwardProps(entries);
     const onResourceMove = vi.fn();
     render(<PlanningBoardGanttDisplay {...values} scale={1} singleResourceCd="021+022"
-      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onResourceMove={onResourceMove} canMoveResource={() => false} />);
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource: () => false }} />);
     const source = screen.getAllByTestId('planning-gantt-bar-a')[0]!;
     const target = screen.getAllByTestId('planning-gantt-bar-b')[0]!;
     vi.mocked(document.elementsFromPoint).mockReturnValue([target]);
@@ -1302,8 +1303,8 @@ describe('forward PlanningBoardGanttView', () => {
     else expect(screen.getByTestId('planning-gantt-insertion')).toBeInTheDocument();
     fireEvent.pointerUp(source, { clientX: 900, clientY: 150 });
     expect(onResourceMove).not.toHaveBeenCalled();
-    if (crossMachine) expect(values.onResourceReorder).not.toHaveBeenCalled();
-    else expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
+    if (crossMachine) expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
+    else expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
   });
   it('reorders across working-minute windows after a long press, showing insertion only on the target row', () => {
     vi.useFakeTimers();
@@ -1321,7 +1322,7 @@ describe('forward PlanningBoardGanttView', () => {
     const insertion = screen.getByTestId('planning-gantt-insertion');
     expect(insertion.closest('[data-gantt-window-row]')).toBe(target.closest('[data-gantt-window-row]'));
     fireEvent.pointerUp(bar, { clientX: 900, clientY: 150 });
-    expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
+    expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(entries[0], entries[1], 'after');
   });
   it('tap selects the original item and opens the chain; pin mode keeps its callback', () => {
     const values = forwardProps();
@@ -1687,7 +1688,7 @@ describe('forward PlanningBoardGanttView', () => {
     const entries = [item({ itemId: 'piece:a', kind: 'piece', pieceId: 'a', parentItemId: 'parent', requiredMinutes: 60 }),
       item({ itemId: 'piece:b', kind: 'piece', pieceId: 'b', parentItemId: 'parent', originalResourceCd: operation === 'move' ? '306' : '305', requiredMinutes: 60 })];
     const values = forwardProps(entries); const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+    render(<PlanningBoardGanttView {...values} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource: () => true }} />);
     const bar = screen.getByTestId('planning-gantt-bar-piece:a'); const target = screen.getByTestId('planning-gantt-bar-piece:b');
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => [target]) });
     const x = parseFloat(target.style.left);
@@ -1695,7 +1696,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerMove(bar, { clientX: x + 1, clientY: operation === 'move' ? 120 : 0 });
     fireEvent.pointerUp(bar, { clientX: x + 1, clientY: operation === 'move' ? 120 : 0 });
     if (operation === 'move') expect(onResourceMove).toHaveBeenCalledWith(entries[0], '306', entries[1], 'before');
-    else expect(values.onResourceReorder).toHaveBeenCalledWith(entries[0], entries[1], 'before');
+    else expect(values.resourceMove.onResourceReorder).toHaveBeenCalledWith(entries[0], entries[1], 'before');
   });
   it('includes completed pieces only in the forward strip and restores them to the gantt', () => {
     const completed = item({ itemId: 'done', kind: 'piece', parentItemId: 'first', piecePosition: 1, processOrder: '10', isCompleted: true });
@@ -2003,7 +2004,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerMove(bar, { clientX: destination });
     expect(screen.getByTestId('planning-gantt-insertion')).toHaveClass('bg-emerald-300');
     fireEvent.pointerUp(bar, { clientX: destination });
-    expect(values.onResourceReorder).toHaveBeenCalledWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
+    expect(values.resourceMove.onResourceReorder).toHaveBeenCalledWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onDueDrop).not.toHaveBeenCalled();
     fireEvent.click(bar);
     expect(values.onToggleItem).not.toHaveBeenCalled();
@@ -2017,7 +2018,7 @@ describe('forward PlanningBoardGanttView', () => {
       seibanOrder: [], resources: ['305', '306', '100'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
     const onResourceMove = vi.fn();
     const canMoveResource = vi.fn((_item, resource) => resource === '306');
-    render(<PlanningBoardGanttView {...values} layout={layout} onResourceMove={onResourceMove} canMoveResource={canMoveResource} colorBySeiban />);
+    render(<PlanningBoardGanttView {...values} layout={layout} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource }} colorBySeiban />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
     const target = screen.getByTestId('planning-gantt-bar-c');
     const lane = target.closest<HTMLElement>('[data-gantt-lane]')!;
@@ -2039,7 +2040,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(canMoveResource).toHaveBeenCalledTimes(2);
     fireEvent.pointerUp(bar, { clientX: x, clientY: y });
     expect(onResourceMove).toHaveBeenCalledExactlyOnceWith(items[0], '306', items[2], 'before');
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
     expect(forbidden.style.opacity).toBe('');
     expect(lane.style.outline).toBe('');
@@ -2049,7 +2050,7 @@ describe('forward PlanningBoardGanttView', () => {
     const onResourceMove = vi.fn();
     const layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305', '306', '100'], dailyHoursByResource: {}, today: '2026-10-14', scale: 2 });
-    render(<PlanningBoardGanttView {...values} layout={layout} onResourceMove={onResourceMove} canMoveResource={(_item, resource) => resource === '306'} />);
+    render(<PlanningBoardGanttView {...values} layout={layout} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource: (_item, resource) => resource === '306' }} />);
     const target = screen.getByTestId(`planning-forward-lane-${destination === 'forbidden' ? '100' : '306'}`);
     Object.defineProperty(document, 'elementsFromPoint', { configurable: true, value: vi.fn(() => destination === 'outside' ? [] : [target]) });
     const bar = screen.getByTestId('planning-gantt-bar-a');
@@ -2062,7 +2063,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 100, clientY: 120 });
     if (destination === 'empty') expect(onResourceMove).toHaveBeenCalledWith(expect.objectContaining({ itemId: 'a' }), '306', null, 'after');
     else expect(onResourceMove).not.toHaveBeenCalled();
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     expect(screen.queryByTestId('planning-gantt-drag-ghost')).not.toBeInTheDocument();
   });
   it('selects on long press with movement under 8px without a chain strip', () => {
@@ -2074,7 +2075,7 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => vi.advanceTimersByTime(500));
     fireEvent.pointerUp(bar, { clientX: 107 });
     fireEvent.click(bar);
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     expect(values.onToggleItem).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'a' }), true);
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
     expect(screen.queryByText(/着手見込み/)).not.toBeInTheDocument();
@@ -2099,7 +2100,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerUp(bar, { clientX: 300, clientY: 20 });
     fireEvent.click(bar);
     expect(values.onToggleItem).toHaveBeenCalledTimes(2);
-    expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'b' }), 'after');
+    expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'b' }), 'after');
     expect(screen.queryByTestId('planning-gantt-chain-strip')).not.toBeInTheDocument();
   });
   it('blocks reorder when disabled or across special-due bands', () => {
@@ -2110,7 +2111,7 @@ describe('forward PlanningBoardGanttView', () => {
       fireEvent.pointerDown(bar, { clientX: 100, button: 0 }); fireEvent.pointerUp(bar, { clientX: 300 });
     };
     dragBar();
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     const special = forwardProps([item({ specialDue: { kind: 'today', expiresAt: '2026-10-14T15:00:00Z' }, requiredMinutes: 60 }), item({ itemId: 'b', fhincd: 'P2', requiredMinutes: 60 })]);
     rerender(<PlanningBoardGanttView {...special} />);
     dragBar();
@@ -2423,7 +2424,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerDown(hidden, { button: 0, pointerId: 1, clientX: 100 });
     fireEvent.pointerMove(hidden, { pointerId: 1, clientX: 400 });
     fireEvent.pointerUp(hidden, { pointerId: 1, clientX: 400 });
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
     const arrive = within(hidden).getByRole('button', { name: '着', exact: true });
     expect(arrive).toHaveClass('min-h-9');
     fireEvent.click(arrive);
@@ -2541,7 +2542,7 @@ describe('forward PlanningBoardGanttView', () => {
     act(() => vi.advanceTimersByTime(1));
     fireEvent.pointerMove(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
     fireEvent.pointerUp(card, { pointerType: 'touch', clientX: 0, clientY: 20 });
-    expect(values.onResourceReorder).toHaveBeenCalledTimes(earlyMove ? 0 : 1);
+    expect(values.resourceMove.onResourceReorder).toHaveBeenCalledTimes(earlyMove ? 0 : 1);
   });
   it.each(['touch', 'pen'])('shows the chain on a %s tap without opening the popover or selecting', (pointerType) => {
     vi.useFakeTimers();
@@ -2708,7 +2709,7 @@ describe('forward PlanningBoardGanttView', () => {
       expect(screen.getByTestId('planning-forward-queue-insertion').parentElement).toHaveAttribute('data-testid', 'planning-forward-queue-card-d');
       expect(arrow.getAttribute('d')).not.toBe(initialPath);
       fireEvent.pointerUp(card, { clientX: 400, clientY: 150 });
-      expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
+      expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({ itemId: 'a' }), expect.objectContaining({ itemId: 'd' }), 'before'
       );
     });
@@ -2793,7 +2794,7 @@ describe('forward PlanningBoardGanttView', () => {
     expect(marker.parentElement).toBe(screen.getByTestId(`planning-forward-queue-card-${target}`));
     screen.getAllByTestId(/^planning-forward-queue-card-/).forEach((queued) => expect(queued.style.transform).toBe(''));
     fireEvent.pointerUp(card, { clientX: destination });
-    expect(values.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
+    expect(values.resourceMove.onResourceReorder).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ itemId: source }), expect.objectContaining({ itemId: target }), placement);
     expect(values.onToggleItem).not.toHaveBeenCalled();
   });
   it('flashes both the moved card and bar after the saved order changes', () => {
@@ -2823,7 +2824,7 @@ describe('forward PlanningBoardGanttView', () => {
     if (guard === 'cancel') fireEvent.pointerCancel(card);
     else expect(screen.queryByTestId('planning-forward-queue-insertion')).not.toBeInTheDocument();
     fireEvent.pointerUp(card, { clientX: destination });
-    expect(values.onResourceReorder).not.toHaveBeenCalled();
+    expect(values.resourceMove.onResourceReorder).not.toHaveBeenCalled();
   });
 
   describe('at 70% page zoom', () => {
@@ -2875,7 +2876,7 @@ describe('forward PlanningBoardGanttView', () => {
         item({ itemId: 'c', fhincd: 'P3', originalResourceCd: '306', requiredMinutes: 60 })];
       const values = forwardProps(items);
       const onResourceMove = vi.fn();
-      render(<PlanningBoardGanttView {...values} onResourceMove={onResourceMove} canMoveResource={() => true} />);
+      render(<PlanningBoardGanttView {...values} resourceMove={{ ...values.resourceMove, onResourceMove, canMoveResource: () => true }} />);
       const bar = screen.getByTestId('planning-gantt-bar-a');
       const target = screen.getByTestId('planning-gantt-bar-c');
       const track = target.closest<HTMLElement>('[data-gantt-track]')!;

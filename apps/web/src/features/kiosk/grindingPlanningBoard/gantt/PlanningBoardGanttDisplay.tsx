@@ -51,9 +51,9 @@ const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function Two
   const latestProps = useRef(props);
   useLayoutEffect(() => { latestProps.current = props; });
   const shelfActions = useMemo<ShelfPlacementActions>(() => ({
-    move: (...args) => latestProps.current.onResourceMove?.(...args),
-    reorder: (...args) => latestProps.current.onResourceReorder?.(...args),
-    canMove: (...args) => latestProps.current.canMoveResource?.(...args) ?? false
+    move: (...args) => latestProps.current.resourceMove?.onResourceMove?.(...args),
+    reorder: (...args) => latestProps.current.resourceMove?.onResourceReorder?.(...args),
+    canMove: (...args) => latestProps.current.resourceMove?.canMoveResource?.(...args) ?? false
   }), []);
   const [chainOwner, setChainOwner] = useState<string | null>(null);
   const [partKey, setPartKey] = useState<string | null>(null);

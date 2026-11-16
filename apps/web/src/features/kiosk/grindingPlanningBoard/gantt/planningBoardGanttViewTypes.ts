@@ -13,8 +13,15 @@ export type PlanningBoardGanttCapacity = {
   onCapacityChange: (resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
 };
 
+export type PlanningBoardGanttResourceMove = {
+  onResourceReorder?: ForwardReorder;
+  onResourceMove?: ForwardMove;
+  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
+};
+
 export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
   capacity: PlanningBoardGanttCapacity;
+  resourceMove?: PlanningBoardGanttResourceMove;
   testBarControls?: PlanningBoardTestBarControls;
   testBarCreationEnabled?: boolean;
   onTestBarAdd?: () => void;
@@ -56,14 +63,11 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   singleResourcePickerOpen?: boolean;
   onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
   onSingleResourceChange?: (resource: string | null) => void;
-  onResourceReorder?: ForwardReorder;
   resourceOrderPending?: boolean;
   onArrivalChange?: (item: GrindingPlanningBoardItem, recorded: boolean) => void;
   onFirstProcessArrivalChange?: (item: GrindingPlanningBoardItem, state: NonNullable<GrindingPlanningBoardItem['firstProcessState']> | null) => void;
   arrivalPending?: boolean;
   arrivalError?: boolean;
-  onResourceMove?: ForwardMove;
-  canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
   colorBySeiban?: boolean;
