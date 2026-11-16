@@ -14,7 +14,7 @@ import { fetchLeaderboardPlanningScopedParentRowIds } from '../leaderboard/leade
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { isSendaiResourceGroupCd } from '../resource-master.service.js';
-import { type GrindingPlanningBoardProjectionRanks, type GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionRanks, GrindingPlanningBoardProgressRow } from '../grinding-planning-board-projection-input.types.js';
 import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { buildMaxProductNoLogicalKeyPartitionExprs, buildMaxProductNoWinnerCondition, buildMaxProductNoWinnerSelectionOrderBySql } from '../row-resolver/index.js';
 import { STRING_TRIM_CHARACTERS, asRowData, dateValue, isCategoryResource, type DbClient, type PlanningSource, type RankRow, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';

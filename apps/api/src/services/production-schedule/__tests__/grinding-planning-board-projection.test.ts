@@ -9,11 +9,9 @@ import {
   projectGrindingPlanningBoard,
   resolveGrindingPlanningBoardParentDueDate,
   isGrindingPlanningBoardDueOverrideActive,
-  sortGrindingPlanningBoardProjectionItems,
-  type GrindingPlanningBoardProjectionOverride,
-  type GrindingPlanningBoardProjectionRow,
-  type GrindingPlanningBoardProjectionRowDetail
+  sortGrindingPlanningBoardProjectionItems
 } from '../grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionOverride, GrindingPlanningBoardProjectionRow, GrindingPlanningBoardProjectionRowDetail } from '../grinding-planning-board-projection-input.types.js';
 
 const sourceRow = (
   overrides: Record<string, unknown> = {},

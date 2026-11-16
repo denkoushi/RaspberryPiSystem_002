@@ -1,4 +1,4 @@
-import type { GrindingPlanningBoardProjectionInput, GrindingPlanningBoardRowData } from './grinding-planning-board-projection.js';
+import type { GrindingPlanningBoardProjectionInput, GrindingPlanningBoardRowData } from './grinding-planning-board-projection-input.types.js';
 import { missingStandardHoursItemId } from './missing-standard-hours-process.js';
 
 export function asRowData(value: GrindingPlanningBoardRowData): Record<string, unknown> {
