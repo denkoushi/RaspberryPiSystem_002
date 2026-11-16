@@ -104,6 +104,8 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
               .slice(0, shortage));
             entries = entries.filter((seiban) => !absent.has(seiban));
             owned = owned.filter((seiban) => !absent.has(seiban));
+            // A taken-over internal entry may still be listed in the internal ownership; release it there too.
+            absent.forEach((seiban) => { if (other.has(seiban)) evicted.add(seiban); });
             shortage -= absent.size;
           }
           entries.filter((seiban) => other.has(seiban) && !auto.has(seiban) && !eligibleSet.has(seiban))

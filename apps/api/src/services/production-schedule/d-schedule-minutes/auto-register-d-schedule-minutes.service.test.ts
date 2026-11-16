@@ -429,6 +429,21 @@ describe('D schedule automatic registration', () => {
     expect(mocks.run.warnings).toEqual([{ code: 'REGISTRATION_LIMIT', seiban: 'D4', cell: null, rawText: null }]);
   });
 
+  it('releases an absent taken-over entry from the internal ownership when evicting it', async () => {
+    const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
+    mocks.boards.A.seibanOrder = [...manual, 'TAKEN', 'KEEP'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['TAKEN'] }, searchHistory: [] } };
+    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
+      autoRegisteredSeibans: { planningBoards: { A: ['TAKEN', 'KEEP'] }, searchHistory: [] } }];
+    mocks.minutes = [{ fseiban: 'TAKEN', assigneesKnown: false, assignees: [], partsCompleteDate: new Date('2026-10-01Z') }];
+
+    await register([block('KEEP'), block('D1')]);
+
+    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'KEEP', 'D1']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP', 'D1']);
+    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP']);
+  });
+
   it('recalculates absent D company evictions after a planning board conflict', async () => {
     const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
     mocks.boards.A.seibanOrder = [...manual, 'NEWER', 'OLDEST'];
