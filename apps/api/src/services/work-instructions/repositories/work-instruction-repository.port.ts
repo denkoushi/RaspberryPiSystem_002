@@ -14,6 +14,12 @@ import type {
   WorkInstructionStagedAsset
 } from '../domain/types.js';
 
+/** Map keys are JSON.stringify([input.partNumber, input.shootingTarget]) before normalization.
+ * Invalid inputs are present with null; duplicate input tuples share one entry.
+ */
+export type WorkInstructionPublishedGroupsByKeys = ReadonlyMap<string, WorkInstructionGroupView | null>;
+export type WorkInstructionGroupLookup = { partNumber: string; shootingTarget: string };
+
 export type StageWorkInstructionAssetsInput = {
   assets: ReadonlyArray<WorkInstructionAssetInput>;
   now?: Date;
@@ -124,6 +130,7 @@ export interface WorkInstructionRepository {
   readGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null>;
   /** Public kiosk projection; falls back to readGroup before version backfill. */
   readPublishedGroup?(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null>;
+  readPublishedGroupsByKeys?(keys: ReadonlyArray<WorkInstructionGroupLookup>): Promise<WorkInstructionPublishedGroupsByKeys>;
   readGroups(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;
   /** Public kiosk group summaries; falls back to latest summaries before backfill. */
   readPublishedGroups?(input: WorkInstructionGroupsQuery): Promise<ReadonlyArray<WorkInstructionGroupSummaryView>>;

@@ -42,6 +42,7 @@ import {
   readPublishedWorkInstructionPartAlias,
   hasPublishedWorkInstructionPart
 } from './prisma-work-instruction-read-queries.js';
+import { readPublishedWorkInstructionGroupsByKeys } from './prisma-work-instruction-published-batch-read.js';
 import {
   readWorkInstructionImportMessage,
   readWorkInstructionImportMessages,
@@ -355,6 +356,10 @@ export class PrismaWorkInstructionRepository implements WorkInstructionRepositor
 
   async readPublishedGroup(input: { partNumber: string; shootingTarget: string }): Promise<WorkInstructionGroupView | null> {
     return readPublishedWorkInstructionGroup(this.db, input);
+  }
+
+  readPublishedGroupsByKeys(keys: ReadonlyArray<{ partNumber: string; shootingTarget: string }>) {
+    return readPublishedWorkInstructionGroupsByKeys(this.db, keys);
   }
 
   async readGroups(input: WorkInstructionGroupsQuery) {
