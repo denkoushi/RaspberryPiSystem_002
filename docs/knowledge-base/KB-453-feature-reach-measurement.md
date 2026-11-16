@@ -151,11 +151,13 @@ REV=$(git rev-parse HEAD) sh scripts/analysis/feature-reach/change-width.sh <1�
 
 - 担当: 進捗追跡の会話に依頼中(2026-11-16)。決まったらここに書く
 - 次の測定は 2026-12-16 頃。
+- 数えるパスの一覧は上の手順で保つ。新しい機能ができたら、その機能のパスを足す。
 - 段階2〜4の残りは計画書を正本とし、ここに複製しない。
 
 ## References
 
 - [区切り直しの計画書](../plans/feature-reach-refactor-execplan.md)
+- [ADR-20261116: リファクタリングの対象選びと進め方](../decisions/ADR-20261116-refactoring-target-selection.md)
 - [測る道具 scripts/analysis/feature-reach/](../../scripts/analysis/feature-reach/)
 - [PR #2839: 計画と道具](https://github.com/denkoushi/RaspberryPiSystem_002/pull/2839)
 - [PR #2854: 輪を1つ減らした](https://github.com/denkoushi/RaspberryPiSystem_002/pull/2854)
