@@ -455,7 +455,7 @@ describe('parseDScheduleMinutesXlsx', () => {
     expect(result.warnings).toContainEqual(expect.objectContaining({ code: 'BLOCK_SHAPE', seiban: 'AB1C2345' }));
   });
 
-  it.each([null, '　 '])('reads a block missing its first A number (%s) with a non-blocking warning', async (value) => {
+  it.each([null, '　 ', '★'])('reads a block missing its first A number (%s) with a non-blocking warning', async (value) => {
     const fixture = buildWorkbook();
     const original = success(await parse(fixture));
     fixture.sheet.getCell(fixture.start, 1).value = value;
