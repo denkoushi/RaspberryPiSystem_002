@@ -65,8 +65,11 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
     const limitWarnings = new Set<string>();
     const internalAuto = run.kind === 'D_COMPANY'
       ? [...Object.values(otherOwnership.planningBoards).flat(), ...otherOwnership.searchHistory] : [];
+    const absentDCompanyAuto = run.kind === 'D_COMPANY'
+      ? [...Object.values(previousOwnership.planningBoards).flat(), ...previousOwnership.searchHistory,
+        ...Object.values(ownership.planningBoards).flat()].filter((seiban) => !all.has(seiban)) : [];
     const minutes = await prisma.productionScheduleDScheduleMinutes.findMany({
-      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...eligible, ...internalAuto])] } },
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, fseiban: { in: [...new Set([...eligible, ...internalAuto, ...absentDCompanyAuto])] } },
       select: { fseiban: true, assignees: true, assigneesKnown: true, partsCompleteDate: true }
     });
     const eligibleSet = new Set(eligible);
@@ -90,11 +93,19 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
         const internal = run.kind === 'INTERNAL' ? selectInternalEntries(current.entries, auto, other, eligible) : null;
         let entries = internal?.entries ?? current.entries.filter((seiban) => retainAbsent || !auto.has(seiban) || all.has(seiban));
         // Take over a seiban the other kind registered while it is still listed here; manual entries stay unowned.
-        const owned = internal?.owned ?? entries.filter((seiban) => auto.has(seiban) || (eligibleSet.has(seiban) && other.has(seiban)));
+        let owned = internal?.owned ?? entries.filter((seiban) => auto.has(seiban) || (eligibleSet.has(seiban) && other.has(seiban)));
         const evicted = new Set<string>();
         if (!internal) {
           const missing = eligible.filter((seiban) => !entries.includes(seiban)).length;
-          const shortage = Math.max(0, entries.length + missing - KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+          let shortage = Math.max(0, entries.length + missing - KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+          if (run.kind === 'D_COMPANY' && retainAbsent && shortage > 0) {
+            const absent = new Set(entries.filter((seiban) => auto.has(seiban) && !all.has(seiban))
+              .sort((a, b) => (partsDates.get(a) ?? '9999-12-31').localeCompare(partsDates.get(b) ?? '9999-12-31'))
+              .slice(0, shortage));
+            entries = entries.filter((seiban) => !absent.has(seiban));
+            owned = owned.filter((seiban) => !absent.has(seiban));
+            shortage -= absent.size;
+          }
           entries.filter((seiban) => other.has(seiban) && !auto.has(seiban) && !eligibleSet.has(seiban))
             .sort((a, b) => (partsDates.get(b) ?? '9999-12-31').localeCompare(partsDates.get(a) ?? '9999-12-31'))
             .slice(0, shortage).forEach((seiban) => evicted.add(seiban));
