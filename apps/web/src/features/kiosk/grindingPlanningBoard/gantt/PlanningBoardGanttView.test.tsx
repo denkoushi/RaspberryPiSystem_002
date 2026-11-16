@@ -51,11 +51,12 @@ const item = (overrides: Partial<GrindingPlanningBoardItem> = {}): GrindingPlann
   isCompleted: false, progress: { completed: 0, total: 1, quantityKnown: true }, ...overrides
 });
 function props(items: GrindingPlanningBoardItem[] = [item()]) {
+  const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onBreaksChange: vi.fn() };
   return {
     layout: buildPlanningBoardGanttLayout({ items, allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305'],
       dailyHoursByResource: {}, today: '2026-10-14', scale: 14 }),
-    scale: 14, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onBreaksChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    scale: 14, capacity, onCapacityChange: capacity.onCapacityChange, onBreaksChange: capacity.onBreaksChange, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set<string>(), resourceView: true
   };
 }
@@ -778,7 +779,8 @@ describe('PlanningBoardGanttView', () => {
     expect(values.onToggleItem).not.toHaveBeenCalled();
     expect(values.onDueDrop).not.toHaveBeenCalled();
     expect(complete).not.toHaveBeenCalled();
-    rerender(<PlanningBoardGanttView {...values} scale={56} dailyHoursByResource={{ '305': 10 }} seibanColors={new Map([[missing.fseiban, 'bg-amber-400']])} />);
+    const changedCapacity = { ...values.capacity, dailyHoursByResource: { '305': 10 } as const };
+    rerender(<PlanningBoardGanttView {...values} scale={56} capacity={changedCapacity} seibanColors={new Map([[missing.fseiban, 'bg-amber-400']])} />);
     expect(screen.getByText('710 標準工数入力忘れ')).toHaveStyle({ width: '128px' });
     expect(screen.getByText('710 標準工数入力忘れ')).toHaveClass('border-dashed', 'bg-amber-400');
     expect(screen.getByText('10 所要不明')).toHaveStyle({ width: '72px' });
@@ -806,7 +808,8 @@ describe('PlanningBoardGanttView', () => {
     expect(within(group).getByRole('button', { name: '8H' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(within(group).getByRole('button', { name: '10H' }));
     expect(values.onCapacityChange).toHaveBeenCalledWith('305', 10);
-    rerender(<PlanningBoardGanttView {...values} capacityPending />);
+    const pendingCapacity = { ...values.capacity, capacityPending: true };
+    rerender(<PlanningBoardGanttView {...values} capacity={pendingCapacity} />);
     expect(within(group).getByRole('button', { name: '24H' })).toBeDisabled();
   });
 });
@@ -1142,16 +1145,19 @@ describe('forward PlanningBoardGanttView', () => {
     expect(toggle).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(toggle);
     expect(values.onBreaksChange).toHaveBeenLastCalledWith('305', true);
-    rerender(<PlanningBoardGanttView {...values} runsThroughBreaks={new Set(['305'])} />);
+    const runningCapacity = { ...values.capacity, runsThroughBreaks: new Set(['305']) };
+    rerender(<PlanningBoardGanttView {...values} capacity={runningCapacity} />);
     expect(screen.queryByTestId('planning-gantt-break')).not.toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(toggle);
     expect(values.onBreaksChange).toHaveBeenLastCalledWith('305', false);
-    rerender(<PlanningBoardGanttView {...values} dailyHoursByResource={{ '305': 24 }} />);
+    const fullDayCapacity = { ...values.capacity, dailyHoursByResource: { '305': 24 } as const };
+    rerender(<PlanningBoardGanttView {...values} capacity={fullDayCapacity} />);
     expect(toggle).toBeDisabled();
     expect(toggle).toHaveClass('disabled:opacity-40');
     expect(screen.queryByTestId('planning-gantt-break')).not.toBeInTheDocument();
-    rerender(<PlanningBoardGanttView {...values} capacityPending />);
+    const pendingCapacity = { ...values.capacity, capacityPending: true };
+    rerender(<PlanningBoardGanttView {...values} capacity={pendingCapacity} />);
     expect(toggle).toBeDisabled();
   });
   it('shows the part name and 続き on later working-period segments', () => {
@@ -1195,13 +1201,14 @@ describe('forward PlanningBoardGanttView', () => {
   it.each([8, 10, 24] as const)('hides an entire elapsed row at %iH, retaining the current and future rows', (hours) => {
     const values = forwardProps();
     const windows = buildSingleResourceWindows(values.layout.today, values.layout.end, 1, hours);
+    const capacity = { ...values.capacity, dailyHoursByResource: { '305': hours } };
     const { rerender } = render(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
-      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end - 1 / 86400 }} />);
+      capacity={capacity} layout={{ ...values.layout, now: windows[0]!.end - 1 / 86400 }} />);
     const rowKeys = () => [...document.querySelectorAll<HTMLElement>('[data-gantt-window-row]')].map((row) => row.dataset.ganttWindowRow);
     const before = rowKeys();
     expect(before[0]).toContain(`:single:${windows[0]!.key}`);
     rerender(<PlanningBoardGanttView {...values} scale={1} singleResourceCd="305"
-      dailyHoursByResource={{ '305': hours }} layout={{ ...values.layout, now: windows[0]!.end }} />);
+      capacity={{ ...values.capacity, dailyHoursByResource: { '305': hours } }} layout={{ ...values.layout, now: windows[0]!.end }} />);
     expect(rowKeys()).toEqual(before.slice(1));
     expect(rowKeys()[0]).toContain(`:single:${windows[1]!.key}`);
   });
@@ -2266,8 +2273,8 @@ describe('forward PlanningBoardGanttView', () => {
   it.each([8, 10, 24].flatMap(hours => [true, false].flatMap(pauses => [1, 2, 4, 14, 56].map(scale => ({ hours, pauses, scale })))))
     ('keeps every repeated band at the former daily left/width/top ($hours H, pauses=$pauses, scale=$scale)', ({ hours, pauses, scale }) => {
       const values = forwardProps();
-      const { container } = render(<PlanningBoardGanttView {...values} scale={scale} dailyHoursByResource={{ '305': hours as 8 | 10 | 24 }}
-        runsThroughBreaks={new Set(pauses ? [] : ['305'])} />);
+      const capacity = { ...values.capacity, dailyHoursByResource: { '305': hours as 8 | 10 | 24 }, runsThroughBreaks: new Set(pauses ? [] : ['305']) };
+      const { container } = render(<PlanningBoardGanttView {...values} scale={scale} capacity={capacity} />);
       const shades = [...container.querySelectorAll<HTMLElement>('[data-gantt-decoration="offHourBands"]')];
       const breaks = screen.queryAllByTestId('planning-gantt-break');
       if (hours === 24) { expect(shades).toHaveLength(0); expect(breaks).toHaveLength(0); return; }

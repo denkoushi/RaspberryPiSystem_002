@@ -53,9 +53,10 @@ function setup(mode: 'forward' | 'backward' = 'forward', measured = true, config
   configure?.(layout, dayWidth);
   const chips = new Map(bars.map(bar => [bar.partKey, [{ rowId: bar.item.itemId, resourceCd: 'TEST-CHIP', isCompleted: false }]]));
   const ref = createRef<PlanningBoardGanttHandle>();
+  const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
   render(<PlanningBoardProcessChipsContext.Provider value={chips}>
-    <PlanningBoardGanttView ref={ref} layout={layout} scale={2} dailyHoursByResource={{}} resourceNameMap={{}}
-      capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()}
+    <PlanningBoardGanttView ref={ref} layout={layout} scale={2} capacity={capacity} resourceNameMap={{}}
+      onToggleItem={vi.fn()} onDueDrop={vi.fn()}
       disabled={false} dragDisabled={false} selectedItemIds={selectedItemIds} resourceView focusedSeiban={null}
       onFocusedSeibanChange={vi.fn()} colorBySeiban />
   </PlanningBoardProcessChipsContext.Provider>);
@@ -180,8 +181,8 @@ it('keeps the due mark of a selected bar whose body is outside the window', asyn
 it('keeps operation context stable on selection and updates its loading state', () => {
   const fixture = productionFixture(2, 1);
   const props = { layout: buildPlanningBoardGanttLayout({ ...fixture.options, mode: 'forward', scale: 2 }),
-    scale: 2, dailyHoursByResource: {}, resourceNameMap: {}, resourceMinutes: { ownSourceResourceCds: [], values: [] }, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    scale: 2, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {}, resourceMinutes: { ownSourceResourceCds: [], values: [] },
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
   const draw = (selectedItemIds: ReadonlySet<string>, minutesPending = false) => <PlanningBoardGanttView {...props} selectedItemIds={selectedItemIds} minutesPending={minutesPending} />;
   const { rerender } = render(draw(new Set()));

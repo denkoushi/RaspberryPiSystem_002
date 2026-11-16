@@ -25,8 +25,9 @@ function setup(status: PlanningBoardStatus = 'incomplete', fseiban = '26-1001') 
     const { chainItems, onChainPartChange } = usePlanningBoardPageChainItems({
       category: 'grinding', view: 'resource', scheduleSource: 'both', dueSource: 'scaw', completionFilter: status
     }, [pending]);
-    return <><span data-testid="chain-count">{chainItems.length}</span><PlanningBoardGanttView layout={layout} scale={14} dailyHoursByResource={{}}
-      resourceNameMap={{}} capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onToggleItem={vi.fn()}
+    const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+    return <><span data-testid="chain-count">{chainItems.length}</span><PlanningBoardGanttView layout={layout} scale={14} capacity={capacity}
+      resourceNameMap={{}} onToggleItem={vi.fn()}
       onDueDrop={vi.fn()} focusedSeiban={null} onFocusedSeibanChange={vi.fn()} selectedItemIds={new Set()} resourceView chainItems={chainItems} onChainPartChange={onChainPartChange} /></>;
   }
   const view = render(<QueryClientProvider client={client}><Board status={status} /></QueryClientProvider>);

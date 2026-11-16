@@ -1215,7 +1215,8 @@ describe('resource minutes UI', () => {
   });
   it.each(['forward', 'backward'] as const)('marks only own-source lanes in the normal %s view', (mode) => {
     const layout = buildPlanningBoardGanttLayout({ items: [item()], allocation: 'alternate', view: 'resource', seibanOrder: [], resources: ['305', '584'], dailyHoursByResource: {}, today: '2026-11-09', scale: 1, mode });
-    render(<PlanningBoardGanttView layout={layout} scale={1} dailyHoursByResource={{}} resourceNameMap={{}} capacityPending={false} capacityError={false} onCapacityChange={vi.fn()}
+    const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+    render(<PlanningBoardGanttView layout={layout} scale={1} capacity={capacity} resourceNameMap={{}}
       focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()} selectedItemIds={new Set()} disabled={false} dragDisabled={false} resourceView
       resourceMinutes={{ ownSourceResourceCds: ['305'], values: [] }} />);
     expect(screen.getAllByText('独自')).toHaveLength(1);

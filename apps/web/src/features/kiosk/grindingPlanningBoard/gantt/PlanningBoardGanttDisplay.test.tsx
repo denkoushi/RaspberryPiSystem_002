@@ -35,7 +35,7 @@ vi.mock('../../../../api/hooks/production-schedule', async importOriginal => ({
 }));
 afterEach(() => { vi.restoreAllMocks(); capacityState.data = undefined; });
 
-function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttProps {
+function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttProps & Pick<PlanningBoardGanttProps['capacity'], 'onCapacityChange'> {
   const fixture = productionFixture(3, 1);
   const items = fixture.items.filter((_, i) => !empty || i === 0).map((item, i) => ({ ...item,
     originalResourceCd: i === 1 ? '022' : '021', specialDue: null, requiredMinutes: 60, orderPinned: false
@@ -45,8 +45,9 @@ function props(mode: 'forward' | 'backward', empty = false): PlanningBoardGanttP
     row.flagged = true;
     for (const bar of row.bars) bar.tone = 'late';
   }
-  return { layout, resourceLanes: ['021', '022'], singleResourceCd: '021+022', scale: 14, dailyHoursByResource: {}, resourceNameMap: {},
-    capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(),
+  const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() };
+  return { layout, resourceLanes: ['021', '022'], singleResourceCd: '021+022', scale: 14, capacity, onCapacityChange: capacity.onCapacityChange, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(),
     disabled: false, dragDisabled: false, selectedItemIds: new Set(), resourceView: true,
     focusedSeiban: null, onFocusedSeibanChange: vi.fn() };
 }
@@ -109,9 +110,10 @@ it.each(['forward', 'backward'] as const)('renders each resource only in its own
 it('opens the upper machine value sheet at the bottom of the shared Gantt container', () => {
   const values = { ...props('forward'), colorBySeiban: true };
   const onSource = vi.fn(); const onBreaks = vi.fn();
+  const capacity = { ...values.capacity, onBreaksChange: onBreaks };
   function Board() {
     const [resource, setResource] = useState<string | null>(null);
-    return <PlanningBoardGanttDisplay {...values} onMinutesSourceChange={onSource} onBreaksChange={onBreaks} valueSheetResource={resource}
+    return <PlanningBoardGanttDisplay {...values} onMinutesSourceChange={onSource} capacity={capacity} valueSheetResource={resource}
       onToggleValueSheet={(next) => setResource(current => current === next ? null : next ?? null)} />;
   }
   render(<QueryClientProvider client={new QueryClient()}><Board /></QueryClientProvider>);
@@ -527,7 +529,8 @@ it.each([
   // 022 は別の稼働時間と逆の休憩設定のまま。2台へ同じ時間と休憩を書いた後は上下段の行の区切りが一致する。
   const values = props('forward');
   const before = new Set(upperPauses ? ['022'] : ['021']);
-  const { rerender } = render(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': 24, '022': 10 }} runsThroughBreaks={before} />);
+  const initialCapacity = { ...values.capacity, dailyHoursByResource: { '021': 24, '022': 10 } as const, runsThroughBreaks: before };
+  const { rerender } = render(<PlanningBoardGanttDisplay {...values} scale={1} capacity={initialCapacity} />);
   const labels = (resource: string) => within(screen.getByRole('region', { name: resource })).getAllByText(/^\d+(:\d+)?[–-]\d+(:\d+)?時$/).map(node => node.textContent);
   expect(labels('022')).not.toEqual(labels('021'));
   fireEvent.click(screen.getByRole('button', { name: `${hours}H`, exact: true }));
@@ -536,7 +539,8 @@ it.each([
   expect(written).toBe(hours);
   expect(runsThrough).toBe(!upperPauses);
   const after = new Set(runsThrough ? ['021', '022'] : []);
-  rerender(<PlanningBoardGanttDisplay {...values} scale={1} dailyHoursByResource={{ '021': written, '022': written }} runsThroughBreaks={after} />);
+  const updatedCapacity = { ...values.capacity, dailyHoursByResource: { '021': written, '022': written }, runsThroughBreaks: after };
+  rerender(<PlanningBoardGanttDisplay {...values} scale={1} capacity={updatedCapacity} />);
   expect(labels('022').length).toBeGreaterThan(0);
   expect(labels('022')).toEqual(labels('021'));
 });
@@ -544,7 +548,8 @@ it.each([
 it('writes the upper hours with the breaks toggle so both machines match', () => {
   const values = props('forward');
   const onBreaks = vi.fn();
-  render(<PlanningBoardGanttDisplay {...values} dailyHoursByResource={{ '021': 8, '022': 10 }} runsThroughBreaks={new Set(['022'])} onBreaksChange={onBreaks} />);
+  const capacity = { ...values.capacity, dailyHoursByResource: { '021': 8, '022': 10 } as const, runsThroughBreaks: new Set(['022']), onBreaksChange: onBreaks };
+  render(<PlanningBoardGanttDisplay {...values} capacity={capacity} />);
   fireEvent.click(screen.getByRole('button', { name: '休憩', exact: true }));
   expect(onBreaks).toHaveBeenCalledWith(['021', '022'], true, 8);
 });
@@ -637,9 +642,11 @@ it('keeps a saved pair through optimistic hours before capacity flags load', () 
   const options = { ...fixture.options, resources: ['305', '306'], enabled: true, preferenceScope: 'capacity-loading' };
   function Board() {
     const gantt = usePlanningBoardGantt(options);
-    return <PlanningBoardGanttDisplay {...props('forward')} layout={gantt.layout}
+    const values = props('forward');
+    const capacity = { ...values.capacity, dailyHoursByResource: gantt.dailyHoursByResource };
+    return <PlanningBoardGanttDisplay {...values} layout={gantt.layout}
       singleResourceCd={gantt.singleResourceCd} resourceLanes={gantt.singleResourceLanes}
-      dailyHoursByResource={gantt.dailyHoursByResource} capacityLoaded={gantt.capacityLoaded}
+      capacity={capacity} capacityLoaded={gantt.capacityLoaded}
       unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} onSingleResourceChange={gantt.changeSingleResource} />;
   }
   const view = render(<Board />);
@@ -1218,7 +1225,9 @@ describe('two-machine forward dragging', () => {
     const dailyHoursByResource = { '021': 8, '022': 24 } as const;
     const layout = buildPlanningBoardGanttLayout({ ...fixture.options, items, resources: ['021', '022'], scale: 1, dailyHoursByResource });
     const onResourceMove = vi.fn();
-    render(<PlanningBoardGanttDisplay {...props('forward')} layout={layout} scale={1} dailyHoursByResource={dailyHoursByResource}
+    const values = props('forward');
+    const capacity = { ...values.capacity, dailyHoursByResource };
+    render(<PlanningBoardGanttDisplay {...values} layout={layout} scale={1} capacity={capacity}
       onResourceMove={onResourceMove} canMoveResource={() => true} />);
     const source = bar(items[0]!.itemId); const target = bar(items[1]!.itemId);
     begin(source, target, 10000);

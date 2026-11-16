@@ -68,8 +68,8 @@ describe('planning board required minutes display', () => {
     const layout = buildPlanningBoardGanttLayout({ items: [value], mode: 'forward', allocation: 'alternate', view: 'resource',
       seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, runsThroughBreaks: new Set(['305']), today: '2026-10-14',
       now: new Date('2026-10-14T08:00:00+09:00'), scale: 4 });
-    render(<PlanningBoardGanttView layout={layout} scale={4} dailyHoursByResource={{}} resourceNameMap={{}}
-      capacityPending={false} capacityError={false} onCapacityChange={vi.fn()} onBreaksChange={vi.fn()}
+    const capacity = { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn(), onBreaksChange: vi.fn() };
+    render(<PlanningBoardGanttView layout={layout} scale={4} capacity={capacity} resourceNameMap={{}}
       onToggleItem={vi.fn()} onDueDrop={vi.fn()} disabled={false} dragDisabled={false}
       selectedItemIds={new Set()} resourceView focusedSeiban={null} onFocusedSeibanChange={vi.fn()} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');

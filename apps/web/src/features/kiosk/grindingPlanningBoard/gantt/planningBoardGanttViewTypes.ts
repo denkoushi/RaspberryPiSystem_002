@@ -5,7 +5,16 @@ import type { GanttBar, GanttLayout } from './planningBoardGanttLayout';
 import type { PlanningBoardGanttRowProps } from './PlanningBoardGanttRow';
 import type { GrindingPlanningBoardBar , GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardResourceMinutesSourceRequest, GrindingPlanningBoardItem, GrindingPlanningBoardResourceDailyHours } from '@raspi-system/shared-types';
 
+export type PlanningBoardGanttCapacity = {
+  runsThroughBreaks?: ReadonlySet<string>;
+  onBreaksChange?: (resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) => void;
+  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
+  capacityPending: boolean; capacityError: boolean;
+  onCapacityChange: (resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
+};
+
 export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completionPendingItemIds' | 'pieceDisabled' | 'disabled' | 'dragDisabled' | 'onDueDrop' | 'selectedItemIds' | 'resourceView'> & {
+  capacity: PlanningBoardGanttCapacity;
   testBarControls?: PlanningBoardTestBarControls;
   testBarCreationEnabled?: boolean;
   onTestBarAdd?: () => void;
@@ -57,8 +66,6 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   canMoveResource?: (item: GrindingPlanningBoardItem, resource: string) => boolean;
   pinMode?: boolean;
   onTogglePin?: (item: GrindingPlanningBoardItem) => void;
-  runsThroughBreaks?: ReadonlySet<string>;
-  onBreaksChange?: (resourceCds: string | readonly string[], runsThroughBreaks: boolean, dailyHours?: GrindingPlanningBoardResourceDailyHours) => void;
   colorBySeiban?: boolean;
   focusedSeiban: string | null;
   onFocusedSeibanChange: (seiban: string | null) => void;
@@ -68,10 +75,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   scale: number;
   /** Changes each time a scale button is pressed, so the chart returns to today even on the current scale. */
   homeKey?: number;
-  dailyHoursByResource: Readonly<Record<string, GrindingPlanningBoardResourceDailyHours>>;
   resourceNameMap: Record<string, string[]>;
-  capacityPending: boolean; capacityError: boolean;
-  onCapacityChange: (resourceCds: string | readonly string[], dailyHours: GrindingPlanningBoardResourceDailyHours, runsThroughBreaks?: boolean) => void;
   /** Device-local lane order key, shared with the resource list panes. */
   preferenceScope?: string;
 };

@@ -26,8 +26,8 @@ function boardProps(pair: boolean, arrivalFilterEnabled: boolean, mode: 'forward
     layout: buildPlanningBoardGanttLayout({ ...fixture.options, items, mode, arrivalFilterEnabled, scale: 14,
       resources: ['305', '306', '307'], today: '2026-10-14', now: new Date('2026-10-14T09:00:00+09:00') }),
     resourceMinutesItems: items, resourceLanes: ['305', '306', '307'], singleResourceCd: pair ? '305+306' : '305',
-    scale: 14, dailyHoursByResource: {}, resourceNameMap: {}, capacityPending: false, capacityError: false,
-    onCapacityChange: vi.fn(), onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
+    scale: 14, capacity: { dailyHoursByResource: {}, capacityPending: false, capacityError: false, onCapacityChange: vi.fn() }, resourceNameMap: {},
+    onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set(), resourceView: true, colorBySeiban: true, seibanOrder: ['C', 'B', 'WAIT', 'A'],
     focusedSeiban: null, onFocusedSeibanChange: vi.fn()
   };

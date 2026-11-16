@@ -92,10 +92,10 @@ it.each([{ dailyHours: 8 as const }, { runsThroughBreaks: true }])('preserves en
     const mutation = useUpdateKioskGrindingPlanningBoardResourceCapacity();
     return <PlanningBoardGanttDisplay layout={layout} singleResourceCd="305" resourceLanes={['305', '306']}
       unitSplitEnabledByResource={capacity.data?.unitSplitEnabledByResource} capacityLoaded={capacity.data !== undefined}
-      scale={14} dailyHoursByResource={capacity.data?.dailyHoursByResource ?? {}} resourceNameMap={{}}
-      capacityPending={false} capacityError={false} disabled={false} dragDisabled={false} resourceView selectedItemIds={new Set()}
-      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()}
-      onCapacityChange={() => mutation.mutate({ resourceCd: '305', ...patch })} />;
+      scale={14} capacity={{ dailyHoursByResource: capacity.data?.dailyHoursByResource ?? {}, capacityPending: false, capacityError: false,
+        onCapacityChange: () => mutation.mutate({ resourceCd: '305', ...patch }) }} resourceNameMap={{}}
+      disabled={false} dragDisabled={false} resourceView selectedItemIds={new Set()}
+      focusedSeiban={null} onFocusedSeibanChange={vi.fn()} onToggleItem={vi.fn()} onDueDrop={vi.fn()} />;
   }
   render(<Board />, { wrapper });
   expect(screen.getByRole('button', { name: '2台', exact: true })).toBeEnabled();

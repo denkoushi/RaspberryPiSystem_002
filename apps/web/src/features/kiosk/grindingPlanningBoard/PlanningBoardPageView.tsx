@@ -1,11 +1,12 @@
 import { isProductionScheduleGrindingResourceCd } from '@raspi-system/shared-types';
-import { useCallback, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 
 import { PlanningBoardGanttDisplay } from './gantt/PlanningBoardGanttDisplay';
 import { PlanningBoardFocusView } from './PlanningBoardFocusView';
 import { PlanningBoardResourceView } from './PlanningBoardResourceView';
 import { PlanningBoardSeibanPane } from './PlanningBoardSeibanPane';
 
+import type { PlanningBoardGanttCapacity } from './gantt/planningBoardGanttViewTypes';
 import type { usePlanningBoardGantt } from './gantt/usePlanningBoardGantt';
 import type { OrderPreview } from './planningBoardPageModel';
 import type { PlanningBoardAllocation } from './types';
@@ -95,6 +96,16 @@ export function PlanningBoardPageView({
     event.preventDefault();
     event.stopPropagation();
   }, []);
+  const dailyHoursByResource = orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource;
+  const runsThroughBreaks = orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks;
+  const capacity = useMemo<PlanningBoardGanttCapacity>(() => ({
+    dailyHoursByResource,
+    runsThroughBreaks,
+    capacityPending: gantt.capacityPending,
+    capacityError: gantt.capacityError,
+    onCapacityChange: gantt.changeCapacity,
+    onBreaksChange: gantt.changeBreaks
+  }), [dailyHoursByResource, runsThroughBreaks, gantt.capacityPending, gantt.capacityError, gantt.changeCapacity, gantt.changeBreaks]);
   const content = (
     <>
       {data && ganttEnabled ? (
@@ -102,10 +113,9 @@ export function PlanningBoardPageView({
           onUnitSplitChange={gantt.changeUnitSplit} unitSplitAvailable={unitSplitAvailable}
           onMinutesSourceChange={gantt.changeMinutesSource} valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}
-          resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} dailyHoursByResource={orderPreview?.options.dailyHoursByResource ?? gantt.dailyHoursByResource} preferenceScope={`${data.siteKey}:${category}`}
+          resourceView={Boolean(gantt.singleResourceCd) || view === 'resource'} preferenceScope={`${data.siteKey}:${category}`}
           resourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
-          runsThroughBreaks={orderPreview?.options.runsThroughBreaks ?? gantt.runsThroughBreaks} onBreaksChange={gantt.changeBreaks}
-          capacityPending={gantt.capacityPending} capacityError={gantt.capacityError} onCapacityChange={gantt.changeCapacity}
+          capacity={capacity}
           onArrivalChange={onArrivalChange} onFirstProcessArrivalChange={onFirstProcessArrivalChange} arrivalPending={arrivalPending} arrivalError={arrivalError}
           pinMode={gantt.mode === 'forward' && (Boolean(gantt.singleResourceCd) || view === 'resource') && pinMode} onTogglePin={togglePin}
           selectedItemIds={gantt.testBarControls?.selectedId ? new Set([...selectedItemIds, gantt.testBarControls.selectedId]) : selectedItemIds}
