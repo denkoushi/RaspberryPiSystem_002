@@ -1,3 +1,4 @@
+import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule/production-schedule-part-name-lookup-rebuild.js';
 import { readSessakuPieceSets } from '../production-schedule/sessaku-pieces/piece-key.js';
 import { publishSessakuPieceSourceCreates } from '../production-schedule/sessaku-pieces/piece-source-publication.js';
 import { prepareSessakuPiecePublication, publishSessakuPieceProgress } from '../production-schedule/sessaku-pieces/piece-sync.js';
@@ -430,6 +431,7 @@ export class CsvDashboardIngestor {
             keyColumns,
           });
           const cleanupParams = {
+            deferPartNameLookupRebuild: true,
             csvDashboardId: dashboardId,
             keyColumns,
             keys: dedupKeys,
@@ -469,6 +471,8 @@ export class CsvDashboardIngestor {
           );
         }
       }
+
+      if (isProductionScheduleDashboard) void requestProductionSchedulePartNameLookupRebuild();
 
       if (isProductionScheduleDashboard && dashboard.ingestMode === 'DEDUP') {
         logger.info(

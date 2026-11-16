@@ -1,3 +1,4 @@
+import { getProductionSchedulePartNameLookupScheduler } from '../services/production-schedule/production-schedule-part-name-lookup.scheduler.js';
 import { createSessakuAutoUnitSplitScheduler } from '../services/production-schedule/sessaku-pieces/auto-unit-split.scheduler.js';
 import { getLoanPhotoRetentionScheduler } from '../services/tools/loan-photo-retention.scheduler.js';
 import { getWatchCameraRetentionScheduler } from '../services/watch-camera/watch-camera-retention.scheduler.js';
@@ -302,6 +303,11 @@ export function buildPostListenSchedulerDefinitions(app: FastifyInstance): Sched
       name: 'watch-camera-retention',
       start: () => getWatchCameraRetentionScheduler().start(),
       stop: () => getWatchCameraRetentionScheduler().stop(),
+    },
+    {
+      name: 'production-schedule-part-name-lookup',
+      start: () => getProductionSchedulePartNameLookupScheduler().start(),
+      stop: () => getProductionSchedulePartNameLookupScheduler().stop(),
     },
     {
       name: 'client-network-log-retention',

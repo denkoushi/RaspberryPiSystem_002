@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { prisma } from '../../../lib/prisma.js';
+import { rebuildProductionSchedulePartNameLookup } from '../../production-schedule/production-schedule-part-name-lookup.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../../production-schedule/constants.js';
 import { readPartNamesByPartNumbers, readPartNumbersByPartName } from '../../work-instructions/repositories/prisma-work-instruction-part-names.js';
 import { PrismaWorkInstructionRepository } from '../../work-instructions/repositories/prisma-work-instruction.repository.js';
@@ -29,6 +30,7 @@ function fullWidth(text: string) {
 async function cleanupFixtures() {
   await prisma.procedureMaterial.deleteMany({ where: { gmailDedupeKey: { startsWith: prefix } } });
   await prisma.csvDashboardRow.deleteMany({ where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, dataHash: { startsWith: prefix } } });
+  await rebuildProductionSchedulePartNameLookup();
   const rowWhere = { sourceSystem: prefix };
   await prisma.workInstructionSourcePublication.deleteMany({ where: { row: rowWhere } });
   await prisma.workInstructionEditRevision.deleteMany({ where: { sourceVersion: { row: rowWhere } } });
@@ -38,10 +40,12 @@ async function cleanupFixtures() {
 }
 
 async function schedule(partNumber: string, partName: string) {
-  return prisma.csvDashboardRow.create({ data: {
+  const row = await prisma.csvDashboardRow.create({ data: {
     csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(),
     dataHash: `${prefix}-${randomUUID()}`, rowData: { FHINCD: partNumber, FHINMEI: partName },
   } });
+  await rebuildProductionSchedulePartNameLookup();
+  return row;
 }
 
 async function material(suffix: string, data: Partial<Prisma.ProcedureMaterialCreateInput> = {}) {
@@ -106,6 +110,7 @@ describe('procedure material search (real PostgreSQL)', () => {
       csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, occurredAt: new Date(), dataHash: `${prefix}-many-${index}`,
       rowData: { FHINCD: `${prefix}-P${String(index).padStart(3, '0')}`, FHINMEI: name },
     })) });
+    await rebuildProductionSchedulePartNameLookup();
     const part = `${prefix}-P220`;
     const hit = await material('last-part', { subjectHint: part });
     await publicPhotoGroup(part, ['無関係なメモ']);

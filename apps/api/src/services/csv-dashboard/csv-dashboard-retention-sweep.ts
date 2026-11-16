@@ -1,6 +1,8 @@
 import type { Prisma } from '@prisma/client';
 
 import { prisma } from '../../lib/prisma.js';
+import { requestProductionSchedulePartNameLookupRebuild } from '../production-schedule/production-schedule-part-name-lookup-rebuild.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../production-schedule/constants.js';
 
 export const CSV_DASHBOARD_RETENTION_BATCH_SIZE = 5000;
 export const CSV_DASHBOARD_RETENTION_MAX_BATCHES = 400;
@@ -43,15 +45,26 @@ async function deleteRowsInBatches(where: Prisma.CsvDashboardRowWhereInput, dryR
   for (let batch = 0; batch < CSV_DASHBOARD_RETENTION_MAX_BATCHES; batch += 1) {
     const rows = await prisma.csvDashboardRow.findMany({
       where,
-      select: { id: true },
+      select: { id: true, csvDashboardId: true },
       take: CSV_DASHBOARD_RETENTION_BATCH_SIZE,
     });
     if (rows.length === 0) return { count, truncated: false };
     // 選んだIDに加えて条件も付けたまま消す
-    const result = await prisma.csvDashboardRow.deleteMany({
-      where: { AND: [where, { id: { in: rows.map((row) => row.id) } }] },
-    });
-    count += result.count;
+    const productionIds = rows.filter((row) => row.csvDashboardId === PRODUCTION_SCHEDULE_DASHBOARD_ID).map((row) => row.id);
+    if (productionIds.length > 0) {
+      const result = await prisma.csvDashboardRow.deleteMany({
+        where: { AND: [where, { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, id: { in: productionIds } }] },
+      });
+      count += result.count;
+      if (result.count > 0) void requestProductionSchedulePartNameLookupRebuild();
+    }
+    const otherIds = rows.filter((row) => row.csvDashboardId !== PRODUCTION_SCHEDULE_DASHBOARD_ID).map((row) => row.id);
+    if (otherIds.length > 0) {
+      const result = await prisma.csvDashboardRow.deleteMany({
+        where: { AND: [where, { id: { in: otherIds } }] },
+      });
+      count += result.count;
+    }
     if (rows.length < CSV_DASHBOARD_RETENTION_BATCH_SIZE) return { count, truncated: false };
   }
   return { count, truncated: true };
