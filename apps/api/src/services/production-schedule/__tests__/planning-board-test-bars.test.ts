@@ -2,28 +2,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem } from '@raspi-system/shared-types';
 import type { ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
 
-const mocks = vi.hoisted(() => ({ transaction: vi.fn(), winnerRows: vi.fn(), executeRaw: vi.fn(), queryRaw: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
+const mocks = vi.hoisted(() => ({ categoryResource: vi.fn(() => true), master: vi.fn(), transaction: vi.fn(), winnerRows: vi.fn(), executeRaw: vi.fn(), queryRaw: vi.fn(), current: vi.fn(), save: vi.fn(), project: vi.fn(),
   table: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
   state: { findUniqueOrThrow: vi.fn(), update: vi.fn() } }));
 vi.mock('../../../lib/prisma.js', () => ({ prisma: {
-  $transaction: mocks.transaction, productionScheduleGrindingPlanningBoardState: mocks.state,
+  $queryRaw: mocks.queryRaw, $transaction: mocks.transaction, productionScheduleGrindingPlanningBoardState: mocks.state,
   productionScheduleSessakuPieceSet: { findMany: async () => [] }
 } }));
 vi.mock('../grinding-planning-board/state.js', () => ({
   ensurePlanningBoardState: vi.fn(), lockState: async () => ({ id: 'board', seibanOrder: ['lot'] }),
   assertBoardRevision: vi.fn(), stateOrder: () => ['lot'], boardRevision: () => 'r2'
 }));
-vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: mocks.winnerRows, readOverrides: async () => new Map() }));
+vi.mock('../grinding-planning-board/source.js', () => ({ readMasterResourceCds: mocks.master, readWinnerRowsByFseibans: mocks.winnerRows, readOverrides: async () => new Map() }));
 vi.mock('../grinding-planning-board/write.js', () => ({
   resolveCurrentProjectionInTransaction: mocks.current, writeOverrideIfChanged: mocks.save, projectCurrentItems: mocks.project
 }));
-vi.mock('../grinding-planning-board/shared.js', () => ({ assertItemRevision: vi.fn(), isCategoryResource: () => true }));
+vi.mock('../grinding-planning-board/shared.js', () => ({ assertItemRevision: vi.fn(), isCategoryResource: mocks.categoryResource, STRING_TRIM_CHARACTERS: ' ' }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: async () => ({}), normalizeProductionScheduleResourceCd: (cd: string) => cd }));
 vi.mock('../sessaku-pieces/piece-key.js', () => ({ acquireSessakuPieceLogicalLocks: vi.fn() }));
 vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({
   ...await original<typeof import('../grinding-planning-board/schedule-source.js')>(), readScheduleSourceExcludedFseibans: async () => []
 }));
-import { createPlanningTestBar, mutatePlanningTestBar, mixedPlanningLane, projectPlanningTestBar, reorderPlanningTestBarLane } from '../grinding-planning-board/test-bars.js';
+import { getPlanningTestBarPartCandidates, createPlanningTestBar, mutatePlanningTestBar, mixedPlanningLane, projectPlanningTestBar, reorderPlanningTestBarLane } from '../grinding-planning-board/test-bars.js';
 
 const band = { kind: 'today' as const, expiresAt: '2026-11-12T00:00:00.000Z' };
 const normal = (itemId: string, alternateRank: number, specialDue: GrindingPlanningBoardItem['specialDue'] = null) => ({
@@ -39,6 +39,8 @@ const request = { siteKey: 'site', sourceRevision: 'r1' };
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.categoryResource.mockReturnValue(true);
+  mocks.master.mockResolvedValue(new Set(['761']));
   mocks.winnerRows.mockResolvedValue([]);
   items = [normal('a1', 1, band), normal('a2', 2, band), normal('n1', 1), normal('n2', 2), normal('n3', 3)];
   rows = []; overrides = new Map();
@@ -149,4 +151,37 @@ describe('test bar restore predecessor', () => {
       expect(ids(lane())[0]).toBe('priority');
     }
   );
+});
+
+
+describe('test bar part names', () => {
+  it.each([undefined, null, '', '   ', ' モータブラケット ', '名'.repeat(200)])('saves and projects normalized partName %s', async (partName) => {
+    const result = await createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30, partName });
+    const normalized = partName?.trim() || null;
+    expect(rows[0].partName).toBe(normalized);
+    expect(result.testBar).toMatchObject({ partName: normalized, name: normalized || 'テスト1' });
+  });
+  it('rejects names longer than 200 characters before writing', async () => {
+    await expect(createPlanningTestBar({ ...request, resourceCd: '761', minutes: 30, partName: '名'.repeat(201) }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_TEST_BAR_PART_NAME' });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+  it('queries distinct nonempty stock part names for the dashboard and machine', async () => {
+    mocks.queryRaw.mockResolvedValue([{ partName: 'A' }, { partName: 'B' }]);
+    expect(await getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: '761' })).toEqual({ partNames: ['A', 'B'] });
+    const sql = mocks.queryRaw.mock.calls[0][0];
+    expect(sql.values).toEqual([' ', '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', ' ', '761', ' ']);
+    expect(sql.sql).toContain(`SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ?)`);
+    expect(sql.sql).toContain(`"rowData"->>'FSEIBAN' = '********'`);
+    expect(sql.sql).toContain(`BTRIM("rowData"->>'FSIGENCD', ?) = ?`);
+    expect(sql.sql).toContain(`BTRIM("rowData"->>'FHINMEI', ?) <> ''`);
+    expect(sql.sql).toContain('ORDER BY "partName"');
+    expect(mocks.categoryResource).toHaveBeenCalledWith('761', 'all', {});
+  });
+  it.each(['unknown', 'category'])('rejects an invalid resource (%s) without querying rows', async (reason) => {
+    if (reason === 'category') mocks.categoryResource.mockReturnValue(false);
+    await expect(getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: reason === 'unknown' ? '999' : '761' }))
+      .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_RESOURCE_CD' });
+    expect(mocks.queryRaw).not.toHaveBeenCalled();
+  });
 });

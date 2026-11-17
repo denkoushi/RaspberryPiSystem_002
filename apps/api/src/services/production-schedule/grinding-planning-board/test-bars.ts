@@ -1,6 +1,6 @@
 import { assertWritablePlanningItemIds } from '../missing-standard-hours-process.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardTestBar } from '@prisma/client';
-import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardItemReference, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar, GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse } from '@raspi-system/shared-types';
+import type { GrindingPlanningBoardBar, GrindingPlanningBoardItem, GrindingPlanningBoardItemReference, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceOrderResponse, GrindingPlanningBoardTestBar, GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarPartCandidatesResponse, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
@@ -9,16 +9,32 @@ import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-a
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
-import { assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
-import { readOverrides, readWinnerRowsByFseibans } from './source.js';
+import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
+import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
 
 export function projectPlanningTestBar(row: ProductionScheduleGrindingPlanningBoardTestBar): GrindingPlanningBoardTestBar {
   return { kind: 'test', itemId: `test:${row.id}`, itemRevision: `test:${row.id}:${row.version}`, version: row.version,
-    sequence: row.sequence, name: `テスト${row.sequence}`, resourceCd: row.resourceCd, minutes: row.minutes,
+    sequence: row.sequence, partName: row.partName, name: row.partName || `テスト${row.sequence}`, resourceCd: row.resourceCd, minutes: row.minutes,
     alternateRank: row.alternateRank, isCompleted: row.completedAt != null,
     completedAt: row.completedAt?.toISOString() ?? null, deletedAt: row.deletedAt?.toISOString() ?? null };
+}
+export async function getPlanningTestBarPartCandidates(params: { siteKey: string; resourceCd: string }): Promise<GrindingPlanningBoardTestBarPartCandidatesResponse> {
+  const resourceCd = normalizeProductionScheduleResourceCd(params.resourceCd);
+  const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
+  const master = await readMasterResourceCds(prisma);
+  if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
+  const rows = await prisma.$queryRaw<Array<{ partName: string }>>(Prisma.sql`
+    SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
+    FROM "CsvDashboardRow"
+    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+      AND "rowData"->>'FSEIBAN' = '********'
+      AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+      AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''
+    ORDER BY "partName"
+  `);
+  return { partNames: rows.map((row) => row.partName) };
 }
 export async function readPlanningTestBars(client: DbClient, siteKey: string) {
   const rows = await client.productionScheduleGrindingPlanningBoardTestBar.findMany({
@@ -107,6 +123,8 @@ async function mutationResponse(tx: Prisma.TransactionClient, siteKey: string, c
   return { sourceRevision: boardRevision(state), testBar: projectPlanningTestBar(row), ...await readPlanningTestBars(tx, siteKey), items: [...projectCurrentItems(current, current.overrides).values()] };
 }
 export async function createPlanningTestBar(params: GrindingPlanningBoardTestBarCreateRequest & { siteKey: string }): Promise<GrindingPlanningBoardTestBarMutationResponse> {
+  const partName = params.partName?.trim() || null;
+  if (partName && [...partName].length > 200) throw new ApiError(400, '部品名は200文字以内で指定してください', undefined, 'INVALID_TEST_BAR_PART_NAME');
   assertWritablePlanningItemIds([params.afterItem?.itemId]);
   if (!Number.isInteger(params.minutes) || params.minutes < 5 || params.minutes > 1440) throw new ApiError(400, '時間は5〜1440分の整数で指定してください', undefined, 'INVALID_TEST_BAR_MINUTES');
   return withBoard(params.siteKey, params.sourceRevision, params.dueSource, async (tx, current, tests) => {
@@ -121,7 +139,7 @@ export async function createPlanningTestBar(params: GrindingPlanningBoardTestBar
       if (planningBarResource(after) === resourceCd && planningBarBand(after) == null) at = lane.findIndex((item) => item.itemId === after.itemId) + 1;
     }
     const row = await tx.productionScheduleGrindingPlanningBoardTestBar.create({ data: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      sequence: tests.nextTestBarSequence, resourceCd, minutes: params.minutes, alternateRank: at - unbandedStart + 1 } });
+      sequence: tests.nextTestBarSequence, partName, resourceCd, minutes: params.minutes, alternateRank: at - unbandedStart + 1 } });
     lane.splice(at, 0, projectPlanningTestBar(row));
     await saveLane(tx, params.siteKey, current, lane);
     return mutationResponse(tx, params.siteKey, current, row.id);

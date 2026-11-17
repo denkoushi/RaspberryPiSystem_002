@@ -152,6 +152,7 @@ export interface GrindingPlanningBoardTestBar {
   itemRevision: string;
   version: number;
   sequence: number;
+  partName: string | null;
   name: string;
   resourceCd: string;
   minutes: number;

@@ -1,6 +1,6 @@
 import { api } from '../../http';
 
-import type { GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse ,
+import type { GrindingPlanningBoardTestBarPartCandidatesResponse, GrindingPlanningBoardTestBarCreateRequest, GrindingPlanningBoardTestBarMutationRequest, GrindingPlanningBoardTestBarMutationResponse ,
   SessakuPieceOpsConfigureRequest, SessakuPieceOpsClearRequest, SessakuPieceOpSplitRequest, SessakuPieceOpMergeRequest, SessakuPiecesAutoUnitSplitResponse, SessakuPieceOpCompletionRequest, SessakuPiecesSplitRequest, SessakuPiecesMergeRequest, SessakuPieceCompletionRequest, SessakuPiecesMutationResponse,
   GrindingPlanningBoardFirstProcessArrivalRequest,
   GrindingPlanningBoardFirstProcessArrivalResponse,
@@ -268,6 +268,10 @@ export async function autoUnitSplitKioskSessakuPieces() {
 export async function setKioskSessakuPieceOpCompletion(pieceId: string, opNo: number, payload: SessakuPieceOpCompletionRequest) {
   const { data } = await api.put<SessakuPiecesMutationResponse>(`/kiosk/production-schedule/grinding-planning-board/pieces/${encodeURIComponent(pieceId)}/ops/${opNo}/completion`, payload);
   return data;
+}
+
+export async function getKioskGrindingPlanningBoardTestBarPartCandidates(resourceCd: string) {
+  return (await api.get<GrindingPlanningBoardTestBarPartCandidatesResponse>('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { params: { resourceCd } })).data;
 }
 
 export async function createKioskGrindingPlanningBoardTestBar(body: GrindingPlanningBoardTestBarCreateRequest) {

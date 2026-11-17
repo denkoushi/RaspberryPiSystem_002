@@ -1,7 +1,7 @@
 import { getSameModelResourceGroupsForSite, replaceSameModelResourceGroupsForSite, kioskSameModelGroupsSchema } from '../../../services/production-schedule/same-model-resource-groups.service.js';
 import { ApiError } from '../../../lib/errors.js';
 import { updateGrindingPlanningBoardResourceMove } from '../../../services/production-schedule/grinding-planning-board/write.js';
-import { createPlanningTestBar, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
+import { createPlanningTestBar, getPlanningTestBarPartCandidates, mutatePlanningTestBar } from '../../../services/production-schedule/grinding-planning-board/test-bars.js';
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
@@ -313,11 +313,19 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     return result;
   });
 
+  app.get('/kiosk/production-schedule/grinding-planning-board/test-bars/part-candidates', { config: { rateLimit: false } }, async (request) => {
+    const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
+    const scope = deps.resolveLocationScopeContext(clientDevice);
+    const query = z.object({ resourceCd: z.string().trim().min(1).max(20) }).parse(request.query);
+    return getPlanningTestBarPartCandidates({ siteKey: scope.siteKey, resourceCd: query.resourceCd });
+  });
+
   app.post('/kiosk/production-schedule/grinding-planning-board/test-bars', { config: { rateLimit: false } }, async (request) => {
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = z.object({ sourceRevision: sourceRevisionSchema, dueSource: grindingPlanningBoardDueSourceSchema,
       resourceCd: z.string().trim().min(1).max(20), minutes: z.number().int().min(5).max(1440),
+      partName: z.string().trim().refine((value) => [...value].length <= 200).nullable().optional(),
       afterItem: z.object({ itemId: z.string().min(1).max(2000), itemRevision: z.string().min(1).max(200), overrideVersion: z.number().int().min(0).optional() }).optional()
     }).parse(request.body);
     const result = await createPlanningTestBar({ siteKey: scope.siteKey, ...body });

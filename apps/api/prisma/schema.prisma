@@ -2019,6 +2019,7 @@ model ProductionScheduleGrindingPlanningBoardTestBar {
   csvDashboardId String
   siteKey        String   @db.VarChar(100)
   sequence       Int
+  partName       String?  @db.VarChar(200)
   resourceCd     String   @db.VarChar(20)
   minutes        Int
   alternateRank  Int

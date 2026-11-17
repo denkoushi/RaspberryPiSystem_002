@@ -20,11 +20,14 @@ import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from
 
 const api = vi.hoisted(() => ({ create: vi.fn(), mutate: vi.fn() }));
 vi.mock('../../../api/domains/production-schedule/grinding-planning-board', () => ({ createKioskGrindingPlanningBoardTestBar: api.create, mutateKioskGrindingPlanningBoardTestBar: api.mutate }));
+vi.mock('../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts', () => ({
+  usePlanningBoardTestBarPartCandidates: (resource: string) => ({ data: { partNames: resource === '300' ? ['モータブラケット'] : ['軸受'] } })
+}));
 vi.mock('../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 vi.mock('../../../api/hooks', () => ({ useKioskGrindingPlanningBoardProcessChips: () => ({ data: undefined }) }));
 const testBar = (overrides: Partial<GrindingPlanningBoardTestBar> = {}): GrindingPlanningBoardTestBar => ({
   kind: 'test', itemId: 'test:22a2ef84-772f-4822-b4e3-bc1c930a9c83', itemRevision: 'test:r1', version: 1,
-  sequence: 4, name: 'テスト4', resourceCd: '300', minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null, ...overrides
+  sequence: 4, partName: null, name: 'テスト4', resourceCd: '300', minutes: 30, alternateRank: 2, isCompleted: false, completedAt: null, deletedAt: null, ...overrides
 });
 const fixture = () => {
   const f = productionFixture(2, 1);
@@ -87,7 +90,47 @@ describe('テスト加工の画面', () => {
     render(<PlanningBoardTestBarDialog sequence={5} resources={['300', '301']} initialResource="301" onInsert={insert} onClose={close} />);
     expect(screen.getByRole('button', { name: '301' })).toHaveAttribute('aria-pressed', 'true');
     fireEvent.click(screen.getByRole('button', { name: '300' })); fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
-    await waitFor(() => expect(insert).toHaveBeenCalledWith('300', 30)); expect(close).toHaveBeenCalled();
+    await waitFor(() => expect(insert).toHaveBeenCalledWith('300', 30, null)); expect(close).toHaveBeenCalled();
+  });
+  it('offers テストN first, changes the title and resets the selection when switching machines', async () => {
+    const insert = vi.fn(async () => true);
+    render(<PlanningBoardTestBarDialog sequence={5} resources={['300', '301']} initialResource="300" onInsert={insert} onClose={vi.fn()} />);
+    const select = screen.getByRole('combobox', { name: '部品' });
+    expect(select).toHaveValue('');
+    expect(within(select).getAllByRole('option')[0]).toHaveTextContent('テスト5');
+    expect(within(select).getAllByRole('option')[0]).toHaveValue('');
+    fireEvent.change(select, { target: { value: 'モータブラケット' } });
+    expect(screen.getByRole('heading', { name: 'モータブラケット' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '301' }));
+    expect(select).toHaveValue('');
+    expect(screen.getByRole('heading', { name: 'テスト5' })).toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: 'モータブラケット' })).not.toBeInTheDocument();
+    expect(within(select).getByRole('option', { name: '軸受' })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: '軸受' } });
+    fireEvent.change(select, { target: { value: '' } });
+    expect(screen.getByRole('heading', { name: 'テスト5' })).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: '軸受' } });
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(insert).toHaveBeenCalledWith('301', 30, '軸受'));
+  });
+  it('passes the selected part through the gantt insertion control', async () => {
+    const create = vi.fn(async () => true);
+    render(<PlanningBoardGanttDisplay {...ganttProps()} testBarControls={controls({ create })} />);
+    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    fireEvent.change(screen.getByRole('combobox', { name: '部品' }), { target: { value: 'モータブラケット' } });
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith('300', 30, undefined, 'モータブラケット'));
+  });
+  it('shows a part name on the purple gantt bar, aria label and strip', () => {
+    const named = testBar({ partName: 'モータブラケット', name: 'モータブラケット' });
+    const f = fixture();
+    const layout = buildPlanningBoardGanttLayout({ ...f.options, testBars: [named], mode: 'forward' });
+    render(<PlanningBoardGanttDisplay {...ganttProps()} layout={layout} testBarControls={controls({ bars: [named], selectedBar: named, selectedId: named.itemId })} />);
+    const bar = screen.getAllByTestId(`planning-gantt-bar-${named.itemId}`)[0]!;
+    expect(bar).toHaveStyle({ backgroundColor: '#c4b5fd' });
+    expect(bar).toHaveAttribute('aria-label', expect.stringContaining('モータブラケット'));
+    expect(within(bar).getByText('モータブラケット')).toBeInTheDocument();
+    expect(screen.getAllByText('モータブラケット').length).toBeGreaterThan(1);
   });
   it('initializes a two-machine dialog from the selected bar and otherwise from the first machine', () => {
     const props = ganttProps('forward', '300+301');
@@ -107,7 +150,7 @@ describe('テスト加工の画面', () => {
     fireEvent.click(screen.getAllByTestId(`planning-gantt-bar-${first.itemId}`)[0]!);
     fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
     fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
-    await waitFor(() => expect(create).toHaveBeenCalledWith('300', 30, expect.objectContaining({ itemId: first.itemId })));
+    await waitFor(() => expect(create).toHaveBeenCalledWith('300', 30, expect.objectContaining({ itemId: first.itemId }), null));
   });
   it('opens the strip for an inserted selection in the two-machine view', () => {
     render(<PlanningBoardGanttDisplay {...ganttProps('forward', '300+301')} testBarControls={controls({ selectedBar: testBar(), selectedId: testBar().itemId })} />);
@@ -288,6 +331,16 @@ describe('テスト加工の楽観表示', () => {
     await act(async () => reject(new Error('save failed')));
     expect(result.current.controls.bars).toEqual([original]);
     expect(result.current.controls.nextSequence).toBe(5); expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('shows the part name optimistically and sends it in the create request', async () => {
+    api.create.mockReturnValue(new Promise(() => {}));
+    const { data } = optimisticBoard();
+    const { result } = renderHook(() => useTestBoard(data));
+    await act(async () => { expect(await result.current.controls.create('300', 30, undefined, 'モータブラケット')).toBe(true); });
+    expect(result.current.controls.bars.find((bar) => bar.itemId.startsWith('test:pending:')))
+      .toMatchObject({ partName: 'モータブラケット', name: 'モータブラケット' });
+    await waitFor(() => expect(api.create).toHaveBeenCalledWith(expect.objectContaining({ resourceCd: '300', partName: 'モータブラケット' })));
   });
 
   it.each(['head', 'normal', 'test', 'band', 'unranked'] as const)('inserts at the server position for %s while saving', async (anchor) => {
