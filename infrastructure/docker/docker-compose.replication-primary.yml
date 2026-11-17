@@ -1,0 +1,23 @@
+# Opt in only through scripts/server/pi5-replication.sh. No change to server.yml.
+services:
+  db:
+    # db-start-guard.sh forwards these arguments to docker-entrypoint.sh.
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - max_wal_senders=4
+      - -c
+      - max_replication_slots=4
+      - -c
+      - max_slot_wal_keep_size=1024MB
+      - -c
+      - synchronous_standby_names=
+      - -c
+      - hba_file=/var/lib/postgresql/18/docker/replication-primary-pg_hba.conf
+    ports:
+      - target: 5432
+        published: "5432"
+        host_ip: ${PI5_REPLICATION_PRIMARY_IP:?PI5_REPLICATION_PRIMARY_IP is required}
+        protocol: tcp
