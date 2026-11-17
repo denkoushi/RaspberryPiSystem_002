@@ -15,6 +15,7 @@ import { useAssemblyProcedureDocumentEditor } from './AssemblyProcedureDocumentE
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { AssemblyProcedureDocumentEditorPageList } from './AssemblyProcedureDocumentEditorPageList';
 import { AssemblyProcedureDocumentEditorPartsPane } from './AssemblyProcedureDocumentEditorPartsPane';
+import { AssemblyProcedureDocumentPageDeleteDialog } from './AssemblyProcedureDocumentPageDeleteDialog';
 import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocumentPublishDialog';
 import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayoutSuggestionPanel';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
@@ -27,7 +28,8 @@ import type { AssemblyProcedureDocumentPageDto } from '../types';
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const shelfResources = useShelfResources(controller.accessGranted);
-  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, elements: controllerElements, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
+  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
+  const controllerElements = controller.pagePreviewElements ?? controller.elements;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
     : processNames.some(name => name.startsWith('研削')) ? 'procedure-grinding' : undefined;
@@ -88,6 +90,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     return () => window.clearTimeout(timer);
   }, [controller.message, controller.messageIsError, controller.conflict, controller.busy]);
   const [videoLinkOpen, setVideoLinkOpen] = useState(false);
+  const [deletePageIndex, setDeletePageIndex] = useState<number | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
@@ -212,6 +215,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </div>
       ) : null}
       {materialDrag.shadow ? <span aria-hidden="true" data-testid="material-drag-shadow" className="pointer-events-none fixed h-10 w-14 -translate-x-1/2 -translate-y-1/2 rounded border-2 border-blue-400 bg-white/80 shadow-xl" style={{ left: materialDrag.shadow.x, top: materialDrag.shadow.y, zIndex: 1_000_003 }} /> : null}
+      {deletePageIndex !== null && pages.find(page => page.pageIndex === deletePageIndex) ? <AssemblyProcedureDocumentPageDeleteDialog
+        page={pages.find(page => page.pageIndex === deletePageIndex)!}
+        assets={controller.document?.assets}
+        disabled={controller.readOnly || controller.busy || controller.conflict}
+        onClose={() => setDeletePageIndex(null)}
+        onDelete={() => { setDeletePageIndex(null); void controller.deletePage(deletePageIndex); }}
+      /> : null}
       {videoLinkOpen && controller.document ? <ProcedureVideoShelfDialog key={`${controller.document.id}:${selectedPage.pageIndex}`} link={{ documentId: controller.document.id, pageIndex: selectedPage.pageIndex, accessPassword: controller.passwordInput, holderToken: controller.editLeaseToken }} onError={controller.onEditLeaseError} onClose={() => setVideoLinkOpen(false)} /> : null}
         <AssemblyProcedureDocumentEditorPageList
           pages={pages}
@@ -219,6 +229,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
           onAddBlankPage={addBlankPage}
+          onDeletePage={setDeletePageIndex}
           locked={controller.layoutSuggestions.locked}
           disabled={controller.readOnly || controller.busy || controller.conflict}
         />

@@ -1,4 +1,4 @@
-import { overlayDraftReducer, overlayDraftSnapshot, shiftOverlayPages, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
+import { overlayDraftReducer, overlayDraftSnapshot, removeOverlayPage, shiftOverlayPages, type OverlayDraftAction } from './assemblyDocumentEditorDraft';
 import { matchesMaterialPlacement, removeMaterialPlacements, type PendingMaterialPlacement } from './documentEditorMaterialPlacements';
 
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -7,6 +7,7 @@ export type MaterialHistoryUpdate = { placement: PendingMaterialPlacement; asset
 export type OverlayHistoryAction = OverlayDraftAction
   | { type: 'releaseMaterials'; placements: PendingMaterialPlacement[]; replacement?: AssemblyProcedureOverlayElement; preserveHistory?: boolean }
   | { type: 'shiftPages'; afterPageIndex: number }
+  | { type: 'deletePage'; pageIndex: number }
   | { type: 'undo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
   | { type: 'redo'; restoredMaterials?: MaterialHistoryUpdate[]; failedMaterials?: PendingMaterialPlacement[] }
   | { type: 'beginDrag' }
@@ -28,6 +29,16 @@ export function historyReducer(state: OverlayHistory, action: OverlayHistoryActi
       return update?.assetId && element.kind === 'IMAGE' ? { ...element, assetId: update.assetId } : element;
     }), action.failedMaterials ?? []);
     state = { ...state, present: restore(state.present), past: state.past.map(restore), future: state.future.map(restore) };
+  }
+  if (action.type === 'deletePage') {
+    const survivingPages = new Map(state.present.filter(element => element.pageIndex !== action.pageIndex).map(element => [element.id, element.pageIndex]));
+    const remove = (elements: AssemblyProcedureOverlayElement[]) => removeOverlayPage(elements.map(element => {
+      const pageIndex = survivingPages.get(element.id);
+      return element.pageIndex === action.pageIndex && pageIndex !== undefined ? { ...element, pageIndex } : element;
+    }), action.pageIndex);
+    const present = remove(state.present);
+    const compact = (items: AssemblyProcedureOverlayElement[][]) => items.filter((item, index) => overlayDraftSnapshot(item) !== overlayDraftSnapshot(index ? items[index - 1] : present));
+    return { past: compact(state.past.map(remove).reverse()).reverse(), present, future: compact(state.future.map(remove)), dragStart: state.dragStart ? remove(state.dragStart) : null };
   }
   if (action.type === 'shiftPages') {
     const shift = (elements: AssemblyProcedureOverlayElement[]) => shiftOverlayPages(elements, action.afterPageIndex);

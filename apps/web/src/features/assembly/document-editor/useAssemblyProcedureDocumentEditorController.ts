@@ -1,7 +1,7 @@
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, deleteAssemblyProcedurePage } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
@@ -11,6 +11,7 @@ import {
   createOverlayId,
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
+  removeOverlayPage,
   shiftOverlayPages,
   updateOverlayBBox
 } from './assemblyDocumentEditorDraft';
@@ -433,6 +434,39 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     } finally { setBusy(false); }
   });
 
+  const deletePage = useEditorCallback(async (pageIndex: number) => {
+    if (!document || readOnly || busyRef.current || conflict) return;
+    setBusy(true);
+    try {
+      const next = await deleteAssemblyProcedurePage({ id: document.id, pageIndex, holderToken: editLease.holderToken, accessPassword: passwordInput, expectedEditVersion: document.editVersion ?? 0 });
+      const currentElements = inlineDraft ? elements.map(element => element.id === inlineDraft.id ? inlineDraft : element) : elements;
+      const nextElements = removeOverlayPage(currentElements, pageIndex);
+      const allElements = [...history.past.flat(), ...elements, ...history.future.flat(), ...(history.dragStart ?? []), ...currentElements];
+      const survivingIds = new Set(allElements.filter(element => element.pageIndex !== pageIndex).map(element => element.id));
+      const removedIds = new Set(allElements.filter(element => element.pageIndex === pageIndex && !survivingIds.has(element.id)).map(element => element.id));
+      const placements = [...pendingMaterials.current.values()].filter(item => !removedIds.has(item.elementId));
+      void materials.removePageMaterials(removedIds);
+      setInlineDraft(null);
+      if (inlineDraft && inlineDraft.pageIndex !== pageIndex) dispatch({ type: 'update', element: inlineDraft });
+      dispatch({ type: 'deletePage', pageIndex });
+      setBaselineSnapshot(current => current === null ? null : overlayDraftSnapshot(removeOverlayPage(JSON.parse(current) as AssemblyProcedureOverlayElement[], pageIndex)));
+      setDocument(current => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
+      setSelectedPageIndex(Math.min(pageIndex, Math.max(...next.pages.map(page => page.pageIndex))));
+      setSelectedOverlayId(null);
+      setPendingRange(null);
+      setSelectionMode(false);
+      setTextCandidates([]);
+      setTextCandidateRange(null);
+      recovery.deletePage(pageIndex, { baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 }, nextElements, placements);
+      setMessage(`${pageIndex + 1}ページ目を削除しました`);
+    } catch (error) {
+      if (onEditLeaseError(error)) return;
+      const nextConflict = readDocumentEditorConflict(error);
+      if (nextConflict?.currentEditVersion != null) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
+      setErrorMessage(readAssemblyApiErrorMessage(error, 'ページを削除できませんでした。'));
+    } finally { setBusy(false); }
+  });
+
   const duplicateOverlayToCurrentPage = useEditorCallback((sourceId: string) => {
     if (readOnly || busyRef.current || !selectedPage) return;
     const source = elements.find((element) => element.id === sourceId);
@@ -471,6 +505,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
   const startLayoutSuggestions = useEditorCallback(layoutSuggestions.start);
 
   return {
+    ...(inlineDraft ? { pagePreviewElements: draftElements } : {}),
     registerInlineTextFlush,
     onInlineDraftChange,
     commitInlineText,
@@ -487,6 +522,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     duplicateSelectedOverlay,
     duplicateOverlayToCurrentPage,
     addBlankPage,
+    deletePage,
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,
     replaceSelectedImageMaterial: overlayCommands.replaceSelectedImageMaterial,

@@ -249,3 +249,8 @@ export async function addBlankAssemblyProcedurePage(input: { holderToken?: strin
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion, ...(input.afterPageIndex === undefined ? {} : { afterPageIndex: input.afterPageIndex }) }, procedureEditHeaders(input.holderToken));
   return data.document;
 }
+
+export async function deleteAssemblyProcedurePage(input: { holderToken?: string | null; id: string; pageIndex: number; accessPassword: string; expectedEditVersion: number }) {
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/${input.pageIndex}/delete`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion }, procedureEditHeaders(input.holderToken));
+  return data.document;
+}

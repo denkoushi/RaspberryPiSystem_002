@@ -92,6 +92,7 @@ function makeController(
     duplicateOverlayToCurrentPage: vi.fn(),
     messageIsError: false,
     addBlankPage: vi.fn(async () => undefined),
+    deletePage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
     replaceSelectedImageMaterial: vi.fn(async () => undefined),
     document: editorDocument,
@@ -202,6 +203,22 @@ function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorCon
 afterEach(() => { approvalMocks.realCanvas = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  it('opens page deletion with the unsaved thumbnail and cancels or deletes the selected page', () => {
+    const draft = { id: 'delete-preview', pageIndex: 0, kind: 'TEXT' as const, text: '削除前の未保存', bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.5, heightRatio: 0.2 }, zIndex: 0 };
+    const pages = [editorDocument.pages[0], { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] }];
+    const controller = makeController({ pages, elements: [draft], document: { ...editorDocument, pages } });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'このページを削除' }));
+    const dialog = screen.getByRole('dialog', { name: '1ページ目を削除' });
+    expect(within(dialog).getByText('削除前の未保存')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'やめる' }));
+    expect(screen.queryByRole('dialog', { name: '1ページ目を削除' })).not.toBeInTheDocument();
+    expect(controller.deletePage).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'このページを削除' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '1ページ目を削除' })).getByRole('button', { name: '削除する' }));
+    expect(controller.deletePage).toHaveBeenCalledWith(0);
+  });
+
   it.each([
     { busy: true }, { saving: true }, { editLeaseMine: false }
   ])('preserves selection while canvas is disabled: %j', overrides => {
