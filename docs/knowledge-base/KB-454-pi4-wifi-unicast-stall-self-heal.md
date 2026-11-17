@@ -20,11 +20,12 @@
 
 再起動履歴は壁時計で `/var/lib/kiosk-wifi-self-heal/reboots` に保存し、直近1時間1回・24時間3回までとする。未来と24時間超の履歴は捨て、保存失敗時は再起動しない。直前に `/run/raspi-release/active` と `/run/lock/raspi-os-security-update.lock` の非待機ロックを確認し、デプロイ・OS 更新中は次回へ見送る。上限・見送りログは同じ抑止状態につき1回とする。service の開始上限は150秒。
 
-標準デプロイと通常の kiosk ロールで配置し、unit 変更時は有効な timer を restart する。既定は `kiosk_wifi_self_heal_enabled: false`（停止・無効化）とし、`raspi4-kensaku-stonebase01` と `raspi4-assembly-01` だけ有効化する。Pi5 側の既存実装は変更しない。
+標準デプロイと通常の kiosk ロールで配置し、unit 変更時は有効な timer を restart する。既定は `kiosk_wifi_self_heal_enabled: true` で全 Pi4 キオスクに有効。2026-11-17 に `raspi4-kensaku-stonebase01` と `raspi4-assembly-01` で先行導入（timer active、毎分正常終了、正常時ログなし）を確かめてから全台へ広げた。端末単位で止めるときは inventory で false を設定する。Pi5 側の既存実装は変更しない。
 
 ## Validation
 
-未実施(実機確認待ち)
+- 2026-11-17 先行導入(main 6088d681、Pi4 run 20261117-024603-17e478): kensaku-stonebase01 と assembly-01 で timer active、service Result=success、正常時の journal は空。他の Pi4 は timer inactive。
+- 実際の通信停止からの復旧は未発生のため未確認。
 
 ## Open Items
 
