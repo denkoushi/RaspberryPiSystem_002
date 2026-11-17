@@ -1,3 +1,4 @@
+import * as fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -113,4 +114,44 @@ describe.each([
   it.each(inputs.map((input, index) => [index, input] as const))('preserves parse results and ordered issues: %s', (_index, input) => {
     expect(result(schema, input)).toEqual(result(legacy, input));
   });
+});
+
+it('preserves randomized GET and POST safeParse success and transformed values', () => {
+  const wrongType = fc.oneof(fc.constant(null), fc.boolean(), fc.integer({ min: -1, max: 2001 }),
+    fc.constant([]), fc.constant({ value: 'wrong-type' }));
+  const text = (max: number) => fc.oneof(fc.string({ maxLength: Math.min(max, 40) }),
+    fc.constantFrom(0, 1, max - 1, max, max + 1).map((length) => 'x'.repeat(length)));
+  const optional = (arbitrary: fc.Arbitrary<unknown>) => fc.oneof(arbitrary, wrongType, fc.constant(undefined));
+  const booleanValue = fc.constantFrom(true, false, 'true', 'false', '1', '0', 'TRUE', '', undefined);
+  const query = fc.record({
+    dueSource: optional(fc.constantFrom('excel', 'scaw', 'bad')),
+    productNo: optional(text(100)), q: optional(text(200)), productNos: optional(text(4000)),
+    resourceCds: optional(text(400)), resourceAssignedOnlyCds: optional(text(400)),
+    resourceCategory: optional(fc.constantFrom('grinding', 'cutting', 'all')),
+    machineName: optional(text(200)), targetDeviceScopeKey: optional(text(200)),
+    hasNoteOnly: optional(booleanValue), hasDueDateOnly: optional(booleanValue),
+    allowResourceOnly: optional(booleanValue), selfInspectionEligibleOnly: optional(booleanValue),
+    page: optional(fc.constantFrom('1', '2', '0', '1.5', 'not-number', 1)),
+    pageSize: optional(fc.constantFrom('1', '160', '161', '2000', '2001', '0', '1.5', 'not-number', 160)),
+    completionFilter: optional(fc.constantFrom('all', 'complete', 'incomplete', 'done')),
+    responseProfile: optional(fc.constantFrom('full', 'leaderboard', 'invalid')),
+    snapshotId: optional(fc.constantFrom('550e8400-e29b-41d4-a716-446655440000', 'bad')),
+    cursor: optional(fc.constantFrom(0, 5000000, 5000001, 0.5, '1')),
+    excludeRowIds: optional(fc.constantFrom([], ['550e8400-e29b-41d4-a716-446655440000'], ['bad'])),
+    unknownField: optional(text(20))
+  }, { requiredKeys: [] });
+  // Sparse cases exercise each field without other invalid fields masking a change.
+  const sparse = query.chain((input) => fc.subarray(Object.keys(input)).map((keys) =>
+    Object.fromEntries(keys.map((key) => [key, input[key as keyof typeof input]]))));
+  fc.assert(fc.property(fc.oneof(query, sparse), (input) => {
+    for (const [schema, legacy] of [
+      [productionScheduleQuerySchema, legacyQuerySchema],
+      [productionScheduleLeaderboardShellContinuationFieldsSchema, legacyContinuationSchema]
+    ] as const) {
+      const actual = schema.safeParse(input);
+      const expected = legacy.safeParse(input);
+      expect(actual.success).toBe(expected.success);
+      if (actual.success && expected.success) expect(actual.data).toEqual(expected.data);
+    }
+  }), { numRuns: 1000 });
 });
