@@ -126,6 +126,9 @@ jobs:
           pnpm --filter @raspi-system/slip-match-core build
           pnpm --filter @raspi-system/shelf-layout-core build
 
+      - name: Run shared-types tests
+        run: pnpm --filter @raspi-system/shared-types test
+
       - name: Run part-search-core tests
         run: pnpm --filter @raspi-system/part-search-core test
       - name: Run slip-match-core tests
