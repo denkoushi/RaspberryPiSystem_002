@@ -159,10 +159,18 @@ Production Pi5, 2026-10-13, main `86dd89ef` (includes all four PRs), same kiosk:
 - **Effect**: 2,809 ms → 1,977 ms (EXPLAIN 2,190 / 1,798 ms); the output was identical for all variants (md5 of sorted rows `e846e948…`). `work_mem` 32MB with parallel workers off was slower (2,517 ms) and was not adopted.
 - **Settings seen**: shared_buffers 128MB, work_mem 4MB, effective_cache_size 4GB; `CsvDashboardRow` heap about 837 MB with about 328k dead tuples. About 30k blocks are read from outside shared buffers on each run; any change there needs a separate decision.
 
+### Resource-swap lookup and partial-index statistics (2026-11-18)
+
+- **Production measurement** (read-only, 2026-11-17): board pages 1–2 took a median of 1.9 s (max 3.1 s). The process-arrival resource-swap lookup (`process-arrival-resource-swap.ts`, FKOJUNST rows by `BTRIM(FSEZONO) = ANY(...)`, about 640 values) took 1.2–1.4 s per page as a Seq Scan over `CsvDashboardRow`. With the index forced, the same query took 156 ms cold and 65 ms warm.
+- **Cause**: `csv_dashboard_row_fkojunst_sezono_idx` (migration 20261117130000) is a partial index. PostgreSQL does not use expression statistics of partial indexes for row estimates, so the planner guessed 0.5% per value (4,790 rows) even after a manual `ANALYZE "CsvDashboardRow"` on 2026-11-17 22:46 UTC. The non-partial FSEIBAN index on the same table estimates 8 rows per value.
+- **Change**: a non-partial index on `("csvDashboardId", BTRIM("rowData"->>'FSEZONO'))` (migration 20261118090000).
+- **Rule**: an expression index meant to steer the planner must be non-partial. A new expression index has no statistics until the table is next analyzed; on this table autoanalyze needs about 158k changed rows, and the deploy gate (`validate-expand-only-migrations.py`) rejects `ANALYZE` in migrations, so check `pg_stats` for the index after deploy.
+
 ## Open Items
 
 - The first open after CSV imports, process restart, cache expiry or a filter outside the three rewarm candidates still requires a cold build. Board writes now schedule rewarm, but the Pi5 latency benefit has not yet been measured in production. The `/load` generation contract is unchanged.
 - `leaderboard-board` (`processChangeResidualSummary`, about 12 s) was not addressed.
+- The partial index `csv_dashboard_row_fkojunst_sezono_idx` is no longer needed once the non-partial index is in place; dropping it needs a migration-gate decision.
 - `shared_buffers` and retention / VACUUM of `CsvDashboardRow` were not changed; they need a separate decision.
 
 ## References
