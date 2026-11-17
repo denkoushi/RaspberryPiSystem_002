@@ -41,11 +41,51 @@ describe('internal schedule minutes parser', () => {
     expect(await parse(workbook)).toMatchObject({ ok: true, meetingDate: '2026-11-06', blocks: [{ seiban: 'BA1SB999', partsCompleteDate: '2026-11-14' }] });
   });
 
-  it.each(['完', '-', '', '11/6？', '11/10？12？', '支給品以外完', '客先支給品以外完', 'ﾚﾝﾀﾙ費のみ\n12月その他完', '板金11/13', '最短で10/29', '11/13以降', '10/14目標', '2026/1/8停止中', '1月以降'])('preserves raw text without inventing a date for %j', async (text) => {
+  it.each(['完', '-', '', '支給品以外完', '客先支給品以外完', 'ﾚﾝﾀﾙ費のみ\n12月その他完'])('preserves raw text without inventing a date for %j', async (text) => {
     const { workbook, sheet } = fixture(); sheet.getCell('F4').value = text;
     const result = await parse(workbook);
     expect(result).toMatchObject({ ok: true, blocks: [{ partsCompleteDate: null, rawPartsCompleteText: text || null }] });
     if (result.ok) expect(result.warnings.map((warning) => warning.code)).toEqual(text && text !== '-' && !text.endsWith('完') ? ['UNREADABLE_DATE'] : []);
+  });
+
+  it.each([
+    ['最短で10/29', '2026-10-29'],
+    ['11/13以降', '2026-11-13'],
+    ['11/20必須', '2026-11-20'],
+    ['板金11/13', null],
+    ['12/18回答あり', '2026-12-18'],
+    ['11/12？', '2026-11-12'],
+    ['2026/1/8停止中', '2026-01-08'],
+    ['11/20以降', '2026-11-20'],
+    ['フタ11/5', null],
+    ['ﾚﾝﾀﾙ費のみ12月', null],
+    ['10/10→５月', null],
+    ['2月', null],
+    ['1月以降', null],
+    ['10/14目標', '2026-10-14'],
+    ['11/10？12？', null],
+    ['11/6？', '2026-11-06'],
+    ['11/12?', '2026-11-12'],
+    ['  最短で　１／８  ', '2027-01-08'],
+    ['  ２０２６／１１／１２　？  ', '2026-11-12'],
+    ['11/12　回答あり  ', '2026-11-12'],
+    ['11/12？目標', null],
+    ['最短で11/12以降', null],
+    ['11/12予定', null],
+    ['11/12 11/13必須', null],
+    ['11/31必須', null],
+    ['2022/11/12以降', null],
+    ['7/13目標', null, 'AMBIGUOUS_YEAR']
+  ])('reads only allowlisted single-date annotations for %j', async (text, date, warning) => {
+    const { workbook, sheet } = fixture('1113結果');
+    sheet.getCell('B1').value = new Date('2026-11-13Z');
+    sheet.getCell('F4').value = text;
+    const result = await parse(workbook, '日程会議議事録_1113.xlsx');
+    expect(result).toMatchObject({ ok: true, meetingDate: '2026-11-13',
+      blocks: [{ partsCompleteDate: date, rawPartsCompleteText: text }],
+      warnings: date ? [] : [{ code: warning ?? 'UNREADABLE_DATE', seiban: 'BA1SB203', cell: 'F4', rawText: text }]
+    });
+    if (result.ok) expect(result.warnings).toHaveLength(date ? 0 : 1);
   });
 
   it.each([

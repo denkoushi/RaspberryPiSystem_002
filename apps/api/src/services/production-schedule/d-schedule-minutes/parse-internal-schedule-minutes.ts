@@ -1,7 +1,21 @@
 import ExcelJS from 'exceljs';
 
-import { calendarDate, cellText, formulaWithoutResult, normalize, readDate } from './date-cell.js';
+import { calendarDate, cellText, formulaWithoutResult, inferDate, normalize, plausibleDate, readDate } from './date-cell.js';
 import type { DScheduleMinutesBlock, DScheduleMinutesParseResult, DScheduleMinutesWarning } from './parse-d-schedule-minutes.js';
+
+function readPartsDate(cell: ExcelJS.Cell, meetingDate: string, date1904: boolean | undefined, onAmbiguous: () => void) {
+  // Only one allowlisted annotation may surround a single complete date.
+  const text = normalize(cellText(cell));
+  const annotated = text.match(/^(?:最短で\s*((?:\d{4}\/)?\d{1,2}\/\d{1,2})|((?:\d{4}\/)?\d{1,2}\/\d{1,2})\s*(?:\?|目標|必須|以降|停止中|回答あり))$/);
+  if (!annotated) return readDate(cell, meetingDate, date1904, onAmbiguous, true);
+  const parts = (annotated[1] ?? annotated[2]).split('/').map(Number);
+  const [month, day] = parts.slice(-2);
+  let ambiguous = false;
+  const date = parts.length === 3 ? calendarDate(parts[0], month, day)
+    : inferDate(month, day, meetingDate, () => { ambiguous = true; onAmbiguous(); });
+  if (ambiguous) return { date: null, invalid: false };
+  return date && plausibleDate(date, meetingDate) ? { date, invalid: false } : { date: null, invalid: true };
+}
 
 // Match the D company parser's nearest-year inference for meeting dates.
 function dateFromMMDD(mmdd: string, receivedAt: Date): string | null {
@@ -84,8 +98,8 @@ export async function parseInternalScheduleMinutesXlsx(input: {
     } else if (/(?<!未)完$/.test(normalize(cellText(partsCell)))) {
       // 「完」「支給品以外完」 mean the parts are done; there is no date to read.
     } else {
-      const parsed = readDate(partsCell, meetingDate, workbook.properties.date1904,
-        () => warn('AMBIGUOUS_YEAR', block.seiban, partsCell), true);
+      const parsed = readPartsDate(partsCell, meetingDate, workbook.properties.date1904,
+        () => warn('AMBIGUOUS_YEAR', block.seiban, partsCell));
       if (parsed.invalid) warn('UNREADABLE_DATE', block.seiban, partsCell);
       block.partsCompleteDate = parsed.date;
     }
