@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { useState, type ComponentProps, type ReactNode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
 
@@ -10,13 +11,17 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-const approvalMocks = vi.hoisted(() => ({ count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
+const approvalMocks = vi.hoisted(() => ({ realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
 vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, countProcedureMaterials: approvalMocks.count, listProcedureWorkInstructionCandidates: async () => ({ items: [] }), listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
-vi.mock('./AssemblyProcedureDocumentEditorCanvas', () => ({
-  AssemblyProcedureDocumentEditorCanvas: ({ elements }: { elements: AssemblyProcedureOverlayElement[] }) => <div aria-label="手順書キャンバス" data-testid="editor-canvas" data-elements={elements.map(element => element.id).join(",")} />
-}));
+vi.mock('./AssemblyProcedureDocumentEditorCanvas', async importOriginal => {
+  const actual = await importOriginal<typeof import('./AssemblyProcedureDocumentEditorCanvas')>();
+  return { AssemblyProcedureDocumentEditorCanvas: (props: ComponentProps<typeof actual.AssemblyProcedureDocumentEditorCanvas>) => approvalMocks.realCanvas
+    ? <actual.AssemblyProcedureDocumentEditorCanvas {...props} />
+    : <div aria-label="手順書キャンバス" data-testid="editor-canvas" data-elements={props.elements.map(element => element.id).join(',')} /> };
+});
+vi.mock('../AssemblyProcedureCanvas', () => ({ AssemblyProcedureCanvas: ({ overlay }: { overlay: ReactNode }) => <div data-testid="editor-page">{overlay}</div> }));
 vi.mock('../KioskDocumentPageImage', () => ({ KioskDocumentPageImage: ({ pageUrl }: { pageUrl: string }) => { approvalMocks.pageRender(pageUrl); return <span />; } }));
 vi.mock('../procedure-manuals/ProcedureMaterialShelfDialog', () => ({
   ProcedureMaterialShelfDialog: ({ onSelect, onClose, mode, onCreatedDocument }: { onSelect: (material: { id: string; kind: 'PHOTO'; documentId?: string; placedAt?: string }) => Promise<void>; onClose: () => void; onCreatedDocument: (documentId: string) => void; mode: 'place' | 'replace' }) => <div role="dialog" aria-label="素材"><button onClick={() => void onSelect({ id: 'material', kind: 'PHOTO' })}>{mode === 'replace' ? 'この素材に差し替え' : '配置'}</button><button onClick={() => void onSelect({ id: 'placed-material', kind: 'PHOTO', documentId: 'old-document', placedAt: '2026-10-05T04:00:00Z' })}>配置済み素材を選択</button><button onClick={() => onCreatedDocument('created-document')}>要領書を作る</button><button onClick={onClose}>閉じる</button></div>
@@ -164,7 +169,148 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController, onN
   );
 }
 
+const interactiveText: AssemblyProcedureOverlayElement = { id: 'text', kind: 'TEXT', text: '元の本文', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.2 } };
+function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorController> = {}) {
+  approvalMocks.realCanvas = true;
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1000, height: 1000 } as DOMRect);
+  const c = makeController({ elements: [interactiveText], selectedPageElements: [interactiveText], ...overrides });
+  const select = c.setSelectedOverlayId;
+  function Harness() {
+    const [selected, setSelected] = useState<string | null>('text');
+    return <AssemblyProcedureDocumentEditorProvider value={{ ...c, selectedOverlayId: selected,
+      selectedElement: selected ? interactiveText : null,
+      setSelectedOverlayId: id => { select(id); setSelected(id); }
+    }}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>;
+  }
+  const view = render(<Harness />);
+  for (const node of view.container.querySelectorAll<HTMLElement>('*')) {
+    node.setPointerCapture = vi.fn();
+    node.releasePointerCapture = vi.fn();
+    node.hasPointerCapture = vi.fn(() => true);
+  }
+  return c;
+}
+afterEach(() => { approvalMocks.realCanvas = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  it.each(['page', 'surround'])('deselects on blank %s space and keeps the canvas geometry classes', target => {
+    const c = renderInteractive();
+    const section = screen.getByRole('region', { name: '手順書キャンバス' });
+    const classes = section.className;
+    fireEvent.pointerDown(target === 'page' ? screen.getByTestId('document-editor-overlay-surface') : section, { button: 0 });
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
+    expect(section.className).toBe(classes);
+    expect(within(screen.getByTestId('assembly-document-editor-details')).getByText('組立手順書')).toBeInTheDocument();
+  });
+
+  it('selects overlays and preserves selection on resize handles', () => {
+    const c = renderInteractive();
+    const overlay = within(screen.getByRole('region', { name: '手順書キャンバス' })).getByTestId('assembly-procedure-overlay-text');
+    fireEvent.pointerDown(overlay, { button: 0, clientX: 200, clientY: 200 });
+    fireEvent.pointerUp(overlay, { clientX: 220, clientY: 200 });
+    fireEvent.click(overlay);
+    const handle = screen.getByTestId('assembly-procedure-overlay-text-resize-se');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.pointerUp(handle, { clientX: 450, clientY: 350 });
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith('text');
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalledWith(null);
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+  });
+
+  it('preserves selection on conflict message buttons and approval labels', () => {
+    const c = renderInteractive({ message: '競合', conflict: true, conflictEditVersion: 3,
+      document: { ...editorDocument, lastApproval: { employeeName: '承認者', approvedAt: '2026-10-05T09:00:00Z' } } });
+    for (const button of within(screen.getByRole('alert')).getAllByRole('button')) {
+      fireEvent.pointerDown(button, { button: 0 });
+    }
+    fireEvent.click(screen.getByRole('button', { name: '保持内容を再保存' }));
+    expect(c.retryConflictSave).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(screen.getByText(/承認: 承認者/), { button: 0 });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+  });
+
+  it('preserves selection on unlocked layout suggestion controls', () => {
+    const c = makeController();
+    const controller = renderInteractive({ layoutSuggestions: { ...c.layoutSuggestions, state: { status: 'error', message: '配置エラー' } } });
+    const button = within(screen.getByRole('alert', { name: '配置の提案' })).getByRole('button');
+    fireEvent.pointerDown(button, { button: 0 });
+    fireEvent.click(button);
+    expect(controller.layoutSuggestions.cancel).toHaveBeenCalledOnce();
+    expect(controller.setSelectedOverlayId).not.toHaveBeenCalled();
+  });
+
+  it('keeps range dragging active without clearing the selected overlay', () => {
+    const c = renderInteractive({ selectionMode: true });
+    const range = screen.getByRole('application', { name: 'オーバーレイ範囲選択面' });
+    fireEvent.pointerDown(range, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(range, { clientX: 500, clientY: 400 });
+    fireEvent.pointerUp(range, { clientX: 500, clientY: 400 });
+    expect(c.handleRangeSelected).toHaveBeenCalledExactlyOnceWith({ xRatio: 0.1, yRatio: 0.1, widthRatio: 0.4, heightRatio: expect.closeTo(0.3) });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+  });
+
+  it.each(['page', 'surround'])('commits inline text before deselecting on blank %s space', target => {
+    const c = renderInteractive();
+    fireEvent.keyDown(within(screen.getByRole('region', { name: '手順書キャンバス' })).getByTestId('assembly-procedure-overlay-text'), { key: 'Enter' });
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: '保持する本文' } });
+    fireEvent.pointerDown(input, { button: 0 });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    fireEvent.pointerDown(target === 'page' ? screen.getByTestId('document-editor-overlay-surface') : screen.getByRole('region', { name: '手順書キャンバス' }), { button: 0 });
+    expect(c.commitInlineText).toHaveBeenCalledExactlyOnceWith({ ...interactiveText, text: '保持する本文' });
+    expect(vi.mocked(c.commitInlineText).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(c.setSelectedOverlayId).mock.invocationCallOrder[0]!);
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
+  });
+
+  it('deselects with Escape', () => {
+    const c = renderInteractive();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
+  });
+
+  it('keeps selection when Escape closes a dialog', () => {
+    const c = renderInteractive();
+    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
+    fireEvent.keyDown(screen.getByRole('dialog', { name: '要領書を削除' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+  });
+
+  it('prioritizes inline text Escape and focused inputs over deselection', () => {
+    const c = renderInteractive();
+    fireEvent.keyDown(within(screen.getByRole('region', { name: '手順書キャンバス' })).getByTestId('assembly-procedure-overlay-text'), { key: 'Enter' });
+    const input = screen.getByRole('textbox');
+    fireEvent.change(input, { target: { value: '取消する本文' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    expect(c.commitInlineText).not.toHaveBeenCalled();
+    const field = document.createElement('input');
+    document.body.append(field);
+    field.focus();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    field.remove();
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+  });
+
+  it('preserves selection on blank space and Escape while layout is locked', () => {
+    const base = makeController();
+    const c = renderInteractive({ layoutSuggestions: { ...base.layoutSuggestions, locked: true } });
+    fireEvent.pointerDown(screen.getByRole('region', { name: '手順書キャンバス' }), { button: 0 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+  });
+
+  it('keeps the title fallback in the empty details column', () => {
+    renderScreen(makeController({ document: { ...editorDocument, name: null } }));
+    const details = screen.getByTestId('assembly-document-editor-details');
+    expect(details).toHaveTextContent(/^手順書$/);
+    expect(within(details).queryByTestId('editor-inspector')).not.toBeInTheDocument();
+  });
+
   it('shows one AI tooltip on 整える and still requests a layout', () => {
     vi.mocked(useLocalLlmAvailability).mockReturnValue({ unavailable: true });
     const c = makeController();
@@ -206,7 +352,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '部品を閉じる' }));
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
-    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('grid-cols-[120px_0_minmax(0,1fr)_64px]');
+    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('grid-cols-[120px_0_minmax(0,1fr)_400px_64px]');
     expect(localStorage.getItem('assembly-document-editor-parts-pane')).toBe('closed');
     view.unmount();
     renderScreen(makeController());
@@ -298,7 +444,9 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
       bbox: { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.2 }
     };
     const { unmount } = renderScreen(makeController({ selectedElement: element }));
-    expect(screen.getByRole('region', { name: '手順書キャンバス' })).toHaveClass('pr-[372px]');
+    expect(screen.getByRole('region', { name: '手順書キャンバス' })).toHaveClass('p-2');
+    expect(screen.getByRole('region', { name: '手順書キャンバス' })).not.toHaveClass('pr-[372px]');
+    expect(within(screen.getByTestId('assembly-document-editor-details')).getByTestId('editor-inspector')).toBeInTheDocument();
     unmount();
     renderScreen(makeController({ selectedElement: null }));
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).not.toHaveClass('pr-[372px]');
@@ -306,7 +454,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it.each([['make', 1, null, '作る · 下書き 第1版', 'text-[#3ba776]'], ['fix', 3, 'root', '直す · 改版の下書き 第3版', 'text-[#f6b93b]'], ['fix', 1, null, '直す · 下書き 第1版', 'text-[#f6b93b]']] as const)('shows workshop context for %s', (mode, revisionNumber, supersedesDocumentId, label, color) => {
     const controller = makeController({ document: { ...editorDocument, revisionNumber, supersedesDocumentId } });
     render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} context={{ modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立 › 組立', mode }} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.getByText('DFD1 › 組立 › 組立 › 組立手順書')).toBeInTheDocument();
+    expect(within(screen.getByTestId('assembly-document-editor-details')).getByText('DFD1 › 組立 › 組立 › 組立手順書')).toHaveClass('whitespace-normal', 'break-words');
     expect(screen.getByText(label)).toHaveClass(color);
     const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
     expect(actions[0]).toHaveAttribute('aria-label', '工房へ戻る');
@@ -470,7 +618,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     renderScreen(makeController());
     const layout = screen.getByTestId('assembly-document-editor-layout');
     expect(layout).toHaveClass(
-      'grid-cols-[120px_280px_minmax(0,1fr)_64px]',
+      'grid-cols-[120px_280px_minmax(0,1fr)_400px_64px]',
       'overflow-hidden'
     );
     expect(screen.getByTestId('editor-canvas')).toBeVisible();

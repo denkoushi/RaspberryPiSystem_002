@@ -166,6 +166,21 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
     controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);
 
+  const dialogOpen = materialShelfOpen || videoLinkOpen || deleteOpen || discardOpen || recoveryOpen ||
+    publishOpen || conflictReloadOpen || takeoverOpen || controller.pendingRange != null || controller.textCandidates.length > 0;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing ||
+        !controller.accessGranted || controller.loading || controller.layoutSuggestions.locked ||
+        dialogOpen || inlineEditingId || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const target = document.activeElement;
+      if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      setSelectedOverlayId(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [controller.accessGranted, controller.loading, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
+
   if (!controller.accessGranted || controller.loading) {
     return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
   }
@@ -179,9 +194,9 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }
 
   return (
-    <main className={`relative grid min-h-0 flex-1 ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
+    <main className={`relative grid min-h-0 flex-1 ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_400px_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_400px_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
-        <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px)] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
+        <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-616px)] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
             {controller.editLeaseUnavailable
               ? '編集の予約を取れていません(他端末と同時編集に注意)'
@@ -224,7 +239,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         <button type="button" disabled={controller.layoutSuggestions.locked} aria-label={partsPaneOpen ? '部品を閉じる' : '部品を開く'} onClick={togglePartsPane} className={`absolute top-1/2 z-50 grid h-[72px] w-[22px] -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-[#344252] bg-[#161c22] text-[#9fadb9] ${partsPaneOpen ? 'left-[400px]' : 'left-[120px]'}`}>
           <span aria-hidden="true">{partsPaneOpen ? '<' : '>'}</span>
         </button>
-        <section className={`relative col-start-3 min-h-0 min-w-0 overflow-hidden p-4 ${controller.selectedElement ? 'pr-[372px]' : ''}`} aria-label="手順書キャンバス">
+        <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-2" aria-label="手順書キャンバス"
+          onPointerDownCapture={event => {
+            if (event.button !== 0 || controller.selectionMode || controller.layoutSuggestions.locked) return;
+            const target = event.target as HTMLElement;
+            if (target.closest('[data-overlay-id], [data-testid*="-resize-"], textarea, [role="status"], [role="alert"], [data-editor-approval]')) return;
+            setSelectedOverlayId(null);
+          }}>
           <AssemblyProcedureDocumentEditorCanvas
             saving={controller.saving || controller.busy || !controller.editLeaseMine}
             onUpdateText={controller.commitInlineText}
@@ -250,17 +271,11 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             className="h-full w-full !bg-[#0a0d10]"
           />
           <AssemblyProcedureLayoutSuggestionPanel suggestions={controller.layoutSuggestions} />
-          <div className="absolute left-4 top-3 z-40 flex h-9 max-w-[70%] items-center gap-2.5 rounded-lg border border-[#344252] bg-[#161c22d9] px-3 text-lg text-[#9fadb9]">
-            <b className="truncate text-[#eef3f6]">{context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
-            {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
-              {context.mode === 'make' ? '作る' : '直す'} · {controller.document?.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{controller.document?.revisionNumber ?? 1}版
-            </span> : null}
-          </div>
-          {controller.document?.lastApproval ? <p className="absolute bottom-16 left-4 rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
+          {controller.document?.lastApproval ? <p data-editor-approval className="absolute bottom-16 left-4 max-w-[calc(100%-32px)] rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
             承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
           </p> : null}
           {controller.message && controller.message !== dismissedMessage ? (
-            <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 ${controller.selectedElement ? 'max-w-[calc(100%-404px)]' : 'max-w-[calc(100%-32px)]'} flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
+            <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 max-w-[calc(100%-32px)] flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
               <p className="flex items-center gap-2.5"><span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${controller.messageIsError || controller.conflict ? 'bg-[#e5484d]' : 'bg-[#3ba776]'}`} />{controller.message}</p>
               {controller.conflict ? (
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -275,10 +290,14 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             </div>
           ) : null}
         </section>
-        <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
-          voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
-          onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} onDelete={openDelete} onDiscard={openDiscard} />
-        {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
+        <aside className="col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22]" data-testid="assembly-document-editor-details">
+          <div className="flex shrink-0 flex-col items-start gap-2 border-b border-[#27313b] px-[14px] py-[10px] text-[17px] text-[#9fadb9]">
+            <b className="w-full whitespace-normal break-words text-[#eef3f6]">{context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
+            {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
+              {context.mode === 'make' ? '作る' : '直す'} · {controller.document?.supersedesDocumentId ? '改版の下書き' : '下書き'} 第{controller.document?.revisionNumber ?? 1}版
+            </span> : null}
+          </div>
+        {controller.selectedElement ? <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
           textReadOnly={inlineEditingId === controller.selectedElement.id}
@@ -299,6 +318,10 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           busy={controller.busy}
         />
         </div> : null}
+        </aside>
+        <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
+          voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
+          onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} onDelete={openDelete} onDiscard={openDiscard} />
 
       {materialShelfOpen ? <ProcedureMaterialShelfDialog resources={shelfResources} mode={materialShelfMode} onClose={() => setMaterialShelfOpen(false)} onSelect={materialShelfMode === 'replace' ? replaceImageMaterial : placeMaterial} onCreatedDocument={async (documentId) => {
         setMaterialShelfOpen(false);
