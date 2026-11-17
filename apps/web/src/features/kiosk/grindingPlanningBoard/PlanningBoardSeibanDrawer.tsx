@@ -1,5 +1,5 @@
 import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
 import { KioskDigitTenkey } from '../KioskDigitTenkey';
@@ -99,6 +99,11 @@ export function PlanningBoardSeibanDrawer({
     else { setQuery(value); setRegistrationError(null); }
   };
   const orderDisabled = orderReadOnly || orderBusy;
+  const listCallbacks = useRef({ onToggle, onMove });
+  useLayoutEffect(() => { listCallbacks.current = { onToggle, onMove }; }, [onToggle, onMove]);
+  const toggleRegisteredSeiban = useCallback((fseiban: string) => listCallbacks.current.onToggle(fseiban), []);
+  const moveRegisteredSeiban = useCallback((fseiban: string, direction: 'up' | 'down') =>
+    listCallbacks.current.onMove(fseiban, direction), []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -237,6 +242,62 @@ export function PlanningBoardSeibanDrawer({
       })}
     </div>
   ), [candidateGroups, candidatesToday, collapsedMachineNames, orderDisabled, registeredFseibans, selectedCandidates, toggleCandidate]);
+
+  const registeredSeibanList = useMemo(() => registeredFseibans.length > 0 ? (
+    <ol className="mt-2 overflow-hidden rounded-md border border-slate-800" aria-label="登録製番">
+      {registeredFseibans.map((fseiban, index) => {
+        const selected = selectedFseibans.has(fseiban);
+        return (
+          <li
+            key={fseiban}
+            className={`grid min-h-11 [content-visibility:auto] [contain-intrinsic-size:auto_2.75rem] grid-cols-[2rem_minmax(0,1fr)_2.75rem_2.75rem] items-center border-t border-slate-800 first:border-t-0 ${
+              selected ? 'bg-emerald-950 shadow-[inset_3px_0_0_#34d399]' : 'bg-slate-900'
+            }`}
+          >
+            <span className="text-center font-mono text-xs font-semibold tabular-nums text-slate-500">{index + 1}</span>
+            <button
+              type="button"
+              aria-pressed={selected}
+              className="flex min-h-11 min-w-0 items-center gap-2.5 px-2 text-left disabled:opacity-50"
+              disabled={orderDisabled}
+              onClick={() => toggleRegisteredSeiban(fseiban)}
+            >
+              <span
+                aria-hidden="true"
+                className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded border-2 text-xs font-black leading-none ${
+                  selected ? 'border-emerald-400 bg-emerald-400 text-slate-950' : 'border-slate-600 text-transparent'
+                }`}
+              >
+                ✓
+              </span>
+              <span className={`min-w-[9ch] shrink-0 font-mono text-sm font-bold ${selected ? 'text-white' : 'text-slate-300'}`}>{fseiban}</span>
+              <span className={`min-w-0 truncate text-xs ${selected ? 'text-emerald-200' : 'text-slate-400'}`}>
+                {normalizeCandidateMachineName(machineNameBySeiban?.get(fseiban)) || '機種名未登録'}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={LIST_ICON_CLASS}
+              aria-label={`製番${fseiban}を上へ`}
+              disabled={orderDisabled || index === 0}
+              onClick={() => moveRegisteredSeiban(fseiban, 'up')}
+            >
+              ↑
+            </button>
+            <button
+              type="button"
+              className={LIST_ICON_CLASS}
+              aria-label={`製番${fseiban}を下へ`}
+              disabled={orderDisabled || index === registeredFseibans.length - 1}
+              onClick={() => moveRegisteredSeiban(fseiban, 'down')}
+            >
+              ↓
+            </button>
+          </li>
+        );
+      })}
+    </ol>
+  ) : null, [registeredFseibans, selectedFseibans, machineNameBySeiban, orderDisabled, toggleRegisteredSeiban, moveRegisteredSeiban]);
 
   if (!isOpen) return null;
 
@@ -379,61 +440,7 @@ export function PlanningBoardSeibanDrawer({
               </button>
             </div>
           </div>
-          {registeredFseibans.length > 0 ? (
-            <ol className="mt-2 overflow-hidden rounded-md border border-slate-800" aria-label="登録製番">
-              {registeredFseibans.map((fseiban, index) => {
-                const selected = selectedFseibans.has(fseiban);
-                return (
-                  <li
-                    key={fseiban}
-                    className={`grid min-h-11 grid-cols-[2rem_minmax(0,1fr)_2.75rem_2.75rem] items-center border-t border-slate-800 first:border-t-0 ${
-                      selected ? 'bg-emerald-950 shadow-[inset_3px_0_0_#34d399]' : 'bg-slate-900'
-                    }`}
-                  >
-                    <span className="text-center font-mono text-xs font-semibold tabular-nums text-slate-500">{index + 1}</span>
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      className="flex min-h-11 min-w-0 items-center gap-2.5 px-2 text-left disabled:opacity-50"
-                      disabled={orderDisabled}
-                      onClick={() => onToggle(fseiban)}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={`grid h-[18px] w-[18px] shrink-0 place-items-center rounded border-2 text-xs font-black leading-none ${
-                          selected ? 'border-emerald-400 bg-emerald-400 text-slate-950' : 'border-slate-600 text-transparent'
-                        }`}
-                      >
-                        ✓
-                      </span>
-                      <span className={`min-w-[9ch] shrink-0 font-mono text-sm font-bold ${selected ? 'text-white' : 'text-slate-300'}`}>{fseiban}</span>
-                      <span className={`min-w-0 truncate text-xs ${selected ? 'text-emerald-200' : 'text-slate-400'}`}>
-                        {normalizeCandidateMachineName(machineNameBySeiban?.get(fseiban)) || '機種名未登録'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      className={LIST_ICON_CLASS}
-                      aria-label={`製番${fseiban}を上へ`}
-                      disabled={orderDisabled || index === 0}
-                      onClick={() => onMove(fseiban, 'up')}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className={LIST_ICON_CLASS}
-                      aria-label={`製番${fseiban}を下へ`}
-                      disabled={orderDisabled || index === registeredFseibans.length - 1}
-                      onClick={() => onMove(fseiban, 'down')}
-                    >
-                      ↓
-                    </button>
-                  </li>
-                );
-              })}
-            </ol>
-          ) : null}
+          {registeredSeibanList}
           {registeredFseibans.length === 0 ? <p className="mt-4 text-xs text-slate-500">登録製番がありません。</p> : null}
         </div>
       </aside>
