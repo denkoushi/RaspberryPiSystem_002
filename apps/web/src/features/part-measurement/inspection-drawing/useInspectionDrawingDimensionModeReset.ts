@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 
 import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateToolbar';
-import type { InspectionDrawingPoint } from './types';
+import type { InspectionDrawingCalloutDim, InspectionDrawingPoint } from './types';
 
 /** 寸法線モード中に選択中の丸数字が指差し先端を失ったら、丸数字モードへ戻す */
 export function useInspectionDrawingDimensionModeReset(
@@ -16,4 +16,16 @@ export function useInspectionDrawingDimensionModeReset(
       setMode('place');
     }
   }, [mode, selectedPoint, setMode]);
+}
+
+/** 寸法線を保存し、寸法線モード中なら丸数字モードへ戻すハンドラを作る */
+export function createInspectionDrawingCalloutDimsChangeHandler(
+  mode: InspectionDrawingToolbarMode,
+  setMode: (mode: InspectionDrawingToolbarMode) => void,
+  updatePoint: (id: string, patch: { calloutDims: InspectionDrawingCalloutDim[] }) => void
+): (id: string, dims: InspectionDrawingCalloutDim[]) => void {
+  return (id, dims) => {
+    updatePoint(id, { calloutDims: dims });
+    if (mode === 'dimX' || mode === 'dimY') setMode('place');
+  };
 }

@@ -1,11 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { useInspectionDrawingDimensionModeReset } from '../useInspectionDrawingDimensionModeReset';
+import {
+  createInspectionDrawingCalloutDimsChangeHandler,
+  useInspectionDrawingDimensionModeReset
+} from '../useInspectionDrawingDimensionModeReset';
 
 import type { InspectionDrawingToolbarMode } from '../InspectionDrawingCreateToolbar';
-import type { InspectionDrawingPoint } from '../types';
+import type { InspectionDrawingCalloutDim, InspectionDrawingPoint } from '../types';
 
 type Point = Pick<InspectionDrawingPoint, 'calloutTipXRatio' | 'calloutTipYRatio'> | null;
 
@@ -50,5 +53,25 @@ describe('useInspectionDrawingDimensionModeReset', () => {
   it.each(['place', 'callout', 'test', 'guidedTrial'] as const)('leaves %s untouched without a callout tip', (mode) => {
     const { result } = setup(mode, null);
     expect(result.current.mode).toBe(mode);
+  });
+});
+
+describe('createInspectionDrawingCalloutDimsChangeHandler', () => {
+  const dims: InspectionDrawingCalloutDim[] = [{ dir: 'x', baseXRatio: 0.5, baseYRatio: 0.5, offsetRatio: 0.1 }];
+
+  it.each(['dimX', 'dimY'] as const)('saves the dims and returns %s to place', (mode) => {
+    const setMode = vi.fn();
+    const updatePoint = vi.fn();
+    createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)('p1', dims);
+    expect(updatePoint).toHaveBeenCalledWith('p1', { calloutDims: dims });
+    expect(setMode).toHaveBeenCalledWith('place');
+  });
+
+  it.each(['place', 'callout'] as const)('saves the dims and keeps %s', (mode) => {
+    const setMode = vi.fn();
+    const updatePoint = vi.fn();
+    createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)('p1', dims);
+    expect(updatePoint).toHaveBeenCalledWith('p1', { calloutDims: dims });
+    expect(setMode).not.toHaveBeenCalled();
   });
 });
