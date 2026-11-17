@@ -17,7 +17,7 @@ alwaysApply: false
 
 ## 危険操作の扱い
 
-- `--force`、履歴改変（`rebase`/`amend` 等）、main直系へのpushは、明示的なユーザー依頼がない限り行わない（`AGENTS.md`）
+- `--force`、履歴改変（`rebase`/`amend` 等）、main直系へのpushは、明示的なユーザー依頼がない限り行わない
 - task cleanupで`git worktree remove --force`、`git branch -D`、wildcard削除、remote refの直接削除を使わない。GitHubのmerge後remote branch削除設定を正本とする。
 
 ## 最低限チェック（git操作時）
@@ -41,12 +41,12 @@ alwaysApply: false
 
 ## タスク開始・監査・完了
 
-入口は`python3 -m scripts.git_lifecycle.cli`。各コマンドの安全確認と`main_sync`の値は [docs/guides/git-task-lifecycle.md](../../docs/guides/git-task-lifecycle.md) を正本とする。
+入口は`python3 -m scripts.git_lifecycle.cli`に固定する。各コマンドの安全確認と`main_sync`の値は [docs/guides/git-task-lifecycle.md](../../docs/guides/git-task-lifecycle.md) を正本とする。
 
 1. 作業前に`audit --json`で既存のworktree、local branch、PR、remote-tracking refを読む（読むだけで変更しない）。
 2. `start --branch feat/<scope>`で、fetch済みの正確な`origin/main`から専用worktreeを作る。task root直下のmerged-cleanな過去taskは自動cleanupされる（`--no-merged-cleanup`で省略）。mainがdirtyまたはdivergedでもmainは変えず、警告として扱い、taskは止めない。
 3. 実装し、lint/test/buildとPRレビューを行う。
-4. merge後に`finish --worktree <exact-path> --pr <number>`で対象1件だけを片付ける。残った分は`finish-merged`で片付ける（どちらもforceなし、wildcardなし）。
+4. merge後に`finish --worktree <exact-path> --pr <number>`で対象1件だけを片付ける。残った分は次回の`start`が片付け、手動なら`finish-merged`を使う（どちらもforceなし、wildcardなし）。
 5. 終了後に`audit --json`を再実行し、PR、merge SHA、cleanup結果、`main_sync`、保護された項目を完了報告に書く。
 
 ## マージ後

@@ -12,7 +12,7 @@
 
 - コードを書く作業（機能の追加・変更、修正）、テスト、CI: `.cursor/rules/10-quality-ci-and-tests.mdc`
 - 不具合調査: `.cursor/rules/11-debugging-playbook.mdc`
-- 変更を伴う作業、commit、push、PR、merge: `.cursor/rules/20-git-workflow.mdc`（ユーザーが依頼した段階だけ）
+- 変更を伴う作業、commit、push、PR（本文、CIの待ち方と再実行を含む）、merge: `.cursor/rules/20-git-workflow.mdc`（ユーザーが依頼した段階だけ）
 - ドキュメント: `.cursor/rules/01-core-docs-and-knowledge.mdc` と `.cursor/rules/30-docs-maintenance.mdc`
 - 公開契約、モジュール境界、リファクタ（修正の前に散らばりを寄せる場合を含む）: `.cursor/rules/02-core-architecture.mdc`
 - フロントエンド/UI: `.cursor/rules/33-frontend-ui-quality.mdc`
@@ -41,10 +41,10 @@
 
 - 依頼から変更対象、受入条件、成功を示す証拠を絞り、最小変更で満たす。近接する改善や失敗を見つけても、依頼との因果がなければ別スコープとする。
 - 実装依頼は commit、push、PR、merge、release、deploy の許可を含まない。依頼された段階を越える前に明示承認を得る。
-- 明示依頼なしに `push --force`、`rebase`/`amend` 等の履歴改変を行わない。`rm -rf` やDB/ボリューム削除、証明書/鍵の上書きなど破壊的操作も同様に行わない。
+- 明示依頼なしに `push --force`、`rebase`/`amend` 等の履歴改変を行わない。`rm -rf`、DB破壊、ボリューム削除、証明書/鍵の上書き、`--force`系など破壊的・不可逆な操作も同様に行わない。
 - 秘密情報（`.env` 等）をcommitしない。
 - 重要な変更・調査・障害対応は KB / ADR / Runbook / Plan のいずれか1つを正本として更新する（詳細は `.cursor/rules/01-core-docs-and-knowledge.mdc`）。
-- 検証の予算・再実行上限・停止条件と、変更の危なさに応じたPRレビューの深さは `10-quality-ci-and-tests.mdc` に従う。無関係な失敗は修正せず、別件として報告する。
+- コード、テスト、CIの変更では、検証の予算・再実行上限・停止条件と、「PRレビューの深さ」（重い変更の範囲と止め方）を `10-quality-ci-and-tests.mdc` に従う。無関係な失敗は修正せず、別件として報告する。
 - 複雑な機能追加や大きなリファクタだけ、`.agent/PLANS.md` に従って `docs/plans/` に ExecPlan を作る。小変更へ形式的な計画文書を追加しない。
 - ルートの `EXEC_PLAN.md` は legacy historical log であり、詳細正本にせず、新しい進捗ログを追記しない。
 
