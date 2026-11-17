@@ -1,4 +1,3 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -35,9 +34,9 @@ describe('leaderBoardSeibanFilterModel', () => {
     expect(ensureSeibanInFilters(['A'], '   ')).toEqual(['A']);
   });
 
-  it('上限件数を超えたら既存画面と同じく先頭から上限まで保持する', () => {
-    const base = Array.from({ length: KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX }, (_, i) => `S${i}`);
-    expect(toggleSeibanFilter(base, 'EXTRA')).toEqual(base);
-    expect(ensureSeibanInFilters(base, 'EXTRA')).toEqual(base);
+  it('300件を超えても追加できる', () => {
+    const base = Array.from({ length: 300 }, (_, i) => `S${i}`);
+    expect(toggleSeibanFilter(base, 'EXTRA')).toEqual([...base, 'EXTRA']);
+    expect(ensureSeibanInFilters(base, 'EXTRA')).toEqual([...base, 'EXTRA']);
   });
 });

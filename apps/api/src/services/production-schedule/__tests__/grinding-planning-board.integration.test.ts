@@ -1348,11 +1348,12 @@ describeIntegration('grinding planning board service real Postgres integration',
     });
     expect(cuttingCandidates.candidates.map((candidate) => candidate.fseiban)).toEqual([cutting]);
 
+    const fseibans = Array.from({ length: 300 }, (_, index) => seiban(`BULK-${index}`));
+    await addRows(fixture, fseibans.map((fseiban) => ({ fseiban, fhincd: 'PART-BULK', dueDate: '2026-09-20' })));
+    const current = await boardFor(fixture);
     await expect(service().updateGrindingPlanningBoardSeibanOrder({
-      siteKey: fixture.siteKey,
-      sourceRevision: 'unused-for-limit-check',
-      fseibans: Array.from({ length: 101 }, (_, index) => `OVER-${index + 1}`)
-    })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
+      siteKey: fixture.siteKey, sourceRevision: current.sourceRevision, fseibans
+    })).resolves.toMatchObject({ seibanOrder: fseibans });
   });
   describe('テスト加工の棒', () => {
     const testApi = () => import('../grinding-planning-board/test-bars.js');

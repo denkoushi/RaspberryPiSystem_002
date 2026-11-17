@@ -7,6 +7,8 @@ import {
   productionScheduleLeaderboardLaborMetadataBodySchema,
   productionScheduleLeaderboardBoardQuerySchema,
   productionScheduleSeibanMachineNamesBodySchema,
+  productionScheduleSearchStateBodySchema,
+  productionScheduleSearchHistoryBodySchema,
   toLegacyLocationKeyFromDeviceScope
 } from '../shared.js';
 
@@ -27,12 +29,20 @@ describe('production-schedule route shared helpers', () => {
     expect(parsed.fseibans).toEqual(['a', 'b']);
   });
 
-  it('productionScheduleSeibanMachineNamesBodySchema は 100 件までは保持する', () => {
-    const inputs = Array.from({ length: 60 }, (_, i) => `S-${i + 1}`);
+  it('productionScheduleSeibanMachineNamesBodySchema は 300 件を保持する', () => {
+    const inputs = Array.from({ length: 300 }, (_, i) => `S-${i + 1}`);
     const parsed = productionScheduleSeibanMachineNamesBodySchema.parse({
       fseibans: inputs
     });
     expect(parsed.fseibans).toEqual(inputs);
+  });
+
+  it('accepts 300 registered seibans while retaining string length validation', () => {
+    const entries = Array.from({ length: 300 }, (_, i) => `S${i}`);
+    expect(productionScheduleSearchStateBodySchema.parse({ state: { activeQueries: entries, history: entries } }).state).toEqual({ activeQueries: entries, history: entries });
+    expect(productionScheduleSearchHistoryBodySchema.parse({ history: entries }).history).toEqual(entries);
+    expect(productionScheduleSearchHistoryBodySchema.safeParse({ history: ['S'.repeat(201)] }).success).toBe(false);
+    expect(productionScheduleSeibanMachineNamesBodySchema.safeParse({ fseibans: ['S'.repeat(201)] }).success).toBe(false);
   });
 
   it('productionScheduleLeaderboardBoardQuerySchema は deferTotals を string/boolean 両方で解釈する', () => {

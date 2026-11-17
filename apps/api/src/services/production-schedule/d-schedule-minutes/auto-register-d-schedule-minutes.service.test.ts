@@ -44,7 +44,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
   },
   productionScheduleDScheduleMinutes: { findMany: vi.fn(() => mocks.minutes) },
   site: { findMany: () => mocks.sites.map((key) => ({ key })) },
-  productionScheduleGrindingPlanningBoardState: { findMany: () => Object.keys(mocks.boards).map((siteKey) => ({ siteKey })) }
+  productionScheduleGrindingPlanningBoardState: { findMany: () => Object.entries(mocks.boards).map(([siteKey, board]) => ({ siteKey, seibanOrder: board.seibanOrder })) }
 } }));
 vi.mock('../grinding-planning-board/source.js', () => ({ readWinnerRowsByFseibans: (...args: unknown[]) => mocks.readWinners(...args) }));
 vi.mock('../grinding-planning-board/state.js', () => ({
@@ -105,7 +105,7 @@ describe('D schedule automatic registration', () => {
     expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'SHARED']);
     expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'SHARED']);
     expect(mocks.history).toEqual(['MANUAL-H', 'SHARED']);
-    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: [], B: [] }, searchHistory: [] });
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: absent ? [] : ['SHARED'], B: absent ? [] : ['SHARED'] }, searchHistory: absent ? [] : ['SHARED'] });
     expect(mocks.otherRuns[0]!.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: ['SHARED'], B: ['SHARED'] }, searchHistory: ['SHARED'] });
   });
 
@@ -120,23 +120,6 @@ describe('D schedule automatic registration', () => {
     expect(mocks.boards.A.seibanOrder).toContain('MANUAL-A');
   });
 
-  it('budgets internal entries per destination after D company, manual entries and ten reserved slots', async () => {
-    mocks.run.kind = 'INTERNAL';
-    const manual = Array.from({ length: 89 }, (_, i) => `M${i}`);
-    mocks.boards.A.seibanOrder = [...manual.slice(0, 85), 'D1', 'D2'];
-    mocks.boards.B.seibanOrder = [...manual.slice(0, 88), 'D1'];
-    mocks.history = [...manual, 'D1', 'D2'];
-    mocks.otherRuns = [{ id: 'd', kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['D1', 'D2', 'ABSENT'], B: ['D1'] }, searchHistory: ['D1', 'D2'] } }];
-    await register(['D1', 'D2', 'M0', 'I1', 'I2', 'I3', 'I4'].map((seiban) => block(seiban)));
-    expect(mocks.run.autoRegisteredSeibans.planningBoards).toEqual({ A: ['I1', 'I2', 'I3'], B: ['D2'] });
-    expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual([]);
-    expect(mocks.boards.A.seibanOrder).toHaveLength(90);
-    expect(mocks.boards.B.seibanOrder).toHaveLength(90);
-    expect(mocks.history).toHaveLength(91);
-    expect(mocks.run.warnings).toEqual([]);
-  });
-
   it('selects dated internal main/aliases in ascending date and block order, including past dates', async () => {
     mocks.run.kind = 'INTERNAL';
     const manual = Array.from({ length: 85 }, (_, i) => `M${i}`);
@@ -147,132 +130,10 @@ describe('D schedule automatic registration', () => {
       block('FUTURE', '2026-11-12'), block('SAME-1'), block('UNDATED', null, ['UNDATED-ALIAS']),
       block('PAST', '2026-10-01', ['PAST-ALIAS']), block('SAME-2'), block('MISSING', '2026-01-01'), block('FAR', '2027-01-01')
     ]);
-    const selected = ['PAST', 'PAST-ALIAS', 'SAME-1', 'SAME-2', 'FUTURE'];
+    const selected = ['PAST', 'PAST-ALIAS', 'SAME-1', 'SAME-2', 'FUTURE', 'FAR'];
     expect(mocks.history).toEqual([...manual, ...selected]);
     expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: selected, B: selected }, searchHistory: selected });
     expect(mocks.run.warnings).toEqual([{ code: 'NOT_IN_SCHEDULE', seiban: 'MISSING', cell: null, rawText: null }]);
-  });
-
-  it('removes internal entries that disappear, lose dates or fall outside next week slots while keeping manual and D entries', async () => {
-    mocks.run.kind = 'INTERNAL';
-    mocks.run.autoRegisteredSeibans.metrics = { seibansRead: 5, dateChanged: 0, unchanged: 0, registeredSeibans: [], unregisteredSeibans: [] };
-    const manual = Array.from({ length: 87 }, (_, i) => `M${i}`);
-    const old = ['ABSENT', 'UNDATED', 'LATE', 'KEEP'];
-    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...manual, 'D', ...old, 'SAVED'];
-    mocks.history = [...mocks.boards.A.seibanOrder];
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: old, B: old.filter((seiban) => seiban !== 'LATE') }, searchHistory: old } };
-    mocks.run.autoRegisteredSeibans.planningBoards = { A: ['SAVED'], B: ['SAVED'] };
-    mocks.run.autoRegisteredSeibans.searchHistory = ['SAVED'];
-    mocks.otherRuns = [{ id: 'd', kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['D'], B: ['D'] }, searchHistory: ['D'] } }];
-    await register([block('LATE', '2026-12-01'), block('UNDATED', null), block('KEEP'), block('NEW', '2026-10-01')]);
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'D', 'KEEP', 'NEW']);
-    expect(mocks.boards.B.seibanOrder).toEqual([...manual, 'D', 'LATE', 'NEW']);
-    expect(mocks.history).toEqual([...manual, 'D', 'KEEP', 'NEW']);
-    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: ['KEEP', 'NEW'], B: ['NEW'] }, searchHistory: ['KEEP', 'NEW'] });
-    expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: ['NEW'], unregisteredSeibans: ['ABSENT', 'UNDATED', 'LATE', 'SAVED', 'KEEP'] });
-  });
-
-  it('evicts only internal automatic entries farthest first when D company needs space and releases their ownership', async () => {
-    const manual = Array.from({ length: 96 }, (_, i) => `M${i}`);
-    const internal = ['NEAR', 'FAR', 'MIDDLE'];
-    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...manual, ...internal];
-    mocks.history = [...manual, 'EXTRA-MANUAL', ...internal];
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: [...internal], B: ['NEAR'] }, searchHistory: [...internal] } }];
-    mocks.minutes = internal.map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
-      partsCompleteDate: new Date(['2026-11-01Z', '2026-12-01Z', '2026-11-15Z'][i]!) }));
-    await register([block('D1'), block('D2')]);
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'NEAR', 'MIDDLE', 'D1', 'D2']);
-    expect(mocks.boards.B.seibanOrder).toEqual([...manual, 'FAR', 'MIDDLE', 'D1', 'D2']);
-    expect(mocks.history).toEqual([...manual, 'EXTRA-MANUAL', 'NEAR', 'D1', 'D2']);
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans).toEqual({ planningBoards: { A: ['NEAR', 'MIDDLE'], B: [] }, searchHistory: ['NEAR'] });
-    expect(prisma.productionScheduleDScheduleMinutesImportRun.update).toHaveBeenCalledWith({
-      where: { id: 'internal' }, data: { autoRegisteredSeibans: mocks.otherRuns[0]!.autoRegisteredSeibans }
-    });
-    expect(mocks.run.warnings).toEqual([]);
-
-    // A subsequent manual re-registration must no longer belong to the internal import.
-    mocks.boards.A.seibanOrder = mocks.boards.A.seibanOrder.filter((seiban) => seiban !== 'M0');
-    mocks.boards.A.seibanOrder.push('FAR');
-    mocks.history = mocks.history.filter((seiban) => seiban !== 'M0'); mocks.history.push('FAR');
-    mocks.previous = { autoRegisteredSeibans: structuredClone(mocks.otherRuns[0]!.autoRegisteredSeibans) };
-    mocks.otherRuns = [{ id: 'd', kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-08Z'), autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) }];
-    mocks.run = { ...mocks.run, kind: 'INTERNAL', status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
-    await register([block('FAR', null)]);
-    expect(mocks.boards.A.seibanOrder).toContain('FAR');
-    expect(mocks.history).toContain('FAR');
-    expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual([]);
-  });
-
-  it('recalculates internal slots on conflicts and keeps saved ownership through partial retries', async () => {
-    mocks.run.kind = 'INTERNAL';
-    const manual = Array.from({ length: 88 }, (_, i) => `M${i}`);
-    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...manual];
-    mocks.history = [...manual];
-    const writeBoard = mocks.writeBoard.getMockImplementation()!;
-    let failed = false;
-    mocks.writeBoard.mockImplementation((input: { siteKey: string; fseibans: string[] }) => {
-      if (input.siteKey === 'B' && !failed) { failed = true; throw new Error('unavailable'); }
-      return writeBoard(input);
-    });
-    mocks.writeBoard.mockImplementationOnce(() => { mocks.boards.A.seibanOrder.push('CONCURRENT'); throw new ApiError(409, 'conflict'); });
-    await expect(register([block('NEAR'), block('FAR', '2026-12-01')])).rejects.toThrow('unavailable');
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['NEAR']);
-    await register([block('NEAR'), block('FAR', '2026-12-01')]);
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'CONCURRENT', 'NEAR']);
-    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: ['NEAR'], B: ['NEAR', 'FAR'] }, searchHistory: ['NEAR', 'FAR'] });
-  });
-
-  it('reconciles inherited internal ownership on a new site and protects inherited D company entries', async () => {
-    mocks.run.kind = 'INTERNAL';
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: {}, searchHistory: ['OLD'] } };
-    mocks.otherRuns = [{ id: 'd', kind: 'D_COMPANY', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: {}, searchHistory: ['D'] } }];
-    mocks.history.push('OLD', 'D'); mocks.sites.push('NEW');
-    mocks.readBoard.mockImplementation((key: string) => {
-      mocks.boards[key] ??= { id: key, seibanOrder: [...mocks.history], version: 1 };
-      return mocks.boards[key];
-    });
-    await register([block('MAIN'), block('D')]);
-    expect(mocks.boards.NEW.seibanOrder).toEqual(['MANUAL-H', 'D', 'MAIN']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.NEW).toEqual(['MAIN']);
-  });
-
-  it('recomputes D company evictions after a conflict and saves internal ownership per completed destination', async () => {
-    const manual = Array.from({ length: 97 }, (_, i) => `M${i}`);
-    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...manual, 'NEAR', 'FAR'];
-    mocks.history = [...manual, 'NEAR', 'FAR'];
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['NEAR', 'FAR'], B: ['NEAR', 'FAR'] }, searchHistory: ['NEAR', 'FAR'] } }];
-    mocks.minutes = ['NEAR', 'FAR'].map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
-      partsCompleteDate: new Date(i ? '2026-12-01Z' : '2026-11-01Z') }));
-    const writeBoard = mocks.writeBoard.getMockImplementation()!;
-    let failed = false;
-    mocks.writeBoard.mockImplementation((input: { siteKey: string; fseibans: string[] }) => {
-      if (input.siteKey === 'B' && !failed) { failed = true; throw new Error('unavailable'); }
-      return writeBoard(input);
-    });
-    mocks.writeBoard.mockImplementationOnce(() => { mocks.boards.A.seibanOrder.push('CONCURRENT'); throw new ApiError(409, 'conflict'); });
-    await expect(register([block('D1'), block('D2')])).rejects.toThrow('unavailable');
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans).toEqual({ planningBoards: { A: [], B: ['NEAR', 'FAR'] }, searchHistory: ['NEAR', 'FAR'] });
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['D1', 'D2']);
-    await register([block('D1'), block('D2')]);
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'CONCURRENT', 'D1', 'D2']);
-    expect(mocks.boards.B.seibanOrder).toEqual([...manual, 'NEAR', 'D1', 'D2']);
-    expect(mocks.history).toEqual([...manual, 'NEAR', 'D1', 'D2']);
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans).toEqual({ planningBoards: { A: [], B: ['NEAR'] }, searchHistory: ['NEAR'] });
-  });
-
-  it('still warns for D company entries that cannot fit after exhausting internal ownership', async () => {
-    const manual = Array.from({ length: 99 }, (_, i) => `M${i}`);
-    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...manual, 'INTERNAL'];
-    mocks.history = [...manual, 'INTERNAL'];
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['INTERNAL'], B: ['INTERNAL'] }, searchHistory: ['INTERNAL'] } }];
-    await register([block('D1'), block('D2')]);
-    expect(mocks.history).toEqual([...manual, 'D1']);
-    expect(mocks.run.warnings).toEqual([{ code: 'REGISTRATION_LIMIT', seiban: 'D2', cell: null, rawText: null }]);
   });
 
   it('keeps D company ownership and ignores its newer run when importing internal products, then alternates back', async () => {
@@ -290,7 +151,7 @@ describe('D schedule automatic registration', () => {
     mocks.run = { ...mocks.run, kind: 'D_COMPANY', status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
     await register([block('D-NEXT')]);
     expect(mocks.history).toEqual(['MANUAL-H', 'INTERNAL', 'D-NEXT']);
-    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'D-ONLY', 'INTERNAL', 'D-NEXT']);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'INTERNAL', 'D-NEXT']);
   });
 
   it('applies a non-winner warning and finishes registration on every site and shared history', async () => {
@@ -356,7 +217,7 @@ describe('D schedule automatic registration', () => {
     });
     await expect(register([block('MAIN')])).rejects.toThrow('destination unavailable');
     expect(mocks.run.status).toBe('APPLIED');
-    expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: ['MAIN'], unregisteredSeibans: [] });
+    expect(mocks.run.autoRegisteredSeibans.metrics).toMatchObject({ registeredSeibans: ['MAIN'], unregisteredSeibans: ['STALE'] });
     await register([block('MAIN')]);
     expect(mocks.run.status).toBe('SUCCESS');
     expect(mocks.run.autoRegisteredSeibans.metrics).toEqual({ seibansRead: 1, dateChanged: 1, unchanged: 0, registeredSeibans: ['MAIN'], unregisteredSeibans: ['STALE'] });
@@ -371,93 +232,17 @@ describe('D schedule automatic registration', () => {
     expect(mocks.run.autoRegisteredSeibans).toEqual({ planningBoards: { A: ['MAIN', 'ALIAS'], B: ['MAIN', 'ALIAS'] }, searchHistory: ['MAIN', 'ALIAS'] });
   });
 
-  it('retains absent auto entries on planning boards while reconciling shared history', async () => {
+  it('removes absent auto entries from boards and history while retaining manual entries', async () => {
     mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['STALE', 'KEEP'], B: ['KEEP'] }, searchHistory: ['STALE', 'KEEP'] } };
     mocks.boards.A.seibanOrder.push('STALE', 'KEEP');
     mocks.boards.B.seibanOrder.push('STALE', 'KEEP'); // STALE was manual at B.
     mocks.history.push('STALE', 'KEEP');
     await register([block('KEEP')]);
-    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'STALE', 'KEEP']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['STALE', 'KEEP']);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'KEEP']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP']);
     expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'STALE', 'KEEP']);
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
-  });
-
-  it.each([1, 2, 3])('evicts only the %i oldest absent D company auto entries to make room', async (shortage) => {
-    const manual = Array.from({ length: 95 }, (_, i) => `M${i}`);
-    const absent = ['UNDATED', 'NEWER', 'TIE', 'OLDEST'];
-    const incoming = Array.from({ length: shortage }, (_, i) => `D${i}`);
-    const removed = ['OLDEST', 'NEWER', 'TIE'].slice(0, shortage);
-    const retained = absent.filter((seiban) => !removed.includes(seiban));
-    mocks.boards.A.seibanOrder = [...manual, ...absent, 'INTERNAL'];
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['UNDATED', 'NEWER', 'OLDEST'] }, searchHistory: [] } };
-    mocks.run.autoRegisteredSeibans.planningBoards.A = ['TIE'];
-    mocks.run.autoRegisteredSeibans.metrics = { seibansRead: shortage, dateChanged: shortage, unchanged: 0, registeredSeibans: [], unregisteredSeibans: [] };
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['INTERNAL'] }, searchHistory: [] } }];
-    mocks.minutes = absent.map((fseiban) => ({ fseiban, assigneesKnown: false, assignees: [],
-      partsCompleteDate: fseiban === 'UNDATED' ? null : new Date(fseiban === 'OLDEST' ? '2026-10-01Z' : '2026-11-01Z') }));
-
-    await register(incoming.map((seiban) => block(seiban)));
-
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, ...retained, 'INTERNAL', ...incoming]);
-    expect(mocks.boards.A.seibanOrder).toHaveLength(100);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual([...retained, ...incoming]);
-    expect(mocks.run.autoRegisteredSeibans.metrics.unregisteredSeibans).toEqual(absent.filter((seiban) => removed.includes(seiban)));
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual(['INTERNAL']);
-    expect(mocks.run.warnings).toEqual([]);
-    expect(prisma.productionScheduleDScheduleMinutes.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ fseiban: { in: expect.arrayContaining([...absent, ...incoming, 'INTERNAL']) } })
-    }));
-  });
-
-  it('exhausts absent D company entries before internal entries and warns when manual entries fill the remaining slots', async () => {
-    const manual = Array.from({ length: 97 }, (_, i) => `M${i}`);
-    mocks.boards.A.seibanOrder = [...manual, 'ABSENT', 'NEAR', 'FAR'];
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['ABSENT'] }, searchHistory: [] } };
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['NEAR', 'FAR'] }, searchHistory: [] } }];
-    mocks.minutes = ['NEAR', 'FAR'].map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
-      partsCompleteDate: new Date(i ? '2026-12-01Z' : '2026-11-01Z') }));
-
-    await register(['D1', 'D2', 'D3', 'D4'].map((seiban) => block(seiban)));
-
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'D1', 'D2', 'D3']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['D1', 'D2', 'D3']);
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual([]);
-    expect(mocks.run.warnings).toEqual([{ code: 'REGISTRATION_LIMIT', seiban: 'D4', cell: null, rawText: null }]);
-  });
-
-  it('releases an absent taken-over entry from the internal ownership when evicting it', async () => {
-    const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
-    mocks.boards.A.seibanOrder = [...manual, 'TAKEN', 'KEEP'];
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['TAKEN'] }, searchHistory: [] } };
-    mocks.otherRuns = [{ id: 'internal', kind: 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-07Z'),
-      autoRegisteredSeibans: { planningBoards: { A: ['TAKEN', 'KEEP'] }, searchHistory: [] } }];
-    mocks.minutes = [{ fseiban: 'TAKEN', assigneesKnown: false, assignees: [], partsCompleteDate: new Date('2026-10-01Z') }];
-
-    await register([block('KEEP'), block('D1')]);
-
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'KEEP', 'D1']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP', 'D1']);
-    expect(mocks.otherRuns[0]!.autoRegisteredSeibans.planningBoards.A).toEqual(['KEEP']);
-  });
-
-  it('recalculates absent D company evictions after a planning board conflict', async () => {
-    const manual = Array.from({ length: 98 }, (_, i) => `M${i}`);
-    mocks.boards.A.seibanOrder = [...manual, 'NEWER', 'OLDEST'];
-    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: ['NEWER', 'OLDEST'] }, searchHistory: [] } };
-    mocks.minutes = ['NEWER', 'OLDEST'].map((fseiban, i) => ({ fseiban, assigneesKnown: false, assignees: [],
-      partsCompleteDate: new Date(i ? '2026-10-01Z' : '2026-11-01Z') }));
-    mocks.writeBoard.mockImplementationOnce(() => { mocks.boards.A.seibanOrder.push('CONCURRENT'); throw new ApiError(409, 'conflict'); });
-
-    await register([block('D1')]);
-
-    expect(mocks.writeBoard.mock.calls[0]![0].fseibans).toEqual([...manual, 'NEWER', 'D1']);
-    expect(mocks.boards.A.seibanOrder).toEqual([...manual, 'CONCURRENT', 'D1']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.A).toEqual(['D1']);
-    expect(mocks.run.warnings).toEqual([]);
   });
 
   it.each(['BLOCK_SHAPE', 'DUPLICATE_SEIBAN', 'UNREADABLE_ALIAS', 'FORMULA_NO_RESULT'])('retains warning-only ownership for %s until truly absent without adding warning-only keys', async (code) => {
@@ -473,7 +258,7 @@ describe('D schedule automatic registration', () => {
     mocks.previous = { autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) };
     mocks.run = { ...mocks.run, status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
     await register([block('KEEP')]);
-    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).toContain('SKIPPED');
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).not.toContain('SKIPPED');
     expect(mocks.history).toEqual(['MANUAL-H', 'KEEP']);
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['KEEP']);
   });
@@ -486,8 +271,8 @@ describe('D schedule automatic registration', () => {
       return mocks.boards[key];
     });
     await register([block('MAIN')]);
-    expect(mocks.boards.NEW.seibanOrder).toEqual(['MANUAL-H', 'STALE', 'MAIN']);
-    expect(mocks.run.autoRegisteredSeibans.planningBoards.NEW).toEqual(['STALE', 'MAIN']);
+    expect(mocks.boards.NEW.seibanOrder).toEqual(['MANUAL-H', 'MAIN']);
+    expect(mocks.run.autoRegisteredSeibans.planningBoards.NEW).toEqual(['MAIN']);
   });
 
   it('is a no-op on replay, also across a new message with unchanged entries', async () => {
@@ -501,15 +286,6 @@ describe('D schedule automatic registration', () => {
     expect(mocks.run.autoRegisteredSeibans.searchHistory).toEqual(['MAIN']);
   });
 
-  it('uses nearest due first when the limit is reached and warns once per rejected seiban', async () => {
-    mocks.boards.A.seibanOrder = Array.from({ length: 99 }, (_, i) => `M${i}`);
-    mocks.boards.B.seibanOrder = [...mocks.boards.A.seibanOrder]; mocks.history = [...mocks.boards.A.seibanOrder];
-    await register([block('LATE', '2026-11-20'), block('NEAR', '2026-11-05')]);
-    expect(mocks.history).toHaveLength(100);
-    expect(mocks.history[99]).toBe('NEAR');
-    expect(mocks.run.warnings).toEqual([{ code: 'REGISTRATION_LIMIT', seiban: 'LATE', cell: null, rawText: null }]);
-  });
-
   it('re-reads and retries once on each destination conflict, preserving concurrent manual entries', async () => {
     mocks.writeBoard.mockImplementationOnce(() => { mocks.boards.A.seibanOrder.push('CONCURRENT-A'); throw new ApiError(409, 'conflict'); });
     mocks.writeHistory.mockImplementationOnce(() => { mocks.history.push('CONCURRENT-H'); throw new ApiError(409, 'conflict'); });
@@ -517,7 +293,7 @@ describe('D schedule automatic registration', () => {
     expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'CONCURRENT-A', 'MAIN']);
     expect(mocks.history).toEqual(['MANUAL-H', 'CONCURRENT-H', 'MAIN']);
     expect(mocks.readBoard).toHaveBeenCalledTimes(3);
-    expect(mocks.readHistory).toHaveBeenCalledTimes(2);
+    expect(mocks.readHistory).toHaveBeenCalledTimes(3);
   });
 
   it('propagates a second conflict without declaring success', async () => {
@@ -526,4 +302,73 @@ describe('D schedule automatic registration', () => {
     expect(mocks.writeBoard).toHaveBeenCalledTimes(2);
     expect(mocks.run.status).toBe('APPLIED');
   });
+  it.each([false, true])('registers 73 D company + 200 internal entries in either import order (empty=%s)', async (empty) => {
+    const d = Array.from({ length: 73 }, (_, i) => block(`D${i}`, new Date(Date.UTC(2026, 0, i * 2 + 1)).toISOString().slice(0, 10)));
+    const internal = Array.from({ length: 200 }, (_, i) => block(`I${i}`, new Date(Date.UTC(2026, 0, i * 2 + 2)).toISOString().slice(0, 10)));
+    const all = [...d, ...internal];
+    mocks.minutes = all.map((entry) => ({ fseiban: entry.seiban, partsCompleteDate: new Date(entry.partsCompleteDate!), assigneesKnown: false, assignees: [] }));
+    const results: { boards: Record<string, string[]>; history: string[] }[] = [];
+    for (const order of [['D_COMPANY', 'INTERNAL'], ['INTERNAL', 'D_COMPANY']]) {
+      for (const [key, board] of Object.entries(mocks.boards)) board.seibanOrder = empty ? [] : [`MANUAL-${key}`];
+      mocks.history = empty ? [] : ['MANUAL-H']; mocks.previous = null; mocks.otherRuns = [];
+      for (const kind of order) {
+        mocks.run = { ...mocks.run, kind, status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+        await register(kind === 'INTERNAL' ? internal : d);
+        mocks.otherRuns.push({ id: kind, kind, status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'), autoRegisteredSeibans: structuredClone(mocks.run.autoRegisteredSeibans) });
+        expect(mocks.run.warnings).toEqual([]);
+      }
+      expect(mocks.history).toHaveLength(273 + (empty ? 0 : 1));
+      for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).toHaveLength(273 + (empty ? 0 : 1));
+      results.push({ boards: Object.fromEntries(Object.entries(mocks.boards).map(([key, board]) => [key, board.seibanOrder])), history: mocks.history });
+    }
+    expect(results[0]).toEqual(results[1]);
+    expect(prisma.productionScheduleDScheduleMinutes.findMany).toHaveBeenCalledTimes(4);
+    expect(vi.mocked(prisma.productionScheduleDScheduleMinutes.findMany).mock.calls[1]![0]).toMatchObject({
+      where: { fseiban: { in: expect.arrayContaining(all.map((entry) => entry.seiban)) } }
+    });
+  });
+
+  it.each(['D_COMPANY', 'INTERNAL'])('inserts all eligible additions by date without moving existing entries: %s', async (kind) => {
+    mocks.run.kind = kind;
+    const current = ['MANUAL', 'LATER', 'EARLIER', 'NO-DATE'];
+    for (const board of Object.values(mocks.boards)) board.seibanOrder = [...current];
+    mocks.history = [...current];
+    const incoming = [block('MIDDLE', '2026-11-10'), block('FIRST', '2026-11-01'), block('UNDATED', null)];
+    mocks.minutes = [...incoming, block('LATER', '2026-11-20'), block('EARLIER', '2026-11-05')].map((entry) => ({
+      fseiban: entry.seiban, partsCompleteDate: entry.partsCompleteDate ? new Date(entry.partsCompleteDate) : null,
+      assigneesKnown: false, assignees: []
+    }));
+    await register(incoming);
+    const expected = ['MANUAL', 'FIRST', 'MIDDLE', 'LATER', 'EARLIER', 'NO-DATE', ...(kind === 'D_COMPANY' ? ['UNDATED'] : [])];
+    expect(mocks.history).toEqual(expected);
+    for (const board of Object.values(mocks.boards)) expect(board.seibanOrder).toEqual(expected);
+    expect(prisma.productionScheduleDScheduleMinutes.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['D_COMPANY', 'INTERNAL'])('releases only its ownership until both kinds drop a seiban: %s', async (kind) => {
+    const owned = { planningBoards: { A: ['SHARED', 'ABSENT', 'SAVED'], B: ['SHARED', 'ABSENT', 'SAVED'] }, searchHistory: ['SHARED', 'ABSENT', 'SAVED'] };
+    mocks.run.kind = kind;
+    mocks.previous = { autoRegisteredSeibans: { ...owned, planningBoards: { A: ['SHARED', 'ABSENT'], B: ['SHARED', 'ABSENT'] }, searchHistory: ['SHARED', 'ABSENT'] } };
+    mocks.run.autoRegisteredSeibans = { planningBoards: { A: ['SAVED'], B: ['SAVED'] }, searchHistory: ['SAVED'], metrics: undefined };
+    mocks.otherRuns = [{ id: 'other', kind: kind === 'INTERNAL' ? 'D_COMPANY' : 'INTERNAL', status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'),
+      autoRegisteredSeibans: { planningBoards: { A: ['SHARED'], B: ['SHARED'] }, searchHistory: ['SHARED'] } }];
+    for (const board of Object.values(mocks.boards)) board.seibanOrder.push('SHARED', 'ABSENT', 'SAVED');
+    mocks.history.push('SHARED', 'ABSENT', 'SAVED');
+    const otherBefore = structuredClone(mocks.otherRuns);
+    await register([]);
+    for (const board of Object.values(mocks.boards)) {
+      expect(board.seibanOrder).toContain('SHARED');
+      expect(board.seibanOrder).not.toContain('ABSENT'); expect(board.seibanOrder).not.toContain('SAVED');
+    }
+    expect(mocks.history).toEqual(['MANUAL-H', 'SHARED']);
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: [], B: [] }, searchHistory: [] });
+    expect(mocks.otherRuns).toEqual(otherBefore);
+    mocks.previous = { autoRegisteredSeibans: otherBefore[0]!.autoRegisteredSeibans };
+    mocks.otherRuns = [];
+    mocks.run = { ...mocks.run, kind: otherBefore[0]!.kind, status: 'APPLIED', autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
+    await register([]);
+    expect(mocks.history).toEqual(['MANUAL-H']);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A']); expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B']);
+  });
+
 });

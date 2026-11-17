@@ -6,7 +6,6 @@ import { getGrindingPlanningBoardResourceMinutes } from '../grinding-planning-bo
 import { acquireSessakuPieceLogicalLocks, encodeSessakuPieceKey, sessakuPieceKeyFromRow, sessakuPieceIdFromItemId, sessakuPieceItemIds, readSessakuPieceSets, type SessakuPieceLogicalKey } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardSeibanChecksRequest, GrindingPlanningBoardSeibanChecksResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardItem, GrindingPlanningBoardOverridesResponse, GrindingPlanningBoardRankResponse, GrindingPlanningBoardResourceOrderRequest, GrindingPlanningBoardResourceMoveRequest, GrindingPlanningBoardResourceOrderBulkRequest, GrindingPlanningBoardResourceOrderResponse } from '@raspi-system/shared-types';
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleGrindingResourceCd, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
@@ -560,9 +559,6 @@ export async function updateGrindingPlanningBoardSeibanChecks(params: GrindingPl
 
 export async function updateGrindingPlanningBoardSeibanOrder(params: { siteKey: string; sourceRevision: string; fseibans: string[]; newUncheckedFseibans?: readonly string[] }): Promise<{ sourceRevision: string; seibanOrder: string[]; uncheckedFseibans: string[] }> {
   const normalizedOrder = normalizeUniqueFseibans(params.fseibans);
-  if (normalizedOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
-    throw new ApiError(400, `登録できる製番は${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件までです`, undefined, 'SEIBAN_LIMIT_EXCEEDED');
-  }
   const nextOrder = normalizedOrder;
   const rows = await readWinnerRowsByFseibans(prisma, nextOrder);
   const known = new Set(rows.map((row) => valueAsString(asRowData(row.rowData), 'FSEIBAN')).filter(Boolean));
