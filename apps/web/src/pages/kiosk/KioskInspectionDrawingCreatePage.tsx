@@ -60,7 +60,6 @@ import {
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
-import { inspectionDrawingPointHasCalloutTip } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCalloutTip';
 import { InspectionDrawingCreateSidebar } from '../../features/part-measurement/inspection-drawing/InspectionDrawingCreateSidebar';
 import { InspectionDrawingProposalLegend } from '../../features/part-measurement/inspection-drawing/InspectionDrawingProposalPanel';
 import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
@@ -73,6 +72,7 @@ import {
   sortInspectionDrawingPointsByMarkerNo,
   swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
+import { useInspectionDrawingDimensionModeReset } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingDimensionModeReset';
 import { useInspectionDrawingPlacementProposals } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingPlacementProposals';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
@@ -91,6 +91,7 @@ import type {
   InspectionDrawingSourceTemplateDraft,
   InspectionDrawingVisualSource
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCreateDraft';
+import type { InspectionDrawingToolbarMode } from '../../features/part-measurement/inspection-drawing/InspectionDrawingCreateToolbar';
 import type { InspectionDrawingPoint } from '../../features/part-measurement/inspection-drawing/types';
 import type {
   PartMeasurementProcessGroup,
@@ -150,7 +151,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
   const [visualOcrLoading, setVisualOcrLoading] = useState(false);
   const [visualOcrError, setVisualOcrError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'place' | 'callout' | 'dimX' | 'dimY' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<InspectionDrawingToolbarMode>('place');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
@@ -194,11 +195,7 @@ export function KioskInspectionDrawingCreatePage() {
     () => points.find((p) => p.id === selectedPointId) ?? null,
     [points, selectedPointId]
   );
-  useEffect(() => {
-    if ((mode === 'dimX' || mode === 'dimY') && (!selectedPoint || !inspectionDrawingPointHasCalloutTip(selectedPoint))) {
-      setMode('place');
-    }
-  }, [mode, selectedPoint]);
+  useInspectionDrawingDimensionModeReset(mode, setMode, selectedPoint);
 
   const selectedPointOcrState = selectedPoint ? ocrCandidatesByPointId[selectedPoint.id] : undefined;
   const resourceNameMap = useMemo(
