@@ -343,3 +343,18 @@ describe('markerNumbering', () => {
     expect(resolveInspectionDrawingPointSaveError(pt)).toBe('基準値を入力してください');
   });
 });
+
+describe('dimension round trip', () => {
+  it('loads, saves and clears dimensions with the callout', () => {
+    const dims = [{ dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }];
+    const item = { id: 'dim', sortOrder: 0, datumSurface: 'A', measurementPoint: '幅', measurementLabel: '幅',
+      unit: 'mm', allowNegative: true, decimalPlaces: 3, nominalValue: '10', lowerLimit: '9', upperLimit: '11',
+      calloutTipXRatio: '0.8', calloutTipYRatio: '0.4', calloutDims: dims };
+    const loaded = templateItemToDrawingPoint(item);
+    expect(loaded.calloutDims).toEqual(dims);
+    expect(drawingPointToTemplateItemInput(loaded, 0).calloutDims).toEqual(dims);
+    expect(templateItemToDrawingPoint({ ...item, calloutDims: null }).calloutDims).toEqual([]);
+    expect(templateItemToDrawingPoint({ ...item, calloutTipXRatio: null }).calloutDims).toEqual([]);
+    expect(drawingPointToTemplateItemInput({ ...loaded, calloutTipYRatio: null }, 0).calloutDims).toEqual([]);
+  });
+});

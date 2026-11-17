@@ -13,11 +13,12 @@ import type { InspectionDrawingToolbarMode } from './InspectionDrawingCreateTool
 
 export type InspectionDrawingPlaceCalloutMode = Extract<
   InspectionDrawingToolbarMode,
-  'place' | 'callout'
+  'place' | 'callout' | 'dimX' | 'dimY'
 >;
 
 export type InspectionDrawingCalloutStatusProps = {
   hasCallout: boolean;
+  dims?: { dir: 'x' | 'y' }[];
   onClear: () => void;
   disabled?: boolean;
 };
@@ -48,6 +49,8 @@ export function InspectionDrawingPlaceCalloutModeRow({
   const calloutDisabled = !hasDrawingImage || !hasMeasurementPoints;
   const placeActive = mode === 'place';
   const calloutActive = mode === 'callout';
+  const dimActive = mode === 'dimX' || mode === 'dimY';
+  const dirs = (calloutStatus?.dims ?? []).map((dim) => dim.dir.toUpperCase()).sort().join('');
 
   return (
     <div
@@ -76,11 +79,33 @@ export function InspectionDrawingPlaceCalloutModeRow({
       >
         矢視
       </Button>
+      <Button
+        type="button"
+        variant="primary"
+        aria-pressed={dimActive}
+        className={toggleClass(dimActive)}
+        disabled={calloutDisabled || !calloutStatus?.hasCallout || calloutStatus.disabled}
+        onClick={() => onModeChange('dimX')}
+      >
+        寸法
+      </Button>
       {calloutStatus ? (
         <>
-          <span className="min-w-0 flex-1 truncate text-[0.7rem] font-extrabold text-amber-100">
-            {calloutStatus.hasCallout ? '矢視 あり' : '矢視 なし'}
-          </span>
+          {dimActive ? (
+            <span className="flex flex-1 shrink-0 items-center gap-1">
+              {(['dimX', 'dimY'] as const).map((dir) => (
+                <button key={dir} type="button" aria-pressed={mode === dir}
+                  className={clsx('min-h-[26px] min-w-[26px] rounded px-1 text-[0.78rem] font-extrabold leading-none',
+                    mode === dir ? 'bg-cyan-300 text-cyan-950' : 'border border-white/20 bg-slate-950 text-white/60')}
+                  disabled={calloutStatus.disabled || !calloutStatus.hasCallout}
+                  onClick={() => onModeChange(dir)}>{dir === 'dimX' ? 'X' : 'Y'}</button>
+              ))}
+            </span>
+          ) : (
+            <span className="flex-1 shrink-0 whitespace-nowrap text-[0.7rem] font-extrabold text-amber-100">
+              {calloutStatus.hasCallout ? (dirs ? `矢視・寸法${dirs}` : '矢視 あり') : '矢視 なし'}
+            </span>
+          )}
           <button
             type="button"
             disabled={calloutStatus.disabled || !calloutStatus.hasCallout}

@@ -18,6 +18,13 @@ export type PartMeasurementResolvedCandidate = {
   machineName: string | null;
 };
 
+export type InspectionDrawingCalloutDim = {
+  dir: 'x' | 'y';
+  baseXRatio: number;
+  baseYRatio: number;
+  offsetRatio: number;
+};
+
 export type PartMeasurementTemplateItemDto = {
   id: string;
   sortOrder: number;
@@ -35,6 +42,7 @@ export type PartMeasurementTemplateItemDto = {
   /** 指差し先端: 0–1（任意。null=なし） */
   calloutTipXRatio?: string | null;
   calloutTipYRatio?: string | null;
+  calloutDims?: InspectionDrawingCalloutDim[] | null;
   nominalValue: string | null;
   lowerLimit: string | null;
   upperLimit: string | null;

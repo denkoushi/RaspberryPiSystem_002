@@ -1,3 +1,6 @@
+import type { InspectionDrawingCalloutDim } from '../types';
+export type { InspectionDrawingCalloutDim } from '../types';
+
 export type InspectionPointStatus = 'empty' | 'ok' | 'ng';
 
 export type InspectionDrawingDepthMode = 'measured' | 'through';
@@ -22,6 +25,7 @@ export type InspectionDrawingPoint = {
   /** 指差し先端（任意。両方揃ったときのみ描画） */
   calloutTipXRatio?: number | null;
   calloutTipYRatio?: number | null;
+  calloutDims?: InspectionDrawingCalloutDim[];
   nominalRaw: string;
   upperToleranceRaw: string;
   lowerToleranceRaw: string;

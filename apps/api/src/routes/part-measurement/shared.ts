@@ -88,6 +88,15 @@ export const patchSheetBodySchema = z.object({
     .optional()
 });
 
+export const calloutDimsSchema = z.array(z.object({
+  dir: z.enum(['x', 'y']),
+  baseXRatio: z.number().min(0).max(1),
+  baseYRatio: z.number().min(0).max(1),
+  offsetRatio: z.number().finite().transform((value) => Math.min(1, Math.max(0, value)))
+})).max(2).refine((dims) => new Set(dims.map((dim) => dim.dir)).size === dims.length, {
+  message: 'Duplicate dimension direction'
+}).optional().nullable();
+
 export const templateItemSchema = z.object({
   sortOrder: z.number().int().min(0).max(999),
   datumSurface: z.string().min(1).max(500),
@@ -101,6 +110,7 @@ export const templateItemSchema = z.object({
   markerYRatio: z.number().min(0).max(1).optional().nullable(),
   calloutTipXRatio: z.number().min(0).max(1).optional().nullable(),
   calloutTipYRatio: z.number().min(0).max(1).optional().nullable(),
+  calloutDims: calloutDimsSchema,
   nominalValue: z.number().optional().nullable(),
   lowerLimit: z.number().optional().nullable(),
   upperLimit: z.number().optional().nullable(),
@@ -613,6 +623,7 @@ export function serializeTemplateItem(item: {
   markerYRatio?: unknown;
   calloutTipXRatio?: unknown;
   calloutTipYRatio?: unknown;
+  calloutDims?: unknown;
   nominalValue?: unknown;
   lowerLimit?: unknown;
   upperLimit?: unknown;
@@ -634,6 +645,7 @@ export function serializeTemplateItem(item: {
     markerYRatio: decimalToString(item.markerYRatio),
     calloutTipXRatio: decimalToString(item.calloutTipXRatio),
     calloutTipYRatio: decimalToString(item.calloutTipYRatio),
+    calloutDims: item.calloutTipXRatio != null && item.calloutTipYRatio != null ? item.calloutDims ?? null : null,
     nominalValue: decimalToString(item.nominalValue),
     lowerLimit: decimalToString(item.lowerLimit),
     upperLimit: decimalToString(item.upperLimit),

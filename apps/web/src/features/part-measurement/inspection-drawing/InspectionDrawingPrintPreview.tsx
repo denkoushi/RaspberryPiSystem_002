@@ -11,6 +11,7 @@ import {
   INSPECTION_DRAWING_PRINT_RECORD_TABLE_COLUMN_WIDTHS_MM,
   getInspectionDrawingPrintRecordTableWidthMm
 } from './inspectionDrawingPrintConstants';
+import { InspectionDrawingPrintDimensionLayer } from './InspectionDrawingPrintDimensionLayer';
 import {
   buildInspectionDrawingPrintRecordPageQrPayload,
   formatInspectionDrawingPrintTolerance,
@@ -330,8 +331,7 @@ function DrawingPage({
       style={{ padding: `${INSPECTION_DRAWING_PRINT_DRAWING_PAGE_PADDING_MM}mm` }}
     >
       <SheetHeader
-        title="検査図面 位置確認"
-        pageLabel={`1/${viewModel.totalPages}`}
+        title="検査図面 位置確認" pageLabel={`1/${viewModel.totalPages}`}
         metadata={viewModel.metadata}
       />
       <main
@@ -340,6 +340,8 @@ function DrawingPage({
         style={{ height: `${INSPECTION_DRAWING_PRINT_DRAWING_AREA_HEIGHT_MM}mm` }}
       >
         <img src={imageUrl} alt="" className="h-full w-full object-contain" />
+        <InspectionDrawingPrintDimensionLayer points={viewModel.points} width={containerWidth} height={containerHeight}
+          imageNaturalWidth={imageNaturalWidth} imageNaturalHeight={imageNaturalHeight} />
         {calloutLines.length > 0 ? (
           <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden="true">
             {calloutLines.map((line) => (

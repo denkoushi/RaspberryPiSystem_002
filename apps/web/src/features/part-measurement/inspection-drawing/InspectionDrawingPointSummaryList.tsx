@@ -124,7 +124,9 @@ export function InspectionDrawingPointSummaryList({
                       No.{pt.markerNo}
                     </span>
                     <span className="ml-1 font-semibold">{displayName}</span>
-                    {inspectionDrawingPointHasCalloutTip(pt) ? (
+                    {inspectionDrawingPointHasCalloutTip(pt) && pt.calloutDims?.length ? (
+                      <span className="ml-1 align-middle text-[0.62rem] font-extrabold text-amber-300">寸{pt.calloutDims.map((dim) => dim.dir.toUpperCase()).sort().join('')}</span>
+                    ) : inspectionDrawingPointHasCalloutTip(pt) ? (
                       <span className="ml-1 align-middle text-[0.62rem] font-extrabold text-amber-300">指</span>
                     ) : null}
                   </span>

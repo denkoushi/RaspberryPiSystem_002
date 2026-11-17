@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { execFile } from 'child_process';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -4788,6 +4789,21 @@ describe('part-measurement templates API', () => {
     expect(decorations[0]?.selfInspectionEntryPath).toBeNull();
   });
 
+  it.each(['empty', 'missing-tip'] as const)('stores dimension %s as SQL NULL', async (kind) => {
+    const response = await app.inject({
+      method: 'POST', url: '/api/part-measurement/templates', headers: createAuthHeader(adminToken),
+      payload: { fhincd: `DIM-NULL-${kind}-${Date.now()}`, processGroup: 'cutting', resourceCd: 'RES-DIM', name: 'dims',
+        items: [{ sortOrder: 0, datumSurface: 'A', measurementPoint: '幅', measurementLabel: '幅',
+          calloutTipXRatio: kind === 'empty' ? 0.8 : null, calloutTipYRatio: 0.4,
+          calloutDims: kind === 'empty' ? [] : [{ dir: 'x', baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }] }] }
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().template.items[0].calloutDims).toBeNull();
+    expect(await prisma.partMeasurementTemplateItem.count({ where: {
+      templateId: response.json().template.id, calloutDims: { equals: Prisma.DbNull }
+    } })).toBe(1);
+  });
+
   it('clone-for-schedule-key creates template for target resource so sheets need no allowAlternateResourceTemplate', async () => {
     const fhincd = `CLONE-${Date.now()}`;
     const tOther = await app.inject({
@@ -4799,11 +4815,16 @@ describe('part-measurement templates API', () => {
         processGroup: 'cutting',
         resourceCd: 'RES-SOURCE',
         name: 'source',
-        items: [{ sortOrder: 0, datumSurface: 'd1', measurementPoint: 'p1', measurementLabel: 'l1' }]
+        items: [{ sortOrder: 0, datumSurface: 'd1', measurementPoint: 'p1', measurementLabel: 'l1',
+          calloutTipXRatio: 0.8, calloutTipYRatio: 0.4,
+          calloutDims: [{ dir: 'x', baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }] }]
       }
     });
     expect(tOther.statusCode).toBe(200);
     const sourceId = tOther.json().template.id as string;
+    const dims = [{ dir: 'x', baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }];
+    expect(tOther.json().template.items[0].calloutDims).toEqual(dims);
+    expect((await prisma.partMeasurementTemplateItem.findFirstOrThrow({ where: { templateId: sourceId } })).calloutDims).toEqual(dims);
 
     const cloneRes = await app.inject({
       method: 'POST',
@@ -4833,6 +4854,7 @@ describe('part-measurement templates API', () => {
     expect(body.template.items).toHaveLength(1);
     expect(body.template.items[0].measurementLabel).toBe('l1');
     expect(body.didClone).toBe(true);
+    expect(cloneRes.json().template.items[0].calloutDims).toEqual(dims);
 
     const pn = `PN-CLONE-${Date.now()}`;
     const sheetRes = await app.inject({

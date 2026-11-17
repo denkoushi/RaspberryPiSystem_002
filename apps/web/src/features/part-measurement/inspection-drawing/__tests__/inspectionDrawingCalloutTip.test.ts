@@ -23,7 +23,8 @@ describe('inspectionDrawingCalloutTip', () => {
     });
     expect(clearInspectionDrawingCalloutTip()).toEqual({
       calloutTipXRatio: null,
-      calloutTipYRatio: null
+      calloutTipYRatio: null,
+      calloutDims: []
     });
   });
 });

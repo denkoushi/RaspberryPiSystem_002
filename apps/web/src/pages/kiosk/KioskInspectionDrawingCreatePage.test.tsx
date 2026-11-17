@@ -75,10 +75,13 @@ vi.mock('../../features/part-measurement/usePartMeasurementDrawingBlobUrl', () =
 // Exercise the page's add-point callback without jsdom image geometry/pointer capture.
 // The sidebar, metadata, validation and payload mapping remain real components/code.
 vi.mock('../../features/part-measurement/inspection-drawing/InspectionDrawingCanvas', () => ({
-  InspectionDrawingCanvas: ({ onAddPoint }: ComponentProps<typeof InspectionDrawingCanvas>) => (
+  InspectionDrawingCanvas: ({ onAddPoint, onSetCalloutTip }: ComponentProps<typeof InspectionDrawingCanvas>) => (
+    <>
     <button type="button" disabled={!onAddPoint} onClick={() => onAddPoint?.(0.25, 0.5)}>
       テスト用の測定点配置
     </button>
+    <button type="button" onClick={() => onSetCalloutTip?.(0.8, 0.7)}>テスト用の矢視配置</button>
+    </>
   )
 }));
 
@@ -162,6 +165,7 @@ const expectedItem = {
   markerYRatio: 0.5,
   calloutTipXRatio: null,
   calloutTipYRatio: null,
+  calloutDims: [],
   nominalValue: 10,
   lowerLimit: 9.9,
   upperLimit: 10.1,
@@ -293,6 +297,18 @@ describe('KioskInspectionDrawingCreatePage', () => {
     expect(screen.getByRole('textbox', { name: '下限公差' })).toHaveValue('-0.1');
     expect(screen.getByRole('button', { name: '保存' })).toBeDisabled();
     expect(screen.getByText('保存済み')).toBeVisible();
+  });
+
+  it('returns to marker placement when the callout is deleted in dimension mode', async () => {
+    await renderPage(editPath);
+    fireEvent.click(screen.getByRole('button', { name: '矢視', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'テスト用の矢視配置' }));
+    fireEvent.click(screen.getByRole('button', { name: '寸法' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Y', exact: true }));
+    expect(screen.getByRole('button', { name: '寸法' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(screen.getByTestId('inspection-drawing-place-callout-mode-row')).getByRole('button', { name: '削除' }));
+    expect(screen.getByRole('button', { name: '丸数字', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: '寸法' })).toBeDisabled();
   });
 
   it('loads sourceTemplateId as a new draft with an automatic name and a same-key save block', async () => {

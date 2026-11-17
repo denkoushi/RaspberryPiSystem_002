@@ -60,6 +60,7 @@ import {
   templateToCreateDraft,
   useInspectionDrawingUnsavedChangesGuard
 } from '../../features/part-measurement/inspection-drawing';
+import { inspectionDrawingPointHasCalloutTip } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCalloutTip';
 import { InspectionDrawingCreateSidebar } from '../../features/part-measurement/inspection-drawing/InspectionDrawingCreateSidebar';
 import { InspectionDrawingProposalLegend } from '../../features/part-measurement/inspection-drawing/InspectionDrawingProposalPanel';
 import { InspectionDrawingResourceCdMultiSelect } from '../../features/part-measurement/inspection-drawing/InspectionDrawingResourceCdMultiSelect';
@@ -149,7 +150,7 @@ export function KioskInspectionDrawingCreatePage() {
   const [visualOcrStatus, setVisualOcrStatus] = useState<PartMeasurementDrawingOcrStatusDto | null>(null);
   const [visualOcrLoading, setVisualOcrLoading] = useState(false);
   const [visualOcrError, setVisualOcrError] = useState<string | null>(null);
-  const [mode, setMode] = useState<'place' | 'callout' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<'place' | 'callout' | 'dimX' | 'dimY' | 'test' | 'guidedTrial'>('place');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [template, setTemplate] = useState<PartMeasurementTemplateDto | null>(null);
@@ -193,6 +194,12 @@ export function KioskInspectionDrawingCreatePage() {
     () => points.find((p) => p.id === selectedPointId) ?? null,
     [points, selectedPointId]
   );
+  useEffect(() => {
+    if ((mode === 'dimX' || mode === 'dimY') && (!selectedPoint || !inspectionDrawingPointHasCalloutTip(selectedPoint))) {
+      setMode('place');
+    }
+  }, [mode, selectedPoint]);
+
   const selectedPointOcrState = selectedPoint ? ocrCandidatesByPointId[selectedPoint.id] : undefined;
   const resourceNameMap = useMemo(
     () => resourcesQuery.data?.resourceNameMap ?? {},
@@ -1406,6 +1413,10 @@ export function KioskInspectionDrawingCreatePage() {
                     }
               }
               onPointChange={contentReadOnly ? undefined : handlePointChange}
+              onCalloutDimsChange={contentReadOnly ? undefined : (id, dims) => {
+                updatePoint(id, { calloutDims: dims });
+                if (mode === 'dimX' || mode === 'dimY') setMode('place');
+              }}
               onSetCalloutTip={
                 contentReadOnly || mode !== 'callout' || !selectedPointId
                   ? undefined

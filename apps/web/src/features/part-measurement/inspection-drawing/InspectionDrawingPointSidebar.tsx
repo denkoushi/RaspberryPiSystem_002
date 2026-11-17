@@ -67,8 +67,8 @@ export function InspectionDrawingPointSidebar({
   onApplyOcrCandidate,
   measurementLabelSettings
 }: Props) {
-  const showHistoryPlaceHint = contentReadOnly && (mode === 'place' || mode === 'callout') && !selectedPoint;
-  const showPlaceCalloutChrome = mode === 'place' || mode === 'callout';
+  const showHistoryPlaceHint = contentReadOnly && (mode === 'place' || mode === 'callout' || mode === 'dimX' || mode === 'dimY') && !selectedPoint;
+  const showPlaceCalloutChrome = mode === 'place' || mode === 'callout' || mode === 'dimX' || mode === 'dimY';
   const showSettings = showPlaceCalloutChrome && selectedPoint;
 
   const modeRow = showPlaceCalloutChrome ? (
@@ -81,6 +81,7 @@ export function InspectionDrawingPointSidebar({
         selectedPoint
           ? {
               hasCallout: inspectionDrawingPointHasCalloutTip(selectedPoint),
+              dims: selectedPoint.calloutDims,
               disabled: contentReadOnly,
               onClear: () => onPointChange(clearInspectionDrawingCalloutTip())
             }

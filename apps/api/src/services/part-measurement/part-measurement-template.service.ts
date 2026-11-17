@@ -45,6 +45,7 @@ export type TemplateItemInput = {
   markerYRatio?: number | null;
   calloutTipXRatio?: number | null;
   calloutTipYRatio?: number | null;
+  calloutDims?: { dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }[] | null;
   nominalValue?: number | null;
   lowerLimit?: number | null;
   upperLimit?: number | null;
@@ -208,6 +209,7 @@ function copyTemplateItemsFromDb(
     markerYRatio?: unknown;
     calloutTipXRatio?: unknown;
     calloutTipYRatio?: unknown;
+    calloutDims?: unknown;
     nominalValue?: unknown;
     lowerLimit?: unknown;
     upperLimit?: unknown;
@@ -228,6 +230,7 @@ function copyTemplateItemsFromDb(
     markerYRatio: item.markerYRatio != null ? Number(item.markerYRatio) : null,
     calloutTipXRatio: item.calloutTipXRatio != null ? Number(item.calloutTipXRatio) : null,
     calloutTipYRatio: item.calloutTipYRatio != null ? Number(item.calloutTipYRatio) : null,
+    calloutDims: item.calloutDims as TemplateItemInput['calloutDims'],
     nominalValue: item.nominalValue != null ? Number(item.nominalValue) : null,
     lowerLimit: item.lowerLimit != null ? Number(item.lowerLimit) : null,
     upperLimit: item.upperLimit != null ? Number(item.upperLimit) : null,
@@ -321,6 +324,14 @@ async function insertNextTemplateVersionInTransaction(
             markerYRatio: yRatio != null ? optionalDecimal(yRatio) : null,
             calloutTipXRatio: tipXRatio != null ? optionalDecimal(tipXRatio) : null,
             calloutTipYRatio: tipYRatio != null ? optionalDecimal(tipYRatio) : null,
+            calloutDims: tipXRatio != null && tipYRatio != null && item.calloutDims?.length
+              ? item.calloutDims.map((dim) => ({
+                  dir: dim.dir,
+                  baseXRatio: clampRatio(dim.baseXRatio) ?? 0,
+                  baseYRatio: clampRatio(dim.baseYRatio) ?? 0,
+                  offsetRatio: clampRatio(dim.offsetRatio) ?? 0
+                }))
+              : Prisma.DbNull,
             nominalValue: optionalDecimal(item.nominalValue),
             lowerLimit: optionalDecimal(item.lowerLimit),
             upperLimit: optionalDecimal(item.upperLimit),

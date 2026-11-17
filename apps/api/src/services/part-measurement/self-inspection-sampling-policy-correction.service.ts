@@ -43,6 +43,7 @@ type TemplateItemSnapshot = {
   markerYRatio: string | null;
   calloutTipXRatio: string | null;
   calloutTipYRatio: string | null;
+  calloutDims: unknown;
   nominalValue: string | null;
   lowerLimit: string | null;
   upperLimit: string | null;
@@ -121,6 +122,7 @@ function templateItemSnapshots(
     markerYRatio: unknown;
     calloutTipXRatio: unknown;
     calloutTipYRatio: unknown;
+    calloutDims: unknown;
     nominalValue: unknown;
     lowerLimit: unknown;
     upperLimit: unknown;
@@ -142,6 +144,7 @@ function templateItemSnapshots(
       markerYRatio: decimalString(item.markerYRatio),
       calloutTipXRatio: decimalString(item.calloutTipXRatio),
       calloutTipYRatio: decimalString(item.calloutTipYRatio),
+      calloutDims: item.calloutDims,
       nominalValue: decimalString(item.nominalValue),
       lowerLimit: decimalString(item.lowerLimit),
       upperLimit: decimalString(item.upperLimit),

@@ -1,23 +1,23 @@
 {
   "artifacts": {
-    "manual.html": "483afe5d5d7669b7e20f4f65e215427f3235ff8bec83fea60e1f2a3d9af52dac",
-    "screens/edit-advanced-point.png": "31f77f4aa79b30d4f430265c1b8ab177db14d1ba719d3406ca0c777f9f0c2bf2",
-    "screens/edit-basics.png": "38c2df5c9a2035e73ab4ab4b87588682bc668b6c3491b5cee82302de92e7ba07",
-    "screens/edit-group-history.png": "1482ad889ff77980c6765574a3225fa29e0056d5d0d5dd2e77aa35d294047586",
-    "screens/edit-point-management.png": "38c2df5c9a2035e73ab4ab4b87588682bc668b6c3491b5cee82302de92e7ba07",
-    "screens/edit-required-point.png": "38c2df5c9a2035e73ab4ab4b87588682bc668b6c3491b5cee82302de92e7ba07",
-    "screens/edit-trial-report.png": "38c2df5c9a2035e73ab4ab4b87588682bc668b6c3491b5cee82302de92e7ba07",
-    "screens/edit-visual-source.png": "a4a226603a4b9de19b24947cb9409ee38816e1afc2aa979a88ad8b4f6058d4ca",
+    "manual.html": "14cf2d004ade0f017dfd5e6a09057acf757ce5b71dce2b7af8f7715ef7256d2c",
+    "screens/edit-advanced-point.png": "d5904d953bd64f213b95986081414365de9e40b313f34be265a843fab7e6bb1e",
+    "screens/edit-basics.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
+    "screens/edit-group-history.png": "81381c79b5ea4197576d02423211fcc86f325c3a5d69a45d61d60fe3bf29e9b1",
+    "screens/edit-point-management.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
+    "screens/edit-required-point.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
+    "screens/edit-trial-report.png": "1878d090371064da78960a58ec2ce2d76a8b2e6432f960c8fe22652a3b3be239",
+    "screens/edit-visual-source.png": "498cfdfb6946b0e262699455eec45d12bab798c5bcfa670c2c70886644637478",
     "screens/library-entry-search.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-template-management.png": "d4adc7eceb70e8b05030b9bb7701bb4762b3cb915cb1930aa09dcf58f2eafcdb",
     "screens/library-visual-management.png": "6958815d3b2dc2ee4f0e1cc89aea1edaae514145e0a1a31ef5c0b6dc1519fac3",
-    "sheets/edit-advanced-point.png": "b7c2f5238a1631a31112db6e809ffe4b8c2e15108b6fb732418956cc3052b3d5",
-    "sheets/edit-basics.png": "0a61d6504cb46b4ea8060165e99d7f38b276bc52c718833815c87d3b235cc08e",
-    "sheets/edit-group-history.png": "2814dc7f83a4b29463e03add1a3898dfc922012175c66a9991da6816ce35bcc9",
-    "sheets/edit-point-management.png": "a6f1eb0d15d28907cbb7328c10d11b4581290f5aa47cfbac415a635ed3866217",
-    "sheets/edit-required-point.png": "469e695a23b1c556cd0744848ac8f3e30c2d34fb422a35086596f26bf7d2240b",
-    "sheets/edit-trial-report.png": "c873169e82e1661fc23e98c87b43cc406a91cf1cb7549a340d897ffadb9688f5",
-    "sheets/edit-visual-source.png": "636c8a715bc5c081dd5ad3bb842bea9b113d040526cfe1c5ed8d935a92e78d45",
+    "sheets/edit-advanced-point.png": "499e036f4b69108a55f4dbbd1e25ab1d84a37058e9bd3b0fde9a6f42b959c652",
+    "sheets/edit-basics.png": "eea57f46856a452b9ce236e3fe2cca385f1083d7e6c67c7b1778f8da74bf3f47",
+    "sheets/edit-group-history.png": "25976556d3d7745b04cf1e428aaf68f87cff1ad0520d6fb0cc238b287c0ca5a3",
+    "sheets/edit-point-management.png": "4dee589a4945845aa8094fbbcd26f284b42230d3c7b294279777b2e423fe2510",
+    "sheets/edit-required-point.png": "5d2a79e05f383d7bc011a070473c22c2c5e212ea2d17622d32ffb0dc802f0f06",
+    "sheets/edit-trial-report.png": "564d4deb3e120336de61499baa98a2e8e94d2f00b16948f0e784adf2df6968ce",
+    "sheets/edit-visual-source.png": "74e0c9d2169e600f2a2002a51066592d731ebc04d51cfabb3c7233443d0fa946",
     "sheets/library-entry-search.png": "0bc14a0e2043de54fc60b0a54a52c7364dc1f42061160baa1d9687cce7397b3c",
     "sheets/library-template-management.png": "e03b9c9225b3e1f2517fb7663311e6f66bc81600e9dfd26fa93e9c1edbbbdfb3",
     "sheets/library-visual-management.png": "2ad9375d1528361903d060c694f35c495b9bfd69247cc04ff9622be8d2d92fce"
@@ -37,7 +37,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.4305555555555556
+          "y": 0.4351851851851852
         },
         "targetId": "depth-mode"
       },
@@ -51,7 +51,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5188982928240741
+          "y": 0.5235279224537037
         },
         "targetId": "face-thread"
       },
@@ -65,7 +65,7 @@
         },
         "target": {
           "x": 0.9765523274739584,
-          "y": 0.5188982928240741
+          "y": 0.5235279224537037
         },
         "targetId": "direct-label"
       },
@@ -79,7 +79,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6168619791666666
+          "y": 0.6214916087962963
         },
         "targetId": "ocr-candidate"
       }
@@ -225,7 +225,7 @@
         },
         "target": {
           "x": 0.8551737467447916,
-          "y": 0.32060185185185186
+          "y": 0.3229166666666667
         },
         "targetId": "add-point"
       },
@@ -239,7 +239,7 @@
         },
         "target": {
           "x": 0.880584716796875,
-          "y": 0.32060185185185186
+          "y": 0.3229166666666667
         },
         "targetId": "place-callout"
       },
@@ -267,7 +267,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.6986219618055556
+          "y": 0.7032515914351852
         },
         "targetId": "delete-one-point"
       },
@@ -281,7 +281,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6986219618055556
+          "y": 0.7032515914351852
         },
         "targetId": "delete-all-points"
       }
@@ -297,7 +297,7 @@
         },
         "target": {
           "x": 0.97265625,
-          "y": 0.79931640625
+          "y": 0.8039460358796297
         },
         "targetId": "select-point"
       },
@@ -311,7 +311,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.38425925925925924
+          "y": 0.3888888888888889
         },
         "targetId": "measurement-name"
       },
@@ -325,7 +325,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.5288990162037037
+          "y": 0.5335286458333334
         },
         "targetId": "nominal-value"
       },
@@ -339,7 +339,7 @@
         },
         "target": {
           "x": 0.896484375,
-          "y": 0.6638997395833334
+          "y": 0.6685293692129629
         },
         "targetId": "upper-tolerance"
       },
@@ -353,7 +353,7 @@
         },
         "target": {
           "x": 0.9765625,
-          "y": 0.6638997395833334
+          "y": 0.6685293692129629
         },
         "targetId": "lower-tolerance"
       }
@@ -663,7 +663,7 @@
       }
     ]
   },
-  "htmlSha256": "483afe5d5d7669b7e20f4f65e215427f3235ff8bec83fea60e1f2a3d9af52dac",
+  "htmlSha256": "14cf2d004ade0f017dfd5e6a09057acf757ce5b71dce2b7af8f7715ef7256d2c",
   "schemaVersion": 1,
-  "sourceSha256": "625475fd94621ea139a5d2677cbab41ceda5ade964d94500622d1baaac4a5080"
+  "sourceSha256": "1b32e959b0357ec4e80dd3cbd92d985cad53e9401b8e25cf4bc5f4731fd02889"
 }
