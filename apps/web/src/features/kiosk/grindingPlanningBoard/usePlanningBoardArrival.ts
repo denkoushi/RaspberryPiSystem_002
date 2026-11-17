@@ -7,7 +7,7 @@ import { useFrozenValue, usePlanningBoardOffline } from './offline/planningBoard
 
 import type { GrindingPlanningBoardFirstProcessState, GrindingPlanningBoardItem, GrindingPlanningBoardResponse } from '@raspi-system/shared-types';
 
-export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | undefined, nowMs: number, dueSource?: 'excel' | 'scaw') {
+export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | undefined, _nowMs: number, dueSource?: 'excel' | 'scaw') {
   const { gate, snapshot, enabled, refreshRead } = usePlanningBoardOffline();
   useLayoutEffect(() => { if (enabled && snapshot.phase === 'online') { setOverlay(new Map()); setFirstProcessOverlay(new Map()); } }, [enabled, snapshot.phase]);
   const { arrivalFilterEnabled, toggleArrivalFilter } = usePersistedArrivalFilter('kiosk-planning-board-arrival-filter');
@@ -16,7 +16,6 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
   const [firstProcessOverlay, setFirstProcessOverlay] = useState<ReadonlyMap<string, { siteKey: string; state: GrindingPlanningBoardFirstProcessState }>>(new Map());
   const pending = useRef(false);
   const [overlay, setOverlay] = useState<ReadonlyMap<string, { siteKey: string; date: string }>>(new Map());
-  const arrivalDate = new Date(nowMs + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const siteKey = data?.siteKey;
   const applyArrival = useCallback((item: GrindingPlanningBoardItem): GrindingPlanningBoardItem => {
     if (item.isFirstProcess) {
@@ -26,16 +25,16 @@ export function usePlanningBoardArrival(data: GrindingPlanningBoardResponse | un
           ...(firstProcess.state ? { arrived: firstProcess.state === 'arrived' } : {}) } : item;
     }
     const arrival = overlay.get(item.itemId);
-    return arrival && arrival.siteKey === siteKey && arrival.date === arrivalDate
+    return arrival && arrival.siteKey === siteKey
       ? { ...item, arrived: true, manualArrivalDate: arrival.date } : item;
-  }, [overlay, firstProcessOverlay, siteKey, arrivalDate]);
+  }, [overlay, firstProcessOverlay, siteKey]);
   useEffect(() => {
     setOverlay((previous) => {
       const next = new Map([...previous].filter(([id, entry]) => entry.siteKey === data?.siteKey &&
-        entry.date === arrivalDate && !data?.items.some((item) => item.itemId === id && item.manualArrivalDate === entry.date)));
+        !data?.items.some((item) => item.itemId === id && item.manualArrivalDate != null)));
       return next.size === previous.size ? previous : next;
     });
-  }, [data, arrivalDate]);
+  }, [data]);
   useEffect(() => {
     setFirstProcessOverlay((previous) => {
       // The mutation invalidates the board, so the next response for the item is authoritative.

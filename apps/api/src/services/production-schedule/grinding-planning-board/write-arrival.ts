@@ -28,17 +28,24 @@ export async function updateGrindingPlanningBoardArrival(params: GrindingPlannin
     const item = current.byItemId.get(params.itemId)!;
     assertItemRevision(params.itemRevision, item, params.overrideVersion);
     if (item.isCompleted) throw new ApiError(409, '完了済みの工程は変更できません', undefined, 'COMPLETED_ITEM');
-    const arrivalDate = planningBoardArrivalDate();
+    let arrivalDate: string | null = null;
     const key = { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      itemKey: item.parentItemId ?? item.itemId, arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`) };
+      itemKey: item.parentItemId ?? item.itemId };
     if (params.recorded) {
-      await client.productionScheduleGrindingPlanningBoardArrival.upsert({
-        where: { csvDashboardId_siteKey_arrivalDate_itemKey: key }, create: key, update: {}
+      const existing = await client.productionScheduleGrindingPlanningBoardArrival.findFirst({
+        where: key, orderBy: { arrivalDate: 'desc' }, select: { arrivalDate: true }
       });
+      arrivalDate = existing?.arrivalDate.toISOString().slice(0, 10) ?? planningBoardArrivalDate();
+      if (!existing) {
+        const datedKey = { ...key, arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`) };
+        await client.productionScheduleGrindingPlanningBoardArrival.upsert({
+          where: { csvDashboardId_siteKey_arrivalDate_itemKey: datedKey }, create: datedKey, update: {}
+        });
+      }
     } else {
       await client.productionScheduleGrindingPlanningBoardArrival.deleteMany({ where: key });
     }
-    return { itemId: params.itemId, manualArrivalDate: params.recorded ? arrivalDate : null };
+    return { itemId: params.itemId, manualArrivalDate: arrivalDate };
   }, { timeout: 30000, maxWait: 15000 });
 }
 
