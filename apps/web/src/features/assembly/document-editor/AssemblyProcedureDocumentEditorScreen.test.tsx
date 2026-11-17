@@ -376,6 +376,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
   it('keeps the title fallback in the empty details column', () => {
     renderScreen(makeController({ document: { ...editorDocument, name: null } }));
     const details = screen.getByTestId('assembly-document-editor-details');
+    expect(details).toHaveClass('max-[1099px]:hidden');
     expect(details).toHaveTextContent(/^手順書$/);
     expect(within(details).queryByTestId('editor-inspector')).not.toBeInTheDocument();
   });
@@ -421,7 +422,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(screen.getByRole('listbox', { name: 'このページの部品' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '部品を閉じる' }));
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
-    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('grid-cols-[120px_0_minmax(0,1fr)_400px_64px]');
+    expect(screen.getByTestId('assembly-document-editor-layout')).toHaveClass('grid-cols-[120px_0_minmax(0,1fr)_var(--details-width)_64px]');
     expect(localStorage.getItem('assembly-document-editor-parts-pane')).toBe('closed');
     view.unmount();
     renderScreen(makeController());
@@ -515,7 +516,10 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const { unmount } = renderScreen(makeController({ selectedElement: element }));
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).toHaveClass('p-2');
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).not.toHaveClass('pr-[372px]');
-    expect(within(screen.getByTestId('assembly-document-editor-details')).getByTestId('editor-inspector')).toBeInTheDocument();
+    const details = screen.getByTestId('assembly-document-editor-details');
+    expect(details).toHaveClass('max-[1099px]:absolute', 'max-[1099px]:col-auto', 'max-[1099px]:right-20', 'max-[1099px]:w-[340px]', 'max-[1099px]:max-w-[calc(100%-480px)]');
+    expect(details).not.toHaveClass('max-[1099px]:hidden');
+    expect(within(details).getByTestId('editor-inspector')).toBeInTheDocument();
     unmount();
     renderScreen(makeController({ selectedElement: null }));
     expect(screen.getByRole('region', { name: '手順書キャンバス' })).not.toHaveClass('pr-[372px]');
@@ -687,7 +691,9 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     renderScreen(makeController());
     const layout = screen.getByTestId('assembly-document-editor-layout');
     expect(layout).toHaveClass(
-      'grid-cols-[120px_280px_minmax(0,1fr)_400px_64px]',
+      'grid-cols-[120px_280px_minmax(0,1fr)_var(--details-width)_64px]',
+      '[--details-width:min(400px,26vw)]',
+      'max-[1099px]:[--details-width:0px]',
       'overflow-hidden'
     );
     expect(screen.getByTestId('editor-canvas')).toBeVisible();

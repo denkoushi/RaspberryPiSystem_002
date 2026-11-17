@@ -196,9 +196,9 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   }
 
   return (
-    <main className={`relative grid min-h-0 flex-1 ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_400px_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_400px_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
+    <main className={`relative grid min-h-0 flex-1 [--details-width:min(400px,26vw)] max-[1099px]:[--details-width:0px] ${partsPaneOpen ? 'grid-cols-[120px_280px_minmax(0,1fr)_var(--details-width)_64px]' : 'grid-cols-[120px_0_minmax(0,1fr)_var(--details-width)_64px]'} overflow-hidden bg-[#0a0d10] text-[#eef3f6]`} data-testid="assembly-document-editor-layout">
       {controller.document?.status === 'draft' && (!controller.editLeaseMine || controller.editLeaseUnavailable) ? (
-        <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-616px)] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
+        <div className="absolute bottom-16 left-[136px] z-50 flex max-w-[calc(100%-216px-var(--details-width))] flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/30 bg-[#161c22] px-3 py-2" role="status">
           <p className="text-sm font-semibold text-amber-100">
             {controller.editLeaseUnavailable
               ? '編集の予約を取れていません(他端末と同時編集に注意)'
@@ -292,7 +292,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             </div>
           ) : null}
         </section>
-        <aside className="col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22]" data-testid="assembly-document-editor-details">
+        <aside className={`col-start-4 flex min-h-0 min-w-0 flex-col border-l border-[#27313b] bg-[#161c22] max-[1099px]:absolute max-[1099px]:col-auto max-[1099px]:right-20 max-[1099px]:top-4 max-[1099px]:bottom-4 max-[1099px]:z-50 max-[1099px]:w-[340px] max-[1099px]:rounded-[14px] max-[1099px]:border max-[1099px]:bg-[#161c22f5] ${partsPaneOpen ? 'max-[1099px]:max-w-[calc(100%-480px)]' : 'max-[1099px]:max-w-[calc(100%-200px)]'} ${controller.selectedElement ? '' : 'max-[1099px]:hidden'}`} data-testid="assembly-document-editor-details">
           <div className="flex shrink-0 flex-col items-start gap-2 border-b border-[#27313b] px-[14px] py-[10px] text-[17px] text-[#9fadb9]">
             <b className="w-full whitespace-normal break-words text-[#eef3f6]">{context ? [context.modelCode, context.processName, controller.document?.name ?? '要領書'].filter(Boolean).join(' › ') : controller.document?.name ?? '手順書'}</b>
             {context ? <span className={`inline-flex h-[26px] shrink-0 items-center rounded-full border px-2.5 text-[15px] font-bold ${context.mode === 'make' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>
