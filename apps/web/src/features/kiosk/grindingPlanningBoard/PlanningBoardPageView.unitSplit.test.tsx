@@ -16,7 +16,7 @@ it.each(['cutting', 'grinding', 'all'] as const)('allows only nonexcluded cuttin
   const props = {
     data: { siteKey: 'test', resources: ['021', '022', '305', '306', '307'], resourceCategories: { '307': 'grinding' } },
     ganttEnabled: true, category, resourcesQuery: { data: { resourceNameMap: {}, resourceItems: [{ resourceCd: '306', excluded: true }, { resourceCd: '305', excluded: false }] } },
-    gantt: { changeUnitSplit }, writeQueue: { pending: false }
+    gantt: { changeUnitSplit, singleResourceLanes: [] }, ganttLayout: { groups: [] }, writeQueue: { pending: false }
   } as unknown as ComponentProps<typeof PlanningBoardPageView>;
   render(<PlanningBoardPageView {...props} />);
   const display = mocks.display.mock.lastCall![0] as PlanningBoardGanttProps;
@@ -24,4 +24,16 @@ it.each(['cutting', 'grinding', 'all'] as const)('allows only nonexcluded cuttin
   // 305 is a grinding resource in shared-types; 307 is marked grinding by the board.
   for (const resource of ['305', '306', '307', '未設定']) expect(display.unitSplitAvailable?.(resource)).toBe(false);
   for (const resource of ['021', '022', '023']) expect(display.unitSplitAvailable?.(resource)).toBe(category === 'cutting');
+});
+
+it('passes only visible grinding lanes in board order to test insertion', () => {
+  const props = {
+    data: { siteKey: 'test', resources: ['021', '305', '307'], resourceCategories: { '307': 'grinding' } },
+    ganttEnabled: true, category: 'all', resourcesQuery: {},
+    gantt: { singleResourceLanes: ['021', '305', '307'] },
+    ganttLayout: { groups: [{ resource: '307' }, { resource: '021' }, { resource: '305' }, { resource: '未設定' }] },
+    writeQueue: { pending: false }
+  } as unknown as ComponentProps<typeof PlanningBoardPageView>;
+  render(<PlanningBoardPageView {...props} />);
+  expect(mocks.display.mock.lastCall![0]).toEqual(expect.objectContaining({ testBarResources: ['307', '305'] }));
 });

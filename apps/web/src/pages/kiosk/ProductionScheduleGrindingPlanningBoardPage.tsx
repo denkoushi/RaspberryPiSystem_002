@@ -677,7 +677,7 @@ export function PlanningBoardPage() {
         colorBySeiban={colorBySeiban} onToggleColorBySeiban={() => setColorBySeiban((enabled) => !enabled)}
         onOrderScan={handleOrderScan} focusedSeiban={focusedSeiban} onClearSeibanFocus={() => setFocusedSeiban(null)}
         ganttEnabled={ganttEnabled}
-        singleResourceCd={gantt.singleResourceCd} singleResourceLanes={gantt.singleResourceLanes}
+        singleResourceCd={gantt.singleResourceCd} singleResourceLanes={gantt.singleResourceLanes} onTestBarAdd={category === 'grinding' && gantt.testBarControls ? gantt.openTestBarDialog : undefined} testBarDisabled={!gantt.testBarControls || gantt.testBarControls.disabled || writeBlocked}
         singleResourceNameMap={resourcesQuery.data?.resourceNameMap ?? {}}
         singleResourcePickerAnchor={gantt.singleResourcePickerAnchor} onOpenSingleResourcePicker={gantt.openSingleResourcePicker}
         onCloseSingleResourcePicker={gantt.closeSingleResourcePicker}

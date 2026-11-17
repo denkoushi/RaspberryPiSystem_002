@@ -1,4 +1,5 @@
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
+import { createRef } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { productionFixture } from './__perf__/fixture';
@@ -11,9 +12,11 @@ import { PlanningBoardSingleResourceHead } from './gantt/PlanningBoardSingleReso
 import { mergeVisibleResourceOrder } from './mergeVisibleResourceOrder';
 import { PlanningBoardTestBarDialog } from './PlanningBoardTestBarDialog';
 import { PlanningBoardTestBarStrip } from './PlanningBoardTestBarStrip';
+import { PlanningBoardToolbar } from './PlanningBoardToolbar';
 import { usePlanningBoardTestBars } from './usePlanningBoardTestBars';
 import { usePlanningBoardWriteQueue } from './usePlanningBoardWriteQueue';
 
+import type { PlanningBoardGanttHandle } from './gantt/planningBoardGanttViewTypes';
 import type { PlanningBoardTestBarControls } from './usePlanningBoardTestBars';
 import type { PlanningBoardWrite } from './usePlanningBoardWriteQueue';
 import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
@@ -51,6 +54,34 @@ function ganttProps(mode: 'forward' | 'backward' = 'forward', singleResourceCd: 
 afterEach(() => { api.candidatesLoading = false; vi.clearAllMocks(); Reflect.deleteProperty(document, 'elementsFromPoint'); });
 
 describe('テスト加工の画面', () => {
+  it.each(['test', 'item', 'anchor', 'none'] as const)('opens all-machine insertion from the toolbar using the %s selection', async (selection) => {
+    const ref = createRef<PlanningBoardGanttHandle>();
+    const create = vi.fn(async () => true);
+    const f = fixture();
+    const selected = selection === 'test' ? testBar({ resourceCd: '301' }) : f.items[0]!;
+    const expectedResource = selection === 'test' || selection === 'none' ? '301' : '300';
+    render(<>
+      <PlanningBoardToolbar category="grinding" view="resource" status="incomplete" allocation="alternate" selectedCount={0} registeredCount={0}
+        onOpenDrawer={vi.fn()} onCategoryChange={vi.fn()} onViewChange={vi.fn()} onStatusChange={vi.fn()} onAllocationChange={vi.fn()} onOpenDueEditor={vi.fn()}
+        ganttEnabled onToggleGantt={vi.fn()} onSingleResourceChange={vi.fn()} onTestBarAdd={() => ref.current?.openTestBarDialog?.()} />
+      <PlanningBoardGanttDisplay {...ganttProps('forward', null)} ref={ref} testBarResources={['301', '300', '302']}
+        selectedItemIds={new Set(selection === 'item' ? [selected.itemId] : [])}
+        testBarControls={controls({ create, selectedBar: selection === 'test' ? testBar({ resourceCd: '301' }) : null })} />
+    </>);
+    if (selection === 'anchor') fireEvent.click(screen.getAllByTestId(`planning-gantt-bar-${selected.itemId}`)[0]!);
+    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    const machines = screen.getByRole('group', { name: '機械' });
+    expect(within(machines).getAllByRole('button').map((button) => button.textContent)).toEqual(['301', '300', '302']);
+    expect(within(machines).getByRole('button', { name: expectedResource })).toHaveAttribute('aria-pressed', 'true');
+    expect(machines).toHaveClass('flex-wrap');
+    expect(machines.compareDocumentPosition(screen.getByRole('textbox', { name: '部品検索' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith(expectedResource, 30, selection === 'none' ? undefined : selected, null));
+    fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
+    fireEvent.click(within(screen.getByRole('group', { name: '機械' })).getByRole('button', { name: '302' }));
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(create).toHaveBeenLastCalledWith('302', 30, undefined, null));
+  });
   it('places the purple ＋ at the right end of the single-resource heading with its aria name', () => {
     render(<PlanningBoardGanttDisplay {...ganttProps()} />);
     const head = screen.getByTestId('planning-single-resource-head'); const plus = within(head).getByRole('button', { name: '棒を差し込む' });
@@ -87,7 +118,7 @@ describe('テスト加工の画面', () => {
     fireEvent.change(input, { target: { value: '5.5' } }); expect(screen.getByRole('button', { name: '差し込む' })).toBeDisabled();
     expect(screen.queryByRole('group', { name: '機械' })).not.toBeInTheDocument();
   });
-  it('only shows machine switching for two machines and inserts on the chosen one', async () => {
+  it('shows machine switching for multiple machines and inserts on the chosen one', async () => {
     const insert = vi.fn(async () => true), close = vi.fn();
     render(<PlanningBoardTestBarDialog sequence={5} resources={['300', '301']} initialResource="301" onInsert={insert} onClose={close} />);
     expect(screen.getByRole('button', { name: '301' })).toHaveAttribute('aria-pressed', 'true');

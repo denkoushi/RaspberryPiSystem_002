@@ -106,10 +106,14 @@ export function PlanningBoardPageView({
     onCapacityChange: gantt.changeCapacity,
     onBreaksChange: gantt.changeBreaks
   }), [dailyHoursByResource, runsThroughBreaks, gantt.capacityPending, gantt.capacityError, gantt.changeCapacity, gantt.changeBreaks]);
+  const laneResources = ganttLayout.groups.some((group) => group.resource)
+    ? ganttLayout.groups.flatMap((group) => group.resource ? [group.resource] : []) : gantt.singleResourceLanes;
+  const testBarResources = laneResources.filter((resource) => resource !== '未設定'
+    && (category === 'grinding' || data?.resourceCategories?.[resource] === 'grinding' || isProductionScheduleGrindingResourceCd(resource)));
   const content = (
     <>
       {data && ganttEnabled ? (
-        <PlanningBoardGanttDisplay fillHeightEligible={category === 'grinding'} chainItems={chainItems ?? data.items} onChainPartChange={onChainPartChange} chainAllocation={allocation} testBarControls={gantt.testBarControls ? { ...gantt.testBarControls, disabled: gantt.testBarControls.disabled || writeBlocked } : undefined} testBarCreationEnabled={allocation === 'alternate'} capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} minutes={{ resourceMinutesItems: gantt.resourceMinutesItems, resourceMinutes: gantt.resourceMinutes, minutesPending: gantt.minutesPending, minutesError: gantt.minutesError, onMinutesSourceChange: gantt.changeMinutesSource }}
+        <PlanningBoardGanttDisplay fillHeightEligible={category === 'grinding'} chainItems={chainItems ?? data.items} onChainPartChange={onChainPartChange} chainAllocation={allocation} testBarControls={gantt.testBarControls ? { ...gantt.testBarControls, disabled: gantt.testBarControls.disabled || writeBlocked } : undefined} testBarResources={testBarResources} testBarCreationEnabled={allocation === 'alternate'} capacityLoaded={gantt.capacityLoaded} machineSelectionLocked={Boolean(orderPreview)} resourceLanes={gantt.singleResourceLanes} unitSplitEnabledByResource={gantt.unitSplitEnabledByResource} minutes={{ resourceMinutesItems: gantt.resourceMinutesItems, resourceMinutes: gantt.resourceMinutes, minutesPending: gantt.minutesPending, minutesError: gantt.minutesError, onMinutesSourceChange: gantt.changeMinutesSource }}
           onUnitSplitChange={gantt.changeUnitSplit} unitSplitAvailable={unitSplitAvailable}
           valueSheetResource={gantt.valueSheetResource} valueSheetOpen={gantt.valueSheetOpen} onToggleValueSheet={gantt.toggleValueSheet} focusedSeiban={focusedSeiban} onFocusedSeibanChange={setFocusedSeiban} colorBySeiban={colorBySeiban} seibanOrder={registeredFseibans} ref={gantt.viewRef} layout={ganttLayout} scale={gantt.scale} homeKey={gantt.homeKey}
           singleResourceCd={gantt.singleResourceCd} onSingleResourceChange={gantt.changeSingleResource} onOpenSingleResourcePicker={gantt.openSingleResourcePicker} singleResourcePickerOpen={Boolean(gantt.singleResourcePickerAnchor)}

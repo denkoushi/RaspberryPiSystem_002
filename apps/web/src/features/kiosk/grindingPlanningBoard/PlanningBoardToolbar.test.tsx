@@ -14,6 +14,24 @@ const props = (): PlanningBoardToolbarProps => ({
   onOpenDrawer: vi.fn(), onCategoryChange: vi.fn(), onViewChange: vi.fn(), onStatusChange: vi.fn(), onAllocationChange: vi.fn(), onOpenDueEditor: vi.fn()
 });
 describe('PlanningBoardToolbar forward controls', () => {
+  it('places the all-machine insertion button immediately after 1台 and honors write blocking', () => {
+    const onTestBarAdd = vi.fn();
+    const values = { ...props(), onSingleResourceChange: vi.fn(), onTestBarAdd };
+    const { rerender } = render(<PlanningBoardToolbar {...values} />);
+    const plus = screen.getByRole('button', { name: '棒を差し込む' });
+    expect(plus.previousElementSibling).toBe(screen.getByRole('button', { name: '1台', exact: true }));
+    expect(plus).toHaveClass('h-[46px]', 'w-[46px]', 'text-violet-300');
+    fireEvent.click(plus); expect(onTestBarAdd).toHaveBeenCalledOnce();
+    rerender(<PlanningBoardToolbar {...values} testBarDisabled />);
+    expect(plus).toBeDisabled(); fireEvent.click(plus); expect(onTestBarAdd).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { singleResourceCd: '300' }, { singleResourceCd: '300+301' },
+    { ganttEnabled: false }, { ganttMode: 'backward' as const }, { allocation: 'original' as const }
+  ])('hides toolbar insertion for %j', (changes) => {
+    render(<PlanningBoardToolbar {...props()} onTestBarAdd={vi.fn()} {...changes} />);
+    expect(screen.queryByRole('button', { name: '棒を差し込む' })).not.toBeInTheDocument();
+  });
   it.each([false, true])('places SCAW after the Gantt group, toggles and hides it during comparison (gantt=%s)', (ganttEnabled) => {
     const onToggleScawMode = vi.fn();
     const values = { ...props(), ganttEnabled, onToggleScawMode };

@@ -27,7 +27,7 @@ import type { GrindingPlanningBoardBar } from '@raspi-system/shared-types';
 
 const EMPTY_SEIBAN_ORDER: readonly string[] = [];
 
-type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null };
+type Props = PlanningBoardGanttProps & { valueSheetResource?: string | null; testBarResources?: readonly string[] };
 
 const TwoMachineGantt = forwardRef<PlanningBoardGanttHandle, Props>(function TwoMachineGantt(props, ref) {
   const candidates = props.resourceLanes ?? props.layout.groups.map(group => group.resource!).filter(Boolean);
@@ -265,18 +265,25 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
   const testAnchor = useRef<GrindingPlanningBoardBar | null>(null);
   const onTestBarAnchorChange = useCallback((item: GrindingPlanningBoardBar | null) => { testAnchor.current = item; }, []);
   const openTestDialog = () => {
-    const shown = pair ?? (props.singleResourceCd ? [props.singleResourceCd] : []);
-    if (!shown.length || !props.testBarControls || props.testBarControls.disabled) return;
+    const shown = pair ?? (props.singleResourceCd ? [props.singleResourceCd] : [...(props.testBarResources ?? [])]);
+    if (!props.testBarCreationEnabled || props.layout.mode !== 'forward' || !shown.length || !props.testBarControls || props.testBarControls.disabled) return;
     const selected = props.testBarControls.selectedBar ?? testAnchor.current ?? props.layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))
       .find((bar) => props.selectedItemIds.has(bar.item.itemId))?.item;
     const resource = selected?.kind === 'test' ? selected.resourceCd : selected?.effectiveResourceCd ?? selected?.originalResourceCd;
     setTestDialog({ resources: shown, after: selected?.isCompleted ? undefined : selected, initial: resource && shown.includes(resource) ? resource : shown[0]! });
   };
+  const viewRef = useRef<PlanningBoardGanttHandle>(null);
+  useImperativeHandle(ref, () => ({
+    scrollToItem: (itemId) => viewRef.current?.scrollToItem(itemId) ?? false,
+    scrollToNextLate: () => viewRef.current?.scrollToNextLate(),
+    scrollToNextOverlap: () => viewRef.current?.scrollToNextOverlap(),
+    openTestBarDialog: openTestDialog
+  }));
   const shared = { ...props, onTestBarAnchorChange, onTestBarAdd: props.testBarCreationEnabled && props.layout.mode === 'forward' ? openTestDialog : undefined, machineModeButtonRef, machineMode: pair ? 2 as const : 1 as const, machineSelectionLabel: pair ? `${pair[0]}+${pair[1]}` : undefined, twoMachineDisabled: !pair && !canPair, onMachineModeChange };
   return <> {pair
-    ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
-    : <PlanningBoardGanttView {...shared} ref={ref} />}
+    ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={viewRef} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
+    : <PlanningBoardGanttView {...shared} ref={viewRef} />}
     {testDialog && props.testBarControls && <PlanningBoardTestBarDialog sequence={props.testBarControls.nextSequence} resources={testDialog.resources} initialResource={testDialog.initial}
-      onClose={() => setTestDialog(null)} onInsert={(resource, minutes, partName) => props.testBarControls!.create(resource, minutes, testDialog.after, partName)} />}
+      onClose={() => setTestDialog(null)} onInsert={(resource, minutes, partName) => props.testBarControls!.create(resource, minutes, testDialog.after && (testDialog.after.kind === 'test' ? testDialog.after.resourceCd : testDialog.after.effectiveResourceCd ?? testDialog.after.originalResourceCd) === resource ? testDialog.after : undefined, partName)} />}
   </>;
 });
