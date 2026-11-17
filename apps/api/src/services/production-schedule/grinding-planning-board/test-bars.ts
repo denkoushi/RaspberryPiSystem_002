@@ -25,16 +25,24 @@ export async function getPlanningTestBarPartCandidates(params: { siteKey: string
   const policy = await getResourceCategoryPolicy({ siteKey: params.siteKey });
   const master = await readMasterResourceCds(prisma);
   if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
-  const rows = await prisma.$queryRaw<Array<{ partName: string }>>(Prisma.sql`
-    SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
-    FROM "CsvDashboardRow"
-    WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
-      AND "rowData"->>'FSEIBAN' = '********'
-      AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
-      AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''
-    ORDER BY "partName"
+  const parts = await prisma.$queryRaw<GrindingPlanningBoardTestBarPartCandidatesResponse['parts']>(Prisma.sql`
+    WITH machine_stock AS (
+      SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND "rowData"->>'FSEIBAN' = '********'
+        AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+    ), parts AS (
+      SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
+      FROM "CsvDashboardRow"
+      WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
+        AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''
+    )
+    SELECT parts."partName", (machine_stock."partName" IS NOT NULL) AS "machineStock"
+    FROM parts LEFT JOIN machine_stock USING ("partName")
+    ORDER BY "machineStock" DESC, parts."partName"
   `);
-  return { partNames: rows.map((row) => row.partName) };
+  return { parts };
 }
 export async function readPlanningTestBars(client: DbClient, siteKey: string) {
   const rows = await client.productionScheduleGrindingPlanningBoardTestBar.findMany({

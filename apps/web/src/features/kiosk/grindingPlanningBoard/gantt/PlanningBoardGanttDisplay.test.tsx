@@ -17,7 +17,7 @@ import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
-vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts', () => ({ usePlanningBoardTestBarPartCandidates: () => ({ data: { partNames: [] } }) }));
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts', () => ({ usePlanningBoardTestBarPartCandidates: () => ({ data: { parts: [] } }) }));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const capacityState = vi.hoisted(() => ({
   data: undefined as undefined | { dailyHoursByResource: Record<string, 8>; unitSplitEnabledByResource?: Record<string, boolean> }
