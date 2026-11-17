@@ -72,7 +72,10 @@ import {
   sortInspectionDrawingPointsByMarkerNo,
   swapInspectionDrawingMarkerNo
 } from '../../features/part-measurement/inspection-drawing/markerNumbering';
-import { useInspectionDrawingDimensionModeReset } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingDimensionModeReset';
+import {
+  createInspectionDrawingCalloutDimsChangeHandler,
+  useInspectionDrawingDimensionModeReset
+} from '../../features/part-measurement/inspection-drawing/useInspectionDrawingDimensionModeReset';
 import { useInspectionDrawingPlacementProposals } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingPlacementProposals';
 import { partMeasurementDrawingPreviewConvertingLabel } from '../../features/part-measurement/partMeasurementDrawingLocalPreview';
 import {
@@ -1410,10 +1413,9 @@ export function KioskInspectionDrawingCreatePage() {
                     }
               }
               onPointChange={contentReadOnly ? undefined : handlePointChange}
-              onCalloutDimsChange={contentReadOnly ? undefined : (id, dims) => {
-                updatePoint(id, { calloutDims: dims });
-                if (mode === 'dimX' || mode === 'dimY') setMode('place');
-              }}
+              onCalloutDimsChange={
+                contentReadOnly ? undefined : createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)
+              }
               onSetCalloutTip={
                 contentReadOnly || mode !== 'callout' || !selectedPointId
                   ? undefined

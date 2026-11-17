@@ -20,7 +20,10 @@ import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
   INSPECTION_DRAWING_PREVIEW_POINTS
 } from '../../features/part-measurement/inspection-drawing/inspectionDrawingPreviewFixtures';
-import { useInspectionDrawingDimensionModeReset } from '../../features/part-measurement/inspection-drawing/useInspectionDrawingDimensionModeReset';
+import {
+  createInspectionDrawingCalloutDimsChangeHandler,
+  useInspectionDrawingDimensionModeReset
+} from '../../features/part-measurement/inspection-drawing/useInspectionDrawingDimensionModeReset';
 
 import {
   getInspectionDrawingCreatePreviewScenarioConfig,
@@ -155,10 +158,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             onAddPoint={() => undefined}
             onPointChange={(id, patch) => updatePoint(id, patch)}
             onSetCalloutTip={mode === 'callout' && selectedPointId ? (x, y) => updatePoint(selectedPointId, { calloutTipXRatio: x, calloutTipYRatio: y }) : undefined}
-            onCalloutDimsChange={(id, dims) => {
-              updatePoint(id, { calloutDims: dims });
-              if (mode === 'dimX' || mode === 'dimY') setMode('place');
-            }}
+            onCalloutDimsChange={createInspectionDrawingCalloutDimsChangeHandler(mode, setMode, updatePoint)}
           />
         </div>
 
