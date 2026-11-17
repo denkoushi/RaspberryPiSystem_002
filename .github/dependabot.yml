@@ -11,6 +11,11 @@ updates:
     groups:
       pnpm-workspace:
         patterns: ["*"]
+    ignore:
+      # @a2ui/web_core is patched to import zod/v3 because the workspace overrides zod to v4.
+      # The patch in pnpm-workspace.yaml is tied to an exact version, so any a2ui bump breaks
+      # the whole group update. Bump @a2ui/* by hand together with a regenerated patch.
+      - dependency-name: "@a2ui/*"
 
   - package-ecosystem: github-actions
     directory: /
