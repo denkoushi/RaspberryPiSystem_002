@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   publishDocument: vi.fn(),
   discardRevision: vi.fn(),
   addBlankPage: vi.fn(),
+  deletePage: vi.fn(),
   suggestLayout: vi.fn(),
   placeMaterial: vi.fn(),
   unplaceMaterial: vi.fn()
@@ -27,6 +28,7 @@ vi.mock('../../../api/domains/assembly-edit-lease', async (importOriginal) => ({
 
 vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
+  deleteAssemblyProcedurePage: apiMocks.deletePage,
   suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
   unplaceProcedureMaterial: apiMocks.unplaceMaterial,
@@ -98,6 +100,179 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it.each([0, 1, 2])('deletes page %i while retaining drafts, baselines, history, assets and recovery for surviving pages', async pageIndex => {
+    const overlays = [0, 1, 2].map(index => ({ ...createOverlayForRange('TEXT', index, range), id: `text-${index}`, text: `saved-${index}` }));
+    const document = makeDocument({ pages: overlays.map((element, index) => ({ pageIndex: index, imageRelativePath: `/pages/${index}.png`, overlays: [element] })), assets: { draft: { assetId: 'draft', storageKey: 'draft.png', contentType: 'image/png', byteSize: 1 } } });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => {
+      hook.result.current.updateElement({ ...overlays[0], text: 'first draft' });
+      hook.result.current.updateElement({ ...overlays[2], text: 'last draft' });
+    });
+    act(() => hook.result.current.undo());
+    act(() => { hook.result.current.setSelectedPageIndex(pageIndex); hook.result.current.setSelectedOverlayId(overlays[pageIndex].id); hook.result.current.beginOverlayDrag(); });
+    const next = { ...document, editVersion: 1, assets: {}, pages: document.pages.filter(page => page.pageIndex !== pageIndex).map((page, index) => ({ ...page, pageIndex: index })) };
+    apiMocks.deletePage.mockResolvedValue(next);
+    await act(async () => { await hook.result.current.deletePage(pageIndex); });
+    expect(apiMocks.deletePage).toHaveBeenCalledWith({ id: document.id, pageIndex, accessPassword: '1234', holderToken: 'session-token', expectedEditVersion: 0 });
+    expect(hook.result.current.document?.editVersion).toBe(1);
+    expect(hook.result.current.document?.assets?.draft).toBeDefined();
+    expect(hook.result.current.selectedPageIndex).toBe(Math.min(pageIndex, 1));
+    expect(hook.result.current.selectedOverlayId).toBeNull();
+    expect(hook.result.current.message).toBe(`${pageIndex + 1}ページ目を削除しました`);
+    const expected = overlays.filter(element => element.pageIndex !== pageIndex).map((element, index) => ({ ...element, pageIndex: index, text: element.id === 'text-0' ? 'first draft' : element.text }));
+    expect(hook.result.current.elements).toEqual(expected);
+    expect(hook.result.current.isDirty).toBe(pageIndex !== 0);
+    const stored = readAssemblyDocumentEditorRecovery(window.localStorage, document.id)!;
+    expect(stored).toMatchObject({ editVersion: 1, elements: expected });
+    act(() => { hook.result.current.endOverlayDrag(); hook.result.current.redo(); });
+    expect(hook.result.current.elements.some(element => element.id === overlays[pageIndex].id)).toBe(false);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements.some(element => element.id === overlays[pageIndex].id)).toBe(false);
+    expect(hook.result.current.elements.map(element => element.pageIndex)).toEqual([0, 1]);
+  });
+
+  it('does not create recovery data when deleting a page without unsaved edits', async () => {
+    const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/${pageIndex}.png`, overlays: [] })) });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    expect(hook.result.current.isDirty).toBe(false);
+    apiMocks.deletePage.mockResolvedValue({ ...document, editVersion: 1, pages: [document.pages[0]] });
+    await act(async () => hook.result.current.deletePage(1));
+    expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)).toBeNull();
+    expect(hook.result.current.recoveryPending).toBeNull();
+  });
+
+  it.each([0, 1])('preserves split material history and placement after deleting page %i and undoing', async pageIndex => {
+    const text = { ...createOverlayForRange('TEXT', 0, range), id: 'text' };
+    const image = { ...createOverlayForRange('IMAGE', 0, range), id: 'image', assetId: 'photo' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/0.png', overlays: [text] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    apiMocks.placeMaterial.mockResolvedValue({ element: image });
+    await act(async () => hook.result.current.placeMaterial({ id: 'material-photo' }));
+    const placed = hook.result.current.elements.find(element => element.id === image.id)!;
+    const edited = { ...placed, bbox: { ...range, xRatio: 0.4 } };
+    act(() => hook.result.current.updateElement(edited));
+    await waitFor(() => expect(hook.result.current.layoutSuggestions.canSuggest).toBe(true));
+    apiMocks.suggestLayout.mockResolvedValue({ elements: [text, edited], addedElementIds: [], changes: ['split'], overflow: {
+      split: { elements: [text], nextPageElements: [{ ...edited, pageIndex: 1 }], firstMovedPhotoNumber: 1, changes: ['split'] }
+    } });
+    const splitDocument = { ...document, editVersion: 1, pages: [...document.pages, { pageIndex: 1, imageRelativePath: '/blank.png', overlays: [] }] };
+    apiMocks.addBlankPage.mockResolvedValue(splitDocument);
+    await act(async () => hook.result.current.layoutSuggestions.start());
+    await act(async () => hook.result.current.layoutSuggestions.apply());
+    expect(hook.result.current.elements.find(element => element.id === image.id)?.pageIndex).toBe(1);
+    apiMocks.deletePage.mockResolvedValue({ ...splitDocument, editVersion: 2, pages: [{ ...splitDocument.pages[1 - pageIndex], pageIndex: 0 }] });
+    await act(async () => hook.result.current.deletePage(pageIndex));
+    if (pageIndex === 0) {
+      expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
+      expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.materialPlacements).toContainEqual(expect.objectContaining({ elementId: image.id }));
+    }
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toContainEqual(expect.objectContaining({ id: image.id, pageIndex: 0, assetId: 'photo' }));
+    // Deleting the new page releases the absent material; undo must place it again.
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(pageIndex === 1 ? 2 : 1);
+    expect(readAssemblyDocumentEditorRecovery(localStorage, document.id)?.elements.some(element => element.id === image.id)).toBe(pageIndex === 0);
+  });
+
+  it('keeps a surviving inline draft in the preview, history and recovery after deleting another page', async () => {
+    const text = { ...createOverlayForRange('TEXT', 1, range), id: 'inline-survivor', text: 'saved' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/0.png', overlays: [] }, { pageIndex: 1, imageRelativePath: '/1.png', overlays: [text] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const draft = { ...text, kind: 'TEXT' as const, text: 'typing' };
+    act(() => hook.result.current.onInlineDraftChange(draft));
+    expect(hook.result.current.pagePreviewElements).toEqual([draft]);
+    apiMocks.deletePage.mockResolvedValue({ ...document, editVersion: 1, pages: [{ ...document.pages[1], pageIndex: 0 }] });
+    await act(async () => { await hook.result.current.deletePage(0); });
+    expect(hook.result.current.elements).toEqual([{ ...draft, pageIndex: 0 }]);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.elements).toEqual(hook.result.current.elements);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([{ ...text, pageIndex: 0 }]);
+  });
+
+  it('does nothing when the document is read only', async () => {
+    const hook = renderEditor(makeDocument());
+    await waitFor(() => expect(hook.result.current.loading).toBe(false));
+    expect(hook.result.current.readOnly).toBe(true);
+    await act(async () => { await hook.result.current.deletePage(0); });
+    expect(apiMocks.deletePage).not.toHaveBeenCalled();
+  });
+
+  it('removes unsaved material placement from a deleted page and preserves placements on later pages', async () => {
+    const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/pages/${pageIndex}.png`, overlays: [] })) });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    const first = { ...createOverlayForRange('IMAGE', 0, range), id: 'first-material', assetId: 'first-asset' };
+    const second = { ...createOverlayForRange('IMAGE', 1, range), id: 'second-material', assetId: 'second-asset' };
+    apiMocks.placeMaterial.mockResolvedValueOnce({ element: first }).mockResolvedValueOnce({ element: second });
+    await act(async () => { await hook.result.current.placeMaterial({ id: 'material-0' }); });
+    act(() => hook.result.current.setSelectedPageIndex(1));
+    await act(async () => { await hook.result.current.placeMaterial({ id: 'material-1' }); });
+    apiMocks.deletePage.mockResolvedValue({ ...document, editVersion: 1, pages: [{ ...document.pages[1], pageIndex: 0 }] });
+    await act(async () => { await hook.result.current.deletePage(0); });
+    expect(hook.result.current.elements).toEqual([{ ...second, pageIndex: 0 }]);
+    expect(apiMocks.unplaceMaterial).toHaveBeenCalledWith('material-0');
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalledWith('material-1');
+    const stored = readAssemblyDocumentEditorRecovery(window.localStorage, document.id)!;
+    expect(stored.materialPlacements?.map(item => item.elementId)).toEqual(['second-material']);
+  });
+
+  it('rebases pending recovery without reviving a deleted page', async () => {
+    const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/pages/${pageIndex}.png`, overlays: [] })) });
+    const recovered = [0, 1].map(pageIndex => ({ ...createOverlayForRange('TEXT', pageIndex, range), id: `recovered-${pageIndex}` }));
+    writeAssemblyDocumentEditorRecovery(window.localStorage, { version: 1, documentId: document.id, baseUpdatedAt: document.updatedAt, editVersion: 0, savedAt: document.updatedAt, elements: recovered });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.recoveryPending).not.toBeNull());
+    apiMocks.deletePage.mockResolvedValue({ ...document, editVersion: 1, pages: [{ ...document.pages[1], pageIndex: 0 }] });
+    await act(async () => { await hook.result.current.deletePage(0); });
+    expect(hook.result.current.recoveryPending?.editVersion).toBe(1);
+    act(() => hook.result.current.restoreRecovery());
+    expect(hook.result.current.elements).toEqual([{ ...recovered[1], pageIndex: 0 }]);
+  });
+
+  it.each([400, 409, 500])('preserves draft, history, page selection and recovery after deletion fails with %i', async status => {
+    const overlay = { ...createOverlayForRange('TEXT', 1, range), id: 'draft-text' };
+    const document = makeDocument({ pages: [{ pageIndex: 0, imageRelativePath: '/0.png', overlays: [] }, { pageIndex: 1, imageRelativePath: '/1.png', overlays: [overlay] }] });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    act(() => { hook.result.current.setSelectedPageIndex(1); hook.result.current.setSelectedOverlayId(overlay.id); hook.result.current.updateElement({ ...overlay, text: 'unsaved' }); });
+    const before = hook.result.current.elements;
+    const recoveryBefore = readAssemblyDocumentEditorRecovery(window.localStorage, document.id);
+    apiMocks.deletePage.mockRejectedValue({ isAxiosError: true, response: { status, data: { message: '削除できません' } } });
+    await act(async () => { await hook.result.current.deletePage(1); });
+    expect(hook.result.current.document).toBe(document);
+    expect(hook.result.current.elements).toBe(before);
+    expect(hook.result.current.selectedPageIndex).toBe(1);
+    expect(hook.result.current.selectedOverlayId).toBe(overlay.id);
+    expect(hook.result.current.message).toBe('削除できません');
+    expect(hook.result.current.messageIsError).toBe(true);
+    expect(hook.result.current.conflict).toBe(false);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toEqual(recoveryBefore);
+    act(() => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([overlay]);
+  });
+
+  it('blocks overlapping deletion requests and detects edit conflicts', async () => {
+    const document = makeDocument({ pages: [0, 1].map(pageIndex => ({ pageIndex, imageRelativePath: `/${pageIndex}.png`, overlays: [] })) });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    let reject!: (error: unknown) => void;
+    apiMocks.deletePage.mockReturnValue(new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    let request!: Promise<void>;
+    act(() => { request = hook.result.current.deletePage(0); void hook.result.current.deletePage(0); });
+    expect(apiMocks.deletePage).toHaveBeenCalledOnce();
+    await act(async () => { reject({ isAxiosError: true, response: { status: 409, data: { errorCode: 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT', details: { currentEditVersion: 2 } } } }); await request; });
+    expect(hook.result.current.conflict).toBe(true);
+    expect(hook.result.current.document).toBe(document);
+    await act(async () => { await hook.result.current.deletePage(0); });
+    expect(apiMocks.deletePage).toHaveBeenCalledOnce();
   });
 
   it('previews the unsaved current page, applies one history change, and undoes it once', async () => {

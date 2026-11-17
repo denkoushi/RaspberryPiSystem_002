@@ -112,6 +112,11 @@ export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], a
   return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + 1 } : element);
 }
 
+export function removeOverlayPage(elements: AssemblyProcedureOverlayElement[], pageIndex: number): AssemblyProcedureOverlayElement[] {
+  return elements.filter(element => element.pageIndex !== pageIndex)
+    .map(element => element.pageIndex > pageIndex ? { ...element, pageIndex: element.pageIndex - 1 } : element);
+}
+
 export function documentOverlayElements(document: AssemblyProcedureDocumentDto): AssemblyProcedureOverlayElement[] {
   return document.pages
     .flatMap((page) => page.overlays ?? [])

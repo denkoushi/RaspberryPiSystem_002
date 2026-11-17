@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { removeOverlayPage } from './assemblyDocumentEditorDraft';
 import {
   assemblyDocumentEditorRecoveryKey,
   clearAssemblyDocumentEditorRecovery,
@@ -8,6 +9,7 @@ import {
   type AssemblyDocumentEditorRecoveryMatch,
   type AssemblyDocumentEditorRecoveryRecord
 } from './assemblyDocumentEditorRecovery';
+
 
 import type { PendingMaterialPlacement } from './documentEditorMaterialPlacements';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
@@ -36,6 +38,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
   } = input;
   const [pending, setPending] = useState<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const storageErrorShown = useRef(false);
+  const pendingAfterPageDelete = useRef<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const lastImmediateSave = useRef<AssemblyDocumentEditorRecoveryMatch | null>(null);
 
   useEffect(() => {
@@ -43,7 +46,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
     const saved = lastImmediateSave.current;
     if (saved?.documentId === documentId && saved.baseUpdatedAt === baseUpdatedAt && saved.editVersion === editVersion) {
       // This session just saved the draft; offer recovery only after a reload.
-      setPending(null);
+      setPending(current => current === pendingAfterPageDelete.current && current?.documentId === documentId && current.baseUpdatedAt === baseUpdatedAt && current.editVersion === editVersion ? current : null);
       return;
     }
     try {
@@ -65,6 +68,8 @@ export function useAssemblyDocumentEditorRecovery(input: {
 
   useEffect(() => {
     if (!enabled || !dirty || typeof window === 'undefined') return;
+    pendingAfterPageDelete.current = null;
+    setPending(null);
     const timer = window.setTimeout(() => {
       try {
         writeAssemblyDocumentEditorRecovery(window.localStorage, {
@@ -108,6 +113,8 @@ export function useAssemblyDocumentEditorRecovery(input: {
         materialPlacements: placements
       });
       lastImmediateSave.current = { documentId, ...next };
+      pendingAfterPageDelete.current = null;
+      setPending(null);
     } catch {
       if (!storageErrorShown.current) {
         storageErrorShown.current = true;
@@ -140,6 +147,27 @@ export function useAssemblyDocumentEditorRecovery(input: {
     }
   };
 
+  const deletePage = (pageIndex: number, next: Pick<AssemblyDocumentEditorRecoveryMatch, 'baseUpdatedAt' | 'editVersion'>, currentElements: AssemblyProcedureOverlayElement[], placements: PendingMaterialPlacement[]) => {
+    if (pending) {
+      const survivingPages = new Map(currentElements.map(element => [element.id, element.pageIndex]));
+      const removedIds = new Set(pending.elements.filter(element => element.pageIndex === pageIndex && !survivingPages.has(element.id)).map(element => element.id));
+      const nextElements = removeOverlayPage(pending.elements, pageIndex);
+      for (const element of pending.elements) {
+        const survivingPage = survivingPages.get(element.id);
+        if (element.pageIndex === pageIndex && survivingPage !== undefined) nextElements.push({ ...element, pageIndex: survivingPage });
+      }
+      const nextPlacements = pending.materialPlacements?.filter(item => !removedIds.has(item.elementId)) ?? [];
+      void onDiscardMaterials?.((pending.materialPlacements ?? []).filter(item => removedIds.has(item.elementId))).catch(() => onStorageError?.());
+      saveImmediately(next, nextElements, nextPlacements);
+      // Only the candidate adjusted by this deletion may survive the version effect.
+      const adjusted = { ...pending, ...next, elements: nextElements, materialPlacements: nextPlacements };
+      pendingAfterPageDelete.current = adjusted;
+      setPending(adjusted);
+    } else if (dirty) {
+      saveImmediately(next, currentElements, placements);
+    }
+  };
+
   const discard = async () => {
     const stored = pending ?? readAssemblyDocumentEditorRecovery(window.localStorage, documentId);
     await onDiscardMaterials?.(stored?.materialPlacements ?? []);
@@ -153,6 +181,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
 
   return {
     pending,
+    deletePage,
     restore,
     discard,
     clear,
