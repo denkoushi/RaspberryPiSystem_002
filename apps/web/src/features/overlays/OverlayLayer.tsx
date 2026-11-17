@@ -470,6 +470,7 @@ const OverlayItem = memo(function OverlayItem({ source, crop, selected, interact
             className={clsx('pointer-events-auto absolute h-6 w-6 touch-none rounded-full border-2 border-slate-950 bg-cyan-300 p-0', handle === 'nw' || handle === 'se' ? 'cursor-nwse-resize' : 'cursor-nesw-resize')}
             style={{ left: `${(element.bbox.xRatio + (handle.includes('w') ? 0 : element.bbox.widthRatio)) * 100}%`, top: `${(element.bbox.yRatio + (handle.includes('n') ? 0 : element.bbox.heightRatio)) * 100}%`, transform: 'translate(-50%, -50%)', zIndex: 1_000_000 }}
             data-testid={`${testIdPrefix}-${element.id}-resize-${handle}`}
+            data-overlay-resize-handle
             onPointerDown={(event) => beginPointerInteraction(event, source, 'resize', handle)}
             onPointerMove={queuePointerInteraction}
             onPointerUp={endPointerInteraction}
