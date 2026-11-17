@@ -10,6 +10,7 @@ import { FILL_HEIGHT_STORAGE_KEY, usePersistedPlanningBoardFillHeight } from '..
 
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
+import { GANTT_FILL_MAX_TEXT_SCALE } from './PlanningBoardForwardGanttRow';
 import { PlanningBoardGanttDisplay } from './PlanningBoardGanttDisplay';
 import { buildPlanningBoardGanttLayout, planningBoardPartKey, workingPeriods } from './planningBoardGanttLayout';
 import { GANTT_IMPORT_HATCH } from './PlanningBoardGanttRow';
@@ -2969,9 +2970,10 @@ describe('forward fill height', () => {
     const bar = screen.getByTestId('planning-gantt-bar-a');
     expect(parseFloat(bar.style.height)).toBeCloseTo(70 * height / 76);
     expect(parseFloat(bar.style.top)).toBeCloseTo(3 * height / 76);
-    expect(parseFloat(bar.style.fontSize)).toBeCloseTo(11 * height / 76);
-    expect(parseFloat(bar.style.lineHeight)).toBeCloseTo(14 * height / 76);
-    expect(parseFloat(lane.querySelector<HTMLElement>('[data-gantt-lane-label]')!.style.fontSize)).toBeCloseTo(12 * height / 76);
+    expect(height / 76).toBeGreaterThan(GANTT_FILL_MAX_TEXT_SCALE);
+    expect(parseFloat(bar.style.fontSize)).toBeCloseTo(11 * GANTT_FILL_MAX_TEXT_SCALE);
+    expect(parseFloat(bar.style.lineHeight)).toBeCloseTo(14 * GANTT_FILL_MAX_TEXT_SCALE);
+    expect(parseFloat(lane.querySelector<HTMLElement>('[data-gantt-lane-label]')!.style.fontSize)).toBeCloseTo(12 * GANTT_FILL_MAX_TEXT_SCALE);
     expect(chart.container.querySelectorAll('*')).toHaveLength(count);
     act(() => { vi.stubGlobal('innerHeight', 1800); window.dispatchEvent(new Event('resize')); });
     expect(parseFloat(lane.style.minHeight)).toBe(Math.floor((Math.floor(1800 / zoom - 10) - 36) / 2));
