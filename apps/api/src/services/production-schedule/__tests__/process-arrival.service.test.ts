@@ -7,6 +7,7 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
 } }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({
   getResourceCategoryPolicy: async () => ({}),
+  normalizeProductionScheduleResourceCd: (cd: string) => cd.trim().toUpperCase(),
   isProductionScheduleExcludedCuttingResourceCd: (cd: string) => ['10', 'MSZ'].includes(cd)
 }));
 
@@ -21,6 +22,8 @@ const process = (processOrder: string, resourceCd: string, isCompleted = false):
   fseiban: 'ORDER', fhincd: 'PART', productNo: '100', processOrder, resourceCd, isCompleted
 });
 const excluded = (cd: string) => ['10', 'MSZ'].includes(cd);
+const mockProcesses = (processes: ArrivalProcess[]) => mocks.query.mockImplementation((sql: { strings: readonly string[] }) =>
+  Promise.resolve(sql.strings.join('').includes('winnerRows') ? processes : []));
 
 describe('process arrival', () => {
   beforeEach(() => {
@@ -57,7 +60,7 @@ describe('process arrival', () => {
   });
 
   it('includes first-process metadata only when explicitly requested', async () => {
-    mocks.query.mockResolvedValue([process('10', '305', true)]);
+    mockProcesses([process('10', '305', true)]);
     const rows = [row('target', '30'), row('no-order', '')];
     const legacy = await enrichRowsWithProcessArrival(rows, { locationKey: 'site' });
     expect(legacy.every((item) => !('isFirstProcess' in item))).toBe(true);
@@ -92,7 +95,7 @@ describe('process arrival', () => {
   });
 
   it('keeps the parent waiting until its earlier process completes or shelf placement exists', async () => {
-    mocks.query.mockResolvedValue([process('10', '001')]);
+    mockProcesses([process('10', '001')]);
     const rows = [row('grinding-b', '30')];
     expect((await enrichRowsWithProcessArrival(rows, { locationKey: 'site' })).map((r) => r.arrived)).toEqual([false]);
     mocks.placements.mockResolvedValue([{ manufacturingOrderBarcodeRaw: '100' }]);
@@ -100,27 +103,28 @@ describe('process arrival', () => {
   });
 
   it('uses the chip effective completion SQL, so external completion counts', async () => {
-    mocks.query.mockResolvedValue([process('10', '001', true)]);
+    mockProcesses([process('10', '001', true)]);
     const result = await enrichRowsWithProcessArrival([row('b', '30')], { siteKey: 'site', locationKey: 'terminal' });
     expect(result[0]!.arrived).toBe(true);
     const sql = mocks.query.mock.calls[0]![0].strings.join('?');
     expect(sql).toContain('COALESCE("p"."isCompleted", FALSE) OR COALESCE("ext"."isExternallyCompleted", FALSE)');
     expect(sql).toContain('LEFT JOIN "ProductionScheduleExternalCompletion"');
+    expect(mocks.query).toHaveBeenCalledTimes(1);
   });
 
-  it('queries 700 distinct part keys once and retains every arrival result', async () => {
+  it('uses one process lookup for 700 distinct part keys and retains every arrival result', async () => {
     const rows = Array.from({ length: 700 }, (_, index) => {
       const item = row(`row-${index}`, '30');
       item.rowData.FHINCD = `PART-${index}`;
       return item;
     });
-    mocks.query.mockResolvedValue(rows.map((item) => ({
+    mockProcesses(rows.map((item) => ({
       ...process('10', '001'), fhincd: item.rowData.FHINCD
     })));
     const result = await enrichRowsWithProcessArrival(rows, { locationKey: 'site' });
     expect(result).toHaveLength(700);
     expect(result.every((item) => item.arrived === false)).toBe(true);
-    expect(mocks.query).toHaveBeenCalledTimes(1);
+    expect(mocks.query).toHaveBeenCalledTimes(2);
     const sql = mocks.query.mock.calls[0]![0];
     expect(sql.strings.join('?')).toContain('FROM unnest(?::text[], ?::text[], ?::text[])');
     expect(sql.strings.join('?')).toContain('INNER JOIN "CsvDashboardRow"');
@@ -134,8 +138,27 @@ describe('process arrival', () => {
     expect(sql.values.filter((value: unknown) => typeof value === 'string' && value.startsWith('row-'))).toHaveLength(700);
   });
 
+  it('uses the transaction client for swap evidence and arrives after completion on another resource', async () => {
+    const query = vi.fn().mockResolvedValueOnce([process('205', '080')]).mockResolvedValueOnce([{
+      id: 'raw', rowData: { FSEZONO: '100', FKOJUN: '205', FKOTEICD: '035', FKOJUNST: 'C', FUPDTEDT: '11/16/2026 15:04:00' }
+    }]);
+    const client = { $queryRaw: query } as unknown as NonNullable<Parameters<typeof enrichRowsWithProcessArrival>[1]['client']>;
+    const result = await enrichRowsWithProcessArrival([row('target', '210')], {
+      locationKey: 'site', client, placedProductNos: new Set()
+    });
+    expect(result[0]!.arrived).toBe(true);
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
+
+  it('skips raw rows when all incomplete processes are excluded', async () => {
+    mockProcesses([process('10', '10'), process('20', 'MSZ')]);
+    expect((await enrichRowsWithProcessArrival([row('target', '30')], { locationKey: 'site' }))[0]!.arrived).toBe(true);
+    expect(mocks.query).toHaveBeenCalledTimes(1);
+  });
+
   it('passes NULL for ordinary ProductNos and preserves empty unassigned ProductNos', async () => {
-    mocks.query.mockResolvedValue([]);
+    mockProcesses([]);
     const unassigned = row('unassigned', '30', '');
     unassigned.rowData.FSEIBAN = '********';
     await enrichRowsWithProcessArrival([row('normal', '30'), unassigned], { locationKey: 'site' });
@@ -150,7 +173,7 @@ describe('process arrival', () => {
   });
 
   it('attaches parent special due and ignores a leftover old override', async () => {
-    mocks.query.mockResolvedValue([process('10', '001')]);
+    mockProcesses([process('10', '001')]);
     const parent = row('parent', '30');
     const itemKey = buildGrindingPlanningBoardRowItemId(parent.rowData);
     mocks.overrides.mockResolvedValue([
