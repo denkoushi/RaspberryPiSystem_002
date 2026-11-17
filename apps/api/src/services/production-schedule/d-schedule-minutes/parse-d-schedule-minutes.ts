@@ -293,7 +293,8 @@ export async function parseDScheduleMinutesXlsx(input: {
           continue;
         }
         const parsed = readDate(cell, meetingDate, workbook.properties.date1904, () => warn('AMBIGUOUS_YEAR', block.seiban, cell), label === '部品完成');
-        if (parsed.invalid) warn('UNREADABLE_DATE', block.seiban, cell);
+        // 出図 holds notes such as 赤パターン; its date is never used, so do not notify.
+        if (parsed.invalid && label !== '出図') warn('UNREADABLE_DATE', block.seiban, cell);
         if (parsed.memo) memos.push(parsed.memo);
         block.outsourceMarks.push(...parsed.marks);
         if (label === '部品完成') block.partsCompleteDate = parsed.date;

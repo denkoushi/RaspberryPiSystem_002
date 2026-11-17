@@ -204,12 +204,12 @@ describe('parseDScheduleMinutesXlsx', () => {
   it('reads visible grouped columns and hidden calendar columns but skips hidden rows', async () => {
     const fixture = buildWorkbook();
     fixture.sheet.properties.outlineLevelCol = 1;
-    fixture.sheet.getColumn(fixture.parts - 1).outlineLevel = 1;
-    fixture.sheet.getCell(fixture.start, fixture.parts - 1).value = 'bad collapsed date';
+    fixture.sheet.getColumn(fixture.order).outlineLevel = 1;
+    fixture.sheet.getCell(fixture.start + 3, fixture.order).value = 'bad collapsed date';
     fixture.sheet.getRow(fixture.start + 4).hidden = true;
     fixture.sheet.getCell(fixture.start + 4, 22).value = '★LSLH処理出';
     const result = success(await parse(fixture));
-    expect(result.blocks[0].memo).toBe('架空メモ');
+    expect(result.blocks[0].memo).toBe('※材料:4/17発注\n架空メモ');
     expect(result.warnings.map((warning) => warning.code)).toEqual(['UNREADABLE_DATE', 'UNKNOWN_STAR']);
     expect(result.blocks.map((block) => block.seiban)).toEqual(['AB1C2345', 'AB1C2347', 'AB1C2348', 'AB1C2349']);
     expect(result.blocks[0].surfaceSendOutDates).toContainEqual({ date: '2026-05-01', label: '★LSLH処理出', note: '(CT以外)' });
@@ -238,8 +238,17 @@ describe('parseDScheduleMinutesXlsx', () => {
 
   it('applies date plausibility to other date columns too', async () => {
     const fixture = buildWorkbook();
-    fixture.sheet.getCell(fixture.start, fixture.parts - 1).value = 1030;
-    expect(success(await parse(fixture)).warnings).toContainEqual(expect.objectContaining({ code: 'UNREADABLE_DATE', cell: 'M10' }));
+    fixture.sheet.getCell(fixture.start + 3, fixture.order).value = 1030;
+    const cell = fixture.sheet.getCell(fixture.start + 3, fixture.order).address;
+    expect(success(await parse(fixture)).warnings).toContainEqual(expect.objectContaining({ code: 'UNREADABLE_DATE', cell }));
+  });
+
+  it.each(['赤パターン', 1030])('does not warn for unreadable 出図 text %s', async (value) => {
+    const fixture = buildWorkbook();
+    fixture.sheet.getCell(fixture.start, fixture.parts - 1).value = value;
+    const result = success(await parse(fixture));
+    expect(result.warnings.filter((warning) => warning.code === 'UNREADABLE_DATE')).toEqual([]);
+    expect(result.blocks[0].partsCompleteDate).toBe(success(await parse(buildWorkbook())).blocks[0].partsCompleteDate);
   });
 
   it.each(['parts', 'memo', 'calendar', 'seiban', 'otherDate'])('rejects merge masters outside the block in %s', async (kind) => {
@@ -319,12 +328,13 @@ describe('parseDScheduleMinutesXlsx', () => {
       fixture.sheet.getCell(fixture.start + index * 4 + 2, fixture.parts - 1).value = '2026/11/2(Q)';
       fixture.sheet.getCell(fixture.start + index * 4 + 2, fixture.parts).value = '2026/11/3(R)';
     }
-    fixture.sheet.getCell(fixture.start, fixture.parts - 1).value = 'bad date';
+    fixture.sheet.getCell(fixture.start, fixture.parts - 1).value = 'bad 出図';
+    fixture.sheet.getCell(fixture.start + 6, fixture.parts - 1).value = 'bad date';
     const result = success(await parse(fixture));
     expect(result.blocks[0].partsCompleteDate).toBe('2026-04-30');
     expect(result.blocks[0].outsourceMarks).toEqual(['Q', 'R']);
     expect(result.warnings.filter((warning) => warning.code === 'UNREADABLE_DATE')).toEqual([
-      expect.objectContaining({ cell: 'M10' })
+      expect.objectContaining({ cell: 'M16' })
     ]);
   });
 
