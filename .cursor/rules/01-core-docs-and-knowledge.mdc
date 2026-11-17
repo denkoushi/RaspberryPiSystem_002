@@ -15,7 +15,7 @@ alwaysApply: false
 
 ## 正本
 
-重要な変更は、次のいずれか1つを詳細正本として更新する。小変更では新しい Plan を作らない。
+重要な変更は、次のいずれか1つを詳細正本として更新する。コード、テスト、作業報告で足りる小変更では、新しい正本文書（Plan を含む）を作らない。
 
 - KB（`docs/knowledge-base/`）: 事象と対処（再発防止まで）。テンプレは [docs/knowledge-base/_template.md](../../docs/knowledge-base/_template.md)
 - ADR（`docs/decisions/`）: 意思決定（トレードオフ含む）。テンプレは [docs/decisions/_template.md](../../docs/decisions/_template.md)
@@ -34,5 +34,5 @@ alwaysApply: false
 ## 検索性
 
 - ドキュメントタイトル/見出しは、検索語になりやすい固有名詞を含める
-- 新規追加したら、`AGENTS.md`、`docs/AI_START_HERE.md`、または薄い索引から辿れるようにする
+- 新規追加したら、薄い索引（`docs/INDEX.md`、`docs/knowledge-base/index.md` など）から辿れるようにする。`AGENTS.md` と `docs/AI_START_HERE.md` には全作業に要る入口だけを置く
 - 索引の説明は1件1行を目安にし、長文の検証ログや経緯は正本文書へ置く
