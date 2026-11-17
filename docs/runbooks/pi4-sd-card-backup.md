@@ -30,7 +30,13 @@ Start one backup by hand and follow it. The local backup takes a few hours. The 
     sudo systemctl start --no-block raspi-pi4-sd-backup.service
     journalctl -u raspi-pi4-sd-backup.service -f
 
-Each kiosk logs `host_start`, three `part_done` lines (table, boot, root), and `host_done`. Then come `retention`, `offsite_done` (or `offsite_failed`), and `backup_finished` with any failed hosts. A failed host keeps no partial snapshot, and a failed off-site copy leaves the local backup intact. Check what is stored locally (add `--offsite` to check Google Drive):
+Each kiosk logs `host_start`, three `part_done` lines (table, boot, root), and `host_done`. Then come `retention`, `offsite_done` (or `offsite_failed`), and `backup_finished` with any failed hosts. A failed host keeps no partial snapshot, and a failed off-site copy leaves the local backup intact.
+
+Every backup runs `restic unlock` locally before backing up hosts and off-site after repository initialization, before copying; only locks restic considers stale are removed, and unlock failures are logged without stopping the backup.
+Local retention failures log `retention_failed` and still allow the off-site copy and `backup_finished` (with `retention_ok: false`), while the run exits nonzero. Failure events include the last stderr line, capped at 300 characters, when available.
+On 2026-11-15, stale locks from interrupted runs on 10/23 and 10/28 blocked local retention and prevented the first off-site copy; the locks were manually cleared with `restic unlock`.
+
+Check what is stored locally (add `--offsite` to check Google Drive):
 
     sudo sh -c 'set -a; . /etc/raspi-pi4-sd-backup/backup.env; cd /opt/raspi-pi4-sd-backup; python3 -m pi4_sd_backup.runner list'
 
