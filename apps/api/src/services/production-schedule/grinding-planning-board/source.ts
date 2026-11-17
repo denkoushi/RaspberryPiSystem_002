@@ -155,7 +155,10 @@ export async function readMasterResourceCds(client: DbClient): Promise<Set<strin
   return new Set(rows.map((row) => normalizeProductionScheduleResourceCd(row.resourceCd)).filter(Boolean));
 }
 
+// 研削の 582・583 は撤去済み。資源マスタに残っていてもボードの機械に出さない。
+export const RETIRED_PLANNING_BOARD_RESOURCE_CDS: ReadonlySet<string> = new Set(['582', '583']);
+
 export async function readPlanningResourceCandidates(client: DbClient, category: GrindingPlanningBoardCategory, policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>): Promise<string[]> {
   const master = await client.productionScheduleResourceMaster.findMany({ select: { resourceCd: true, resourceGroupCd: true } });
-  return Array.from(new Set(master.filter((row) => !isSendaiResourceGroupCd(row.resourceGroupCd)).map((row) => normalizeProductionScheduleResourceCd(row.resourceCd)).filter(Boolean))).filter((value) => isCategoryResource(value, category, policy)).sort((a, b) => a.localeCompare(b));
+  return Array.from(new Set(master.filter((row) => !isSendaiResourceGroupCd(row.resourceGroupCd)).map((row) => normalizeProductionScheduleResourceCd(row.resourceCd)).filter(Boolean))).filter((value) => !RETIRED_PLANNING_BOARD_RESOURCE_CDS.has(value) && isCategoryResource(value, category, policy)).sort((a, b) => a.localeCompare(b));
 }

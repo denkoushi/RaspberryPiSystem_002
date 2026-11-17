@@ -418,12 +418,17 @@ describeIntegration('grinding planning board service real Postgres integration',
     const store = snapshotStore();
     const options = { snapshotStore: store };
     const first = await boardFor(f, options);
-    const resourceName = `${f.prefix}-582`;
-    f.resourceNames.push(resourceName);
-    await db().productionScheduleResourceMaster.create({ data: { resourceCd: '582', resourceName, resourceClassCd: 'M02', resourceGroupCd: 'IT' } });
+    const resourceName = `${f.prefix}-584`;
+    const retiredName = `${f.prefix}-582`;
+    f.resourceNames.push(resourceName, retiredName);
+    await db().productionScheduleResourceMaster.createMany({ data: [
+      { resourceCd: '584', resourceName, resourceClassCd: 'M02', resourceGroupCd: 'IT' },
+      { resourceCd: '582', resourceName: retiredName, resourceClassCd: 'M02', resourceGroupCd: 'IT' }
+    ] });
     const resourcesChanged = await boardFor(f, options);
     expect(resourcesChanged.snapshotId).not.toBe(first.snapshotId);
-    expect(resourcesChanged.resources).toContain('582');
+    expect(resourcesChanged.resources).toContain('584');
+    expect(resourcesChanged.resources).not.toContain('582');
     const { PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID } = await import('../constants.js');
     const supplement = await db().productionScheduleSeibanMachineNameSupplement.create({ data: { sourceCsvDashboardId: PRODUCTION_SCHEDULE_SEIBAN_MACHINE_NAME_SUPPLEMENT_DASHBOARD_ID, fseiban, machineName: 'New machine' } });
     try {

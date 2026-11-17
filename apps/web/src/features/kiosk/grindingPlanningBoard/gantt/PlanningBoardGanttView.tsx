@@ -11,6 +11,7 @@ import { pageZoom } from '../pageZoom';
 import { PlanningBoardPiecesContext } from '../PlanningBoardPiecePopover';
 import { usePlanningBoardPlacementByPart, usePlanningBoardProcessChips } from '../planningBoardProcessChips';
 import { PlanningBoardTestBarStrip } from '../PlanningBoardTestBarStrip';
+import { usePlanningBoardFillRowHeight } from '../usePersistedPlanningBoardFillHeight';
 import { usePlanningBoardPaneOrder } from '../usePlanningBoardPaneOrder';
 
 import { ganttResourceLabel } from './ganttResourceLabel';
@@ -40,6 +41,7 @@ import { usePlanningBoardGanttPan } from './usePlanningBoardGanttPan';
 import { usePlanningBoardGanttWindow } from './usePlanningBoardGanttWindow';
 import { planningBoardBarsOnResource, planningBoardSeibansWithVisibleBars, usePlanningBoardSeibanColors, usePlanningBoardSeibanShelf } from './usePlanningBoardSeibanShelf';
 import { usePlanningBoardSharedDrag, type SharedForwardDrag } from './usePlanningBoardSharedDrag';
+import { usePlanningBoardSharedSheetBounds } from './usePlanningBoardSharedSheetBounds';
 import { usePlanningBoardShelfInteraction, type SharedShelfInteraction } from './usePlanningBoardShelfInteraction';
 
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
@@ -76,7 +78,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   testBarControls, onTestBarAdd, onTestBarAnchorChange,
   minutesResourceCds, minutes, valueSheetOpen = false, onToggleValueSheet,
   resourceLanes: _resourceLanes, unitSplitEnabledByResource, onUnitSplitChange, unitSplitAvailable, capacityLoaded: _capacityLoaded, machineSelectionLocked, machineSelectionLabel, resourceHeadContainer, valueSheetContainer, sharedValueSheetOpen = false, hideResourceHead = false, machineMode, twoMachineDisabled, onMachineModeChange, chainOwner, onChainFocus, sharedChainTop, sharedChainHeight = 0, onChainTopChange, machineModeButtonRef,
-  onSelectedBarResource, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
+  onSelectedBarResource, fillHeightEligible = false, fitPane = false, onNavigateBar, singleResourceCd = null, singleResourcePickerOpen = false, onOpenSingleResourcePicker, onSingleResourceChange,
   layout: currentLayout, scale, homeKey = 0, capacity, resourceMove, resourceNameMap,
   focusedSeiban, onFocusedSeibanChange: setFocusedSeiban, sharedSeibanLegend = false, onCompleteToggle, completionPendingItemIds,
   colorBySeiban = false, seibanOrder = EMPTY_SEIBAN_ORDER, preferenceScope = 'default', ...interaction
@@ -267,7 +269,6 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   const linkBars = sharedChain?.bars ?? chain;
   const hasPieceLinks = useMemo(() => planningBoardHasPieceLinks(linkBars), [linkBars]);
   const effectiveChainView = sharedChain?.view ?? (hasPieceLinks ? chainView : 'process');
-  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
   const showChainPositions = !sharedChain || chainOwner === singleResourceCd;
   const chainPositions = useMemo(() => {
     const positions = new Map<string, number>();
@@ -295,25 +296,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   }, [showChain, valueSheetContainer]);
   const valueSheet = showResourceHead && valueSheetOpen ? <PlanningBoardResourceMinutesSheet key={singleResourceCd} resourceCd={singleResourceCd!} resourceCds={minutesResourceCds} resourceNameMap={resourceNameMap} items={singleItems} unitSplitEnabledByResource={unitSplitEnabledByResource}
     siteKey={resourceMinutes?.siteKey} sameModelResourceGroups={resourceMinutes?.sameModelResourceGroups} values={resourceMinutes?.values ?? []} disabled={interaction.disabled || !resourceMinutes || singleResourceCd === '未設定'} /> : null;
-  const [sharedBounds, setSharedBounds] = useState({ height: 0, top: 0, bottom: 0 });
-  useLayoutEffect(() => {
-    const pane = viewport.current;
-    if (!valueSheetContainer || !pane) return;
-    const measure = () => {
-      const containerRect = valueSheetContainer.getBoundingClientRect();
-      const paneRect = pane.getBoundingClientRect();
-      const zoom = pageZoom();
-      const next = { height: valueSheetContainer.clientHeight,
-        top: (paneRect.top - containerRect.top) / zoom, bottom: (paneRect.bottom - containerRect.top) / zoom };
-      setSharedBounds(current => current.height === next.height && current.top === next.top && current.bottom === next.bottom ? current : next);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    observer?.observe(valueSheetContainer);
-    observer?.observe(pane);
-    return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [valueSheetContainer]);
+  const sharedBounds = usePlanningBoardSharedSheetBounds(valueSheetContainer, viewport);
   const sheetHeight = valueSheetOpen && showResourceHead ? planningBoardSheetHeight((viewportHeight ?? 0) + 40) : 0;
   const sharedGeometry = planningBoardSheetGeometry(sharedBounds.height, sharedBounds.top, sharedBounds.bottom,
     sharedValueSheetOpen, showChain ? chainStripHeight : 0);
@@ -325,6 +308,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
   }, [singleResourceCd, onChainTopChange, showChain, chainTop, chainStripHeight]);
   const sharedBottomInset = sharedChainTop == null ? sharedGeometry.bottomInset : planningBoardSharedBottomInset(sharedBounds.top, sharedBounds.bottom, sharedGeometry.sheetOverlap, sharedChainTop, sharedChainHeight);
   const bottomInset = valueSheetContainer ? sharedBottomInset : (showChain ? chainStripHeight : 0) + sheetHeight;
+  const { fillRowHeight, rowGeometryKey, setViewportClientHeight } = usePlanningBoardFillRowHeight(fillHeightEligible && forward && Boolean(interaction.resourceView), viewportHeight, renderedGroups, Boolean(singleGroup), bottomInset, chipsByPart, placementByPart);
+  useTwoMachineChainPane(sharedChain?.register, singleResourceCd, viewport, { bars: linkBars, content, headerHeight: singleGroup ? 0 : 36, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey });
+
   const latestFocus = useRef({ focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain });
   useLayoutEffect(() => { latestFocus.current = { focusedPartKey, sharedChain, chainOwner, singleResourceCd, onTestBarAnchorChange, testBarControls, onChainFocus, showChain }; });
   const focusChain = useCallback((original: GanttBar, keepOpen = false) => {
@@ -355,7 +341,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     // Fill the screen down to the bottom edge instead of guessing the height of the chrome above.
     const measure = () => {
       measureWindow();
-      if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
+      setViewportClientHeight(element.clientHeight); if (element.clientWidth > 0) setViewportWidth(element.clientWidth);
       const top = element.getBoundingClientRect().top;
       setLegendHeight(legend.current?.offsetHeight ?? 0);
       if (fitPane) setViewportHeight(element.clientHeight);
@@ -367,7 +353,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     observer?.observe(element);
     if (legend.current) observer?.observe(legend.current);
     return () => { window.removeEventListener('resize', measure); observer?.disconnect(); };
-  }, [colorBySeiban, singleResourceCd, measureWindow, fitPane]);
+  }, [colorBySeiban, singleResourceCd, measureWindow, fitPane, setViewportClientHeight]);
   // Before paint, so the mounted window follows the new position without a blank frame.
   useLayoutEffect(() => {
     if (!viewport.current) return;
@@ -411,7 +397,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const element = viewport.current;
     const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
     const location = barLocations.get(bar.item.itemId)?.first;
-    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
+    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode, Number(rowElement?.dataset.ganttVerticalScale ?? 1));
     if (!element || !rowElement || !rect) return false;
     const bounds = element.getBoundingClientRect();
     // Centre the first segment, keeping its start visible when wider than the chart.
@@ -444,8 +430,8 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     flaggedIndex.current = (flaggedIndex.current + 1) % bars.length;
     const bar = bars[flaggedIndex.current]!;
     const location = barLocations.get(bar.item.itemId)?.first;
-    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode);
     const rowElement = rowElements.current.get(barRows.get(bar.item.itemId)!);
+    const rect = ganttBarGeometry(location?.bar ?? bar, location?.start ?? layout.start, dayWidth, forward, false, singleMode, Number(rowElement?.dataset.ganttVerticalScale ?? 1));
     if (!rowElement || !rect) return;
     element.scrollTop += (rowElement.getBoundingClientRect().top - element.getBoundingClientRect().top) / pageZoom() + rect.top - 70;
     element.scrollLeft = Math.max(0, rect.left - (viewportWidth - labelWidth) / 2);
@@ -584,7 +570,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
               const folded = foldedRows.get(row.key);
               const rowStart = folded?.window.start ?? layout.start;
               const rowEnd = folded?.window.end ?? layout.end;
-              return <PlanningBoardForwardGanttRow foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={row.bars.some((bar) => bar.item.kind !== 'test' && bar.item.fseiban === focusedSeiban) ? focusedSeiban : null} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
+              return <PlanningBoardForwardGanttRow fillRowHeight={fillRowHeight} foldedWindow={folded?.window} window={ganttWindow} registerRow={registerRow} seibanColors={seibanColors} focusedSeiban={row.bars.some((bar) => bar.item.kind !== 'test' && bar.item.fseiban === focusedSeiban) ? focusedSeiban : null} onToggleSeiban={seibanColors ? toggleSeiban : undefined} key={row.key} row={row} chipsByPart={chipsByPart} placementByPart={placementByPart} start={rowStart} end={rowEnd} today={layout.today} now={folded ? layout.now! >= folded.window.start && layout.now! < folded.window.end ? singleResourceWindowTime(folded.window, layout.now!) : NaN : layout.now!} width={width} dayWidth={dayWidth} scale={scale}
                 onShowQueue={showQueue} onLeaveQueue={leaveQueue} onCloseQueue={closeQueue}
                 pausesForBreaks={group.resource ? !runsThroughBreaks?.has(group.resource) : row.bars.some((bar) => !runsThroughBreaks?.has(bar.resource))}
                 hours={group.resource ? dailyHoursByResource[group.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS : Math.max(...row.bars.map((bar) => dailyHoursByResource[bar.resource] ?? GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS), GRINDING_PLANNING_BOARD_DEFAULT_RESOURCE_DAILY_HOURS)}
@@ -605,7 +591,7 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
           {forward && !singleGroup && <PlanningBoardForwardLaterQueue viewport={viewport} lanes={dragLanes} start={layout.start} dayWidth={dayWidth}
             labelWidth={labelWidth} viewportWidth={viewportWidth}
             onOpen={(bar, anchor) => queuePopover.current?.show(bar, anchor, true)} />}
-          {(sharedChain ? linkBars.length > 0 : showChain) && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={linkBars} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} />}
+          {(sharedChain ? linkBars.length > 0 : showChain) && <PlanningBoardChainLinks view={effectiveChainView} barLocations={barLocations} bars={linkBars} content={content} rowElements={rowElements} barRows={barRows} labelWidth={labelWidth} layout={layout} dayWidth={dayWidth} viewportWidth={viewportWidth} viewportHeight={viewportHeight} rowGeometryKey={rowGeometryKey} />}
         </div>
       </div>
       {showChain && (valueSheetContainer ? createPortal(chainStripView, valueSheetContainer) : chainStripView)}

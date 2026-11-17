@@ -21,6 +21,7 @@ export type ChainLinkGeometry = {
   dayWidth: number;
   viewportWidth: number;
   viewportHeight: number | null;
+  rowGeometryKey?: unknown;
 };
 type Props = ChainLinkGeometry;
 export type ChainLink = { id: string; path: string; x: number; y: number };
@@ -35,8 +36,8 @@ export function planningBoardChainPositions({ content, bars, barLocations, rowEl
     const locations = barLocations?.get(bar.item.itemId);
     const row = rowElements.current.get(locations?.first.rowKey ?? barRows.get(bar.item.itemId)!);
     const lastRow = locations ? rowElements.current.get(locations.last.rowKey) : row;
-    const first = ganttBarGeometry(locations?.first.bar ?? bar, locations?.first.start ?? layout.start, dayWidth, true, false, Boolean(row?.dataset.ganttWindowRow));
-    const last = ganttBarGeometry(locations?.last.bar ?? bar, locations?.last.start ?? layout.start, dayWidth, true, true, Boolean(lastRow?.dataset.ganttWindowRow));
+    const first = ganttBarGeometry(locations?.first.bar ?? bar, locations?.first.start ?? layout.start, dayWidth, true, false, Boolean(row?.dataset.ganttWindowRow), Number(row?.dataset.ganttVerticalScale ?? 1));
+    const last = ganttBarGeometry(locations?.last.bar ?? bar, locations?.last.start ?? layout.start, dayWidth, true, true, Boolean(lastRow?.dataset.ganttWindowRow), Number(lastRow?.dataset.ganttVerticalScale ?? 1));
     if (!row || !lastRow || !first || !last) return null;
     const top = (row.getBoundingClientRect().top - bounds.top) / pageZoom();
     const lastTop = lastRow === row ? top : (lastRow.getBoundingClientRect().top - bounds.top) / pageZoom();
@@ -110,7 +111,7 @@ export function PlanningBoardChainLinkPaths({ links, view }: { links: ChainLink[
     </g>)}</>;
 }
 
-export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight }: Props) {
+export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey }: Props) {
   const [links, setLinks] = useState<ChainLink[]>([]);
   useLayoutEffect(() => {
     const positions = planningBoardChainPositions({ content, bars, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
@@ -119,7 +120,7 @@ export function PlanningBoardChainLinks({ view = 'process', barLocations, bars, 
       const next = positions.get(bar.item.itemId)?.first;
       return previous && next ? [planningBoardChainLink(previousBar, bar, previous, next, view)] : [];
     }));
-  }, [view, barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
+  }, [view, barLocations, bars, content, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey]);
   return <svg data-testid="planning-gantt-chain-links" aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 h-full w-full">
     <PlanningBoardChainLinkPaths links={links} view={view} />
   </svg>;

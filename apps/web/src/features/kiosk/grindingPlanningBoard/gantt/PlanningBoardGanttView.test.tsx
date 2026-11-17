@@ -6,6 +6,7 @@ import { DScheduleMinutesContext } from '../../productionSchedule/DScheduleMinut
 import { PlanningBoardPiecesContext, usePlanningBoardPieceActions } from '../PlanningBoardPiecePopover';
 import { buildPlanningBoardPlacementByPart } from '../planningBoardProcessChipData';
 import { PlanningBoardPlacementContext, PlanningBoardProcessChipsContext } from '../planningBoardProcessChips';
+import { FILL_HEIGHT_STORAGE_KEY, usePersistedPlanningBoardFillHeight } from '../usePersistedPlanningBoardFillHeight';
 
 import { PlanningBoardChainLinks } from './PlanningBoardChainLinks';
 import { PlanningBoardChainStrip } from './PlanningBoardChainStrip';
@@ -2939,4 +2940,92 @@ it.each(['backward', 'forward', 'single'] as const)('renders setup and operation
   expect(container.querySelector('[data-gantt-setup]')).toBeTruthy();
   expect(container.querySelector('[data-gantt-op="10"]')).toHaveClass('bg-slate-600');
   expect(container.querySelector('[data-gantt-op="20"]')).not.toHaveClass('bg-slate-600');
+});
+
+describe('forward fill height', () => {
+  afterEach(() => { localStorage.removeItem(FILL_HEIGHT_STORAGE_KEY); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.documentElement.style.zoom = ''; });
+  it.each([1, 0.7])('fills equally, scales bars and labels, resizes and restores at zoom %s', zoom => {
+    vi.stubGlobal('innerHeight', 2160);
+    document.documentElement.style.zoom = String(zoom);
+    const getStyle = window.getComputedStyle;
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+      const style = getStyle(element, pseudo);
+      if (element === document.documentElement) Object.defineProperty(style, 'zoom', { value: String(zoom) });
+      return style;
+    });
+    const values = props();
+    values.layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305', '581'], dailyHoursByResource: {}, today: '2026-10-14', scale: 14 });
+    const preference = renderHook(() => usePersistedPlanningBoardFillHeight(true));
+    const chart = render(<PlanningBoardGanttView {...values} fillHeightEligible />);
+    const lane = screen.getByTestId('planning-forward-lane-305');
+    expect(lane).toHaveStyle({ minHeight: '76px' });
+    const count = chart.container.querySelectorAll('*').length;
+    act(() => preference.result.current.changeFillHeight(true));
+    const height = Math.floor((Math.floor(2160 / zoom - 10) - 36) / 2);
+    expect(lane.style.minHeight).toBe(`${height}px`);
+    expect(screen.getByTestId('planning-forward-lane-581').style.minHeight).toBe(`${height}px`);
+    expect(Number(lane.dataset.ganttVerticalScale)).toBeCloseTo(height / 76);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    expect(parseFloat(bar.style.height)).toBeCloseTo(70 * height / 76);
+    expect(parseFloat(bar.style.top)).toBeCloseTo(3 * height / 76);
+    expect(parseFloat(bar.style.fontSize)).toBeCloseTo(11 * height / 76);
+    expect(parseFloat(bar.style.lineHeight)).toBeCloseTo(14 * height / 76);
+    expect(parseFloat(lane.querySelector<HTMLElement>('[data-gantt-lane-label]')!.style.fontSize)).toBeCloseTo(12 * height / 76);
+    expect(chart.container.querySelectorAll('*')).toHaveLength(count);
+    act(() => { vi.stubGlobal('innerHeight', 1800); window.dispatchEvent(new Event('resize')); });
+    expect(parseFloat(lane.style.minHeight)).toBe(Math.floor((Math.floor(1800 / zoom - 10) - 36) / 2));
+    act(() => { vi.stubGlobal('innerHeight', 1599); window.dispatchEvent(new Event('resize')); });
+    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(bar).toHaveStyle({ height: '70px', top: '3px' });
+  });
+  it('keeps scaled process chips below the bar inside the stretched row', () => {
+    vi.stubGlobal('innerHeight', 2160);
+    localStorage.setItem(FILL_HEIGHT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, enabled: true }));
+    const target = item();
+    const values = props([target]);
+    values.layout = buildPlanningBoardGanttLayout({ items: [target], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305', '581'], dailyHoursByResource: {}, today: '2026-10-14', scale: 14 });
+    const chips = new Map([[planningBoardPartKey(target), [{ rowId: 'active', resourceCd: '305', isCompleted: false }]]]);
+    render(<PlanningBoardProcessChipsContext.Provider value={chips}>
+      <PlanningBoardGanttView {...values} fillHeightEligible />
+    </PlanningBoardProcessChipsContext.Provider>);
+    const lane = screen.getByTestId('planning-forward-lane-305');
+    const height = Math.floor((2160 - 10 - 36) / 2);
+    const k = height / 96;
+    expect(lane).toHaveStyle({ minHeight: `${height}px` });
+    expect(Number(lane.dataset.ganttVerticalScale)).toBeCloseTo(k);
+    const strip = screen.getByTestId('planning-gantt-chips-a');
+    expect(parseFloat(strip.style.top)).toBeCloseTo(76 * k);
+    expect(strip.style.transform).toBe(`scale(${k})`);
+    expect(parseFloat(screen.getByTestId('planning-gantt-bar-a').style.height)).toBeCloseTo(70 * k);
+    expect(parseFloat(strip.style.top) + 20 * k).toBeCloseTo(height);
+  });
+  it('uses the existing pane measurement and never shrinks rows when height is insufficient', () => {
+    vi.stubGlobal('innerHeight', 2160);
+    localStorage.setItem(FILL_HEIGHT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, enabled: true }));
+    const values = props();
+    values.layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305', '581'], dailyHoursByResource: {}, today: '2026-10-14', scale: 14 });
+    let available = 500;
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute('data-gantt-viewport') ? available : 0;
+    });
+    render(<PlanningBoardGanttView {...values} fillHeightEligible fitPane />);
+    const lane = screen.getByTestId('planning-forward-lane-305');
+    expect(lane).toHaveStyle({ minHeight: '232px' });
+    available = 100;
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(lane).toHaveStyle({ minHeight: '76px' });
+    expect(lane.dataset.ganttVerticalScale).toBe('1');
+  });
+  it('does not stretch other categories even with the preference saved', () => {
+    vi.stubGlobal('innerHeight', 2160);
+    localStorage.setItem(FILL_HEIGHT_STORAGE_KEY, JSON.stringify({ schemaVersion: 1, enabled: true }));
+    const values = props();
+    values.layout = buildPlanningBoardGanttLayout({ items: [item()], mode: 'forward', allocation: 'alternate', view: 'resource',
+      seibanOrder: [], resources: ['305'], dailyHoursByResource: {}, today: '2026-10-14', scale: 14 });
+    render(<PlanningBoardGanttView {...values} />);
+    expect(screen.getByTestId('planning-forward-lane-305')).toHaveStyle({ minHeight: '76px' });
+  });
 });
