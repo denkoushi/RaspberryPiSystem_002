@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 
 import { PlanningBoardPinIcon } from './gantt/PlanningBoardPinIcon';
@@ -185,6 +185,18 @@ export function PlanningBoardToolbar({
   useEffect(() => {
     if (orderPreview && singleResourcePickerAnchor) onCloseSingleResourcePicker?.();
   }, [orderPreview, singleResourcePickerAnchor, onCloseSingleResourcePicker]);
+  const [viewPending, startViewTransition] = useTransition();
+  const [requestedView, setRequestedView] = useState(view);
+  const [modePending, startModeTransition] = useTransition();
+  const [requestedMode, setRequestedMode] = useState(ganttMode);
+  const changeView = (next: GrindingPlanningBoardView) => {
+    setRequestedView(next);
+    startViewTransition(() => onViewChange(next));
+  };
+  const changeMode = (next: PlanningBoardGanttMode) => {
+    setRequestedMode(next);
+    startModeTransition(() => onGanttModeChange?.(next));
+  };
   const { frozen } = usePlanningBoardOffline();
   const fill = usePersistedPlanningBoardFillHeight(category === 'grinding');
   const showFillHeight = fill.available && ganttEnabled && ganttMode === 'forward' && (view === 'resource' || Boolean(singleResourceCd));
@@ -249,10 +261,10 @@ export function PlanningBoardToolbar({
         onClick={onToggleArrivalFilter} disabled={Boolean(orderPreview)}
         className={clsx('grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border text-base font-bold', arrivalFilterEnabled ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>着</button>
       <SegmentGroup ariaLabel="表示単位">
-        <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'seiban'} onClick={() => onViewChange('seiban')}>
+        <SegmentButton disabled={Boolean(orderPreview)} pressed={(viewPending ? requestedView : view) === 'seiban'} onClick={() => changeView('seiban')}>
           製番
         </SegmentButton>
-        <SegmentButton disabled={Boolean(orderPreview)} pressed={view === 'resource'} onClick={() => onViewChange('resource')}>
+        <SegmentButton disabled={Boolean(orderPreview)} pressed={(viewPending ? requestedView : view) === 'resource'} onClick={() => changeView('resource')}>
           資源CD
         </SegmentButton>
       </SegmentGroup>
@@ -263,8 +275,8 @@ export function PlanningBoardToolbar({
         {ganttEnabled && <>
           <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label={orderPreview?.method ? 'ガントの方向' : '並べ方'}>
             <span className="px-1 text-[10px] text-slate-400">並べ方</span>
-            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'forward'} onClick={() => onGanttModeChange?.('forward')}>今日から</SegmentButton>
-            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={ganttMode === 'backward'} onClick={() => onGanttModeChange?.('backward')}>納期から</SegmentButton>
+            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={(modePending ? requestedMode : ganttMode) === 'forward'} onClick={() => changeMode('forward')}>今日から</SegmentButton>
+            <SegmentButton tone="gantt" disabled={Boolean(orderPreview)} pressed={(modePending ? requestedMode : ganttMode) === 'backward'} onClick={() => changeMode('backward')}>納期から</SegmentButton>
           </div>
           <div className="ml-1 flex shrink-0 items-center gap-0.5" role="group" aria-label="横軸の幅">
             {GANTT_SCALES.filter((days) => days <= 2).map((days) => <SegmentButton key={days} tone="scale" pressed={ganttScale === days} onClick={() => onGanttScaleChange?.(days)}>{ganttScaleLabel(days)}</SegmentButton>)}

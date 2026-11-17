@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardToolbar } from './PlanningBoardToolbar';
@@ -371,4 +371,36 @@ describe('fill height toolbar control', () => {
     render(<PlanningBoardToolbar {...props()} largeScreen />);
     expect(screen.getByRole('button', { name: '行を縦いっぱいに伸ばす' })).toHaveAttribute('aria-pressed', 'true');
   });
+});
+
+
+it.each(['view', 'mode'] as const)('presses the requested %s button before the suspended board commits, including rapid reversal', (kind) => {
+  const never = new Promise<void>(() => {});
+  let block = true;
+  function Heavy({ view, mode }: { view: string; mode: string }) {
+    if (block && (view === 'seiban' || mode === 'backward')) throw never;
+    return <output data-testid="committed-board">{view}:{mode}</output>;
+  }
+  function Board() {
+    const [view, setView] = useState<'resource' | 'seiban'>('resource');
+    const [mode, setMode] = useState<'forward' | 'backward'>('forward');
+    return <><PlanningBoardToolbar {...props()} view={view} onViewChange={setView} ganttMode={mode} onGanttModeChange={setMode} />
+      <Heavy view={view} mode={mode} /></>;
+  }
+  const { rerender } = render(<Suspense fallback="loading"><Board /></Suspense>);
+  const group = () => screen.getByRole('group', { name: kind === 'view' ? '表示単位' : '並べ方' });
+  const next = () => within(group()).getByRole('button', { name: kind === 'view' ? '製番' : '納期から', exact: true });
+  const previous = () => within(group()).getByRole('button', { name: kind === 'view' ? '資源CD' : '今日から', exact: true });
+  fireEvent.click(next());
+  expect(next()).toHaveAttribute('aria-pressed', 'true');
+  expect(previous()).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByTestId('committed-board')).toHaveTextContent('resource:forward');
+  fireEvent.click(previous());
+  expect(previous()).toHaveAttribute('aria-pressed', 'true');
+  expect(next()).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(next());
+  block = false;
+  rerender(<Suspense fallback="loading"><Board /></Suspense>);
+  expect(screen.getByTestId('committed-board')).toHaveTextContent(kind === 'view' ? 'seiban:forward' : 'resource:backward');
+  expect(next()).toHaveAttribute('aria-pressed', 'true');
 });

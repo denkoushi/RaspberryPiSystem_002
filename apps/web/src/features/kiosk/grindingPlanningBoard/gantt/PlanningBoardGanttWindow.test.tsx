@@ -193,3 +193,34 @@ it('keeps operation context stable on selection and updates its loading state', 
   expect(contextValues.length).toBeGreaterThan(0);
   expect(contextValues.every(value => (value as { loading: boolean }).loading)).toBe(true);
 });
+
+
+it('windows backward bars, day/hour grids, connectors and overlap spans without moving headings', async () => {
+  const { scroll, viewport, layout } = setup('backward', true, (layout, dayWidth) => {
+    const row = layout.groups[0]!.rows[0]!;
+    const span = (left: number, right: number) => ({ start: layout.start + left / dayWidth, end: layout.start + right / dayWidth });
+    row.connectors = [span(100, 200), span(100, 5000), span(8000, 8100)];
+    row.bars[0]!.overlaps = [span(100, 200), span(100, 5000), span(8000, 8100)];
+  });
+  await scroll(0);
+  expect(screen.getByTestId('planning-gantt-bar-item-0000')).toBeInTheDocument();
+  expect(screen.queryByTestId('planning-gantt-bar-item-0002')).not.toBeInTheDocument();
+  const headings = () => [...viewport.querySelectorAll<HTMLElement>('div[title]')];
+  expect(headings().length).toBeLessThan(10);
+  expect(viewport.querySelectorAll('.border-dashed').length).toBeLessThan(150);
+  const connectors = () => viewport.querySelectorAll('span.bg-slate-500');
+  const overlaps = () => viewport.querySelectorAll('span.border-rose-100');
+  expect(connectors()).toHaveLength(2);
+  expect(overlaps()).toHaveLength(2);
+  expect(headings().some(element => element.title === dayToDate(layout.start + 20))).toBe(false);
+  await scroll(8000);
+  expect(screen.queryByTestId('planning-gantt-bar-item-0000')).not.toBeInTheDocument();
+  expect(screen.getByTestId('planning-gantt-bar-item-0003')).toBeInTheDocument();
+  expect(connectors()).toHaveLength(1);
+  expect(overlaps()).toHaveLength(1);
+  expect(headings().some(element => element.title === dayToDate(layout.start + 20))).toBe(true);
+  for (const heading of headings()) {
+    const day = Date.parse(heading.title) / 86_400_000;
+    expect(heading.style.left).toBe(`${320 + (day - layout.start) * 340}px`);
+  }
+});

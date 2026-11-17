@@ -218,7 +218,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
       </div>
       <div className="relative shrink-0 overflow-hidden" style={{ width }}>
         <PlanningBoardGanttSendOutStars bars={row.bars} window={window} start={start} dayWidth={dayWidth} />
-        {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-7 h-px bg-slate-500" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+        {row.connectors.filter((link) => !window || (link.start - start) * dayWidth <= window.right && (link.end - start) * dayWidth >= window.left).map((link, i) => <span key={i} className="pointer-events-none absolute top-7 h-px bg-slate-500" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
         {visibleBars.map((bar) => (
           <PlanningBoardGanttBar key={bar.item.itemId} bar={bar} onHeldItem={setHeldItemId} start={start} dayWidth={dayWidth} today={today}
             selected={selectedItemIds.has(bar.item.itemId)} sibling={resourceView && selectedParts.has(bar.partKey)}
@@ -237,7 +237,7 @@ export const PlanningBoardGanttRow = memo(function PlanningBoardGanttRow({
           ) : null;
         })}
         {/* Both bars of a pair carry the same span; draw it once per row. */}
-        {[...new Map(row.bars.flatMap((bar) => bar.overlaps).map((span) => [`${span.start}:${span.end}`, span] as const)).entries()].map(([key, span]) => (
+        {[...new Map(row.bars.flatMap((bar) => bar.overlaps).map((span) => [`${span.start}:${span.end}`, span] as const)).entries()].filter(([, span]) => !window || (span.start - start) * dayWidth <= window.right && (span.start - start) * dayWidth + Math.max(3, (span.end - span.start) * dayWidth) >= window.left).map(([key, span]) => (
           <span key={key} className="pointer-events-none absolute top-4 z-[5] h-7 rounded border border-rose-100 opacity-75"
             style={{ left: (span.start - start) * dayWidth, width: Math.max(3, (span.end - span.start) * dayWidth), background: GANTT_HATCH }} />
         ))}

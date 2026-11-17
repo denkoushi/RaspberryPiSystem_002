@@ -385,11 +385,14 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
     const weekday = new Date(day * 86_400_000).getUTCDay();
     return { day, weekday, weekend: weekday === 0 || weekday === 6 };
   }), [layout.end, layout.start]);
-  const dateHeadings = useMemo(() => days.map(({ day, weekday, weekend }) => <div key={day} className={clsx('relative shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
-              style={{ width: dayWidth }} title={dayToDate(day)}>
+  const visibleDays = useMemo(() => days.filter(({ day }) => !ganttWindow ||
+    (day - layout.start) * dayWidth <= ganttWindow.right && (day + 1 - layout.start) * dayWidth >= ganttWindow.left),
+  [days, ganttWindow, layout.start, dayWidth]);
+  const dateHeadings = useMemo(() => visibleDays.map(({ day, weekday, weekend }) => <div key={day} className={clsx('absolute inset-y-0 shrink-0 overflow-hidden whitespace-nowrap border-l border-slate-800 pt-0.5 text-center text-[11px] leading-4 tabular-nums', day === layout.today ? 'bg-emerald-400 font-bold text-slate-950' : weekend ? 'bg-slate-800 text-slate-300' : 'text-slate-300')}
+              style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} title={dayToDate(day)}>
               {dayWidth >= 44 || weekday === 1 ? `${dayLabel(day)} ` : ''}{WEEKDAYS[weekday]}
               {showHours && hourTicks.map((hour) => <span key={hour} className="absolute bottom-0 -translate-x-1/2 text-xs font-bold leading-4 opacity-90" style={{ left: `${hour / 24 * 100}%` }}>{hour}時</span>)}
-            </div>), [days, dayWidth, layout.today, showHours, hourTicks]);
+            </div>), [visibleDays, dayWidth, layout.start, layout.today, labelWidth, showHours, hourTicks]);
   const selectedParts = useMemo(() => new Set(layout.groups.flatMap((group) => group.rows.flatMap((row) =>
     row.bars.filter((bar) => interaction.selectedItemIds.has(bar.item.itemId)).map((bar) => bar.partKey)
   ))), [interaction.selectedItemIds, layout]);
@@ -532,9 +535,9 @@ export const PlanningBoardGanttView = forwardRef<PlanningBoardGanttHandle, Plann
             {dateHeadings}
           </div>}
           {/* The forward chart draws no vertical grid so the brighter row lines carry the eye from the machine name to its bars. */}
-          {!forward && days.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
+          {!forward && visibleDays.map(({ day, weekend }) => <div key={day} className={clsx('pointer-events-none absolute bottom-0 top-9 border-l border-slate-800/70', weekend && 'bg-slate-950/50')}
             style={{ left: labelWidth + (day - layout.start) * dayWidth, width: dayWidth }} />)}
-          {!forward && showHours && days.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
+          {!forward && showHours && visibleDays.flatMap(({ day }) => hourTicks.map((hour) => <div key={`${day}-${hour}`} className="pointer-events-none absolute bottom-0 top-9 border-l border-dashed border-slate-700/60"
             style={{ left: labelWidth + (day - layout.start + hour / 24) * dayWidth }} />))}
           {!forward && <div className="pointer-events-none absolute bottom-0 top-9 z-[1] w-px bg-emerald-400" style={{ left: labelWidth + (layout.today - layout.start) * dayWidth }} />}
           {layout.completedOnly && <p className="sticky left-0 w-fit p-3 text-sm text-slate-400">完了は「納期から」で表示</p>}
