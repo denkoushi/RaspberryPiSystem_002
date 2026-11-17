@@ -1,6 +1,6 @@
 import { Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 
-import { kioskAssemblyLibraryPath, kioskAssemblyManualsPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
+import { kioskAssemblyLibraryPath, kioskAssemblyProcedureDocumentEditPath } from '../assemblyRoutes';
 
 import { AssemblyProcedureDocumentEditorProvider } from './AssemblyProcedureDocumentEditorContext';
 import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocumentEditorScreen';
@@ -41,8 +41,6 @@ function AssemblyProcedureDocumentEditorRoute({ documentId }: { documentId: stri
   const controller = useAssemblyProcedureDocumentEditorController({
     documentId,
     onNavigateBack: () => navigate(returnTo ?? fallback, { replace: true }),
-    onNavigateAfterDelete: () => navigate(returnTo ?? kioskAssemblyManualsPath(), { replace: true }),
-    onNavigateAfterDiscard: () => navigate(returnTo ?? fallback, { replace: true }),
     onNavigateAfterPublish: () => navigate(returnTo ?? fallback, { replace: true })
   });
   return (

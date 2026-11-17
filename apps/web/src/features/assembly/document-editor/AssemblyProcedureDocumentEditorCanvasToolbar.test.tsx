@@ -7,51 +7,40 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
-function renderToolbar({ workshop = false, revision = false, locked = false, readOnly = false, isDirty = false, saving = false, saveUnsettled = false } = {}) {
+function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false, saveUnsettled = false } = {}) {
   const controller = {
-    readOnly, isDirty, saving, saveUnsettled, busy: saving, canSave: true, canPublish: true, canDiscard: true, canUndo: true, canRedo: true,
-    documentStatus: 'draft', supersedesDocumentId: revision ? 'previous' : null,
+    readOnly, isDirty, saving, saveUnsettled, busy: saving, canSave: true, canPublish: true, canUndo: true, canRedo: true,
     layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
-  const onDelete = vi.fn(), onDiscard = vi.fn();
-  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} onDelete={onDelete} onDiscard={onDiscard} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
-  return { controller, onDelete, onDiscard };
+  render(<AssemblyProcedureDocumentEditorCanvasToolbar controller={controller} workshop={workshop} materialCount={0} materialOpen={false} videoOpen={false} onMaterial={vi.fn()} onVideo={vi.fn()} onPublish={vi.fn()} voiceInputEnabled={false} onToggleVoiceInput={vi.fn()} />);
+  return { controller };
 }
 
 describe('document editor toolbar navigation', () => {
-  it.each([false, true])('keeps return first and destructive action alone at the bottom (revision: %s)', revision => {
-    const { controller, onDelete, onDiscard } = renderToolbar({ workshop: revision, revision });
+  it.each([false, true])('keeps return first without document deletion actions (workshop: %s)', workshop => {
+    const { controller } = renderToolbar({ workshop });
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
     const buttons = within(rail).getAllByRole('button');
-    const back = screen.getByRole('button', { name: revision ? '工房へ戻る' : '一覧へ戻る' });
-    const destructive = screen.getByRole('button', { name: revision ? '改版を破棄する' : '削除する' });
+    const back = screen.getByRole('button', { name: workshop ? '工房へ戻る' : '一覧へ戻る' });
     expect(buttons[0]).toBe(back);
+    expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '改版を破棄する' })).not.toBeInTheDocument();
     expect(buttons[1]).toHaveAccessibleName('保存済み');
     expect(rail.children[1]).toHaveClass('h-px');
-    expect(buttons.at(-1)).toBe(destructive);
-    expect(rail.children[rail.children.length - 2]).toHaveClass('flex-1');
-    expect(rail.lastElementChild).toContainElement(destructive);
     expect(back).toHaveClass('h-12');
     expect(back.querySelector('svg')).toHaveAttribute('aria-hidden', 'true');
     fireEvent.click(back);
     expect(controller.navigateBack).toHaveBeenCalledOnce();
-    fireEvent.click(destructive);
-    expect(revision ? onDiscard : onDelete).toHaveBeenCalledOnce();
-    expect(revision ? onDelete : onDiscard).not.toHaveBeenCalled();
   });
 
   it('preserves navigation locking and readonly mutation guards', () => {
-    const { controller, onDelete } = renderToolbar({ locked: true, readOnly: true });
+    const { controller } = renderToolbar({ locked: true, readOnly: true });
     const back = screen.getByRole('button', { name: '一覧へ戻る' });
     expect(back).toBeDisabled();
     expect(screen.getByRole('button', { name: '保存済み' })).toBeDisabled();
-    const destructive = screen.getByRole('button', { name: '削除する' });
-    expect(destructive).toBeDisabled();
     fireEvent.click(back);
-    fireEvent.click(destructive);
     expect(controller.navigateBack).not.toHaveBeenCalled();
-    expect(onDelete).not.toHaveBeenCalled();
   });
 });
 

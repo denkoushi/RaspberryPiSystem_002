@@ -15,8 +15,6 @@ vi.mock('../../../api/client', () => ({
   saveAssemblyProcedureDocumentOverlays: vi.fn(),
   publishAssemblyProcedureDocument: vi.fn(),
   approvePublishAssemblyProcedureDocument: vi.fn(),
-  discardAssemblyProcedureDocumentRevision: vi.fn(),
-  deleteAssemblyProcedureDocument: vi.fn()
 }));
 vi.mock('./useAssemblyProcedureDocumentEditLease', () => ({
   useAssemblyProcedureDocumentEditLease: () => ({ mine: true, unavailable: false, handleError: () => false })

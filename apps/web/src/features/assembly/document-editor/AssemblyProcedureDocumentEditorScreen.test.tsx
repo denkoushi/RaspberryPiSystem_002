@@ -123,8 +123,6 @@ function makeController(
     deleteSelectedOverlay: vi.fn(),
     save: vi.fn(async () => undefined),
     publish: vi.fn(async () => undefined),
-    deleteDocument: vi.fn(async () => undefined),
-    discard: vi.fn(async () => undefined),
     navigateBack: vi.fn(),
     isDirty: false,
     readOnly: false,
@@ -136,7 +134,6 @@ function makeController(
     retryEditLease: vi.fn(async () => undefined),
     canSave: false,
     canPublish: true,
-    canDiscard: false,
     textCandidates: [],
     chooseTextCandidate: vi.fn(),
     cancelTextCandidates: vi.fn(),
@@ -311,7 +308,7 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     const actions = within(screen.getByRole('navigation', { name: 'エディタ操作' })).getAllByRole('button');
     expect(actions[0]).toHaveAttribute('aria-label', '工房へ戻る');
     expect(actions[1]).toHaveAttribute('aria-label', '保存済み');
-    expect(actions.at(-1)).toHaveAttribute('aria-label', supersedesDocumentId ? '改版を破棄する' : '削除する');
+    expect(actions.at(-1)).toHaveAttribute('aria-label', 'やり直す');
   });
 
   it.each([
@@ -347,25 +344,14 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(navigateBack).toHaveBeenCalledOnce();
   });
 
-  it('shows deletion only for DRAFT and requires irreversible deletion confirmation', () => {
-    const deleteDocument = vi.fn(async () => undefined);
-    const view = renderScreen(makeController({ deleteDocument }));
-    fireEvent.click(screen.getByRole('button', { name: '削除する' }));
-    expect(screen.getByText('この要領書を削除します。元に戻せません')).toBeInTheDocument();
-    expect(deleteDocument).not.toHaveBeenCalled();
-    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '削除する' }));
-    expect(deleteDocument).toHaveBeenCalledOnce();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, status: 'published' }, readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+  it.each([
+    { status: 'draft' as const, supersedesDocumentId: null },
+    { status: 'draft' as const, supersedesDocumentId: 'root-1' },
+    { status: 'published' as const, supersedesDocumentId: null }
+  ])('does not offer document deletion or revision discard for %j', document => {
+    renderScreen(makeController({ document: { ...editorDocument, ...document } }));
     expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ document: { ...editorDocument, supersedesDocumentId: 'root-1' } })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
-  });
-
-  it('disables deletion while busy or read only', () => {
-    const view = renderScreen(makeController({ busy: true }));
-    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
-    view.rerender(<AssemblyProcedureDocumentEditorProvider value={makeController({ readOnly: true })}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
-    expect(screen.getByRole('button', { name: '削除する' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: '改版を破棄する' })).not.toBeInTheDocument();
   });
 
   it('runs blank-page addition from the page list', () => {
@@ -587,16 +573,16 @@ describe('AssemblyProcedureDocumentEditorScreen', () => {
     expect(c.layoutSuggestions.cancel).toHaveBeenCalledOnce();
   });
 
-  it('keeps back first, delete last and chat clearance while exposing selected tools and the inspector close action', () => {
+  it('keeps back first and chat clearance while exposing selected tools and the inspector close action', () => {
     const c = makeController({ canSave: true, canUndo: true, canRedo: true, selectionMode: true, selectedElement: { id: 'text', kind: 'TEXT', pageIndex: 0, text: '文字', zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 } } });
     renderScreen(c);
     const rail = screen.getByRole('navigation', { name: 'エディタ操作' });
-    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す', '削除する']);
+    expect(within(rail).getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['一覧へ戻る', '保存済み', '公開する', '素材を置く', '動画をつなぐ', '文字を置く', '図形を置く', '範囲を選ぶ', '整える', '音声入力', '元に戻す', 'やり直す']);
+    expect(within(rail).queryByRole('button', { name: '削除する' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '整える' })).toHaveClass('!border-[#5fc3e8]', '!text-[#5fc3e8]');
     expect(rail).toHaveClass('pb-[84px]');
     for (const button of within(rail).getAllByRole('button')) expect(button).not.toHaveAttribute('title');
     expect(screen.getByRole('button', { name: '一覧へ戻る' })).toHaveClass('!border-transparent', '!text-[#9fadb9]');
-    expect(screen.getByRole('button', { name: '削除する' })).toHaveClass('!border-transparent', '!text-[#e5484d]');
     expect(screen.getByRole('button', { name: '保存済み' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-save');
     expect(screen.getByRole('button', { name: '公開する' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-publish');
     expect(screen.getByRole('button', { name: '範囲を選ぶ' })).toHaveAttribute('data-kiosk-sop-target', 'assembly-document-editor-range-add');

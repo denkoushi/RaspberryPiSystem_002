@@ -193,7 +193,7 @@ export class ProcedureManualService {
         publishedRevisionNumber: published ? published.revisionMetadata?.revisionNumber ?? 1 : null,
         approval: isPdf ? null : serializeLastProcedureManualApproval(published?.procedureManualApprovals),
         draftRevision: draft ? {
-          documentId: draft.id, revisionNumber: draft.revisionMetadata!.revisionNumber,
+          documentId: draft.id, editVersion: draft.revisionMetadata!.editVersion, revisionNumber: draft.revisionMetadata!.revisionNumber,
           editLease: draft.editLease && draft.editLease.expiresAt > now ? {
             holderLabel: draft.editLease.holderLabel, acquiredAt: draft.editLease.acquiredAt.toISOString()
           } : null

@@ -1,5 +1,7 @@
 import { normalizeProcedureManualCommonSubject } from '@raspi-system/shared-types';
 
+import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
+
 import { procedureManualButtonBase, procedureManualButtonUnselected } from './procedure-manual-button-styles';
 
 import type { ProcedureManualAssignmentOverviewItemDto, ProcedureManualProcessDto } from '../types';
@@ -11,11 +13,13 @@ export function filterProcedureManualCommonItems(items: ProcedureManualAssignmen
     && normalizeProcedureManualCommonSubject(item.title).includes(query));
 }
 
-export function ProcedureManualCommonList({ items, processes, categoryId, kanaRow, onView, onFix, onRemove, busy }: {
+export function ProcedureManualCommonList({ items, processes, categoryId, kanaRow, onView, onFix, onRemove, onDiscard, busy }: {
   items: ProcedureManualAssignmentOverviewItemDto[]; processes: ProcedureManualProcessDto[]; categoryId: string; kanaRow: string;
+  onDiscard?: (item: ProcedureManualAssignmentOverviewItemDto) => void;
   onView: (item: ProcedureManualAssignmentOverviewItemDto) => void;
   onFix?: (item: ProcedureManualAssignmentOverviewItemDto) => void; onRemove?: (item: ProcedureManualAssignmentOverviewItemDto, deleteDocument: boolean) => void; busy?: boolean;
 }) {
+  const showDiscard = Boolean(onDiscard && items.some(item => item.draftRevision));
   const category = processes.find(row => row.id === categoryId)?.name;
   const button = `${procedureManualButtonBase} ${procedureManualButtonUnselected} h-12 px-2 text-[17px] font-bold disabled:opacity-40`;
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3.5 p-5 px-7">
@@ -23,13 +27,14 @@ export function ProcedureManualCommonList({ items, processes, categoryId, kanaRo
       <h2 className="rounded-full border border-[#344252] px-3.5 py-1.5 text-lg">共通{category ? ` › ${category}` : ''}{kanaRow ? ` › ${kanaRow}行` : ''}</h2><span>{items.length} 件</span>
     </div>
     <div role="table" aria-label="共通の手順" className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-auto">
-      {items.map(item => <div role="row" aria-label={item.title} key={item.assignmentId} className="grid h-[60px] shrink-0 items-center gap-3.5 rounded-lg border border-[#27313b] bg-[#161c22] px-3.5 text-xl" style={{ gridTemplateColumns: `minmax(0,1fr) 170px 110px 90px 64px${onFix ? ' 64px' : ''}${onRemove ? ' 56px' : ''}` }}>
+      {items.map(item => <div role="row" aria-label={item.title} key={item.assignmentId} className="grid h-[60px] shrink-0 items-center gap-3.5 rounded-lg border border-[#27313b] bg-[#161c22] px-3.5 text-xl" style={{ gridTemplateColumns: `minmax(0,1fr) 170px 110px 90px 64px${onFix ? ' 64px' : ''}${showDiscard ? ' 44px' : ''}${onRemove ? ' 56px' : ''}` }}>
         <b role="cell" className="truncate">{item.title}</b>
         <span role="cell" className="truncate text-base text-[#9fadb9]">{item.category ?? processes.find(row => row.id === item.processId)?.name}</span>
         <span role="cell" className="text-base text-[#9fadb9]">{item.pageCount ?? '—'} ページ</span>
         <span role="cell" className={`rounded-full border py-0.5 text-center text-[15px] font-bold ${item.status === 'published' ? 'border-[#3ba776] text-[#3ba776]' : 'border-[#f6b93b] text-[#f6b93b]'}`}>{item.status === 'published' ? '公開' : item.status === 'draft' ? '下書き' : '無効'}</span>
         <button className={`${button} border-[#7cc4ff] text-[#7cc4ff]`} disabled={busy} onClick={() => onView(item)}>見る</button>
         {onFix ? <button className={button} disabled={busy || item.kind !== 'assembly_procedure_document'} onClick={() => onFix(item)}>直す</button> : null}
+        {showDiscard ? <div>{item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className="inline-flex min-h-12 w-11 shrink-0 items-center justify-center rounded-lg border border-transparent text-[#9fadb9] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#7cc4ff] disabled:opacity-40" disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => onDiscard?.(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}</div> : null}
         {onRemove ? <button className={button} disabled={busy} onClick={() => onRemove(item, item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0)}>{item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision && item.otherAssignments.length === 0 ? '削除' : '外す'}</button> : null}
       </div>)}
       {!items.length ? <p className="py-7 text-xl text-[#9fadb9]">ありません</p> : null}

@@ -9,8 +9,10 @@ import { ProcedureManualWorkshop } from './ProcedureManualWorkshop';
 
 import type { AssemblyProcedureSequenceDto, ProcedureManualModelOverviewDto, ProcedureManualOverviewItemDto } from '../types';
 
-const mocks = vi.hoisted(() => ({ rename: vi.fn(), partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), verify: vi.fn() }));
+const mocks = vi.hoisted(() => ({ common: vi.fn(), discard: vi.fn(), rename: vi.fn(), partCandidates: vi.fn(), models: vi.fn(), candidates: vi.fn(), processes: vi.fn(), overview: vi.fn(), allOverview: vi.fn(), document: vi.fn(), detail: vi.fn(), replace: vi.fn(), delete: vi.fn(), materials: vi.fn(), videos: vi.fn(), verify: vi.fn() }));
 vi.mock('../../../api/client', () => ({
+  listProcedureManualCommon: mocks.common,
+  discardAssemblyProcedureDocumentRevision: mocks.discard,
   renameAssemblyProcedureDocument: mocks.rename,
   verifyAssemblyTemplateAccessPassword: mocks.verify,
   listProcedureManualPartCandidates: mocks.partCandidates,
@@ -37,7 +39,7 @@ const processes = [
 ];
 const published: ProcedureManualOverviewItemDto = { otherAssignments: [], assignmentId: 'pub', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2, approval: null, draftRevision: null, unavailableReason: null, pageCount: 3, thumbnailPageUrl: '/page.png' };
 const items: ProcedureManualOverviewItemDto[] = [
-  { ...published, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: '2026-10-06T09:12:00' } } },
+  { ...published, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: '2026-10-06T09:12:00' } } },
   { ...published, assignmentId: 'draft', documentId: 'draft1', title: '初版下書き', status: 'draft', publishedRevisionNumber: null },
   { ...published, assignmentId: 'bad', documentId: 'invalid', title: '無効手順', status: 'unavailable', unavailableReason: 'disabled', pageCount: null, thumbnailPageUrl: null },
   { ...published, assignmentId: 'pdf', documentId: 'pdf', title: 'キオスクPDF', kind: 'kiosk_document', publishedRevisionNumber: null, thumbnailPageUrl: null }
@@ -73,6 +75,76 @@ beforeEach(() => {
 });
 
 describe('procedure-manuals workshop', () => {
+  it('discards an unlocked revision only after confirmation and refreshes the list', async () => {
+    const revision = { ...published, label: '改版ラベル', draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } };
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [revision] }] });
+    mocks.discard.mockResolvedValue(published);
+    show();
+    const row = await screen.findByRole('row', { name: '改版ラベル' });
+    fireEvent.click(within(row).getByRole('button', { name: '改版を破棄' }));
+    expect(mocks.discard).not.toHaveBeenCalled();
+    const dialog = screen.getByRole('dialog', { name: '改版を破棄' });
+    expect(within(dialog).getByText('改版ラベル。元に戻せません')).toBeInTheDocument();
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [published] }] });
+    fireEvent.click(within(dialog).getByRole('button', { name: '破棄' }));
+    await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'v3', accessPassword: '2520', expectedEditVersion: 8 }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: '改版を破棄' })).not.toBeInTheDocument());
+    expect(mocks.allOverview).toHaveBeenCalledTimes(2);
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.delete).not.toHaveBeenCalled();
+  });
+
+  it('disables revision discard while another terminal holds the edit lease', async () => {
+    show();
+    const row = await screen.findByRole('row', { name: '公開手順' });
+    const button = within(row).getByRole('button', { name: '改版を破棄' });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(screen.queryByRole('dialog', { name: '改版を破棄' })).not.toBeInTheDocument();
+    expect(mocks.discard).not.toHaveBeenCalled();
+    expect(within(await screen.findByRole('row', { name: '初版下書き' })).queryByRole('button', { name: '改版を破棄' })).not.toBeInTheDocument();
+  });
+
+  it('shows API errors when revision discard fails', async () => {
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } }] }] });
+    mocks.discard.mockRejectedValue({ response: { data: { message: '他の編集で更新されています' } } });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: '改版を破棄' }));
+    expect(screen.getByText('公開手順。元に戻せません')).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('他の編集で更新されています');
+    expect(mocks.allOverview).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks editor access before confirming revision discard', async () => {
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } }] }] });
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: '改版を破棄' }));
+    const confirm = within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' });
+    act(() => clearProcedureEditorAccess());
+    fireEvent.click(confirm);
+    expect(mocks.discard).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: '暗証番号' })).toBeInTheDocument();
+  });
+
+  it.each([false, true])('offers revision discard in the common workshop with the same lease guard (locked: %s)', async locked => {
+    mocks.common.mockResolvedValue({ categories: [], actions: [], subjects: [] });
+    mocks.processes.mockResolvedValue([{ id: 'common-category', name: '共通分類', subjectKind: 'COMMON', parentId: null }]);
+    mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'common-category', count: 1, items: [{ ...published, modelCode: '', modelCodeKey: '', processId: 'common-category', subjectKind: 'COMMON', draftRevision: { documentId: 'common-v3', editVersion: 5, revisionNumber: 3, editLease: locked ? { holderLabel: '他端末', acquiredAt: '2026-10-06T09:12:00' } : null } }] }] });
+    show('?common=1');
+    const button = await screen.findByRole('button', { name: '改版を破棄' });
+    if (locked) {
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(mocks.discard).not.toHaveBeenCalled();
+      expect(screen.queryByRole('dialog', { name: '改版を破棄' })).not.toBeInTheDocument();
+    } else {
+      fireEvent.click(button);
+      fireEvent.click(within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' }));
+      await waitFor(() => expect(mocks.discard).toHaveBeenCalledExactlyOnceWith({ id: 'common-v3', accessPassword: '2520', expectedEditVersion: 5 }));
+    }
+  });
+
   it('displays initial results without waiting for unrelated counts', async () => {
     let finish!: (count: number) => void;
     mocks.videos.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
@@ -274,7 +346,7 @@ describe('procedure-manuals workshop', () => {
     mocks.processes.mockResolvedValue([...processes, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind }]);
     mocks.allOverview.mockResolvedValue({ processes: [{ processId: 'grinding', items: [{ ...published,
       assignmentId: 'reattach', title: '付け直す対象', kind, status, modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'grinding',
-      draftRevision: revision ? { documentId: 'v3', revisionNumber: 3, editLease: null } : null
+      draftRevision: revision ? { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } : null
     }] }] });
     show('');
     await screen.findByRole('button', { name: '研削' });
@@ -663,7 +735,7 @@ describe('procedure-manuals workshop', () => {
   });
 
   it('shows a revision with no holder and omits unavailable approval and shared-model data', async () => {
-    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: null } }] }] });
+    mocks.overview.mockResolvedValue({ ...overview, processes: [{ processId: 'assembly', count: 1, items: [{ ...published, draftRevision: { documentId: 'v3', editVersion: 8, revisionNumber: 3, editLease: null } }] }] });
     show();
     const row = await screen.findByRole('row', { name: '公開手順' });
     expect(within(row).getByText('改版中')).toHaveClass('bg-[#f6b93b1f]');

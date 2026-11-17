@@ -86,8 +86,6 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     return () => window.clearTimeout(timer);
   }, [controller.message, controller.messageIsError, controller.conflict, controller.busy]);
   const [videoLinkOpen, setVideoLinkOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [discardOpen, setDiscardOpen] = useState(false);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [conflictReloadOpen, setConflictReloadOpen] = useState(false);
@@ -147,22 +145,19 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const openMaterial = useCallback(() => { setMaterialShelfMode('place'); setMaterialShelfOpen(true); }, []);
   const openVideo = useCallback(() => setVideoLinkOpen(true), []);
   const openPublish = useCallback(() => setPublishOpen(true), []);
-  const openDelete = useCallback(() => setDeleteOpen(true), []);
-  const openDiscard = useCallback(() => setDiscardOpen(true), []);
   const addBlankPage = useCallback(() => void addControllerBlankPage(), [addControllerBlankPage]);
   const toolbarController = useMemo(() => ({
     readOnly: controller.readOnly, busy: controller.busy, saving: controller.saving, isDirty: controller.isDirty,
-    canSave: controller.canSave, canPublish: controller.canPublish, canDiscard: controller.canDiscard,
+    canSave: controller.canSave, canPublish: controller.canPublish,
     canUndo: controller.canUndo, canRedo: controller.canRedo,
     selectionMode: controller.selectionMode, selectedKind: controller.selectedElement?.kind,
-    documentStatus: controller.document?.status, supersedesDocumentId: controller.document?.supersedesDocumentId,
     layoutLocked: controller.layoutSuggestions.locked, canSuggest: controller.layoutSuggestions.canSuggest,
     startLayout: controller.layoutSuggestions.start,
     navigateBack: controller.navigateBack, save: controller.save, addOverlay: controller.addOverlay,
     setSelectionMode: controller.setSelectionMode, undo: controller.undo, redo: controller.redo
-  }), [controller.readOnly, controller.busy, controller.saving, controller.isDirty, controller.canSave, controller.canPublish, controller.canDiscard,
+  }), [controller.readOnly, controller.busy, controller.saving, controller.isDirty, controller.canSave, controller.canPublish,
     controller.canUndo, controller.canRedo, controller.selectionMode, controller.selectedElement?.kind,
-    controller.document?.status, controller.document?.supersedesDocumentId, controller.layoutSuggestions.locked,
+    controller.layoutSuggestions.locked,
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
     controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);
 
@@ -277,7 +272,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </section>
         <AssemblyProcedureDocumentEditorCanvasToolbar controller={toolbarController} workshop={Boolean(context)} materialCount={materialCount} materialOpen={materialShelfOpen} videoOpen={videoLinkOpen}
           voiceInputEnabled={voiceInputEnabled} onToggleVoiceInput={toggleVoiceInput}
-          onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} onDelete={openDelete} onDiscard={openDiscard} />
+          onMaterial={openMaterial} onVideo={openVideo} onPublish={openPublish} />
         {controller.selectedElement ? <div className="absolute right-20 top-4 z-50 max-h-[calc(100%-32px)] w-[340px] overflow-auto rounded-[14px] border border-[#344252] bg-[#161c22f5] p-4">
         <AssemblyProcedureDocumentEditorInspector
           key={voiceInputEnabled ? `${controller.document?.id}:${controller.selectedElement.id}` : undefined}
@@ -346,29 +341,6 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           void controller.reloadConflict();
         }}
         onCancel={() => setConflictReloadOpen(false)}
-      />
-      <ConfirmDialog
-        isOpen={deleteOpen}
-        title="要領書を削除"
-        description="この要領書を削除します。元に戻せません"
-        confirmLabel="削除する"
-        cancelLabel="キャンセル"
-        tone="danger"
-        onConfirm={() => { setDeleteOpen(false); void controller.deleteDocument(); }}
-        onCancel={() => setDeleteOpen(false)}
-      />
-      <ConfirmDialog
-        isOpen={discardOpen}
-        title="改版を破棄"
-        description="この改版下書きを破棄します。保存済みの元版は変更されません。"
-        confirmLabel="改版を破棄"
-        cancelLabel="キャンセル"
-        tone="danger"
-        onConfirm={() => {
-          setDiscardOpen(false);
-          void controller.discard();
-        }}
-        onCancel={() => setDiscardOpen(false)}
       />
       <ConfirmDialog
         isOpen={recoveryOpen && controller.recoveryPending != null}

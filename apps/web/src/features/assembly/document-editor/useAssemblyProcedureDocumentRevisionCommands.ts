@@ -3,8 +3,6 @@ import { useCallback, useRef, useState } from 'react';
 import {
   approvePublishAssemblyProcedureDocument,
   createAssemblyProcedureDocumentRevision,
-  discardAssemblyProcedureDocumentRevision,
-  deleteAssemblyProcedureDocument,
   getAssemblyProcedureDocument,
   publishAssemblyProcedureDocument,
   saveAssemblyProcedureDocumentOverlays,
@@ -12,10 +10,9 @@ import {
 } from '../../../api/client';
 import { kioskPinErrorResult, type KioskPinSubmitResult } from '../../kiosk/KioskPinDialog';
 import { readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
-import { clearProcedureEditorAccess, readProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
+import { clearProcedureEditorAccess, saveProcedureEditorAccess } from '../procedureEditorAccess';
 
 import {
-  canDiscardAssemblyProcedureDocumentRevision,
   canPublishAssemblyProcedureDocument,
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
@@ -66,8 +63,6 @@ export type AssemblyProcedureDocumentRevisionCommandSession = {
   recovery: { clear: () => void; saveImmediately?: (next: { baseUpdatedAt: string | null; editVersion: number }) => void };
   onSaved?: () => void;
   releaseUnsavedMaterials?: () => Promise<void>;
-  onNavigateAfterDelete?: () => void;
-  onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
 
@@ -346,78 +341,14 @@ export function useAssemblyProcedureDocumentRevisionCommands(
     }
   }, [session]);
 
-  const discard = useCallback(async () => {
-    const {
-      busy,
-      document,
-      onNavigateAfterDiscard,
-      passwordInput,
-      readOnly,
-      recovery,
-      setBusy,
-      setConflict,
-      setConflictEditVersion,
-      setMessage
-    } = session;
-    if (!document || readOnly || busy || !document.supersedesDocumentId) return;
-    setBusy(true);
-    setMessage(null);
-    try {
-      await discardAssemblyProcedureDocumentRevision({
-        ...(session.holderToken ? { holderToken: session.holderToken } : {}),
-        id: document.id,
-        accessPassword: passwordInput,
-        expectedEditVersion: document.editVersion ?? 0
-      });
-      await session.releaseUnsavedMaterials?.();
-      recovery.clear();
-      onNavigateAfterDiscard?.();
-    } catch (error: unknown) {
-      if (session.onEditLeaseError?.(error)) return;
-      const conflict = readDocumentEditorConflict(error);
-      if (conflict) {
-        setConflict(true);
-        setConflictEditVersion(conflict.currentEditVersion);
-        (session.setErrorMessage ?? setMessage)(DOCUMENT_EDITOR_CONFLICT_MESSAGES.discard);
-      } else {
-        (session.setErrorMessage ?? setMessage)(readAssemblyApiErrorMessage(error, '改版の破棄に失敗しました。'));
-      }
-    } finally {
-      setBusy(false);
-    }
-  }, [session]);
-
-  const deleteDocument = useCallback(async () => {
-    if (!session.document || session.document.status !== 'draft' || session.document.supersedesDocumentId || session.readOnly || session.busy) return;
-    session.setBusy(true);
-    session.setMessage(null);
-    try {
-      await deleteAssemblyProcedureDocument(session.document.id, readProcedureEditorAccess()?.pin ?? '', session.holderToken);
-      await session.releaseUnsavedMaterials?.();
-      session.recovery.clear();
-      session.onNavigateAfterDelete?.();
-    } catch (error: unknown) {
-      if (session.onEditLeaseError?.(error)) return;
-      const status = typeof error === 'object' && error !== null && 'response' in error
-        ? (error as { response?: { status?: number } }).response?.status : undefined;
-      const apiMessage = readAssemblyApiErrorMessage(error, '');
-      (session.setErrorMessage ?? session.setMessage)(status === 409 && (!apiMessage || apiMessage.includes('割り当て')) ? '先に割り当てを外してください' : apiMessage || '要領書を削除できません');
-    } finally {
-      session.setBusy(false);
-    }
-  }, [session]);
-
   return {
     saving,
     loadDocument,
-    deleteDocument,
     verifyEditorPassword,
     save,
     retryConflictSave,
     reloadConflict,
     publish,
-    discard,
-    canPublish: canPublishAssemblyProcedureDocument(session.document, session.isDirty),
-    canDiscard: canDiscardAssemblyProcedureDocumentRevision(session.document)
+    canPublish: canPublishAssemblyProcedureDocument(session.document, session.isDirty)
   };
 }

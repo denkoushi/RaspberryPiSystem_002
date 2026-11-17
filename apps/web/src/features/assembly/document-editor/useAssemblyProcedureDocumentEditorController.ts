@@ -46,8 +46,6 @@ function useEditorCallback<Args extends unknown[], Result>(callback: (...args: A
 type ControllerInput = {
   documentId: string;
   onNavigateBack?: () => void;
-  onNavigateAfterDelete?: () => void;
-  onNavigateAfterDiscard?: () => void;
   onNavigateAfterPublish?: (document: AssemblyProcedureDocumentDto) => void;
 };
 
@@ -224,8 +222,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     recovery,
     onSaved: commitMaterialPlacements,
     releaseUnsavedMaterials: async () => { await releaseAllMaterials().done; },
-    onNavigateAfterDelete: input.onNavigateAfterDelete,
-    onNavigateAfterDiscard: input.onNavigateAfterDiscard,
     onNavigateAfterPublish: input.onNavigateAfterPublish
   }), [
     layoutSuggestions.appliedCaptionElementIds,
@@ -238,8 +234,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     revokeAccess,
     editLease.holderToken,
     elements,
-    input.onNavigateAfterDiscard,
-    input.onNavigateAfterDelete,
     input.onNavigateAfterPublish,
     isDirty,
     passwordInput,
@@ -523,8 +517,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     deleteSelectedOverlay,
     save,
     publish: revisionCommands.publish,
-    discard: revisionCommands.discard,
-    deleteDocument: revisionCommands.deleteDocument,
     navigateBack,
     isDirty,
     readOnly,
@@ -537,7 +529,6 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     takeoverEditLease: editLease.takeover,
     retryEditLease: editLease.retry,
     canPublish: revisionCommands.canPublish,
-    canDiscard: revisionCommands.canDiscard,
     textCandidates,
     chooseTextCandidate: overlayCommands.chooseTextCandidate,
     cancelTextCandidates: overlayCommands.cancelTextCandidates,

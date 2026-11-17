@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
-  canDiscardAssemblyProcedureDocumentRevision,
   canPublishAssemblyProcedureDocument,
   convertOverlayShapeKind,
   createOverlayForRange,
@@ -102,12 +101,10 @@ describe('assembly document editor draft reducer', () => {
     expect(nudged[0]?.bbox).toMatchObject({ xRatio: 0.8, yRatio: 0.8 });
   });
 
-  it('allows a root draft to publish while keeping discard revision-only', () => {
+  it('allows a root draft to publish', () => {
     expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: undefined }, false)).toBe(true);
     expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: false }, false)).toBe(false);
     expect(canPublishAssemblyProcedureDocument({ status: 'draft', isRevisionHead: true }, true)).toBe(false);
-    expect(canDiscardAssemblyProcedureDocumentRevision({ status: 'draft', supersedesDocumentId: null })).toBe(false);
-    expect(canDiscardAssemblyProcedureDocumentRevision({ status: 'draft', supersedesDocumentId: 'base-1' })).toBe(true);
   });
 
   it.each([

@@ -45,7 +45,7 @@ export type ProcedureManualOverviewItemDto = {
   status: 'published' | 'draft' | 'unavailable';
   publishedRevisionNumber: number | null;
   approval: ProcedureManualLastApprovalDto | null;
-  draftRevision: { documentId: string; revisionNumber: number; editLease: { holderLabel: string; acquiredAt: string } | null } | null;
+  draftRevision: { documentId: string; editVersion: number; revisionNumber: number; editLease: { holderLabel: string; acquiredAt: string } | null } | null;
   unavailableReason: string | null;
   pageCount: number | null;
   thumbnailPageUrl: string | null;

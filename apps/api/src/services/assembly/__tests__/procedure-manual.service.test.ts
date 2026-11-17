@@ -150,12 +150,12 @@ describe('procedure-manual service', () => {
       { ...assignment('disabled-pdf', null, 4), kioskDocumentId: 'off', kioskDocument: { title: 'OFF', enabled: false, pageCount: 1 } },
       assignment('legacy', 'legacy', 5)
     ] as never);
-    const revision = (revisionNumber: number, supersedesDocumentId: string | null, isRevisionHead = false) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId, isRevisionHead });
+    const revision = (revisionNumber: number, supersedesDocumentId: string | null, isRevisionHead = false) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId, isRevisionHead, editVersion: 7 });
     const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
       { ...document(), revisionMetadata: revision(1, null) },
       { ...document('v2'), revisionMetadata: revision(2, rootId) },
       { ...document('v3'), status: 'DRAFT', revisionMetadata: revision(3, 'v2', true), editLease: { holderLabel: '佐藤', acquiredAt: now, expiresAt: new Date('2099-01-01') } },
-      { ...document('draft-root'), status: 'DRAFT', revisionMetadata: { revisionRootId: 'draft-root', revisionNumber: 1, supersedesDocumentId: null } },
+      { ...document('draft-root'), status: 'DRAFT', revisionMetadata: { revisionRootId: 'draft-root', revisionNumber: 1, supersedesDocumentId: null, editVersion: 7 } },
       { ...document('disabled'), isActive: false }, document('legacy')
     ] as never);
     const single = vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findFirst');
@@ -165,7 +165,7 @@ describe('procedure-manual service', () => {
     expect(result.processes[1].items).toEqual([]);
     const items = result.processes[0].items;
     expect(items[0]).toEqual({ otherAssignments: [], assignmentId: 'revision', sortOrder: 0, label: null, kind: 'assembly_procedure_document', documentId: 'v2', title: '公開手順', status: 'published', publishedRevisionNumber: 2,
-      approval: null, draftRevision: { documentId: 'v3', revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
+      approval: null, draftRevision: { documentId: 'v3', editVersion: 7, revisionNumber: 3, editLease: { holderLabel: '佐藤', acquiredAt: now.toISOString() } }, unavailableReason: null, pageCount: 1, thumbnailPageUrl: document().imageRelativePath });
     expect(items[1]).toMatchObject({ status: 'draft', publishedRevisionNumber: null, draftRevision: null, documentId: 'draft-root' });
     expect(items[2]).toMatchObject({ title: '公開手順', status: 'unavailable', unavailableReason: 'no_published_revision', pageCount: null, thumbnailPageUrl: null });
     expect(items[3]).toMatchObject({ kind: 'kiosk_document', title: 'キオスクPDF', status: 'published', publishedRevisionNumber: null, pageCount: 2, thumbnailPageUrl: null });
@@ -259,7 +259,7 @@ describe('procedure-manual service', () => {
       assignment('one'), assignment('shared-root', rootId, 1), assignment('legacy', 'legacy', 2)
     ] as never);
     const approval = (name: string, createdAt = now) => ({ employeeNameSnapshot: name, employeePositionSnapshot: positionName, createdAt });
-    const revision = (revisionNumber: number) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId: revisionNumber > 1 ? rootId : null, isRevisionHead: revisionNumber === 3 });
+    const revision = (revisionNumber: number) => ({ revisionRootId: rootId, revisionNumber, supersedesDocumentId: revisionNumber > 1 ? rootId : null, isRevisionHead: revisionNumber === 3, editVersion: 7 });
     const query = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
       { ...document(), revisionMetadata: revision(1), procedureManualApprovals: [approval('旧版承認者')] },
       { ...document('v3'), status: 'DRAFT', revisionMetadata: revision(3), procedureManualApprovals: [approval('下書き承認者')] },
@@ -287,11 +287,11 @@ describe('procedure-manual service', () => {
     vi.spyOn(prisma.procedureManualProcess, 'findMany').mockResolvedValue([{ id: 'assembly', parentId: 'parent' }] as never);
     vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('one')] as never);
     vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
-      { ...document(), status: 'DRAFT', revisionMetadata: { revisionRootId: rootId, revisionNumber: 2, supersedesDocumentId: 'old', isRevisionHead: true }, editLease: { holderLabel: '期限切れ', acquiredAt: now, expiresAt: now } }
+      { ...document(), status: 'DRAFT', revisionMetadata: { revisionRootId: rootId, revisionNumber: 2, supersedesDocumentId: 'old', isRevisionHead: true, editVersion: 7 }, editLease: { holderLabel: '期限切れ', acquiredAt: now, expiresAt: now } }
     ] as never);
     const item = (await new ProcedureManualService().getModelOverview('DFD1')).processes[0].items[0];
     expect(item.status).toBe('unavailable');
-    expect(item.draftRevision).toEqual({ documentId: rootId, revisionNumber: 2, editLease: null });
+    expect(item.draftRevision).toEqual({ documentId: rootId, editVersion: 7, revisionNumber: 2, editLease: null });
   });
 
   it('returns zero counts without querying documents for an unassigned model', async () => {
