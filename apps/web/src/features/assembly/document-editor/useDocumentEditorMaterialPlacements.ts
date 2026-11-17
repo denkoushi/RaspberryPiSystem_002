@@ -70,10 +70,11 @@ export function useDocumentEditorMaterialPlacements({ documentId, elements, disp
   const cancelMaterialPlacement = useCallback((materialId: string, element: AssemblyProcedureOverlayElement) => {
     void releaseMaterials([{ materialId, elementId: element.id, ...(element.kind === 'IMAGE' ? { assetId: element.assetId } : {}) }]);
   }, [releaseMaterials]);
-  const trackMaterialPlacement = useCallback((materialId: string, element: AssemblyProcedureOverlayElement, scope: number, replaced?: AssemblyProcedureOverlayElement) => {
+  const trackMaterialPlacement = useCallback((materialId: string, element: AssemblyProcedureOverlayElement, scope: number, replaced?: AssemblyProcedureOverlayElement, employeeTagUid?: string) => {
     const previous = pendingMaterials.current.get(element.id);
     const placement: PendingMaterialPlacement = {
       elementId: element.id, materialId,
+      ...(employeeTagUid ? { employeeTagUid } : {}),
       ...(element.kind === 'IMAGE' ? { assetId: element.assetId } : {}),
       ...(previous ? { fallbackAssetId: previous.fallbackAssetId } : replaced?.kind === 'IMAGE' ? { fallbackAssetId: replaced.assetId } : {})
     };

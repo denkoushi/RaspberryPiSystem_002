@@ -1,5 +1,6 @@
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 export type ProcedureMaterialDto = {
+  employeeTagUid?: string;
   origin: 'GMAIL' | 'KNOWLEDGE' | 'WORK_INSTRUCTION' | 'APP';
   appRef?: { photoIndex: number } | null;
   category?: string | null; note?: string | null; location?: string | null; nameId?: string | null; employeeName?: string | null;

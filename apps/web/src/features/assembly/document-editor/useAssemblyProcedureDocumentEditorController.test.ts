@@ -1184,6 +1184,24 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     hook.unmount();
   });
 
+  it('passes the employee UID for placement and redo while keeping it out of recovery storage', async () => {
+    const document = makeDocument();
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    const element = createOverlayForRange('TEXT', 0, range);
+    apiMocks.placeMaterial.mockResolvedValue({ element });
+    await act(async () => hook.result.current.placeMaterial({ id: 'employee-material', employeeTagUid: 'private-tag-uid' }));
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith(expect.objectContaining({ materialId: 'employee-material', employeeTagUid: 'private-tag-uid' }));
+    await waitFor(() => expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)?.materialPlacements).toHaveLength(1));
+    expect(JSON.stringify(readAssemblyDocumentEditorRecovery(window.localStorage, document.id))).not.toContain('private-tag-uid');
+    act(() => hook.result.current.undo());
+    await waitFor(() => expect(apiMocks.unplaceMaterial).toHaveBeenCalledWith('employee-material'));
+    await act(async () => hook.result.current.redo());
+    expect(apiMocks.placeMaterial).toHaveBeenCalledTimes(2);
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith(expect.objectContaining({ materialId: 'employee-material', employeeTagUid: 'private-tag-uid' }));
+    hook.unmount();
+  });
+
   it('keeps a material placed while another unsaved copy still uses it', async () => {
     const hook = renderEditor(makeDocument());
     await authenticate(hook.result);
@@ -1317,9 +1335,10 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     act(() => hook.result.current.setSelectedOverlayId(image.id));
     apiMocks.placeMaterial.mockResolvedValue({ element: { ...image, id: 'unused-new-overlay', bbox: { ...range, widthRatio: 0.8 } }, asset });
 
-    await act(async () => { await hook.result.current.replaceSelectedImageMaterial({ id: 'material-photo', kind: 'PHOTO' }); });
+    await act(async () => { await hook.result.current.replaceSelectedImageMaterial({ id: 'material-photo', kind: 'PHOTO', employeeTagUid: 'replacement-tag' }); });
 
-    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '1234' });
+    expect(apiMocks.placeMaterial).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', materialId: 'material-photo', pageIndex: 0, accessPassword: '1234', employeeTagUid: 'replacement-tag' });
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith(expect.objectContaining({ employeeTagUid: 'replacement-tag' }));
     expect(hook.result.current.elements).toEqual([{ ...image, assetId: asset.assetId }, other]);
     expect(hook.result.current.selectedElement?.bbox).toEqual(range);
     expect(hook.result.current.selectedOverlayId).toBe(image.id);
@@ -1335,6 +1354,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.elements).toEqual([{ ...image, assetId: redoAsset.assetId }, other]);
     expect(hook.result.current.document?.assets?.[redoAsset.assetId]).toEqual(redoAsset);
     expect(apiMocks.unplaceMaterial).toHaveBeenCalledExactlyOnceWith('material-photo');
+    expect(apiMocks.placeMaterial).toHaveBeenLastCalledWith(expect.objectContaining({ employeeTagUid: 'replacement-tag' }));
   });
 
   it.each(['TEXT', 'SHAPE', null] as const)('does not call the material API when the selected kind is %s', async (kind) => {

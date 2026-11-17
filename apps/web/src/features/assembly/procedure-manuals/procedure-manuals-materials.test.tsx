@@ -77,7 +77,7 @@ describe('procedure-manuals material shelf', () => {
   });
   it('places app photos from their dedicated mail bundle and moves them to placed results', async () => {
     const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', location: '工場',
-      nameId: '007125', employeeName: '津田', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
+      nameId: null, employeeName: null, gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
     let placed = false;
     mocks.list.mockImplementation(async ({ state, origin }) => state === 'placed' ? placed ? [{ ...appPhoto, placedAt: '2026-10-19T04:00:00Z' }] : []
       : origin === 'APP' ? placed ? [] : [appPhoto] : []);
@@ -85,7 +85,7 @@ describe('procedure-manuals material shelf', () => {
     const onClose = vi.fn();
     render(<ProcedureMaterialShelfDialog onClose={onClose} onSelect={onSelect} />);
     fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
-    const bundle = await screen.findByRole('button', { name: /保守・7125 test 工場 · 津田 · アプリ/ });
+    const bundle = await screen.findByRole('button', { name: /保守・7125 test 工場 · アプリ/ });
     expect(mocks.list).toHaveBeenCalledWith({ state: 'unplaced', origin: 'APP', q: '', limit: 500 });
     expect(mocks.splits).not.toHaveBeenCalled();
     fireEvent.click(within(bundle).getByRole('button', { name: '束を全部選ぶ' }));
@@ -95,6 +95,25 @@ describe('procedure-manuals material shelf', () => {
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '配置済み' }));
     expect(await screen.findByRole('checkbox', { name: '保守・7125 test' })).toBeInTheDocument();
+  });
+  it.each(['place', 'replace'] as const)('hides employee APP materials before editor %s counts and bundles', async mode => {
+    const appPhoto = { ...photo, id: 'public', origin: 'APP', nameId: '', gmailMessageId: 'app-mail', subjectHint: '公開素材' };
+    mocks.list.mockResolvedValue([
+      appPhoto,
+      { ...appPhoto, id: 'employee', nameId: '007125', subjectHint: '社員専用素材' },
+      { ...appPhoto, id: 'invalid', nameId: 'unknown', subjectHint: '不正な社員番号素材' },
+    ]);
+    render(<ProcedureMaterialShelfDialog onClose={vi.fn()} onSelect={vi.fn()} mode={mode} />);
+    fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
+    expect(await screen.findByRole('checkbox', { name: '公開素材' })).toBeEnabled();
+    expect(screen.queryByRole('checkbox', { name: '社員専用素材' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: '不正な社員番号素材' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'アプリから (1)' })).toBeInTheDocument();
+    expect(screen.getByLabelText('一致件数')).toHaveTextContent('1 件');
+    expect(screen.getByRole('button', { name: /アプリの素材.*1 件/ })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '写真' }));
+    expect(screen.getByRole('tab', { name: /^アプリから/ })).toHaveTextContent('1');
+    expect(screen.getAllByRole('checkbox')).toHaveLength(1);
   });
   it('copies the app note from its bundle so it can be pasted into a text box', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -114,8 +133,8 @@ describe('procedure-manuals material shelf', () => {
     await screen.findAllByRole('checkbox', { name: 'DFD1 組立' });
     expect(screen.queryByRole('button', { name: 'メモをコピー' })).not.toBeInTheDocument();
   });
-  it('discards and restores app photos while preserving mail bundles with photo filters', async () => {
-    const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', category: '保守', note: '7125 test', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
+  it('discards and restores employee app photos in the workshop while preserving mail bundles with photo filters', async () => {
+    const appPhoto = { ...photo, id: 'app-photo', origin: 'APP', nameId: '007125', category: '保守', note: '7125 test', gmailMessageId: 'app-mail', subjectHint: '保守・7125 test' };
     let discarded = false;
     mocks.list.mockImplementation(async ({ state, origin }) => state === 'discarded' ? discarded ? [{ ...appPhoto, discardedAt: '2026-10-19T04:00:00Z' }] : []
       : origin === 'APP' ? discarded ? [] : [appPhoto] : []);
@@ -125,7 +144,7 @@ describe('procedure-manuals material shelf', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'アプリから' }));
     await screen.findByRole('checkbox');
     fireEvent.click(within(screen.getByLabelText('素材の絞り込み')).getByRole('button', { name: '写真' }));
-    expect(screen.getByRole('button', { name: /保守・7125 test アプリ/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /保守・7125 test 007125 · アプリ/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('checkbox'));
     fireEvent.click(screen.getByRole('button', { name: '捨てる' }));
     fireEvent.click(within(screen.getByRole('dialog', { name: '素材を捨てる' })).getByRole('button', { name: '捨てる' }));

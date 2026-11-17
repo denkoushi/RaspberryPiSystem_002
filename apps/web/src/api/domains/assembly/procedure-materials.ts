@@ -15,6 +15,11 @@ export async function listProcedureMaterials(params: { state?: import('../../../
   return data.materials;
 }
 
+export async function listProcedureMaterialsByEmployeeTag(uid: string) {
+  const { data } = await api.post<{ employee: { employeeCode: string; displayName: string }; materials: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto[] }>('/assembly/procedure-materials/by-employee-tag', { uid });
+  return data;
+}
+
 export async function semanticSearchProcedureMaterials(input: { q: string; state: 'unplaced' | 'placed'; limit?: number }) {
   const { data } = await api.post<{ available: boolean; mode: string; items: import('../../../features/assembly/procedure-manuals/procedure-material-types').ProcedureMaterialDto[] }>('/assembly/procedure-materials/semantic-search', input);
   return data;
@@ -48,8 +53,8 @@ export async function restoreProcedureMaterial(id: string) {
   await api.post(`/assembly/procedure-materials/${encodeURIComponent(id)}/restore`);
 }
 
-export async function placeProcedureMaterial(input: { holderToken?: string | null; id: string; materialId: string; pageIndex: number; accessPassword: string }) {
-  const { data } = await api.post<{ element: AssemblyProcedureOverlayElement; asset?: AssemblyProcedureOverlayAssetDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/materials/${encodeURIComponent(input.materialId)}/place`, { pageIndex: input.pageIndex, accessPassword: input.accessPassword }, procedureEditHeaders(input.holderToken));
+export async function placeProcedureMaterial(input: { holderToken?: string | null; employeeTagUid?: string; id: string; materialId: string; pageIndex: number; accessPassword: string }) {
+  const { data } = await api.post<{ element: AssemblyProcedureOverlayElement; asset?: AssemblyProcedureOverlayAssetDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/materials/${encodeURIComponent(input.materialId)}/place`, { pageIndex: input.pageIndex, accessPassword: input.accessPassword, ...(input.employeeTagUid ? { employeeTagUid: input.employeeTagUid } : {}) }, procedureEditHeaders(input.holderToken));
   return data;
 }
 

@@ -1,3 +1,5 @@
+import { normalizeEmployeeNumber, materialAppText } from './procedure-material-employee-number.js';
+import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { randomUUID } from 'node:crypto';
 import sharp from 'sharp';
@@ -21,7 +23,7 @@ export class ProcedureMaterialPlacementService {
     private readonly access = new AssemblyTemplateAccessService(),
   ) {}
 
-  async place(params: AssemblyProcedureEditActor & { documentId: string; materialId: string; pageIndex: number; accessPassword?: string }) {
+  async place(params: AssemblyProcedureEditActor & { documentId: string; materialId: string; pageIndex: number; employeeTagUid?: string; accessPassword?: string }) {
     await this.access.requireAccessPassword(params.accessPassword, params);
     let asset: AssemblyProcedureOverlayAssetDto | undefined;
     try {
@@ -43,6 +45,21 @@ export class ProcedureMaterialPlacementService {
         await tx.$queryRaw`SELECT "id" FROM "ProcedureMaterial" WHERE "id" = ${params.materialId} FOR UPDATE`;
         const material = await tx.procedureMaterial.findUnique({ where: { id: params.materialId } });
         if (!material) throw new ApiError(404, '素材がありません');
+        const nameId = materialAppText(material, 'nameId');
+        if (nameId) {
+          const forbidden = () => new ApiError(403, '社員タグを確認してください', undefined, 'EMPLOYEE_TAG_MISMATCH');
+          if (!params.employeeTagUid) throw forbidden();
+          let employee;
+          try {
+            employee = await resolveActiveAssemblyOperatorNfcUid(tx, params.employeeTagUid);
+          } catch (error) {
+            if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
+            throw forbidden();
+          }
+          const number = normalizeEmployeeNumber(nameId);
+          if (number === null || number !== normalizeEmployeeNumber(employee.employeeCode)) throw forbidden();
+        }
+
         if (material.kind === 'PDF') throw new ApiError(400, 'PDF 素材は要領書を作成してください');
         if (material.discardedAt) throw new ApiError(409, '捨てた素材は配置できません');
         const page = await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: params.documentId, pageIndex: params.pageIndex } } });

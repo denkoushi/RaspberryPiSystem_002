@@ -1,5 +1,5 @@
 import { isAxiosError } from 'axios';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { semanticSearchProcedureMaterials, createProcedureMaterialDocument, getProcedureMaterialThumbnail, getProcedureKnowledgeThumbnail, getProcedureWorkInstructionThumbnail, getProcedureWorkInstructionImage, importProcedureWorkInstructions, discardProcedureMaterial, getProcedureMaterialFile, getProcedureKnowledgeImage, importProcedureKnowledge, ingestProcedureMaterialsGmail, restoreProcedureMaterial, unplaceProcedureMaterial } from '../../../api/client';
 import { Button } from '../../../components/ui/Button';
@@ -185,7 +185,9 @@ export function ProcedureMaterialShelfDialog({ resources, onClose, onSelect, onC
   const changeTab = (value: typeof state) => { resetSemantic(); setState(value); };
   const semanticActive = Boolean(semanticResult && semanticResult.mode !== 'lexical');
   const materialQuery = semanticResult ? q.trim() : query;
-  const materials = semanticResult?.items ?? lists.data?.materials ?? emptyMaterials;
+  const isVisibleMaterial = useCallback((material: ProcedureMaterialDto) => !selectionMode || material.origin !== 'APP' || !material.nameId?.trim(), [selectionMode]);
+  const fetchedMaterials = semanticResult?.items ?? lists.data?.materials ?? emptyMaterials;
+  const materials = useMemo(() => fetchedMaterials.filter(isVisibleMaterial), [fetchedMaterials, isVisibleMaterial]);
   const materialGroups = groupMaterials(state === 'app' ? filterShelfMaterials(materials, filters) : materials);
   const splitSuggestions = useMaterialSplitSuggestions(materialGroups, openGroups,
     !filtered && !semanticResult && !semanticLoading && !lists.loading && (state === 'unplaced' || state === 'placed'));
@@ -365,7 +367,7 @@ export function ProcedureMaterialShelfDialog({ resources, onClose, onSelect, onC
       <div role="tablist" aria-label="素材の種類" className="flex shrink-0 items-center gap-1">
         {shelfTabs.map(([value, label]) => {
           const data = lists.getData(value);
-          const count = !data ? undefined : value === 'knowledge' ? filterShelfKnowledge(data.knowledge?.items ?? [], filters).length : value === 'workInstruction' ? filterShelfWorkInstructions(data.workInstructions?.items ?? [], filters).length : filterShelfMaterials(data.materials ?? [], filters).length;
+          const count = !data ? undefined : value === 'knowledge' ? filterShelfKnowledge(data.knowledge?.items ?? [], filters).length : value === 'workInstruction' ? filterShelfWorkInstructions(data.workInstructions?.items ?? [], filters).length : filterShelfMaterials((data.materials ?? []).filter(isVisibleMaterial), filters).length;
           return <button key={value} role="tab" aria-selected={state === value} disabled={busy} className={`h-11 whitespace-nowrap rounded-lg px-4 text-[19px] font-bold ${state === value ? 'bg-[#27313b] text-[#eef3f6]' : filtered && count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`} onClick={() => changeTab(value)}>{label}{filtered && count !== undefined ? <span className={`ml-2 rounded-full bg-[#27313b] px-2 text-sm tabular-nums ${count ? 'text-[#3ba776]' : 'text-[#9fadb9]'}`}>{count}</span> : !filtered && (value === 'unplaced' || value === 'app') && state === value && !loading ? ` (${materials.length}${materials.length === 500 ? '+' : ''})` : ''}</button>;
         })}
         <div className="ml-auto">{!selectionMode ? <button className={`${toolClass} border-transparent text-[#9fadb9]`} aria-pressed={state === 'discarded'} disabled={busy} onClick={() => changeTab('discarded')}>捨てた素材</button> : null}</div>

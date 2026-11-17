@@ -147,9 +147,9 @@ describe('assembly procedure revision routes', () => {
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: 0 } })).statusCode).toBe(200);
     expect(harness.service.addBlankPage).toHaveBeenLastCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, expectedEditVersion: 4, afterPageIndex: 0, accessPassword: '' });
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/blank`, payload: { expectedEditVersion: 4, afterPageIndex: -1 } })).statusCode).toBe(400);
-    const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234' } });
+    const placed = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/materials/${documentId}/place`, payload: { pageIndex: 0, accessPassword: '1234', employeeTagUid: ' tag ' } });
     expect(placed.json().element).toEqual(element);
-    expect(place).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
+    expect(place).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234', employeeTagUid: 'tag' });
   });
 
   it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/pages/0/delete`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
