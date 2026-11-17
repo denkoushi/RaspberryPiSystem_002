@@ -72,13 +72,37 @@ describe('usePlanningBoardArrival', () => {
     expect(hook.result.current.applyArrival(item)).toBe(item);
   });
 
-  it('preserves same-day arrival and midnight expiry for later processes', async () => {
+  it('preserves manual arrival across midnight and new board responses for later processes', async () => {
     const later = { ...item, isFirstProcess: false };
     const hook = setup();
     mocks.arrival.mockResolvedValue({ itemId: item.itemId, manualArrivalDate: '2026-11-06' });
     await act(async () => { await hook.result.current.changeArrival(later, true); });
     expect(hook.result.current.applyArrival(later)).toMatchObject({ arrived: true, manualArrivalDate: '2026-11-06' });
+    hook.rerender({ data: initialBoard, now: afterMidnight });
+    expect(hook.result.current.applyArrival(later)).toMatchObject({ arrived: true, manualArrivalDate: '2026-11-06' });
     hook.rerender({ data: board([later]), now: afterMidnight });
+    expect(hook.result.current.applyArrival(later)).toMatchObject({ arrived: true, manualArrivalDate: '2026-11-06' });
+  });
+
+  it('clears the manual overlay when the server returns a different non-null date', async () => {
+    const later = { ...item, isFirstProcess: false };
+    const hook = setup();
+    mocks.arrival.mockResolvedValue({ itemId: item.itemId, manualArrivalDate: '2026-11-06' });
+    await act(async () => { await hook.result.current.changeArrival(later, true); });
+    const saved = { ...later, arrived: true, manualArrivalDate: '2026-11-05' };
+    hook.rerender({ data: board([saved]), now: afterMidnight });
+    expect(hook.result.current.applyArrival(saved)).toBe(saved);
+    expect(hook.result.current.applyArrival(later)).toBe(later);
+  });
+
+  it('removes the manual overlay on cancellation after midnight', async () => {
+    const later = { ...item, isFirstProcess: false };
+    const hook = setup();
+    mocks.arrival.mockResolvedValueOnce({ itemId: item.itemId, manualArrivalDate: '2026-11-06' });
+    await act(async () => { await hook.result.current.changeArrival(later, true); });
+    hook.rerender({ data: initialBoard, now: afterMidnight });
+    mocks.arrival.mockResolvedValueOnce({ itemId: item.itemId, manualArrivalDate: null });
+    await act(async () => { await hook.result.current.changeArrival(later, false); });
     expect(hook.result.current.applyArrival(later)).toBe(later);
   });
 

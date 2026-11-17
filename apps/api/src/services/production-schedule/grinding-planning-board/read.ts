@@ -24,7 +24,7 @@ import { resolveLeaderboardMaterializedWinnersWithGenerationCache } from '../lea
 import { buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWinners } from '../row-resolver/max-product-no-winner-materialization.js';
 import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board-load-summary.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
-import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, planningBoardArrivalDate, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
+import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
 import { readOverrides, readPlanningResourceCandidates, readRanks } from './source.js';
 import { readPlanningSource } from './planning-source.js';
 import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningLoadGenerationToken, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
@@ -384,11 +384,10 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     id: item.itemId, sourceRowId: item.sourceRowId,
     rowData: { FSEIBAN: item.fseiban, FHINCD: item.fhincd, ProductNo: item.productNo, FKOJUN: item.processOrder }
   })), { siteKey: params.siteKey, locationKey: params.siteKey, includeFirstProcess: true, placedProductNos: new Set(placementByProductNo.keys()) }));
-  const arrivalDate = planningBoardArrivalDate();
   const manualArrivals = page.length ? await perf.measure('manualArrival', () => prisma.productionScheduleGrindingPlanningBoardArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
-      arrivalDate: new Date(`${arrivalDate}T00:00:00.000Z`), itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
-    select: { itemKey: true }
+      itemKey: { in: page.map((item) => item.parentItemId ?? item.itemId) } },
+    select: { itemKey: true, arrivalDate: true }
   })) : [];
   const firstProcessArrivals = page.length ? await perf.measure('firstProcessArrival', () => prisma.productionScheduleGrindingPlanningBoardFirstProcessArrival.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey,
@@ -398,7 +397,11 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
   const verifyMatchByProductNo = page.length ? await perf.measure('verifyMatch', () => findLatestVerifyMatchByProductNo(
     [...new Set(arrivalRows.filter((row) => row.isFirstProcess).map((row) => String(row.rowData.ProductNo ?? '').trim()).filter(Boolean))])) : new Map<string, Date>();
   const firstProcessByKey = new Map(firstProcessArrivals.map((arrival) => [arrival.itemKey, arrival]));
-  const manualArrivalIds = new Set(manualArrivals.map((arrival) => arrival.itemKey));
+  const manualArrivalDates = new Map<string, string>();
+  for (const arrival of manualArrivals) {
+    const date = arrival.arrivalDate.toISOString().slice(0, 10);
+    if (date > (manualArrivalDates.get(arrival.itemKey) ?? '')) manualArrivalDates.set(arrival.itemKey, date);
+  }
   const arrivalById = new Map(arrivalRows.map((row) => [row.id, row]));
   const lslhSurface = await perf.measure('lslhSurface', () => findLslhSurface(page));
   const pageWithMaterialArrival = page.map((item) => {
@@ -414,7 +417,7 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
     const firstProcessArrived = firstProcessState === 'arrived' ? true : firstProcessState === 'excluded' ? false
       : Boolean(placement) || verifiedAt != null || (arrival?.status !== 'unordered' && arrival?.status !== 'ordered');
     const outsourced = outsourcedByItemId.get(item.itemId) ?? 'none';
-    const manuallyArrived = isFirstProcess ? firstProcessState === 'arrived' : manualArrivalIds.has(item.parentItemId ?? item.itemId);
+    const manuallyArrived = isFirstProcess ? firstProcessState === 'arrived' : manualArrivalDates.has(item.parentItemId ?? item.itemId);
     let arrived = isFirstProcess ? firstProcessArrived : manuallyArrived || (arrivalById.get(item.itemId)?.arrived ?? true);
     if (outsourced === 'pending') {
       arrived = manuallyArrived || Boolean(placement) || (isFirstProcess && verifiedAt != null);
@@ -427,7 +430,7 @@ export async function getGrindingPlanningBoard(params: { scheduleSource?: Grindi
       firstProcessState,
       lslhSurface: lslhSurface.productNos.has(item.productNo.trim()) || lslhSurface.fhincds.has(item.fhincd),
       arrived,
-      manualArrivalDate: manualArrivalIds.has(item.parentItemId ?? item.itemId) ? arrivalDate : null,
+      manualArrivalDate: manualArrivalDates.get(item.parentItemId ?? item.itemId) ?? null,
       ...(arrival ? { materialArrivalStatus: arrival.status,
         ...(arrival.basis === 'part' ? { materialArrivalBasis: arrival.basis } : {}) } : {}),
       ...(placement ? { placement } : {})

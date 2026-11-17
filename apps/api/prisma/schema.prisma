@@ -2120,7 +2120,7 @@ model ProductionScheduleGrindingPlanningBoardResourceCapacity {
   @@unique([csvDashboardId, siteKey, resourceCd], map: "PSGrindingPlanningCapacity_dashboard_site_resource_key")
 }
 
-/// 製番ボードの当日着。arrivalDateはJST暦日で、当日の応答にだけ適用する。
+/// 製番ボードの手動着。日付で失効せず、arrivalDateは記録した日のJST暦日を表す。
 model ProductionScheduleGrindingPlanningBoardArrival {
   id             String   @id @default(uuid())
   csvDashboardId String
