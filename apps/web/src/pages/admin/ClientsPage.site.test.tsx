@@ -196,6 +196,22 @@ describe('ClientsPage', () => {
     });
   });
 
+  it('defaults the scan mode to shelf and saves grinding arrival with change highlighting', async () => {
+    render(<ClientsPage />);
+    const scanMode = settings().getByLabelText('スキャン用途');
+    const save = settings().getByRole('button', { name: '保存' });
+    expect(scanMode).toHaveValue('shelf');
+    expect(save).toBeDisabled();
+    fireEvent.change(scanMode, { target: { value: 'grinding_arrival' } });
+    expect(scanMode).toHaveClass('border-emerald-600', 'bg-emerald-50');
+    expect(settings().getByRole('status')).toHaveTextContent('スキャン用途: 棚 → 研削の着');
+    fireEvent.click(save);
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledExactlyOnceWith({
+      id: 'mac',
+      payload: expect.objectContaining({ haizenScanMode: 'grinding_arrival' })
+    }));
+  });
+
   it('keeps an unsaved edit when another device is opened', () => {
     render(<ClientsPage />);
     fireEvent.click(settings().getByRole('switch', { name: 'Zero2W配膳エッジ端末として扱う' }));

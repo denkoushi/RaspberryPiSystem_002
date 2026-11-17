@@ -10,6 +10,7 @@ export interface ClientDevice {
   kioskInitialRoute?: string | null;
   /** Zero2W / haizen-agent 配膳エッジとしてキオスク設定対象に含める */
   haizenEdgeEnabled?: boolean;
+  haizenScanMode?: 'shelf' | 'grinding_arrival';
   /** キオスク棚レイアウト編集を許可 */
   shelfLayoutEditEnabled?: boolean;
   procedureBoardEnabled?: boolean | null;
@@ -46,6 +47,7 @@ export async function updateClient(
     defaultMode?: 'PHOTO' | 'TAG' | null;
     kioskInitialRoute?: string | null;
     haizenEdgeEnabled?: boolean;
+    haizenScanMode?: 'shelf' | 'grinding_arrival';
     shelfLayoutEditEnabled?: boolean;
     procedureBoardEnabled?: boolean;
     planningBoardOfflineEnabled?: boolean;
