@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
 import { applyDScheduleMinutes } from './apply-d-schedule-minutes.service.js';
 import { autoRegisterDScheduleMinutes } from './auto-register-d-schedule-minutes.service.js';
 import type { DScheduleMinutesMetrics } from './import-summary.js';
@@ -10,6 +11,9 @@ import type { DScheduleMinutesBlock } from './parse-d-schedule-minutes.js';
 const mocks = vi.hoisted(() => ({
   run: { id: 'current', kind: 'D_COMPANY', status: 'APPLIED', warnings: [] as unknown[], autoRegisteredSeibans: { planningBoards: {} as Record<string, string[]>, searchHistory: [] as string[], metrics: undefined as DScheduleMinutesMetrics | undefined } },
   newer: false,
+  memberships: [] as { fseiban: string; kind: string; lastSourceRunId: string }[],
+  previousMinutes: null as null | { sourceRun: { kind: string; meetingDate: Date }; partsCompleteDate: Date },
+  membershipUpsert: vi.fn(),
   otherRuns: [] as { id: string; kind: string; status: string; meetingDate: Date; autoRegisteredSeibans: { planningBoards: Record<string, string[]>; searchHistory: string[] } }[],
   previous: null as null | { autoRegisteredSeibans: { planningBoards: Record<string, string[]>; searchHistory: string[] } },
   boards: {} as Record<string, { id: string; seibanOrder: string[]; uncheckedFseibans?: string[]; version: number }>,
@@ -28,8 +32,8 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
       findUnique: () => null, findFirst: () => null, create: () => mocks.run,
       update: ({ data }: { data: object }) => Object.assign(mocks.run, data)
     },
-    productionScheduleDScheduleMinutes: { findUnique: () => null, upsert: vi.fn() },
-    productionScheduleDScheduleMinutesKindMembership: { findUnique: () => null, upsert: vi.fn() },
+    productionScheduleDScheduleMinutes: { findUnique: () => mocks.previousMinutes, upsert: vi.fn() },
+    productionScheduleDScheduleMinutesKindMembership: { findUnique: () => null, upsert: (...args: unknown[]) => mocks.membershipUpsert(...args) },
     productionScheduleSeibanDueDate: { findUnique: () => null }
   }),
   productionScheduleDScheduleMinutesImportRun: {
@@ -43,6 +47,8 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: {
       Object.assign(where.id === mocks.run.id ? mocks.run : mocks.otherRuns.find((run) => run.id === where.id)!, data))
   },
   productionScheduleDScheduleMinutes: { findMany: vi.fn(() => mocks.minutes) },
+  productionScheduleDScheduleMinutesKindMembership: { findMany: vi.fn(({ where }: { where: { kind: string; lastSourceRunId: string } }) =>
+    mocks.memberships.filter((row) => row.kind === where.kind && row.lastSourceRunId === where.lastSourceRunId)) },
   site: { findMany: () => mocks.sites.map((key) => ({ key })) },
   productionScheduleGrindingPlanningBoardState: { findMany: () => Object.entries(mocks.boards).map(([siteKey, board]) => ({ siteKey, seibanOrder: board.seibanOrder })) }
 } }));
@@ -66,6 +72,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.run = { id: 'current', kind: 'D_COMPANY', status: 'APPLIED', warnings: [], autoRegisteredSeibans: { planningBoards: {}, searchHistory: [], metrics: undefined } };
   mocks.otherRuns = []; mocks.minutes = []; mocks.newer = false; mocks.previous = null; mocks.rawRows = []; mocks.readWinners.mockResolvedValue([]);
+  mocks.memberships = []; mocks.previousMinutes = null;
   mocks.boards = { A: { id: 'A', seibanOrder: ['MANUAL-A'], version: 1 }, B: { id: 'B', seibanOrder: ['MANUAL-B'], version: 1 } };
   mocks.history = ['MANUAL-H']; mocks.historyVersion = 1; mocks.sites = ['A', 'B'];
   mocks.readBoard.mockImplementation((key: string) => mocks.boards[key]);
@@ -79,6 +86,81 @@ beforeEach(() => {
 });
 
 describe('D schedule automatic registration', () => {
+  it.each(['D_COMPANY', 'INTERNAL'])('reconciles legacy one-sided ownership against the other latest file: %s', async (kind) => {
+    mocks.run.kind = kind;
+    const otherKind = kind === 'INTERNAL' ? 'D_COMPANY' : 'INTERNAL';
+    const owned = ['PRESENT', 'UNDATED', 'ABSENT', 'OLD-FILE'];
+    mocks.previous = { autoRegisteredSeibans: { planningBoards: { A: owned, B: owned }, searchHistory: owned } };
+    mocks.otherRuns = [{ id: 'other-latest', kind: otherKind, status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'),
+      autoRegisteredSeibans: { planningBoards: {}, searchHistory: [] } }];
+    // Presence is independent of dates and automatic ownership in the other file.
+    mocks.memberships = [
+      ...['PRESENT', 'UNDATED'].map((fseiban) => ({ fseiban, kind: otherKind, lastSourceRunId: 'other-latest' })),
+      { fseiban: 'OLD-FILE', kind: otherKind, lastSourceRunId: 'other-older' },
+      { fseiban: 'ABSENT', kind, lastSourceRunId: 'other-latest' }
+    ];
+    mocks.minutes = [{ fseiban: 'PRESENT', partsCompleteDate: new Date('2026-11-10Z'), assigneesKnown: false, assignees: [] },
+      { fseiban: 'UNDATED', partsCompleteDate: null, assigneesKnown: false, assignees: [] }];
+    for (const board of Object.values(mocks.boards)) board.seibanOrder.push(...owned);
+    mocks.history.push(...owned);
+    await register([]);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A', 'PRESENT', 'UNDATED']);
+    expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B', 'PRESENT', 'UNDATED']);
+    expect(mocks.history).toEqual(['MANUAL-H', 'PRESENT', 'UNDATED']);
+    // Kept entries stay owned so they are removed once the other file drops them too.
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({
+      planningBoards: { A: ['PRESENT', 'UNDATED'], B: ['PRESENT', 'UNDATED'] }, searchHistory: ['PRESENT', 'UNDATED']
+    });
+    expect(prisma.productionScheduleDScheduleMinutesKindMembership.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, kind: otherKind, lastSourceRunId: 'other-latest' }, select: { fseiban: true }
+    });
+  });
+
+  it.each(['D_COMPANY', 'INTERNAL'])('does not take ownership of unowned entries that are only listed in the other file: %s', async (kind) => {
+    mocks.run.kind = kind;
+    const otherKind = kind === 'INTERNAL' ? 'D_COMPANY' : 'INTERNAL';
+    mocks.otherRuns = [{ id: 'other', kind: otherKind, status: 'SUCCESS', meetingDate: new Date('2026-11-06Z'),
+      autoRegisteredSeibans: { planningBoards: {}, searchHistory: [] } }];
+    mocks.memberships = [{ fseiban: 'SHARED', kind: otherKind, lastSourceRunId: 'other' }];
+    for (const board of Object.values(mocks.boards)) board.seibanOrder.push('SHARED');
+    mocks.history.push('SHARED');
+    await register([block('SHARED')]);
+    // An entry no kind owns is treated as manual and must never become removable.
+    expect(mocks.run.autoRegisteredSeibans).toMatchObject({ planningBoards: { A: [], B: [] }, searchHistory: [] });
+    expect(mocks.writeBoard).not.toHaveBeenCalled();
+    expect(mocks.writeHistory).not.toHaveBeenCalled();
+  });
+
+  it.each(['D_COMPANY', 'INTERNAL'] as const)('warns NOT_IN_SCHEDULE on stale rows and completes all destinations: %s', async (kind) => {
+    mocks.run.kind = kind;
+    mocks.previousMinutes = { sourceRun: { kind: 'D_COMPANY', meetingDate: new Date('2026-11-06Z') }, partsCompleteDate: new Date('2026-11-10Z') };
+    const writeBoard = mocks.writeBoard.getMockImplementation()!;
+    mocks.writeBoard.mockImplementation((input: { siteKey: string; fseibans: string[] }) => {
+      if (input.fseibans.includes('MISSING')) throw new ApiError(400, 'UNKNOWN_SEIBAN');
+      return writeBoard(input);
+    });
+    const run = await applyDScheduleMinutes({
+      result: { ok: true, assigneeColumnFound: true, meetingDate: '2026-10-30', blocks: [block('MISSING', undefined, ['ALIAS'])], warnings: [] },
+      metadata: { kind, gmailMessageId: 'stale-missing', subject: 'test', filename: 'test.xlsx', receivedAt: new Date('2026-10-30Z') }
+    });
+    for (const seiban of ['MISSING', 'ALIAS']) {
+      expect(run.warnings).toEqual(expect.arrayContaining([
+        { code: 'NOT_IN_SCHEDULE', seiban, cell: 'B8', rawText: null },
+        { code: 'STALE_FILE', seiban, cell: 'B8', rawText: null }
+      ]));
+      expect(mocks.membershipUpsert).toHaveBeenCalledWith(expect.objectContaining({
+        create: expect.objectContaining({ fseiban: seiban, kind: mocks.run.kind, lastSourceRunId: 'current' })
+      }));
+    }
+    expect(run.warnings).toHaveLength(4);
+    expect(run.status).toBe('SUCCESS');
+    expect(mocks.readBoard).toHaveBeenCalledTimes(2);
+    expect(mocks.readHistory).toHaveBeenCalledTimes(2);
+    expect(mocks.boards.A.seibanOrder).toEqual(['MANUAL-A']);
+    expect(mocks.boards.B.seibanOrder).toEqual(['MANUAL-B']);
+    expect(mocks.history).toEqual(['MANUAL-H']);
+  });
+
   it.each([
     { first: 'INTERNAL', absent: true }, { first: 'D_COMPANY', absent: true },
     { first: 'INTERNAL', absent: false }, { first: 'D_COMPANY', absent: false }

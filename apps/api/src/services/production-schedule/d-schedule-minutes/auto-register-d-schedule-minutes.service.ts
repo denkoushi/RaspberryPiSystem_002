@@ -43,6 +43,10 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
       orderBy: [{ meetingDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }]
     });
     const otherOwnership = (otherRun?.autoRegisteredSeibans ?? { planningBoards: {}, searchHistory: [] }) as RegistrationOwnership;
+    const otherFile = new Set(otherRun ? (await prisma.productionScheduleDScheduleMinutesKindMembership.findMany({
+      where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, kind: otherRun.kind, lastSourceRunId: otherRun.id },
+      select: { fseiban: true }
+    })).map((row) => row.fseiban) : []);
     const warnings = run.warnings as DScheduleMinutesWarning[];
     const unavailable = new Set(warnings.filter((warning) => warning.code === 'NOT_IN_SCHEDULE').map((warning) => warning.seiban));
     const all = new Set(input.blocks.flatMap((block) => [block.seiban, ...block.aliasSeibans]));
@@ -82,9 +86,10 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
         const current = await read();
         const auto = new Set([...previousAuto, ...savedAuto]);
         const other = new Set(otherAuto);
-        const entries = current.entries.filter((seiban) => !auto.has(seiban) || all.has(seiban) || other.has(seiban));
+        const entries = current.entries.filter((seiban) => !auto.has(seiban) || all.has(seiban) || other.has(seiban) || otherFile.has(seiban));
         // Existing manual entries stay unowned. Shared automatic entries can be owned by both kinds.
-        const owned = entries.filter((seiban) => (auto.has(seiban) && all.has(seiban))
+        // Keep ownership while the other file still lists it, so the entry is removed once neither file has it.
+        const owned = entries.filter((seiban) => (auto.has(seiban) && (all.has(seiban) || otherFile.has(seiban)))
           || (eligibleSet.has(seiban) && other.has(seiban)));
         const present = new Set(entries);
         const additions = eligible.filter((seiban) => !present.has(seiban)).sort((a, b) =>
@@ -135,5 +140,5 @@ export async function autoRegisterDScheduleMinutes(input: { runId: string; block
     await prisma.productionScheduleDScheduleMinutesImportRun.update({
       where: { id: run.id }, data: { status: 'SUCCESS', autoRegisteredSeibans: ownership, warnings: nextWarnings as Prisma.InputJsonValue[] }
     });
-  }, { timeout: 30000 });
+  }, { timeout: 120000 });
 }

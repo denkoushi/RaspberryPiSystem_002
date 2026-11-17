@@ -136,12 +136,12 @@ export async function applyDScheduleMinutes(input: {
       const sameKindStale = previousKindDate !== undefined && previousKindDate > meetingDate;
       const applyParts = !sameKindStale && (!previous || previous.sourceRun.meetingDate <= meetingDate);
       const applyDCompany = kind === 'D_COMPANY' && !sameKindStale;
+      if (!scheduled.has(fseiban)) warn('NOT_IN_SCHEDULE');
       // STALE_FILE means the entire row was skipped, not a successful D-only update.
       if (!applyParts && !applyDCompany) {
         if (!warnings.some((warning) => warning.code === 'STALE_FILE' && warning.seiban === fseiban)) warn('STALE_FILE');
         continue;
       }
-      if (!scheduled.has(fseiban)) warn('NOT_IN_SCHEDULE');
       if (!previous && await tx.productionScheduleSeibanDueDate.findUnique({ where: { csvDashboardId_fseiban: scope } })) {
         warn('MANUAL_DUE_EXISTS_FIRST_TIME');
       }
