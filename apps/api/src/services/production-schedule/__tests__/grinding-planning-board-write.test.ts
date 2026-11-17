@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma, ProductionScheduleGrindingPlanningBoardOverride as Override } from '@prisma/client';
 import { buildGrindingPlanningBoardRowItemId, projectGrindingPlanningBoard } from '../grinding-planning-board-projection.js';
-import { updateGrindingPlanningBoardResourceMove, updateGrindingPlanningBoardResourceOrderBulk, updateGrindingPlanningBoardOverrides, writeOverrideIfChanged } from '../grinding-planning-board/write.js';
+import { updateGrindingPlanningBoardSeibanOrder, updateGrindingPlanningBoardResourceMove, updateGrindingPlanningBoardResourceOrderBulk, updateGrindingPlanningBoardOverrides, writeOverrideIfChanged } from '../grinding-planning-board/write.js';
 
 const mocks = vi.hoisted(() => ({
-  tx: { $queryRaw: vi.fn(), $transaction: vi.fn(), productionScheduleGrindingPlanningBoardOverride: { upsert: vi.fn() }, productionScheduleGrindingPlanningBoardTestBar: { count: vi.fn().mockResolvedValue(0) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } },
+  tx: { productionScheduleGrindingPlanningBoardState: { update: vi.fn() }, $queryRaw: vi.fn(), $transaction: vi.fn(), productionScheduleGrindingPlanningBoardOverride: { upsert: vi.fn() }, productionScheduleGrindingPlanningBoardTestBar: { count: vi.fn().mockResolvedValue(0) }, productionScheduleSessakuPieceSet: { findMany: vi.fn().mockResolvedValue([]) } },
   excluded: vi.fn().mockResolvedValue([]),
   source: { readWinnerRowsByIds: vi.fn(), readWinnerRowsByFseibans: vi.fn(), readWinnerRowsByLogicalKeyFseibans: vi.fn(), readRowDetails: vi.fn(), readRanks: vi.fn(), readOverrides: vi.fn(), readMasterResourceCds: vi.fn() }
 }));
@@ -12,7 +12,8 @@ vi.mock('../../../lib/prisma.js', () => ({ prisma: mocks.tx }));
 vi.mock('../grinding-planning-board/source.js', () => mocks.source);
 vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({ ...await original<typeof import('../grinding-planning-board/schedule-source.js')>(), readScheduleSourceExcludedFseibans: mocks.excluded }));
 vi.mock('../grinding-planning-board/state.js', () => ({
-  ensurePlanningBoardState: vi.fn(), getOrCreateState: vi.fn().mockResolvedValue({ seibanOrder: ['S', 'H'] }), lockState: vi.fn().mockResolvedValue({ seibanOrder: ['S', 'H'] }), readState: vi.fn().mockResolvedValue({ seibanOrder: ['S'] }),
+  ensurePlanningBoardState: vi.fn(), getOrCreateState: vi.fn().mockResolvedValue({ id: 'board', seibanOrder: ['S', 'H'] }), lockState: vi.fn().mockResolvedValue({ id: 'board', seibanOrder: ['S', 'H'] }), readState: vi.fn().mockResolvedValue({ seibanOrder: ['S'] }),
+  readStateUncheckedFseibans: vi.fn().mockResolvedValue([]), stateUncheckedFseibans: (state: { uncheckedFseibans?: string[] }) => state.uncheckedFseibans ?? [],
   stateOrder: (state?: { seibanOrder: string[] }) => state?.seibanOrder ?? ['S'], boardRevision: () => 'board', assertBoardRevision: vi.fn()
 }));
 vi.mock('../sessaku-pieces/piece-key.js', async (original) => ({
@@ -213,5 +214,20 @@ describe('atomic resource move with real item projection', () => {
     await expect(updateGrindingPlanningBoardResourceMove({ siteKey: 'site', sourceRevision: 'board', move,
       items: [move, { ...ref(neighbour), ...(failure === 'neighbourRevision' ? { itemRevision: 'stale' } : {}) }] })).rejects.toMatchObject({ statusCode: 409 });
     expect(overrides).toEqual(before);
+  });
+});
+
+describe('planning board registered seiban order', () => {
+  it('saves all 300 seibans in one state update', async () => {
+    const fseibans = Array.from({ length: 300 }, (_, i) => `BULK-${i}`);
+    mocks.source.readWinnerRowsByFseibans.mockResolvedValue(fseibans.map((FSEIBAN) => ({ rowData: { FSEIBAN } })));
+    mocks.tx.$transaction.mockImplementation(async (callback) => callback(mocks.tx));
+    mocks.tx.productionScheduleGrindingPlanningBoardState.update.mockImplementation(async ({ data }) => ({ id: 'board', ...data }));
+    const result = await updateGrindingPlanningBoardSeibanOrder({ siteKey: 'site', sourceRevision: 'board', fseibans });
+    expect(result.seibanOrder).toEqual(fseibans);
+    expect(mocks.tx.productionScheduleGrindingPlanningBoardState.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: 'board' }, data: { seibanOrder: fseibans, uncheckedFseibans: [], version: { increment: 1 } }
+    });
+    expect(mocks.source.readWinnerRowsByFseibans).toHaveBeenCalledExactlyOnceWith(mocks.tx, fseibans);
   });
 });

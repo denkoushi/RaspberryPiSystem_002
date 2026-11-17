@@ -34,6 +34,7 @@ type Drop = { rowKey?: string; resource: string; bar: GanttBar | null; placement
 export type ForwardDragPreview = { rowKey?: string; source?: 'queue' | 'shelf'; bar: GanttBar; x: number; y: number; allowed: ReadonlySet<string>; drop: Drop | null };
 type Drag = { bar: GanttBar; x: number; y: number; tapCancelled: boolean; longPressed: boolean; selected: boolean; pointerId: number; element: HTMLButtonElement; moved: boolean; allowed?: ReadonlySet<string> };
 type Props = {
+  fillRowHeight?: number;
   foldedWindow?: SingleResourceWindow;
   row: GanttRow;
   window?: GanttWindow;
@@ -75,7 +76,7 @@ type Props = {
   onFocusChain: (bar: GanttBar, keepOpen?: boolean) => void;
 };
 
-export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ foldedWindow, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
+export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGanttRow({ fillRowHeight, foldedWindow, row, window = null, registerRow, chipsByPart, placementByPart, seibanColors, focusedSeiban = null, onToggleSeiban, label, start, today, now, width, dayWidth, hours, pausesForBreaks = true, scale, onShowQueue, onLeaveQueue, onCloseQueue,
   selectedItemIds, disabled, dragDisabled, pinMode = false, onTogglePin, resourceView, onToggleItem, onResourceReorder, onResourceMove, canMoveResource,
   lanes, draggedItemId, insertionLeft, onDragPreview, focusedPartKey, chainPositions, onFocusChain }: Props) {
   const { gate, frozen } = usePlanningBoardOffline();
@@ -241,9 +242,15 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
   const firstOfDay = !foldedWindow?.working || Math.abs(start - day - shiftPeriods[0]!.start) < 1e-9;
   const workingWidth = foldedWindow?.periods.reduce((sum, period) => sum + period.end - period.start, 0) ?? 0;
   const rowBaseHeight = foldedWindow ? 96 : 76;
-  return <div ref={rowRef} data-gantt-window-row={foldedWindow ? row.key : undefined}
-    data-gantt-lane={foldedWindow ? '' : undefined} data-resource-code={foldedWindow ? row.label : undefined} className="flex border-b border-slate-600" style={{ minHeight: rowBaseHeight + chipLayout.lines * CHIP_LINE_HEIGHT }} data-testid={`planning-forward-lane-${row.key}`}>
-    <div data-gantt-lane-label className={clsx('sticky left-0 z-20 flex shrink-0 flex-col border-r border-slate-700 px-2 py-0.5 text-xs', foldedWindow && [0, 6].includes(weekday) ? 'bg-slate-800' : 'bg-slate-900', foldedWindow ? 'justify-start gap-1.5 pt-2' : 'justify-evenly')} style={{ width: GANTT_FORWARD_LABEL_WIDTH }}>
+  const originalHeight = rowBaseHeight + chipLayout.lines * CHIP_LINE_HEIGHT;
+  const rowHeight = Math.max(originalHeight, fillRowHeight ?? 0);
+  const verticalScale = fillRowHeight === undefined ? 1 : rowHeight / originalHeight;
+  const scaledChips = useMemo(() => verticalScale === 1 ? chipLayout : layoutChipStrips(chipLayout.strips.map((strip) => ({
+    ...strip, left: strip.left / verticalScale
+  })), { ...CHIP_STRIP_FIT, maxLines: chipLayout.lines }), [chipLayout, verticalScale]);
+  return <div ref={rowRef} data-gantt-vertical-scale={verticalScale} data-gantt-window-row={foldedWindow ? row.key : undefined}
+    data-gantt-lane={foldedWindow ? '' : undefined} data-resource-code={foldedWindow ? row.label : undefined} className="flex border-b border-slate-600" style={{ minHeight: rowHeight }} data-testid={`planning-forward-lane-${row.key}`}>
+    <div data-gantt-lane-label className={clsx('sticky left-0 z-20 flex shrink-0 flex-col border-r border-slate-700 px-2 py-0.5 text-xs', foldedWindow && [0, 6].includes(weekday) ? 'bg-slate-800' : 'bg-slate-900', foldedWindow ? 'justify-start gap-1.5 pt-2' : 'justify-evenly')} style={{ width: GANTT_FORWARD_LABEL_WIDTH, fontSize: 12 * verticalScale, lineHeight: `${16 * verticalScale}px` }}>
       {foldedWindow ? <>
         {firstOfDay && <div className="flex items-baseline gap-1.5 whitespace-nowrap">
           <b className={clsx('font-mono text-xl', day === currentDay && 'rounded bg-emerald-400 px-1 text-slate-950')}>{dayLabel(day)}</b>
@@ -272,9 +279,9 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
         </span>;
       }))}
       {Number.isFinite(now) && <span data-testid="planning-gantt-now" className="pointer-events-none absolute inset-y-0 z-[3] border-l-2 border-yellow-400" style={{ left: (now - start) * dayWidth }} />}
-      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
-      {chipLayout.strips.filter(({ bar }) => visibleIds.has(bar.item.itemId)).map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
-        className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left, top: rowBaseHeight + line * CHIP_LINE_HEIGHT }}>
+      {row.connectors.map((link, i) => <span key={i} className="pointer-events-none absolute top-9 border-t-2 border-dotted border-amber-400" style={{ top: 36 * verticalScale, left: (link.start - start) * dayWidth, width: (link.end - link.start) * dayWidth }} />)}
+      {scaledChips.strips.filter(({ bar }) => visibleIds.has(bar.item.itemId)).map(({ bar, left, line, done, shown, hidden, placement, badgeWidth }) => <div key={`chips:${bar.item.itemId}`} data-testid={`planning-gantt-chips-${bar.item.itemId}`}
+        className="pointer-events-none absolute flex flex-nowrap gap-0.5" style={{ left: left * verticalScale, top: (rowBaseHeight + line * CHIP_LINE_HEIGHT) * verticalScale, transform: verticalScale === 1 ? undefined : `scale(${verticalScale})`, transformOrigin: 'top left' }}>
         {placement && <span className="inline-flex shrink-0" style={{ width: badgeWidth }}>
           <PlacementLocationBadge placement={placement} />
         </span>}
@@ -317,7 +324,7 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
                 normal?.quantityWarning && '!outline !outline-2 !-outline-offset-2 !outline-red-500',
                 split && opIndex > 0 && 'border-l border-slate-950/60',
                 index > 0 && 'border-l-2 border-dashed border-slate-950')}
-              style={{ top: foldedWindow ? 22 : undefined, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
+              style={{ top: (foldedWindow ? 22 : 3) * verticalScale, height: 70 * verticalScale, fontSize: 11 * verticalScale, lineHeight: `${14 * verticalScale}px`, boxShadow: normal?.orderPinned ? `${focusedSeiban === normal?.fseiban ? 'var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), ' : ''}inset 0 0 0 3px rgb(251 191 36)` : undefined, left: (segment.start - start) * dayWidth, width: segmentWidth,
                 borderRadius: split && !bar.item.itemId.startsWith('piece:') ? 0 : undefined,
                 clipPath: !split && bar.item.kind === 'piece' && segmentWidth >= PIECE_NOTCH_MIN_WIDTH ? pieceNotchClipPath({ left: index === 0, right: index === segments.length - 1 }) : undefined,
                 backgroundColor: draggedItemId === bar.item.itemId ? 'rgb(15 23 42)' : test ? '#c4b5fd' : undefined,
@@ -368,12 +375,12 @@ export const PlanningBoardForwardGanttRow = memo(function PlanningBoardForwardGa
               {!split && inChain && chainPositions.has(bar.item.itemId) && index === 0 && <span data-testid={`planning-gantt-chain-badge-${bar.item.itemId}`} className="pointer-events-none absolute right-0 top-0 grid h-[22px] w-[22px] place-items-center rounded-full bg-slate-950 font-mono text-xs font-bold text-white">{chainPositions.get(bar.item.itemId)}</span>}
               {test ? <span className="block px-1"><b className="block">{test.name}</b><span className="block">{test.minutes}分</span></span> : bar.unknown ? normal?.standardHoursMissing ? `${normal.processOrder} 標準工数入力忘れ` : '所要不明' : segmentWidth >= 48
                 ? <span className={clsx("block break-all px-1", bar.opSegments && "relative")}>{(!split || opIndex === 0 && index === 0 && !bar.opSplitContinuation) && <b className="line-clamp-2">{normal?.fhinmei || normal?.fhincd}</b>}
-                  {!split && <small className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
+                  {!split && <small style={{ fontSize: 11 * verticalScale }} className="line-clamp-3 text-[11px] font-normal">{index > 0 ? '続き' : scale <= 2 ? forwardItemDetails(bar.item) : formatPlanningBoardItemMinutes(bar.item)}</small>}
                 </span> : null}
             </button>{split && <span aria-hidden="true" data-gantt-unit-underline data-seiban-unfocused={focusedSeiban === null ? 'underline' : undefined} className={clsx('pointer-events-none absolute h-[3px] rounded', focusedSeiban !== null && focusedSeiban !== normal?.fseiban ? 'opacity-20' : focusedPartKey !== null && !inChain ? 'opacity-30' : undefined)}
-              style={{ top: foldedWindow ? 95 : 76, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
+              style={{ top: (foldedWindow ? 95 : 76) * verticalScale, left: (segment.start - start) * dayWidth, width: segmentWidth, background: operationSplitColor(color, 0) }} />}</div>;
           })}
-          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={foldedWindow ? 75 : 56} />}
+          {segments[0] && lateStars.itemIds.has(bar.item.itemId) && <PlanningBoardLateStar left={(segments[0].start - start) * dayWidth} top={(foldedWindow ? 91 : 72) * verticalScale - 16} />}
           {selected && bar.due && <span data-testid={`planning-gantt-due-${bar.item.itemId}`} title={`納期 ${bar.due}`} className="pointer-events-none absolute bottom-0 -translate-x-1/2 text-xs leading-none text-rose-400"
             style={{ left: Math.max(0, (dateToDay(bar.due) + 1 - start) * dayWidth) }}>▲</span>}
         </div>;

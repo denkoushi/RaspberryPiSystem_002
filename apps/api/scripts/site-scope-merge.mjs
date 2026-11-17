@@ -9,7 +9,7 @@
  *
  * Rules (decided with the user on 2026-09-26):
  * - Registered seibans: keep the target order and append source seibans the
- *   target does not have, in source order (limit 100).
+ *   target does not have, in source order.
  * - Per-item overrides: move source overrides whose item is not overridden in
  *   the target; the target wins on conflicts (conflicting source rows stay
  *   where they are). Moved overrides lose `alternateRank` so they cannot
@@ -30,7 +30,6 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { prisma } from '../dist/lib/prisma.js';
 import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../dist/services/production-schedule/constants.js';
 
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX as REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 
 function parseArgs(argv) {
   const args = { source: '', target: '', apply: false, assignDevices: false, backup: '', restore: '' };
@@ -64,9 +63,6 @@ async function buildPlan(client, { source, target, assignDevices }) {
   const targetOrder = asStringArray(targetState?.seibanOrder);
   const appended = asStringArray(sourceState?.seibanOrder).filter((fseiban) => !targetOrder.includes(fseiban));
   const mergedOrder = [...targetOrder, ...appended];
-  if (mergedOrder.length > REGISTERED_SEIBAN_MAX) {
-    throw new Error(`Merged registered seibans (${mergedOrder.length}) exceed the limit ${REGISTERED_SEIBAN_MAX}`);
-  }
 
   const overrides = await client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: { in: [source, target] } }

@@ -1,4 +1,3 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import axios from 'axios';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -557,7 +556,7 @@ export function ProductionScheduleManualOrderPage() {
       const exists = prev.activeQueries.includes(value);
       const next = exists
         ? prev.activeQueries.filter((item) => item !== value)
-        : [...prev.activeQueries, value].slice(0, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+        : [...prev.activeQueries, value];
       return { activeQueries: next };
     });
   };

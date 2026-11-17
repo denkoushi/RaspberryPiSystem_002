@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { SessakuPieceSet } from '../sessaku-pieces/piece-key.js';
 import { Prisma, type ProductionScheduleGrindingPlanningBoardOverride } from '@prisma/client';
 import type { GrindingPlanningBoardScheduleSource, GrindingPlanningBoardResourceMinutesResponse, GrindingPlanningBoardCategory, GrindingPlanningBoardDueRequest, GrindingPlanningBoardItem, GrindingPlanningBoardLoad, GrindingPlanningBoardResponse, GrindingPlanningBoardSpecialDueKind, GrindingPlanningBoardView } from '@raspi-system/shared-types';
-import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
+import { PLANNING_BOARD_MAX_DUE_OFFSET_DAYS } from '@raspi-system/shared-types';
 import { ApiError } from '../../../lib/errors.js';
 import { prisma } from '../../../lib/prisma.js';
 import { getResourceCategoryPolicy, isProductionScheduleCuttingResourceCd, isProductionScheduleGrindingResourceCd } from '../policies/resource-category-policy.service.js';
@@ -158,7 +158,7 @@ export function normalizeUniqueFseibans(values: readonly string[]): string[] {
 }
 
 export function uniqueFseibans(values: readonly string[]): string[] {
-  return normalizeUniqueFseibans(values).slice(0, KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+  return normalizeUniqueFseibans(values);
 }
 
 export function isCategoryResource(resourceCd: string | null, category: GrindingPlanningBoardCategory, policy: Awaited<ReturnType<typeof getResourceCategoryPolicy>>): boolean {

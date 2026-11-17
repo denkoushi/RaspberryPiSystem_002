@@ -654,8 +654,7 @@ describe('planning board seiban checks', () => {
       expect(response.statusCode).toBe(409);
     } finally { await app.close(); }
   });
-  it.each([{ sourceRevision: '', uncheckedFseibans: [] }, { sourceRevision: 'r', uncheckedFseibans: [''] },
-    { sourceRevision: 'r', uncheckedFseibans: Array(101).fill('A') }])('rejects invalid checks: %j', async (payload) => {
+  it.each([{ sourceRevision: '', uncheckedFseibans: [] }, { sourceRevision: 'r', uncheckedFseibans: [''] }])('rejects invalid checks: %j', async (payload) => {
     const app = await createApp(async () => ({ id: 'device-1' }));
     try {
       expect((await app.inject({ method: 'PUT', url, payload })).statusCode).toBe(400);

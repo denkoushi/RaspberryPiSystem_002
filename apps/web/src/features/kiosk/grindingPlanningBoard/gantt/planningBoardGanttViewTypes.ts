@@ -62,6 +62,7 @@ export type PlanningBoardGanttProps = Pick<PlanningBoardGanttRowProps, 'completi
   machineMode?: 1 | 2;
   twoMachineDisabled?: boolean;
   onMachineModeChange?: (mode: 1 | 2) => void;
+  fillHeightEligible?: boolean;
   fitPane?: boolean; onNavigateBar?: (bar: GanttBar) => boolean;
   singleResourceCd?: string | null;
   singleResourcePickerOpen?: boolean;

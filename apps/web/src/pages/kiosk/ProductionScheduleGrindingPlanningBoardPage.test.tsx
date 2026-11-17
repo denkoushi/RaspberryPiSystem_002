@@ -3179,7 +3179,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     await waitFor(() => expect(screen.getByLabelText('CAND-FAILを登録候補に選択')).not.toBeChecked());
   });
 
-  it('登録済み99件で候補を2件選んでも上限超過を送信しない', () => {
+  it('登録済み99件でも候補を2件まとめて登録できる', async () => {
     const manyRegistered = Array.from({ length: 99 }, (_, index) => `REGISTERED-${index + 1}`);
     const board = fixture();
     mocks.snapshot.mockReturnValue({
@@ -3210,10 +3210,11 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     fireEvent.click(screen.getByLabelText('CAND-LIMIT-1を登録候補に選択'));
     fireEvent.click(screen.getByLabelText('CAND-LIMIT-2を登録候補に選択'));
     const registerButton = screen.getByRole('button', { name: '選択した製番を登録' });
-    expect(registerButton).toBeDisabled();
+    expect(registerButton).not.toBeDisabled();
     fireEvent.click(registerButton);
-    expect(mocks.order).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('登録上限100件を超えるため');
+    await waitFor(() => expect(mocks.order).toHaveBeenCalledWith(expect.objectContaining({
+      fseibans: ['CAND-LIMIT-1', 'CAND-LIMIT-2', ...manyRegistered]
+    })));
   });
 
   it('資源CD表示は資源名を見出しに表示し、部品情報を上下2段にする', () => {
@@ -4096,7 +4097,7 @@ describe('ProductionScheduleGrindingPlanningBoardPage', () => {
     const drawer = screen.getByRole('dialog', { name: '製番登録' });
     const rows = within(within(drawer).getByRole('list', { name: '登録製番' })).getAllByRole('listitem');
     expect(rows.map((row) => row.textContent?.slice(0, 9))).toEqual(['1✓26-1041', '2✓26-1042']);
-    expect(within(drawer).getByText('2/100')).toBeInTheDocument();
+    expect(within(drawer).getByText('登録製番（OR）')).toHaveTextContent('登録製番（OR）2');
     expect(within(drawer).getByRole('button', { name: '製番26-1041を上へ' })).toBeDisabled();
     expect(within(drawer).getByRole('button', { name: '製番26-1041を下へ' })).not.toBeDisabled();
     expect(within(drawer).getByRole('button', { name: '製番26-1042を上へ' })).not.toBeDisabled();
