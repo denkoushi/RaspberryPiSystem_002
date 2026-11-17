@@ -599,7 +599,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     });
   });
 
-  it('counts every registered process in progress and caps the copied seiban order at 100', async () => {
+  it('counts every registered process in progress and copies the whole seiban order', async () => {
     const progressFixture = await createFixture();
     await addRows(progressFixture, [
       { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '305', processOrder: '1', productNo: '1', completed: true },
@@ -618,8 +618,8 @@ describeIntegration('grinding planning board service real Postgres integration',
       requiredMinutes: '1'
     })));
     const cappedResponse = await boardFor(cappedFixture);
-    expect(cappedResponse.registeredFseibans).toHaveLength(100);
-    expect(cappedResponse.items).toHaveLength(100);
+    expect(cappedResponse.registeredFseibans).toHaveLength(102);
+    expect(cappedResponse.items).toHaveLength(102);
     expect(cappedResponse.load.find((entry) => entry.resourceCd === '305')).toMatchObject({
       originalItemCount: 102,
       alternateItemCount: 102,
