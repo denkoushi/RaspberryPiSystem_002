@@ -15,7 +15,7 @@ alwaysApply: false
 
 ## 正本
 
-重要な変更は、次のいずれか1つを詳細正本として更新する。小変更では新しい Plan を作らない。
+重要な変更は、次のいずれか1つを詳細正本として更新する。小変更では新しい正本文書（Plan を含む）を作らず、コード、テスト、作業報告で済ませる。
 
 - KB（`docs/knowledge-base/`）: 事象と対処（再発防止まで）。テンプレは [docs/knowledge-base/_template.md](../../docs/knowledge-base/_template.md)
 - ADR（`docs/decisions/`）: 意思決定（トレードオフ含む）。テンプレは [docs/decisions/_template.md](../../docs/decisions/_template.md)
@@ -27,12 +27,12 @@ alwaysApply: false
 ## 新規ドキュメントの言語方針
 
 - 新規 KB / ADR / Runbook / Plan は英語ベースの固定見出しと構造化メタデータを優先する
-- 日本語の現場用語、UI文言、ログ、ユーザー発話は原文のまま残す
+- 日本語の現場用語、UI文言、ログ、ホスト名、ユーザー発話は原文のまま残す
 - 日本語でないと意味が落ちる補足は `Local Notes JA` または `notes_ja` に置く
 - 既存日本語文書へ追記する場合は、既存文書の言語に合わせる
 
 ## 検索性
 
 - ドキュメントタイトル/見出しは、検索語になりやすい固有名詞を含める
-- 新規追加したら、`AGENTS.md`、`docs/AI_START_HERE.md`、または薄い索引から辿れるようにする
+- 新規追加したら、薄い索引（`docs/INDEX.md`、`docs/knowledge-base/index.md` など）から辿れるようにする。`AGENTS.md` と `docs/AI_START_HERE.md` には全作業に要る入口だけを置く
 - 索引の説明は1件1行を目安にし、長文の検証ログや経緯は正本文書へ置く

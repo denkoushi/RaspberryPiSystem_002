@@ -42,7 +42,9 @@ worktree and reports `main_sync=skipped_dirty` or
 `main_sync=skipped_diverged`. Existing branch or path collisions are kept and
 reported rather than overwritten.
 
-`start` also cleans up `MERGED_CLEAN` task worktrees directly under the task root by default, using the same per-target safety checks as `finish` (it does not fetch again or synchronize main). Pass `--no-merged-cleanup` to skip it. The same cleanup can be run manually with `python3 -m scripts.git_lifecycle.cli finish-merged`.
+`start` also cleans up `MERGED_CLEAN` task worktrees that have a PR number directly under the task root by default, using the same per-target safety checks as `finish` (it does not fetch again or synchronize main). Pass `--no-merged-cleanup` to skip it. A cleanup failure is reported as a warning and in `merged_cleanup`, and the new worktree is still created. The same cleanup can be run manually with `python3 -m scripts.git_lifecycle.cli finish-merged`.
+
+Both the automatic cleanup and `finish-merged` reuse the `audit` classification and the per-target checks of `finish` (re-observation, no-force removal, compare-and-delete). They skip targets outside the task root and protect main, the worktree containing the current cwd, and worktrees that another process uses as its cwd; if the process check fails, every candidate is protected with a warning. One failed or protected target does not stop the others, and a manual batch synchronizes main at most once after cleanup. A worktree whose HEAD is an ancestor of the merged PR head is treated as merged-clean when the other safety conditions hold.
 
 ## Finish one merged task
 
@@ -60,7 +62,7 @@ The target is eligible only when the following observations agree:
 - the PR is merged;
 - the PR source is the same repository;
 - the PR head branch is the local branch for the target worktree;
-- the local branch tip equals the PR head SHA; and
+- the local branch tip equals the PR head SHA or is an ancestor of it; and
 - the target worktree has no ordinary changes or special index flags such as `assume-unchanged` and `skip-worktree`.
 
 Ignored caches and generated files are counted and reported but do not block
