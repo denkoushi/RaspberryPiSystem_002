@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodically check kiosk Wi-Fi unicast connectivity
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1min
+Unit=kiosk-wifi-self-heal.service
+
+[Install]
+WantedBy=timers.target

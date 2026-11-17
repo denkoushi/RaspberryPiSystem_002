@@ -88,6 +88,17 @@
               ansible.builtin.debug:
                 msg: "ClamAV scan was not applied on {{ inventory_hostname }}; the release continues. Reason: {{ (ansible_failed_result.msg | default('unknown') | string)[:300] }}"
 
+        - name: Converge the Pi4 kiosk Wi-Fi self-heal policy
+          block:
+            - name: Apply the shared kiosk Wi-Fi self-heal policy
+              ansible.builtin.include_role:
+                name: kiosk
+                tasks_from: wifi-self-heal
+          rescue:
+            - name: Report the unapplied Wi-Fi self-heal policy without failing the release
+              ansible.builtin.debug:
+                msg: "Kiosk Wi-Fi self-heal policy was not applied on {{ inventory_hostname }}; the release continues. Reason: {{ (ansible_failed_result.msg | default('unknown') | string)[:300] }}"
+
         - name: Persist completed first-install identity after verified health
           ansible.builtin.copy:
             dest: "{{ release_kiosk_run_root }}/completed-{{ inventory_hostname }}.json"

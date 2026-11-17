@@ -231,3 +231,6 @@
     - terminal_release_mode | default('full') == 'full'
     - manage_kiosk_browser | default(false) | bool
     - kiosk_gui_autologin_install.changed | default(false) or kiosk_gui_autologin_remove.changed | default(false)
+
+- name: Apply kiosk Wi-Fi self-heal
+  ansible.builtin.import_tasks: wifi-self-heal.yml

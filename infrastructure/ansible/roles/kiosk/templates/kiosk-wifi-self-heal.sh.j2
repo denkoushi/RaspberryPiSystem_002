@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+set -eu
+export LC_ALL=C
+trap 'result=$?; if (( result != 0 )); then logger -t kiosk-wifi-self-heal "Check stopped: command failed rc=$result" || true; fi; exit 0' EXIT
+
+command -v nmcli >/dev/null 2>&1 || exit 0
+[[ -d "${NET_CLASS_DIR:-/sys/class/net}/wlan0" ]] || exit 0
+read -r uptime_seconds _ < "${UPTIME_FILE:-/proc/uptime}"
+uptime_seconds=${uptime_seconds%%.*}
+[[ "$uptime_seconds" =~ ^[0-9]+$ ]] || exit 0
+(( uptime_seconds >= 300 )) || exit 0
+
+state_dir=${STATE_DIR:-/run/kiosk-wifi-self-heal}
+history_file=${REBOOT_HISTORY_FILE:-/var/lib/kiosk-wifi-self-heal/reboots}
+pi5_ip='{{ local_network.raspberrypi5_ip }}'
+log() { logger -t kiosk-wifi-self-heal "$*" || true; }
+clear_state() { rm -f "$state_dir/first_failure" "$state_dir/reconnected" "$state_dir/reboot_blocked"; }
+log_blocked() {
+    local reason="$1" previous=''
+    [[ ! -f "$state_dir/reboot_blocked" ]] || previous=$(cat "$state_dir/reboot_blocked")
+    if [[ "$previous" != "$reason" ]]; then
+        log "Reboot blocked: $reason"
+        printf '%s\n' "$reason" > "$state_dir/reboot_blocked"
+    fi
+}
+# Invalid transient timestamps must not leave recovery permanently stalled.
+for state_file in first_failure reconnected; do
+    if [[ -f "$state_dir/$state_file" ]]; then
+        value=$(cat "$state_dir/$state_file")
+        if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+            clear_state
+            break
+        fi
+    fi
+done
+# After our own reconnect, wlan0 may have no route at all; keep escalating then.
+route=$(ip -4 route get "$pi5_ip" 2>/dev/null) || route=''
+route_device=$(awk '{ for (i=1; i<NF; i++) if ($i == "dev") { print $(i+1); exit } }' <<< "$route")
+if [[ -n "$route_device" && "$route_device" != wlan0 ]] || [[ -z "$route_device" && ! -f "$state_dir/reconnected" ]]; then
+    clear_state
+    exit 0
+fi
+
+device_state=$(nmcli -g GENERAL.STATE device show wlan0)
+if [[ ! "$device_state" =~ ^100([[:space:]]|$) && ! -f "$state_dir/reconnected" ]]; then
+    clear_state
+    exit 0
+fi
+
+gateway=$(ip -4 route show default dev wlan0 | awk '$1 == "default" { for (i=1; i<NF; i++) if ($i == "via") { print $(i+1); exit } }')
+gateway_ok=false
+pi5_ok=false
+if [[ "$device_state" =~ ^100([[:space:]]|$) ]]; then
+    if [[ -n "$gateway" ]] && ping -c 3 -W 2 -I wlan0 "$gateway" >/dev/null 2>&1; then
+        gateway_ok=true
+    fi
+    if ping -c 3 -W 2 -I wlan0 "$pi5_ip" >/dev/null 2>&1; then
+        pi5_ok=true
+    fi
+fi
+if $gateway_ok || $pi5_ok; then
+    clear_state
+    exit 0
+fi
+
+mkdir -p "$state_dir"
+if [[ ! -f "$state_dir/first_failure" ]]; then
+    printf '%s\n' "$uptime_seconds" > "$state_dir/first_failure"
+    log "Unicast probes failed: gateway=${gateway:-missing} pi5=$pi5_ip; tracking failure"
+    exit 0
+fi
+read -r first_failure < "$state_dir/first_failure"
+[[ "$first_failure" =~ ^[0-9]+$ ]] || exit 0
+if [[ ! -f "$state_dir/reconnected" ]]; then
+    (( uptime_seconds - first_failure >= 300 )) || exit 0
+    log "Unicast probes still failing for 300s; reconnecting wlan0"
+    connection=$(nmcli -g GENERAL.CONNECTION device show wlan0) || connection=''
+    if [[ -n "$connection" && "$connection" != -- ]]; then
+        reconnect=(nmcli --wait 45 connection up id "$connection")
+    else
+        reconnect=(nmcli --wait 45 device connect wlan0)
+    fi
+    if "${reconnect[@]}" >/dev/null 2>&1; then
+        log "wlan0 reconnect succeeded; waiting for unicast recovery"
+    else
+        log "wlan0 reconnect failed: rc=$?"
+        nmcli device set wlan0 autoconnect yes >/dev/null 2>&1 || log "wlan0 autoconnect restore failed: rc=$?"
+    fi
+    read -r reconnect_uptime _ < "${UPTIME_FILE:-/proc/uptime}"
+    printf '%s\n' "${reconnect_uptime%%.*}" > "$state_dir/reconnected"
+    exit 0
+fi
+read -r reconnected < "$state_dir/reconnected"
+[[ "$reconnected" =~ ^[0-9]+$ ]] || exit 0
+(( uptime_seconds - reconnected >= 300 )) || exit 0
+now=${NOW_SECONDS:-$(date +%s)}
+[[ "$now" =~ ^[0-9]+$ ]] || exit 0
+
+mkdir -p "$(dirname "$history_file")"
+# Refuse reboot if history cannot be read, validated, or saved.
+if [[ -e "$history_file" ]]; then
+    history=$(cat "$history_file")
+else
+    history=''
+fi
+hour_count=0
+day_count=0
+recent=''
+while IFS= read -r timestamp; do
+    [[ -n "$timestamp" ]] || continue
+    [[ "$timestamp" =~ ^[0-9]+$ ]] || { log "Reboot blocked: invalid reboot history"; exit 0; }
+    if (( timestamp <= now && now - timestamp <= 86400 )); then
+        recent+="$timestamp"$'\n'
+        day_count=$((day_count + 1))
+        if (( now - timestamp <= 3600 )); then
+            hour_count=$((hour_count + 1))
+        fi
+    fi
+done <<< "$history"
+if (( hour_count >= 1 || day_count >= 3 )); then
+    printf '%s' "$recent" > "$history_file.tmp"
+    mv "$history_file.tmp" "$history_file"
+    log_blocked "limit reached (last hour=$hour_count last 24h=$day_count)"
+    exit 0
+fi
+if [[ -e "${RELEASE_MARKER:-/run/raspi-release/active}" ]]; then
+    log_blocked "deployment active"
+    exit 0
+fi
+exec 9>"${OS_UPDATE_LOCK_FILE:-/run/lock/raspi-os-security-update.lock}"
+if ! flock -n 9; then
+    log_blocked "OS security update active"
+    exit 0
+fi
+rm -f "$state_dir/reboot_blocked"
+printf '%s%s\n' "$recent" "$now" > "$history_file.tmp"
+mv "$history_file.tmp" "$history_file"
+log "Unicast probes still failing 300s after reconnect; rebooting"
+systemctl reboot
+exit 0
