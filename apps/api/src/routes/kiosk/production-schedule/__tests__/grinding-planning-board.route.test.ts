@@ -882,11 +882,11 @@ describe('test bar parts route', () => {
   it('authenticates candidates and forwards the site and trimmed resource', async () => {
     const requireClient = vi.fn(async () => ({ id: 'device-1' }));
     const app = await createApp(requireClient);
-    mocks.partCandidates.mockResolvedValue({ partNames: ['モータブラケット'] });
+    mocks.partCandidates.mockResolvedValue({ parts: [{ partName: 'モータブラケット', machineStock: true }] });
     try {
       const response = await app.inject({ method: 'GET', url: `${base}/part-candidates?resourceCd=%20761%20`, headers: { 'x-client-key': 'key-1' } });
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toEqual({ partNames: ['モータブラケット'] });
+      expect(response.json()).toEqual({ parts: [{ partName: 'モータブラケット', machineStock: true }] });
       expect(requireClient).toHaveBeenCalledWith('key-1');
       expect(mocks.partCandidates).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '761' });
     } finally { await app.close(); }

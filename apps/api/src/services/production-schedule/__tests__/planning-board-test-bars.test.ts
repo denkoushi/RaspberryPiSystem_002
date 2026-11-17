@@ -166,17 +166,27 @@ describe('test bar part names', () => {
       .rejects.toMatchObject({ statusCode: 400, code: 'INVALID_TEST_BAR_PART_NAME' });
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
-  it('queries distinct nonempty stock part names for the dashboard and machine', async () => {
-    mocks.queryRaw.mockResolvedValue([{ partName: 'A' }, { partName: 'B' }]);
-    expect(await getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: '761' })).toEqual({ partNames: ['A', 'B'] });
+  it('queries all distinct nonempty names with indexed machine stock first in one query', async () => {
+    const parts = [{ partName: 'B', machineStock: true }, { partName: 'A', machineStock: false }];
+    mocks.queryRaw.mockResolvedValue(parts);
+    expect(await getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: '761' })).toEqual({ parts });
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     const sql = mocks.queryRaw.mock.calls[0][0];
-    expect(sql.values).toEqual([' ', '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', ' ', '761', ' ']);
-    expect(sql.sql).toContain(`SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ?)`);
+    expect(sql.values).toEqual([' ', '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', ' ', '761', ' ', '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', ' ']);
+    expect(sql.sql.match(/SELECT DISTINCT BTRIM/g)).toHaveLength(2);
     expect(sql.sql).toContain(`"rowData"->>'FSEIBAN' = '********'`);
     expect(sql.sql).toContain(`BTRIM("rowData"->>'FSIGENCD', ?) = ?`);
     expect(sql.sql).toContain(`BTRIM("rowData"->>'FHINMEI', ?) <> ''`);
-    expect(sql.sql).toContain('ORDER BY "partName"');
+    const allNames = sql.sql.split('), parts AS (')[1].split('SELECT parts.')[0];
+    expect(allNames).not.toMatch(/FSEIBAN|FSIGENCD/);
+    expect(sql.sql).toContain('FROM parts LEFT JOIN machine_stock USING ("partName")');
+    expect(sql.sql).toContain('(machine_stock."partName" IS NOT NULL) AS "machineStock"');
+    expect(sql.sql).toContain('ORDER BY "machineStock" DESC, parts."partName"');
     expect(mocks.categoryResource).toHaveBeenCalledWith('761', 'all', {});
+  });
+  it('returns an empty candidate list when there are no nonempty names', async () => {
+    mocks.queryRaw.mockResolvedValue([]);
+    expect(await getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: '761' })).toEqual({ parts: [] });
   });
   it.each(['unknown', 'category'])('rejects an invalid resource (%s) without querying rows', async (reason) => {
     if (reason === 'category') mocks.categoryResource.mockReturnValue(false);
