@@ -184,7 +184,7 @@ export function PlanningBoardToolbar({
   }, [orderPreview, singleResourcePickerAnchor, onCloseSingleResourcePicker]);
   const { frozen } = usePlanningBoardOffline();
   const fill = usePersistedPlanningBoardFillHeight(category === 'grinding');
-  const showFillHeight = fill.available && ganttEnabled && ganttMode === 'forward';
+  const showFillHeight = fill.available && ganttEnabled && ganttMode === 'forward' && (view === 'resource' || Boolean(singleResourceCd));
   const [scaleOpen, setScaleOpen] = useState(false);
   const [scalePosition, setScalePosition] = useState({ left: 8, top: 8 });
   const scaleButton = useRef<HTMLButtonElement>(null);

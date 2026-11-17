@@ -332,7 +332,7 @@ describe('fill height toolbar control', () => {
   afterEach(() => { localStorage.removeItem(FILL_HEIGHT_STORAGE_KEY); vi.unstubAllGlobals(); });
   it.each([
     { innerHeight: 1599 }, { category: 'cutting' as const }, { category: 'all' as const },
-    { ganttEnabled: false }, { ganttMode: 'backward' as const }
+    { ganttEnabled: false }, { ganttMode: 'backward' as const }, { view: 'seiban' as const }
   ])('hides outside the forward grinding tall-screen chart: %o', changes => {
     vi.stubGlobal('innerHeight', changes.innerHeight ?? 2160);
     render(<PlanningBoardToolbar {...props()} {...changes} />);
