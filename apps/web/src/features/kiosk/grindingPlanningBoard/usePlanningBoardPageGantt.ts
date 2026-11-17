@@ -388,7 +388,7 @@ export function usePlanningBoardPageGantt({
         return orders.length || entry.restoreResources?.length ? [{ ...entry, orders }] : [];
       }));
       if (!snapshot.itemIds.length) { saved(); continue; }
-      const currentOrder = sortGrindingPlanningBoardItems(restoredItems.filter((item) => !item.isCompleted &&
+      const currentOrder = sortGrindingPlanningBoardItems(restoredItems.filter((item) => !item.standardHoursMissing && !item.isCompleted &&
         (resolveGrindingPlanningBoardResource(item, allocation) ?? '未設定') === snapshot.resourceCd), registeredFseibans, 'resource', allocation);
       const laneTests = tests.bars.filter((item) => item.resourceCd === snapshot.resourceCd && !item.isCompleted && !item.deletedAt);
       const mixedOrder: GrindingPlanningBoardBar[] = [...currentOrder, ...laneTests];
