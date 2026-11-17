@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { PlanningBoardToolbar } from './PlanningBoardToolbar';
+import { FILL_HEIGHT_STORAGE_KEY } from './usePersistedPlanningBoardFillHeight';
 
 import type { PlanningBoardToolbarProps } from './PlanningBoardToolbar';
 
@@ -324,5 +325,32 @@ describe('two machine picker', () => {
     const picker = screen.getByRole('group', { name: '1台の資源CD' });
     expect(within(picker).getAllByRole('button')).toHaveLength(2);
     expect(within(picker).queryByRole('button', { name: /2台/ })).toBeNull();
+  });
+});
+
+describe('fill height toolbar control', () => {
+  afterEach(() => { localStorage.removeItem(FILL_HEIGHT_STORAGE_KEY); vi.unstubAllGlobals(); });
+  it.each([
+    { innerHeight: 1599 }, { category: 'cutting' as const }, { category: 'all' as const },
+    { ganttEnabled: false }, { ganttMode: 'backward' as const }
+  ])('hides outside the forward grinding tall-screen chart: %o', changes => {
+    vi.stubGlobal('innerHeight', changes.innerHeight ?? 2160);
+    render(<PlanningBoardToolbar {...props()} {...changes} />);
+    expect(screen.queryByRole('button', { name: '行を縦いっぱいに伸ばす' })).not.toBeInTheDocument();
+  });
+  it('places the icon before the monitor, toggles and restores it', () => {
+    vi.stubGlobal('innerHeight', 2160);
+    const first = render(<PlanningBoardToolbar {...props()} />);
+    const button = screen.getByRole('button', { name: '行を縦いっぱいに伸ばす' });
+    expect(button.nextElementSibling).toBe(screen.getByRole('button', { name: '50インチ表示' }));
+    expect(button).toHaveClass('ml-auto', 'h-[46px]', 'w-[46px]');
+    expect(button).not.toHaveAttribute('title');
+    expect(button).toHaveTextContent('');
+    fireEvent.click(button);
+    expect(button).toHaveAttribute('aria-pressed', 'true');
+    expect(button).toHaveClass('bg-sky-400');
+    first.unmount();
+    render(<PlanningBoardToolbar {...props()} largeScreen />);
+    expect(screen.getByRole('button', { name: '行を縦いっぱいに伸ばす' })).toHaveAttribute('aria-pressed', 'true');
   });
 });

@@ -21,12 +21,12 @@ export const TwoMachineChainContext = createContext<{
 
 type PaneGeometry = Omit<ChainPane, 'viewport'>;
 export function useTwoMachineChainPane(register: ((resource: string, pane: ChainPane | null) => void) | undefined, resource: string | null | undefined, viewport: RefObject<HTMLDivElement | null>, geometry: PaneGeometry) {
-  const { bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight } = geometry;
+  const { bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey } = geometry;
   useLayoutEffect(() => {
     if (!register || !resource || !viewport.current) return;
-    register(resource, { bars, content, viewport: viewport.current, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight });
+    register(resource, { bars, content, viewport: viewport.current, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey });
     return () => register(resource, null);
-  }, [register, resource, viewport, bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight]);
+  }, [register, resource, viewport, bars, content, headerHeight, barLocations, rowElements, barRows, labelWidth, layout, dayWidth, viewportWidth, viewportHeight, rowGeometryKey]);
 }
 
 type Clip = { x: number; y: number; width: number; height: number };

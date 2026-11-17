@@ -10,12 +10,12 @@ export function operationSplitGap(bar: GanttBar, lastSegment = true) {
 }
 
 /** The same CSS pixel geometry as the bar buttons, independent of whether they are mounted. */
-export function ganttBarGeometry(bar: GanttBar, start: number, dayWidth: number, forward: boolean, last = false, folded = false) {
+export function ganttBarGeometry(bar: GanttBar, start: number, dayWidth: number, forward: boolean, last = false, folded = false, verticalScale = 1) {
   if (forward) {
     const segment = bar.unknown && !folded ? { start: bar.start!, end: bar.end! }
       : last ? bar.segments?.at(-1) : bar.segments?.[0];
     if (!segment) return null;
-    return { left: (segment.start - start) * dayWidth, width: bar.unknown && !folded ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - operationSplitGap(bar, last || (bar.segments?.length ?? 0) === 1)), top: folded ? 22 : 3, height: 70 };
+    return { left: (segment.start - start) * dayWidth, width: bar.unknown && !folded ? 70 : Math.max(2, (segment.end - segment.start) * dayWidth - operationSplitGap(bar, last || (bar.segments?.length ?? 0) === 1)), top: (folded ? 22 : 3) * verticalScale, height: 70 * verticalScale };
   }
   if (bar.end == null) return null;
   const width = Math.max(44, bar.unknown ? unknownPlanningBarWidth(bar.item) : Math.max(5, (bar.end - bar.start!) * dayWidth));
