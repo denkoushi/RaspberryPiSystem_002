@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -180,6 +183,9 @@ class FakeRestic(runner.Restic):
         fail_hosts: set[str] = frozenset(),
         repository: str = "/local",
         fail_copy: bool = False,
+        fail_commands: dict[str, int] | None = None,
+        stderr: bytes | str = b"",
+        repository_exists: bool = True,
     ) -> None:
         settings = runner.Settings("/local", "rclone:google-drive:x", "/pw", "/rc", "/targets", "denkon5sd02")
         super().__init__(settings, repository)
@@ -187,18 +193,27 @@ class FakeRestic(runner.Restic):
         self.stored = snapshots
         self.fail_hosts = fail_hosts
         self.fail_copy = fail_copy
+        self.fail_commands = fail_commands or {}
+        self.stderr = stderr
+        self.repository_exists = repository_exists
 
     def __call__(self, args, *, check=True, capture=True):  # type: ignore[override]
         self.calls.append(list(args))
         code = 0
+        if args[0] == "cat" and not self.repository_exists:
+            code = 1
+        if args[0] in self.fail_commands:
+            code = self.fail_commands[args[0]]
+            if check:
+                raise subprocess.CalledProcessError(code, ["restic", *args], stderr=self.stderr)
         if args[0] == "copy" and self.fail_copy:
-            raise subprocess.CalledProcessError(1, ["restic", *args])
+            raise subprocess.CalledProcessError(1, ["restic", *args], stderr=self.stderr)
         if args[0] == "backup":
             host = args[args.index("--host") + 1]
             code = 1 if host in self.fail_hosts else 0
         if args[0] == "snapshots":
             return subprocess.CompletedProcess(args, 0, json.dumps(self.stored).encode(), b"")
-        return subprocess.CompletedProcess(args, code, b"", b"")
+        return subprocess.CompletedProcess(args, code, b"", self.stderr)
 
 
 class BackupRunTest(unittest.TestCase):
@@ -217,6 +232,89 @@ class BackupRunTest(unittest.TestCase):
             settings = runner.Settings("/local", "rclone:google-drive:x", "/pw", "/rc", str(targets), "denkon5sd02")
             when = dt.datetime(2026, 10, 4, 3, 0, tzinfo=dt.timezone.utc)
             return runner.cmd_backup(settings, restic, hosts, when, offsite)
+
+    def test_unlocks_before_backup_and_offsite_copy_without_remove_all(self) -> None:
+        local = FakeRestic([])
+        offsite = FakeRestic([], repository="rclone:google-drive:x", repository_exists=False)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 0)
+
+        self.assertEqual(local.calls[:2], [["cat", "config"], ["unlock"]])
+        self.assertEqual(local.calls[2][0], "backup")
+        self.assertEqual(offsite.calls[:3], [["cat", "config"], ["init"], ["unlock"]])
+        self.assertEqual(offsite.calls[3][0], "copy")
+        self.assertTrue(all("--remove-all" not in call for call in local.calls + offsite.calls))
+        finished = json.loads(output.getvalue().splitlines()[-1])
+        self.assertTrue(finished["retention_ok"])
+
+    def test_offsite_init_failure_does_not_unlock_or_copy(self) -> None:
+        offsite = FakeRestic([], repository="rclone:google-drive:x", repository_exists=False,
+                             fail_commands={"init": 1})
+        self.assertEqual(self.run_backup(FakeRestic([]), ["raspi4-a"], offsite), 1)
+        self.assertEqual(offsite.calls, [["cat", "config"], ["init"]])
+
+    def test_retention_failure_still_copies_offsite_and_finishes(self) -> None:
+        local = FakeRestic([snapshot("orphan", "raspi4-a", "table", "20260101T030000Z")]
+                           + full_run("raspi4-a", "20260927T030000Z", "recent"),
+                           fail_commands={"forget": 11}, stderr=b"details\nrepository is already locked\n")
+        offsite = FakeRestic([], repository="rclone:google-drive:x")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 1)
+
+        self.assertTrue(any(call[0] == "copy" for call in offsite.calls))
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        failure = next(event for event in events if event["event"] == "retention_failed")
+        self.assertEqual(failure["repository"], "/local")
+        self.assertEqual(failure["exit_code"], 11)
+        self.assertEqual(failure["stderr"], "repository is already locked")
+        self.assertEqual(events[-1]["event"], "backup_finished")
+        self.assertFalse(events[-1]["retention_ok"])
+        self.assertTrue(events[-1]["offsite_ok"])
+
+    def test_unlock_failures_log_stderr_and_continue(self) -> None:
+        local = FakeRestic([], fail_commands={"unlock": 11}, stderr=b"details\nlocal locked\n")
+        offsite = FakeRestic([], repository="rclone:google-drive:x",
+                            fail_commands={"unlock": 11}, stderr="details\noffsite locked\n")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 0)
+
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        failures = [event for event in events if event["event"] == "unlock_failed"]
+        self.assertEqual([event["stderr"] for event in failures], ["local locked", "offsite locked"])
+        self.assertEqual([event["exit_code"] for event in failures], [11, 11])
+        self.assertTrue(any(call[0] == "backup" for call in local.calls))
+        self.assertTrue(any(call[0] == "copy" for call in offsite.calls))
+
+    def test_part_and_offsite_failures_log_only_last_stderr_line(self) -> None:
+        local = FakeRestic([], fail_hosts={"raspi4-a"}, stderr=b"details\n" + b"x" * 350 + b"\n")
+        offsite = FakeRestic([], repository="rclone:google-drive:x", fail_copy=True,
+                            stderr=b"details\ncopy failed\n")
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(self.run_backup(local, ["raspi4-a"], offsite), 1)
+
+        events = [json.loads(line) for line in output.getvalue().splitlines()]
+        part = next(event for event in events if event["event"] == "part_failed")
+        self.assertEqual(part["stderr"], "x" * 300)
+        offsite_failure = next(event for event in events if event["event"] == "offsite_failed")
+        self.assertEqual(offsite_failure["stderr"], "copy failed")
+
+    def test_main_command_failure_logs_stderr_when_present(self) -> None:
+        for stderr in (b"details\ncommand failed\n", None):
+            with self.subTest(stderr=stderr):
+                output = io.StringIO()
+                error = subprocess.CalledProcessError(11, ["restic", "cat", "config"], stderr=stderr)
+                with patch.object(runner, "cmd_backup", side_effect=error), redirect_stdout(output):
+                    self.assertEqual(runner.main(["backup"]), 3)
+                event = json.loads(output.getvalue())
+                self.assertEqual(event["event"], "command_failed")
+                if stderr:
+                    self.assertEqual(event["stderr"], "command failed")
+                else:
+                    self.assertNotIn("stderr", event)
 
     def test_backs_up_three_parts_per_host_and_reports_failures(self) -> None:
         restic = FakeRestic([], fail_hosts={"raspi4-b"})

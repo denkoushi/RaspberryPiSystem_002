@@ -36,6 +36,13 @@ def log(event: str, **fields: object) -> None:
     print(json.dumps(record, ensure_ascii=False), flush=True)
 
 
+def stderr_fields(stderr: bytes | str | None) -> dict[str, str]:
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    lines = (stderr or "").rstrip().splitlines()
+    return {"stderr": lines[-1][-300:]} if lines else {}
+
+
 @dataclass(frozen=True)
 class Settings:
     repository: str
@@ -99,6 +106,12 @@ class Restic:
             log("repository_init", repository=self.repository)
             self(["init"])
 
+    def unlock(self) -> None:
+        try:
+            self(["unlock"])
+        except subprocess.CalledProcessError as exc:
+            log("unlock_failed", repository=self.repository, exit_code=exc.returncode, **stderr_fields(exc.stderr))
+
     def snapshots(self) -> list[dict[str, object]]:
         result = self(["snapshots", "--json", "--tag", plan.BACKUP_TAG])
         records = json.loads(result.stdout or b"[]")
@@ -123,6 +136,7 @@ def copy_offsite(settings: Settings, offsite: Restic) -> bool:
 
     try:
         offsite.ensure_repository()
+        offsite.unlock()
         offsite(
             [
                 "copy",
@@ -137,7 +151,7 @@ def copy_offsite(settings: Settings, offsite: Restic) -> bool:
         )
         apply_retention(offsite)
     except subprocess.CalledProcessError as exc:
-        log("offsite_failed", repository=offsite.repository, exit_code=exc.returncode)
+        log("offsite_failed", repository=offsite.repository, exit_code=exc.returncode, **stderr_fields(exc.stderr))
         return False
     log("offsite_done", repository=offsite.repository)
     return True
@@ -160,6 +174,7 @@ def cmd_backup(
         targets = [target for target in targets if target.host in hosts]
     run_id = now.strftime("%Y%m%dT%H%M%SZ")
     restic.ensure_repository()
+    restic.unlock()
 
     failed: list[str] = []
     for target in targets:
@@ -169,17 +184,22 @@ def cmd_backup(
             if result.returncode != 0:
                 # restic leaves no snapshot when the reading command fails, so an
                 # offline or broken kiosk cannot produce a partial "latest" run.
-                log("part_failed", host=target.host, part=part, exit_code=result.returncode)
+                log("part_failed", host=target.host, part=part, exit_code=result.returncode, **stderr_fields(result.stderr))
                 failed.append(target.host)
                 break
             log("part_done", host=target.host, part=part)
         else:
             log("host_done", host=target.host, run_id=run_id)
 
-    apply_retention(restic)
+    retention_ok = True
+    try:
+        apply_retention(restic)
+    except subprocess.CalledProcessError as exc:
+        retention_ok = False
+        log("retention_failed", repository=restic.repository, exit_code=exc.returncode, **stderr_fields(exc.stderr))
     offsite_ok = copy_offsite(settings, offsite) if offsite is not None else True
-    log("backup_finished", run_id=run_id, failed_hosts=failed, offsite_ok=offsite_ok)
-    return 1 if failed or not offsite_ok else 0
+    log("backup_finished", run_id=run_id, failed_hosts=failed, offsite_ok=offsite_ok, retention_ok=retention_ok)
+    return 1 if failed or not offsite_ok or not retention_ok else 0
 
 
 def cmd_list(restic: Restic) -> int:
@@ -337,7 +357,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         log("refused", reason=str(exc))
         return 2
     except subprocess.CalledProcessError as exc:
-        log("command_failed", command=str(exc.cmd[0]), exit_code=exc.returncode)
+        log("command_failed", command=str(exc.cmd[0]), exit_code=exc.returncode, **stderr_fields(exc.stderr))
         return 3
 
 
