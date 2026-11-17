@@ -47,6 +47,10 @@ export async function applyGrindingPlanningBoardScanArrival(params: {
     await acquireSessakuPieceLogicalLocks(client, pieceKeys);
     if (pieceKeys.length) await lockState(client, siteKey);
     for (const rowId of sourceRowIds) await acquireProductionScheduleParentRowLockInTransaction(client, rowId);
+    // A CSV import between discovery and the locks can replace a winner row; skipping it would mark a later process.
+    if ((await readWinnerRowsByIds(client, sourceRowIds)).length !== sourceRowIds.length) {
+      throw new ApiError(409, '日程データが更新されました。もう一度スキャンしてください', undefined, 'HAIZEN_SCAN_STALE_SOURCE');
+    }
     // The board projection owns completion (local progress OR external completion).
     const current = await resolveCurrentProjectionInTransaction({ client, siteKey, sourceRowIds, itemIds: [], policy, allowPieceParent: true });
     const item = [...current.byItemId.values()]

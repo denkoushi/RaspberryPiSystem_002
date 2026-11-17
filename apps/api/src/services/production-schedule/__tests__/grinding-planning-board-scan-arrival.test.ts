@@ -105,6 +105,13 @@ describe('grinding arrival scans', () => {
     expect(arrival.create).toHaveBeenCalledOnce();
   });
 
+  it('rejects with 409 instead of skipping a winner row replaced by a concurrent import', async () => {
+    mocks.rows.mockResolvedValueOnce([row('r', '020')]).mockResolvedValueOnce([]);
+    await expect(run()).rejects.toMatchObject({ statusCode: 409, code: 'HAIZEN_SCAN_STALE_SOURCE' });
+    expect(mocks.projection).not.toHaveBeenCalled();
+    expect(arrival.create).not.toHaveBeenCalled(); expect(first.upsert).not.toHaveBeenCalled();
+  });
+
   it.each(['unknown', 'non-grinding', 'completed'])('returns UNRESOLVED for %s orders', async reason => {
     if (reason === 'unknown') mocks.lookup.mockResolvedValue([]);
     if (reason === 'non-grinding') mocks.lookup.mockResolvedValue([{ rowId: 'cut', fsigencd: 'CUT' }]);
