@@ -1349,7 +1349,9 @@ describeIntegration('grinding planning board service real Postgres integration',
     expect(cuttingCandidates.candidates.map((candidate) => candidate.fseiban)).toEqual([cutting]);
 
     const fseibans = Array.from({ length: 300 }, (_, index) => seiban(`BULK-${index}`));
-    await addRows(fixture, fseibans.map((fseiban) => ({ fseiban, fhincd: 'PART-BULK', dueDate: '2026-09-20' })));
+    await addRows(fixture, fseibans.map((fseiban, index) => ({
+      fseiban, fhincd: 'PART-BULK', productNo: `BULK-${index}`, dueDate: '2026-09-20'
+    })));
     const current = await boardFor(fixture);
     await expect(service().updateGrindingPlanningBoardSeibanOrder({
       siteKey: fixture.siteKey, sourceRevision: current.sourceRevision, fseibans
