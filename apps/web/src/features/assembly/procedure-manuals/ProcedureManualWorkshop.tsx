@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
-import { listProcedureManualCommon, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, countProcedureMaterials, countProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
+import { listProcedureManualCommon, discardAssemblyProcedureDocumentRevision, deleteAssemblyProcedureDocument, verifyAssemblyTemplateAccessPassword, getProcedureManualAssignments, getProcedureManualOverview, getAssemblyProcedureDocument, listAssemblyMachineNameCandidates, listProcedureManualPartCandidates, listProcedureManualModels, listProcedureManualProcesses, countProcedureMaterials, countProcedureVideos, replaceProcedureManualAssignments } from '../../../api/client';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { IconActionTooltip } from '../../../components/ui/IconActionTooltip';
 import { normalizeWorkInstructionPartNumber } from '../../../lib/workInstructionRules';
@@ -78,6 +78,7 @@ export function ProcedureManualWorkshop() {
   const [materialCount, setMaterialCount] = useState<number | null>(() => readManualList('materialCount') ?? null);
   const [videoCount, setVideoCount] = useState<number | null>(() => readManualList('videoCount') ?? null);
   const [removing, setRemoving] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
+  const [discarding, setDiscarding] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [deleting, setDeleting] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [reattaching, setReattaching] = useState<ProcedureManualAssignmentOverviewItemDto | null>(null);
   const [operationMessage, setOperationMessage] = useState<string | null>(null);
@@ -269,7 +270,23 @@ export function ProcedureManualWorkshop() {
     }
     finally { setBusy(false); }
   };
+  const discardRevision = async (item: ProcedureManualAssignmentOverviewItemDto) => {
+    if (busy || !item.draftRevision || item.draftRevision.editLease || !checkAccess()) return;
+    setBusy(true); setOperationMessage(null);
+    try {
+      await discardAssemblyProcedureDocumentRevision({
+        id: item.draftRevision.documentId,
+        accessPassword: readProcedureEditorAccess()?.pin ?? '',
+        expectedEditVersion: item.draftRevision.editVersion
+      });
+    } catch (cause) { setOperationMessage(readAssemblyApiErrorMessage(cause, '改版を破棄できません')); }
+    finally { setBusy(false); setVersion(value => value + 1); }
+  };
+  const confirmDiscard = (item: ProcedureManualAssignmentOverviewItemDto) => {
+    if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);
+  };
   // Columns nobody in the list fills are collapsed so the name gets their width.
+  const actionColumn = filteredItems.some(item => item.draftRevision) ? '236px' : '188px';
   const usageColumn = filteredItems.some(item => item.otherAssignments.length > 0) ? '180px' : '0px';
   const approvalColumn = filteredItems.some(item => item.draftRevision || item.approval) ? '150px' : '0px';
   return <div className="grid min-h-0 flex-1 grid-rows-[64px_minmax(0,1fr)] bg-[#0f1317] text-[#eef3f6]" data-testid="procedure-manuals-workshop">
@@ -292,7 +309,7 @@ export function ProcedureManualWorkshop() {
         kanaRow={kanaRow} onKanaRowChange={setKanaRow} loading={isCommon ? overviewLoading : searchLoading} error={searchError} hasMore={hasMore} />
       <section aria-label="要領書一覧" className={isCommon ? 'flex min-h-0 min-w-0 flex-col' : 'grid min-h-0 min-w-0 content-start overflow-auto px-4 py-3'}>
         {isCommon ? <ProcedureManualCommonList items={filteredItems} processes={processes} categoryId={processId} kanaRow={kanaRow} busy={busy || previewLoading}
-          onView={item => void view(item)} onFix={fix}
+          onView={item => void view(item)} onFix={fix} onDiscard={confirmDiscard}
           onRemove={(item, deleteDocument) => { if (checkAccess()) { if (deleteDocument) setDeleting(item); else setRemoving(item); } }} /> : <>
           <div className="mb-1.5 flex min-h-[52px] min-w-max items-center gap-3">
             <h2 aria-label={`${modelCodeKey || (subjectKind === 'PART' ? '全部品' : '全機種')} › ${process ? shortName(process) : '全工程'}`} className="flex items-center gap-2 text-[22px] font-black">
@@ -320,7 +337,7 @@ export function ProcedureManualWorkshop() {
               partName: fullName, subjectKey: item.modelCode,
               process: shortName(processes.find(process => process.id === child?.parentId)), work: shortName(child), supplement: ''
             };
-            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px 188px` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
+            return <div role="row" key={item.assignmentId} aria-label={item.label || item.title} title={fullName} style={{ gridTemplateColumns: `minmax(0,1.5fr) minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,1fr) 150px ${usageColumn} ${approvalColumn} 50px ${actionColumn}` }} className="grid h-14 items-center gap-3 border-b border-[#27313b] px-2.5 hover:bg-[#1b222a]">
             <div role="cell" className="min-w-0 truncate text-xl font-bold" title={fullName}>{name.partName}</div>
             <div role="cell" className="min-w-0 truncate font-mono text-[17px] font-bold">{name.subjectKey}</div>
             <div role="cell" className="min-w-0 truncate text-[17px]">{name.process}</div>
@@ -341,6 +358,7 @@ export function ProcedureManualWorkshop() {
               {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
               {processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { if (checkAccess()) { setOperationMessage(null); setReattaching(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
               {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
+              {item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className={symbolAction} disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => confirmDiscard(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}
               {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
           </div>; })}
@@ -375,6 +393,7 @@ export function ProcedureManualWorkshop() {
     {videoOpen ? <ProcedureVideoShelfDialog onClose={() => { clearManualLists(); setVideoOpen(false); }} /> : null}
     {previewSequence ? <ProcedureManualFullscreenPreview sequence={previewSequence} title={previewTitle} onClose={() => setPreviewSequence(null)} /> : null}
     <ConfirmDialog isOpen={Boolean(removing)} title="この工程から外す" description={removing ? `${removing.label || removing.title}。${removing.otherAssignments.length ? `他の使用先に残ります：${usageLabel(removing.otherAssignments)}` : '手順書一覧に「未使用」で残ります'}` : undefined} confirmLabel="外す" buttonClassName="min-h-12" onCancel={() => setRemoving(null)} onConfirm={() => { if (removing) void remove(removing); setRemoving(null); }} />
+    <ConfirmDialog isOpen={Boolean(discarding)} title="改版を破棄" description={discarding ? `${discarding.label || discarding.title}。元に戻せません` : undefined} confirmLabel="破棄" tone="danger" buttonClassName="min-h-12" onCancel={() => setDiscarding(null)} onConfirm={() => { if (discarding) void discardRevision(discarding); setDiscarding(null); }} />
     <ConfirmDialog isOpen={Boolean(deleting)} title="下書きを削除" description={deleting ? `${deleting.label || deleting.title}。元に戻せません` : undefined} confirmLabel="削除" tone="danger" buttonClassName="min-h-12" onCancel={() => setDeleting(null)} onConfirm={() => { if (deleting) void remove(deleting, true); setDeleting(null); }} />
   </div>;
 }

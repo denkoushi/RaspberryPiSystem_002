@@ -308,8 +308,3 @@ export function canPublishAssemblyProcedureDocument(
   return !dirty && document?.status === 'draft' && (document.isRevisionHead ?? true);
 }
 
-export function canDiscardAssemblyProcedureDocumentRevision(
-  document: Pick<AssemblyProcedureDocumentDto, 'status' | 'supersedesDocumentId'> | null
-): boolean {
-  return document?.status === 'draft' && Boolean(document.supersedesDocumentId);
-}

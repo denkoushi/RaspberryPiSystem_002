@@ -11,7 +11,6 @@ const apiMocks = vi.hoisted(() => ({
   uploadImage: vi.fn(),
   saveOverlays: vi.fn(),
   publishDocument: vi.fn(),
-  discardRevision: vi.fn(),
   addBlankPage: vi.fn(),
   deletePage: vi.fn(),
   suggestLayout: vi.fn(),
@@ -40,7 +39,6 @@ vi.mock('../../../api/client', () => ({
   uploadAssemblyProcedureOverlayImage: apiMocks.uploadImage,
   saveAssemblyProcedureDocumentOverlays: apiMocks.saveOverlays,
   publishAssemblyProcedureDocument: apiMocks.publishDocument,
-  discardAssemblyProcedureDocumentRevision: apiMocks.discardRevision
 }));
 
 import { api, getResolvedClientKey } from '../../../api/http';
@@ -1772,7 +1770,7 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     expect(hook.result.current.document?.assets?.['upload-webp']).toMatchObject({ contentType: 'image/webp' });
   });
 
-  it('saves, publishes, and discards through the explicit revision APIs', async () => {
+  it('saves and publishes through the explicit revision APIs', async () => {
     const source = makeDocument();
     const hook = renderEditor(source);
     await authenticate(hook.result);
@@ -1794,16 +1792,6 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
       await hook.result.current.publish();
     });
     expect(apiMocks.publishDocument).toHaveBeenCalledWith({ holderToken: 'session-token', id: 'source-draft', accessPassword: '1234', expectedEditVersion: 1 });
-
-    const revision = makeDocument({ id: 'revision-1', revisionRootId: 'source-draft', supersedesDocumentId: 'source-draft' });
-    const revisionHook = renderEditor(revision);
-    await authenticate(revisionHook.result);
-    expect(revisionHook.result.current.canDiscard).toBe(true);
-    apiMocks.discardRevision.mockResolvedValue(makeDocument({ id: 'source-draft' }));
-    await act(async () => {
-      await revisionHook.result.current.discard();
-    });
-    expect(apiMocks.discardRevision).toHaveBeenCalledWith({ id: 'revision-1', holderToken: 'session-token', accessPassword: '1234', expectedEditVersion: 0 });
   });
 
   it('retains local elements on 409 and offers explicit re-save or latest reload', async () => {

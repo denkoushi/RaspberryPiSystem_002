@@ -33,7 +33,7 @@ describe('document-editor workshop entry', () => {
     expect(screen.getByText(returnTo)).toBeInTheDocument();
   });
 
-  it.each(['onNavigateBack', 'onNavigateAfterPublish', 'onNavigateAfterDiscard', 'onNavigateAfterDelete'])('returns to the selected workshop after %s', callback => {
+  it.each(['onNavigateBack', 'onNavigateAfterPublish'])('returns to the selected workshop after %s', callback => {
     const returnTo = '/kiosk/assembly/manuals/workshop?model=DFD1&process=assembly';
     show({ returnTo, context: { modelCode: 'DFD1', modelCodeKey: 'DFD1', processId: 'assembly', processName: '組立', mode: 'fix' } });
     expect(screen.getByText('DFD1')).toBeInTheDocument();
@@ -64,11 +64,8 @@ describe('document-editor workshop entry', () => {
     expect(screen.getByText('既存の見出し')).toBeInTheDocument();
   });
 
-  it('preserves the legacy after-delete destination and assignment error', () => {
+  it('preserves the assignment error', () => {
     show({ procedureManualAssignmentError: '割り当てに失敗しました' });
     expect(screen.getByRole('alert')).toHaveTextContent('割り当てに失敗しました');
-    const input = mocks.controller.mock.calls.at(-1)![0];
-    act(() => input.onNavigateAfterDelete());
-    expect(screen.getByText('/kiosk/assembly/manuals')).toBeInTheDocument();
   });
 });
