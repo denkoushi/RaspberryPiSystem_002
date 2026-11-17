@@ -5,8 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { useInspectionDrawingDimensionModeReset } from '../useInspectionDrawingDimensionModeReset';
 
 import type { InspectionDrawingToolbarMode } from '../InspectionDrawingCreateToolbar';
+import type { InspectionDrawingPoint } from '../types';
 
-type Point = { calloutTipXRatio?: number | null; calloutTipYRatio?: number | null } | null;
+type Point = Pick<InspectionDrawingPoint, 'calloutTipXRatio' | 'calloutTipYRatio'> | null;
 
 const withTip: Point = { calloutTipXRatio: 0.4, calloutTipYRatio: 0.6 };
 const withoutTip: Point = { calloutTipXRatio: null, calloutTipYRatio: null };
