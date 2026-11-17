@@ -108,6 +108,13 @@ it.each(['forward', 'backward'] as const)('renders each resource only in its own
   expect(lower.queryByTestId('planning-gantt-bar-item-0000')).not.toBeInTheDocument();
 });
 
+it('keeps every Gantt scroll pane opaque so Chromium can scroll it on the compositor', () => {
+  const { container } = render(<PlanningBoardGanttDisplay {...props('forward')} />);
+  const panes = container.querySelectorAll<HTMLElement>('[data-gantt-viewport]');
+  expect(panes.length).toBeGreaterThan(0);
+  panes.forEach(pane => expect(pane).toHaveClass('bg-slate-900'));
+});
+
 it('opens the upper machine value sheet at the bottom of the shared Gantt container', () => {
   const values = { ...props('forward'), colorBySeiban: true };
   const onSource = vi.fn(); const onBreaks = vi.fn();
