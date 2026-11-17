@@ -15,9 +15,13 @@ import json
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pi5_server_compose import ReplicationContractError, resolve_server_compose
 
 
 class VolumeContractError(RuntimeError):
@@ -272,7 +276,10 @@ def main() -> int:
     args = _parse_args()
     env = dict(os.environ)
     env["PI5_ENV_FILE"] = args.env_file
-    server_compose = ["docker", "compose", "--env-file", args.env_file, "-f", args.server_compose]
+    server_compose = resolve_server_compose(
+        Path(args.server_compose).resolve().parents[2],
+        ["docker", "compose", "--env-file", args.env_file, "-f", args.server_compose],
+    )
     phase3_compose = ["docker", "compose", "--env-file", args.env_file, "-f", args.phase3_compose]
     created = materialize(server_compose=server_compose, phase3_compose=phase3_compose, env=env)
     for name in created:
@@ -283,6 +290,6 @@ def main() -> int:
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except VolumeContractError as exc:
+    except (VolumeContractError, ReplicationContractError) as exc:
         print(f"Pi5 external volume contract failed: {exc}", file=os.sys.stderr)
         raise SystemExit(78)

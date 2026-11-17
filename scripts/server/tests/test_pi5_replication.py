@@ -166,6 +166,17 @@ class Pi5ReplicationTest(unittest.TestCase):
         for a in self.calls():
             self.assertFalse(any(s in a for s in ('down', '--volumes', 'volume', 'rm')))
 
+    def test_status_inspects_incomplete_marker_with_base_model(self):
+        self.assertEqual(self.apply().returncode, 0)
+        (self.marker / 'primary.env').unlink()
+        (self.root / 'calls').unlink()
+        result = self.run_cli('status')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        compose_calls = [a for a in self.calls() if a[0] == 'compose']
+        self.assertTrue(compose_calls)
+        for argv in compose_calls:
+            self.assertFalse(any(s.endswith('docker-compose.replication-primary.yml') for s in argv))
+
     def test_remove_refuses_remaining_slots_and_preserves_marker(self):
         self.assertEqual(self.apply().returncode, 0)
         self.env['PHYSICAL_SLOTS'] = '1'

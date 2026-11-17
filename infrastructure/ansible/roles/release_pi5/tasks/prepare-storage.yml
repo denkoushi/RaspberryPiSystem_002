@@ -1,20 +1,24 @@
 ---
-- name: Inspect the opt-in primary replication marker before standard deployment
-  ansible.builtin.stat:
-    path: "{{ release_pi5_project_dir }}/config/pi5-replication-primary"
-  register: release_pi5_replication_marker
-
-# This route does not carry the replication overlay. Fail before Compose or
-# storage mutation rather than risk silently recreating db without the overlay.
-- name: Stop standard deployment when primary replication requires its overlay
-  ansible.builtin.assert:
-    that:
-      - not release_pi5_replication_marker.stat.exists
-    fail_msg: >-
-      Primary replication is marked applied or incomplete. Standard deployment
-      does not carry docker-compose.replication-primary.yml. Stop here; an
-      operator must explicitly remove replication with pi5-replication.sh
-      remove --yes before using this deployment route.
+# Keep the fail-closed boundary before storage mutation, but admit a complete
+# overlay whose marker agrees with the running primary. Without the marker
+# this check is a no-op and the deployment behaves as before.
+- name: Stop standard deployment on incomplete or inconsistent primary replication
+  ansible.builtin.command:
+    argv:
+      - python3
+      - "{{ release_pi5_project_dir }}/scripts/deploy/pi5_server_compose.py"
+      - --project-dir
+      - "{{ release_pi5_project_dir }}"
+      - --check-runtime
+      - --
+      - docker
+      - compose
+      - --env-file
+      - "{{ release_pi5_env_file }}"
+      - -f
+      - "{{ release_pi5_server_compose_file }}"
+  environment: "{{ release_pi5_compose_environment }}"
+  changed_when: false
 
 - name: Prepare the shared Pi5 durable storage directories before any Compose command
   ansible.builtin.include_role:
