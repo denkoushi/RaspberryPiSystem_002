@@ -49,6 +49,7 @@ export function useClientMutations() {
         defaultMode?: 'PHOTO' | 'TAG' | null;
         kioskInitialRoute?: string | null;
         haizenEdgeEnabled?: boolean;
+        haizenScanMode?: 'shelf' | 'grinding_arrival';
         shelfLayoutEditEnabled?: boolean;
         procedureBoardEnabled?: boolean;
         planningBoardOfflineEnabled?: boolean;

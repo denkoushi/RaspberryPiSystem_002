@@ -34,6 +34,7 @@ type ClientForm = {
   siteKey: string;
   proxy: boolean;
   haizenEdge: boolean;
+  haizenScanMode: 'shelf' | 'grinding_arrival';
   isSignage: boolean;
   procedureBoard: boolean;
   planningBoardOffline: boolean;
@@ -52,6 +53,7 @@ const FORM_FIELD_LABELS: Record<keyof ClientForm, string> = {
   siteKey: '拠点',
   proxy: '代理操作',
   haizenEdge: 'Zero2W配膳',
+  haizenScanMode: 'スキャン用途',
   isSignage: 'サイネージ',
   procedureBoard: '手順づくり',
   planningBoardOffline: '製番ボード圏外表示'
@@ -70,6 +72,7 @@ function formFromDevice(device: ClientDevice): ClientForm {
     siteKey: device.siteKey ?? '',
     proxy: Boolean(device.canProxyOtherDevices),
     haizenEdge: Boolean(device.haizenEdgeEnabled),
+    haizenScanMode: device.haizenScanMode ?? 'shelf',
     isSignage: device.isSignage === true,
     procedureBoard: device.procedureBoardEnabled === true,
     planningBoardOffline: device.planningBoardOfflineEnabled === true
@@ -90,6 +93,8 @@ function formValueLabel(field: keyof ClientForm, form: ClientForm): string {
       return legacyModeLabel(form.mode);
     case 'siteKey':
       return form.siteKey || '未設定';
+    case 'haizenScanMode':
+      return form.haizenScanMode === 'grinding_arrival' ? '研削の着' : '棚';
     default:
       return form[field] ? 'オン' : 'オフ';
   }
@@ -335,6 +340,7 @@ export function ClientsPage() {
           defaultMode: form.mode,
           kioskInitialRoute: form.initialRoute || null,
           haizenEdgeEnabled: form.haizenEdge,
+          haizenScanMode: form.haizenScanMode,
           isSignage: form.isSignage,
           procedureBoardEnabled: form.procedureBoard,
           planningBoardOfflineEnabled: form.planningBoardOffline,
@@ -872,6 +878,17 @@ export function ClientsPage() {
                         checked={form.haizenEdge}
                         onChange={(haizenEdge) => patchForm({ haizenEdge })}
                       />
+                      <label className="block space-y-1">
+                        <span className="text-xs font-bold text-slate-700">スキャン用途</span>
+                        <select
+                          value={form.haizenScanMode}
+                          onChange={(e) => patchForm({ haizenScanMode: e.target.value as ClientForm['haizenScanMode'] })}
+                          className={clsx(selectClassName, changedFields.includes('haizenScanMode') && changedClassName)}
+                        >
+                          <option value="shelf">棚</option>
+                          <option value="grinding_arrival">研削の着</option>
+                        </select>
+                      </label>
                       <Switch
                         label="サイネージ"
                         ariaLabel="サイネージを許可"
