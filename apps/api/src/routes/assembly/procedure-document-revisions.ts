@@ -144,7 +144,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
   });
   app.post('/assembly/procedure-documents/:id/materials/:materialId/place', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, materialId } = z.object({ id: z.string().guid(), materialId: z.string().guid() }).parse(request.params);
-    const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0) }).parse(request.body);
+    const body = z.object({ accessPassword: accessPasswordSchema, pageIndex: z.coerce.number().int().min(0), employeeTagUid: z.string().trim().min(1).max(128).optional() }).parse(request.body);
     return new ProcedureMaterialPlacementService().place({ documentId: id, materialId, ...body, ...await resolveAssemblyProcedureEditWriter(request) });
   });
   app.post('/assembly/procedure-documents/:id/layout-suggestions', {

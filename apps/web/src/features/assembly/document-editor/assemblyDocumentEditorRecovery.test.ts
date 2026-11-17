@@ -42,6 +42,14 @@ describe('assembly document editor recovery identity', () => {
     ).toMatchObject({ documentId: 'revision-v2', editVersion: 3, baseUpdatedAt: '2026-08-21T00:00:00.000Z' });
   });
 
+  it('does not persist employee tag UIDs from in-memory placement history', () => {
+    const placement = { elementId: 'element', materialId: 'material', assetId: 'asset', employeeTagUid: 'private-tag' };
+    writeAssemblyDocumentEditorRecovery(localStorage, { version: 1, documentId: 'doc', baseUpdatedAt: null, editVersion: 0, savedAt: 'now', elements, materialPlacements: [placement] });
+    expect(localStorage.getItem(assemblyDocumentEditorRecoveryKey('doc'))).not.toContain('private-tag');
+    expect(readAssemblyDocumentEditorRecovery(localStorage, 'doc')?.materialPlacements).toEqual([{ elementId: 'element', materialId: 'material', assetId: 'asset' }]);
+    expect(placement.employeeTagUid).toBe('private-tag');
+  });
+
   it('does not mix a stale editVersion or updatedAt record into a later revision', () => {
     writeAssemblyDocumentEditorRecovery(window.localStorage, {
       version: 1,

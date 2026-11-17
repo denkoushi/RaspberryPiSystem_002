@@ -1,3 +1,5 @@
+import { normalizeEmployeeNumber, materialAppText } from './procedure-material-employee-number.js';
+import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
 import { Prisma, type ProcedureMaterialOrigin, type ProcedureMaterial } from '@prisma/client';
@@ -60,21 +62,41 @@ export class ProcedureMaterialService {
       where.AND = [{ OR: [...queries.flatMap((q) => [{ subjectHint: { contains: q, mode: 'insensitive' as const } }, { originalFileName: { contains: q, mode: 'insensitive' as const } }]), ...textMatches, ...partMatches, ...(messageIds.length ? [{ gmailMessageId: { in: messageIds } }] : [])] }];
     }
     const materials = await this.db.procedureMaterial.findMany({ where, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }], take: options.limit });
-    // PDF and page text exists for search only; keep it out of the list payload.
-    const partNumberFor = (material: typeof materials[number]) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
+    return this.describeMaterials(materials, matchedParts);
+  }
+
+  async listByEmployeeTag(uid: string, limit = 500) {
+    let employee;
+    try {
+      employee = await resolveActiveAssemblyOperatorNfcUid(this.db, uid);
+    } catch (error) {
+      if (!(error instanceof ApiError) || ![403, 404].includes(error.statusCode)) throw error;
+      throw new ApiError(404, '社員タグが見つかりません', undefined, 'EMPLOYEE_TAG_NOT_FOUND');
+    }
+    const number = normalizeEmployeeNumber(employee.employeeCode);
+    const candidates = await this.db.procedureMaterial.findMany({
+      where: { origin: 'APP', documentId: null, placedAt: null, discardedAt: null, kind: { not: 'PDF' } },
+      orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+    });
+    const materials = candidates.filter(material => number !== null && normalizeEmployeeNumber(materialAppText(material, 'nameId')) === number).slice(0, limit);
+    return { employee: { employeeCode: employee.employeeCode, displayName: employee.displayName }, materials: await this.describeMaterials(materials) };
+  }
+
+  private async describeMaterials(materials: ProcedureMaterial[], matchedParts = new Map<string, string>()) {
+    const partNumberFor = (material: ProcedureMaterial) => materialPartNumber(material.workInstructionRef) ?? matchedParts.get(material.id);
     const partNames = await readPartNamesByPartNumbers(this.db, materials.flatMap((material) => partNumberFor(material) ?? []));
-    const appText = (material: ProcedureMaterial, key: string): string | null => {
-      const ref = material.origin === 'APP' ? material.appRef : null;
-      return ref && typeof ref === 'object' && !Array.isArray(ref) && typeof ref[key] === 'string' ? ref[key] as string : null;
-    };
-    const nameIds = [...new Set(materials.flatMap((material) => appText(material, 'nameId') ?? []))];
-    const employees = nameIds.length ? await this.db.employee.findMany({
-      where: { employeeCode: { in: nameIds } }, select: { employeeCode: true, displayName: true },
+    const numbers = [...new Set(materials.flatMap(material => normalizeEmployeeNumber(materialAppText(material, 'nameId')) ?? []))];
+    const employeeCodes = [...new Set(numbers.flatMap(number => [number, number.padStart(4, '0')]))];
+    const employees = employeeCodes.length ? await this.db.employee.findMany({
+      where: { employeeCode: { in: employeeCodes } }, select: { employeeCode: true, displayName: true },
     }) : [];
-    const employeeNames = new Map(employees.map((employee) => [employee.employeeCode, employee.displayName]));
+    const employeeNames = new Map(employees.flatMap(employee => {
+      const number = normalizeEmployeeNumber(employee.employeeCode);
+      return number === null ? [] : [[number, employee.displayName] as const];
+    }));
     return materials.map((material) => ({ ...publicMaterial(material),
-      category: appText(material, 'category'), note: appText(material, 'note'), location: appText(material, 'location'),
-      nameId: appText(material, 'nameId'), employeeName: employeeNames.get(appText(material, 'nameId') ?? '') ?? null,
+      category: materialAppText(material, 'category'), note: materialAppText(material, 'note'), location: materialAppText(material, 'location'),
+      nameId: materialAppText(material, 'nameId'), employeeName: employeeNames.get(normalizeEmployeeNumber(materialAppText(material, 'nameId')) ?? '') ?? null,
       partName: partNames.get(partNumberFor(material) ?? '') ?? null }));
   }
 

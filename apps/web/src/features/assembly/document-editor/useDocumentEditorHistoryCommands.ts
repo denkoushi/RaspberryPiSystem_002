@@ -65,7 +65,7 @@ export function useDocumentEditorHistoryCommands(session: Session) {
             const active = [...materials.pendingMaterials.current.values()].find(item => item.materialId === materialId);
             let assetId = active?.assetId;
             if (!active) {
-              const response = await placeProcedureMaterial({ id: document.id, materialId, pageIndex: target.find(element => related.some(item => matchesMaterialPlacement(element, item)))!.pageIndex, accessPassword: current.passwordInput, holderToken });
+              const response = await placeProcedureMaterial({ id: document.id, materialId, employeeTagUid: related.find(item => item.employeeTagUid)?.employeeTagUid, pageIndex: target.find(element => related.some(item => matchesMaterialPlacement(element, item)))!.pageIndex, accessPassword: current.passwordInput, holderToken });
               placed.push({ materialId, response });
               assetId = response.asset?.assetId ?? (response.element.kind === 'IMAGE' ? response.element.assetId : undefined);
             }

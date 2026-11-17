@@ -16,7 +16,7 @@ describe('procedure-material routes with mocked Prisma', () => {
   afterEach(async () => { await app?.close(); });
   function harness(deny: 'view' | 'write' | null = null) {
     const material = { id, kind: 'TEXT', text: '手順', documentId: null, placedAt: null, discardedAt: null, storageKey: null, gmailMessageId: null };
-    const db = { employee: { findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
+    const db = { employee: { findFirst: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]) }, $queryRaw: vi.fn().mockResolvedValue([]), $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(db)), procedureMaterial: {
       count: vi.fn().mockResolvedValue(501), findMany: vi.fn().mockResolvedValue([material]), findUnique: vi.fn().mockResolvedValue(material),
       update: vi.fn(async ({ data }: { data: object }) => Object.assign(material, data)),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
@@ -167,16 +167,57 @@ describe('procedure-material routes with mocked Prisma', () => {
   });
   it('returns app metadata and resolves employee names once, preserving unknown and null numbers', async () => {
     const { db, material } = harness();
-    db.procedureMaterial.findMany.mockResolvedValue(['007125', 'unknown', null].map((nameId) => ({ ...material, origin: 'APP',
+    db.procedureMaterial.findMany.mockResolvedValue(['007125', 7125, '0001', 'unknown', null].map((nameId) => ({ ...material, origin: 'APP',
       appRef: { category: '保守', note: '7125 test', location: '工場', nameId } })));
-    db.employee.findMany.mockResolvedValue([{ employeeCode: '007125', displayName: '津田' }]);
+    db.employee.findMany.mockResolvedValue([{ employeeCode: '7125', displayName: '津田' }, { employeeCode: '0001', displayName: '佐藤' }]);
     const response = await app.inject(`${base}?origin=APP`);
     expect(response.statusCode).toBe(200);
     expect(response.json().materials).toEqual([
       expect.objectContaining({ category: '保守', note: '7125 test', location: '工場', nameId: '007125', employeeName: '津田' }),
+      expect.objectContaining({ nameId: '7125', employeeName: '津田' }),
+      expect.objectContaining({ nameId: '0001', employeeName: '佐藤' }),
       expect.objectContaining({ nameId: 'unknown', employeeName: null }), expect.objectContaining({ nameId: null, employeeName: null }),
     ]);
-    expect(db.employee.findMany).toHaveBeenCalledExactlyOnceWith({ where: { employeeCode: { in: ['007125', 'unknown'] } }, select: { employeeCode: true, displayName: true } });
+    expect(db.employee.findMany).toHaveBeenCalledExactlyOnceWith({ where: { employeeCode: { in: ['7125', '1', '0001'] } }, select: { employeeCode: true, displayName: true } });
+  });
+  it('returns only the tagged employee materials and filters before the limit', async () => {
+    const { db, material } = harness();
+    db.employee.findFirst.mockResolvedValue({ id: 'employee', employeeCode: '7125', displayName: '津田', nfcTagUid: 'tag', status: 'ACTIVE' });
+    db.employee.findMany.mockResolvedValue([{ employeeCode: '7125', displayName: '津田' }]);
+    const other = Array.from({ length: 501 }, (_, index) => ({ ...material, id: `other-${index}`, origin: 'APP', appRef: { nameId: '1234' } }));
+    db.procedureMaterial.findMany.mockResolvedValue([...other, { ...material, id: 'mine', origin: 'APP', appRef: { nameId: '007125' } }, { ...material, id: 'numeric', origin: 'APP', appRef: { nameId: 7125 } }]);
+    const response = await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: ' tag ' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ employee: { employeeCode: '7125', displayName: '津田' }, materials: [{ id: 'mine', employeeName: '津田' }, { id: 'numeric', employeeName: '津田' }] });
+    expect(db.employee.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { nfcTagUid: 'tag' } }));
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledExactlyOnceWith({ where: { origin: 'APP', documentId: null, placedAt: null, discardedAt: null, kind: { not: 'PDF' } }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }] });
+  });
+  it('limits employee-tag lookups to 30 requests per minute', async () => {
+    const { db } = harness();
+    for (let index = 0; index < 30; index++) {
+      expect((await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: 'tag' } })).statusCode).toBe(404);
+    }
+    expect((await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: 'tag' } })).statusCode).toBe(429);
+    expect(db.employee.findFirst).toHaveBeenCalledTimes(30);
+  });
+
+  it.each([null, { id: 'inactive', employeeCode: '7125', displayName: '津田', nfcTagUid: 'tag', status: 'INACTIVE' }])('returns a coded 404 for unknown or inactive tags: %s', async employee => {
+    const { db } = harness();
+    db.employee.findFirst.mockResolvedValue(employee);
+    const response = await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: 'tag' } });
+    expect(response.statusCode).toBe(404);
+    expect(response.json().errorCode).toBe('EMPLOYEE_TAG_NOT_FOUND');
+    expect(db.procedureMaterial.findMany).not.toHaveBeenCalled();
+  });
+  it.each(['', '  ', 'x'.repeat(129)])('rejects invalid employee tag UID %s', async uid => {
+    const { db } = harness();
+    expect((await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid } })).statusCode).toBe(400);
+    expect(db.employee.findFirst).not.toHaveBeenCalled();
+  });
+  it('requires view permission for employee materials', async () => {
+    const { db } = harness('view');
+    expect((await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: 'tag' } })).statusCode).toBe(403);
+    expect(db.employee.findFirst).not.toHaveBeenCalled();
   });
   it('returns 404 for TEXT, missing materials, or a PHOTO without a storage key', async () => {
     const { db, store } = harness();

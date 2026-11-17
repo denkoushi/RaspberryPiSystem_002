@@ -3,6 +3,7 @@ import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types
 export type PendingMaterialPlacement = {
   elementId: string;
   materialId: string;
+  employeeTagUid?: string;
   assetId?: string;
   fallbackAssetId?: string;
 };

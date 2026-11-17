@@ -56,7 +56,7 @@ export type AssemblyProcedureDocumentOverlayCommandSession = {
   materialPlacementScope?: number;
   beforeMaterialPlacement?: (materialId: string) => Promise<void>;
   cancelMaterialPlacement?: (materialId: string, element: AssemblyProcedureOverlayElement) => void;
-  trackMaterialPlacement?: (materialId: string, element: AssemblyProcedureOverlayElement, scope: number, replaced?: AssemblyProcedureOverlayElement) => boolean;
+  trackMaterialPlacement?: (materialId: string, element: AssemblyProcedureOverlayElement, scope: number, replaced?: AssemblyProcedureOverlayElement, employeeTagUid?: string) => boolean;
   holderToken?: string | null;
   onEditLeaseError?: (error: unknown) => boolean;
 };
@@ -302,16 +302,16 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     }
   }, [session]);
 
-  const placeMaterial = useCallback(async (material: { id: string }, options?: { bbox?: AssemblyProcedureOverlayBBox }) => {
+  const placeMaterial = useCallback(async (material: { id: string; employeeTagUid?: string }, options?: { bbox?: AssemblyProcedureOverlayBBox }) => {
     if (session.materialPlacementAllowed === false || session.busy || session.readOnly || !session.document || !session.selectedPage) throw new Error('現在は素材を配置できません');
     session.setBusy(true);
     try {
       await session.beforeMaterialPlacement?.(material.id);
-      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
+      const { element, asset } = await placeProcedureMaterial({ ...(session.holderToken ? { holderToken: session.holderToken } : {}), id: session.document.id, materialId: material.id, employeeTagUid: material.employeeTagUid, pageIndex: session.selectedPage.pageIndex, accessPassword: session.passwordInput });
       if (asset) session.setDocument((current) => current ? { ...current, assets: { ...current.assets, [asset.assetId]: asset } } : current);
       const zIndex = Math.max(element.zIndex, ...materialElementsRef.current.filter((item) => item.pageIndex === element.pageIndex).map((item) => item.zIndex + 1));
       const placed = { ...element, zIndex, bbox: options?.bbox ? centerMaterialBBox(element.bbox, options.bbox) : element.bbox };
-      if (session.trackMaterialPlacement?.(material.id, placed, session.materialPlacementScope ?? 0) === false) return;
+      if (session.trackMaterialPlacement?.(material.id, placed, session.materialPlacementScope ?? 0, undefined, material.employeeTagUid) === false) return;
       materialElementsRef.current = [...materialElementsRef.current, placed];
       addCreatedOverlay(element.kind, placed.bbox, { element: placed }, element.pageIndex);
       session.setMessage('素材を配置しました。内容を編集して保存してください。');
@@ -321,7 +321,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
     } finally { session.setBusy(false); }
   }, [addCreatedOverlay, session]);
 
-  const replaceSelectedImageMaterial = useCallback(async (material: Pick<ProcedureMaterialDto, 'id' | 'kind'>) => {
+  const replaceSelectedImageMaterial = useCallback(async (material: Pick<ProcedureMaterialDto, 'id' | 'kind' | 'employeeTagUid'>) => {
     const { document, selectedElement, busy, readOnly } = session;
     if (!document || !selectedElement || selectedElement.kind !== 'IMAGE' || readOnly || busy || session.materialPlacementAllowed === false) throw new Error('現在は画像を差し替えできません');
     if (material.kind !== 'PHOTO') throw new Error('画像の素材を選んでください。');
@@ -331,7 +331,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
       const { element, asset } = await placeProcedureMaterial({
         ...(session.holderToken ? { holderToken: session.holderToken } : {}),
         id: document.id,
-        materialId: material.id,
+        materialId: material.id, employeeTagUid: material.employeeTagUid,
         pageIndex: selectedElement.pageIndex,
         accessPassword: session.passwordInput
       });
@@ -340,7 +340,7 @@ export function useAssemblyProcedureDocumentOverlayCommands(
         throw new Error('画像素材を選択してください。');
       }
       const replacement = { ...selectedElement, assetId: asset.assetId };
-      if (session.trackMaterialPlacement?.(material.id, replacement, session.materialPlacementScope ?? 0, selectedElement) === false) return;
+      if (session.trackMaterialPlacement?.(material.id, replacement, session.materialPlacementScope ?? 0, selectedElement, material.employeeTagUid) === false) return;
       session.setDocument((current) => current ? {
         ...current,
         assets: { ...current.assets, [asset.assetId]: asset }
