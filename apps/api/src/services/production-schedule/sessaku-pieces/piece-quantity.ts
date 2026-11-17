@@ -8,7 +8,7 @@ import { sessakuPieceItemIds, acquireSessakuPieceBoardStateLocks, findSessakuPie
 import { reconcileSessakuPieceProgress } from './piece-completion.js';
 
 export type QuantityPiece = { id: string; position: number; quantity: number; isCompleted: boolean };
-export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, protectedIds: ReadonlySet<string> = new Set(), unitSplitEnabled = false): {
+export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nextTotal: number | null, externalCompleted: boolean, nextPosition: number, protectedIds: ReadonlySet<string> = new Set(), unitSplitEnabled = false, createId: () => string = randomUUID): {
   pieces: QuantityPiece[]; quantityWarning: SessakuPieceQuantityWarning | null; nextPosition: number;
 } {
   const sorted = [...pieces].sort((a, b) => a.position - b.position).map((p) => ({ ...p }));
@@ -25,7 +25,7 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
       // Reserve the final available slot for overflow so the set never exceeds 50 pieces.
       while (delta > 0 && sorted.length < 50) {
         const quantity = sorted.length === 49 ? delta : 1;
-        const piece = { id: randomUUID(), position: nextPosition++, quantity, isCompleted: false };
+        const piece = { id: createId(), position: nextPosition++, quantity, isCompleted: false };
         sorted.push(piece);
         unfinished.unshift(piece);
         delta -= quantity;
@@ -35,7 +35,7 @@ export function planSessakuPieceQuantities(pieces: readonly QuantityPiece[], nex
       if (unfinished[0]) unfinished[0].quantity += delta;
       else if (sorted.length >= 50) {
         return { pieces: sorted, quantityWarning: 'INVALID_PLANNED_QUANTITY', nextPosition };
-      } else sorted.push({ id: randomUUID(), position: nextPosition++, quantity: delta, isCompleted: false });
+      } else sorted.push({ id: createId(), position: nextPosition++, quantity: delta, isCompleted: false });
     }
   } else {
     for (const piece of unfinished) {
