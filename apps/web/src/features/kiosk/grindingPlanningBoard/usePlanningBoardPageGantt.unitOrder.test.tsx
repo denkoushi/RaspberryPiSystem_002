@@ -411,6 +411,37 @@ describe('unit order preview and writes', () => {
     h.unmount();
   });
 
+  it('restores the second bar and clears undo history with a readonly row and arrival filtering enabled', async () => {
+    const input = fixture(5);
+    input.items = input.items.map((item, index) => ({ ...item, arrived: true,
+      originalResourceCd: index === 4 ? '022' : '021', standardHoursMissing: index === 3 }));
+    const sourceIds = input.items.slice(0, 3).map(item => item.itemId);
+    const moved = input.items[1]!;
+    const h = setup(input);
+    act(() => h.result.current.page.moveResourceInGantt(moved, '022', null, 'after'));
+    expect(h.saveMove).toHaveBeenCalledOnce();
+    await h.acknowledge(0);
+    expect(h.result.current.history).toHaveLength(1);
+    expect(h.result.current.history[0]!.orders[0]!.itemIds).toEqual(sourceIds);
+    act(() => h.result.current.page.undoResourceOrder());
+    expect(h.calls[1]!.kind).toBe('override');
+    await h.acknowledge(1);
+    expect(h.calls[2]).toMatchObject({ kind: 'order', resourceCd: '021' });
+    const restoredIds = h.calls[2]!.items.map(item => item.itemId);
+    expect(restoredIds).toEqual(sourceIds);
+    expect(restoredIds[1]).toBe(moved.itemId);
+    expect(restoredIds).not.toContain(input.items[3]!.itemId);
+    await h.acknowledge(2);
+    expect(h.calls[3]).toMatchObject({ kind: 'order', resourceCd: '022' });
+    await h.acknowledge(3);
+    expect(sortGrindingPlanningBoardItems(h.result.current.queue.items.filter(item => !item.standardHoursMissing &&
+      resolveGrindingPlanningBoardResource(item, 'alternate') === '021'), input.seibans, 'resource', 'alternate')
+      .map(item => item.itemId)).toEqual(sourceIds);
+    expect(h.result.current.history).toEqual([]);
+    expect(h.result.current.page.lastResourceOrder).toBeUndefined();
+    h.unmount();
+  });
+
   it('saves a single resource move atomically and undoes it through restoreResources', async () => {
     const input = fixture(2);
     const h = setup(input);
