@@ -78,4 +78,11 @@ describe('dimension controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Y' }));
     expect(onModeChange).toHaveBeenLastCalledWith('dimY');
   });
+  it.each([['x', 'dimY'], ['y', 'dimX'], ['xy', 'dimX']])('opens the missing direction first when %s is placed', (dirs, expected) => {
+    const onModeChange = vi.fn();
+    render(<InspectionDrawingPlaceCalloutModeRow mode="place" onModeChange={onModeChange} hasDrawingImage hasMeasurementPoints
+      calloutStatus={{ hasCallout: true, onClear: vi.fn(), dims: [...dirs].map((dir) => ({ dir: dir as 'x' | 'y' })) }} />);
+    fireEvent.click(screen.getByRole('button', { name: '寸法' }));
+    expect(onModeChange).toHaveBeenLastCalledWith(expected);
+  });
 });

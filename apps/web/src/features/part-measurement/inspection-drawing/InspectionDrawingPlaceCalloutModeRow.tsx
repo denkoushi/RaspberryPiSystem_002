@@ -51,6 +51,7 @@ export function InspectionDrawingPlaceCalloutModeRow({
   const calloutActive = mode === 'callout';
   const dimActive = mode === 'dimX' || mode === 'dimY';
   const dirs = (calloutStatus?.dims ?? []).map((dim) => dim.dir.toUpperCase()).sort().join('');
+  const nextDimMode = dirs === 'X' ? 'dimY' : 'dimX';
 
   return (
     <div
@@ -85,7 +86,7 @@ export function InspectionDrawingPlaceCalloutModeRow({
         aria-pressed={dimActive}
         className={toggleClass(dimActive)}
         disabled={calloutDisabled || !calloutStatus?.hasCallout || calloutStatus.disabled}
-        onClick={() => onModeChange('dimX')}
+        onClick={() => onModeChange(nextDimMode)}
       >
         寸法
       </Button>
