@@ -1,24 +1,33 @@
 import { useRef, useState } from 'react';
 
+import { usePlanningBoardTestBarPartCandidates } from '../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts';
 import { Dialog } from '../../../components/ui/Dialog';
 
 export function PlanningBoardTestBarDialog({ sequence, resources, initialResource, onInsert, onClose }: {
   sequence: number; resources: readonly string[]; initialResource: string;
-  onInsert: (resource: string, minutes: number) => Promise<boolean>; onClose: () => void;
+  onInsert: (resource: string, minutes: number, partName: string | null) => Promise<boolean>; onClose: () => void;
 }) {
   const [minutes, setMinutes] = useState('30');
   const [resource, setResource] = useState(initialResource);
+  const [partName, setPartName] = useState('');
+  const { data: candidates } = usePlanningBoardTestBarPartCandidates(resource);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const value = Number(minutes);
   const valid = Number.isInteger(value) && value >= 5 && value <= 1440;
   const step = (delta: number) => setMinutes(String(Math.max(5, Math.min(1440, (valid ? value : 30) + delta))));
-  return <Dialog isOpen ariaLabel="テスト加工" title={`テスト${sequence}`} onClose={onClose} initialFocusRef={input}
+  return <Dialog isOpen ariaLabel="テスト加工" title={partName || `テスト${sequence}`} onClose={onClose} initialFocusRef={input}
     size="sm" overlayZIndex={90} className="!border-slate-600 !bg-slate-950 !text-slate-100">
     <form onSubmit={(event) => { event.preventDefault(); if (!valid || pending) return;
-      setPending(true); setFailed(false); void onInsert(resource, value).then((saved) => { if (saved) onClose(); else { setPending(false); setFailed(true); } });
+      setPending(true); setFailed(false); void onInsert(resource, value, partName || null).then((saved) => { if (saved) onClose(); else { setPending(false); setFailed(true); } });
     }}>
+      <label htmlFor="planning-test-part" className="mt-4 block text-sm font-bold">部品</label>
+      <select id="planning-test-part" value={partName} disabled={pending} onChange={(event) => setPartName(event.target.value)}
+        className="mt-2 h-11 w-full rounded border border-slate-600 bg-slate-900 px-3">
+        <option value="">{`テスト${sequence}`}</option>
+        {candidates?.partNames.map((name) => <option key={name} value={name}>{name}</option>)}
+      </select>
       <label htmlFor="planning-test-minutes" className="mt-4 block text-sm font-bold">時間(分)</label>
       <div className="mt-2 flex gap-2">
         <button type="button" aria-label="時間を5分減らす" className="h-11 w-11 rounded border border-slate-600 text-xl" disabled={pending || value <= 5} onClick={() => step(-5)}>−</button>
@@ -27,7 +36,7 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
         <button type="button" aria-label="時間を5分増やす" className="h-11 w-11 rounded border border-slate-600 text-xl" disabled={pending || value >= 1440} onClick={() => step(5)}>＋</button>
       </div>
       {resources.length === 2 && <><span className="mt-4 block text-sm font-bold">機械</span><div role="group" aria-label="機械" className="mt-2 flex gap-2">
-        {resources.map((cd) => <button key={cd} type="button" aria-pressed={resource === cd} disabled={pending} onClick={() => setResource(cd)}
+        {resources.map((cd) => <button key={cd} type="button" aria-pressed={resource === cd} disabled={pending} onClick={() => { if (resource !== cd) { setResource(cd); setPartName(''); } }}
           className={`h-11 flex-1 rounded border font-bold ${resource === cd ? 'border-violet-300 bg-violet-300 text-indigo-950' : 'border-slate-600'}`}>{cd}</button>)}
       </div></>}
       {failed && <p role="alert" className="mt-2 text-sm text-rose-300">差し込めませんでした。</p>}

@@ -277,6 +277,6 @@ export const PlanningBoardGanttDisplay = forwardRef<PlanningBoardGanttHandle, Pr
     ? <TwoMachineGantt {...shared} onSingleResourceChange={changeSelection} ref={ref} onSelectedBarResource={(resource) => { lastSelected.current = resource; }} />
     : <PlanningBoardGanttView {...shared} ref={ref} />}
     {testDialog && props.testBarControls && <PlanningBoardTestBarDialog sequence={props.testBarControls.nextSequence} resources={testDialog.resources} initialResource={testDialog.initial}
-      onClose={() => setTestDialog(null)} onInsert={(resource, minutes) => props.testBarControls!.create(resource, minutes, testDialog.after)} />}
+      onClose={() => setTestDialog(null)} onInsert={(resource, minutes, partName) => props.testBarControls!.create(resource, minutes, testDialog.after, partName)} />}
   </>;
 });

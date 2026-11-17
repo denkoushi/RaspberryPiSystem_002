@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ZodError } from 'zod';
 
 const mocks = vi.hoisted(() => ({
+  createTestBar: vi.fn(),
+  partCandidates: vi.fn(),
   getGroups: vi.fn(),
   replaceGroups: vi.fn(),
   get: vi.fn(),
@@ -27,6 +29,10 @@ const mocks = vi.hoisted(() => ({
   updateResourceOrderBulk: vi.fn(),
   updateChecks: vi.fn(),
   updateOrder: vi.fn()
+}));
+
+vi.mock('../../../../services/production-schedule/grinding-planning-board/test-bars.js', () => ({
+  createPlanningTestBar: mocks.createTestBar, getPlanningTestBarPartCandidates: mocks.partCandidates, mutatePlanningTestBar: vi.fn()
 }));
 
 vi.mock('../../../../services/production-schedule/same-model-resource-groups.service.js', async (importOriginal) => ({
@@ -866,6 +872,49 @@ describe('kiosk same model groups', () => {
     const app = await createApp(async () => { throw Object.assign(new Error('unauthorized'), { statusCode: 401 }); });
     try {
       expect((await app.inject({ method, url: '/kiosk/production-schedule/grinding-planning-board/same-model-resource-groups', ...(method === 'PUT' ? { payload: { groups: [] } } : {}) })).statusCode).toBe(401);
+    } finally { await app.close(); }
+  });
+});
+
+
+describe('test bar parts route', () => {
+  const base = '/kiosk/production-schedule/grinding-planning-board/test-bars';
+  afterEach(() => vi.resetAllMocks());
+  it('authenticates candidates and forwards the site and trimmed resource', async () => {
+    const requireClient = vi.fn(async () => ({ id: 'device-1' }));
+    const app = await createApp(requireClient);
+    mocks.partCandidates.mockResolvedValue({ partNames: ['モータブラケット'] });
+    try {
+      const response = await app.inject({ method: 'GET', url: `${base}/part-candidates?resourceCd=%20761%20`, headers: { 'x-client-key': 'key-1' } });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ partNames: ['モータブラケット'] });
+      expect(requireClient).toHaveBeenCalledWith('key-1');
+      expect(mocks.partCandidates).toHaveBeenCalledWith({ siteKey: 'site-a', resourceCd: '761' });
+    } finally { await app.close(); }
+  });
+  it.each(['', '?resourceCd=', `?resourceCd=${'x'.repeat(21)}`])('rejects missing or invalid resource query %s', async (query) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    try {
+      expect((await app.inject({ method: 'GET', url: `${base}/part-candidates${query}` })).statusCode).toBe(400);
+      expect(mocks.partCandidates).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it('does not query candidates for an unauthorized client', async () => {
+    const app = await createApp(async () => { throw Object.assign(new Error('Unauthorized'), { statusCode: 401 }); });
+    try {
+      expect((await app.inject({ method: 'GET', url: `${base}/part-candidates?resourceCd=761` })).statusCode).toBe(401);
+      expect(mocks.partCandidates).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+  it.each([undefined, null, '', ' モータブラケット ', '名'.repeat(200), '名'.repeat(201), 123])('validates and forwards create partName %s', async (partName) => {
+    const app = await createApp(async () => ({ id: 'device-1' }));
+    mocks.createTestBar.mockResolvedValue({ testBars: [] });
+    try {
+      const invalid = typeof partName === 'number' || (typeof partName === 'string' && partName.length > 200);
+      const response = await app.inject({ method: 'POST', url: base, payload: { sourceRevision: 'r', resourceCd: '761', minutes: 30, partName } });
+      expect(response.statusCode).toBe(invalid ? 400 : 200);
+      if (invalid) expect(mocks.createTestBar).not.toHaveBeenCalled();
+      else expect(mocks.createTestBar).toHaveBeenCalledWith(expect.objectContaining({ siteKey: 'site-a', ...(partName === undefined ? {} : { partName: typeof partName === 'string' ? partName.trim() : partName }) }));
     } finally { await app.close(); }
   });
 });

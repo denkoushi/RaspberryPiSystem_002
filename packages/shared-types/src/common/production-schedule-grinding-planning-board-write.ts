@@ -29,7 +29,11 @@ export interface GrindingPlanningBoardItemReference {
   itemRevision: string;
   overrideVersion?: number;
 }
+export interface GrindingPlanningBoardTestBarPartCandidatesResponse {
+  partNames: string[];
+}
 export interface GrindingPlanningBoardTestBarCreateRequest {
+  partName?: string | null;
   sourceRevision: string;
   dueSource?: 'excel' | 'scaw';
   resourceCd: string;

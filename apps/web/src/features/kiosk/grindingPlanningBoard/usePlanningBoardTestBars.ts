@@ -19,7 +19,7 @@ export type PlanningBoardTestBarControls = {
   selectedId: string | null;
   selectedBar: GrindingPlanningBoardTestBar | null;
   select: (item: GrindingPlanningBoardBar, selected: boolean) => void;
-  create: (resource: string, minutes: number, after?: GrindingPlanningBoardBar) => Promise<boolean>;
+  create: (resource: string, minutes: number, after?: GrindingPlanningBoardBar, partName?: string | null) => Promise<boolean>;
   remove: (item: GrindingPlanningBoardTestBar) => void;
   complete: (item: GrindingPlanningBoardTestBar, intent: 'complete' | 'incomplete') => void;
   accept: (result: PlanningBoardWriteResult) => void;
@@ -75,7 +75,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
   return { bars, selectedId, selectedBar: bars.find((item) => item.itemId === selectedId) ?? null,
     nextSequence, disabled,
     select: (item, selected) => { if (!isPendingPlanningTestBar(item)) setSelectedId(item.kind === 'test' && selected ? item.itemId : null); }, accept,
-    create: async (resourceCd, minutes, after) => {
+    create: async (resourceCd, minutes, after, partName = null) => {
       if (disabled || after?.kind !== 'test' && after?.standardHoursMissing || (after && isPendingPlanningTestBar(after))) return false;
       const id = ++pendingId.current;
       const normal = sortGrindingPlanningBoardItems(items.filter((item) => !item.standardHoursMissing && !item.isCompleted && resolveGrindingPlanningBoardResource(item, 'alternate') === resourceCd), data?.seibanOrder ?? [], 'resource', 'alternate');
@@ -84,7 +84,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       const unbanded = lane.filter((bar) => resolvePlanningBoardOrderBand(bar) == null);
       const at = after && resolvePlanningBoardOrderBand(after) == null ? unbanded.findIndex((bar) => bar.itemId === after.itemId) + 1 : 0;
       const temporary: GrindingPlanningBoardTestBar = { kind: 'test', itemId: `test:pending:${id}`, itemRevision: `test:pending:${id}`, version: 0,
-        sequence: nextSequence, name: `テスト${nextSequence}`, resourceCd, minutes, alternateRank: at + 1, isCompleted: false, completedAt: null, deletedAt: null };
+        sequence: nextSequence, partName, name: partName || `テスト${nextSequence}`, resourceCd, minutes, alternateRank: at + 1, isCompleted: false, completedAt: null, deletedAt: null };
       unbanded.splice(at, 0, temporary);
       const ranks = new Map(unbanded.map((bar, index) => [bar.itemId, index + 1]));
       setPending((writes) => [...writes, { id, siteKey: data?.siteKey ?? '', next: nextSequence + 1,
@@ -93,7 +93,7 @@ export function usePlanningBoardTestBars({ data, items = data?.items ?? [], enqu
       const queued = enqueue({ label: 'テスト加工', itemIds: after ? [after.itemId] : [], seibans: [], order: true, apply: (display) => ({ ...display, items: display.items.map((item) => ranks.has(item.itemId) ? { ...item, alternateRank: ranks.get(item.itemId)! } : item) }),
         save: async (context) => {
           const current = after?.kind === 'test' ? (latest.current.activeOverlay?.bars ?? latest.current.data?.testBars)?.find((bar) => bar.itemId === after.itemId) ?? after : after ? context.item(after) : undefined;
-          const request: GrindingPlanningBoardTestBarCreateRequest = { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, resourceCd, minutes,
+          const request: GrindingPlanningBoardTestBarCreateRequest = { dueSource: latest.current.data?.dueSource, sourceRevision: context.sourceRevision, resourceCd, minutes, partName,
             ...(current ? { afterItem: { itemId: current.itemId, itemRevision: current.itemRevision, overrideVersion: current.version } } : {}) };
           saved = await createKioskGrindingPlanningBoardTestBar(request); return saved;
         }, onSaved: (result) => { clearPending(id); accept(result); if (saved) { setSelectedId(saved.testBar.itemId); remember(saved.testBar, 'delete'); } },
