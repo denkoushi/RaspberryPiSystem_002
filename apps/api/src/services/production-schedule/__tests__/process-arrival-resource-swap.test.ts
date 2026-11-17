@@ -111,6 +111,9 @@ describe('resource swap source reader', () => {
     expect(query).toContain(`BTRIM(r."rowData"->>'FSEZONO') = ANY(?::text[])`);
     expect(query).toContain('ORDER BY ir."completedAt" ASC, r."sourceIngestRunStartedAt" ASC, r."sourceRowOrdinal" ASC, r."createdAt" ASC, r."id" ASC');
     expect(query).toContain('ir."completedAt" AS "sourceIngestRunCompletedAt"');
+    expect(query).toContain('"swapRows" AS MATERIALIZED');
+    expect(query).toContain('run."id" = ANY(ARRAY(');
+    expect(query).not.toContain('JOIN "CsvDashboardIngestRun"');
   });
 
   it('propagates source read failures', async () => {
