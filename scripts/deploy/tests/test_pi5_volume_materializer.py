@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import argparse
 import sys
 import unittest
+import tempfile
 from unittest.mock import patch
 from pathlib import Path
 from typing import Any
@@ -68,6 +70,27 @@ def rendered_models(root: str, prefix: str) -> tuple[dict[str, Any], dict[str, A
 
 
 class Pi5VolumeMaterializerTest(unittest.TestCase):
+    def test_cli_passes_the_shared_effective_server_model_to_materialization(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            compose = root / 'infrastructure/docker'
+            (compose / 'postgres').mkdir(parents=True)
+            for name in ('docker-compose.replication-primary.yml', 'postgres/replication-primary-pg_hba.conf'):
+                (compose / name).touch()
+            marker = root / 'config/pi5-replication-primary'
+            marker.mkdir(parents=True)
+            (marker / 'primary.env').write_text(
+                'PI5_REPLICATION_PRIMARY_IP=100.64.0.10\nPI5_REPLICATION_STANDBY_IP=100.64.0.11\n')
+            args = argparse.Namespace(server_compose=str(compose / 'docker-compose.server.yml'),
+                                      phase3_compose=str(compose / 'docker-compose.phase3.yml'),
+                                      env_file=str(compose / '.env'))
+            with patch.object(MODULE, '_parse_args', return_value=args), patch.object(MODULE, 'materialize', return_value=[]) as materialize:
+                self.assertEqual(MODULE.main(), 0)
+            self.assertEqual(materialize.call_args.kwargs['server_compose'], [
+                'docker', 'compose', '--env-file', args.env_file, '-f', args.server_compose,
+                '--env-file', str((marker / 'primary.env').resolve()),
+                '-f', str((compose / 'docker-compose.replication-primary.yml').resolve())])
+
     def test_phase3_external_volume_resolves_one_to_one_to_server_contract(self) -> None:
         phase3, server = volume_models()
 

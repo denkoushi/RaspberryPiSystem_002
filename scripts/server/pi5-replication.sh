@@ -15,7 +15,7 @@ Usage: pi5-replication.sh plan|apply|remove|status [options]
   --help
 Apply only after the S1 backup/restore, SHA/CI and outage approval checks.
 1 GiB slot WAL cap is provisional: lost slots require rebuilding the standby.
-Standard fleet deployment stops while the replication marker exists.
+Standard fleet deployment preserves the overlay after checking marker/runtime consistency.
 Existing role credentials are preserved. remove refuses existing physical slots;
 retire those slots separately first. No data volume is removed or moved.
 USAGE
@@ -86,6 +86,19 @@ state_dir=$project_dir/config/pi5-replication-primary
 pgdata=/var/lib/postgresql/18/docker
 managed_hba=$pgdata/replication-primary-pg_hba.conf
 base=(docker compose --env-file "$env_file" -f "$compose_dir/docker-compose.server.yml")
+resolver=$(cd "$(dirname "${BASH_SOURCE[0]}")/../deploy" && pwd)/pi5_server_compose.py
+resolve_compose() {
+  local mode=$1 arg resolved
+  shift
+  resolved=$(python3 "$resolver" --project-dir "$project_dir" --mode "$mode" --lines -- "$@") ||
+    fail 'Could not resolve server Compose configuration'
+  resolved_compose=()
+  while IFS= read -r arg; do resolved_compose+=("$arg"); done <<<"$resolved"
+}
+# Discovery uses the base model for every action so that status/plan still
+# inspect, and apply/remove still recover, an incomplete transition.
+resolve_compose base "${base[@]}"
+base=("${resolved_compose[@]}")
 # Never print resolved Compose models: they can contain unrelated secrets.
 config=$("${base[@]}" config --format json)
 project=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["name"])' <<<"$config")
@@ -158,7 +171,8 @@ fi
 tailscale ip -4 | grep -Fxq "$primary_ip" || fail 'Primary IP is not assigned by local Tailscale; refusing port publication'
 check_slots
 export PI5_REPLICATION_PRIMARY_IP=$primary_ip
-replicated=("${base[@]}" -f "$overlay")
+resolve_compose apply "${base[@]}"
+replicated=("${resolved_compose[@]}")
 "${replicated[@]}" config --quiet
 if [[ -e "$state_dir" ]]; then
   [[ -f "$state_dir/primary.env" ]] &&
@@ -169,7 +183,7 @@ else
   printf 'PI5_REPLICATION_PRIMARY_IP=%s\nPI5_REPLICATION_STANDBY_IP=%s\n' "$primary_ip" "$standby_ip" >"$state_dir/primary.env"
 fi
 # Marker precedes every database mutation and survives failures, blocking fleet
-# deployment until apply succeeds or explicit remove restores the base service.
+# deployment until its runtime agrees or explicit remove restores the base service.
 PI5_REPLICATION_PASSWORD=$(cat "$password_file")
 export PI5_REPLICATION_PASSWORD
 if ! docker exec -i -u postgres -e PI5_REPLICATION_PASSWORD "$db_id" \

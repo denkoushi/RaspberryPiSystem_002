@@ -10,7 +10,8 @@ mkdir -p "$WORK_DIR/infrastructure/docker/postgres" "$WORK_DIR/apps/api"
 # secret files, Docker daemon, containers or host port bindings are accessed.
 cp "$ROOT/infrastructure/docker/docker-compose.server.yml" \
   "$ROOT/infrastructure/docker/docker-compose.replication-primary.yml" "$WORK_DIR/infrastructure/docker/"
-cp "$ROOT/infrastructure/docker/postgres/db-start-guard.sh" "$WORK_DIR/infrastructure/docker/postgres/"
+cp "$ROOT/infrastructure/docker/postgres/db-start-guard.sh" \
+  "$ROOT/infrastructure/docker/postgres/replication-primary-pg_hba.conf" "$WORK_DIR/infrastructure/docker/postgres/"
 : >"$WORK_DIR/apps/api/.env.example"
 cat >"$WORK_DIR/infrastructure/docker/.env" <<ENV
 POSTGRES_SUPERUSER_PASSWORD_FILE=$WORK_DIR/dummy-password
@@ -54,6 +55,24 @@ for service in base['services'].keys() - {'db'}:
     assert base['services'][service] == overlay['services'][service]
 print('PASS: data volumes and all other services unchanged')
 PY
+python3 - "$ROOT" "$WORK_DIR" <<'PY'
+import pathlib, subprocess, sys
+sys.path.insert(0, str(pathlib.Path(sys.argv[1])/'scripts/deploy'))
+from pi5_server_compose import resolve_server_compose
+p = pathlib.Path(sys.argv[2])
+base = ['docker', 'compose', '--env-file', str(p/'infrastructure/docker/.env'),
+        '-f', str(p/'infrastructure/docker/docker-compose.server.yml')]
+assert resolve_server_compose(p, base) == base
+print('PASS: shared resolver leaves unmarked argv exactly unchanged')
+marker = p/'config/pi5-replication-primary'
+marker.mkdir(parents=True)
+(marker/'primary.env').write_text('PI5_REPLICATION_PRIMARY_IP=100.64.0.10\nPI5_REPLICATION_STANDBY_IP=100.64.0.11\n')
+def db_hash(argv):
+    return subprocess.run([*argv, 'config', '--hash', 'db'], capture_output=True,
+                          text=True, check=True).stdout
+assert db_hash(resolve_server_compose(p, base, mode='apply')) == db_hash(resolve_server_compose(p, base))
+print('PASS: apply and ordinary deployment resolve the same db service hash')
+PY
 # Exercise the existing start guard with the actual resolved overlay arguments.
 cat >"$WORK_DIR/entrypoint" <<'SH'
 #!/bin/sh
@@ -72,4 +91,4 @@ r = subprocess.run(['sh', str(p/'infrastructure/docker/postgres/db-start-guard.s
 assert r.stdout.splitlines() == db['command']
 print('PASS: guard forwards every overlay postgres argument')
 PY
-echo "RESULT: 7 passed; elapsed=$((SECONDS-START))s (no Docker runtime)"
+echo "RESULT: 9 passed; elapsed=$((SECONDS-START))s (no Docker runtime)"

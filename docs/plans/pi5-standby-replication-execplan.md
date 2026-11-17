@@ -29,9 +29,9 @@ DB だけの復旧を成功にせず、ファイル、証明書、端末の接�
 - [x] S0 / PR 1: 手元の Docker で2台を模擬し、複製・切り替え・失敗時の停止条件を確認する。
   (2026-11-17 JST) 専用 Compose と `scripts/deploy/tests/test-pi5-standby-integration.sh` を実装。Mac(Docker 29.9.3 arm64、pgvector/pgvector:pg18)で全18検査が成功、所要30秒、成功後の専用 project の残りは0。
 - [ ] S1 / PR 2: 主 DB の複製用設定、通信経路、専用役割、戻し方を追加する。
-  (2026-11-17 JST) 任意 overlay、専用 HBA/役割、`scripts/server/pi5-replication.sh` の plan/apply/remove/status と適用印による標準デプロイ停止を実装。
-  手元検証: Compose 静的7件、CLI モック15件、関連既存・デプロイ境界6件。実機通信・再作成・本番適用は未実施、S1 は未完了。
-  本番適用の前に残すこと: 適用印がある間は標準デプロイが止まるため、overlay を引き継ぐデプロイ経路を先に用意する。Tailscale より先に Docker が起動したとき、IP 指定の 5432 公開で DB が起動しない恐れを実機で確かめる。
+  (2026-11-17 JST) 任意 overlay、専用 HBA/役割、plan/apply/remove/status に加え、共通 `pi5_server_compose.py` で適用印に応じた overlay 継承と標準更新前の設定・稼働 DB 整合確認を実装。
+  手元検証: 関連 pytest 146件、Compose 静的9件、新規 Docker 統合9件(依存経由・明示の db up で DB ID と複製設定が残る)、S0 統合が成功。本番適用は未実施、S1 は未完了。
+  本番適用の前に残すこと: Tailscale より先に Docker が起動したとき、IP 指定の 5432 公開で DB が起動しない恐れを実機で確かめる。
 - [ ] S2 / PR 3: 予備機の準備と標準デプロイの予備専用経路を追加する。
 - [ ] S3 / PR 4: pg_basebackup による予備の初期化と非同期複製を追加する。
 - [ ] S4 / PR 5: 業務ファイルの定期同期と切り替え前の整合確認を追加する。
@@ -44,7 +44,7 @@ DB だけの復旧を成功にせず、ファイル、証明書、端末の接�
 
 ## Surprises & Discoveries
 
-- S1 調査: 標準更新は phase3 の API/Web を起動し、`prepare-storage.yml` → `pi5_volume_materializer.py` は server Compose をボリューム照合にだけ使う。DB 再作成経路も複製 overlay の継承もないため、適用印がある更新はストレージ準備前に停止させる。
+- S1 再調査: 標準更新・health 失敗時 rollback/recovery の phase3 は DB サービスを持たず、API/Web は `--no-deps`。server Compose の利用はボリューム照合であり、同経路に DB 再作成呼び出しはなかった。共通 resolver を照合と複製 CLI に使い、適用印ありの資材欠落・稼働設定不一致はストレージ準備前に停止する。適用印なしは従来どおり何も確かめない。
 - S0 模擬は WAL 欠落用の使い捨て予備を分け、slot の `lost/wal_removed` と追従不能を検査する。失敗時は保持、成功時だけ専用 project を削除する（`KEEP_PI5_STANDBY=1` で成功時も保持）。
 - (2026-11-17 JST) WAL 欠落は max_slot_wal_keep_size=32MB で slot が約10秒で `lost/wal_removed` になり、使い捨て予備は追従できず作り直しが要ることを実測した。主が動いている間の昇格は拒否され、主の停止後は昇格と書き込みが成功、2回目の昇格は何もしない。
 - `rg` は bash から使えない環境があるため、試験では `grep -E` を使う。重い DR 統合試験に合わせ CI には入れず、手元で任意に流す。
@@ -374,6 +374,8 @@ WAL 保管を追加済みなら、保管失敗を成功でごまかさず、最�
 外部保管は既存の restic/rclone を使う候補とし、新たな自動選出基盤や共有ディスクは導入しない。
 
 ## Outcomes & Retrospective
+
+2026-11-17 S1 追補: overlay 継承と標準更新の停止条件限定を実装。Docker 統合で依存経由・明示 DB の up 後も ID と複製設定が残ることを確認。Tailscale 起動順の実機確認は残る。
 
 2026-11-17 S1: コードとデーモン不要の静的・モック検証まで実装。`plan` は変更せず `pg_settings.context/pending_restart` を表示し、`apply/remove` は `--yes` 必須。秘密ファイルや実機へは接続していない。実機での SCRAM 認証、第三ホスト/LAN拒否、Tailscale起動順、API health・代表業務、承認済み本番適用は残る。
 
