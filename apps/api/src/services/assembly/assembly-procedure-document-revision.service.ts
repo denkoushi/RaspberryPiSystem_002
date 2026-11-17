@@ -35,6 +35,7 @@ import { resolveProcedureTextFeedback } from './procedure-text-feedback.js';
 import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
+import { deleteProcedurePageRows } from './assembly-procedure-document-page-delete.js';
 
 const revisionDocumentInclude = {
   pages: {
@@ -318,6 +319,43 @@ export class AssemblyProcedureDocumentRevisionService {
       if (imageRelativePath) await AssemblyProcedureImageStorage.deleteImage(imageRelativePath);
       throw error;
     }
+  }
+
+  async deletePage(params: AssemblyProcedureEditActor & { documentId: string; pageIndex: number; expectedEditVersion: number; accessPassword?: string }): Promise<AssemblyProcedureDocumentRevisionRecord> {
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
+    if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
+      throw new ApiError(400, 'expectedEditVersionが不正です');
+    }
+    if (!Number.isInteger(params.pageIndex) || params.pageIndex < 0) {
+      throw new ApiError(400, '削除するページが不正です');
+    }
+    let removedAssetIds: string[] = [];
+    const result = await runAssemblyTransaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
+        SELECT d."id", d."status", d."isActive", r."revisionRootId", r."isRevisionHead", r."editVersion"
+        FROM "AssemblyProcedureDocument" d
+        LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
+        WHERE d."id" = ${params.documentId}
+        FOR UPDATE OF d
+      `;
+      const doc = locked[0];
+      if (!doc) throw new ApiError(404, '手順書が見つかりません');
+      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
+      if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+        throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
+      }
+      if (doc.editVersion !== params.expectedEditVersion) {
+        throw new ApiError(409, '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
+          { currentEditVersion: doc.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+      }
+      removedAssetIds = await deleteProcedurePageRows(tx, doc.id, params.pageIndex);
+      await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
+      const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
+      if (!result) throw new ApiError(500, 'ページ削除後の手順書を取得できませんでした');
+      return result;
+    });
+    await this.collectAssets(removedAssetIds);
+    return result;
   }
 
   async saveOverlays(params: AssemblyProcedureEditActor & {

@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { afterAll, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+
 import type { AssemblyProcedureAssetGcService } from '../../../services/assembly-procedure-assets/index.js';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL?.trim();
@@ -135,6 +137,52 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
     await prisma.$disconnect();
     if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
     else process.env.DATABASE_URL = originalDatabaseUrl;
+  });
+
+  it('deletes imported page rows and cascades later overlays without deleting shared assets', async () => {
+    const documentId = randomUUID();
+    const assetId = randomUUID();
+    const videoId = randomUUID();
+    const overlayIds = [randomUUID(), randomUUID(), randomUUID()];
+    const revisionService = new AssemblyProcedureDocumentRevisionService(accessService, assetGc);
+    try {
+      await prisma.assemblyProcedureDocument.create({ data: {
+        id: documentId, name: 'delete-page-integration', imageRelativePath: '/imported-0.png', status: 'DRAFT',
+        pages: { create: [0, 1, 2].map(pageIndex => ({ pageIndex, imageRelativePath: `/imported-${pageIndex}.png` })) }
+      } });
+      await revisionService.createRevision(documentId, ACCESS_PASSWORD);
+      await prisma.assemblyProcedureAsset.create({ data: { id: assetId, kind: 'OVERLAY_IMAGE', storageKey: `delete-page-${assetId}`, sha256: 'a'.repeat(64), byteSize: 1, contentType: 'image/png' } });
+      await prisma.procedureVideo.create({ data: { id: videoId, title: 'delete-page-test', gmailDedupeKey: videoId, receivedAt: new Date(), sourceFileName: 'test.mp4', sourceContentType: 'video/mp4', sourceByteSize: 1 } });
+      for (const pageIndex of [0, 1, 2]) {
+        await prisma.assemblyProcedureOverlayElement.create({ data: { id: overlayIds[pageIndex], documentId, pageIndex, kind: 'IMAGE', assetId, xRatio: 0, yRatio: 0, widthRatio: 0.5, heightRatio: 0.5, zIndex: 0 } });
+        await prisma.procedureVideoLink.create({ data: { videoId, assemblyProcedureDocumentId: documentId, pageIndex, sortOrder: 0 } });
+        await prisma.assemblyProcedureCaptionFeedback.create({ data: { documentId, pageIndex, elementId: overlayIds[pageIndex], assetId, documentName: 'delete-page-test', aiText: 'caption' } });
+        await prisma.assemblyProcedureTextFeedback.create({ data: { documentId, pageIndex, elementId: overlayIds[pageIndex], documentName: 'delete-page-test', originalText: 'original', aiText: 'rewritten' } });
+      }
+      const result = await revisionService.deletePage({ documentId, pageIndex: 0, expectedEditVersion: 0, accessPassword: ACCESS_PASSWORD });
+      expect(result.pages.map(page => page.pageIndex)).toEqual([0, 1]);
+      expect(result.imageRelativePath).toBe('/imported-1.png');
+      expect(result.overlayElements.map(element => [element.id, element.pageIndex])).toEqual([[overlayIds[1], 0], [overlayIds[2], 1]]);
+      expect(result.procedureVideoLinks.map(link => link.pageIndex).sort()).toEqual([0, 1]);
+      expect(result.revisionMetadata?.editVersion).toBe(1);
+      for (const model of [prisma.assemblyProcedureCaptionFeedback, prisma.assemblyProcedureTextFeedback]) {
+        const rows = await model.findMany({ where: { documentId } });
+        expect(rows).toHaveLength(3);
+        expect(rows.filter(row => row.elementId !== overlayIds[0]).map(row => row.pageIndex).sort()).toEqual([0, 1]);
+      }
+      expect(await prisma.assemblyProcedureTextFeedback.findFirst({ where: { documentId, elementId: overlayIds[0] } })).toMatchObject({ outcome: 'REVERTED' });
+      expect(await prisma.assemblyProcedureAsset.findUnique({ where: { id: assetId } })).not.toBeNull();
+      expect(await prisma.procedureVideo.findUnique({ where: { id: videoId } })).not.toBeNull();
+      await expect(revisionService.deletePage({ documentId, pageIndex: 0, expectedEditVersion: 0, accessPassword: ACCESS_PASSWORD })).rejects.toMatchObject({ code: 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT' });
+    } finally {
+      await prisma.assemblyProcedureCaptionFeedback.deleteMany({ where: { documentId } });
+      await prisma.assemblyProcedureTextFeedback.deleteMany({ where: { documentId } });
+      await prisma.procedureVideoLink.deleteMany({ where: { assemblyProcedureDocumentId: documentId } });
+      await prisma.assemblyProcedureDocumentRevision.deleteMany({ where: { documentId } });
+      await prisma.assemblyProcedureDocument.deleteMany({ where: { id: documentId } });
+      await prisma.assemblyProcedureAsset.deleteMany({ where: { id: assetId } });
+      await prisma.procedureVideo.deleteMany({ where: { id: videoId } });
+    }
   });
 
   it('keeps legacy references pinned across draft, publish, and discard lifecycle', async () => {

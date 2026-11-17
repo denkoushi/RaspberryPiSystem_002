@@ -61,6 +61,11 @@ export function useDocumentEditorMaterialPlacements({ documentId, elements, disp
     const release = releaseMaterials(placements);
     return { placements, done: Promise.all([release, ...unplacements.current.values()]).then(results => results.every(Boolean)) };
   }, [releaseMaterials, dispatch]);
+  const removePageMaterials = useCallback((elementIds: Set<string>) => {
+    materialScope.current += 1;
+    releasedMaterials.current = releasedMaterials.current.filter(item => !elementIds.has(item.elementId));
+    return releaseMaterials([...pendingMaterials.current.values()].filter(item => elementIds.has(item.elementId)), undefined, false);
+  }, [releaseMaterials]);
   const beforeMaterialPlacement = useCallback(async (id: string) => { await unplacements.current.get(id); }, []);
   const cancelMaterialPlacement = useCallback((materialId: string, element: AssemblyProcedureOverlayElement) => {
     void releaseMaterials([{ materialId, elementId: element.id, ...(element.kind === 'IMAGE' ? { assetId: element.assetId } : {}) }]);
@@ -123,5 +128,5 @@ export function useDocumentEditorMaterialPlacements({ documentId, elements, disp
   const placements = [...pendingMaterials.current.values()];
   if (placements.length !== materialPlacements.current.length || placements.some((item, index) => item !== materialPlacements.current[index])) materialPlacements.current = placements;
   const discardMaterialPlacements = useCallback(async (placements: PendingMaterialPlacement[]) => { await releaseMaterials(placements, undefined, false); }, [releaseMaterials]);
-  return { pendingMaterials, releasedMaterials, markMaterialsPlaced, materialRevision, materialScope, materialPlacements: materialPlacements.current, releaseAllMaterials, beforeMaterialPlacement, cancelMaterialPlacement, trackMaterialPlacement, commitMaterialPlacements, discardMaterialPlacements };
+  return { removePageMaterials, pendingMaterials, releasedMaterials, markMaterialsPlaced, materialRevision, materialScope, materialPlacements: materialPlacements.current, releaseAllMaterials, beforeMaterialPlacement, cancelMaterialPlacement, trackMaterialPlacement, commitMaterialPlacements, discardMaterialPlacements };
 }

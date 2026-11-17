@@ -12,6 +12,8 @@ import {
   registerAssemblyProcedureDocumentRevisionRoutes
 } from '../procedure-document-revisions.js';
 
+vi.mock('../../../config/env/load-dotenv.js', () => ({}));
+
 const documentId = '00000000-0000-4000-8000-000000000001';
 const now = new Date('2026-08-21T00:00:00.000Z');
 
@@ -34,6 +36,8 @@ function makeRevision() {
         createdAt: now
       }
     ],
+    templates: [{ areas: [{ bolts: [{ markerNo: 2 }] }] }],
+    templateBolts: [{ pageIndex: null, markerNo: 3 }, { pageIndex: 0, markerNo: 1 }, { pageIndex: 0, markerNo: 3 }, { pageIndex: 1, markerNo: 9 }],
     overlayElements: [],
     revisionMetadata: {
       revisionRootId: documentId,
@@ -81,6 +85,7 @@ function buildMultipartBody(params: {
 function buildHarness() {
   const service = {
     addBlankPage: vi.fn(async () => makeRevision()),
+    deletePage: vi.fn(async () => makeRevision()),
     listHistory: vi.fn(async () => [makeRevision()]),
     createRevision: vi.fn(async () => makeRevision()),
     saveOverlays: vi.fn(async () => makeRevision()),
@@ -147,11 +152,56 @@ describe('assembly procedure revision routes', () => {
     expect(place).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234' });
   });
 
-  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
+  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/pages/0/delete`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
     const harness = buildHarness(); app = harness.app;
     registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => { throw new ApiError(403, '権限がありません'); } }, harness.service as never, harness.assetsService as never);
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents${suffix}`, payload: { name: '白紙', pageIndex: 0, expectedEditVersion: 0 } })).statusCode).toBe(403);
     expect(harness.service.addBlankPage).not.toHaveBeenCalled();
+    expect(harness.service.deletePage).not.toHaveBeenCalled();
+  });
+
+  it('deletes a page with the password, required version and reservation token', async () => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/1/delete`, headers: { 'x-procedure-edit-token': 'lease-token' }, payload: { accessPassword: '1234', expectedEditVersion: 4 } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().document).toMatchObject({ id: documentId, editVersion: 4, pages: [{ pageIndex: 0 }] });
+    expect(harness.service.deletePage).toHaveBeenCalledWith({ documentId, pageIndex: 1, accessPassword: '1234', expectedEditVersion: 4, clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: 'lease-token' });
+    expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalledWith(documentId, null, undefined, 'lease-token');
+  });
+
+  it.each([{ pageIndex: '0', body: {} }, { pageIndex: '-1', body: { expectedEditVersion: 4 } }, { pageIndex: '1.5', body: { expectedEditVersion: 4 } }])('validates deletion input %j before calling the service', async ({ pageIndex, body }) => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/${pageIndex}/delete`, payload: body });
+    expect(response.statusCode).toBe(400);
+    expect(harness.service.deletePage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    new ApiError(403, 'パスワードが違います'),
+    new ApiError(409, '最後の1ページは削除できません'),
+    new ApiError(400, '削除するページが存在しません'),
+    new ApiError(409, 'このページまたは後ろのページがテンプレートで使われているため、削除できません'),
+    new ApiError(409, '最新内容を再読込してください', { currentEditVersion: 5 }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT')
+  ])('returns deletion refusal: $message', async error => {
+    const harness = buildHarness(); app = harness.app;
+    harness.service.deletePage.mockRejectedValue(error);
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/0/delete`, payload: { expectedEditVersion: 4 } });
+    expect(response.statusCode).toBe(error.statusCode);
+    expect(response.json().message).toBe(error.message);
+    if (error.code) expect(response.json()).toMatchObject({ errorCode: error.code, details: { currentEditVersion: 5 } });
+  });
+
+  it('refuses deletion when the reservation is lost before calling the service', async () => {
+    const harness = buildHarness(); app = harness.app;
+    vi.mocked(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).mockRejectedValueOnce(new ApiError(409, '別の端末が編集中です', { lease: null }, 'ASSEMBLY_PROCEDURE_EDIT_LOCKED'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: `/assembly/procedure-documents/${documentId}/pages/0/delete`, payload: { expectedEditVersion: 4 } });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().code).toBe('ASSEMBLY_PROCEDURE_EDIT_LOCKED');
+    expect(harness.service.deletePage).not.toHaveBeenCalled();
   });
 
   it('returns 409 and the placement error for discarded materials', async () => {
