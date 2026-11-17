@@ -12,18 +12,18 @@ vi.mock('../../domains/production-schedule/grinding-planning-board', () => ({ ge
 it('waits for a machine and never uses the previous machine candidates while loading', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  api.candidates.mockResolvedValueOnce({ partNames: ['モータブラケット'] });
+  api.candidates.mockResolvedValueOnce({ parts: [{ partName: 'モータブラケット', machineStock: true }] });
   const { result, rerender, unmount } = renderHook(({ resource }) => usePlanningBoardTestBarPartCandidates(resource), { wrapper, initialProps: { resource: '' } });
   expect(api.candidates).not.toHaveBeenCalled();
   rerender({ resource: '300' });
-  await waitFor(() => expect(result.current.data?.partNames).toEqual(['モータブラケット']));
-  let resolve!: (value: { partNames: string[] }) => void;
+  await waitFor(() => expect(result.current.data?.parts).toEqual([{ partName: 'モータブラケット', machineStock: true }]));
+  let resolve!: (value: { parts: Array<{ partName: string; machineStock: boolean }> }) => void;
   api.candidates.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
   rerender({ resource: '301' });
   expect(result.current.data).toBeUndefined();
   await waitFor(() => expect(api.candidates).toHaveBeenLastCalledWith('301'));
-  resolve({ partNames: ['軸受'] });
-  await waitFor(() => expect(result.current.data?.partNames).toEqual(['軸受']));
+  resolve({ parts: [{ partName: '軸受', machineStock: false }] });
+  await waitFor(() => expect(result.current.data?.parts).toEqual([{ partName: '軸受', machineStock: false }]));
   unmount();
   client.clear();
 });

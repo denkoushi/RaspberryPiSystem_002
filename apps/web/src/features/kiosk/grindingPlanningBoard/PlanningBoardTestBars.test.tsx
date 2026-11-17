@@ -18,10 +18,12 @@ import type { PlanningBoardTestBarControls } from './usePlanningBoardTestBars';
 import type { PlanningBoardWrite } from './usePlanningBoardWriteQueue';
 import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
-const api = vi.hoisted(() => ({ create: vi.fn(), mutate: vi.fn() }));
+const api = vi.hoisted(() => ({ create: vi.fn(), mutate: vi.fn(), candidatesLoading: false }));
 vi.mock('../../../api/domains/production-schedule/grinding-planning-board', () => ({ createKioskGrindingPlanningBoardTestBar: api.create, mutateKioskGrindingPlanningBoardTestBar: api.mutate }));
 vi.mock('../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts', () => ({
-  usePlanningBoardTestBarPartCandidates: (resource: string) => ({ data: { partNames: resource === '300' ? ['モータブラケット'] : ['軸受'] } })
+  usePlanningBoardTestBarPartCandidates: (resource: string) => ({ isLoading: api.candidatesLoading, data: { parts: resource === '300'
+    ? [{ partName: 'モータブラケット', machineStock: true }, { partName: 'ﾌﾟﾚｰﾄＡ-１', machineStock: false }, { partName: 'シャフト', machineStock: false }]
+    : [{ partName: '軸受', machineStock: true }] } })
 }));
 vi.mock('../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 vi.mock('../../../api/hooks', () => ({ useKioskGrindingPlanningBoardProcessChips: () => ({ data: undefined }) }));
@@ -46,7 +48,7 @@ function ganttProps(mode: 'forward' | 'backward' = 'forward', singleResourceCd: 
     onToggleItem: vi.fn(), onDueDrop: vi.fn(), disabled: false, dragDisabled: false,
     selectedItemIds: new Set<string>(), resourceView: true, focusedSeiban: null, onFocusedSeibanChange: vi.fn(), testBarCreationEnabled: true, testBarControls: controls() };
 }
-afterEach(() => { vi.clearAllMocks(); Reflect.deleteProperty(document, 'elementsFromPoint'); });
+afterEach(() => { api.candidatesLoading = false; vi.clearAllMocks(); Reflect.deleteProperty(document, 'elementsFromPoint'); });
 
 describe('テスト加工の画面', () => {
   it('places the purple ＋ at the right end of the single-resource heading with its aria name', () => {
@@ -95,29 +97,83 @@ describe('テスト加工の画面', () => {
   it('offers テストN first, changes the title and resets the selection when switching machines', async () => {
     const insert = vi.fn(async () => true);
     render(<PlanningBoardTestBarDialog sequence={5} resources={['300', '301']} initialResource="300" onInsert={insert} onClose={vi.fn()} />);
-    const select = screen.getByRole('combobox', { name: '部品' });
-    expect(select).toHaveValue('');
-    expect(within(select).getAllByRole('option')[0]).toHaveTextContent('テスト5');
-    expect(within(select).getAllByRole('option')[0]).toHaveValue('');
-    fireEvent.change(select, { target: { value: 'モータブラケット' } });
+    const list = screen.getByRole('group', { name: '部品候補' });
+    expect(within(list).getAllByRole('button')[0]).toHaveTextContent('テスト5');
+    expect(within(list).getAllByRole('button')[0]).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'ふ', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'モータブラケット' }));
     expect(screen.getByRole('heading', { name: 'モータブラケット' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '301' }));
-    expect(select).toHaveValue('');
+    expect(screen.getByRole('textbox', { name: '部品検索' })).toHaveValue('');
     expect(screen.getByRole('heading', { name: 'テスト5' })).toBeInTheDocument();
-    expect(within(select).queryByRole('option', { name: 'モータブラケット' })).not.toBeInTheDocument();
-    expect(within(select).getByRole('option', { name: '軸受' })).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: '軸受' } });
-    fireEvent.change(select, { target: { value: '' } });
+    expect(within(list).queryByRole('button', { name: 'モータブラケット' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '軸受' }));
+    fireEvent.click(screen.getByRole('button', { name: 'テスト5' }));
     expect(screen.getByRole('heading', { name: 'テスト5' })).toBeInTheDocument();
-    fireEvent.change(select, { target: { value: '軸受' } });
+    fireEvent.click(screen.getByRole('button', { name: '軸受' }));
     fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
     await waitFor(() => expect(insert).toHaveBeenCalledWith('301', 30, '軸受'));
+  });
+  it('filters with kana keys, disables dead ends, and inserts the selected name', async () => {
+    const insert = vi.fn(async () => true);
+    render(<PlanningBoardTestBarDialog sequence={5} resources={['300']} initialResource="300" onInsert={insert} onClose={vi.fn()} />);
+    const list = screen.getByRole('group', { name: '部品候補' });
+    expect(screen.getByText('3件')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button')[1]).toHaveTextContent('モータブラケット');
+    expect(within(screen.getByRole('button', { name: 'モータブラケット' })).getByText('★')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'あ', exact: true })).toBeDisabled();
+    for (const key of ['ふ', 'ら', 'け']) fireEvent.click(screen.getByRole('button', { name: key, exact: true }));
+    expect(screen.getByRole('textbox', { name: '部品検索' })).toHaveValue('ふらけ');
+    expect(screen.getByText('1件')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'ら', exact: true })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'モータブラケット' }));
+    expect(screen.getByRole('heading', { name: 'モータブラケット' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'モータブラケット' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
+    await waitFor(() => expect(insert).toHaveBeenCalledWith('300', 30, 'モータブラケット'));
+  });
+  it('folds halfwidth, voicing and small kana and supports alphanumeric keys and clearing', () => {
+    render(<PlanningBoardTestBarDialog sequence={5} resources={['300']} initialResource="300" onInsert={vi.fn(async () => true)} onClose={vi.fn()} />);
+    const query = screen.getByRole('textbox', { name: '部品検索' });
+    const list = screen.getByRole('group', { name: '部品候補' });
+    fireEvent.change(query, { target: { value: 'しゃ' } });
+    expect(within(list).getByRole('button', { name: 'シャフト' })).toBeInTheDocument();
+    fireEvent.change(query, { target: { value: 'しや' } });
+    expect(within(list).getByRole('button', { name: 'シャフト' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ふ', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'れ', exact: true }));
+    expect(within(list).getByRole('button', { name: 'ﾌﾟﾚｰﾄＡ-１' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
+    fireEvent.click(screen.getByRole('button', { name: '英数' }));
+    expect(screen.getByRole('button', { name: 'Z', exact: true })).toBeDisabled();
+    for (const key of ['A', '-', '1']) fireEvent.click(screen.getByRole('button', { name: key, exact: true }));
+    expect(query).toHaveValue('A-1');
+    expect(within(list).getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: '1文字消す' }));
+    expect(query).toHaveValue('A-');
+    fireEvent.click(screen.getByRole('button', { name: '全部消す' }));
+    expect(query).toHaveValue('');
+    expect(screen.getByText('3件')).toBeInTheDocument();
+    fireEvent.change(query, { target: { value: '存在しない' } });
+    expect(screen.getByText('0件')).toBeInTheDocument();
+    expect(within(list).getAllByRole('button')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'A', exact: true })).toBeDisabled();
+  });
+  it('disables the candidate list, search and keys while loading', () => {
+    api.candidatesLoading = true;
+    render(<PlanningBoardTestBarDialog sequence={5} resources={['300']} initialResource="300" onInsert={vi.fn(async () => true)} onClose={vi.fn()} />);
+    expect(screen.getByRole('textbox', { name: '部品検索' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'ふ', exact: true })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '英数' })).toBeDisabled();
+    for (const button of within(screen.getByRole('group', { name: '部品候補' })).getAllByRole('button')) expect(button).toBeDisabled();
   });
   it('passes the selected part through the gantt insertion control', async () => {
     const create = vi.fn(async () => true);
     render(<PlanningBoardGanttDisplay {...ganttProps()} testBarControls={controls({ create })} />);
     fireEvent.click(screen.getByRole('button', { name: '棒を差し込む' }));
-    fireEvent.change(screen.getByRole('combobox', { name: '部品' }), { target: { value: 'モータブラケット' } });
+    fireEvent.click(screen.getByRole('button', { name: 'モータブラケット' }));
     fireEvent.click(screen.getByRole('button', { name: '差し込む' }));
     await waitFor(() => expect(create).toHaveBeenCalledWith('300', 30, undefined, 'モータブラケット'));
   });

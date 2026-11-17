@@ -30,7 +30,7 @@ export interface GrindingPlanningBoardItemReference {
   overrideVersion?: number;
 }
 export interface GrindingPlanningBoardTestBarPartCandidatesResponse {
-  partNames: string[];
+  parts: Array<{ partName: string; machineStock: boolean }>;
 }
 export interface GrindingPlanningBoardTestBarCreateRequest {
   partName?: string | null;
