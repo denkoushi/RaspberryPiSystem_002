@@ -279,9 +279,8 @@ export function ProcedureManualWorkshop() {
         accessPassword: readProcedureEditorAccess()?.pin ?? '',
         expectedEditVersion: item.draftRevision.editVersion
       });
-      setVersion(value => value + 1);
     } catch (cause) { setOperationMessage(readAssemblyApiErrorMessage(cause, '改版を破棄できません')); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setVersion(value => value + 1); }
   };
   const confirmDiscard = (item: ProcedureManualAssignmentOverviewItemDto) => {
     if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);

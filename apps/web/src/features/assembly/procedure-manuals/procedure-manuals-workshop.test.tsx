@@ -111,9 +111,11 @@ describe('procedure-manuals workshop', () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: '改版を破棄' }));
     expect(screen.getByText('公開手順。元に戻せません')).toBeInTheDocument();
+    const loads = mocks.overview.mock.calls.length;
     fireEvent.click(within(screen.getByRole('dialog', { name: '改版を破棄' })).getByRole('button', { name: '破棄' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('他の編集で更新されています');
-    expect(mocks.allOverview).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mocks.overview.mock.calls.length).toBeGreaterThan(loads));
+    expect(screen.getByRole('alert')).toHaveTextContent('他の編集で更新されています');
   });
 
   it('rechecks editor access before confirming revision discard', async () => {
