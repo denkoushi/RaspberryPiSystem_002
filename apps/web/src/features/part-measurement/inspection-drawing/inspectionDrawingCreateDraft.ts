@@ -100,6 +100,7 @@ export type InspectionDrawingCreateDirtySnapshot = {
     yRatio: number;
     calloutTipXRatio: number | null;
     calloutTipYRatio: number | null;
+    calloutDims: InspectionDrawingPoint['calloutDims'];
     nominalRaw: string;
     lowerToleranceRaw: string;
     upperToleranceRaw: string;
@@ -179,6 +180,7 @@ export function buildInspectionDrawingCreateDirtySnapshot(params: {
       yRatio: normalizeRatio(pt.yRatio),
       calloutTipXRatio: normalizeOptionalRatio(pt.calloutTipXRatio),
       calloutTipYRatio: normalizeOptionalRatio(pt.calloutTipYRatio),
+      calloutDims: [...(pt.calloutDims ?? [])].sort((a, b) => a.dir.localeCompare(b.dir)),
       nominalRaw: normalizeText(pt.nominalRaw),
       lowerToleranceRaw: normalizeText(pt.lowerToleranceRaw),
       upperToleranceRaw: normalizeText(pt.upperToleranceRaw),

@@ -16,7 +16,7 @@ import { inspectionDrawingSopTargetProps } from './inspectionDrawingSopAnnotatio
 import type { PartMeasurementProcessGroup } from '../types';
 import type { ReactNode } from 'react';
 
-export type InspectionDrawingToolbarMode = 'place' | 'callout' | 'test' | 'guidedTrial';
+export type InspectionDrawingToolbarMode = 'place' | 'callout' | 'dimX' | 'dimY' | 'test' | 'guidedTrial';
 
 type Props = {
   processGroup: PartMeasurementProcessGroup;

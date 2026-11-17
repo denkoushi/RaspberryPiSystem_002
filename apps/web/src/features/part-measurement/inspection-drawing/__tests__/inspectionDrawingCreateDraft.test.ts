@@ -281,3 +281,20 @@ describe('inspectionDrawingCreateDraft', () => {
     ).toBe('検査件数は 1 以上の整数で入力してください');
   });
 });
+
+describe('dimension dirty state and draft copy', () => {
+  const dim = { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 };
+  it('detects dimension-only edits and normalizes missing dimensions to empty', () => {
+    const original = { ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.4 };
+    const before = buildSnapshot([original]);
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(before, buildSnapshot([{ ...original, calloutDims: [] }]))).toBe(true);
+    const after = buildSnapshot([{ ...original, calloutDims: [dim] }]);
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(before, after)).toBe(false);
+    expect(inspectionDrawingCreateDirtySnapshotsEqual(after, buildSnapshot([{ ...original, calloutDims: [{ ...dim, offsetRatio: 0.15 }] }]))).toBe(false);
+  });
+  it('retains dimensions when creating a draft from template items', () => {
+    const template = buildTemplate();
+    template.items[0] = { ...template.items[0], calloutTipXRatio: '0.8', calloutTipYRatio: '0.4', calloutDims: [dim] };
+    expect(templateItemsToDraftDrawingPoints(template.items)[0].calloutDims).toEqual([dim]);
+  });
+});

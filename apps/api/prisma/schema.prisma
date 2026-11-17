@@ -3468,6 +3468,7 @@ model PartMeasurementTemplateItem {
   calloutTipXRatio                         Decimal?                                  @db.Decimal(10, 8)
   /// 指差し先端: 画像内正規化 Y（0–1、任意）
   calloutTipYRatio                         Decimal?                                  @db.Decimal(10, 8)
+  calloutDims                              Json?
   /// 図面中心UI: 基準値（任意）
   nominalValue                             Decimal?                                  @db.Decimal(18, 6)
   /// 図面中心UI: 下限（任意・OK/NG 判定）

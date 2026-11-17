@@ -15,9 +15,9 @@ export function inspectionDrawingPointHasCalloutTip(
 
 export function clearInspectionDrawingCalloutTip(): Pick<
   InspectionDrawingPoint,
-  'calloutTipXRatio' | 'calloutTipYRatio'
+  'calloutTipXRatio' | 'calloutTipYRatio' | 'calloutDims'
 > {
-  return clearImageMarkerCalloutTip();
+  return { ...clearImageMarkerCalloutTip(), calloutDims: [] };
 }
 
 export function setInspectionDrawingCalloutTip(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useSearchParams } from 'react-router-dom';
 
 import { KioskSopLauncher } from '../../features/kiosk-sop';
@@ -16,6 +16,7 @@ import {
   inspectionDrawingCreateSideAsideClassName,
   inspectionDrawingCreateWorkspaceClassName
 } from '../../features/part-measurement/inspection-drawing';
+import { inspectionDrawingPointHasCalloutTip } from '../../features/part-measurement/inspection-drawing/inspectionDrawingCalloutTip';
 import {
   INSPECTION_DRAWING_PREVIEW_IMAGE_URL,
   INSPECTION_DRAWING_PREVIEW_POINTS
@@ -46,7 +47,7 @@ export function KioskInspectionDrawingCreatePreviewPage() {
     [location.state]
   );
   const [processGroup, setProcessGroup] = useState<PartMeasurementProcessGroup>(scenarioConfig.processGroup);
-  const [mode, setMode] = useState<'place' | 'callout' | 'test' | 'guidedTrial'>('place');
+  const [mode, setMode] = useState<'place' | 'callout' | 'dimX' | 'dimY' | 'test' | 'guidedTrial'>('place');
   const [points, setPoints] = useState<InspectionDrawingPoint[]>(() =>
     INSPECTION_DRAWING_PREVIEW_POINTS.map((p) => ({ ...p }))
   );
@@ -65,6 +66,12 @@ export function KioskInspectionDrawingCreatePreviewPage() {
   });
 
   const selectedPoint = points.find((p) => p.id === selectedPointId) ?? null;
+
+  useEffect(() => {
+    if ((mode === 'dimX' || mode === 'dimY') && (!selectedPoint || !inspectionDrawingPointHasCalloutTip(selectedPoint))) {
+      setMode('place');
+    }
+  }, [mode, selectedPoint]);
 
   const updatePoint = (id: string, patch: Partial<InspectionDrawingPoint>) => {
     setPoints((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -149,6 +156,12 @@ export function KioskInspectionDrawingCreatePreviewPage() {
             selectedPointId={selectedPointId}
             onSelectPoint={handleSelectPoint}
             onAddPoint={() => undefined}
+            onPointChange={(id, patch) => updatePoint(id, patch)}
+            onSetCalloutTip={mode === 'callout' && selectedPointId ? (x, y) => updatePoint(selectedPointId, { calloutTipXRatio: x, calloutTipYRatio: y }) : undefined}
+            onCalloutDimsChange={(id, dims) => {
+              updatePoint(id, { calloutDims: dims });
+              if (mode === 'dimX' || mode === 'dimY') setMode('place');
+            }}
           />
         </div>
 

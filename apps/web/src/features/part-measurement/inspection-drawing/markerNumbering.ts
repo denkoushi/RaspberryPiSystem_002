@@ -82,6 +82,7 @@ export function createInspectionDrawingPoint(
     yRatio,
     calloutTipXRatio: null,
     calloutTipYRatio: null,
+    calloutDims: [],
     nominalRaw: '',
     upperToleranceRaw: '',
     lowerToleranceRaw: '',
@@ -127,6 +128,7 @@ export function templateItemToDrawingPoint(
     yRatio: parseOptionalNumber(item.markerYRatio) ?? 0,
     calloutTipXRatio: parseOptionalNumber(item.calloutTipXRatio ?? null),
     calloutTipYRatio: parseOptionalNumber(item.calloutTipYRatio ?? null),
+    calloutDims: item.calloutTipXRatio != null && item.calloutTipYRatio != null ? item.calloutDims ?? [] : [],
     ...raw,
     testValue,
     decimalPlaces: item.decimalPlaces,
@@ -299,6 +301,7 @@ export function drawingPointToTemplateItemInput(
   markerYRatio: number;
   calloutTipXRatio: number | null;
   calloutTipYRatio: number | null;
+  calloutDims: NonNullable<InspectionDrawingPoint['calloutDims']>;
   nominalValue: number | null;
   lowerLimit: number | null;
   upperLimit: number | null;
@@ -325,6 +328,7 @@ export function drawingPointToTemplateItemInput(
       markerYRatio: pt.yRatio,
       calloutTipXRatio: pt.calloutTipXRatio ?? null,
       calloutTipYRatio: pt.calloutTipYRatio ?? null,
+      calloutDims: pt.calloutTipXRatio != null && pt.calloutTipYRatio != null ? pt.calloutDims ?? [] : [],
       nominalValue: null,
       lowerLimit: null,
       upperLimit: null,
@@ -365,6 +369,7 @@ export function drawingPointToTemplateItemInput(
       markerYRatio: pt.yRatio,
       calloutTipXRatio: pt.calloutTipXRatio ?? null,
       calloutTipYRatio: pt.calloutTipYRatio ?? null,
+      calloutDims: pt.calloutTipXRatio != null && pt.calloutTipYRatio != null ? pt.calloutDims ?? [] : [],
       nominalValue: null,
       lowerLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
       upperLimit: INSPECTION_DRAWING_THROUGH_SENTINEL_LIMIT,
@@ -387,6 +392,7 @@ export function drawingPointToTemplateItemInput(
       markerYRatio: pt.yRatio,
       calloutTipXRatio: pt.calloutTipXRatio ?? null,
       calloutTipYRatio: pt.calloutTipYRatio ?? null,
+      calloutDims: pt.calloutTipXRatio != null && pt.calloutTipYRatio != null ? pt.calloutDims ?? [] : [],
       nominalValue: null,
       lowerLimit: bounds.lowerLimit,
       upperLimit: bounds.upperLimit,
@@ -407,6 +413,7 @@ export function drawingPointToTemplateItemInput(
     markerYRatio: pt.yRatio,
     calloutTipXRatio: pt.calloutTipXRatio ?? null,
     calloutTipYRatio: pt.calloutTipYRatio ?? null,
+    calloutDims: pt.calloutTipXRatio != null && pt.calloutTipYRatio != null ? pt.calloutDims ?? [] : [],
     nominalValue: bounds.nominal,
     lowerLimit: bounds.lowerLimit,
     upperLimit: bounds.upperLimit,

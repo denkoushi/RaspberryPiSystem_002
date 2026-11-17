@@ -29,7 +29,8 @@ export function proposalToDrawingPoint(
     markerXRatio: String(proposal ? Math.min(1, anchorX + 0.03) : xRatio),
     markerYRatio: String(proposal ? Math.max(0, anchorY - 0.03) : yRatio),
     calloutTipXRatio: proposal ? String(anchorX) : null,
-    calloutTipYRatio: proposal ? String(anchorY) : null
+    calloutTipYRatio: proposal ? String(anchorY) : null,
+    calloutDims: []
   });
 }
 

@@ -290,7 +290,7 @@ export const inspectionDrawingPointCalloutStatusRowClassName =
 
 /** 右ペイン — 丸数字/矢視モード行（状態・削除を同列に載せる） */
 export const inspectionDrawingPlaceCalloutModeRowClassName =
-  'flex min-h-8 min-w-0 flex-nowrap items-center gap-1 rounded-md border border-amber-300/45 bg-amber-400/10 px-1.5';
+  'flex min-h-8 min-w-0 flex-wrap items-center gap-1 rounded-md border border-amber-300/45 bg-amber-400/10 px-1.5 py-1';
 
 /** 検査図面ライブラリ行アクション（高さ ×0.7 ≈ 30.8px） */
 export const inspectionDrawingLibraryRowActionClassName =

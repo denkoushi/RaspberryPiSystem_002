@@ -1,4 +1,5 @@
 # ドキュメント索引
+- 検査図面の矢視先端に付随するX/Y寸法線: [Plan](./plans/2026-11-17-inspection-drawing-callout-dims.md)
 
 - **製番ボードの同型機の品番の値共有**: site別の組、代表機への値統合、管理設定と共有値シート。正本: [ExecPlan](./plans/same-model-resource-minutes.md)
 

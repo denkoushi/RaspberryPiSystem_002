@@ -4,6 +4,7 @@ export { getInspectionDrawingPlacementProposals, postInspectionDrawingPlacementD
 
 import type {
   FindOrOpenPartMeasurementResponse,
+  PartMeasurementTemplateItemDto,
   KioskInspectionDrawingTemplateSummaryDto,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
@@ -1024,7 +1025,7 @@ export async function reviseKioskInspectionDrawingTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1068,7 +1069,7 @@ export async function createKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
@@ -1107,7 +1108,7 @@ export async function reviseKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
@@ -1373,7 +1374,7 @@ export async function createPartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1409,7 +1410,7 @@ export async function createInspectionDrawingEvaluationTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<{ template: PartMeasurementTemplateDto; sheet: PartMeasurementSheetDto }> {
@@ -1471,7 +1472,7 @@ export async function revisePartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    }>;
+    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {

@@ -64,4 +64,17 @@ describe('InspectionDrawingPointSidebar', () => {
     expect(screen.queryByRole('group', { name: '測定点の位置調整' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '丸数字' })).not.toBeInTheDocument();
   });
+  it('shows a dimension badge and clears dimensions together with the callout', () => {
+    const onPointChange = vi.fn();
+    const selectedPoint = { ...point, calloutTipXRatio: 0.8, calloutTipYRatio: 0.7,
+      calloutDims: [{ dir: 'y' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.9 },
+        { dir: 'x' as const, baseXRatio: 0.1, baseYRatio: 0.2, offsetRatio: 0.05 }] };
+    render(<InspectionDrawingPointSidebar {...baseProps} points={[selectedPoint]} selectedPoint={selectedPoint}
+      mode="place" onPointChange={onPointChange} />);
+    expect(screen.getByText('寸XY')).toBeInTheDocument();
+    expect(screen.getByText('矢視・寸法XY')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '削除' }));
+    expect(onPointChange).toHaveBeenCalledWith({ calloutTipXRatio: null, calloutTipYRatio: null, calloutDims: [] });
+  });
+
 });

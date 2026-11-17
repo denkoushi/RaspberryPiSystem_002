@@ -1,4 +1,6 @@
 import { computeObjectContainLayout, type ObjectContainRect } from './computeObjectContainLayout';
+import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
+import { computeDimensionGeometry } from './inspectionDrawingDimensionGeometry';
 
 import type { InspectionDrawingPoint } from './types';
 
@@ -90,4 +92,20 @@ export function computePrintCalloutLines(
     });
   }
   return lines;
+}
+
+/** Dimension coordinates in container percent, including the image's contain margins. */
+export function computePrintDimensionLines(
+  points: InspectionDrawingPoint[], containerWidth: number, containerHeight: number,
+  imageNaturalWidth: number, imageNaturalHeight: number
+) {
+  const layout = computeObjectContainLayout(containerWidth, containerHeight, imageNaturalWidth, imageNaturalHeight);
+  if (!layout) return [];
+  return points.filter(inspectionDrawingPointHasCalloutTip).flatMap((point) => (point.calloutDims ?? []).map((dim) => ({
+    pointId: point.id, dir: dim.dir,
+    lines: computeDimensionGeometry(dim, point.calloutTipXRatio!, point.calloutTipYRatio!, layout).lines.map(({ start, end }) => ({
+      x1Percent: start.x / containerWidth * 100, y1Percent: start.y / containerHeight * 100,
+      x2Percent: end.x / containerWidth * 100, y2Percent: end.y / containerHeight * 100
+    }))
+  })));
 }

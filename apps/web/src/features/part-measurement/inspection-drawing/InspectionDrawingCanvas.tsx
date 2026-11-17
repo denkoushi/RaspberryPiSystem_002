@@ -3,6 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { clampImageMarkerRatio, ImageMarkerCalloutOverlay } from '../../kiosk/image-canvas';
 
+import { inspectionDrawingPointHasCalloutTip } from './inspectionDrawingCalloutTip';
 import {
   computeScrollToCenterMarker,
   pointerClientToImageRatios,
@@ -12,6 +13,7 @@ import {
   INSPECTION_DRAWING_PLACE_POINTER_MOVE_THRESHOLD_PX,
   shouldConfirmPlacePointFromPointerMovement
 } from './inspectionDrawingCanvasPointer';
+import { InspectionDrawingDimensionLayer } from './InspectionDrawingDimensionLayer';
 import { inspectionDrawingCanvasViewportBaseClassName } from './inspectionDrawingKioskUi';
 import {
   inspectionDrawingMarkerButtonClass,
@@ -25,7 +27,7 @@ import { useZoomedCanvasLayout } from './useZoomedCanvasLayout';
 import type { DrawingProposalMarker } from './proposalToDrawingPoint';
 import type { InspectionDrawingPoint } from './types';
 
-type Mode = 'place' | 'callout' | 'test';
+type Mode = 'place' | 'callout' | 'dimX' | 'dimY' | 'test';
 
 type Props = {
   imageUrl: string;
@@ -43,6 +45,7 @@ type Props = {
   onPointChange?: (pointId: string, patch: Pick<InspectionDrawingPoint, 'xRatio' | 'yRatio'>) => void;
   /** 指差しモード: 選択中点の先端を置く */
   onSetCalloutTip?: (xRatio: number, yRatio: number) => void;
+  onCalloutDimsChange?: (pointId: string, dims: NonNullable<InspectionDrawingPoint['calloutDims']>) => void;
   /** 1 = ビューポートにフィット。表示専用（保存座標は ratio のまま） */
   zoom?: number;
   /** 全面表示（fit）操作のたびに増える。スクロール位置リセット用 */
@@ -88,6 +91,7 @@ export function InspectionDrawingCanvas({
   onAddPoint,
   onPointChange,
   onSetCalloutTip,
+  onCalloutDimsChange,
   zoom = INSPECTION_DRAWING_ZOOM_DEFAULT,
   fitGeneration = 0,
   focusRequest = null,
@@ -366,7 +370,8 @@ export function InspectionDrawingCanvas({
     const viewport = viewportRef.current;
     if (!viewport || !zoomedLayout) return;
 
-    if (mode === 'place' || mode === 'callout') {
+    if (mode === 'place' || mode === 'callout' || mode === 'dimX' || mode === 'dimY') {
+      if ((mode === 'dimX' || mode === 'dimY') && !onCalloutDimsChange) return;
       if (mode === 'place' && !onAddPoint) return;
       if (mode === 'callout' && !onSetCalloutTip) return;
       pendingPlaceRef.current = {
@@ -406,6 +411,19 @@ export function InspectionDrawingCanvas({
 
     const ratios = ratiosAtClient(e.clientX, e.clientY);
     if (!ratios) return;
+    if (mode === 'dimX' || mode === 'dimY') {
+      const point = points.find((value) => value.id === selectedPointId);
+      if (!point || !inspectionDrawingPointHasCalloutTip(point)) return;
+      const dir = mode === 'dimX' ? 'x' : 'y';
+      const offsetRatio = dir === 'x'
+        ? Math.min(ratios.yRatio, point.calloutTipYRatio!) - 45 / 640
+        : Math.max(ratios.xRatio, point.calloutTipXRatio!) + 45 / 1000;
+      onCalloutDimsChange?.(point.id, [...(point.calloutDims ?? []).filter((dim) => dim.dir !== dir), {
+        dir, baseXRatio: ratios.xRatio, baseYRatio: ratios.yRatio,
+        offsetRatio: clampImageMarkerRatio(offsetRatio)
+      }]);
+      return;
+    }
     if (mode === 'callout') {
       onSetCalloutTip?.(ratios.xRatio, ratios.yRatio);
       return;
@@ -486,6 +504,11 @@ export function InspectionDrawingCanvas({
               setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
             }}
           />
+          {image ? (
+            <InspectionDrawingDimensionLayer points={points} selectedPointId={selectedPointId}
+              image={image} width={zoomedLayout.contentWidth} height={zoomedLayout.contentHeight}
+              editable={mode === 'place'} onChange={onCalloutDimsChange} />
+          ) : null}
           {image ? (
             <ImageMarkerCalloutOverlay
               items={points}
