@@ -15,7 +15,8 @@ vi.mock('../policies/resource-category-policy.service.js', () => ({
   normalizeProductionScheduleResourceCd: (value: string) => value
 }));
 
-import { readPlanningSource, readRanks } from '../grinding-planning-board/source.js';
+import { readRanks } from '../grinding-planning-board/source.js';
+import { readPlanningSource } from '../grinding-planning-board/planning-source.js';
 import { fetchLeaderboardPlanningScopedParentRowIds } from '../leaderboard/leaderboard-row-selection.service.js';
 import { clearLeaderboardMaterializedWinnerCacheForTests } from '../leaderboard/leaderboard-materialized-winner-cache.js';
 import { clearLeaderboardCanonicalRowCacheForTests } from '../leaderboard/leaderboard-canonical-row-cache.js';
