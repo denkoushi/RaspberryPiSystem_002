@@ -135,18 +135,18 @@ elif command == 'systemctl':
         self.assertRegex(tasks, r'daemon_reload:\s*true')
         self.assertIn('enabled: "{{ kiosk_wifi_self_heal_enabled | bool }}"', tasks)
         self.assertIn("'started' if (kiosk_wifi_self_heal_enabled | bool) else 'stopped'", tasks)
-        self.assertIn('kiosk_wifi_self_heal_enabled: false', (ROLE / 'defaults/main.yml').read_text())
+        self.assertIn('kiosk_wifi_self_heal_enabled: true', (ROLE / 'defaults/main.yml').read_text())
         import yaml
         inventory = yaml.safe_load((ROOT / 'infrastructure/ansible/inventory.yml').read_text())
         enabled_hosts = []
         def visit(group):
             for host, variables in group.get('hosts', {}).items():
-                if variables and variables.get('kiosk_wifi_self_heal_enabled') is True:
+                if variables and 'kiosk_wifi_self_heal_enabled' in variables:
                     enabled_hosts.append(host)
             for child in group.get('children', {}).values():
                 visit(child)
         visit(inventory['all'])
-        self.assertCountEqual(enabled_hosts, ['raspi4-kensaku-stonebase01', 'raspi4-assembly-01'])
+        self.assertEqual(enabled_hosts, [])
         self.assertIn('register: kiosk_wifi_self_heal_service_unit', tasks)
         self.assertIn('register: kiosk_wifi_self_heal_timer_unit', tasks)
         self.assertIn('state: restarted', tasks)

@@ -72,4 +72,4 @@ ibus_disable_competing_autostart: false
 ibus_competing_autostart_entries:
   - im-launch.desktop
 
-kiosk_wifi_self_heal_enabled: false
+kiosk_wifi_self_heal_enabled: true
