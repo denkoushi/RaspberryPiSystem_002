@@ -5,6 +5,7 @@ import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from './constants.js';
 import { buildGrindingPlanningBoardRowItemId } from './grinding-planning-board-projection.js';
 import { getResourceCategoryPolicy, isProductionScheduleExcludedCuttingResourceCd } from './policies/resource-category-policy.service.js';
 import { buildProductionScheduleEffectiveCompletedSql } from './production-schedule-effective-completion.sql.js';
+import { buildProcessArrivalResourceSwapKey, findProcessArrivalResourceSwapCompletedKeys } from './process-arrival-resource-swap.js';
 import { isUnassignedProductionSeiban } from './row-resolver/constants.js';
 import type { GrindingPlanningBoardSpecialDue } from '@raspi-system/shared-types';
 
@@ -98,13 +99,21 @@ export async function enrichRowsWithProcessArrival<T extends ArrivalRow>(rows: r
     LEFT JOIN "ProductionScheduleProgress" AS "p" ON "p"."csvDashboardRowId" = "winnerRows"."id" AND "p"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     LEFT JOIN "ProductionScheduleExternalCompletion" AS "ext" ON "ext"."csvDashboardRowId" = "winnerRows"."id" AND "ext"."csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
     `) : [];
+  const isExcluded = (cd: string) => isProductionScheduleExcludedCuttingResourceCd(cd, policy);
+  const incomplete = processes.filter((process) => !process.isCompleted && !isExcluded(process.resourceCd.trim()));
+  if (incomplete.length) {
+    const completedKeys = await findProcessArrivalResourceSwapCompletedKeys(incomplete, isExcluded, client);
+    for (const process of incomplete) {
+      if (completedKeys.has(buildProcessArrivalResourceSwapKey(process))) process.isCompleted = true;
+    }
+  }
   const productNos = [...new Set(rows.map((r) => field(r.rowData, 'ProductNo')).filter(Boolean))];
   const placements = !params.placedProductNos && productNos.length ? await client.orderPlacementBranchState.findMany({
     where: { slipKind: 'manufacturing_order', manufacturingOrderBarcodeRaw: { in: productNos } },
     select: { manufacturingOrderBarcodeRaw: true }
   }) : [];
   const arrival = buildProcessArrivalByRowId(rows, processes,
-    (cd) => isProductionScheduleExcludedCuttingResourceCd(cd, policy), params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)), { includeFirstProcess: true });
+    isExcluded, params.placedProductNos ?? new Set(placements.map((p) => p.manufacturingOrderBarcodeRaw)), { includeFirstProcess: true });
   const itemKey = (row: T) => (row.id.startsWith('piece:') || row.id.startsWith('pieceops:')) ? row.id : buildGrindingPlanningBoardRowItemId(row.rowData as Record<string, unknown>);
   const overrides = params.includeSpecialDue ? await client.productionScheduleGrindingPlanningBoardOverride.findMany({
     where: { csvDashboardId: PRODUCTION_SCHEDULE_DASHBOARD_ID, siteKey: params.siteKey ?? params.locationKey, itemKey: { in: rows.map(itemKey) } }

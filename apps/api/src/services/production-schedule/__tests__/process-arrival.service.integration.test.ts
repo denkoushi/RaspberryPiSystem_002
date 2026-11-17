@@ -4,7 +4,7 @@ import { Prisma } from '@prisma/client';
 
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { PRODUCTION_SCHEDULE_DASHBOARD_ID } from '../constants.js';
+import { PRODUCTION_SCHEDULE_DASHBOARD_ID, PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID } from '../constants.js';
 
 const testDatabaseUrl = (process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL)?.trim() ?? '';
 const databaseName = (() => {
@@ -93,6 +93,34 @@ describeIntegration('process arrival SQL integration', () => {
     const later = await createRow('30');
     expect(await arrivals([later])).toEqual([false]);
     await complete(earlier);
+    expect(await arrivals([later])).toEqual([true]);
+  });
+
+  it('arrives after an earlier incomplete process completes on another resource', async () => {
+    const productNo = `${prefix}-swap`;
+    const earlier = await createRow('200', { FSIGENCD: '060', ProductNo: productNo });
+    await complete(earlier);
+    await createRow('205', { FSIGENCD: '080', ProductNo: productNo });
+    const later = await createRow('210', { FSIGENCD: '581', ProductNo: productNo });
+    expect(await arrivals([later])).toEqual([false]);
+    await db().csvDashboard.upsert({
+      where: { id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID },
+      create: {
+        id: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID, name: 'process-arrival-mail-integration',
+        columnDefinitions: [], templateType: 'TABLE', templateConfig: {}, ingestMode: 'DEDUP',
+        dedupKeyColumns: ['FSEZONO', 'FKOJUN', 'FKOTEICD'], enabled: true
+      },
+      update: {}
+    });
+    const raw = await db().csvDashboardRow.create({
+      data: {
+        csvDashboardId: PRODUCTION_SCHEDULE_FKOJUNST_STATUS_MAIL_DASHBOARD_ID,
+        occurredAt: new Date('2026-11-16T00:00:00Z'), dataHash: randomUUID(),
+        rowData: { FSEZONO: productNo, FKOJUN: '205', FKOTEICD: '035', FKOJUNST: 'C', FUPDTEDT: '11/16/2026 12:00:00' }
+      },
+      select: { id: true }
+    });
+    rowIds.push(raw.id);
     expect(await arrivals([later])).toEqual([true]);
   });
 
