@@ -71,3 +71,5 @@ ibus_reconcile_on_deploy: "{{ ibus_single_owner_enabled }}"
 ibus_disable_competing_autostart: false
 ibus_competing_autostart_entries:
   - im-launch.desktop
+
+kiosk_wifi_self_heal_enabled: true

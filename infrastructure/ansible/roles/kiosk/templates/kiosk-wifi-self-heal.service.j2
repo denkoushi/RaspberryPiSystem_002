@@ -1,0 +1,8 @@
+[Unit]
+Description=Kiosk Wi-Fi unicast self-healing watchdog
+After=NetworkManager.service
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/kiosk-wifi-self-heal.sh

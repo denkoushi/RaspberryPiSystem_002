@@ -263,6 +263,7 @@ update-frequency: high
 | [KB-451](./ci-cd.md#kb-451-route-integration-shared-fixture-postgres-test-local) | route 統合テストの共有 fixture 干渉と `postgres-test-local` 消失 | ✅ 解決済み |
 | [KB-452](./KB-452-postgres-jit-uninterruptible-sessaku-lane-read.md) | 切削の列の読み取りで PostgreSQL 18 の JIT が数分止まり、取り消せない | ✅ 解決済み |
 | [KB-453](./KB-453-feature-reach-measurement.md) | 機能ごとに AI が読む量の月1回の測定記録(区切り直しの計画の基準) | 🔄 継続 |
+| [KB-454](./KB-454-pi4-wifi-unicast-stall-self-heal.md) | Pi4 Wi-Fi 接続中の個別宛て通信停止を段階的に自動復旧 | 🔄 実機確認待ち |
 | [KB-388](../archive/knowledge-base/KB-388-cursor-state-db-corruption-external-ssd-recovery.md) | Cursor `state.vscdb` 破損・肥大化と外部SSD運用下での復旧（2026-06-06） | ✅ 復旧済み（監視継続） |
 
 ### フロントエンド関連
