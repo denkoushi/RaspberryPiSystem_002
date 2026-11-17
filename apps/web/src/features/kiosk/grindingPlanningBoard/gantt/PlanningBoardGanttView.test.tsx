@@ -2489,7 +2489,67 @@ describe('forward PlanningBoardGanttView', () => {
       expect(screen.getByRole('region', { name: /の次にやる順/ })).toHaveStyle({ left: `${window.innerWidth - 338}px`, top: `${window.innerHeight - 168}px` });
     } finally { measure.mockRestore(); }
   });
-  it('pins on entering, ignores hover changes and leaving, and closes outside or on Escape', () => {
+  it('does not pin on a brief mouse visit and switches to the next hovered bar', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.pointerLeave(panel, { pointerType: 'mouse' });
+    expect(panel).not.toHaveAttribute('data-pinned', 'true');
+    act(() => vi.advanceTimersByTime(299));
+    expect(panel).toBeInTheDocument();
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    expect(screen.getByTestId('planning-forward-queue-card-b')).toHaveClass('outline-amber-400');
+    expect(screen.getByTestId('planning-forward-queue-card-a')).not.toHaveClass('outline-amber-400');
+    act(() => vi.advanceTimersByTime(3000));
+    expect(panel).toBeInTheDocument();
+    expect(panel).not.toHaveAttribute('data-pinned', 'true');
+    fireEvent.pointerLeave(screen.getByTestId('planning-gantt-bar-b'), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(300));
+    expect(panel).not.toBeInTheDocument();
+  });
+  it('pins after exactly 3000ms of mouse hovering and cancels the pending hide', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    const bar = screen.getByTestId('planning-gantt-bar-a');
+    fireEvent.pointerEnter(bar, { pointerType: 'mouse' });
+    fireEvent.pointerLeave(bar, { pointerType: 'mouse' });
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(2999));
+    expect(panel).toBeInTheDocument();
+    expect(panel).not.toHaveAttribute('data-pinned', 'true');
+    act(() => vi.advanceTimersByTime(1));
+    expect(panel).toHaveAttribute('data-pinned', 'true');
+    expect(panel).toHaveClass('border-2', 'border-amber-400');
+  });
+  it('pins immediately when a card is pressed during the mouse hover delay', () => {
+    vi.useFakeTimers();
+    render(<PlanningBoardGanttView {...forwardProps()} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' });
+    expect(panel).not.toHaveAttribute('data-pinned', 'true');
+    fireEvent.pointerDown(screen.getByTestId('planning-forward-queue-card-a'), { pointerType: 'mouse', button: 0 });
+    expect(panel).toHaveAttribute('data-pinned', 'true');
+  });
+  it('keeps an unpinned mouse-hovered popover open across a layout rebuild', () => {
+    vi.useFakeTimers();
+    const values = forwardProps();
+    const { rerender } = render(<PlanningBoardGanttView {...values} />);
+    fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'), { pointerType: 'mouse' });
+    const panel = screen.getByRole('region', { name: /の次にやる順/ });
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(1000));
+    rerender(<PlanningBoardGanttView {...values} layout={{ ...values.layout }} />);
+    expect(panel).toBeInTheDocument();
+    expect(panel).not.toHaveAttribute('data-pinned', 'true');
+    act(() => vi.advanceTimersByTime(2000));
+    expect(panel).toHaveAttribute('data-pinned', 'true');
+  });
+  it('pins after hovering, ignores hover changes and leaving, and closes outside or on Escape', () => {
     vi.useFakeTimers();
     render(<PlanningBoardGanttView {...forwardProps()} />);
     const bar = screen.getByTestId('planning-gantt-bar-a');
@@ -2497,8 +2557,9 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerLeave(bar);
     act(() => vi.advanceTimersByTime(299));
     const panel = screen.getByRole('region', { name: /の次にやる順/ });
-    fireEvent.pointerEnter(panel);
-    fireEvent.pointerLeave(panel);
+    fireEvent.pointerEnter(panel, { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(3000));
+    fireEvent.pointerLeave(panel, { pointerType: 'mouse' });
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-b'));
     act(() => vi.advanceTimersByTime(500));
     expect(panel).toHaveAttribute('data-pinned', 'true');
@@ -2506,7 +2567,7 @@ describe('forward PlanningBoardGanttView', () => {
     fireEvent.pointerDown(document.body);
     expect(panel).not.toBeInTheDocument();
     fireEvent.pointerEnter(bar);
-    fireEvent.pointerEnter(screen.getByRole('region', { name: /の次にやる順/ }));
+    fireEvent.pointerDown(screen.getByRole('region', { name: /の次にやる順/ }));
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('region', { name: /の次にやる順/ })).toBeNull();
     fireEvent.pointerEnter(bar); fireEvent.pointerLeave(bar);
@@ -2518,7 +2579,7 @@ describe('forward PlanningBoardGanttView', () => {
     const { rerender } = render(<PlanningBoardGanttView {...values} />);
     fireEvent.pointerEnter(screen.getByTestId('planning-gantt-bar-a'));
     const panel = screen.getByRole('region', { name: /の次にやる順/ });
-    fireEvent.pointerEnter(panel);
+    fireEvent.pointerDown(panel);
     const position = panel.getAttribute('style');
     const scroll = panel.firstElementChild!;
     scroll.scrollLeft = 42;

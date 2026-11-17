@@ -17,6 +17,8 @@ import type { ForwardDragLane } from './planningBoardSingleResourceWindows';
 import type { GrindingPlanningBoardItem, GrindingPlanningBoardResourceOrderPlacement } from '@raspi-system/shared-types';
 import type { PointerEvent, RefObject } from 'react';
 
+const HOVER_PIN_DELAY_MS = 3000;
+
 type OpenQueue = { itemId: string; anchor: HTMLButtonElement };
 type Drop = { bar: GanttBar; placement: GrindingPlanningBoardResourceOrderPlacement };
 type Drag = { bar: GanttBar; x: number; pointerId: number; element: HTMLDivElement; moved: boolean; y: number; ready: boolean; allowed: ReadonlySet<string> };
@@ -59,7 +61,10 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const [open, setOpen] = useState<OpenQueue | null>(null);
   const pinned = useRef(false);
   const [isPinned, setPinned] = useState(false);
-  const pin = () => { pinned.current = true; setPinned(true); cancelHide(); };
+  const mouseOverPanel = useRef(false);
+  const pinTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const cancelPin = useCallback(() => { clearTimeout(pinTimer.current); pinTimer.current = undefined; }, []);
+  const pin = () => { cancelPin(); pinned.current = true; setPinned(true); cancelHide(); };
   const scroll = useRef<HTMLDivElement>(null);
   const longPress = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [position, setPosition] = useState({ left: 8, top: 8 });
@@ -82,19 +87,19 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   }, [onDragPreview]);
   useEffect(() => gate.subscribeReadOnly(clearDrag), [clearDrag, gate]);
   useEffect(() => { if (frozen) clearDrag(); }, [clearDrag, frozen]);
-  const close = useCallback(() => { cancelHide(); clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, clearDrag]);
+  const close = useCallback(() => { cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = false; setPinned(false); setOpen(null); }, [cancelHide, cancelPin, clearDrag]);
   const hideSoon = useCallback(() => {
     cancelHide();
     if (!pinned.current && !drag.current) timer.current = setTimeout(close, 300);
   }, [cancelHide, close]);
-  const closeUnlessPinned = useCallback(() => { if (!pinned.current && !drag.current) close(); }, [close]);
+  const closeUnlessPinned = useCallback(() => { if (!pinned.current && !mouseOverPanel.current && !drag.current) close(); }, [close]);
   useImperativeHandle(ref, () => ({
     show: (bar, anchor, fixed = false) => {
       if (bar.item.kind !== 'test' && bar.item.standardHoursMissing) return;
       if (pinned.current && !fixed) return;
-      cancelHide(); clearDrag(); pinned.current = fixed; setPinned(fixed); setOpen({ itemId: bar.item.itemId, anchor });
+      cancelHide(); cancelPin(); mouseOverPanel.current = false; clearDrag(); pinned.current = fixed; setPinned(fixed); setOpen({ itemId: bar.item.itemId, anchor });
     }, hideSoon, close, closeUnlessPinned, isPinned: () => pinned.current
-  }), [cancelHide, clearDrag, hideSoon, close, closeUnlessPinned]);
+  }), [cancelHide, cancelPin, clearDrag, hideSoon, close, closeUnlessPinned]);
   const openBar = open && [...(layout.forwardQueue ?? []), ...layout.groups.flatMap((group) => group.rows.flatMap((row) => row.bars))]
     .find((bar) => bar.item.itemId === open.itemId);
   useEffect(() => { closeUnlessPinned(); }, [layout, scale, closeUnlessPinned]);
@@ -108,7 +113,7 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
     if (!bar || bar.arrivalPending !== pending.bar.arrivalPending || bar.item.isCompleted !== pending.bar.item.isCompleted || bar.resource !== pending.bar.resource) clearDrag();
     else pending.bar = bar;
   }, [layout, clearDrag]);
-  useEffect(() => () => { clearTimeout(timer.current); clearDrag(); }, [clearDrag]);
+  useEffect(() => () => { clearTimeout(timer.current); cancelPin(); clearDrag(); }, [cancelPin, clearDrag]);
   useEffect(() => {
     if (!open) return;
     const outside = (event: globalThis.PointerEvent) => {
@@ -207,7 +212,16 @@ export const PlanningBoardForwardQueuePopover = forwardRef<ForwardQueueHandle, P
   const resourceLabel = ganttResourceLabel(openBar.resource, resourceNameMap[openBar.resource]);
   return createPortal(<div ref={panel} data-forward-queue data-pinned={isPinned} role="region" aria-label={`${resourceLabel} の次にやる順`}
     className={clsx(isPinned ? 'border-2 border-amber-400' : 'border border-slate-600', 'fixed z-[100] max-h-[calc(100dvh-16px)] max-w-[calc(100vw-16px)] overflow-auto rounded-lg bg-slate-900 p-2 text-slate-100 shadow-xl')}
-    style={position} onPointerEnter={pin} onPointerLeave={(event) => { if (event.pointerType === 'mouse') hideSoon(); }}>
+    style={position} onPointerDownCapture={pin} onPointerEnter={(event) => {
+      if (pinned.current) return;
+      cancelHide();
+      if (event.pointerType !== 'mouse') { pin(); return; }
+      mouseOverPanel.current = true;
+      cancelPin();
+      pinTimer.current = setTimeout(() => { if (mouseOverPanel.current) pin(); }, HOVER_PIN_DELAY_MS);
+    }} onPointerLeave={(event) => {
+      if (event.pointerType === 'mouse') { mouseOverPanel.current = false; cancelPin(); hideSoon(); }
+    }}>
     <div ref={scroll} className="relative flex gap-1.5 overflow-x-auto p-1">
       {cards.map(({ bar, position: queuePosition }) => { const item = bar.item; return <div key={item.itemId} data-queue-position={queuePosition}
         data-testid={`planning-forward-queue-card-${item.itemId}`}
