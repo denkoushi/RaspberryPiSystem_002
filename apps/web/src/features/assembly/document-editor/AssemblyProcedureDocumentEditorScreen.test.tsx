@@ -172,7 +172,15 @@ function renderScreen(controller: AssemblyProcedureDocumentEditorController, onN
 const interactiveText: AssemblyProcedureOverlayElement = { id: 'text', kind: 'TEXT', text: '元の本文', pageIndex: 0, zIndex: 0, bbox: { xRatio: 0.1, yRatio: 0.1, widthRatio: 0.3, heightRatio: 0.2 } };
 function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorController> = {}) {
   approvalMocks.realCanvas = true;
-  vi.stubGlobal('PointerEvent', MouseEvent);
+  vi.stubGlobal('PointerEvent', class extends MouseEvent {
+    readonly isPrimary: boolean;
+    readonly pointerId: number;
+    constructor(type: string, init: PointerEventInit = {}) {
+      super(type, init);
+      this.isPrimary = init.isPrimary ?? true;
+      this.pointerId = init.pointerId ?? 0;
+    }
+  });
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 1000, height: 1000 } as DOMRect);
   const c = makeController({ elements: [interactiveText], selectedPageElements: [interactiveText], ...overrides });
   const select = c.setSelectedOverlayId;
@@ -194,6 +202,67 @@ function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorCon
 afterEach(() => { approvalMocks.realCanvas = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  it.each([
+    { busy: true }, { saving: true }, { editLeaseMine: false }
+  ])('preserves selection while canvas is disabled: %j', overrides => {
+    const c = renderInteractive(overrides);
+    fireEvent.pointerDown(screen.getByTestId('document-editor-overlay-surface'), { button: 0 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+  });
+
+  it('preserves selection on a non-primary pointer', () => {
+    const c = renderInteractive();
+    fireEvent.pointerDown(screen.getByTestId('document-editor-overlay-surface'), { button: 0, isPrimary: false });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+  });
+
+  it.each(['move', 'resize'])('preserves selection during %s and allows deselection after it ends', interaction => {
+    const c = renderInteractive();
+    const target = within(screen.getByRole('region', { name: '手順書キャンバス' })).getByTestId(interaction === 'move' ? 'assembly-procedure-overlay-text' : 'assembly-procedure-overlay-text-resize-se');
+    fireEvent.pointerDown(target, { button: 0, clientX: 200, clientY: 200 });
+    expect(c.beginOverlayDrag).toHaveBeenCalledOnce();
+    vi.mocked(c.setSelectedOverlayId).mockClear();
+    fireEvent.pointerDown(screen.getByRole('region', { name: '手順書キャンバス' }), { button: 0 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalled();
+    expect(c.endOverlayDrag).not.toHaveBeenCalled();
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+    fireEvent.pointerUp(target, { clientX: 220, clientY: 200 });
+    expect(c.endOverlayDrag).toHaveBeenCalledOnce();
+    fireEvent.pointerDown(screen.getByRole('region', { name: '手順書キャンバス' }), { button: 0 });
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
+  });
+
+  it('allows Escape deselection after an overlay interaction ends', () => {
+    const c = renderInteractive();
+    const handle = screen.getByTestId('assembly-procedure-overlay-text-resize-se');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).not.toHaveBeenCalledWith(null);
+    fireEvent.pointerUp(handle, { clientX: 450, clientY: 350 });
+    expect(c.endOverlayDrag).toHaveBeenCalledOnce();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(c.setSelectedOverlayId).toHaveBeenCalledWith(null);
+    expect(screen.queryByTestId('editor-inspector')).not.toBeInTheDocument();
+  });
+
+  it('preserves selection on resize handles using their dedicated attribute', () => {
+    const c = renderInteractive();
+    for (const corner of ['nw', 'ne', 'sw', 'se']) {
+      const handle = screen.getByTestId(`assembly-procedure-overlay-text-resize-${corner}`);
+      expect(handle).toHaveAttribute('data-overlay-resize-handle');
+      handle.removeAttribute('data-testid');
+      fireEvent.pointerDown(handle, { button: 0, clientX: 400, clientY: 300 });
+      expect(c.setSelectedOverlayId).not.toHaveBeenCalledWith(null);
+      fireEvent.pointerUp(handle, { clientX: 450, clientY: 350 });
+    }
+    expect(screen.getByTestId('editor-inspector')).toBeInTheDocument();
+  });
+
   it.each(['page', 'surround'])('deselects on blank %s space and keeps the canvas geometry classes', target => {
     const c = renderInteractive();
     const section = screen.getByRole('region', { name: '手順書キャンバス' });

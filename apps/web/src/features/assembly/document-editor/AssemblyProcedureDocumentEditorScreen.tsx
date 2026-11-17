@@ -69,6 +69,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const [materialShelfMode, setMaterialShelfMode] = useState<'place' | 'replace'>('place');
   const [inlineEditingId, setInlineEditingId] = useState<string | null>(null);
   const overlayLayerRef = useRef<HTMLDivElement>(null);
+  const overlayInteractionActive = useRef(false);
+  const canvasSaving = controller.saving || controller.busy || !controller.editLeaseMine;
   const [materialRevision, setMaterialRevision] = useState(0);
   const refreshMaterials = useCallback(() => setMaterialRevision(value => value + 1), []);
   const [materialCount, setMaterialCount] = useState<number | null>(null);
@@ -171,7 +173,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing ||
-        !controller.accessGranted || controller.loading || controller.layoutSuggestions.locked ||
+        !controller.accessGranted || controller.loading || canvasSaving || overlayInteractionActive.current || controller.layoutSuggestions.locked ||
         dialogOpen || inlineEditingId || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const target = document.activeElement;
       if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
@@ -179,7 +181,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [controller.accessGranted, controller.loading, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
+  }, [controller.accessGranted, controller.loading, canvasSaving, controller.layoutSuggestions.locked, dialogOpen, inlineEditingId, setSelectedOverlayId]);
 
   if (!controller.accessGranted || controller.loading) {
     return <AssemblyProcedureDocumentEditorAuthGate context={context} />;
@@ -241,13 +243,13 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </button>
         <section className="relative col-start-3 min-h-0 min-w-0 overflow-hidden p-2" aria-label="手順書キャンバス"
           onPointerDownCapture={event => {
-            if (event.button !== 0 || controller.selectionMode || controller.layoutSuggestions.locked) return;
+            if (!event.isPrimary || event.button !== 0 || canvasSaving || overlayInteractionActive.current || controller.selectionMode || controller.layoutSuggestions.locked) return;
             const target = event.target as HTMLElement;
-            if (target.closest('[data-overlay-id], [data-testid*="-resize-"], textarea, [role="status"], [role="alert"], [data-editor-approval]')) return;
+            if (target.closest('[data-overlay-id], [data-overlay-resize-handle], textarea, [role="status"], [role="alert"], [data-editor-approval]')) return;
             setSelectedOverlayId(null);
           }}>
           <AssemblyProcedureDocumentEditorCanvas
-            saving={controller.saving || controller.busy || !controller.editLeaseMine}
+            saving={canvasSaving}
             onUpdateText={controller.commitInlineText}
             registerInlineTextFlush={controller.registerInlineTextFlush}
             onInlineEditingChange={setInlineEditingId}
@@ -264,8 +266,8 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
             onSelectOverlay={controller.setSelectedOverlayId}
             onNudgeOverlay={controller.nudgeElement}
             onUpdateOverlayBBox={controller.updateElementBBox}
-            onInteractionStart={controller.beginOverlayDrag}
-            onInteractionEnd={controller.endOverlayDrag}
+            onInteractionStart={() => { overlayInteractionActive.current = true; controller.beginOverlayDrag(); }}
+            onInteractionEnd={() => { overlayInteractionActive.current = false; controller.endOverlayDrag(); }}
             onRangeSelected={controller.handleRangeSelected}
             assets={controller.document?.assets}
             className="h-full w-full !bg-[#0a0d10]"
