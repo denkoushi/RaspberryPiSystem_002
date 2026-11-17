@@ -70,6 +70,7 @@ export async function requireKioskClientDevice(rawClientKey: unknown): Promise<{
     canProxyOtherDevices: boolean;
     inquiryReceiverEnabled: boolean;
     systemNoticeReceiverEnabled: boolean;
+    haizenScanMode: string;
   };
 }> {
   const clientKey = normalizeClientKey(rawClientKey);

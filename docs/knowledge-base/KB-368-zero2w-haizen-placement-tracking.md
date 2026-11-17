@@ -131,3 +131,13 @@ category: knowledge-base
 - Runbook: [mobile-placement-smartphone.md](../runbooks/mobile-placement-smartphone.md)（curl 例・UI 節）
 - Zero 2 W セットアップ: [zero2w-tanaban-edge-setup.md](../runbooks/zero2w-tanaban-edge-setup.md)
 - 既存配膳経路: [KB-339](./KB-339-mobile-placement-barcode-survey.md)
+
+## 研削の着スキャン(2026-11-17)
+
+- Zero 2W の用途を `PUT /api/clients/:id {"haizenScanMode":"grinding_arrival"}` で設定する。
+- 端末の `siteKey` に工場の明示設定が必要。未設定・`shared`・`default` は 400 (`HAIZEN_SCAN_SITE_REQUIRED`)。
+- agent とスキャンURL・リクエストは従来どおり。研削用途では棚設定も棚への記録も不要。
+- 拠点の研削資源ポリシーに従い、製造オーダの未完了研削工程のうち工順が最小の1工程に着を付ける。
+- 最初の工程は `FirstProcessArrival` を `arrived` にし、「外」も着へ戻す。
+- 以降の工程は日付を問わず既存の着記録を保ち、未記録なら当日JSTで保存する。
+- 対象なしは 200 / `UNRESOLVED`。棚用途へ戻すには `haizenScanMode` を `shelf` にする（既存端末の既定値）。

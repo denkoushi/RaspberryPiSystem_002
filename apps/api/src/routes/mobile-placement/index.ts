@@ -7,6 +7,7 @@ import { snapFseiban, type FseibanSnapResult } from '../../services/mobile-place
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
+import { applyGrindingPlanningBoardScanArrival } from '../../services/production-schedule/grinding-planning-board/write-scan-arrival.js';
 import { ApiError } from '../../lib/errors.js';
 import { requireClientDevice } from '../kiosk/shared.js';
 import { resolveCredentialIdentity } from '../../lib/location-scope-resolver.js';
@@ -244,6 +245,9 @@ export async function registerMobilePlacementRoutes(app: FastifyInstance): Promi
     const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
     const body = haizenScanBodySchema.parse(request.body);
     const identity = resolveCredentialIdentity(clientDevice);
+    if (clientDevice.haizenScanMode === 'grinding_arrival') {
+      return applyGrindingPlanningBoardScanArrival({ clientDevice, manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw });
+    }
     const result = await applyHaizenScan({
       clientDeviceId: identity.clientDeviceId,
       manufacturingOrderBarcodeRaw: body.manufacturingOrderBarcodeRaw,

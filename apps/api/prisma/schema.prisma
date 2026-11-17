@@ -536,6 +536,8 @@ model ClientDevice {
   kioskPortalHiddenTabIds                        String[] @default([])
   /// キオスクのサイネージプレビューで参照する `ClientDevice.apiKey`（サイネージ用途端末のみ許可。未設定時は自端末キーでプレビュー）
   signagePreviewTargetApiKey                    String?
+  /// haizen-scans の用途: shelf=棚に置いた記録(既定) / grinding_arrival=研削の一番前の未完了工程に「着」
+  haizenScanMode                                String                                         @default("shelf") @db.VarChar(32)
   /// Zero2W 棚番エッジ等: 端末に固定する棚番（`西-北-01` 形式・trim 保存）
   haizenPresetShelfCodeRaw                      String?
   /// Zero2W / haizen-agent からの配膳スキャン対象端末（キオスク設定・API 抽出の正）

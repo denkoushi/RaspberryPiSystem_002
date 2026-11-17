@@ -81,6 +81,7 @@ export const updateClientSchema = z.object({
   defaultMode: z.enum(['PHOTO', 'TAG']).optional().nullable(),
   kioskInitialRoute: z.enum(KIOSK_INITIAL_ROUTE_IDS).optional().nullable(),
   haizenEdgeEnabled: z.boolean().optional(),
+  haizenScanMode: z.enum(['shelf', 'grinding_arrival']).optional(),
   shelfLayoutEditEnabled: z.boolean().optional(),
   procedureBoardEnabled: z.boolean().optional(),
   planningBoardOfflineEnabled: z.boolean().optional(),
