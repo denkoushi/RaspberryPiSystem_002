@@ -92,6 +92,8 @@ export type PlanningBoardToolbarProps = {
   onOpenSingleResourcePicker?: (anchor: HTMLElement) => void;
   onCloseSingleResourcePicker?: () => void;
   onSingleResourceChange?: (resource: string | null) => void;
+  onTestBarAdd?: () => void;
+  testBarDisabled?: boolean;
   ganttEnabled?: boolean;
   onToggleGantt?: () => void;
   colorBySeiban?: boolean;
@@ -149,6 +151,7 @@ export function PlanningBoardToolbar({
   arrivalFilterEnabled = true, onToggleArrivalFilter,
   singleResourceCd = null, singleResourceLanes = [], singleResourceNameMap = {}, singleResourcePickerAnchor = null,
   onOpenSingleResourcePicker, onCloseSingleResourcePicker, onSingleResourceChange,
+  onTestBarAdd, testBarDisabled = false,
   ganttEnabled = false,
   onToggleGantt,
   colorBySeiban = false, onToggleColorBySeiban,
@@ -282,6 +285,9 @@ export function PlanningBoardToolbar({
             className={clsx('h-[46px] shrink-0 rounded-md border px-3 text-[13px] font-bold', singleResourceCd ? 'border-sky-300 bg-sky-400 text-slate-950' : 'border-slate-600 text-sky-300')}>
             {singleResourceCd ? `${singleResourceCd} ✕` : '1台'}
           </button>}
+          {!singleResourceCd && ganttMode === 'forward' && allocation === 'alternate' && onTestBarAdd && <button type="button" aria-label="棒を差し込む"
+            onClick={onTestBarAdd} disabled={testBarDisabled || Boolean(orderPreview) || frozen}
+            className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-md border border-violet-400 bg-violet-400/15 text-2xl font-bold text-violet-300 disabled:opacity-40">＋</button>}
           {!orderPreview && singleResourcePickerAnchor && onSingleResourceChange && onCloseSingleResourcePicker && <PlanningBoardSingleResourcePicker
             anchor={singleResourcePickerAnchor} resources={singleResourceLanes} resourceCd={planningBoardPair(singleResourceCd, singleResourceLanes)?.[0] ?? singleResourceCd} resourceNameMap={singleResourceNameMap}
             onSelect={onSingleResourceChange} onClose={onCloseSingleResourcePicker} />}

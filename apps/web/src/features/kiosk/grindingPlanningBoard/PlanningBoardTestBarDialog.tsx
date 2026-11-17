@@ -48,10 +48,10 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
     <form onSubmit={(event) => { event.preventDefault(); if (!valid || pending) return;
       setPending(true); setFailed(false); void onInsert(resource, value, partName || null).then((saved) => { if (saved) onClose(); else { setPending(false); setFailed(true); } });
     }}>
-      {resources.length === 2 && <><span className="mt-4 block text-sm font-bold">機械</span><div role="group" aria-label="機械" className="mt-2 flex gap-2">
+      {resources.length >= 2 && <div role="group" aria-label="機械" className="mt-3 flex flex-wrap gap-1.5">
         {resources.map((cd) => <button key={cd} type="button" aria-pressed={resource === cd} disabled={pending} onClick={() => { if (resource !== cd) { setResource(cd); setPartName(''); setQuery(''); } }}
-          className={`h-11 flex-1 rounded border font-bold ${resource === cd ? 'border-violet-300 bg-violet-300 text-indigo-950' : 'border-slate-600'}`}>{cd}</button>)}
-      </div></>}
+          className={`h-11 min-w-[72px] rounded-lg border px-3 font-mono text-base font-bold ${resource === cd ? 'border-violet-300 bg-violet-300 text-indigo-950' : 'border-slate-600'}`}>{cd}</button>)}
+      </div>}
       <div className="mt-3 grid gap-3 min-[721px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <div className="min-w-0">
           <div className="flex h-12 items-center gap-1.5 rounded-[10px] border border-violet-400 bg-slate-800 px-1.5 pl-3">

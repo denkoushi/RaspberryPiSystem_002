@@ -115,7 +115,7 @@ export function usePlanningBoardGantt(options: Omit<GanttLayoutOptions, 'scale' 
     else void gate.run(() => mutateAsync({ resourceCd, unitSplitEnabled })).finally(() =>
       Promise.all(['board', 'load', 'resource-capacity'].map(refreshRead))).catch(() => undefined);
   }, [mutate, mutateAsync]);
-  return { testBarControls: undefined as PlanningBoardTestBarControls | undefined,
+  return { openTestBarDialog: () => viewRef.current?.openTestBarDialog?.(), testBarControls: undefined as PlanningBoardTestBarControls | undefined,
     mode: effectiveMode, changeMode: (next: 'forward' | 'backward') => { if (next === 'backward') changeSingleResource(null); changeMode(next); },
     resourceMinutesItems: items, resourceMinutes: minutes.data, minutesPending: writeStatus.minutesPending, minutesError: writeStatus.minutesError,
     changeMinutesSource: (sources: Parameters<typeof sourceMutation.mutate>[0][]) => {

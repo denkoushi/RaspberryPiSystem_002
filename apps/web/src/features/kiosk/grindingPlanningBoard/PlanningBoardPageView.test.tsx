@@ -12,7 +12,7 @@ describe('PlanningBoardPageView', () => {
   it('disables gantt piece operations while writes are blocked', () => {
     const props = {
       onChainPartChange: vi.fn(), chainItems: [{ itemId: 'extra-completed-piece', isCompleted: true }],
-      data: { siteKey: 'site', resources: [], items: [{ itemId: 'completed-piece', kind: 'piece', isCompleted: true }] }, ganttEnabled: true, gantt: { testBarControls: { disabled: false } }, ganttLayout: { mode: 'forward', groups: [] },
+      data: { siteKey: 'site', resources: [], items: [{ itemId: 'completed-piece', kind: 'piece', isCompleted: true }] }, ganttEnabled: true, gantt: { singleResourceLanes: [], testBarControls: { disabled: false } }, ganttLayout: { mode: 'forward', groups: [] },
       resourcesQuery: {}, pinMode: false, writeQueue: { pending: false }, allocation: 'alternate',
       interactionLocked: false, writeBlocked: false, specialDueMode: null
     } as ComponentProps<typeof PlanningBoardPageView>;
