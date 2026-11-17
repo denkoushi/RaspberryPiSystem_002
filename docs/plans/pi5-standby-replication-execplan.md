@@ -26,7 +26,8 @@ DB だけの復旧を成功にせず、ファイル、証明書、端末の接�
 
 
 - [x] (2026-11-15 JST) 公開された設定・スクリプト・既存手順を調べ、計画の下書きを作成。本番の実状態は未確認。
-- [ ] S0 / PR 1: 手元の Docker で2台を模擬し、複製・切り替え・失敗時の停止条件を確認する。
+- [x] S0 / PR 1: 手元の Docker で2台を模擬し、複製・切り替え・失敗時の停止条件を確認する。
+  (2026-11-17 JST) 専用 Compose と `scripts/deploy/tests/test-pi5-standby-integration.sh` を実装。Mac(Docker 29.9.3 arm64、pgvector/pgvector:pg18)で全18検査が成功、所要30秒、成功後の専用 project の残りは0。
 - [ ] S1 / PR 2: 主 DB の複製用設定、通信経路、専用役割、戻し方を追加する。
 - [ ] S2 / PR 3: 予備機の準備と標準デプロイの予備専用経路を追加する。
 - [ ] S3 / PR 4: pg_basebackup による予備の初期化と非同期複製を追加する。
@@ -40,6 +41,9 @@ DB だけの復旧を成功にせず、ファイル、証明書、端末の接�
 
 ## Surprises & Discoveries
 
+- S0 模擬は WAL 欠落用の使い捨て予備を分け、slot の `lost/wal_removed` と追従不能を検査する。失敗時は保持、成功時だけ専用 project を削除する（`KEEP_PI5_STANDBY=1` で成功時も保持）。
+- (2026-11-17 JST) WAL 欠落は max_slot_wal_keep_size=32MB で slot が約10秒で `lost/wal_removed` になり、使い捨て予備は追従できず作り直しが要ることを実測した。主が動いている間の昇格は拒否され、主の停止後は昇格と書き込みが成功、2回目の昇格は何もしない。
+- `rg` は bash から使えない環境があるため、試験では `grep -E` を使う。重い DR 統合試験に合わせ CI には入れず、手元で任意に流す。
 
 - DB は通常の postgres イメージではなく `pgvector/pgvector:pg18` で、5432 は公開されていない。
   根拠: `infrastructure/docker/docker-compose.server.yml:4-42`。
