@@ -4,7 +4,7 @@ export { getInspectionDrawingPlacementProposals, postInspectionDrawingPlacementD
 
 import type {
   FindOrOpenPartMeasurementResponse,
-  KioskInspectionDrawingTemplateSummaryDto,
+  InspectionDrawingCalloutDim, KioskInspectionDrawingTemplateSummaryDto,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
   PartMeasurementSheetWithSession,
@@ -1024,7 +1024,7 @@ export async function reviseKioskInspectionDrawingTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
@@ -1069,7 +1069,7 @@ export async function createKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
@@ -1109,7 +1109,7 @@ export async function reviseKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
@@ -1374,7 +1374,7 @@ export async function createPartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
@@ -1411,7 +1411,7 @@ export async function createInspectionDrawingEvaluationTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
@@ -1474,7 +1474,7 @@ export async function revisePartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+      calloutDims?: InspectionDrawingCalloutDim[] | null;
     }>;
   },
   clientKey?: string
