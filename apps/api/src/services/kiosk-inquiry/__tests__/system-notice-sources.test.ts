@@ -104,6 +104,15 @@ describe('alert notice bridges', () => {
       key: 'file:pi5-watchdog-recovered', title: '業務用Pi5の復旧', body: message, state: 'open', repeatMs: 1
     }, now);
   });
+  it('uses USB copy reminder text for the offline DR alert', async () => {
+    await deliverFileAlertNotice('offline-dr-copy-overdue', now, now, 'raw alert text');
+    expect(mocks.deliver).toHaveBeenCalledExactlyOnceWith({
+      key: 'file:offline-dr-copy-overdue',
+      title: 'USBメモリの控え',
+      body: 'USBメモリへの写しから30日以上たっています。Pi5に挿して写してください。',
+      state: 'open'
+    }, now);
+  });
   it('uses Japanese fallback text for a recovery without a message', async () => {
     await deliverFileAlertNotice('pi5-watchdog-recovered', now, now);
     expect(mocks.deliver).toHaveBeenCalledWith(expect.objectContaining({ body: '業務用Pi5が戻りました。' }), now);

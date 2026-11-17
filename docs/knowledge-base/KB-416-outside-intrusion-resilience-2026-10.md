@@ -55,11 +55,13 @@ Done on 2026-10-13, by the owner at the Pi5 with scripts kept in the deploy user
 Monthly offline copy (owner at the Pi5; do not start it while the nightly backup runs or within two hours before it):
 
 1. Plug the stick into the Pi5. It must be the only USB disk besides the system disk.
-2. `sudo systemd-run --unit=offline-dr-copy-<n> /home/<deploy user>/offline-dr-copy.sh`
+2. `sudo systemd-run --unit=offline-dr-copy-<YYYYMMDD> /opt/raspi-google-drive-dr/offline-dr-copy.sh` (replace `<YYYYMMDD>` with the copy date).
 3. Wait for the unit to finish and read `/root/offline-dr/latest.log`: it must end with `RESULT=OK`, after `0 differences found` and `no errors were found`.
 4. The script unmounts the stick. Remove it and store it away from the Pi5, and not together with the password.
 
 The script only reads Google Drive, copies without deleting (except stale key files on the stick), verifies every pack with `restic check --read-data` and lists the snapshots.
+
+The [dedicated DR playbook](../../infrastructure/ansible/playbooks/deploy-google-drive-disaster-recovery.yml) installs the [copy script](../../scripts/google_drive_dr/offline-dr-copy.sh) and the daily 09:00 Asia/Tokyo check. The check sends a kiosk system notice when the last successful copy is over 30 days old or missing. A successful copy stops new reminders, and the notice closes automatically 48 hours after the last reminder.
 
 ## Prevention
 
@@ -80,7 +82,7 @@ The script only reads Google Drive, copies without deleting (except stale key fi
 
 ## Open Items
 
-- The offline copy exists (2026-10-13) but is refreshed by hand. Open: an alert when the last successful offline copy is older than 35 days, and moving the two Pi5 scripts into this repository. The owner has no paper copy of the repository password yet (password manager only).
+- Done. The offline copy script is in the repository, and the dedicated playbook installs the 30-day reminder. The owner still refreshes the copy by hand and has no paper copy of the repository password (password manager only).
 - The Pi5 bootloader EEPROM update is still offered and not applied. The OS package backlog on the Pi4 kiosks and the Pi3 is also open; there the kiosk browser version is being moved deliberately ([KB-413](./KB-413-kiosk-chromium-canary-stonebase01.md)).
 - Applying the server role and the snapshot playbook for #1786, #1787 (unit files) and #1792, after a dry run that shows the application environment files are not rewritten.
 - A "no successful backup for N hours" alert, because a run that is skipped does not fail; a reboot-required notice; extending automatic security updates to the kiosks.

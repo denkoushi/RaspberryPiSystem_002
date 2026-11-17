@@ -21,6 +21,8 @@ SERVICE_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.service.j2"
 ALERT_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr-alert.service.j2"
 TIMER_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.timer.j2"
 ENV_TEMPLATE = ANSIBLE_ROOT / "templates/raspi-google-drive-dr.env.j2"
+COPY_CHECK_SERVICE = ANSIBLE_ROOT / "templates/offline-dr-copy-check.service.j2"
+COPY_CHECK_TIMER = ANSIBLE_ROOT / "templates/offline-dr-copy-check.timer.j2"
 STANDARD_PLAYBOOK = ANSIBLE_ROOT / "playbooks/deploy-release-standard.yml"
 INTEGRATION_SCRIPT = (
     ROOT / "scripts/deploy/tests/test-google-drive-dr-postgres-restic-integration.sh"
@@ -82,9 +84,8 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
         package_copy_tasks = [
             task
             for task in copy_tasks
-            if str(task["ansible.builtin.copy"].get("src", "")).startswith(
-                "{{ playbook_dir }}/../../../scripts/google_drive_dr/{{ item }}"
-            )
+            if task["ansible.builtin.copy"].get("src")
+            == "{{ playbook_dir }}/../../../scripts/google_drive_dr/{{ item }}"
         ]
         self.assertEqual(len(package_copy_tasks), 1)
         self.assertEqual(
@@ -282,11 +283,81 @@ class GoogleDriveDisasterRecoveryContractTests(unittest.TestCase):
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.service.j2",
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr-alert.service.j2",
             "{{ playbook_dir }}/../templates/raspi-google-drive-dr.timer.j2",
+            "{{ playbook_dir }}/../templates/offline-dr-copy-check.{{ item }}.j2",
         }
         self.assertEqual(template_sources, expected_sources)
-        for template_path in (ENV_TEMPLATE, SERVICE_TEMPLATE, ALERT_TEMPLATE, TIMER_TEMPLATE):
+        for template_path in (
+            ENV_TEMPLATE, SERVICE_TEMPLATE, ALERT_TEMPLATE, TIMER_TEMPLATE,
+            COPY_CHECK_SERVICE, COPY_CHECK_TIMER,
+        ):
             with self.subTest(template_path=template_path):
                 self.assertTrue(template_path.is_file())
+
+    def test_offline_copy_scripts_units_and_independent_timer_are_installed(self) -> None:
+        script_copy = {
+            "src": "{{ playbook_dir }}/../../../scripts/google_drive_dr/{{ item }}.sh",
+            "dest": "{{ google_drive_dr_install_root }}/{{ item }}.sh",
+            "owner": "root", "group": "root", "mode": "0755",
+        }
+        task = next(task for task in self.tasks if task.get("ansible.builtin.copy") == script_copy)
+        self.assertEqual(task["loop"], ["offline-dr-copy", "offline-dr-copy-check"])
+        for script in task["loop"]:
+            self.assertTrue((ROOT / f"scripts/google_drive_dr/{script}.sh").is_file())
+
+        unit_install = {
+            "src": "{{ playbook_dir }}/../templates/offline-dr-copy-check.{{ item }}.j2",
+            "dest": "/etc/systemd/system/offline-dr-copy-check.{{ item }}",
+            "owner": "root", "group": "root", "mode": "0644",
+        }
+        task = next(task for task in self.tasks if task.get("ansible.builtin.template") == unit_install)
+        self.assertEqual(task["loop"], ["service", "timer"])
+        self.assertEqual(task["notify"], "Reload systemd units")
+        timer_task = next(task for task in self.tasks if task.get("ansible.builtin.systemd", {}).get("name")
+                          == "offline-dr-copy-check.timer")
+        self.assertEqual(timer_task["ansible.builtin.systemd"], {
+            "name": "offline-dr-copy-check.timer", "enabled": True, "state": "started",
+        })
+        self.assertNotIn("when", timer_task)
+        self.assertGreater(self.tasks.index(timer_task), self.tasks.index(task))
+        timer = COPY_CHECK_TIMER.read_text(encoding="utf-8").splitlines()
+        for directive in (
+            "OnCalendar=*-*-* 09:00:00 Asia/Tokyo", "Persistent=true",
+            "Unit=offline-dr-copy-check.service", "WantedBy=timers.target",
+        ):
+            self.assertIn(directive, timer)
+
+    def test_offline_copy_check_service_queues_an_overdue_alert(self) -> None:
+        service = COPY_CHECK_SERVICE.read_text(encoding="utf-8")
+        for directive in (
+            "Type=oneshot", "User=root", "Group=root", "Environment=WEBHOOK_URL=",
+            "TimeoutStartSec=30s", "NoNewPrivileges=true", "PrivateTmp=true",
+            "StandardOutput=journal", "StandardError=journal",
+        ):
+            self.assertIn(directive, service.splitlines())
+        with tempfile.TemporaryDirectory(prefix="offline-copy-check-") as directory:
+            project_root = Path(directory)
+            (project_root / "scripts").mkdir()
+            shutil.copyfile(ROOT / "scripts/generate-alert.sh", project_root / "scripts/generate-alert.sh")
+            unit = (service.replace("{{ google_drive_dr_project_root }}", str(project_root))
+                    .replace("{{ google_drive_dr_install_root }}", str(ROOT / "scripts/google_drive_dr")))
+            environment = {
+                "PATH": os.defpath,
+                "OFFLINE_DR_LOG_DIR": str(project_root / "missing-logs"),
+            }
+            for line in unit.splitlines():
+                if line.startswith("Environment="):
+                    assignment, = shlex.split(line.removeprefix("Environment="))
+                    key, value = assignment.split("=", 1)
+                    environment[key] = value
+            command, = [line.removeprefix("ExecStart=") for line in unit.splitlines()
+                        if line.startswith("ExecStart=")]
+            result = subprocess.run(shlex.split(command), env=environment,
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            alert_file, = (project_root / "alerts").glob("alert-*.json")
+            alert = json.loads(alert_file.read_text(encoding="utf-8"))
+            self.assertEqual(alert["type"], "offline-dr-copy-overdue")
+            self.assertEqual(alert["details"], "lastOk=none;days=-1")
 
     def test_isolated_postgres_restic_harness_has_cleanup_and_restore_boundaries(self) -> None:
         script = INTEGRATION_SCRIPT.read_text(encoding="utf-8")
