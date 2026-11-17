@@ -25,7 +25,8 @@ import { buildProductionScheduleDashboardBaseWhereWithMaterializedMaxProductNoWi
 import { readGrindingPlanningBoardLoadSummary } from '../grinding-planning-board-load-summary.js';
 import { resolveSeibanMachineDisplayNamesBatched } from '../seiban-machine-display-names.service.js';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, planningBoardArrivalDate, asRowData, isCategoryResource, progressMapToRecord, type DbClient, type PlanningSnapshotPayload, type PlanningSource, type PlanningState, type ReusablePlanningPayload, type RowDetail, type WinnerRow, uniqueFseibans, valueAsString } from './shared.js';
-import { readOverrides, readPlanningResourceCandidates, readPlanningSource, readRanks } from './source.js';
+import { readOverrides, readPlanningResourceCandidates, readRanks } from './source.js';
+import { readPlanningSource } from './planning-source.js';
 import { MAX_REUSABLE_PLANNING_PAYLOADS, REUSABLE_PLANNING_PAYLOAD_TTL_MS, boardRevision, fallbackPlanningSnapshotStore, getOrCreateState, isPlanningSnapshotPayload, isPlanningStateAlignedWithGeneration, readPlanningSnapshotGenerationDetails, readPlanningLoadGenerationToken, readPlanningSnapshotGenerationToken, reusablePlanningPayloads, stateUncheckedFseibans, stateOrder } from './state.js';
 
 

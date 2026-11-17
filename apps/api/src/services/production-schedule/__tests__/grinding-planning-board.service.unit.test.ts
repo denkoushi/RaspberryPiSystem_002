@@ -121,7 +121,7 @@ import {
   updateGrindingPlanningBoardResourceOrder
 } from '../grinding-planning-board.service.js';
 
-import * as planningSource from '../grinding-planning-board/source.js';
+import * as planningSource from '../grinding-planning-board/planning-source.js';
 import * as loadSummary from '../grinding-planning-board-load-summary.js';
 import { createGrindingPlanningBoardStartupWarmup } from '../grinding-planning-board/startup-warmup.js';
 import { clearLeaderboardCanonicalRowCacheForTests } from '../leaderboard/leaderboard-canonical-row-cache.js';
