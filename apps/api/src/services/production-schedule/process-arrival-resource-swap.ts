@@ -57,15 +57,28 @@ export async function findProcessArrivalResourceSwapCompletedKeys(
 ): Promise<Set<string>> {
   const productNos = [...new Set(processes.map((process) => process.productNo.trim()).filter(Boolean))];
   if (!productNos.length) return new Set();
+  // Narrow the mail rows first and look up only their ingest runs by primary key.
+  // A plain join made the planner hash-scan every ingest run (~100k rows) on each board page.
   const sourceRows = await client.$queryRaw<FkojunstStatusMailSourceRow[]>(Prisma.sql`
+    WITH "swapRows" AS MATERIALIZED (
+      SELECT r."id", r."rowData", r."createdAt", r."updatedAt", r."sourceRowOrdinal",
+        r."sourceIngestRunStartedAt", r."sourceIngestRunId"
+      FROM "CsvDashboardRow" r
+      WHERE ${FKOJUNST_SEZONO_INDEX_PREDICATE}
+        AND BTRIM(r."rowData"->>'FSEZONO') = ANY(${productNos}::text[])
+    ), "swapRuns" AS MATERIALIZED (
+      SELECT run."id", run."status", run."completedAt"
+      FROM "CsvDashboardIngestRun" run
+      WHERE run."id" = ANY(ARRAY(
+        SELECT DISTINCT s."sourceIngestRunId" FROM "swapRows" s WHERE s."sourceIngestRunId" IS NOT NULL
+      ))
+    )
     SELECT r."id", r."rowData", r."createdAt", r."updatedAt", r."sourceRowOrdinal",
       r."sourceIngestRunStartedAt", ir."completedAt" AS "sourceIngestRunCompletedAt"
-    FROM "CsvDashboardRow" r
-    LEFT JOIN "CsvDashboardIngestRun" ir ON ir."id" = r."sourceIngestRunId"
-    WHERE ${FKOJUNST_SEZONO_INDEX_PREDICATE}
-      AND BTRIM(r."rowData"->>'FSEZONO') = ANY(${productNos}::text[])
-      AND (r."sourceIngestRunId" IS NULL
-        OR (ir."status" = 'COMPLETED'::"ImportStatus" AND ir."completedAt" IS NOT NULL))
+    FROM "swapRows" r
+    LEFT JOIN "swapRuns" ir ON ir."id" = r."sourceIngestRunId"
+    WHERE r."sourceIngestRunId" IS NULL
+      OR (ir."status" = 'COMPLETED'::"ImportStatus" AND ir."completedAt" IS NOT NULL)
     ORDER BY ${Prisma.join(FKOJUNST_STATUS_MAIL_SOURCE_ROW_SQL_ORDER_BY.map((fragment) => Prisma.raw(fragment)), ', ')}
   `);
   const { normalizedRows } = collectFkojunstMailNormalizedRowsFromSourceRows(sourceRows);
