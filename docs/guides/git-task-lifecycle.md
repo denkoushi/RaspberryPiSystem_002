@@ -62,7 +62,7 @@ The target is eligible only when the following observations agree:
 - the PR is merged;
 - the PR source is the same repository;
 - the PR head branch is the local branch for the target worktree;
-- the local branch tip equals the PR head SHA; and
+- the local branch tip equals the PR head SHA or is an ancestor of it; and
 - the target worktree has no ordinary changes or special index flags such as `assume-unchanged` and `skip-worktree`.
 
 Ignored caches and generated files are counted and reported but do not block
