@@ -1815,6 +1815,26 @@ esac
         self.assertNotIn("nfc-agent", quiesce)
         self.assertNotIn("barcode-agent", quiesce)
 
+    def test_primary_replication_marker_blocks_standard_compose(self) -> None:
+        tasks = yaml.safe_load(
+            (ANSIBLE / 'roles/release_pi5/tasks/prepare-storage.yml').read_text()
+        )
+        probe, guard = tasks[:2]
+        self.assertEqual(probe['ansible.builtin.stat']['path'],
+                         '{{ release_pi5_project_dir }}/config/pi5-replication-primary')
+        self.assertEqual(probe['register'], 'release_pi5_replication_marker')
+        expression, = guard['ansible.builtin.assert']['that']
+        env = Environment(undefined=StrictUndefined)
+        for exists in (True, False):
+            self.assertEqual(env.compile_expression(expression)(
+                release_pi5_replication_marker={'stat': {'exists': exists}}), not exists)
+        self.assertIn('does not carry docker-compose.replication-primary.yml',
+                      guard['ansible.builtin.assert']['fail_msg'])
+        self.assertIn('include_tasks: prepare-storage.yml',
+                      (ANSIBLE / 'roles/release_pi5/tasks/prefetch.yml').read_text())
+        self.assertIn('include_tasks: prepare-storage.yml',
+                      (ANSIBLE / 'roles/release_pi5/tasks/prepare.yml').read_text())
+
     def test_torque_prepared_pulls_and_verifies_everything_before_quiesce(self) -> None:
         plays = yaml.safe_load(PLAYBOOK)
         names = [play["name"] for play in plays]
