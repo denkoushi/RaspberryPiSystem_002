@@ -13,7 +13,7 @@ export function usePlanningBoardChainItems(params: KioskGrindingPlanningBoardQue
   items: readonly GrindingPlanningBoardItem[] | undefined) {
   const enabled = fseiban !== null && params.completionFilter === 'incomplete';
   const queryParams: KioskGrindingPlanningBoardQuery = {
-    scheduleSource: params.scheduleSource, category: params.category, view: params.view, dueSource: params.dueSource,
+    scheduleSource: params.scheduleSource, category: params.category, view: 'resource', dueSource: params.dueSource,
     fseibans: fseiban === null ? [] : [fseiban], completionFilter: 'complete', includePieces: true
   };
   const query = useQuery({

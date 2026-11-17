@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { api } from '../../../api/client';
@@ -7,7 +7,7 @@ import { api } from '../../../api/client';
 import { productionFixture } from './__perf__/fixture';
 import { buildPlanningBoardGanttLayout } from './gantt/planningBoardGanttLayout';
 import { PlanningBoardGanttView } from './gantt/PlanningBoardGanttView';
-import { planningBoardChainCompletedKey, usePlanningBoardPageChainItems } from './usePlanningBoardChainItems';
+import { planningBoardChainCompletedKey, usePlanningBoardChainItems, usePlanningBoardPageChainItems } from './usePlanningBoardChainItems';
 
 import type { PlanningBoardStatus } from './types';
 
@@ -60,4 +60,22 @@ describe('chain completed items', () => {
     expect(screen.getByTestId('planning-gantt-chain-strip')).toBeInTheDocument();
     expect(get).not.toHaveBeenCalled();
   });
+});
+
+
+it('keeps completed chain data cached when switching display units', async () => {
+  const completed = { ...productionFixture(1, 1).items[0]!, isCompleted: true };
+  const get = vi.spyOn(api, 'get').mockResolvedValue({ data: { items: [completed], nextCursor: null } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const hook = renderHook(({ view }: { view: 'resource' | 'seiban' }) => usePlanningBoardChainItems({
+    category: 'grinding', view, completionFilter: 'incomplete'
+  }, completed.fseiban, []), {
+    initialProps: { view: 'resource' as 'resource' | 'seiban' },
+    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  });
+  await waitFor(() => expect(hook.result.current).toHaveLength(1));
+  hook.rerender({ view: 'seiban' });
+  expect(hook.result.current).toEqual([completed]);
+  expect(get).toHaveBeenCalledTimes(1);
+  hook.unmount(); client.clear();
 });

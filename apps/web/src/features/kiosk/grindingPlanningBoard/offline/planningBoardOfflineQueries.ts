@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { api, getResolvedClientKey } from '../../../../api/client';
 import { useKioskGrindingPlanningBoardProgressive, useKioskGrindingPlanningBoardLoad, useKioskProductionScheduleResources, useKioskGrindingPlanningBoardSeibanCandidates, useKioskGrindingPlanningBoardDueDetail, useKioskGrindingPlanningBoardProcessChips } from '../../../../api/hooks';
@@ -166,7 +166,10 @@ export function usePlanningBoardPageQueries(params: KioskGrindingPlanningBoardQu
   const useCandidates = enabled ? useOfflineCandidates : useKioskGrindingPlanningBoardSeibanCandidates;
   const useResources = enabled ? useOfflineResources : useKioskProductionScheduleResources;
   const useDueDetail = enabled ? useOfflineDueDetail : useKioskGrindingPlanningBoardDueDetail;
-  const boardQuery = useBoard(params, { refetchIntervalMs: options.refetchIntervalMs });
+  // View only changes server ordering; the page sorts the shared items for each display.
+  const query = useBoard({ ...params, view: 'resource' }, { refetchIntervalMs: options.refetchIntervalMs });
+  const data = useMemo(() => query.data ? { ...query.data, view: params.view ?? 'resource' } : undefined, [query.data, params.view]);
+  const boardQuery = { ...query, data };
   const loadQuery = useLoad(params.category, params.scheduleSource);
   const candidateQuery = useCandidates({ category: params.category, completionFilter: options.showCompletedCandidates ? 'all' : 'incomplete' }, { enabled: options.drawerOpen });
   const resourcesQuery = useResources({ pauseRefetch: true });
