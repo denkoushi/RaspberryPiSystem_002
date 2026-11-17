@@ -238,4 +238,19 @@ describe('client registration routes', () => {
       where: { id: 'device-1' }, data: expect.objectContaining({ statusClientId: 'raspi4-new' })
     }));
   });
+
+  it.each(['shelf', 'grinding_arrival'])('stores haizenScanMode %s through PUT', async haizenScanMode => {
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { haizenScanMode } });
+    expect(response.statusCode).toBe(200);
+    expect(prisma.clientDevice.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ haizenScanMode })
+    }));
+  });
+
+  it.each(['other', '', null, 123])('rejects invalid haizenScanMode %j', async haizenScanMode => {
+    const response = await app.inject({ method: 'PUT', url: '/clients/device-1', payload: { haizenScanMode } });
+    expect(response.statusCode).toBe(400);
+    expect(prisma.clientDevice.update).not.toHaveBeenCalled();
+  });
+
 });

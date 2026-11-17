@@ -231,6 +231,7 @@ export async function updateClientDevice(params: {
   defaultMode?: 'PHOTO' | 'TAG' | null;
   kioskInitialRoute?: string | null;
   haizenEdgeEnabled?: boolean;
+  haizenScanMode?: 'shelf' | 'grinding_arrival';
   shelfLayoutEditEnabled?: boolean;
   procedureBoardEnabled?: boolean;
   planningBoardOfflineEnabled?: boolean;
@@ -253,6 +254,7 @@ export async function updateClientDevice(params: {
         ...(params.location !== undefined ? { location: params.location } : {}),
         defaultMode: params.defaultMode ?? undefined,
         ...(params.kioskInitialRoute !== undefined ? { kioskInitialRoute: params.kioskInitialRoute } : {}),
+        ...(params.haizenScanMode !== undefined ? { haizenScanMode: params.haizenScanMode } : {}),
         ...(params.haizenEdgeEnabled !== undefined ? { haizenEdgeEnabled: params.haizenEdgeEnabled } : {}),
         ...(params.procedureBoardEnabled !== undefined ? { procedureBoardEnabled: params.procedureBoardEnabled } : {}),
         ...(params.planningBoardOfflineEnabled !== undefined ? { planningBoardOfflineEnabled: params.planningBoardOfflineEnabled } : {}),

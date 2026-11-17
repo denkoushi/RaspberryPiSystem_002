@@ -75,6 +75,7 @@ export async function registerClientCoreRoutes(app: FastifyInstance): Promise<vo
       defaultMode: body.defaultMode ?? undefined,
       kioskInitialRoute: body.kioskInitialRoute,
       haizenEdgeEnabled: body.haizenEdgeEnabled,
+      haizenScanMode: body.haizenScanMode,
       shelfLayoutEditEnabled: body.shelfLayoutEditEnabled,
       procedureBoardEnabled: body.procedureBoardEnabled,
       planningBoardOfflineEnabled: body.planningBoardOfflineEnabled,

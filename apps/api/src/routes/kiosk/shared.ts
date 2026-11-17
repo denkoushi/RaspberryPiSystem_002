@@ -65,6 +65,7 @@ export async function requireClientDevice(rawClientKey: unknown): Promise<{
     canProxyOtherDevices: boolean;
     inquiryReceiverEnabled: boolean;
     systemNoticeReceiverEnabled: boolean;
+    haizenScanMode: string;
   };
 }> {
   return requireKioskClientDevice(rawClientKey);
