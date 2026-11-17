@@ -4,5 +4,6 @@ After=NetworkManager.service
 
 [Service]
 Type=oneshot
+TimeoutStartSec=150
 User=root
 ExecStart=/usr/local/bin/kiosk-wifi-self-heal.sh

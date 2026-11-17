@@ -1,4 +1,5 @@
 import json
+import fcntl
 import os
 from pathlib import Path
 import subprocess
@@ -43,15 +44,22 @@ if command == 'nmcli':
     if args == ['-g', 'GENERAL.STATE', 'device', 'show', 'wlan0']:
         print(os.environ['STUB_DEVICE_STATE'])
         sys.exit(int(os.environ.get('STUB_NMCLI_RC', '0')))
-    elif args == ['device', 'disconnect', 'wlan0']:
-        sys.exit(int(os.environ.get('STUB_DISCONNECT_RC', '0')))
-    elif args == ['--wait', '45', 'device', 'connect', 'wlan0']:
+    elif args == ['-g', 'GENERAL.CONNECTION', 'device', 'show', 'wlan0']:
+        print(os.environ.get('STUB_CONNECTION', 'Factory WiFi'))
+    elif args == ['device', 'set', 'wlan0', 'autoconnect', 'yes']:
+        pass
+    elif args in (['--wait', '45', 'device', 'connect', 'wlan0'], ['--wait', '45', 'connection', 'up', 'id', 'Factory WiFi']):
         sys.exit(int(os.environ.get('STUB_CONNECT_RC', '0')))
     else:
         sys.exit(99)
 elif command == 'ip':
-    assert args == ['-4', 'route', 'show', 'default', 'dev', 'wlan0']
-    print(os.environ['STUB_ROUTE'])
+    if args == ['-4', 'route', 'get', '192.168.10.230']:
+        if os.environ.get('STUB_PI5_ROUTE_RC'):
+            sys.exit(int(os.environ['STUB_PI5_ROUTE_RC']))
+        print(os.environ.get('STUB_PI5_ROUTE', '192.168.10.230 via 192.168.10.1 dev wlan0 src 192.168.10.20'))
+    else:
+        assert args == ['-4', 'route', 'show', 'default', 'dev', 'wlan0']
+        print(os.environ['STUB_ROUTE'])
 elif command == 'ping':
     assert len(args) == 7 and args[:6] == ['-c', '3', '-W', '2', '-I', 'wlan0']
     sys.exit(0 if args[-1] in os.environ['STUB_REACHABLE'].split() else 1)
@@ -64,10 +72,16 @@ elif command == 'systemctl':
             path = self.bin_dir / name
             path.write_text(stub)
             path.chmod(0o755)
+        # macOS has no util-linux flock; exercise the actual file lock via fcntl.
+        flock = self.bin_dir / 'flock'
+        flock.write_text("#!/usr/bin/env python3\nimport fcntl, sys\nassert sys.argv[1:] == ['-n', '9']\ntry:\n    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)\nexcept BlockingIOError:\n    sys.exit(1)\n")
+        flock.chmod(0o755)
         self.env = dict(os.environ,
                         PATH=str(self.bin_dir) + os.pathsep + os.environ['PATH'],
                         NET_CLASS_DIR=str(self.net_dir), UPTIME_FILE=str(self.uptime),
                         STATE_DIR=str(self.state), REBOOT_HISTORY_FILE=str(self.history),
+                        RELEASE_MARKER=str(self.root / 'release-active'),
+                        OS_UPDATE_LOCK_FILE=str(self.root / 'os-update.lock'),
                         NOW_SECONDS='200000', STUB_CALLS=str(self.calls), STUB_LOGS=str(self.logs),
                         STUB_DEVICE_STATE='100 (connected)',
                         STUB_ROUTE='default via 192.168.10.1 dev wlan0 proto dhcp',
@@ -76,6 +90,7 @@ elif command == 'systemctl':
     def run_watchdog(self, now=None):
         if now is not None:
             self.env['NOW_SECONDS'] = str(now)
+            self.uptime.write_text(f'{now - 199700}.00 100.00\n')
         for path in (self.calls, self.logs):
             if path.exists():
                 path.unlink()
@@ -91,8 +106,8 @@ elif command == 'systemctl':
 
     def seed_state(self):
         self.state.mkdir(exist_ok=True)
-        (self.state / 'first_failure').write_text('199400\n')
-        (self.state / 'reconnected').write_text('199700\n')
+        (self.state / 'first_failure').write_text('0\n')
+        (self.state / 'reconnected').write_text('0\n')
 
     def write_history(self, timestamps):
         self.history.parent.mkdir(exist_ok=True)
@@ -100,7 +115,7 @@ elif command == 'systemctl':
 
     def assert_no_action(self, calls):
         self.assertFalse(any(call[0] == 'systemctl' or
-                             (call[0] == 'nmcli' and 'GENERAL.STATE' not in call) for call in calls))
+                             (call[0] == 'nmcli' and call[1] != '-g') for call in calls))
 
     def test_bash_syntax(self):
         self.assertNotIn('{{', self.script.read_text())
@@ -120,7 +135,23 @@ elif command == 'systemctl':
         self.assertRegex(tasks, r'daemon_reload:\s*true')
         self.assertIn('enabled: "{{ kiosk_wifi_self_heal_enabled | bool }}"', tasks)
         self.assertIn("'started' if (kiosk_wifi_self_heal_enabled | bool) else 'stopped'", tasks)
-        self.assertIn('kiosk_wifi_self_heal_enabled: true', (ROLE / 'defaults/main.yml').read_text())
+        self.assertIn('kiosk_wifi_self_heal_enabled: false', (ROLE / 'defaults/main.yml').read_text())
+        import yaml
+        inventory = yaml.safe_load((ROOT / 'infrastructure/ansible/inventory.yml').read_text())
+        enabled_hosts = []
+        def visit(group):
+            for host, variables in group.get('hosts', {}).items():
+                if variables and variables.get('kiosk_wifi_self_heal_enabled') is True:
+                    enabled_hosts.append(host)
+            for child in group.get('children', {}).values():
+                visit(child)
+        visit(inventory['all'])
+        self.assertCountEqual(enabled_hosts, ['raspi4-kensaku-stonebase01', 'raspi4-assembly-01'])
+        self.assertIn('register: kiosk_wifi_self_heal_service_unit', tasks)
+        self.assertIn('register: kiosk_wifi_self_heal_timer_unit', tasks)
+        self.assertIn('state: restarted', tasks)
+        self.assertIn('- kiosk_wifi_self_heal_enabled | bool', tasks)
+        self.assertIn('- kiosk_wifi_self_heal_service_unit.changed or kiosk_wifi_self_heal_timer_unit.changed', tasks)
         self.assertIn('import_tasks: wifi-self-heal.yml', (ROLE / 'tasks/main.yml').read_text())
         release = (ROOT / 'infrastructure/ansible/roles/release_kiosk/tasks/main.yml').read_text()
         self.assertRegex(release, r'include_role:\n\s+name: kiosk\n\s+tasks_from: wifi-self-heal')
@@ -135,7 +166,7 @@ elif command == 'systemctl':
                      'Unit=kiosk-wifi-self-heal.service', 'WantedBy=timers.target'):
             self.assertIn(line, timer)
         service = (TEMPLATES / 'kiosk-wifi-self-heal.service.j2').read_text()
-        for line in ('Type=oneshot', 'User=root', 'ExecStart=/usr/local/bin/kiosk-wifi-self-heal.sh'):
+        for line in ('Type=oneshot', 'TimeoutStartSec=150', 'User=root', 'ExecStart=/usr/local/bin/kiosk-wifi-self-heal.sh'):
             self.assertIn(line, service.splitlines())
         self.assertNotIn('RemainAfterExit=yes', service)
 
@@ -149,9 +180,10 @@ elif command == 'systemctl':
 
     def test_disconnected_clears_state(self):
         self.seed_state()
+        (self.state / 'reconnected').unlink()
         self.env['STUB_DEVICE_STATE'] = '30 (disconnected)'
         calls, logs = self.run_watchdog()
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)
         self.assertEqual(logs, [])
         self.assertEqual(list(self.state.iterdir()), [])
 
@@ -171,7 +203,7 @@ elif command == 'systemctl':
     def test_first_failure_only_records(self):
         calls, logs = self.run_watchdog()
         self.assert_no_action(calls)
-        self.assertEqual((self.state / 'first_failure').read_text(), '200000\n')
+        self.assertEqual((self.state / 'first_failure').read_text(), '300\n')
         self.assertFalse((self.state / 'reconnected').exists())
         self.assertEqual(len(logs), 1)
 
@@ -181,9 +213,9 @@ elif command == 'systemctl':
         self.assert_no_action(calls)
         self.assertEqual(logs, [])
         calls, logs = self.run_watchdog(200300)
-        self.assertEqual(calls[-2:], [['nmcli', 'device', 'disconnect', 'wlan0'],
-                                     ['nmcli', '--wait', '45', 'device', 'connect', 'wlan0']])
-        self.assertEqual((self.state / 'reconnected').read_text(), '200300\n')
+        self.assertEqual(calls[-1], ['nmcli', '--wait', '45', 'connection', 'up', 'id', 'Factory WiFi'])
+        self.assertFalse(any('disconnect' in call for call in calls))
+        self.assertEqual((self.state / 'reconnected').read_text(), '600\n')
         calls, logs = self.run_watchdog(200599)
         self.assert_no_action(calls)
         calls, logs = self.run_watchdog(200600)
@@ -238,9 +270,10 @@ elif command == 'systemctl':
 
     def test_failed_reconnect_is_recorded_without_retry(self):
         self.run_watchdog()
-        self.env.update(STUB_CONNECT_RC='10', STUB_DISCONNECT_RC='10')
+        self.env.update(STUB_CONNECT_RC='10')
         calls, logs = self.run_watchdog(200300)
-        self.assertEqual(sum('connect' in call for call in calls), 1)
+        self.assertEqual(sum('up' in call for call in calls), 1)
+        self.assertEqual(calls[-1], ['nmcli', 'device', 'set', 'wlan0', 'autoconnect', 'yes'])
         self.assertTrue((self.state / 'reconnected').exists())
         self.assertIn('failed: rc=10', logs[-1][3])
 
@@ -272,6 +305,123 @@ elif command == 'systemctl':
         self.assertEqual(calls[-1], ['systemctl', 'reboot'])
         self.assertEqual(self.history.read_text(), '200000\n')
         self.assertIn('command failed rc=1', logs[-1][3])
+
+
+    def test_failed_reconnect_disconnected_still_reboots(self):
+        self.run_watchdog(200000)
+        self.env['STUB_CONNECT_RC'] = '10'
+        self.run_watchdog(200300)
+        self.env['STUB_DEVICE_STATE'] = '30 (disconnected)'
+        calls, _ = self.run_watchdog(200360)
+        self.assert_no_action(calls)
+        self.assertEqual((self.state / 'reconnected').read_text(), '600\n')
+        calls, _ = self.run_watchdog(200600)
+        self.assertEqual(calls[-1], ['systemctl', 'reboot'])
+
+    def test_failed_reconnect_without_route_still_reboots(self):
+        self.run_watchdog(200000)
+        self.env['STUB_CONNECT_RC'] = '10'
+        self.run_watchdog(200300)
+        self.env['STUB_DEVICE_STATE'] = '30 (disconnected)'
+        self.env['STUB_PI5_ROUTE_RC'] = '2'
+        calls, _ = self.run_watchdog(200360)
+        self.assert_no_action(calls)
+        self.assertEqual((self.state / 'reconnected').read_text(), '600\n')
+        calls, _ = self.run_watchdog(200600)
+        self.assertEqual(calls[-1], ['systemctl', 'reboot'])
+
+    def test_no_route_before_reconnect_clears_state(self):
+        self.run_watchdog(200000)
+        self.env['STUB_PI5_ROUTE_RC'] = '2'
+        calls, _ = self.run_watchdog(200060)
+        self.assert_no_action(calls)
+        self.assertFalse((self.state / 'first_failure').exists())
+
+    def test_connecting_after_reconnect_keeps_stage(self):
+        self.run_watchdog(200000)
+        self.run_watchdog(200300)
+        self.env['STUB_DEVICE_STATE'] = '40 (connecting)'
+        calls, _ = self.run_watchdog(200360)
+        self.assert_no_action(calls)
+        self.assertEqual((self.state / 'reconnected').read_text(), '600\n')
+        self.env['STUB_DEVICE_STATE'] = '100 (connected)'
+        calls, _ = self.run_watchdog(200600)
+        self.assertEqual(calls[-1], ['systemctl', 'reboot'])
+
+    def test_limit_log_once_per_limit_state(self):
+        self.seed_state()
+        self.write_history([199999])
+        self.assertEqual(len(self.run_watchdog()[1]), 1)
+        self.assertEqual(self.run_watchdog()[1], [])
+        self.write_history([120000, 150000, 190000])
+        self.assertIn('last 24h=3', self.run_watchdog()[1][0][3])
+        self.assertEqual(self.run_watchdog()[1], [])
+
+    def test_release_marker_defers_then_retries(self):
+        self.seed_state()
+        marker = Path(self.env['RELEASE_MARKER'])
+        marker.mkdir()
+        calls, logs = self.run_watchdog()
+        self.assert_no_action(calls)
+        self.assertIn('deployment active', logs[0][3])
+        self.assertFalse(self.history.exists())
+        self.assertEqual(self.run_watchdog()[1], [])
+        marker.rmdir()
+        self.assertEqual(self.run_watchdog()[0][-1], ['systemctl', 'reboot'])
+
+    def test_os_update_lock_defers_then_retries(self):
+        self.seed_state()
+        with open(self.env['OS_UPDATE_LOCK_FILE'], 'w') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            calls, logs = self.run_watchdog()
+            self.assert_no_action(calls)
+            self.assertIn('OS security update active', logs[0][3])
+            self.assertFalse(self.history.exists())
+            self.assertEqual(self.run_watchdog()[1], [])
+        self.assertEqual(self.run_watchdog()[0][-1], ['systemctl', 'reboot'])
+
+    def test_other_route_clears_state_without_action(self):
+        self.seed_state()
+        self.env['STUB_PI5_ROUTE'] = '192.168.10.230 dev eth0 src 192.168.10.20'
+        calls, logs = self.run_watchdog()
+        self.assert_no_action(calls)
+        self.assertFalse(any(call[0] == 'ping' for call in calls))
+        self.assertEqual(logs, [])
+        self.assertEqual(list(self.state.iterdir()), [])
+
+    def test_corrupt_state_is_recreated(self):
+        for name in ('first_failure', 'reconnected'):
+            for value in ('', 'invalid\n'):
+                with self.subTest(name=name, value=value):
+                    self.seed_state()
+                    (self.state / name).write_text(value)
+                    calls, _ = self.run_watchdog()
+                    self.assert_no_action(calls)
+                    self.assertEqual((self.state / 'first_failure').read_text(), '300\n')
+                    self.assertFalse((self.state / 'reconnected').exists())
+
+    def test_future_history_discarded(self):
+        self.seed_state()
+        self.write_history([200001, 300000, 400000])
+        calls, _ = self.run_watchdog()
+        self.assertEqual(calls[-1], ['systemctl', 'reboot'])
+        self.assertEqual(self.history.read_text(), '200000\n')
+
+    def test_connection_name_unavailable_uses_device_connect(self):
+        self.run_watchdog(200000)
+        self.env['STUB_CONNECTION'] = '--'
+        calls, _ = self.run_watchdog(200300)
+        self.assertEqual(calls[-1], ['nmcli', '--wait', '45', 'device', 'connect', 'wlan0'])
+
+    def test_wall_clock_does_not_advance_recovery(self):
+        self.run_watchdog()
+        self.env['NOW_SECONDS'] = '900000'
+        calls, _ = self.run_watchdog()
+        self.assert_no_action(calls)
+        self.uptime.write_text('600.00 100.00\n')
+        self.env['NOW_SECONDS'] = '100000'
+        calls, _ = self.run_watchdog()
+        self.assertIn('up', calls[-1])
 
 
 if __name__ == '__main__':

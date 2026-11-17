@@ -14,6 +14,7 @@
     owner: root
     group: root
     mode: '0644'
+  register: kiosk_wifi_self_heal_service_unit
 
 - name: Deploy kiosk Wi-Fi self-heal timer
   ansible.builtin.template:
@@ -22,6 +23,7 @@
     owner: root
     group: root
     mode: '0644'
+  register: kiosk_wifi_self_heal_timer_unit
 
 - name: Reload systemd for kiosk Wi-Fi self-heal units
   ansible.builtin.systemd:
@@ -32,3 +34,11 @@
     name: kiosk-wifi-self-heal.timer
     enabled: "{{ kiosk_wifi_self_heal_enabled | bool }}"
     state: "{{ 'started' if (kiosk_wifi_self_heal_enabled | bool) else 'stopped' }}"
+
+- name: Restart kiosk Wi-Fi self-heal timer after unit changes
+  ansible.builtin.systemd:
+    name: kiosk-wifi-self-heal.timer
+    state: restarted
+  when:
+    - kiosk_wifi_self_heal_enabled | bool
+    - kiosk_wifi_self_heal_service_unit.changed or kiosk_wifi_self_heal_timer_unit.changed

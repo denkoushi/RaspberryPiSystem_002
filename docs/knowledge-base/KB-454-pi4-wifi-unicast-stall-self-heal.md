@@ -16,11 +16,11 @@
 
 ## Fix
 
-`kiosk-wifi-self-heal.timer` が起動5分後から毎分 root で確認する。wlan0 が connected のときだけ、wlan0 の既定ゲートウェイと `local_network.raspberrypi5_ip` を ping し、両方の失敗が300秒続けば切断・再接続する。再接続後さらに300秒失敗が続けば再起動する。片方でも応答するか未接続になれば `/run/kiosk-wifi-self-heal/` の一時状態を消す。wlan0 不在・nmcli 不在・起動300秒未満は何もしない。
+`kiosk-wifi-self-heal.timer` が起動5分後から毎分 root で確認する。Pi5 LAN 宛て経路が wlan0 の端末だけで、connected 時にゲートウェイと Pi5 を ping する。両方の失敗が uptime 基準で300秒続けば、その時点の接続名を使い `nmcli --wait 45 connection up id`（名前がなければ `device connect`）で再接続する。失敗時は `autoconnect yes` に戻す。再接続後は未接続・接続処理中でも段階を保持し、さらに300秒失敗が続けば再起動する。片方の応答、wlan0 以外の業務経路、介入前の未接続で一時状態を消し、空・不正な状態は作り直す。
 
-再起動直前に `/var/lib/kiosk-wifi-self-heal/reboots` へ時刻を保存し、直近1時間1回・24時間3回までに制限する。保存時に24時間より古い履歴を捨て、履歴を保存できなければ再起動しない。正常時は無ログとし、介入と理由だけ `logger -t kiosk-wifi-self-heal` で記録する。
+再起動履歴は壁時計で `/var/lib/kiosk-wifi-self-heal/reboots` に保存し、直近1時間1回・24時間3回までとする。未来と24時間超の履歴は捨て、保存失敗時は再起動しない。直前に `/run/raspi-release/active` と `/run/lock/raspi-os-security-update.lock` の非待機ロックを確認し、デプロイ・OS 更新中は次回へ見送る。上限・見送りログは同じ抑止状態につき1回とする。service の開始上限は150秒。
 
-標準デプロイの `deploy-release-standard.yml` → `release_kiosk` → `kiosk` の `wifi-self-heal` タスクで配置する。通常の kiosk ロールにも同じタスクを import する。`kiosk_wifi_self_heal_enabled: false` で timer を停止・無効化できる。Pi5 側の既存実装は変更しない。
+標準デプロイと通常の kiosk ロールで配置し、unit 変更時は有効な timer を restart する。既定は `kiosk_wifi_self_heal_enabled: false`（停止・無効化）とし、`raspi4-kensaku-stonebase01` と `raspi4-assembly-01` だけ有効化する。Pi5 側の既存実装は変更しない。
 
 ## Validation
 
