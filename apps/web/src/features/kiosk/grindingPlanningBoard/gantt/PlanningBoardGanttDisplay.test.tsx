@@ -17,6 +17,7 @@ import { usePlanningBoardGantt } from './usePlanningBoardGantt';
 import type { PlanningBoardGanttHandle, PlanningBoardGanttProps } from './planningBoardGanttViewTypes';
 import type { GrindingPlanningBoardResponse, GrindingPlanningBoardTestBar } from '@raspi-system/shared-types';
 
+vi.mock('../../../../api/hooks/production-schedule/grinding-planning-board-test-bar-parts', () => ({ usePlanningBoardTestBarPartCandidates: () => ({ data: { partNames: [] } }) }));
 vi.mock('../../../../api/hooks/machine-signal', () => ({ useMachineSignalResourceUptime: () => ({ data: undefined }) }));
 const capacityState = vi.hoisted(() => ({
   data: undefined as undefined | { dailyHoursByResource: Record<string, 8>; unitSplitEnabledByResource?: Record<string, boolean> }
@@ -1000,7 +1001,7 @@ describe('two-machine chain links', () => {
     const dialog = screen.getByRole('dialog', { name: 'テスト加工' });
     expect(within(dialog).getByRole('button', { name: owner === 0 ? '022' : '021', exact: true })).toHaveAttribute('aria-pressed', 'true');
     await act(async () => { fireEvent.click(within(dialog).getByRole('button', { name: '差し込む' })); });
-    expect(testControls.create).toHaveBeenCalledExactlyOnceWith(owner === 0 ? '022' : '021', 30, expect.objectContaining({ itemId: `piece:p${1 - owner}` }));
+    expect(testControls.create).toHaveBeenCalledExactlyOnceWith(owner === 0 ? '022' : '021', 30, expect.objectContaining({ itemId: `piece:p${1 - owner}` }), null);
     fireEvent.click(screen.getByRole('button', { name: '工程のつながりを閉じる' }));
     expectCleared();
   });

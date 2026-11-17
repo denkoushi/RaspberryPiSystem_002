@@ -10,7 +10,7 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
   const [minutes, setMinutes] = useState('30');
   const [resource, setResource] = useState(initialResource);
   const [partName, setPartName] = useState('');
-  const { data: candidates } = usePlanningBoardTestBarPartCandidates(resource);
+  const { data: candidates, isLoading: candidatesLoading } = usePlanningBoardTestBarPartCandidates(resource);
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -23,7 +23,7 @@ export function PlanningBoardTestBarDialog({ sequence, resources, initialResourc
       setPending(true); setFailed(false); void onInsert(resource, value, partName || null).then((saved) => { if (saved) onClose(); else { setPending(false); setFailed(true); } });
     }}>
       <label htmlFor="planning-test-part" className="mt-4 block text-sm font-bold">部品</label>
-      <select id="planning-test-part" value={partName} disabled={pending} onChange={(event) => setPartName(event.target.value)}
+      <select id="planning-test-part" value={partName} disabled={pending || candidatesLoading} onChange={(event) => setPartName(event.target.value)}
         className="mt-2 h-11 w-full rounded border border-slate-600 bg-slate-900 px-3">
         <option value="">{`テスト${sequence}`}</option>
         {candidates?.partNames.map((name) => <option key={name} value={name}>{name}</option>)}

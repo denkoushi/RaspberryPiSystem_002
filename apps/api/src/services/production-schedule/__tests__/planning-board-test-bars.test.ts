@@ -17,7 +17,7 @@ vi.mock('../grinding-planning-board/source.js', () => ({ readMasterResourceCds: 
 vi.mock('../grinding-planning-board/write.js', () => ({
   resolveCurrentProjectionInTransaction: mocks.current, writeOverrideIfChanged: mocks.save, projectCurrentItems: mocks.project
 }));
-vi.mock('../grinding-planning-board/shared.js', () => ({ assertItemRevision: vi.fn(), isCategoryResource: mocks.categoryResource }));
+vi.mock('../grinding-planning-board/shared.js', () => ({ assertItemRevision: vi.fn(), isCategoryResource: mocks.categoryResource, STRING_TRIM_CHARACTERS: ' ' }));
 vi.mock('../policies/resource-category-policy.service.js', () => ({ getResourceCategoryPolicy: async () => ({}), normalizeProductionScheduleResourceCd: (cd: string) => cd }));
 vi.mock('../sessaku-pieces/piece-key.js', () => ({ acquireSessakuPieceLogicalLocks: vi.fn() }));
 vi.mock('../grinding-planning-board/schedule-source.js', async (original) => ({
@@ -170,11 +170,11 @@ describe('test bar part names', () => {
     mocks.queryRaw.mockResolvedValue([{ partName: 'A' }, { partName: 'B' }]);
     expect(await getPlanningTestBarPartCandidates({ siteKey: 'site', resourceCd: '761' })).toEqual({ partNames: ['A', 'B'] });
     const sql = mocks.queryRaw.mock.calls[0][0];
-    expect(sql.values).toEqual(['3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', '761']);
-    expect(sql.sql).toContain(`SELECT DISTINCT TRIM("rowData"->>'FHINMEI')`);
+    expect(sql.values).toEqual([' ', '3f2f6b0e-6a1e-4c0b-9d0b-1a4f3f0d2a01', ' ', '761', ' ']);
+    expect(sql.sql).toContain(`SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ?)`);
     expect(sql.sql).toContain(`"rowData"->>'FSEIBAN' = '********'`);
-    expect(sql.sql).toContain(`"rowData"->>'FSIGENCD' = ?`);
-    expect(sql.sql).toContain(`NULLIF(TRIM("rowData"->>'FHINMEI'), '') IS NOT NULL`);
+    expect(sql.sql).toContain(`BTRIM("rowData"->>'FSIGENCD', ?) = ?`);
+    expect(sql.sql).toContain(`BTRIM("rowData"->>'FHINMEI', ?) <> ''`);
     expect(sql.sql).toContain('ORDER BY "partName"');
     expect(mocks.categoryResource).toHaveBeenCalledWith('761', 'all', {});
   });

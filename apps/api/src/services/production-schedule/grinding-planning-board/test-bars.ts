@@ -9,7 +9,7 @@ import { acquireProductionScheduleParentRowLocksInTransaction } from '../order-a
 import { getResourceCategoryPolicy, normalizeProductionScheduleResourceCd } from '../policies/resource-category-policy.service.js';
 import { acquireSessakuPieceLogicalLocks } from '../sessaku-pieces/piece-key.js';
 import { mergeScheduleSourceOrder, readScheduleSourceExcludedFseibans } from './schedule-source.js';
-import { assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
+import { STRING_TRIM_CHARACTERS, assertItemRevision, isCategoryResource, type CurrentProjection, type DbClient } from './shared.js';
 import { readMasterResourceCds, readOverrides, readWinnerRowsByFseibans } from './source.js';
 import { assertBoardRevision, boardRevision, ensurePlanningBoardState, lockState, stateOrder } from './state.js';
 import { projectCurrentItems, resolveCurrentProjectionInTransaction, writeOverrideIfChanged } from './write.js';
@@ -26,12 +26,12 @@ export async function getPlanningTestBarPartCandidates(params: { siteKey: string
   const master = await readMasterResourceCds(prisma);
   if (!resourceCd || !master.has(resourceCd) || !isCategoryResource(resourceCd, 'all', policy)) throw new ApiError(400, '資源CDが不正です', undefined, 'INVALID_RESOURCE_CD');
   const rows = await prisma.$queryRaw<Array<{ partName: string }>>(Prisma.sql`
-    SELECT DISTINCT TRIM("rowData"->>'FHINMEI') AS "partName"
+    SELECT DISTINCT BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) AS "partName"
     FROM "CsvDashboardRow"
     WHERE "csvDashboardId" = ${PRODUCTION_SCHEDULE_DASHBOARD_ID}
       AND "rowData"->>'FSEIBAN' = '********'
-      AND "rowData"->>'FSIGENCD' = ${resourceCd}
-      AND NULLIF(TRIM("rowData"->>'FHINMEI'), '') IS NOT NULL
+      AND BTRIM("rowData"->>'FSIGENCD', ${STRING_TRIM_CHARACTERS}) = ${resourceCd}
+      AND BTRIM("rowData"->>'FHINMEI', ${STRING_TRIM_CHARACTERS}) <> ''
     ORDER BY "partName"
   `);
   return { partNames: rows.map((row) => row.partName) };
