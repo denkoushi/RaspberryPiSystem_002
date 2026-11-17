@@ -4,7 +4,6 @@ export { getInspectionDrawingPlacementProposals, postInspectionDrawingPlacementD
 
 import type {
   FindOrOpenPartMeasurementResponse,
-  PartMeasurementTemplateItemDto,
   KioskInspectionDrawingTemplateSummaryDto,
   PartMeasurementProcessGroup,
   PartMeasurementSheetDto,
@@ -1025,7 +1024,8 @@ export async function reviseKioskInspectionDrawingTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1069,7 +1069,8 @@ export async function createKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
@@ -1108,7 +1109,8 @@ export async function reviseKioskInspectionDrawingTemplateGroup(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<{ group: PartMeasurementTemplateSiblingGroupDto; templates: PartMeasurementTemplateDto[] }> {
@@ -1249,9 +1251,7 @@ export async function listPartMeasurementDrawingOcrCandidates(
   const { data } = await api.post<PartMeasurementDrawingOcrCandidateResponseDto>(
     `/part-measurement/visual-templates/${visualTemplateId}/ocr/candidates`,
     body,
-    {
-      headers: clientKey ? { 'x-client-key': clientKey } : undefined
-    }
+    { headers: clientKey ? { 'x-client-key': clientKey } : undefined }
   );
   return data;
 }
@@ -1374,7 +1374,8 @@ export async function createPartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
@@ -1410,7 +1411,8 @@ export async function createInspectionDrawingEvaluationTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<{ template: PartMeasurementTemplateDto; sheet: PartMeasurementSheetDto }> {
@@ -1472,7 +1474,8 @@ export async function revisePartMeasurementTemplate(
       nominalValue?: number | null;
       lowerLimit?: number | null;
       upperLimit?: number | null;
-    } & Pick<PartMeasurementTemplateItemDto, 'calloutDims'>>;
+      calloutDims?: Array<{ dir: 'x' | 'y'; baseXRatio: number; baseYRatio: number; offsetRatio: number }> | null;
+    }>;
   },
   clientKey?: string
 ): Promise<PartMeasurementTemplateDto> {
