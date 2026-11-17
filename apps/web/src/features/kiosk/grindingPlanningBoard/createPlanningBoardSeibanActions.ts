@@ -1,4 +1,3 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 
 import type { PlanningBoardWriteGate } from './offline/planningBoardWriteGate';
@@ -35,10 +34,6 @@ export function createPlanningBoardSeibanActions({
   const persistOrder = (nextOrder: string[], onAccepted?: () => void, onRejected?: () => void): Promise<boolean> => {
     if (gate && !gate.attempt()) return Promise.resolve(false);
     if (!data || !scopeReady || writeBlocked || allocation === 'original') return Promise.resolve(false);
-    if (nextOrder.length > KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX) {
-      setOrderRegistrationError(`登録上限${KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX}件を超えるため保存できません。選択を減らしてください。`);
-      return Promise.resolve(false);
-    }
     setOrderRegistrationError(null);
     return new Promise((resolve) => {
       const accepted = enqueueWrite({ label: '製番順', itemIds: [], seibans: [...new Set([...registeredFseibans, ...nextOrder])], order: true,

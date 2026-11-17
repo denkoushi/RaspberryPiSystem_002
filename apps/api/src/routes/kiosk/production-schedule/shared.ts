@@ -1,4 +1,3 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { z } from 'zod';
 import { DUE_MANAGEMENT_TUNING_REASON_CODES } from '../../../services/production-schedule/auto-tuning/tuning-reason-code.js';
 import { LEADERBOARD_DISPLAY_ROW_SCOPE_ABS_MAX } from '../../../services/production-schedule/leaderboard/leaderboard-display-row-scope.js';
@@ -367,26 +366,26 @@ export const productionScheduleProcessingBodySchema = z.object({
 export const productionScheduleSearchStateBodySchema = z.object({
   state: z.object({
     inputQuery: z.string().max(200).optional(),
-    activeQueries: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).optional(),
+    activeQueries: z.array(z.string().max(200)).optional(),
     activeResourceCds: z.array(z.string().max(100)).max(100).optional(),
     activeResourceAssignedOnlyCds: z.array(z.string().max(100)).max(100).optional(),
-    history: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).optional()
+    history: z.array(z.string().max(200)).optional()
   })
 });
 
 export const productionScheduleSearchHistoryBodySchema = z.object({
-  history: z.array(z.string().max(200)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
+  history: z.array(z.string().max(200))
 });
 
-/** 素の入力を多めに受け、trim・重複除去後に 100 件まで保持する。 */
+/** trim・空除外・重複除去を行う。 */
 export const productionScheduleSeibanMachineNamesBodySchema = z
   .object({
-    fseibans: z.array(z.string().max(200)).max(100)
+    fseibans: z.array(z.string().max(200))
   })
   .transform((body) => ({
     fseibans: Array.from(
       new Set(body.fseibans.map((value) => value.trim()).filter((value) => value.length > 0))
-    ).slice(0, 100)
+    )
   }));
 
 export const productionScheduleDueManagementSeibanParamsSchema = z.object({

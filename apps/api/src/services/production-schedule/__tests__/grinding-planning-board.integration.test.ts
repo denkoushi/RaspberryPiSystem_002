@@ -604,7 +604,7 @@ describeIntegration('grinding planning board service real Postgres integration',
     });
   });
 
-  it('counts every registered process in progress and caps the copied seiban order at 100', async () => {
+  it('counts every registered process in progress and copies the whole seiban order', async () => {
     const progressFixture = await createFixture();
     await addRows(progressFixture, [
       { fseiban: `${progressFixture.prefix}-PROGRESS`, fhincd: 'PART-PROGRESS', resourceCd: '305', processOrder: '1', productNo: '1', completed: true },
@@ -623,8 +623,8 @@ describeIntegration('grinding planning board service real Postgres integration',
       requiredMinutes: '1'
     })));
     const cappedResponse = await boardFor(cappedFixture);
-    expect(cappedResponse.registeredFseibans).toHaveLength(100);
-    expect(cappedResponse.items).toHaveLength(100);
+    expect(cappedResponse.registeredFseibans).toHaveLength(102);
+    expect(cappedResponse.items).toHaveLength(102);
     expect(cappedResponse.load.find((entry) => entry.resourceCd === '305')).toMatchObject({
       originalItemCount: 102,
       alternateItemCount: 102,
@@ -1353,11 +1353,14 @@ describeIntegration('grinding planning board service real Postgres integration',
     });
     expect(cuttingCandidates.candidates.map((candidate) => candidate.fseiban)).toEqual([cutting]);
 
+    const fseibans = Array.from({ length: 300 }, (_, index) => seiban(`BULK-${index}`));
+    await addRows(fixture, fseibans.map((fseiban, index) => ({
+      fseiban, fhincd: 'PART-BULK', productNo: `BULK-${index}`, dueDate: '2026-09-20'
+    })));
+    const current = await boardFor(fixture);
     await expect(service().updateGrindingPlanningBoardSeibanOrder({
-      siteKey: fixture.siteKey,
-      sourceRevision: 'unused-for-limit-check',
-      fseibans: Array.from({ length: 101 }, (_, index) => `OVER-${index + 1}`)
-    })).rejects.toMatchObject({ code: 'SEIBAN_LIMIT_EXCEEDED' });
+      siteKey: fixture.siteKey, sourceRevision: current.sourceRevision, fseibans
+    })).resolves.toMatchObject({ seibanOrder: fseibans });
   });
   describe('テスト加工の棒', () => {
     const testApi = () => import('../grinding-planning-board/test-bars.js');

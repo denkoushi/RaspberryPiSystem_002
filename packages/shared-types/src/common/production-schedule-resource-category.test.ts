@@ -6,7 +6,6 @@ import {
   isProductionScheduleGrindingResourceCd
 } from './production-schedule-resource-category.js';
 import {
-  KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX,
   normalizeKioskProductionScheduleSearchHistory
 } from './production-schedule-search-limits.js';
 
@@ -55,13 +54,12 @@ describe('normalizeKioskProductionScheduleSearchHistory', () => {
     expect(normalizeKioskProductionScheduleSearchHistory([' A1 ', '', '  ', 'B2', 'A1', 'b2'])).toEqual(['A1', 'B2', 'b2']);
   });
 
-  it('caps the list at the shared maximum after de-duplication', () => {
-    const items = Array.from({ length: KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX + 5 }, (_, i) => `S${i}`);
+  it('retains 300 entries after de-duplication', () => {
+    const items = Array.from({ length: 300 }, (_, i) => `S${i}`);
     const withDuplicates = ['S0', ...items];
     const result = normalizeKioskProductionScheduleSearchHistory(withDuplicates);
-    expect(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX).toBe(100);
-    expect(result).toHaveLength(100);
+    expect(result).toHaveLength(300);
     expect(result[0]).toBe('S0');
-    expect(result[99]).toBe('S99');
+    expect(result[299]).toBe('S299');
   });
 });

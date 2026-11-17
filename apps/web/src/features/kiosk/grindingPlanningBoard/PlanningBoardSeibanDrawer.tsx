@@ -1,4 +1,4 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX as REGISTERED_SEIBAN_MAX, extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
+import { extractInspectionDrawingAsciiDigits } from '@raspi-system/shared-types';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
 
 import { useSingleFlight } from '../../../hooks/useSingleFlight';
@@ -154,8 +154,6 @@ export function PlanningBoardSeibanDrawer({
     !registeredFseibans.includes(candidate.fseiban)
   ), [candidates, registeredFseibans, selectedCandidates, showCompletedCandidates]);
   const selectedCandidateCount = selectedCandidatesForRegistration.length;
-  const availableSlots = REGISTERED_SEIBAN_MAX - registeredFseibans.length;
-  const selectedWouldExceedLimit = selectedCandidateCount > availableSlots;
 
   const toggleCandidate = useCallback((fseiban: string, selected: boolean) => {
     setSelectedCandidates((current) => {
@@ -166,7 +164,7 @@ export function PlanningBoardSeibanDrawer({
   }, []);
 
   const registerSelectedCandidates = () => gate.attempt() ? runCandidateRegistration(async () => {
-    if (selectedCandidateCount === 0 || selectedWouldExceedLimit || orderDisabled) return;
+    if (selectedCandidateCount === 0 || orderDisabled) return;
     const fseibans = selectedCandidatesForRegistration.map((candidate) => candidate.fseiban);
     const generation = gate.generation(); const saved = await onRegisterMany(fseibans);
     if (generation !== gate.generation()) return;
@@ -338,22 +336,18 @@ export function PlanningBoardSeibanDrawer({
                     </div>
                   ))}
                 </div>
-                <div className="mt-1 text-[10px] text-emerald-200/80">登録残り {Math.max(availableSlots, 0)}件</div>
                 <div className="mt-2 flex justify-end">
                   <button
                     type="button"
                     className="min-h-11 shrink-0 whitespace-nowrap rounded bg-emerald-400 px-3 text-xs font-bold text-slate-950 hover:bg-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-300 disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="選択した製番を登録"
-                    disabled={orderDisabled || selectedWouldExceedLimit || candidateRegistrationPending}
+                    disabled={orderDisabled || candidateRegistrationPending}
                     aria-busy={candidateRegistrationPending}
                     onClick={() => void registerSelectedCandidates()}
                   >
                     登録
                   </button>
                 </div>
-                {selectedWouldExceedLimit ? (
-                  <p className="mt-1 text-[10px] text-amber-200" role="alert">登録上限{REGISTERED_SEIBAN_MAX}件を超えるため登録できません。選択を減らしてください。</p>
-                ) : null}
               </div>
             ) : null}
             {hasCandidateQuery && candidatesLoading && candidates.length === 0 ? <p className="mt-2 text-xs text-slate-500">候補を取得中…</p> : null}
@@ -362,7 +356,7 @@ export function PlanningBoardSeibanDrawer({
             {hasCandidateQuery ? candidateCards : null}
           </section>
           <div className="mt-4 flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-slate-300">登録製番（OR）<span className="ml-1.5 font-normal text-slate-500">{registeredFseibans.length}/{REGISTERED_SEIBAN_MAX}</span></span>
+            <span className="text-xs font-semibold text-slate-300">登録製番（OR）<span className="ml-1.5 font-normal text-slate-500">{registeredFseibans.length}</span></span>
             <div className="flex items-center gap-1">
               <button
                 type="button"

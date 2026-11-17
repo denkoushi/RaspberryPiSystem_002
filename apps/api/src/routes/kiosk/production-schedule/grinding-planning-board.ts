@@ -5,7 +5,6 @@ import { createPlanningTestBar, mutatePlanningTestBar } from '../../../services/
 import { grindingPlanningBoardDueSourceSchema } from '../../../services/production-schedule/grinding-planning-board/shared.js';
 import { readScheduleSourceExcludedFseibans } from '../../../services/production-schedule/grinding-planning-board/schedule-source.js';
 import { getGrindingPlanningBoardResourceMinutes, updateGrindingPlanningBoardResourceMinutesSource, updateGrindingPlanningBoardResourcePartMinutes, resourceMinutesSourceSchema, resourcePartMinutesSchema } from '../../../services/production-schedule/grinding-planning-board-resource-minutes.service.js';
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 
@@ -166,7 +165,7 @@ const resourceMoveBodySchema = z.object({
 
 const orderBodySchema = z.object({
   sourceRevision: sourceRevisionSchema,
-  fseibans: z.array(z.string().min(1).max(100)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
+  fseibans: z.array(z.string().min(1).max(100))
 });
 
 const dueScopeSchema = z.discriminatedUnion('kind', [
@@ -421,7 +420,7 @@ export async function registerProductionScheduleGrindingPlanningBoardRoute(
     const { clientDevice } = await deps.requireClientDevice(request.headers['x-client-key']);
     const scope = deps.resolveLocationScopeContext(clientDevice);
     const body = z.object({ sourceRevision: sourceRevisionSchema,
-      uncheckedFseibans: z.array(z.string().trim().min(1).max(100)).max(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX)
+      uncheckedFseibans: z.array(z.string().trim().min(1).max(100))
     }).parse(request.body);
     const result = await updateGrindingPlanningBoardSeibanChecks({ siteKey: scope.siteKey, ...body });
     void scheduleGrindingPlanningBoardRewarm({ siteKey: scope.siteKey, snapshotStore: deps.leaderboardShellSnapshotStore });

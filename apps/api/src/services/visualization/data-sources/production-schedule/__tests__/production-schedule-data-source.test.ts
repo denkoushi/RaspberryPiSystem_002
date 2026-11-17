@@ -1,4 +1,3 @@
-import { KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX } from '@raspi-system/shared-types';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
 import { ProductionScheduleDataSource } from '../production-schedule-data-source.js';
 import { prisma } from '../../../../../lib/prisma.js';
@@ -21,10 +20,10 @@ describe('ProductionScheduleDataSource', () => {
     vi.clearAllMocks();
   });
 
-  it('should limit history to registered seiban max items', async () => {
+  it('should retain all history items', async () => {
     const dataSource = new ProductionScheduleDataSource();
 
-    const overLimit = KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX + 1;
+    const overLimit = 300 + 1;
     const historyOver = Array.from({ length: overLimit }, (_, i) => `FSEIBAN${String(i + 1).padStart(3, '0')}`);
 
     vi.mocked(prisma.kioskProductionScheduleSearchState.findUnique).mockResolvedValue({
@@ -32,13 +31,13 @@ describe('ProductionScheduleDataSource', () => {
       updatedAt: new Date(),
     } as any);
 
-    vi.mocked(prisma.$queryRaw).mockResolvedValue([]);
+    vi.mocked(prisma.$queryRaw).mockResolvedValue(historyOver.map((fseiban) => ({ fseiban, total: 5, completed: 3, incompleteProductNames: [] })));
 
     const result = await dataSource.fetchData();
 
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
-      expect(result.rows.length).toBeLessThanOrEqual(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+      expect(result.rows.length).toBe(overLimit);
     }
   });
 
@@ -59,10 +58,10 @@ describe('ProductionScheduleDataSource', () => {
     }
   });
 
-  it('should handle exactly max registered seiban items', async () => {
+  it('should handle 300 registered seiban items', async () => {
     const dataSource = new ProductionScheduleDataSource();
 
-    const historyMax = Array.from({ length: KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX }, (_, i) =>
+    const historyMax = Array.from({ length: 300 }, (_, i) =>
       `FSEIBAN${String(i + 1).padStart(3, '0')}`
     );
 
@@ -84,7 +83,7 @@ describe('ProductionScheduleDataSource', () => {
 
     expect(result.kind).toBe('table');
     if (result.kind === 'table') {
-      expect(result.rows.length).toBe(KIOSK_PRODUCTION_SCHEDULE_REGISTERED_SEIBAN_MAX);
+      expect(result.rows.length).toBe(300);
     }
   });
 });

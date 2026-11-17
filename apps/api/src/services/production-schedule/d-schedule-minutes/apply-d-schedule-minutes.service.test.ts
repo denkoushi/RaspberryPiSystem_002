@@ -98,7 +98,10 @@ describe.skipIf(!local)('apply D schedule minutes on the local test DB', () => {
     const before = await latest(main.seiban);
     const stale = await apply([{ ...main, partsCompleteDate: '2026-11-01' }]);
     expect(await latest(main.seiban)).toEqual(before);
-    expect(stale.warnings).toEqual([{ code: 'STALE_FILE', seiban: main.seiban, cell: 'B8', rawText: main.rawPartsCompleteText }]);
+    expect(stale.warnings).toEqual([
+      { code: 'NOT_IN_SCHEDULE', seiban: main.seiban, cell: 'B8', rawText: main.rawPartsCompleteText },
+      { code: 'STALE_FILE', seiban: main.seiban, cell: 'B8', rawText: main.rawPartsCompleteText }
+    ]);
     expect(stale.autoRegisteredSeibans).toMatchObject({ metrics: { seibansRead: 1, dateChanged: 0, unchanged: 0 } });
     await apply([{ ...main, partsCompleteDate: '2026-11-12' }], randomUUID(), '2026-11-06');
     expect((await latest(main.seiban)).partsCompleteDate).toEqual(new Date('2026-11-12Z'));

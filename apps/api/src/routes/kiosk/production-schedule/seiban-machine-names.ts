@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 
-import { resolveSeibanMachineDisplayNames } from '../../../services/production-schedule/seiban-machine-display-names.service.js';
+import { resolveSeibanMachineDisplayNamesBatched } from '../../../services/production-schedule/seiban-machine-display-names.service.js';
 import { productionScheduleSeibanMachineNamesBodySchema, type KioskRouteDeps } from './shared.js';
 
 export async function registerProductionScheduleSeibanMachineNamesRoute(
@@ -13,7 +13,7 @@ export async function registerProductionScheduleSeibanMachineNamesRoute(
     async (request) => {
       await deps.requireClientDevice(request.headers['x-client-key']);
       const body = productionScheduleSeibanMachineNamesBodySchema.parse(request.body ?? {});
-      return resolveSeibanMachineDisplayNames(body.fseibans);
+      return resolveSeibanMachineDisplayNamesBatched(body.fseibans);
     }
   );
 }
