@@ -27,11 +27,6 @@ export async function reportKnowledgeError(procedureId: string, body: KnowledgeE
   await api.post(`/hermes-knowledge/procedures/${encodeURIComponent(procedureId)}/error-report`, body);
 }
 
-export async function getKnowledgeCapabilities(signal?: AbortSignal) {
-  const { data } = await api.get<{ enabled: boolean }>('/hermes-knowledge/capabilities', { signal });
-  return data;
-}
-
 export async function getKnowledgePositionRanks() {
   const { data } = await api.get<KnowledgePositionRanksResponse>('/hermes-knowledge/position-ranks');
   return data;
