@@ -30,6 +30,7 @@
 .kiosk-inquiry__send button { flex: none; width: 44px; padding: 0; border-radius: 9px; color: #082218; background: #9cf1b9; font-size: 18px; }
 .kiosk-inquiry button:focus-visible, .kiosk-inquiry input:focus-visible { outline: 3px solid #ff8a1f; outline-offset: 2px; }
 .kiosk-inquiry__bar { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #1d4334; font-size: 14px; }
+.kiosk-inquiry__bar-actions { display: flex; flex: none; gap: 8px; }
 .kiosk-inquiry__new, .kiosk-inquiry__chip { padding: 7px 12px; border: 1px solid #1d4334; border-radius: 18px; color: inherit; background: #12332a; font: inherit; font-size: 13px; cursor: pointer; }
 .kiosk-inquiry__new { flex: none; }
 .kiosk-inquiry__status { margin: 0; padding: 6px 12px; color: #9cf1b9; font-size: 13px; }

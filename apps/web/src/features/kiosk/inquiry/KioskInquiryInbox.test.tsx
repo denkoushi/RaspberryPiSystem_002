@@ -1,13 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  post: vi.fn(), list: vi.fn(), open: vi.fn(), reply: vi.fn(), read: null as { uid: string; eventId: number } | null, armed: vi.fn()
+  post: vi.fn(), list: vi.fn(), open: vi.fn(), reply: vi.fn(), readAll: vi.fn(), summary: vi.fn(),
+  read: null as { uid: string; eventId: number } | null, armed: vi.fn()
 }));
 vi.mock('../../../api/client', () => ({
-  postKioskSupport: mocks.post, listKioskInquiries: mocks.list, openKioskInquiry: mocks.open, replyToKioskInquiry: mocks.reply
+  postKioskSupport: mocks.post, listKioskInquiries: mocks.list, openKioskInquiry: mocks.open, replyToKioskInquiry: mocks.reply,
+  markAllKioskInquiriesRead: mocks.readAll, getKioskInquirySummary: mocks.summary
 }));
 vi.mock('../../../api/hooks', () => ({ useKioskEmployees: () => ({ data: [{ id: 'e1', displayName: '機械 一郎', section: '機械課', department: null }], isLoading: false }) }));
 vi.mock('../inventory/setup/useArmedNfcRead', () => ({
@@ -16,22 +18,27 @@ vi.mock('../inventory/setup/useArmedNfcRead', () => ({
 
 vi.mock('../screen-watch/startWatch', () => ({ startWatch: vi.fn() }));
 
+import { useKioskInquirySummary } from '../../../api/hooks/kiosk';
+import { kioskQueryKeys } from '../../../api/queryKeys/kiosk';
 import { startWatch } from '../screen-watch/startWatch';
 
 import { KioskInquiryInbox } from './KioskInquiryInbox';
+
+import type { KioskInquirySummary } from '../../../api/domains/kiosk';
 
 const thread = {
   id: 'thread-1', senderClientDeviceName: '加工キオスク', senderLocation: '第2工場', page: '/kiosk',
   unread: true, lastMessageAt: '2026-10-09T01:42:00.000Z',
   lastMessage: { side: 'SENDER' as const, body: '確認をお願いします', createdAt: '2026-10-09T01:42:00.000Z' }
 };
+const elsewhere = { id: 'outside-list', lastMessageAt: '2026-10-09T01:40:00.000Z' };
 const detail = {
   thread: { ...thread, unread: false },
   messages: [{ id: 'message-1', ...thread.lastMessage }]
 };
-function renderInbox(isReceiver = true, loginUnlock = false) {
+function renderInbox(isReceiver = true, loginUnlock = false, unreadCount = 1) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  queryClient.setQueryData(['kiosk-inquiry-summary', 'device'], { isReceiver, unreadCount: 1 });
+  queryClient.setQueryData(kioskQueryKeys.inquirySummary('device'), { isReceiver, unreadCount });
   const ui = <KioskInquiryInbox clientKey="device" isReceiver={isReceiver} loginUnlock={loginUnlock} />;
   const view = render(ui, { wrapper: ({ children }) => <MemoryRouter initialEntries={['/kiosk/borrow']}><QueryClientProvider client={queryClient}>{children}</QueryClientProvider></MemoryRouter> });
   return { ...view, queryClient, touch: (uid = 'allowed') => {
@@ -45,8 +52,10 @@ beforeEach(() => {
   mocks.post.mockReset().mockResolvedValue({ requestId: 'req', threadId: 'new-thread' });
   mocks.read = null;
   mocks.armed.mockReset();
-  mocks.list.mockReset().mockResolvedValue({ threads: [thread] });
+  mocks.list.mockReset().mockResolvedValue({ threads: [thread], unreadElsewhere: [] });
   mocks.open.mockReset().mockResolvedValue(detail);
+  mocks.readAll.mockReset().mockResolvedValue({ updatedCount: 1 });
+  mocks.summary.mockReset().mockResolvedValue({ isReceiver: true, unreadCount: 1 });
   mocks.reply.mockReset().mockImplementation(async (_id: string, body: string) => ({
     thread: { ...detail.thread, lastMessage: { side: 'RECEIVER', body, createdAt: thread.lastMessageAt } },
     messages: [...detail.messages, { id: 'message-2', side: 'RECEIVER', body, createdAt: thread.lastMessageAt }]
@@ -79,7 +88,7 @@ describe('KioskInquiryInbox', () => {
   it.each([null, '2026-10-13T00:00:00Z'])('shows the system notice title and status tag (%s)', async (noticeResolvedAt) => {
     const notice = { ...thread, kind: 'SYSTEM_NOTICE', noticeTitle: 'StoneBase01 バーコードリーダー', noticeResolvedAt,
       senderClientDeviceName: null, senderLocation: null, isReceiver: true };
-    mocks.list.mockResolvedValue({ threads: [notice] });
+    mocks.list.mockResolvedValue({ threads: [notice], unreadElsewhere: [] });
     mocks.open.mockResolvedValue({ thread: notice, messages: [{ id: 'system', side: 'SYSTEM', body: 'バーコードリーダーが応答しません。', createdAt: thread.lastMessageAt }] });
     const view = renderInbox(); view.touch();
     expect(await screen.findByText(noticeResolvedAt ? '復旧' : 'システム')).toBeInTheDocument();
@@ -175,7 +184,110 @@ describe('KioskInquiryInbox', () => {
     renderInbox();
     expect(screen.getByText('社員証をタッチ')).toBeInTheDocument();
     expect(screen.queryByText('加工キオスク')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'すべて既読' })).not.toBeInTheDocument();
     expect(mocks.list).not.toHaveBeenCalled();
+    expect(mocks.armed).toHaveBeenLastCalledWith(true);
+  });
+
+  it('hides read-all when neither the displayed rows nor unreadElsewhere has unread threads', async () => {
+    mocks.list.mockResolvedValue({ threads: [detail.thread], unreadElsewhere: [] });
+    renderInbox(true, true);
+    await screen.findByText('加工キオスク');
+    expect(screen.queryByRole('button', { name: 'すべて既読' })).not.toBeInTheDocument();
+  });
+
+  it('hides read-all when the list is empty despite a positive summary count', async () => {
+    mocks.list.mockResolvedValue({ threads: [], unreadElsewhere: [] });
+    renderInbox(true, true);
+    await screen.findByText('お問い合わせはありません');
+    expect(screen.queryByRole('button', { name: 'すべて既読' })).not.toBeInTheDocument();
+  });
+
+  it('sends displayed and unlisted unread threads once per id, then refetches summary and list', async () => {
+    const latest = { ...detail.thread, id: 'latest', lastMessageAt: '2026-10-09T01:43:00.000Z' };
+    const oldest = { ...detail.thread, id: 'oldest', lastMessageAt: '2026-10-09T01:41:00.000Z' };
+    const duplicate = { id: thread.id, lastMessageAt: elsewhere.lastMessageAt };
+    mocks.list.mockResolvedValue({ threads: [latest, thread, oldest], unreadElsewhere: [elsewhere, duplicate] });
+    mocks.summary.mockResolvedValue({ isReceiver: true, unreadCount: 2 });
+    const view = renderInbox();
+    const summary = renderHook(() => useKioskInquirySummary('device', true), {
+      wrapper: ({ children }) => <QueryClientProvider client={view.queryClient}>{children}</QueryClientProvider>
+    });
+    await waitFor(() => expect(summary.result.current.isFetching).toBe(false));
+    expect(mocks.summary).toHaveBeenCalledTimes(1);
+    view.touch();
+    const button = await screen.findByRole('button', { name: 'すべて既読' });
+    expect(button.nextElementSibling).toBe(screen.getByRole('button', { name: '＋ 新規' }));
+    let unreadCountAtRefetch: number | undefined;
+    mocks.readAll.mockImplementationOnce(async () => {
+      mocks.list.mockResolvedValue({ threads: [latest, detail.thread, oldest], unreadElsewhere: [] });
+      mocks.summary.mockImplementationOnce(() => {
+        unreadCountAtRefetch = view.queryClient
+          .getQueryData<KioskInquirySummary>(kioskQueryKeys.inquirySummary('device'))?.unreadCount;
+        return Promise.resolve({ isReceiver: true, unreadCount: 0 });
+      });
+      return { updatedCount: 2 };
+    });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(summary.result.current.data?.unreadCount).toBe(0));
+    expect(mocks.summary).toHaveBeenCalledTimes(2);
+    expect(unreadCountAtRefetch).toBe(0);
+    expect(mocks.readAll).toHaveBeenCalledWith({
+      threads: [{ id: thread.id, lastMessageAt: thread.lastMessageAt }, elsewhere]
+    }, 'allowed', expect.any(AbortSignal));
+    await waitFor(() => expect(button).not.toBeInTheDocument());
+  });
+
+  it('offers read-all for unreadElsewhere even when the displayed threads are read and the summary is zero', async () => {
+    mocks.list.mockResolvedValueOnce({ threads: [detail.thread], unreadElsewhere: [elsewhere] })
+      .mockResolvedValue({ threads: [detail.thread], unreadElsewhere: [] });
+    renderInbox(true, true, 0);
+    const button = await screen.findByRole('button', { name: 'すべて既読' });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(mocks.readAll).toHaveBeenCalledWith({
+      threads: [elsewhere]
+    }, undefined, expect.any(AbortSignal)));
+    await waitFor(() => expect(button).not.toBeInTheDocument());
+  });
+
+  it('preserves unreadElsewhere after opening a thread and returning to the list', async () => {
+    mocks.list.mockResolvedValue({ threads: [thread], unreadElsewhere: [elsewhere] });
+    const view = renderInbox();
+    view.touch();
+    const row = await screen.findByRole('button', { name: /加工キオスク/ });
+    // Exercise the cached list while the open action's refetch is pending.
+    mocks.list.mockReturnValue(new Promise(() => undefined));
+    fireEvent.click(row);
+    fireEvent.click(await screen.findByRole('button', { name: '一覧へ戻る' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'すべて既読' }));
+
+    await waitFor(() => expect(mocks.readAll).toHaveBeenCalledWith({
+      threads: [elsewhere]
+    }, 'allowed', expect.any(AbortSignal)));
+  });
+
+  it('shows an error and keeps the inbox open when read-all fails', async () => {
+    mocks.readAll.mockRejectedValueOnce(new Error('network'));
+    renderInbox(true, true);
+    fireEvent.click(await screen.findByRole('button', { name: 'すべて既読' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('既読にできません');
+    expect(screen.getByText('加工キオスク')).toBeInTheDocument();
+  });
+
+  it.each([
+    [401, 'KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED'],
+    [403, 'KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED']
+  ])('relocks with a login prompt on read-all HTTP %s', async (status, errorCode) => {
+    mocks.readAll.mockRejectedValueOnce({ isAxiosError: true, response: { status, data: { errorCode } } });
+    renderInbox(true, true);
+    fireEvent.click(await screen.findByRole('button', { name: 'すべて既読' }));
+
+    expect(await screen.findByText('社員証をタッチ')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('ログインし直してください');
+    expect(screen.queryByText('加工キオスク')).not.toBeInTheDocument();
     expect(mocks.armed).toHaveBeenLastCalledWith(true);
   });
 
@@ -196,6 +308,7 @@ describe('KioskInquiryInbox', () => {
     view.touch();
     fireEvent.click(await screen.findByRole('button', { name: /加工キオスク/ }));
     expect(await screen.findByRole('textbox', { name: '返信' })).toHaveAttribute('maxlength', '500');
+    expect(screen.queryByRole('button', { name: 'すべて既読' })).not.toBeInTheDocument();
     expect(mocks.open).toHaveBeenCalledWith('thread-1', 'allowed', expect.any(AbortSignal));
     expect(view.queryClient.getQueryData(['kiosk-inquiry-summary', 'device'])).toEqual({ isReceiver: true, unreadCount: 0 });
     fireEvent.change(screen.getByRole('textbox', { name: '返信' }), { target: { value: '向かいます' } });
@@ -233,7 +346,7 @@ describe('KioskInquiryInbox', () => {
   });
 
   it('ignores authentication that completes after the inbox closes', async () => {
-    let resolve: (value: { threads: typeof thread[] }) => void = () => undefined;
+    let resolve: (value: { threads: typeof thread[]; unreadElsewhere: typeof elsewhere[] }) => void = () => undefined;
     mocks.list.mockReturnValue(new Promise(r => { resolve = r; }));
     const view = renderInbox();
     view.touch();
@@ -241,12 +354,12 @@ describe('KioskInquiryInbox', () => {
     const signal = mocks.list.mock.calls[0][1] as AbortSignal;
     view.unmount();
     expect(signal.aborted).toBe(true);
-    await act(async () => resolve({ threads: [thread] }));
+    await act(async () => resolve({ threads: [thread], unreadElsewhere: [] }));
     expect(view.queryClient.getQueriesData({ queryKey: ['kiosk-inquiries'] })).toEqual([]);
   });
 
   it('shows an empty inbox', async () => {
-    mocks.list.mockResolvedValue({ threads: [] });
+    mocks.list.mockResolvedValue({ threads: [], unreadElsewhere: [] });
     renderInbox(false);
     expect(await screen.findByText('お問い合わせはありません')).toBeInTheDocument();
   });

@@ -41,7 +41,14 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
   const actions = useKioskInquiryActions(clientKey, sessionId, access.current);
   const read = useArmedNfcRead(isReceiver && !unlocked && !verifying && !composing);
   const messagesRef = useRef<HTMLDivElement>(null);
-  const busy = actions.open.isPending || actions.reply.isPending;
+  const busy = actions.open.isPending || actions.reply.isPending || actions.readAll.isPending;
+  const { threads, unreadElsewhere } = list.data ?? {};
+  const displayedUnread = threads?.filter(thread => thread.unread)
+    .map(({ id, lastMessageAt }) => ({ id, lastMessageAt })) ?? [];
+  const readAllTargets = new Map(displayedUnread.map(target => [target.id, target]));
+  for (const target of unreadElsewhere ?? []) {
+    if (!readAllTargets.has(target.id)) readAllTargets.set(target.id, target);
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,6 +112,14 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
     } catch (failure) { handleFailure(failure, 'お問い合わせを開けません'); }
   };
 
+  const readAll = async () => {
+    if (busy || !unlocked || readAllTargets.size === 0) return;
+    setError(null);
+    try {
+      await actions.readAll.mutateAsync({ threads: [...readAllTargets.values()] });
+    } catch (failure) { handleFailure(failure, '既読にできません'); }
+  };
+
   const send = async (body: string) => {
     const text = body.trim();
     if (!detail || !text || text.length > 500 || busy) return;
@@ -132,8 +147,14 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
   const toolbar = (
     <div className="kiosk-inquiry__bar">
       <strong>お問い合わせ</strong>
-      <button type="button" className="kiosk-inquiry__new" disabled={busy || verifying}
-        onClick={() => { setComposing(true); setSent(false); setError(null); }}>＋ 新規</button>
+      <div className="kiosk-inquiry__bar-actions">
+        {unlocked && readAllTargets.size > 0 ? (
+          <button type="button" className="kiosk-inquiry__new" disabled={busy}
+            onClick={() => void readAll()}>すべて既読</button>
+        ) : null}
+        <button type="button" className="kiosk-inquiry__new" disabled={busy || verifying}
+          onClick={() => { setComposing(true); setSent(false); setError(null); }}>＋ 新規</button>
+      </div>
     </div>
   );
 
@@ -198,9 +219,9 @@ export function KioskInquiryInbox({ clientKey, isReceiver, loginUnlock = false, 
       {sent ? <p className="kiosk-inquiry__status" role="status">送信しました</p> : null}
       {error ? <p className="kiosk-inquiry__error" role="alert">{error}</p> : null}
       {list.isPending ? <p className="kiosk-inquiry__empty" role="status">読込中…</p> : null}
-      {list.data?.threads.length === 0 ? <p className="kiosk-inquiry__empty">お問い合わせはありません</p> : null}
+      {threads?.length === 0 ? <p className="kiosk-inquiry__empty">お問い合わせはありません</p> : null}
       <ul className="kiosk-inquiry__list">
-        {list.data?.threads.map(thread => (
+        {threads?.map(thread => (
           <li key={thread.id}>
             <button type="button" className={`kiosk-inquiry__row${thread.unread ? ' kiosk-inquiry__row--unread' : ''}`}
               disabled={busy} onClick={() => void openThread(thread.id)}>

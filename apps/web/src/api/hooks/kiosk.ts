@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getKioskInquirySummary,
   listKioskInquiries,
+  markAllKioskInquiriesRead,
   openKioskInquiry,
   replyToKioskInquiry,
   getKioskInquiryReceiverSettings,
@@ -18,7 +19,7 @@ import {
 } from '../client';
 import { kioskQueryKeys } from '../queryKeys/kiosk';
 
-import type { KioskConfig, KioskInquiryDetail, KioskInquirySummary, KioskInquiryThread } from '../domains/kiosk';
+import type { KioskConfig, KioskInquiryDetail, KioskInquiryReadAllPayload, KioskInquirySummary } from '../domains/kiosk';
 import type { KioskInitialRouteId, KioskReorderableHeaderTabId } from '@raspi-system/shared-types';
 
 export function useKioskEmployees(clientKey?: string) {
@@ -126,12 +127,13 @@ export function useKioskInquiryActions(clientKey: string, sessionId: string, acc
   const onSuccess = (data: KioskInquiryDetail) => {
     if (!access.active) return;
     const listKey = kioskQueryKeys.inquiries(clientKey, sessionId);
-    const previous = queryClient.getQueryData<{ threads: KioskInquiryThread[] }>(listKey);
+    const previous = queryClient.getQueryData<Awaited<ReturnType<typeof listKioskInquiries>>>(listKey);
     const wasUnread = previous?.threads.find(thread => thread.id === data.thread.id)?.unread;
     queryClient.setQueryData(listKey, previous ? {
+      ...previous,
       threads: [data.thread, ...previous.threads.filter(thread => thread.id !== data.thread.id)]
         .sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt))
-    } : { threads: [data.thread] });
+    } : { threads: [data.thread], unreadElsewhere: [] });
     const summaryKey = kioskQueryKeys.inquirySummary(clientKey);
     queryClient.setQueryData<KioskInquirySummary>(summaryKey, current => current && wasUnread && !data.thread.unread
       ? { ...current, unreadCount: Math.max(0, current.unreadCount - 1) } : current);
@@ -147,7 +149,20 @@ export function useKioskInquiryActions(clientKey: string, sessionId: string, acc
       replyToKioskInquiry(threadId, body, access.employeeTagUid, access.signal),
     onSuccess
   });
-  return { open, reply };
+  const readAll = useMutation({
+    mutationFn: (payload: KioskInquiryReadAllPayload) => markAllKioskInquiriesRead(payload, access.employeeTagUid, access.signal),
+    onSuccess: async ({ updatedCount }) => {
+      if (!access.active) return;
+      const summaryKey = kioskQueryKeys.inquirySummary(clientKey);
+      queryClient.setQueryData<KioskInquirySummary>(summaryKey, current => current
+        ? { ...current, unreadCount: Math.max(0, current.unreadCount - updatedCount) } : current);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: summaryKey }),
+        queryClient.invalidateQueries({ queryKey: kioskQueryKeys.inquiries(clientKey, sessionId) })
+      ]);
+    }
+  });
+  return { open, reply, readAll };
 }
 
 export function useKioskInquiryReceiverSettings() {

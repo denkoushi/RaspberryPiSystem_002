@@ -84,6 +84,12 @@ describe('Kiosk inquiry inbox API', () => {
   const list = (device: ClientDevice, payload: Record<string, unknown> = {}, token?: string) => app.inject({
     method: 'POST', url: '/api/kiosk/inquiries/list', headers: headers(device, token), payload
   });
+  const readAll = (device: ClientDevice, payload: Record<string, unknown>, token?: string) => app.inject({
+    method: 'POST', url: '/api/kiosk/inquiries/read-all', headers: headers(device, token), payload
+  });
+  const readTarget = ({ id, lastMessageAt }: { id: string; lastMessageAt: Date }) => ({
+    id, lastMessageAt: lastMessageAt.toISOString()
+  });
   const open = (device: ClientDevice, id: string, payload: Record<string, unknown> = {}, token?: string) => app.inject({
     method: 'POST', url: `/api/kiosk/inquiries/${id}/open`, headers: headers(device, token), payload
   });
@@ -108,6 +114,17 @@ describe('Kiosk inquiry inbox API', () => {
     });
     expect(response.json().threadId).toBe(thread.id);
     return thread;
+  }
+
+  async function fillReceiverPage() {
+    const oldest = new Date('2026-11-18T00:00:00.000Z');
+    const base = { senderClientDeviceId: sender.id, page: '/kiosk' };
+    await prisma.kioskInquiryThread.createMany({
+      data: Array.from({ length: 50 }, (_, index) => ({
+        ...base, receiverUnread: false, lastMessageAt: new Date(oldest.getTime() + index + 10)
+      }))
+    });
+    return { ...base, lastMessageAt: oldest };
   }
 
   it('support creates the first sender message, keeps the log and increases receiver summary', async () => {
@@ -139,6 +156,290 @@ describe('Kiosk inquiry inbox API', () => {
     await open(sender, own.id);
     expect((await summary(sender)).json().unreadCount).toBe(0);
     expect((await summary(otherSender)).json().unreadCount).toBe(1);
+  });
+
+  it('read-all clears only the sender device’s own unread replies', async () => {
+    const own = await sendSupport();
+    const other = await sendSupport(otherSender);
+    for (const thread of [own, other]) {
+      expect((await reply(receiver, thread.id, { ...tag(), body: '返信' })).statusCode).toBe(200);
+    }
+    expect((await summary(sender)).json().unreadCount).toBe(1);
+
+    const listed = await list(sender);
+    const { threads: [{ id, lastMessageAt }], unreadElsewhere } = listed.json();
+    expect(id).toBe(own.id);
+    expect(unreadElsewhere).toEqual([]);
+    const response = await readAll(sender, { threads: [{ id, lastMessageAt }] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 1 });
+    expect((await summary(sender)).json().unreadCount).toBe(0);
+    expect((await summary(otherSender)).json().unreadCount).toBe(1);
+  });
+
+  it('read-all leaves another sender’s thread unread when its id and timestamp are supplied', async () => {
+    const other = await prisma.kioskInquiryThread.create({
+      data: { senderClientDeviceId: otherSender.id, page: '/kiosk', lastMessageAt: new Date(), senderUnread: true }
+    });
+
+    const response = await readAll(sender, { threads: [readTarget(other)] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 0 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: other.id } }))
+      .toMatchObject({ senderUnread: true });
+  });
+
+  it('read-all treats a notice-only receiver as a sender for inquiries', async () => {
+    const noticeReceiver = await prisma.clientDevice.update({
+      where: { id: sender.id }, data: { systemNoticeReceiverEnabled: true }
+    });
+    const own = await sendSupport(noticeReceiver);
+    const other = await sendSupport(otherSender);
+    await prisma.kioskInquiryThread.update({ where: { id: own.id }, data: { senderUnread: true } });
+    const notice = await prisma.kioskInquiryThread.create({
+      data: { senderClientDeviceId: otherSender.id, kind: 'SYSTEM_NOTICE', page: '/kiosk', lastMessageAt: own.lastMessageAt }
+    });
+    expect((await summary(noticeReceiver)).json().unreadCount).toBe(2);
+
+    const response = await readAll(noticeReceiver, { ...tag(), threads: [readTarget(own), readTarget(notice)] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 2 });
+    expect((await summary(noticeReceiver)).json().unreadCount).toBe(0);
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: own.id } }))
+      .toMatchObject({ receiverUnread: true, senderUnread: false });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: other.id } }))
+      .toMatchObject({ receiverUnread: true });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: notice.id } }))
+      .toMatchObject({ receiverUnread: false });
+  });
+
+  it('read-all requires a card or login on a receiver device', async () => {
+    const thread = await sendSupport();
+
+    const response = await readAll(receiver, { threads: [readTarget(thread)] });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: thread.id } }))
+      .toMatchObject({ receiverUnread: true });
+  });
+
+  it('read-all leaves a displayed thread unread when its timestamp changes', async () => {
+    const displayed = await sendSupport();
+    const { threads: [{ id, lastMessageAt }] } = (await list(receiver, {}, admin.token)).json();
+    expect(id).toBe(displayed.id);
+    await prisma.kioskInquiryThread.update({
+      where: { id }, data: { lastMessageAt: new Date(displayed.lastMessageAt.getTime() + 1) }
+    });
+
+    const response = await readAll(receiver, { threads: [{ id, lastMessageAt }] }, admin.token);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 0 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id } }))
+      .toMatchObject({ receiverUnread: true });
+  });
+
+  it('read-all clears unread inquiries and notices outside a full receiver page of read threads', async () => {
+    receiver = await prisma.clientDevice.update({
+      where: { id: receiver.id }, data: { systemNoticeReceiverEnabled: true }
+    });
+    const base = await fillReceiverPage();
+    const inquiry = await prisma.kioskInquiryThread.create({ data: base });
+    const notice = await prisma.kioskInquiryThread.create({
+      data: { ...base, kind: 'SYSTEM_NOTICE', lastMessageAt: new Date(base.lastMessageAt.getTime() + 1) }
+    });
+    const listed = await list(receiver, tag());
+    expect(listed.statusCode).toBe(200);
+    const { threads, unreadElsewhere } = listed.json();
+    expect(threads).toHaveLength(50);
+    expect(threads.every((thread: { unread: boolean }) => !thread.unread)).toBe(true);
+    expect(unreadElsewhere).toEqual([readTarget(notice), readTarget(inquiry)]);
+    expect((await summary(receiver)).json().unreadCount).toBe(2);
+
+    const response = await readAll(receiver, { ...tag(), threads: unreadElsewhere });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 2 });
+    expect((await summary(receiver)).json().unreadCount).toBe(0);
+  });
+
+  it('read-all clears an unlisted notice after only its title changes', async () => {
+    receiver = await prisma.clientDevice.update({
+      where: { id: receiver.id }, data: { systemNoticeReceiverEnabled: true }
+    });
+    const base = await fillReceiverPage();
+    const notice = await prisma.kioskInquiryThread.create({
+      data: { ...base, kind: 'SYSTEM_NOTICE', noticeTitle: '更新前' }
+    });
+    const { unreadElsewhere } = (await list(receiver, tag())).json();
+    expect(unreadElsewhere).toEqual([readTarget(notice)]);
+    await prisma.kioskInquiryThread.update({ where: { id: notice.id }, data: { noticeTitle: '更新後' } });
+
+    const response = await readAll(receiver, { ...tag(), threads: unreadElsewhere });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 1 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: notice.id } }))
+      .toMatchObject({ noticeTitle: '更新後', receiverUnread: false });
+  });
+
+  it('read-all leaves inquiries and backdated notices created after the list unread', async () => {
+    receiver = await prisma.clientDevice.update({
+      where: { id: receiver.id }, data: { systemNoticeReceiverEnabled: true }
+    });
+    const base = await fillReceiverPage();
+    const existing = await prisma.kioskInquiryThread.create({ data: base });
+    const { unreadElsewhere } = (await list(receiver, tag())).json();
+    expect(unreadElsewhere).toEqual([readTarget(existing)]);
+    const lateInquiry = await prisma.kioskInquiryThread.create({
+      data: { ...base, lastMessageAt: new Date(base.lastMessageAt.getTime() + 100) }
+    });
+    const lateNotice = await prisma.kioskInquiryThread.create({
+      data: { ...base, kind: 'SYSTEM_NOTICE', lastMessageAt: new Date(base.lastMessageAt.getTime() - 1) }
+    });
+
+    const response = await readAll(receiver, { ...tag(), threads: unreadElsewhere });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 1 });
+    for (const { id } of [lateInquiry, lateNotice]) {
+      expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id } }))
+        .toMatchObject({ receiverUnread: true });
+    }
+  });
+
+  it('read-all leaves an unlisted unread thread unread when its timestamp changes', async () => {
+    const base = await fillReceiverPage();
+    const thread = await prisma.kioskInquiryThread.create({ data: base });
+    const { unreadElsewhere } = (await list(receiver, tag())).json();
+    expect(unreadElsewhere).toEqual([readTarget(thread)]);
+    await prisma.kioskInquiryThread.update({
+      where: { id: thread.id }, data: { lastMessageAt: new Date(thread.lastMessageAt.getTime() + 1) }
+    });
+
+    const response = await readAll(receiver, { ...tag(), threads: unreadElsewhere });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 0 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: thread.id } }))
+      .toMatchObject({ receiverUnread: true });
+  });
+
+  it('read-all clears an unlisted unread thread tied with the last listed row', async () => {
+    const lastMessageAt = new Date('2026-11-18T00:00:00.000Z');
+    const base = { senderClientDeviceId: sender.id, page: '/kiosk' };
+    const tied = await Promise.all([
+      prisma.kioskInquiryThread.create({ data: { ...base, lastMessageAt, senderUnread: true } }),
+      prisma.kioskInquiryThread.create({ data: { ...base, lastMessageAt, senderUnread: true } })
+    ]);
+    await prisma.kioskInquiryThread.createMany({
+      data: Array.from({ length: 19 }, () => ({ ...base, lastMessageAt: new Date(lastMessageAt.getTime() + 1) }))
+    });
+    const listed = await list(sender);
+    expect(listed.statusCode).toBe(200);
+    const { threads, unreadElsewhere } = listed.json();
+    expect(threads).toHaveLength(20);
+    const boundary = threads[19];
+    expect(boundary.lastMessageAt).toBe(lastMessageAt.toISOString());
+    const unlisted = tied.find(({ id }) => id !== boundary.id)!;
+    expect(unreadElsewhere).toEqual([readTarget(unlisted)]);
+
+    const response = await readAll(sender, {
+      threads: [{ id: boundary.id, lastMessageAt: boundary.lastMessageAt }, ...unreadElsewhere]
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 2 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: unlisted.id } }))
+      .toMatchObject({ senderUnread: false });
+  });
+
+  it('excludes another device’s unread threads from the sender’s unreadElsewhere', async () => {
+    const oldest = new Date('2026-11-18T00:00:00.000Z');
+    const base = { senderClientDeviceId: sender.id, page: '/kiosk' };
+    const own = await prisma.kioskInquiryThread.create({ data: { ...base, lastMessageAt: oldest, senderUnread: true } });
+    await prisma.kioskInquiryThread.create({
+      data: { ...base, senderClientDeviceId: otherSender.id, lastMessageAt: oldest, senderUnread: true }
+    });
+    await prisma.kioskInquiryThread.createMany({
+      data: Array.from({ length: 20 }, (_, index) => ({
+        ...base, lastMessageAt: new Date(oldest.getTime() + index + 1)
+      }))
+    });
+    const listed = await list(sender);
+    expect(listed.statusCode).toBe(200);
+    const { threads, unreadElsewhere } = listed.json();
+    expect(threads).toHaveLength(20);
+    expect(threads.every((thread: { unread: boolean }) => !thread.unread)).toBe(true);
+    expect(unreadElsewhere).toEqual([readTarget(own)]);
+
+    const response = await readAll(sender, { threads: unreadElsewhere });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 1 });
+    expect((await summary(sender)).json().unreadCount).toBe(0);
+    expect((await summary(otherSender)).json().unreadCount).toBe(1);
+  });
+
+  it('read-all excludes resolved notices', async () => {
+    receiver = await prisma.clientDevice.update({
+      where: { id: receiver.id }, data: { systemNoticeReceiverEnabled: true }
+    });
+    const inquiry = await sendSupport();
+    const notice = { senderClientDeviceId: sender.id, kind: 'SYSTEM_NOTICE' as const, page: '/kiosk', lastMessageAt: inquiry.lastMessageAt };
+    const active = await prisma.kioskInquiryThread.create({ data: notice });
+    const resolved = await prisma.kioskInquiryThread.create({ data: { ...notice, noticeResolvedAt: inquiry.lastMessageAt } });
+    expect((await summary(receiver)).json().unreadCount).toBe(2);
+
+    const response = await readAll(receiver, { ...tag(), threads: [inquiry, active, resolved].map(readTarget) });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 2 });
+    expect((await summary(receiver)).json().unreadCount).toBe(0);
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: resolved.id } }))
+      .toMatchObject({ receiverUnread: true });
+  });
+
+  it('read-all validates the thread list, timestamps and unknown fields', async () => {
+    const target = { id: 'thread-1', lastMessageAt: '2026-11-18T00:00:00.000Z' };
+    expect((await readAll(sender, {})).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: Array.from({ length: 251 }, () => target) })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [{ ...target, id: '' }] })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [{ ...target, lastMessageAt: '2026-11-18' }] })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [{ ...target, unexpected: true }] })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [{ ...target, lastMessageAt: '2026-11-18T00:00:00.000001Z' }] })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: Array.from({ length: 250 }, () => target) })).statusCode).toBe(200);
+    expect((await readAll(sender, { threads: [], olderThan: target.lastMessageAt, listedAt: target.lastMessageAt })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [], olderThan: target.lastMessageAt })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [], listedAt: target.lastMessageAt })).statusCode).toBe(400);
+    expect((await readAll(sender, { threads: [], unexpected: true })).statusCode).toBe(400);
+  });
+
+  it('read-all authorizes even when the scope is empty and leaves unread threads alone', async () => {
+    const thread = await sendSupport();
+    expect((await readAll(receiver, { threads: [] })).statusCode).toBe(401);
+
+    const response = await readAll(receiver, { ...tag(), threads: [] });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 0 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: thread.id } }))
+      .toMatchObject({ receiverUnread: true });
+  });
+
+  it.each(['ADMIN', 'MANAGER'] as const)('%s can mark an unread receiver inquiry read without a card', async (role) => {
+    const thread = await sendSupport();
+
+    const response = await readAll(receiver, { threads: [readTarget(thread)] }, role === 'ADMIN' ? admin.token : manager.token);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ updatedCount: 1 });
+    expect(await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: thread.id } }))
+      .toMatchObject({ receiverUnread: false });
   });
 
   it.each(['list', 'open', 'reply'] as const)('receiver requires an employee tag for %s', async (action) => {
@@ -179,11 +480,13 @@ describe('Kiosk inquiry inbox API', () => {
     for (const response of [
       await list(receiver, {}, token),
       await open(receiver, thread.id, {}, token),
-      await reply(receiver, thread.id, { body: '返信' }, token)
+      await reply(receiver, thread.id, { body: '返信' }, token),
+      await readAll(receiver, { threads: [readTarget(thread)] }, token)
     ]) {
       expect(response.statusCode).toBe(401);
       expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_TAG_REQUIRED');
     }
+    expect((await prisma.kioskInquiryThread.findUniqueOrThrow({ where: { id: thread.id } })).receiverUnread).toBe(true);
   });
 
   it('accepts a valid card despite an invalid token on all protected actions', async () => {
@@ -201,7 +504,8 @@ describe('Kiosk inquiry inbox API', () => {
     for (const response of [
       await list(receiver, payload, admin.token),
       await open(receiver, thread.id, payload, admin.token),
-      await reply(receiver, thread.id, { ...payload, body: '返信' }, admin.token)
+      await reply(receiver, thread.id, { ...payload, body: '返信' }, admin.token),
+      await readAll(receiver, { ...payload, threads: [readTarget(thread)] }, admin.token)
     ]) {
       expect(response.statusCode).toBe(403);
       expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED');
@@ -259,7 +563,8 @@ describe('Kiosk inquiry inbox API', () => {
     for (const response of [
       await list(receiver, { employeeTagUid }),
       await open(receiver, thread.id, { employeeTagUid }),
-      await reply(receiver, thread.id, { employeeTagUid, body: '返信' })
+      await reply(receiver, thread.id, { employeeTagUid, body: '返信' }),
+      await readAll(receiver, { employeeTagUid, threads: [readTarget(thread)] })
     ]) {
       expect(response.statusCode).toBe(403);
       expect(response.json().errorCode).toBe('KIOSK_INQUIRY_EMPLOYEE_NOT_ALLOWED');
@@ -272,6 +577,7 @@ describe('Kiosk inquiry inbox API', () => {
     const thread = await sendSupport();
     const listed = await list(receiver, tag());
     expect(listed.statusCode).toBe(200);
+    expect(listed.json().unreadElsewhere).toEqual([]);
     expect(listed.json().threads.find((entry: { id: string }) => entry.id === thread.id)).toMatchObject({
       id: thread.id, senderClientDeviceName: sender.name, senderLocation: sender.location,
       page: thread.page, unread: true, lastMessage: { side: 'SENDER', body: 'お問い合わせ' }
@@ -335,7 +641,7 @@ describe('Kiosk inquiry inbox API', () => {
 
   it('list limits and lastMessageAt descending order apply to each device role', async () => {
     const now = Date.now();
-    const threads = Array.from({ length: 51 }, (_, index) => ({
+    const threads = Array.from({ length: 251 }, (_, index) => ({
       id: randomUUID(), senderClientDeviceId: sender.id, page: '/kiosk', lastMessageAt: new Date(now + index)
     }));
     await prisma.kioskInquiryThread.createMany({ data: threads });
