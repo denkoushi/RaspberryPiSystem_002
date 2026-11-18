@@ -40,8 +40,9 @@ export async function deleteProcedurePageRows(tx: Prisma.TransactionClient, docu
   }
   const seen = new Set<string>();
   for (const row of await tx.assemblyProcedureTextFeedback.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] })) {
-    if (seen.has(row.elementId)) continue;
-    seen.add(row.elementId);
+    const key = `${row.source}:${row.elementId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     const change = resolveProcedureTextFeedback(row, undefined);
     if (change) await tx.assemblyProcedureTextFeedback.update({ where: { id: row.id }, data: { ...change, resolvedAt } });
   }

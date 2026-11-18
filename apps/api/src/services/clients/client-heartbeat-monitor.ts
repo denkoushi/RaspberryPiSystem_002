@@ -63,14 +63,7 @@ async function enqueueSlackAlert(alert: NewAlert): Promise<void> {
   });
 }
 
-/**
- * 1回分の見回り。
- * - 監視対象の端末が staleAfter を超えて無連絡なら、途絶1回につき1件 WARNING を Slack へ積む。
- * - 途絶を通知済みの端末から連絡が戻ったら、途絶 Alert を確認済みにして復帰を通知する。
- *   通知前に戻った短い途絶は、途絶 Alert を確認済みにするだけ（Slack 側で抑止される）。
- */
-export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig): Promise<void> {
-  await refreshKioskDeployWindows(now);
+export async function loadMonitoredHeartbeatClients(now: Date, config: HeartbeatAlertConfig) {
   const devices = await prisma.clientDevice.findMany({
     where: { statusClientId: { not: null } },
     select: { statusClientId: true, createdAt: true }
@@ -97,6 +90,18 @@ export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig)
       monitored.set(clientId, { clientId, lastSeen: createdAt, neverReported: true });
     }
   }
+  return { monitored, expected };
+}
+
+/**
+ * 1回分の見回り。
+ * - 監視対象の端末が staleAfter を超えて無連絡なら、途絶1回につき1件 WARNING を Slack へ積む。
+ * - 途絶を通知済みの端末から連絡が戻ったら、途絶 Alert を確認済みにして復帰を通知する。
+ *   通知前に戻った短い途絶は、途絶 Alert を確認済みにするだけ（Slack 側で抑止される）。
+ */
+export async function runHeartbeatCheck(now: Date, config: HeartbeatAlertConfig): Promise<void> {
+  await refreshKioskDeployWindows(now);
+  const { monitored, expected } = await loadMonitoredHeartbeatClients(now, config);
   const lastSeenByClient = new Map([...monitored.values()].map((status) => [status.clientId, status.lastSeen]));
 
   for (const status of monitored.values()) {

@@ -847,6 +847,61 @@ model ClientStatus {
   @@index([lastSeen])
 }
 
+enum OsSecurityUpdateRequestMode {
+  auto
+  trial
+}
+
+enum OsSecurityUpdateRequestStatus {
+  open
+  verified
+  notified
+}
+
+enum OsSecurityUpdateTargetState {
+  pending
+  verified
+  failed
+}
+
+model OsSecurityUpdateRequest {
+  id          String                        @id @default(uuid())
+  advisoryKey String                        @unique
+  title       String
+  url         String
+  noticeKey   String
+  products    Json
+  packages    String[]
+  mode        OsSecurityUpdateRequestMode
+  status      OsSecurityUpdateRequestStatus @default(open)
+  createdAt   DateTime                      @default(now())
+  expiresAt   DateTime
+  resolvedAt  DateTime?
+  targets     OsSecurityUpdateTarget[]
+
+  @@index([status])
+}
+
+model OsSecurityUpdateTarget {
+  requestId   String
+  clientId    String
+  state       OsSecurityUpdateTargetState @default(pending)
+  deliveredAt DateTime?
+  verifiedAt  DateTime?
+  detail      Json
+  request     OsSecurityUpdateRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@id([requestId, clientId])
+  @@index([clientId])
+}
+
+model OsSecurityUpdateClientReport {
+  clientId     String @id
+  earlyEnabled Boolean
+  report       Json
+  receivedAt   DateTime
+}
+
 /// 業務Hermesの自発提案。一般クライアントログや通知へ混在させずADMINだけが参照する。
 model BusinessHermesProactiveSuggestion {
   id             String   @id @default(uuid())
@@ -3699,6 +3754,11 @@ enum AssemblyProcedureTextFeedbackOutcome {
   REVERTED
 }
 
+enum AssemblyProcedureTextFeedbackSource {
+  LAYOUT
+  DICTATION
+}
+
 model AssemblyProcedureTextFeedback {
   id           String                               @id @default(uuid())
   documentId   String
@@ -3706,6 +3766,9 @@ model AssemblyProcedureTextFeedback {
   elementId    String
   site         String?
   documentName String
+  source       AssemblyProcedureTextFeedbackSource  @default(LAYOUT)
+  mode         String?
+  spokenText   String?
   originalText String
   aiText       String
   finalText    String?
@@ -3715,6 +3778,7 @@ model AssemblyProcedureTextFeedback {
 
   @@index([documentId, elementId])
   @@index([site, outcome, resolvedAt])
+  @@index([site, source, outcome, resolvedAt])
 }
 
 model AssemblyProcedureLearnedTerm {
@@ -3747,6 +3811,9 @@ model AssemblyProcedureLearningSnapshot {
   textKept            Int
   textEdited          Int
   textReverted        Int
+  dictationKept       Int      @default(0)
+  dictationEdited     Int      @default(0)
+  dictationReverted   Int      @default(0)
   captionKept         Int
   captionEdited       Int
   captionDeleted      Int

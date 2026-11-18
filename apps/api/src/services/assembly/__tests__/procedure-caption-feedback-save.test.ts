@@ -96,14 +96,27 @@ describe('caption feedback after overlay save', () => {
 
 describe('text feedback after overlay save', () => {
   const row = { ...feedback, originalText: 'Original line' };
-  it('resolves only the latest proposal for each element and re-resolves later edits', async () => {
-    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([row, { ...row, id: 'older' }]);
+  it.each(['LAYOUT', 'DICTATION'])('resolves only the latest %s proposal per source and re-resolves later edits', async source => {
+    const latest = { ...row, source };
+    const other = source === 'LAYOUT' ? 'DICTATION' : 'LAYOUT';
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([latest, { ...row, id: 'other-source', source: other }, { ...row, id: 'older', source }]);
     await save();
     expect(db.assemblyProcedureTextFeedback.findMany).toHaveBeenCalledWith({ where: { documentId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }] });
-    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'feedback' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
-    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([{ ...row, outcome: 'KEPT', finalText: 'AI line' }]);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledTimes(2);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledWith({ where: { id: 'feedback' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledWith({ where: { id: 'other-source' }, data: { outcome: 'KEPT', finalText: 'AI line', resolvedAt: expect.any(Date) } });
+    vi.mocked(db.assemblyProcedureTextFeedback.update).mockClear();
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([{ ...latest, outcome: 'KEPT', finalText: 'AI line' }]);
     await save([{ ...caption, text: 'Human line' }]);
     expect(db.assemblyProcedureTextFeedback.update).toHaveBeenLastCalledWith({ where: { id: 'feedback' }, data: { outcome: 'EDITED', finalText: 'Human line', resolvedAt: expect.any(Date) } });
+  });
+  it('marks a new dictation as reverted when the original placeholder is saved', async () => {
+    const originalText = 'ここに文章を入力';
+    db.assemblyProcedureTextFeedback.findMany.mockResolvedValue([{ ...row, source: 'DICTATION', mode: 'new', originalText }]);
+    await save([{ ...caption, text: originalText }]);
+    expect(db.assemblyProcedureTextFeedback.update).toHaveBeenCalledExactlyOnceWith({
+      where: { id: row.id }, data: { outcome: 'REVERTED', finalText: originalText, resolvedAt: expect.any(Date) },
+    });
   });
   it('resolves text even if caption feedback fails', async () => {
     db.assemblyProcedureCaptionFeedback.findMany.mockRejectedValue(new Error('caption failed'));

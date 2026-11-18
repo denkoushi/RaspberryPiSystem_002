@@ -27,10 +27,25 @@ export async function resolveAssemblyProcedureEditActor(request: FastifyRequest)
   return client ? { holderKey: `client:${client.id}`, holderLabel: client.name } : null;
 }
 
+function isEditLocked(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.code === ASSEMBLY_PROCEDURE_EDIT_LOCKED;
+}
+
 function sendLocked(error: unknown, reply: FastifyReply) {
-  if (!(error instanceof ApiError) || error.code !== ASSEMBLY_PROCEDURE_EDIT_LOCKED) throw error;
+  if (!isEditLocked(error)) throw error;
   const details = error.details as { lease: unknown };
   return reply.status(409).send({ code: ASSEMBLY_PROCEDURE_EDIT_LOCKED, message: error.message, lease: details.lease });
+}
+
+export async function canWriteAssemblyProcedureDocument(request: FastifyRequest, documentId: string): Promise<boolean> {
+  const actor = await resolveAssemblyProcedureEditActor(request);
+  try {
+    await service.assertCanWrite(documentId, actor?.holderKey ?? null, undefined, readAssemblyProcedureEditToken(request));
+    return true;
+  } catch (error) {
+    if (isEditLocked(error)) return false;
+    throw error;
+  }
 }
 
 export const enforceAssemblyProcedureEditLease: preHandlerHookHandler = async (request, reply) => {

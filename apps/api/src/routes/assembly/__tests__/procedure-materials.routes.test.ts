@@ -11,6 +11,7 @@ import { registerProcedureMaterialRoutes } from '../procedure-materials.js';
 
 const id = '00000000-0000-4000-8000-000000000001';
 const base = '/assembly/procedure-materials';
+const excludeAppNotes = { NOT: { origin: 'APP', kind: 'TEXT' } };
 describe('procedure-material routes with mocked Prisma', () => {
   let app: ReturnType<typeof Fastify>;
   afterEach(async () => { await app?.close(); });
@@ -40,8 +41,8 @@ describe('procedure-material routes with mocked Prisma', () => {
   }
   it.each([
     ['unplaced', { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }],
-    ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
-    ['discarded', { discardedAt: { not: null } }], ['all', {}],
+    ['placed', { ...excludeAppNotes, discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
+    ['discarded', { ...excludeAppNotes, discardedAt: { not: null } }], ['all', excludeAppNotes],
   ])('counts state=%s with the same shelf filter as the list', async (state, where) => {
     const { db } = harness();
     const response = await app.inject(`/assembly/procedure-materials/count?state=${state}`);
@@ -80,8 +81,8 @@ describe('procedure-material routes with mocked Prisma', () => {
   });
   it.each([
     ['unplaced', { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }],
-    ['placed', { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
-    ['discarded', { discardedAt: { not: null } }], ['all', {}],
+    ['placed', { ...excludeAppNotes, discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }],
+    ['discarded', { ...excludeAppNotes, discardedAt: { not: null } }], ['all', excludeAppNotes],
   ])('filters state=%s and hint, filename or text with a newest-first limit', async (state, where) => {
     const { db } = harness();
     const response = await app.inject({ method: 'GET', url: `${base}?state=${state}&q=DFD1&limit=12` });
@@ -118,7 +119,7 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().materials.map((row: { id: string }) => row.id)).toEqual(['body', 'photo', 'pdf', 'null-body', 'discarded-email-photo']);
     expect(db.procedureMaterial.findMany).toHaveBeenCalledTimes(2);
-    expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+    expect(db.procedureMaterial.findMany).toHaveBeenNthCalledWith(1, { where: { ...excludeAppNotes, gmailMessageId: { not: null }, OR: [...new Set([q, q.normalize('NFKC')])].map((value) => ({ text: { contains: value, mode: 'insensitive' } })) }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
     expect(db.procedureMaterial.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null, AND: [{ OR: expect.arrayContaining([{ gmailMessageId: { in: ['mail-1', 'mail-3'] } }]) }] } }));
   });
   it('joins matching material IDs once and names snapshot and matching mail materials', async () => {
@@ -160,14 +161,22 @@ describe('procedure-material routes with mocked Prisma', () => {
     expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin: { not: 'APP' }, documentId: null, placedAt: null, discardedAt: null }, take: 100 }));
     for (const query of ['state=invalid', 'origin=invalid', 'limit=0', 'limit=501']) expect((await app.inject({ method: 'GET', url: `${base}?${query}` })).statusCode).toBe(400);
   });
-  it.each(['APP', 'GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION'])('filters explicit origin %s without the implicit APP exclusion', async (origin) => {
+  it.each(['GMAIL', 'KNOWLEDGE', 'WORK_INSTRUCTION'])('filters explicit origin %s without the implicit APP exclusion', async (origin) => {
     const { db } = harness();
     expect((await app.inject(`${base}?origin=${origin}`)).statusCode).toBe(200);
     expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { origin, documentId: null, placedAt: null, discardedAt: null } }));
   });
+  it('applies the same APP filter to count and shelf list', async () => {
+    const { db } = harness();
+    const where = { ...excludeAppNotes, origin: 'APP', documentId: null, placedAt: null, discardedAt: null };
+    expect((await app.inject(`${base}/count?origin=APP`)).statusCode).toBe(200);
+    expect(db.procedureMaterial.count).toHaveBeenCalledExactlyOnceWith({ where });
+    expect((await app.inject(`${base}?origin=APP`)).statusCode).toBe(200);
+    expect(db.procedureMaterial.findMany).toHaveBeenCalledWith(expect.objectContaining({ where }));
+  });
   it('returns app metadata and resolves employee names once, preserving unknown and null numbers', async () => {
     const { db, material } = harness();
-    db.procedureMaterial.findMany.mockResolvedValue(['007125', 7125, '0001', 'unknown', null].map((nameId) => ({ ...material, origin: 'APP',
+    db.procedureMaterial.findMany.mockResolvedValue(['007125', 7125, '0001', 'unknown', null].map((nameId) => ({ ...material, kind: 'PHOTO', origin: 'APP',
       appRef: { category: '保守', note: '7125 test', location: '工場', nameId } })));
     db.employee.findMany.mockResolvedValue([{ employeeCode: '7125', displayName: '津田' }, { employeeCode: '0001', displayName: '佐藤' }]);
     const response = await app.inject(`${base}?origin=APP`);
@@ -184,8 +193,8 @@ describe('procedure-material routes with mocked Prisma', () => {
     const { db, material } = harness();
     db.employee.findFirst.mockResolvedValue({ id: 'employee', employeeCode: '7125', displayName: '津田', nfcTagUid: 'tag', status: 'ACTIVE' });
     db.employee.findMany.mockResolvedValue([{ employeeCode: '7125', displayName: '津田' }]);
-    const other = Array.from({ length: 501 }, (_, index) => ({ ...material, id: `other-${index}`, origin: 'APP', appRef: { nameId: '1234' } }));
-    db.procedureMaterial.findMany.mockResolvedValue([...other, { ...material, id: 'mine', origin: 'APP', appRef: { nameId: '007125' } }, { ...material, id: 'numeric', origin: 'APP', appRef: { nameId: 7125 } }]);
+    const other = Array.from({ length: 501 }, (_, index) => ({ ...material, id: `other-${index}`, kind: 'PHOTO', origin: 'APP', appRef: { nameId: '1234' } }));
+    db.procedureMaterial.findMany.mockResolvedValue([...other, { ...material, id: 'mine', kind: 'PHOTO', origin: 'APP', appRef: { nameId: '007125' } }, { ...material, id: 'numeric', kind: 'PHOTO', origin: 'APP', appRef: { nameId: 7125 } }]);
     const response = await app.inject({ method: 'POST', url: `${base}/by-employee-tag`, payload: { uid: ' tag ' } });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ employee: { employeeCode: '7125', displayName: '津田' }, materials: [{ id: 'mine', employeeName: '津田' }, { id: 'numeric', employeeName: '津田' }] });

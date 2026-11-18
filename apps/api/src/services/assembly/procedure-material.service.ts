@@ -1,4 +1,5 @@
 import { normalizeEmployeeNumber, materialAppText } from './procedure-material-employee-number.js';
+import { buildProcedureMaterialAppNote } from './procedure-material-app-note.js';
 import { resolveActiveAssemblyOperatorNfcUid } from './assembly-operator-nfc-resolve.service.js';
 import { AssemblyProcedureDraftImportService } from './assembly-procedure-draft-import.service.js';
 
@@ -24,14 +25,16 @@ function publicMaterial(material: ProcedureMaterial) {
 
 export type ProcedureMaterialState = 'unplaced' | 'placed' | 'discarded' | 'all';
 
+const excludeAppNotes = { NOT: { origin: 'APP', kind: 'TEXT' } } satisfies Prisma.ProcedureMaterialWhereInput;
+
 function materialShelfWhere(state: ProcedureMaterialState, origin?: ProcedureMaterialOrigin): Prisma.ProcedureMaterialWhereInput {
   const where: Prisma.ProcedureMaterialWhereInput = {};
   if (state === 'unplaced') Object.assign(where, { documentId: null, placedAt: null, discardedAt: null });
   if (state === 'placed') Object.assign(where, { discardedAt: null, OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] });
   if (state === 'discarded') where.discardedAt = { not: null };
-  // This shelf exclusion applies only to the ordinary shelf list and count, never semantic search.
   if (origin) where.origin = origin;
   else if (state === 'unplaced') where.origin = { not: 'APP' };
+  if (origin === 'APP' || (!origin && state !== 'unplaced')) Object.assign(where, excludeAppNotes);
   return where;
 }
 
@@ -42,8 +45,8 @@ export class ProcedureMaterialService {
     private readonly importer: Pick<AssemblyProcedureDraftImportService, 'importDraft'> = new AssemblyProcedureDraftImportService(),
   ) {}
 
-  async count(options: { state: ProcedureMaterialState }) {
-    return this.db.procedureMaterial.count({ where: materialShelfWhere(options.state) });
+  async count(options: { state: ProcedureMaterialState; origin?: ProcedureMaterialOrigin }) {
+    return this.db.procedureMaterial.count({ where: materialShelfWhere(options.state, options.origin) });
   }
 
   async list(options: { state: ProcedureMaterialState; origin?: ProcedureMaterialOrigin; q?: string; limit: number }) {
@@ -52,7 +55,7 @@ export class ProcedureMaterialService {
     if (options.q) {
       const queries = [...new Set([options.q, options.q.normalize('NFKC')])];
       const textMatches = queries.map((q) => ({ text: { contains: q, mode: 'insensitive' as const } }));
-      const messages = await this.db.procedureMaterial.findMany({ where: { gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
+      const messages = await this.db.procedureMaterial.findMany({ where: { ...excludeAppNotes, gmailMessageId: { not: null }, OR: textMatches }, select: { gmailMessageId: true }, distinct: ['gmailMessageId'], take: 500 });
       const scope = options.state === 'unplaced' ? Prisma.sql`material."documentId" IS NULL AND material."placedAt" IS NULL AND material."discardedAt" IS NULL`
         : options.state === 'placed' ? Prisma.sql`material."discardedAt" IS NULL AND (material."documentId" IS NOT NULL OR material."placedAt" IS NOT NULL)`
         : options.state === 'discarded' ? Prisma.sql`material."discardedAt" IS NOT NULL` : Prisma.sql`TRUE`;
@@ -74,12 +77,74 @@ export class ProcedureMaterialService {
       throw new ApiError(404, '社員タグが見つかりません', undefined, 'EMPLOYEE_TAG_NOT_FOUND');
     }
     const number = normalizeEmployeeNumber(employee.employeeCode);
+    const unplaced = { documentId: null, placedAt: null, discardedAt: null };
     const candidates = await this.db.procedureMaterial.findMany({
-      where: { origin: 'APP', documentId: null, placedAt: null, discardedAt: null, kind: { not: 'PDF' } },
+      where: { origin: 'APP', ...unplaced, kind: { not: 'PDF' } },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
-    const materials = candidates.filter(material => number !== null && normalizeEmployeeNumber(materialAppText(material, 'nameId')) === number).slice(0, limit);
-    return { employee: { employeeCode: employee.employeeCode, displayName: employee.displayName }, materials: await this.describeMaterials(materials) };
+    const belongsToEmployee = (material: ProcedureMaterial) =>
+      number !== null && normalizeEmployeeNumber(materialAppText(material, 'nameId')) === number;
+    const owned = candidates.filter(belongsToEmployee);
+    const notesByMessage = new Map<string, ProcedureMaterial>();
+    const unplacedPhotoMessages = new Set<string>();
+    for (const material of owned) {
+      if (material.gmailMessageId === null) continue;
+      if (material.kind === 'TEXT') notesByMessage.set(material.gmailMessageId, material);
+      else unplacedPhotoMessages.add(material.gmailMessageId);
+    }
+    const missingNotes = new Map<string, NonNullable<ReturnType<typeof buildProcedureMaterialAppNote>>>();
+    for (const photo of owned) {
+      const messageId = photo.gmailMessageId;
+      if (photo.kind !== 'PHOTO' || messageId === null || notesByMessage.has(messageId) || missingNotes.has(messageId)) continue;
+      const note = buildProcedureMaterialAppNote(photo);
+      if (note) missingNotes.set(messageId, note);
+    }
+    if (missingNotes.size) {
+      const noteWhere = { origin: 'APP', kind: 'TEXT' } as const;
+      const existingNotes = await this.db.procedureMaterial.findMany({
+        where: { ...noteWhere, gmailMessageId: { in: [...missingNotes.keys()] } },
+      });
+      for (const note of existingNotes) {
+        if (note.gmailMessageId === null) continue;
+        missingNotes.delete(note.gmailMessageId);
+        if (note.documentId === null && note.placedAt === null && note.discardedAt === null && belongsToEmployee(note)) {
+          notesByMessage.set(note.gmailMessageId, note);
+        }
+      }
+      const data = [...missingNotes.values()];
+      if (data.length) {
+        await this.db.procedureMaterial.createMany({ data, skipDuplicates: true });
+        const savedNotes = await this.db.procedureMaterial.findMany({
+          where: { ...noteWhere, ...unplaced, gmailDedupeKey: { in: data.map(note => note.gmailDedupeKey) } },
+        });
+        for (const note of savedNotes) {
+          if (note.gmailMessageId !== null && belongsToEmployee(note)) notesByMessage.set(note.gmailMessageId, note);
+        }
+      }
+    }
+    // Only check messages whose photos were absent from the unplaced list.
+    const messagesWithoutUnplacedPhotos = [...notesByMessage.keys()].filter(id => !unplacedPhotoMessages.has(id));
+    const placedPhotos = messagesWithoutUnplacedPhotos.length ? await this.db.procedureMaterial.findMany({
+      where: { origin: 'APP', kind: 'PHOTO', discardedAt: null, gmailMessageId: { in: messagesWithoutUnplacedPhotos } },
+      select: { gmailMessageId: true }, distinct: ['gmailMessageId'],
+    }) : [];
+    const placedPhotoMessages = new Set(placedPhotos.map(photo => photo.gmailMessageId));
+    const materials = owned.flatMap(material => {
+      const messageId = material.gmailMessageId;
+      if (messageId === null) return material.kind === 'TEXT' ? [] : [material];
+      if (material.kind === 'TEXT') return placedPhotoMessages.has(messageId) ? [material] : [];
+      const note = notesByMessage.get(messageId);
+      if (note) {
+        notesByMessage.delete(messageId);
+        return [note, material];
+      }
+      return [material];
+    });
+    const limited = materials.slice(0, limit);
+    const last = limited.at(-1);
+    // A memo cut off from its photos gives its slot back to the photo that the memo pushed out.
+    if (last?.kind === 'TEXT' && last.gmailMessageId !== null && unplacedPhotoMessages.has(last.gmailMessageId)) limited[limited.length - 1] = materials[limited.length]!;
+    return { employee: { employeeCode: employee.employeeCode, displayName: employee.displayName }, materials: await this.describeMaterials(limited) };
   }
 
   private async describeMaterials(materials: ProcedureMaterial[], matchedParts = new Map<string, string>()) {
@@ -102,7 +167,7 @@ export class ProcedureMaterialService {
 
   async listRankRecordIds(state: 'unplaced' | 'placed') {
     const materials = await this.db.procedureMaterial.findMany({
-      where: { discardedAt: null, ...(state === 'unplaced' ? { documentId: null, placedAt: null }
+      where: { ...excludeAppNotes, discardedAt: null, ...(state === 'unplaced' ? { documentId: null, placedAt: null }
         : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] }) },
       select: { id: true, gmailMessageId: true },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
@@ -120,7 +185,7 @@ export class ProcedureMaterialService {
       ? { documentId: null, placedAt: null }
       : { OR: [{ documentId: { not: null } }, { placedAt: { not: null } }] };
     const materials = await this.db.procedureMaterial.findMany({
-      where: { discardedAt: null, AND: [state, { OR: [
+      where: { ...excludeAppNotes, discardedAt: null, AND: [state, { OR: [
         { gmailMessageId: { in: mailIds } }, { id: { in: materialIds } },
       ] }] },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],

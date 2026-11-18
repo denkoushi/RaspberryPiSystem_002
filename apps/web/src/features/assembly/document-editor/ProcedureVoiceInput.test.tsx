@@ -3,7 +3,9 @@ import { useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getAssemblyProcedureSpeechToTextAvailability, rewriteAssemblyProcedureDictation, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import { rewriteAssemblyProcedureDictation as rewriteDictationRequest } from '../../../api/domains/assembly/dictation';
 import { useLocalLlmAvailability } from '../../../api/hooks/local-llm';
+import { api } from '../../../api/http';
 
 import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDocumentEditorInspector';
 import { PROCEDURE_DICTATION_REWRITE_TIMEOUT_MS, PROCEDURE_WHISPER_BASE_URL } from './useProcedureVoiceInput';
@@ -38,9 +40,10 @@ class FakeRecorder {
 }
 const makeElement = (text: string, id = 'one'): OverlayTextElement => ({ id, kind: 'TEXT', text, pageIndex: 0, zIndex: 0, bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.4, heightRatio: 0.1 } });
 const common = { onDelete: vi.fn(), onBringForward: vi.fn(), onSendBackward: vi.fn(), onBringToFront: vi.fn(), onSendToBack: vi.fn(), onRefetchTextCandidates: vi.fn() };
-function Harness({ text = '', enabled = true, onUpdate = vi.fn(), context }: { text?: string; enabled?: boolean; onUpdate?: (element: OverlayTextElement) => void; context?: string }) {
+const documentId = '00000000-0000-4000-8000-000000000001';
+function Harness({ text = '', enabled = true, onUpdate = vi.fn(), context, documentId, holderToken }: { text?: string; enabled?: boolean; onUpdate?: (element: OverlayTextElement) => void; context?: string; documentId?: string; holderToken?: string }) {
   const [element, setElement] = useState(makeElement(text));
-  return <><button onClick={() => setElement(makeElement('別の文章', 'two'))}>選択を変える</button><button onClick={() => setElement(makeElement('前の文'))}>外から変える</button><AssemblyProcedureDocumentEditorInspector {...common} element={element} voiceInputEnabled={enabled} voiceContext={context} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /></>;
+  return <><button onClick={() => setElement(makeElement('別の文章', 'two'))}>選択を変える</button><button onClick={() => setElement(makeElement('前の文'))}>外から変える</button><AssemblyProcedureDocumentEditorInspector {...common} element={element} voiceInputEnabled={enabled} voiceContext={context} documentId={documentId} holderToken={holderToken} onUpdate={next => { if (next.kind === 'TEXT') { onUpdate(next); setElement(next); } }} /></>;
 }
 async function record(label: string) {
   fireEvent.click(screen.getByRole('button', { name: label, exact: true }));
@@ -60,7 +63,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', stt);
   Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('procedure voice input', () => {
   it.each([['話す', ''], ['続き', '既存。'], ['直す', '既存。']])('keeps %s clickable with an unavailable badge', async (label, text) => {
@@ -117,6 +120,29 @@ describe('procedure voice input', () => {
     expect(screen.getByRole('button', { name: '続き' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '直す' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '話す' })).not.toBeInTheDocument();
+  });
+  it('sends the selected document, first page and element to rewrite', async () => {
+    render(<Harness text="既存。" documentId={documentId} />);
+    await record('続き');
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('既存。\n棚に戻す。'));
+    expect(rewrite).toHaveBeenCalledExactlyOnceWith({
+      mode: 'append', spokenText: 'えーと、棚に直す', currentText: '既存。', signal: expect.any(AbortSignal),
+      documentId, pageIndex: 0, elementId: 'one', originalText: '既存。',
+    });
+  });
+  it('sends the edit token and original placeholder with a new dictation and restores it on undo', async () => {
+    const originalText = 'ここに文章を入力';
+    const post = vi.spyOn(api, 'post').mockResolvedValue({ data: { text: '棚に戻す。' } });
+    rewrite.mockImplementationOnce(rewriteDictationRequest);
+    render(<Harness text={originalText} documentId={documentId} holderToken="session-token" />);
+    await record('話す');
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('棚に戻す。'));
+    expect(post).toHaveBeenCalledExactlyOnceWith('/assembly/procedure-documents/dictation/rewrite', {
+      mode: 'new', spokenText: 'えーと、棚に直す', currentText: undefined,
+      documentId, pageIndex: 0, elementId: 'one', originalText,
+    }, { signal: expect.any(AbortSignal), headers: { 'x-procedure-edit-token': 'session-token' } });
+    fireEvent.click(screen.getByRole('button', { name: '戻す', exact: true }));
+    expect(screen.getByRole('textbox')).toHaveValue(originalText);
   });
   it.each([
     ['話す', 'new', '', '棚に戻す。'],

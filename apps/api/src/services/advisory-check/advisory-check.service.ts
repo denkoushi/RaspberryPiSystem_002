@@ -6,6 +6,9 @@ import { logger } from '../../lib/logger.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { deliverSystemNotice, type SystemNotice } from '../kiosk-inquiry/system-notice.service.js';
 
+import { allInstalledVersionsFixed, maximumFixedVersion } from './advisory-versions.js';
+import { createOsSecurityUpdateRequest, sweepOsSecurityUpdateRequests, type OsSecurityUpdateProduct } from './os-security-early-update.js';
+
 const FIXED_VERSION = /^[0-9A-Za-z.+:~-]{1,64}$/;
 // A malformed fixed version only loses that entry; the verdict itself stays usable.
 function keepValidFixedVersions(value: unknown) {
@@ -75,44 +78,8 @@ export function adoptFixedVersions(job: Job, fixedVersions: z.infer<typeof answe
   return adopted;
 }
 
-function numericVersion(version: string) {
-  return /^\d+(\.\d+)*$/.test(version) ? version.split('.').map(part => BigInt(part)) : null;
-}
-
-function compareNumericVersions(left: bigint[], right: bigint[]) {
-  for (const [index, part] of left.entries()) {
-    const other = right[index];
-    if (other === undefined || part > other) return 1;
-    if (part < other) return -1;
-  }
-  return left.length - right.length;
-}
-
-function installedUpstreamVersion(value: string) {
-  const version = /^[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?=(?:\d+:)?([0-9A-Za-z.+~-]+)$/.exec(value)?.[1];
-  if (!version || version.endsWith('-')) return null;
-  const revision = version.lastIndexOf('-');
-  const upstream = revision < 0 ? version : version.slice(0, revision);
-  return numericVersion(upstream.split(/[~+]/, 1)[0]);
-}
-
-function allInstalledVersionsFixed(installed: string[], fixed: string[]) {
-  let maximum: bigint[] | null = null;
-  for (const version of fixed) {
-    const numeric = numericVersion(version);
-    if (!numeric) return false;
-    if (!maximum || compareNumericVersions(numeric, maximum) > 0) maximum = numeric;
-  }
-  if (!maximum || installed.length === 0) return false;
-
-  const threshold = maximum;
-  return installed.every(version => {
-    const numeric = installedUpstreamVersion(version);
-    return numeric !== null && compareNumericVersions(numeric, threshold) >= 0;
-  });
-}
-
-export function triageAdvisory(job: Job, result: Result): 'none' | 'manual' {
+export function triageAdvisory(job: Job, result: Result, earlyMode?: 'auto' | 'trial'): z.infer<typeof triageSchema> {
+  if (earlyMode === 'auto' && result.verdict === 'affected') return 'auto';
   if (result.verdict !== 'not_affected' || job.page_error !== undefined
     || !job.page_text.trim() || job.page_text.length >= MAX_PAGE_TEXT_LENGTH) return 'manual';
 
@@ -130,6 +97,24 @@ export function triageAdvisory(job: Job, result: Result): 'none' | 'manual' {
       && allInstalledVersionsFixed(evidence.versions, fixed);
   }) ? 'none' : 'manual';
 }
+
+function earlyUpdateProducts(job: Job, result: Result): Record<string, OsSecurityUpdateProduct> | null {
+  if (result.verdict !== 'affected' || job.page_error !== undefined || job.products.length === 0) return null;
+  const fixedVersions = adoptFixedVersions(job, result.fixed_versions);
+  const products: [string, OsSecurityUpdateProduct][] = [];
+  for (const product of job.products) {
+    const remedy = job.remedies?.[product];
+    if (remedy?.kind !== 'os-security-update') return null;
+    products.push([product, {
+      packages: remedy.packages,
+      comparable: remedy.upstream_version_comparable,
+      fixedVersion: remedy.upstream_version_comparable ? maximumFixedVersion(fixedVersions.get(product) ?? []) : null,
+    }]);
+  }
+  return Object.fromEntries(products);
+}
+
+const advisoryNoticeKey = (job: Job) => `jpcert:${job.id}`;
 
 function advisoryVersions(job: Job) {
   const versions = { ...job.versions };
@@ -165,7 +150,7 @@ export function advisoryNotice(job: Job, result: Result): SystemNotice {
   const perProduct = Math.max(1, Math.floor(budget / job.products.length));
   const versions = advisoryVersions(job);
   const productLines = job.products.map(product => line(`対象ソフト: ${product}: ${(versions[product] ?? ['unavailable']).join('; ')}`, perProduct));
-  return { key: `jpcert:${job.id}`, state: 'open', title: `JPCERT 注意喚起: ${line(job.products[0], 30)}`,
+  return { key: advisoryNoticeKey(job), state: 'open', title: `JPCERT 注意喚起: ${line(job.products[0], 30)}`,
     body: [...fixed, ...productLines, ...footer].join('\n'), repeatMs: Number.MAX_SAFE_INTEGER };
 }
 
@@ -233,6 +218,7 @@ export class AdvisoryCheckService {
     }
   }
   async tick(signal: AbortSignal) {
+    await sweepOsSecurityUpdateRequests(this.now, this.options.deliver ?? deliverSystemNotice, this.log);
     for (const folder of ['pending', 'claimed', 'done', 'invalid']) {
       await mkdir(this.file(folder, ''), { recursive: true, mode: 0o700 });
     }
@@ -319,8 +305,16 @@ export class AdvisoryCheckService {
         }
       }
       // Persist judgment before delivery; a delivery retry must not ask the LLM again.
-      const triage = triageAdvisory(job, job.result);
       await this.save(name, job);
+      const products = earlyUpdateProducts(job, job.result);
+      const earlyMode = products ? await createOsSecurityUpdateRequest({
+        noticeKey: advisoryNoticeKey(job), title: job.title, url: job.link, products,
+      }, this.now).catch(error => {
+        this.log.warn({ jobId: job.id, error: error instanceof Error ? error.name : 'unknown' },
+          'OS security update request creation failed');
+        return undefined;
+      }) : undefined;
+      const triage = triageAdvisory(job, job.result, earlyMode);
       if (triage === 'manual') {
         try { await (this.options.deliver ?? deliverSystemNotice)(advisoryNotice(job, job.result)); }
         catch (error) {
@@ -330,7 +324,7 @@ export class AdvisoryCheckService {
       }
       await this.save(name, { ...job, triage }, 'done');
       if (!await this.removeClaim(name)) continue;
-      if (triage === 'none') this.log.info({ jobId: job.id, products: job.products }, 'Advisory job completed without notification');
+      if (triage !== 'manual') this.log.info({ jobId: job.id, products: job.products }, 'Advisory job completed without notification');
     }
   }
 }
