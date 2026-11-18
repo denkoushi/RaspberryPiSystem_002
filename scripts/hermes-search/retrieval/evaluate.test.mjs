@@ -64,6 +64,8 @@ test('evaluation counts each planner/relevance batch per question and matches wo
       planCalls: 1,
       relevanceCalls: seen.length - 1,
       jevInputChars: seen.reduce((sum, { input }) => sum + JSON.stringify(input).length, 0),
+      planInputChars: JSON.stringify(seen[0].input).length,
+      relevanceInputChars: seen.slice(1).reduce((sum, { input }) => sum + JSON.stringify(input).length, 0),
       jevOutputChars: seen.reduce((sum, { output }) => sum + JSON.stringify(output).length, 0),
       answerChars: worker.answer.length,
       answerRecords: worker.display?.records?.length ?? 0,
@@ -125,6 +127,8 @@ test('evaluation counts a failed relevance attempt and its retry without inventi
   assert.deepEqual(details[0].volume, {
     jevCalls: 3, planCalls: 1, relevanceCalls: 2,
     jevInputChars: inputs.reduce((sum, input) => sum + JSON.stringify(input).length, 0),
+    planInputChars: JSON.stringify(inputs[0]).length,
+    relevanceInputChars: inputs.slice(1).reduce((sum, input) => sum + JSON.stringify(input).length, 0),
     jevOutputChars: outputs.reduce((sum, output) => sum + JSON.stringify(output).length, 0),
     answerChars: UNAVAILABLE_ANSWER.length, answerRecords: 0,
   });
