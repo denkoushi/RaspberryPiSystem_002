@@ -47,10 +47,6 @@ export function addUtcDays(date: string, days: number): string {
   return value.toISOString().slice(0, 10);
 }
 
-export function shortDate(date: string | null): string {
-  return date ? date.slice(5).replace('-', '/') : '未定';
-}
-
 export function displayedDue(item: GrindingPlanningBoardItem, allocation: PlanningBoardAllocation): string | null {
   return resolveGrindingPlanningBoardDueDate(item, allocation);
 }
