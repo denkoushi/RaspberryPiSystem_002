@@ -128,7 +128,7 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     try {
       const { documentId, pageIndex, elementId, originalText: originalElementText, ...input } = body;
       const { signal } = abortController;
-      const result = await new ProcedureDictationRewriteService().rewrite({ ...input, signal });
+      const result = await new ProcedureDictationRewriteService().rewrite({ ...input, ...(documentId === undefined ? {} : { documentId }), signal });
       if (documentId === undefined || pageIndex === undefined || elementId === undefined || signal.aborted) return result;
       const originalText = input.mode === 'new' ? originalElementText ?? '' : input.currentText ?? '';
       const aiText = input.mode === 'append' ? originalText + '\n' + result.text : result.text;
