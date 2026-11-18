@@ -1058,3 +1058,20 @@ Recall across the three nights since the follow-up change: 49/71, 60/83, 64/95 (
 Note for ⑤ (adoption rule): the synthetic follow-up rows now give the planner-version comparison a set with computable targets, which the 2026-10-28 decision named as the condition for switching adoption on. Proposed rule, to be decided by the owner: a candidate wording is adopted only when, on the night's synthetic follow-up and filter rows, affected questions are at least 5, gained minus lost is at least 2, and held-out and real rows lose nothing; a tie stays in report mode. The learned-query rule (tie accepted) is left as it is.
 
 Private files: `work/flywheel/questions-2026-11-09.jsonl`, `runner-2026-11-09.log`, `flywheel-status.json`, `learned-queries.jsonl`, `regressions.jsonl` (empty).
+
+### 2026-11-18: shorter relevance-judge wording cuts JEV input by 23% with no accuracy loss (kept)
+
+Question: can the text sent to JEV shrink without losing accuracy (accuracy first, then length under an accuracy guard)? `evaluate.mjs` now splits `jevInputChars` into `planInputChars` and `relevanceInputChars`. On the baseline the relevance judge took about 15,000 of 22,000 characters per question (two batches of 15 candidates); each candidate repeated the same instruction preamble and two long criteria, so more than half of each judge call was repeated wording. The planner (about 6,600) was left alone: its questions are versioned for the nightly planner comparison and much of it serves follow-up turns that these sets do not exercise.
+
+Setup: Mac, hybrid retriever with DGX embeddings through the tunnel, snapshot `nonconformity-snapshot-pi5-20261004.json`, enrichment `enrichment-pi5-20261004.jsonl`, dense cache seeded from `stores/dense-pi5-20261004.bin`, judge 30, `--now 2026-09-24`, all six sets, each configuration run twice on the same day. Held-out sets were read as totals only.
+
+| Run | Held-out status (44) | Held-out target shown | stage-v1 status / target / prec | aspect target | jevIn p50 (stage-v1) |
+| --- | --- | --- | --- | --- | --- |
+| main, run 1 | 39 | 10 | 46 / 32 of 45 / 0.71 | 14 of 17 | 21,909 |
+| main, run 2 | 40 | 10 | 46 / 32 of 45 / 0.71 | 14 of 17 | 21,909 |
+| C1 short criteria, runs 1-2 | 39, 39 | 11, 10 | 46 / 33 / - | 15, 14 | 18,249 (-17%) |
+| C2 = C1 + short preamble, runs 1-2 | 39, 39 | 12, 12 | 46 / 33 / 0.70, 0.71 | 15, 15 | 16,809 (-23%) |
+
+C2 is kept: held-out status stays inside the main spread (39-40), targets shown do not drop, stage-v1 precision and the number of records shown per set are unchanged (held-out records shown 57-60, 30-33, 25 across all runs), so the judge did not become more lenient. Planner calls and plans are unchanged (`source-compatibility.test.mjs` results digest unchanged; only the inputs digest was re-captured). Production effect: about 3,600 fewer characters per content question on the Pi 5 and in the nightly flywheel; the nightly numbers after deploy are compared against a changed judge prompt.
+
+Private files: `runs/compaction-20261118/{base1,base2,c1a,c1b,c2a,c2b}-*.json` and `.log`, `work/compaction/captured-inputs.json` (two dev questions).

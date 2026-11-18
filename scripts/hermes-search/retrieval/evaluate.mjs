@@ -401,13 +401,15 @@ export async function evaluateGold(options) {
   try {
     for (const item of gold) {
       const wallStarted = performance.now();
-      const volume = { jevCalls: 0, planCalls: 0, relevanceCalls: 0, jevInputChars: 0, jevOutputChars: 0 };
+      const volume = { jevCalls: 0, planCalls: 0, relevanceCalls: 0, jevInputChars: 0, planInputChars: 0, relevanceInputChars: 0, jevOutputChars: 0 };
       // Count serialized evaluate inputs/results (UTF-16 code units), not wire bytes.
       // Count attempted calls before awaiting, including relevance batches and retries.
       const measuredEvaluate = (kind) => async (input) => {
         volume.jevCalls += 1;
         volume[kind] += 1;
-        volume.jevInputChars += JSON.stringify(input).length;
+        const inputChars = JSON.stringify(input).length;
+        volume.jevInputChars += inputChars;
+        volume[kind === 'planCalls' ? 'planInputChars' : 'relevanceInputChars'] += inputChars;
         const output = await (options.evaluate ?? defaultEvaluate)(input);
         volume.jevOutputChars += JSON.stringify(output)?.length ?? 0;
         return output;
@@ -542,7 +544,7 @@ export async function evaluateGold(options) {
     statusCorrect: details.filter((item) => item.statusCorrect).length,
     targetCases: details.filter((item) => item.targetsShown != null).length,
     casesTargetShown: details.filter((item) => item.targetsShown > 0).length,
-    volume: Object.fromEntries(['jevCalls', 'jevInputChars', 'jevOutputChars', 'answerChars']
+    volume: Object.fromEntries(['jevCalls', 'jevInputChars', 'planInputChars', 'relevanceInputChars', 'jevOutputChars', 'answerChars']
       .map((key) => [key, volumeStats(details.map((item) => item.volume[key]))])),
     latency: {
       plan: latencyPair(details.map((item) => item.planMs)),
