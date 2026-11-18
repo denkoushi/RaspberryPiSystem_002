@@ -6,13 +6,14 @@ import { documentSite } from './procedure-document-site.js';
 import { dictationCaseSplit, dictationFeedbackCase, type DictationFeedback } from './procedure-dictation-evaluation.js';
 import { selectDictationExamples, type ProcedureDictationLearning } from './procedure-dictation-prompt.js';
 import type { ProcedureSite } from './procedure-published-examples.js';
+import { procedureFeedbackLearningWindow } from './procedure-text-feedback.js';
 
 export function dictationFeedbackQuery(site: ProcedureSite, now: Date, outcome: Prisma.AssemblyProcedureTextFeedbackWhereInput['outcome'] = { in: ['KEPT', 'EDITED'] }) {
   return {
     where: {
       site, source: 'DICTATION', outcome,
       mode: { in: ['new', 'append', 'revise'] }, spokenText: { not: null }, finalText: { not: null },
-      resolvedAt: { gte: new Date(now.getTime() - 180 * 86400_000), lte: now },
+      resolvedAt: procedureFeedbackLearningWindow(now),
     },
     orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }],
     select: { id: true, mode: true, spokenText: true, originalText: true, aiText: true, finalText: true, outcome: true },

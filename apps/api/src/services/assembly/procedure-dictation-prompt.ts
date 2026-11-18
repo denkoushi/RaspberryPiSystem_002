@@ -1,5 +1,6 @@
 import type { TextChatMessage } from '../inference/ports/text-completion.port.js';
 import { buildSiteVocabularyPrompt } from './procedure-site-context.js';
+import { uniqueShortTextPairs } from './procedure-text-learning-prompt.js';
 
 export type ProcedureDictationRewriteInput = {
   mode: 'new' | 'append' | 'revise';
@@ -19,18 +20,7 @@ export type ProcedureDictationLearning = {
 };
 
 export function selectDictationExamples(examples: Iterable<ProcedureDictationExample>): ProcedureDictationExample[] {
-  const seen = new Set<string>();
-  const selected: ProcedureDictationExample[] = [];
-  for (const example of examples) {
-    const { spokenText, finalText } = example;
-    if (!spokenText || !finalText || Array.from(spokenText).length > 200 || Array.from(finalText).length > 200) continue;
-    const key = JSON.stringify([spokenText, finalText]);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    selected.push(example);
-    if (selected.length === 5) break;
-  }
-  return selected;
+  return uniqueShortTextPairs(examples, ({ spokenText, finalText }) => spokenText && finalText ? [spokenText, finalText] : null).slice(0, 5);
 }
 
 function learningInstructions(learning: ProcedureDictationLearning, mode: ProcedureDictationRewriteInput['mode']): string {
