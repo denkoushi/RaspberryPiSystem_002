@@ -27,7 +27,7 @@ export type ProcedureMaterialPhoto = {
 };
 export type ProcedureMaterialVideo = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256' | 'contentType'>;
 export type ProcedureMaterialPdf = Pick<ProcedureMaterialPhoto, 'gmailDedupeKey' | 'filename' | 'buffer' | 'sha256'>;
-export type ProcedureMaterialPacket = { text: string | null; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; spreadsheets: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
+export type ProcedureMaterialPacket = { text: string | null; appRef?: ProcedureMaterialAppRef; photos: ProcedureMaterialPhoto[]; videos: ProcedureMaterialVideo[]; pdfs: ProcedureMaterialPdf[]; spreadsheets: ProcedureMaterialPdf[]; duplicate: number; skippedAttachments: number; warnings: string[] };
 
 /** Bounds decode memory on the Pi5: 40 MP ≈ 160 MiB RGBA. Larger inputs fail fast instead of risking OOM. */
 export const PHOTO_MAX_INPUT_PIXELS = 40_000_000;
@@ -269,5 +269,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     }
   }
   if (appReferences && resolvedAppPhotos.size !== appReferences.size) throw new Error(`Referenced photos could not be imported: ${packet.warnings.join('; ')}`);
+  // The submission metadata is still needed when all photos were already saved.
+  if (appReferences) packet.appRef = appReferences.values().next().value;
   return packet;
 }

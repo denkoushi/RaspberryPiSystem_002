@@ -2105,6 +2105,7 @@ APIの概要と詳細。
 - [Hermes background worker implementation](plans/hermes-background-worker.md)
 - [Nightly security review runbook](runbooks/nightly-security-review.md) — enable, read private reports, manage known findings, and disable.
 - [Nightly security and error review](plans/nightly-security-review-execplan.md) — business LLM reads deployed changes and log digests at night; Claude verifies in the morning.
+- [要領書の音声入力の学習計画](plans/procedure-dictation-learning-loop-execplan.md) — 発話・書き直し・保存結果の記録と、次段階の評価。
 - [Hermes knowledge intake and reports](plans/hermes-knowledge.md) — Markdown/Git, photographs, PDFs and remaining integration work.
 - [Kiosk inventory daily/setup screens](plans/kiosk-inventory-ux-execplan.md) — NFC-first 在庫操作 with password-free correction and a separate touch setup screen.
 - [Kiosk tag desk](plans/kiosk-tag-desk-execplan.md) — キオスク「タグ管理」: NFCタグの紐づけ・切り離しと、従業員・工具・計測機器・吊具のマスター編集を管理コンソールから移設。

@@ -920,32 +920,68 @@ function appHarness(parts = appParts(), subject = 'ProcedureMaterial item-1') {
 describe('procedure-material app Gmail ingestion', () => {
   it('imports spreadsheets alongside a valid app manifest without changing app photo handling', async () => {
     const h = appHarness([...appParts(), spreadsheetPart()]);
-    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, checkSheets: 1, messages: [{ trashed: true }] });
-    expect(h.rows.every((row) => row.kind === 'PHOTO' && row.origin === 'APP')).toBe(true);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 3, checkSheets: 1, messages: [{ trashed: true }] });
+    expect(h.rows.map(({ kind, origin }) => [kind, origin])).toEqual([['PHOTO', 'APP'], ['PHOTO', 'APP'], ['TEXT', 'APP']]);
   });
 
-  it.each(['ProcedureMaterial', 'ProcedureMaterial item-1', 'ProcedureMaterial\titem-1'])('saves exactly the two referenced APP photos despite legacy fromEmail for %s', async (subject) => {
+  it.each(['ProcedureMaterial', 'ProcedureMaterial item-1', 'ProcedureMaterial\titem-1'])('saves two APP photos and a single memo despite legacy fromEmail for %s', async (subject) => {
     const h = appHarness(appParts(), subject);
     const options = { config: h.config, allowWait: false };
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
     expect(h.gmail.searchMessagesAll).toHaveBeenCalledWith('((subject:"[Procedure-material]" OR subject:"ProcedureMaterial") in:inbox is:unread) -label:rps_sender_rejected');
-    expect(h.rows).toEqual([1, 2].map((photoIndex) => expect.objectContaining({
+    expect(h.rows.filter((row) => row.kind === 'PHOTO')).toEqual([1, 2].map((photoIndex) => expect.objectContaining({
       origin: 'APP', kind: 'PHOTO', text: null, subjectHint: '保守・7125 test', contentType: 'image/jpeg',
       appRef: { sourceSystem: 'sharepoint', sourceList: 'ProcedureMaterialList', itemId: 1, modified: appManifest.source.modified,
         manifestId: 1, category: '保守', location: null, note: '7125 test', nameId: '007125', photoIndex },
     })));
+    expect(h.rows.filter((row) => row.kind === 'TEXT')).toEqual([expect.objectContaining({
+      origin: 'APP', text: '7125 test', gmailMessageId: 'mail-1', gmailDedupeKey: 'mail-1:app-note',
+      subjectHint: h.rows[0]!.subjectHint, fromEmail: h.rows[0]!.fromEmail, receivedAt: h.rows[0]!.receivedAt,
+      appRef: { ...(h.rows[0]!.appRef as object), photoIndex: 0 },
+    })]);
     expect(h.store.write).toHaveBeenCalledTimes(2);
     expect(h.gmail.getAttachment).not.toHaveBeenCalled();
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 2, messages: [{ trashed: true }] });
-    expect(h.rows).toHaveLength(2);
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 3, messages: [{ trashed: true }] });
+    expect(h.rows).toHaveLength(3);
     expect(h.gmail.trashMessage).toHaveBeenCalledTimes(2);
   });
+  it('retries the memo after both photos were saved and trims its text', async () => {
+    const parts = appParts();
+    parts[0] = manifestPart({ ...appManifest, note: '　 取付位置を確認 \n ' });
+    const h = appHarness(parts);
+    const create = h.db.procedureMaterial.create.getMockImplementation()!;
+    h.db.procedureMaterial.create.mockImplementation(async (args) => {
+      if (args.data.kind === 'TEXT') throw new Error('write failed');
+      return create(args);
+    });
+    const options = { config: h.config, allowWait: false, manual: true };
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 2, retryable: 1 });
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+
+    h.db.procedureMaterial.create.mockImplementation(create);
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 1, duplicate: 2, retryable: 0 });
+    expect(h.rows.filter((row) => row.kind === 'TEXT')).toEqual([expect.objectContaining({
+      text: '取付位置を確認', appRef: expect.objectContaining({ note: '　 取付位置を確認 \n ' }),
+    })]);
+  });
+
+  it.each([
+    ['', '007125'], ['　 \t\n', '007125'], ['取付位置を確認', undefined], ['取付位置を確認', '   '],
+    ['取付位置を確認', '7125A'],
+  ])('saves only photos for note %j and employee number %j', async (note, nameId) => {
+    const parts = appParts();
+    parts[0] = manifestPart({ ...appManifest, note, name_id: nameId });
+    const h = appHarness(parts);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, retryable: 0 });
+    expect(h.rows.map((row) => row.kind)).toEqual(['PHOTO', 'PHOTO']);
+  });
+
   it('saves an APP photo whose .jpeg attachment actually contains PNG bytes', async () => {
     const png = await sharp(pageImage).png().toBuffer();
     const parts = appParts().map((part) => part.filename === '1_photo_2.jpeg' ? { ...part, body: { data: png.toString('base64url') } } : part);
     const h = appHarness(parts);
-    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 2, retryable: 0, messages: [{ trashed: true }] });
-    expect(h.rows.map((row) => row.contentType)).toEqual(['image/jpeg', 'image/png']);
+    expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
+    expect(h.rows.filter((row) => row.kind === 'PHOTO').map((row) => row.contentType)).toEqual(['image/jpeg', 'image/png']);
   });
   it.each(['missing', 'invalid-json', 'invalid-schema', 'wrong-source', 'wrong-list', 'duplicate-manifest', 'missing-photo', 'broken-photo', 'duplicate-photo', 'duplicate-index'])('leaves %s packets unread with no row or file saved', async (failure) => {
     let parts = appParts();
@@ -991,9 +1027,9 @@ describe('procedure-material app Gmail ingestion', () => {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => { videos.push(data); return data; }) });
     Object.assign(h.db, { $transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => work(h.db)), $executeRaw: vi.fn() });
     const options = { config: h.config, allowWait: false };
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 4, retryable: 0, messages: [{ trashed: true }] });
     expect(videos).toEqual([expect.objectContaining({ status: 'PENDING', gmailMessageId: 'mail-1', sourceContentType: 'video/mp4' })]);
-    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 3, messages: [{ trashed: true }] });
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, checkSheets: 0, duplicate: 4, messages: [{ trashed: true }] });
     expect(videos).toHaveLength(1);
   });
 });

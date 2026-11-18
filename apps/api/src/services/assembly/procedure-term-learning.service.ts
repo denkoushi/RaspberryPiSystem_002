@@ -47,11 +47,11 @@ export async function runProcedureTermLearningOnce(options: { dryRun?: boolean; 
       options.signal?.throwIfAborted();
       const latest = await prisma.assemblyProcedureLearnedTerm.findFirst({ where: { site }, orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } });
       const changed = await prisma.assemblyProcedureTextFeedback.findFirst({
-        where: { site, outcome: 'EDITED', ...(latest ? { resolvedAt: { gt: latest.updatedAt } } : {}) }, select: { id: true }
+        where: { site, source: 'LAYOUT', outcome: 'EDITED', ...(latest ? { resolvedAt: { gt: latest.updatedAt } } : {}) }, select: { id: true }
       });
       if (!changed) { results.push({ site, status: 'skipped', terms: [] }); continue; }
       const rows = await prisma.assemblyProcedureTextFeedback.findMany({
-        where: { site, outcome: 'EDITED', resolvedAt: { gte: new Date(now.getTime() - 180 * 86400_000), lte: now } },
+        where: { site, source: 'LAYOUT', outcome: 'EDITED', resolvedAt: { gte: new Date(now.getTime() - 180 * 86400_000), lte: now } },
         orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 300,
         select: { id: true, documentId: true, aiText: true, finalText: true }
       });
