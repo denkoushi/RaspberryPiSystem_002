@@ -6,7 +6,7 @@ The release marker, exclusive lock, blacklist and simulation gate still apply.
 """
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 import fcntl
 import json
 import os
@@ -37,6 +37,7 @@ DEFAULTS = {
     "lockPath": "/run/lock/raspi-os-security-update.lock",
 }
 LOG_PATH = Path("/var/log/raspi-os-security-update.log")
+PACKAGE_NAME = re.compile(r"[a-z0-9][a-z0-9+.-]*(?::[a-z0-9][a-z0-9-]*)?")
 APT_ENV = {
     "LC_ALL": "C",
     "DEBIAN_FRONTEND": "noninteractive",
@@ -123,6 +124,8 @@ def next_state(previous, mode, result, now, reason=None, selected=None,
         "installed": installed or [], "selected": selected or [],
         "heldBack": held_back or [], "browserRestarted": browser_restarted,
     }
+    if "check" in previous:
+        state["check"] = previous["check"]
     if result.startswith("skipped_"):
         # Preserve the previous report as well as success/failure timestamps.
         for key in state:
@@ -188,12 +191,113 @@ def chromium_version():
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
+def timestamp(value):
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else None
+    except (AttributeError, ValueError):
+        return None
+
+
+def active_requests(path, now):
+    try:
+        requests = read_state(path)["requests"]
+        if not isinstance(requests, list):
+            return {}
+        active = {}
+        for request in requests:
+            request_id, packages = request["id"], request["packages"]
+            expiry = timestamp(request["expiresAt"])
+            if (isinstance(request_id, str) and request_id and expiry and expiry > now
+                    and isinstance(packages, list) and packages
+                    and all(isinstance(name, str) and PACKAGE_NAME.fullmatch(name) for name in packages)):
+                active[request_id] = packages
+        return active
+    except (OSError, ValueError, KeyError, TypeError):
+        return {}
+
+
+def weekly_due(config, path, now):
+    try:
+        if now.weekday() == config["weeklyWeekday"]:
+            return True
+        state = read_state(path)
+        runs = [timestamp(state.get(key)) for key in ("lastSuccessAt", "lastFailureAt")]
+        last_run = max((run_at for run_at in runs if run_at), default=timestamp(state.get("enabledAt")))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        # An unreadable state or config must not silently stop the weekly update.
+        return True
+    # A run finishes a few minutes after the fixed daily start; compare with
+    # slack so a catch-up run does not drift by one day every week.
+    return last_run is not None and now - last_run >= timedelta(days=6, hours=12)
+
+
+def measure_package(name):
+    try:
+        result = subprocess.run(
+            ["dpkg-query", "-W", "-f=${db:Status-Status}\t${db:Status-Eflag}\t${Version}\n", "--", name],
+            env={**os.environ, "LC_ALL": "C.UTF-8", "LANGUAGE": ""},
+            capture_output=True, encoding="utf-8", timeout=10, check=False,
+        )
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return {"state": "unmeasured", "version": None}
+    if (result.returncode == 1 and not result.stdout.strip()
+            and result.stderr.strip() == f"dpkg-query: no packages found matching {name}"):
+        return {"state": "absent", "version": None}
+    if result.returncode == 0:
+        fields = result.stdout.rstrip("\n").split("\t")
+        if len(fields) == 3 and fields[1] == "ok":
+            status, _, version = fields
+            if status == "installed" and re.fullmatch(r"[0-9][0-9A-Za-z.+:~\-]*", version):
+                return {"state": "installed", "version": version}
+            if status in {"not-installed", "config-files"}:
+                return {"state": "absent", "version": None}
+    return {"state": "unmeasured", "version": None}
+
+
+def measure_requested_packages(requests):
+    packages = {
+        name: {**measure_package(name), "candidateRemaining": None}
+        for name in sorted({name for names in requests.values() for name in names})
+    }
+    if any(package["state"] == "installed" for package in packages.values()):
+        try:
+            import apt
+            import apt_pkg
+
+            with apt.Cache() as cache:
+                for name, package in packages.items():
+                    if package["state"] != "installed" or name not in cache:
+                        continue
+                    candidate = cache[name].candidate
+                    if candidate is not None:
+                        package["candidateRemaining"] = apt_pkg.version_compare(
+                            candidate.version, package["version"]) > 0
+        except (OSError, ValueError, RuntimeError, ImportError, SystemError):
+            # Keep the dpkg observation if the candidate cannot be measured.
+            pass
+    return packages
+
+
 def run(config, force=False):
     path = Path(config["stateDir"]) / "state.json"
+    requests = {}
+    if config.get("earlyEnabled") is True:
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo("Asia/Tokyo"))
+        requests = active_requests(path.with_name("request.json"), now)
+        if not force and not requests and not weekly_due(config, path, now):
+            return 0
     selected, installed, held_back = [], [], []
     browser_restarted = False
 
     def finish(result, reason=None):
+        check = None
+        if requests and config["mode"] == "apply" and result in {"success", "failed"}:
+            check_result = "failed" if result == "failed" else ("applied" if selected else "no_candidates")
+            check = {"requestIds": list(requests), "result": check_result,
+                     "packages": measure_requested_packages(requests)}
         now = datetime.now().astimezone().isoformat(timespec="seconds")
         path.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
         # A skipped_locked run can report concurrently with the updater that
@@ -203,6 +307,8 @@ def run(config, force=False):
             fcntl.flock(state_lock, fcntl.LOCK_EX)
             state = next_state(read_state(path), config["mode"], result, now, reason,
                                selected, installed, held_back, browser_restarted)
+            if check is not None:
+                state["check"] = {**check, "finishedAt": now}
             write_state(path, state)
         with LOG_PATH.open("a", encoding="utf-8") as stream:
             stream.write(f"{now} mode={config['mode']} result={result} reason={reason or '-'} "
