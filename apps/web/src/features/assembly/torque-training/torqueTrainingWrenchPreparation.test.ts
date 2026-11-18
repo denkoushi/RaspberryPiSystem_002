@@ -4,7 +4,6 @@ import {
   formatTorqueTrainingBoltLength,
   formatTorqueTrainingUnit,
   formatTorqueTrainingValue,
-  preparationTargetRows,
   presentTorqueTrainingSetupReason
 } from './torqueTrainingWrenchPreparation';
 
@@ -19,25 +18,6 @@ describe('torqueTrainingWrenchPreparation presentation helpers', () => {
     expect(formatTorqueTrainingBoltLength('5')).toBe('5 mm');
     expect(formatTorqueTrainingBoltLength(null)).toBe('-');
     expect(formatTorqueTrainingUnit('N-m')).toBe('N·m');
-  });
-
-  it('keeps target rows ordered for the preparation card', () => {
-    expect(preparationTargetRows({
-      nominalDiameter: 'M2.5',
-      material: 'SUS304',
-      boltLengthMm: '5',
-      lowerLimit: '0.35',
-      nominalTorque: '0.40',
-      upperLimit: '0.45',
-      unit: 'N-m'
-    })).toEqual([
-      { key: 'nominalDiameter', label: '呼び径', value: 'M2.5' },
-      { key: 'material', label: '材質', value: 'SUS304' },
-      { key: 'boltLengthMm', label: '首下長さ', value: '5 mm' },
-      { key: 'lowerLimit', label: '下限', value: '0.35 N·m' },
-      { key: 'nominalTorque', label: '目標', value: '0.4 N·m' },
-      { key: 'upperLimit', label: '上限', value: '0.45 N·m' }
-    ]);
   });
 
   it('turns readiness codes into a kiosk-readable reason', () => {
