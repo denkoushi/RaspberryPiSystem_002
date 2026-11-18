@@ -84,6 +84,25 @@ describe('AssemblyProcedureOverlayLayer', () => {
     expect(screen.getByTestId('assembly-procedure-overlay-text-1').firstElementChild).toHaveStyle({ fontSize: '2.5cqw' });
   });
 
+  it('keeps padding on ordinary fill images and removes it from text erase patches', () => {
+    const image = {
+      pageIndex: 0,
+      kind: 'IMAGE' as const,
+      assetId: 'asset-png',
+      bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.2, heightRatio: 0.2 },
+      zIndex: 0,
+      objectFit: 'fill' as const,
+      mask: { enabled: false, color: '#ffffff' }
+    };
+    render(<AssemblyProcedureOverlayLayer elements={[
+      { ...image, id: 'image-fill' },
+      { ...image, id: 'text-erase-patch', zIndex: 1 }
+    ]} />);
+
+    expect(screen.getByTestId('assembly-procedure-overlay-image-fill')).toHaveClass('p-0.5');
+    expect(screen.getByTestId('assembly-procedure-overlay-text-erase-patch')).not.toHaveClass('p-0.5');
+  });
+
   it('does not expose a protected asset URL to the native image element while loading', () => {
     mockUseProtectedImageBlobUrl.mockReturnValue({ blobUrl: null, error: null });
     render(

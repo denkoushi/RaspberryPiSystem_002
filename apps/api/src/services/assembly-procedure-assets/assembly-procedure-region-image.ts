@@ -4,20 +4,23 @@ import { projectOverlayBBoxToCrop, type OverlayRegionImage } from '@raspi-system
 import {
   assemblyProcedureAssetRoiToPixels,
   cropAssemblyProcedureAssetRoi,
+  type AssemblyProcedureAssetPixelRoi,
   type AssemblyProcedureAssetRoi
 } from './assembly-procedure-asset-roi.js';
 
-/** Composite only the portions of draft image overlays inside the page ROI. */
-export async function composeRegionImage(input: {
+type RegionImageInput = {
   pageBuffer: Buffer;
   roi: AssemblyProcedureAssetRoi;
   overlays: readonly OverlayRegionImage[];
   assets: ReadonlyMap<string, Buffer>;
-}) {
-  const metadata = await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 }).metadata();
-  const width = metadata.width ?? 0;
-  const height = metadata.height ?? 0;
-  const pixelRoi = assemblyProcedureAssetRoiToPixels(input.roi, width, height);
+};
+
+async function compositeRegion(
+  input: RegionImageInput,
+  pixelRoi: AssemblyProcedureAssetPixelRoi,
+  width: number,
+  height: number
+) {
   const layers: OverlayOptions[] = [];
   for (const overlay of [...input.overlays].sort((left, right) => left.zIndex - right.zIndex)) {
     if (!projectOverlayBBoxToCrop(overlay.bbox, input.roi)) continue;
@@ -51,11 +54,21 @@ export async function composeRegionImage(input: {
       top: top - pixelRoi.top
     });
   }
-  if (!layers.length) return cropAssemblyProcedureAssetRoi(input.pageBuffer, input.roi);
+  if (!layers.length) return null;
   const pageRoi = await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 })
     .extract(pixelRoi).png().toBuffer();
-  const rendered = await sharp(pageRoi, { limitInputPixels: 40_000_000 })
-    .composite(layers).jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
+  return sharp(pageRoi, { limitInputPixels: 40_000_000 }).composite(layers);
+}
+
+/** Composite only the portions of draft image overlays inside the page ROI. */
+export async function composeRegionImage(input: RegionImageInput) {
+  const metadata = await sharp(input.pageBuffer, { limitInputPixels: 40_000_000 }).metadata();
+  const width = metadata.width ?? 0;
+  const height = metadata.height ?? 0;
+  const pixelRoi = assemblyProcedureAssetRoiToPixels(input.roi, width, height);
+  const composite = await compositeRegion(input, pixelRoi, width, height);
+  if (!composite) return cropAssemblyProcedureAssetRoi(input.pageBuffer, input.roi);
+  const rendered = await composite.jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
   return {
     buffer: rendered.data,
     contentType: 'image/jpeg' as const,
@@ -63,4 +76,21 @@ export async function composeRegionImage(input: {
     height: rendered.info.height,
     pixelRoi
   };
+}
+
+/** Read a pixel-aligned region without a JPEG round trip. */
+export async function composeRegionRgb(
+  input: RegionImageInput,
+  pixelRoi: AssemblyProcedureAssetPixelRoi,
+  width: number,
+  height: number
+): Promise<Buffer> {
+  const composite = await compositeRegion(input, pixelRoi, width, height);
+  const source = composite ?? sharp(input.pageBuffer, { limitInputPixels: 40_000_000 }).extract(pixelRoi);
+  // Flatten after compositing so transparent overlay layers blend with the page first.
+  const rgb = await source.toColourspace('srgb').raw().toBuffer({ resolveWithObject: true });
+  if (rgb.info.channels === 3) return rgb.data;
+  return sharp(rgb.data, {
+    raw: { width: pixelRoi.width, height: pixelRoi.height, channels: rgb.info.channels }
+  }).flatten({ background: '#ffffff' }).raw().toBuffer();
 }

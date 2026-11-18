@@ -48,6 +48,8 @@ export const assemblyProcedureOverlaySaveInputSchema = overlaySaveInputSchema.ex
 });
 export const assemblyProcedureOverlayRegionInputSchema = overlayRegionInputSchema;
 
+export const ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX = 'text-erase-';
+
 export type AssemblyProcedureOverlayElementInput = OverlayElementInput;
 
 export type AssemblyProcedureTextOverlayElement = OverlayTextElement;
