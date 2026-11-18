@@ -51,7 +51,7 @@ export function ProcedureManualWorkshop() {
   const [nameFilter, setNameFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<typeof statusFilters[number]>('全て');
   const [digitQuery, setDigitQuery] = useState('');
-  const [models, setModels] = useState<ProcedureManualModelDto[]>(() => normalizeModels(readManualList('models') ?? []));
+  const [, setModels] = useState<ProcedureManualModelDto[]>(() => normalizeModels(readManualList('models') ?? []));
   const [partCandidates, setPartCandidates] = useState<ProcedureManualPartCandidateDto[]>([]);
   const [candidates, setCandidates] = useState<ProcedureManualModelDto[]>(() => normalizeModels(readManualList('models') ?? []));
   const [processes, setProcesses] = useState<ProcedureManualProcessDto[]>(() => readManualList('processes') ?? []);
@@ -408,7 +408,7 @@ export function ProcedureManualWorkshop() {
       return true;
     }} /> : null}
     {accessGranted && blankOpen && isCommon ? <ProcedureManualCommonDialog catalog={commonCatalog} items={items.filter(item => item.subjectKind === 'COMMON' || processes.find(row => row.id === item.processId)?.subjectKind === 'COMMON')} categoryId={processId} beforeMutation={beforeMutation} onClose={() => setBlankOpen(false)} onChanged={refreshCommon} onFix={fix} /> : null}
-    {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} models={models} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
+    {accessGranted && blankOpen && !isCommon ? <ProcedureManualBlankDialog subjectKind={subjectKind === 'PART' ? 'PART' : 'MODEL'} beforeMutation={() => { if (!checkAccess()) return false; clearManualLists(); return true; }} processes={processes} modelCode={modelCode} processId={processId} onClose={() => setBlankOpen(false)} /> : null}
     {accessGranted && assignmentOpen ? <ProcedureManualAssignmentDialog beforeMutation={checkAccess} modelCode={modelCode} processId={processId} processes={processes} onClose={() => setAssignmentOpen(false)} onSaved={(key, id) => { setAssignmentOpen(false); select(key, id); setVersion(value => value + 1); }} /> : null}
     {accessGranted && reattaching ? <ProcedureManualReattachPartDialog item={reattaching} processes={processes} currentPartName={partCandidates.find(row => row.partNumberKey === reattaching.modelCodeKey)?.partName}
       beforeMutation={checkAccess} onClose={() => setReattaching(null)} onChanged={() => setVersion(value => value + 1)}

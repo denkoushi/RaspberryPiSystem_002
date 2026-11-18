@@ -272,7 +272,7 @@ describe('procedure-manuals', () => {
   it('creates a first manual for an unassigned part with part labels and part return context', async () => {
     const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode=" ｐａｒｔ－① " processId="cutting" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog processes={partProcesses} modelCode=" ｐａｒｔ－① " processId="cutting" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
     expect(screen.getByRole('region', { name: '部品の選択' })).toBeInTheDocument();
     expect(screen.getByLabelText('品番で検索')).toBeInTheDocument();
     expect(mocks.machineCandidates).not.toHaveBeenCalled();
@@ -290,7 +290,7 @@ describe('procedure-manuals', () => {
       { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' },
       { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }
     ] as ProcedureManualProcessDto[];
-    render(<MemoryRouter><ProcedureManualBlankDialog subjectKind="PART" models={[]} processes={allProcesses} modelCode={modelCode} processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog subjectKind="PART" processes={allProcesses} modelCode={modelCode} processId="" onClose={vi.fn()} /></MemoryRouter>);
     expect(screen.getByRole('button', { name: '加工' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '切削' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: '研削' })).toHaveAttribute('aria-pressed', 'false');
@@ -309,7 +309,7 @@ describe('procedure-manuals', () => {
 
   it('shows missing selection/name beside creation and orders process, subject, supplement', async () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: ['DFD1'], hasMore: false });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     const create = screen.getByRole('button', { name: '作成してエディタへ' });
     expect(create).toBeDisabled();
     expect(create.parentElement).toHaveTextContent('あと: 機種を選ぶ');
@@ -332,7 +332,7 @@ describe('procedure-manuals', () => {
 
   it('keeps part candidates separate when the blank dialog switches from assembly to machining', async () => {
     const allProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'cutting', parentId: 'machining', name: '切削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: 'DFD1', modelCodeKey: 'DFD1' }]} processes={allProcesses} modelCode="DFD1" processId="assembly" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={allProcesses} modelCode="DFD1" processId="assembly" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '加工' }));
     expect(await screen.findByRole('button', { name: 'PART-1' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'DFD1' })).not.toBeInTheDocument();
@@ -344,7 +344,7 @@ describe('procedure-manuals', () => {
     const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
     mocks.partCandidates.mockResolvedValue([{ partNumber: 'P-1A3', partNumberKey: 'P-1A3', partName, hasManual: false }]);
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('品番で検索'), { target: { value: '主' } });
     const tenkey = within(screen.getByRole('group', { name: '部品テンキー' }));
     fireEvent.click(tenkey.getByRole('button', { name: '1' }));
@@ -367,7 +367,7 @@ describe('procedure-manuals', () => {
     const partProcesses = [...processes, { id: 'machining', parentId: null, name: '加工', subjectKind: 'MODEL' }, { id: 'grinding', parentId: 'machining', name: '研削', subjectKind: 'PART' }] as ProcedureManualProcessDto[];
     mocks.partCandidates.mockImplementation(async ({ q }: { q: string }) => known && q === 'PART-1' ? [{ partNumber: 'PART-1', partNumberKey: 'PART-1', partName: '主軸', hasManual: false }] : []);
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
     expect(screen.getByRole('button', { name: 'スキャン中止' })).toHaveClass('bg-[#f6b93b]');
     for (const key of 'ｐａｒｔ－①') fireEvent.keyDown(window, { key });
@@ -391,7 +391,7 @@ describe('procedure-manuals', () => {
     const background = <ProcedureManualFilterPane subjectKind="PART" processes={partProcesses} items={[]} models={[]} modelCodeKey="" processId="grinding" search="" digitQuery="" onKindChange={vi.fn()} onSearchChange={vi.fn()} onDigitQueryChange={vi.fn()} onModelSelect={selectBackground} onProcessSelect={vi.fn()} />;
     const view = render(<MemoryRouter>{background}</MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '品番をスキャン' }));
-    view.rerender(<MemoryRouter>{background}<ProcedureManualBlankDialog models={[]} processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
+    view.rerender(<MemoryRouter>{background}<ProcedureManualBlankDialog processes={partProcesses} modelCode="" processId="grinding" onClose={vi.fn()} /></MemoryRouter>);
     const dialog = within(screen.getByRole('dialog', { name: '白紙から作る' }));
     fireEvent.click(dialog.getByRole('button', { name: '品番をスキャン' }));
     for (const key of 'part-1') fireEvent.keyDown(window, { key });
@@ -531,7 +531,7 @@ describe('procedure-manuals', () => {
 
   it('searches blank candidates from the master with digits and uses explicit chip colors for both states and common supplements', async () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: ['６３６２'], hasMore: false });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: '6362', modelCodeKey: '6362' }, { modelCode: '7000', modelCodeKey: '7000' }]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     expect(mocks.machineCandidates).toHaveBeenLastCalledWith({ digitQuery: '', q: '', limit: 30 });
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '6' }));
@@ -566,7 +566,7 @@ describe('procedure-manuals', () => {
 
   it('sends text and digits separately and displays only normalized API candidates', async () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: ['ｄｆｄ６３', ' DFD63 ', 'DFD63', 'DFD6-3'], hasMore: false });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[{ modelCode: 'LOCAL63', modelCodeKey: 'LOCAL63' }]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.change(screen.getByLabelText('型番で検索'), { target: { value: 'ｄｆｄ' } });
     expect(mocks.machineCandidates).toHaveBeenLastCalledWith({ digitQuery: '', q: 'ｄｆｄ', limit: 30 });
     expect((await screen.findByRole('button', { name: 'DFD63' })).querySelector('mark')).toHaveTextContent('DFD');
@@ -593,7 +593,7 @@ describe('procedure-manuals', () => {
     let rejectOld!: (error: Error) => void;
     const oldRequest = new Promise<{ candidates: string[]; hasMore: boolean }>((resolve, reject) => { resolveOld = resolve; rejectOld = reject; });
     mocks.machineCandidates.mockReturnValueOnce(oldRequest);
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     expect(screen.getByRole('status', { name: '' })).toHaveTextContent('検索中…');
     fireEvent.change(screen.getByLabelText('型番で検索'), { target: { value: 'DFD9' } });
     await screen.findByRole('button', { name: 'DFD9' });
@@ -614,7 +614,7 @@ describe('procedure-manuals', () => {
     mocks.machineCandidates
       .mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }))
       .mockReturnValueOnce(new Promise(resolve => { resolveLatest = resolve; }));
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     fireEvent.click(screen.getByRole('button', { name: '9' }));
     await act(async () => { resolveOld({ candidates: ['OLD'], hasMore: true }); });
     expect(screen.getByRole('status', { name: '' })).toHaveTextContent('検索中…');
@@ -629,7 +629,7 @@ describe('procedure-manuals', () => {
       .mockResolvedValueOnce({ candidates: ['DFD9'], hasMore: true })
       .mockResolvedValueOnce({ candidates: [], hasMore: false })
       .mockRejectedValueOnce(new Error('search failed'));
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} /></MemoryRouter>);
     expect(await screen.findByText('他にも候補があります。数字を追加してください')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('型番で検索'), { target: { value: 'missing' } });
     expect(await screen.findByText('該当する機種がありません')).toBeInTheDocument();
@@ -642,7 +642,7 @@ describe('procedure-manuals', () => {
 
   it('preserves the initial model and uses explicit readable colors in the name strip and actions', async () => {
     mocks.machineCandidates.mockResolvedValue({ candidates: [], hasMore: false });
-    render(<MemoryRouter><ProcedureManualBlankDialog models={[]} processes={processes} modelCode="ｄｆｄ１" processId="inspection" onClose={vi.fn()} /></MemoryRouter>);
+    render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="ｄｆｄ１" processId="inspection" onClose={vi.fn()} /></MemoryRouter>);
     const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
     expect(dialog.firstElementChild).toHaveClass('!bg-[#161c22]', '!text-[#eef3f6]', '!max-w-[1180px]', '!my-auto', '!border', '!border-[#344252]', '!rounded-[14px]', '!px-[26px]', '!py-6');
     expect(within(dialog).getByRole('heading', { name: '白紙から作る' })).toHaveClass('text-[#eef3f6]');
@@ -693,7 +693,7 @@ describe('procedure-manuals', () => {
 
   it('creates a named blank document and navigates to its editor', async () => {
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog models={[]} processes={processes} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
     expect(screen.getByRole('button', { name: '作成してエディタへ' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
     fireEvent.change(screen.getByLabelText('要領書名'), { target: { value: '  新規要領書  ' } });
@@ -709,7 +709,7 @@ describe('procedure-manuals', () => {
       { id: 'grinding', parentId: 'machining', name: '研削', sortOrder: 1 }
     ];
     mocks.blank.mockResolvedValue({ id: 'new-document' });
-    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog models={[]} processes={allProcesses} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
+    render(<MemoryRouter><Routes><Route path="/" element={<ProcedureManualBlankDialog processes={allProcesses} modelCode="" processId="" onClose={vi.fn()} />} /><Route path="/kiosk/assembly/procedure-documents/:id/edit" element={<EditorLocation />} /></Routes></MemoryRouter>);
     const dialog = screen.getByRole('dialog', { name: '白紙から作る' });
     fireEvent.change(within(dialog).getByLabelText('型番で検索'), { target: { value: 'ｄｆｄ９' } });
     fireEvent.click(await within(dialog).findByRole('button', { name: /DFD\s*9/ }));
