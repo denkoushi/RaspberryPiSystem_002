@@ -3,6 +3,9 @@ import { useEffect, type ReactNode } from 'react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { getAssemblyProcedureSpeechToTextAvailability, transcribeAssemblyProcedureDictation } from '../../../api/domains/assembly';
+import { mockVoiceRecording } from '../../voice/voiceRecording.test-support';
+
 import { clearManualLists } from './procedure-manual-list-cache';
 import { ProcedureManualAssignmentDialog } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualBlankDialog } from './ProcedureManualBlankDialog';
@@ -15,6 +18,7 @@ import type { AssemblyProcedureSequencePageDto, ProcedureManualDetailDto, Proced
 const mocks = vi.hoisted(() => ({
   overview: vi.fn(), allOverview: vi.fn(), models: vi.fn(), processes: vi.fn(), detail: vi.fn(), documents: vi.fn(), pdfs: vi.fn(), save: vi.fn(), history: vi.fn(), blank: vi.fn(), partCandidates: vi.fn(), machineCandidates: vi.fn()
 }));
+vi.mock('../../../api/domains/assembly', () => ({ getAssemblyProcedureSpeechToTextAvailability: vi.fn(), transcribeAssemblyProcedureDictation: vi.fn() }));
 vi.mock('../../../api/client', () => ({
   createBlankAssemblyProcedureDocument: mocks.blank,
   listProcedureManualPartCandidates: mocks.partCandidates,
@@ -328,6 +332,104 @@ describe('procedure-manuals', () => {
     for (const button of within(screen.getByRole('dialog')).getAllByRole('button')) {
       expect(button).toHaveClass('min-h-12', 'rounded-lg', 'focus-visible:outline', 'focus-visible:outline-2', 'focus-visible:outline-[#7cc4ff]');
     }
+  });
+
+  describe('blank dialog name dictation', () => {
+    const transcribe = vi.mocked(transcribeAssemblyProcedureDictation);
+    let recording: ReturnType<typeof mockVoiceRecording>;
+
+    beforeEach(() => {
+      recording = mockVoiceRecording();
+      vi.mocked(getAssemblyProcedureSpeechToTextAvailability).mockResolvedValue(true);
+      transcribe.mockResolvedValue({ text: '  新しい要領書。  ' });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    function openDirectName() {
+      const onClose = vi.fn();
+      const view = render(<MemoryRouter><ProcedureManualBlankDialog processes={processes} modelCode="" processId="" onClose={onClose} /></MemoryRouter>);
+      fireEvent.click(screen.getByRole('button', { name: '名前を直接入力' }));
+      const input = screen.getByRole('textbox', { name: '要領書名' });
+      fireEvent.change(input, { target: { value: '元の要領書' } });
+      return { input, onClose, unmount: view.unmount };
+    }
+
+    async function startRecording() {
+      fireEvent.click(screen.getByRole('button', { name: '話す' }));
+      await waitFor(() => expect(recording.recorder?.state).toBe('recording'));
+      return screen.getByRole('button', { name: '止める' });
+    }
+
+    it('replaces the name with the trimmed transcript and restores the previous name', async () => {
+      const { input } = openDirectName();
+      expect(screen.getByPlaceholderText('要領書名')).toBe(input);
+      expect(screen.queryByText('要領書名', { exact: true })).not.toBeInTheDocument();
+      const stop = await startRecording();
+      expect(stop).toHaveAttribute('aria-label', '止める');
+      fireEvent.click(stop);
+      expect(screen.getByText('聞き取っています…')).toHaveAttribute('role', 'status');
+      expect(screen.getByRole('button', { name: '話す' })).toBeDisabled();
+      const restore = await screen.findByRole('button', { name: '戻す', exact: true });
+      expect(input).toHaveValue('新しい要領書');
+      fireEvent.click(restore);
+      expect(input).toHaveValue('元の要領書');
+      expect(restore).not.toBeInTheDocument();
+    });
+
+    it('limits the transcript to 200 characters', async () => {
+      transcribe.mockResolvedValue({ text: `${'名'.repeat(200)}前。` });
+      const { input } = openDirectName();
+      fireEvent.click(await startRecording());
+      await waitFor(() => expect(input).toHaveValue('名'.repeat(200)));
+    });
+
+    it.each(['。、. ', 'service error'])('keeps the original name and shows an error for %s', async failure => {
+      const serviceError = failure === 'service error';
+      if (serviceError) transcribe.mockRejectedValue(new Error('offline'));
+      else transcribe.mockResolvedValue({ text: failure });
+      const { input } = openDirectName();
+      fireEvent.click(await startRecording());
+      expect(await screen.findByRole('alert')).toHaveTextContent(serviceError ? '音声認識が動いていません' : '聞き取れませんでした');
+      expect(input).toHaveValue('元の要領書');
+      expect(screen.queryByRole('button', { name: '戻す', exact: true })).not.toBeInTheDocument();
+    });
+
+    it('clears undo and discards recording on manual edits', async () => {
+      const { input } = openDirectName();
+      fireEvent.click(await startRecording());
+      const restore = await screen.findByRole('button', { name: '戻す', exact: true });
+      fireEvent.change(input, { target: { value: '手入力' } });
+      expect(restore).not.toBeInTheDocument();
+
+      await startRecording();
+      fireEvent.change(input, { target: { value: '手入力で更新' } });
+      expect(recording.recorder.state).toBe('inactive');
+      expect(transcribe).toHaveBeenCalledTimes(1);
+      expect(input).toHaveValue('手入力で更新');
+    });
+
+    it.each(['閉じる', '名前の組み立てに戻る', 'unmount'])('discards recording on %s', async action => {
+      const { onClose, unmount } = openDirectName();
+      await startRecording();
+      if (action === 'unmount') unmount();
+      else fireEvent.click(screen.getByRole('button', { name: action, exact: true }));
+      expect(recording.recorder.state).toBe('inactive');
+      expect(recording.stopTrack).toHaveBeenCalled();
+      expect(transcribe).not.toHaveBeenCalled();
+      if (action === '閉じる') expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('disables voice input during creation', async () => {
+      let rejectCreation!: (error: Error) => void;
+      mocks.blank.mockReturnValue(new Promise((_, reject) => { rejectCreation = reject; }));
+      openDirectName();
+      await startRecording();
+      fireEvent.click(screen.getByRole('button', { name: '作成してエディタへ' }));
+      expect(screen.getByRole('button', { name: '話す' })).toBeDisabled();
+      expect(recording.recorder.state).toBe('inactive');
+      await act(async () => rejectCreation(new Error('failed')));
+      expect(screen.getByRole('button', { name: '話す' })).toBeEnabled();
+    });
   });
 
   it('keeps part candidates separate when the blank dialog switches from assembly to machining', async () => {
