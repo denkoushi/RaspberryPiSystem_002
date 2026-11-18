@@ -918,6 +918,36 @@ function appHarness(parts = appParts(), subject = 'ProcedureMaterial item-1') {
   return h;
 }
 describe('procedure-material app Gmail ingestion', () => {
+  it('saves a memo from an empty photos array once and deduplicates it on reprocessing', async () => {
+    const h = appHarness([manifestPart({ ...appManifest, photos: [] }), textPart('アプリから送信')]);
+    const options = { config: h.config, allowWait: false };
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 1, duplicate: 0, retryable: 0, messages: [{ status: 'saved', trashed: true }] });
+    expect(h.rows).toEqual([expect.objectContaining({
+      origin: 'APP', kind: 'TEXT', text: appManifest.note, gmailMessageId: 'mail-1', gmailDedupeKey: 'mail-1:app-note',
+      subjectHint: '保守・7125 test',
+      appRef: { sourceSystem: 'sharepoint', sourceList: 'ProcedureMaterialList', itemId: 1, modified: appManifest.source.modified,
+        manifestId: 1, category: '保守', location: null, note: appManifest.note, nameId: '007125', photoIndex: 0, hasPhotos: false },
+    })]);
+    expect(await h.service.runOnce(options)).toMatchObject({ saved: 0, duplicate: 1, retryable: 0, messages: [{ status: 'duplicate', trashed: true }] });
+    expect(h.rows).toHaveLength(1);
+    expect(h.store.write).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['', '007125'], ['取付位置を確認', undefined], ['取付位置を確認', '7125A'],
+  ])('skips a photo-free submission with note %j and employee number %j when no memo can be saved', async (note, nameId) => {
+    const h = appHarness([manifestPart({ ...appManifest, photos: [], note, name_id: nameId }), textPart('アプリから送信')]);
+    const options = { config: h.config, allowWait: false };
+    expect(await h.service.runOnce(options)).toMatchObject({
+      saved: 0, skipped: 1, retryable: 0, errors: [],
+      messages: [{ status: 'skipped', reason: '本文が空で、対応する写真・動画がありません', trashed: false }],
+    });
+    expect(await h.service.runOnce(options)).toMatchObject({ processed: 0, deferred: 1, retryable: 0 });
+    expect(h.rows).toEqual([]);
+    expect(h.store.write).not.toHaveBeenCalled();
+    expect(h.gmail.trashMessage).not.toHaveBeenCalled();
+  });
+
   it('imports spreadsheets alongside a valid app manifest without changing app photo handling', async () => {
     const h = appHarness([...appParts(), spreadsheetPart()]);
     expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 3, checkSheets: 1, messages: [{ trashed: true }] });
@@ -983,7 +1013,7 @@ describe('procedure-material app Gmail ingestion', () => {
     expect(await h.service.runOnce({ config: h.config, allowWait: false })).toMatchObject({ saved: 3, retryable: 0, messages: [{ trashed: true }] });
     expect(h.rows.filter((row) => row.kind === 'PHOTO').map((row) => row.contentType)).toEqual(['image/jpeg', 'image/png']);
   });
-  it.each(['missing', 'invalid-json', 'invalid-schema', 'wrong-source', 'wrong-list', 'duplicate-manifest', 'missing-photo', 'broken-photo', 'duplicate-photo', 'duplicate-index'])('leaves %s packets unread with no row or file saved', async (failure) => {
+  it.each(['missing', 'invalid-json', 'invalid-schema', 'wrong-source', 'wrong-list', 'duplicate-manifest', 'missing-photos-key', 'empty-photos-with-image', 'missing-photo', 'broken-photo', 'duplicate-photo', 'duplicate-index'])('leaves %s packets unread with no row or file saved', async (failure) => {
     let parts = appParts();
     if (failure === 'missing') parts = parts.slice(1);
     if (failure === 'invalid-json') parts[0] = { ...manifestPart(), body: { data: Buffer.from('{').toString('base64url') } };
@@ -991,6 +1021,8 @@ describe('procedure-material app Gmail ingestion', () => {
     if (failure === 'wrong-source') parts[0] = manifestPart({ ...appManifest, source: { ...appManifest.source, system: 'other' } });
     if (failure === 'wrong-list') parts[0] = manifestPart({ ...appManifest, source: { ...appManifest.source, list: 'ItemlistRaspi' } });
     if (failure === 'duplicate-manifest') parts.push(manifestPart());
+    if (failure === 'missing-photos-key') parts = [manifestPart({ ...appManifest, photos: undefined })];
+    if (failure === 'empty-photos-with-image') parts[0] = manifestPart({ ...appManifest, photos: [] });
     if (failure === 'missing-photo') parts.splice(2, 1);
     if (failure === 'broken-photo') parts[2] = photoPart('1_photo_2.jpeg', { mimeType: 'image/jpeg', body: { data: Buffer.from('broken').toString('base64url') } });
     if (failure === 'duplicate-photo') parts.push(parts[1]!);

@@ -175,6 +175,7 @@ export async function resolveProcedureMaterialGmailPacket(params: {
     ? params.client.getAttachment(params.message.id, part.body.attachmentId)
     : Buffer.from(part.body?.data ?? '', 'base64url');
   const appReferences = params.app ? await resolveProcedureMaterialAppReferences(attachments.map(({ part }) => part), bytes) : null;
+  if (appReferences) packet.appRef = appReferences.appRef;
   const resolvedAppPhotos = new Set<string>();
   const bodyKey = `${params.message.id}:body`;
   if (!params.app && params.savedKeys?.has(bodyKey)) packet.duplicate++;
@@ -185,7 +186,9 @@ export async function resolveProcedureMaterialGmailPacket(params: {
   for (const { part, path, inline } of attachments) {
     const filename = part.filename?.normalize('NFC').trim() || 'photo';
     const contentType = resolveAttachmentContentType(part.mimeType, filename);
-    const appRef = appReferences?.get(filename);
+    const appRef = appReferences?.photoReferences.get(filename);
+    // A photo attached to a submission that lists no photos is a sender mismatch, not a memo-only submission.
+    if (appReferences && appReferences.photoReferences.size === 0 && !inline && PHOTO_FORMATS[contentType]) throw new Error(`Image attached without a manifest photo entry: ${filename}`);
     if (appReferences && !appRef && !VIDEO_FORMATS.has(contentType) && contentType !== XLSX_CONTENT_TYPE) continue;
     if (appRef && !PHOTO_FORMATS[contentType]) throw new Error(`Referenced image is unsupported: ${filename}`);
     const key = `${params.message.id}:${createHash('sha256').update(`${filename}\n${part.partId ?? path}`).digest('hex')}`;
@@ -268,8 +271,6 @@ export async function resolveProcedureMaterialGmailPacket(params: {
       packet.skippedAttachments++; packet.warnings.push(`${filename}: ${warning}`);
     }
   }
-  if (appReferences && resolvedAppPhotos.size !== appReferences.size) throw new Error(`Referenced photos could not be imported: ${packet.warnings.join('; ')}`);
-  // The submission metadata is still needed when all photos were already saved.
-  if (appReferences) packet.appRef = appReferences.values().next().value;
+  if (appReferences && resolvedAppPhotos.size !== appReferences.photoReferences.size) throw new Error(`Referenced photos could not be imported: ${packet.warnings.join('; ')}`);
   return packet;
 }
