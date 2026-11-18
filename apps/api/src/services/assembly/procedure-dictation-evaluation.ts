@@ -12,6 +12,17 @@ export function dictationFeedbackSplit(spokenText: string, finalText: string): '
   return createHash('sha256').update(pair).digest()[0] % 2 === 0 ? 'improvement' : 'confirmation';
 }
 
+// Append rows are split by the dictated continuation, so the same spoken line lands on one side whatever text preceded it.
+export function dictationContinuation(test: DictationCase): string {
+  if (test.mode !== 'append') return test.expected;
+  const prefix = (test.currentText ?? '') + '\n';
+  return test.expected.startsWith(prefix) ? test.expected.slice(prefix.length) : test.expected;
+}
+
+export function dictationCaseSplit(test: DictationCase): 'improvement' | 'confirmation' {
+  return dictationFeedbackSplit(test.spokenText, dictationContinuation(test));
+}
+
 export function dictationFeedbackCase(row: DictationFeedback): DictationCase | null {
   const { id, mode, spokenText, originalText, aiText, finalText, outcome } = row;
   if (mode !== 'new' && mode !== 'append' && mode !== 'revise') return null;

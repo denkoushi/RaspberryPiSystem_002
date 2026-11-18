@@ -6,7 +6,7 @@ import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
 import {
-  dictationFeedbackCase, dictationFeedbackSplit, scoreDictation, summarizeDictationEvaluation, type DictationCase, type DictationEvaluationSnapshot,
+  dictationCaseSplit, dictationFeedbackCase, scoreDictation, summarizeDictationEvaluation, type DictationCase, type DictationEvaluationSnapshot,
 } from './procedure-dictation-evaluation.js';
 import { dictationFeedbackQuery, loadDictationLearning } from './procedure-dictation-learning.js';
 import type { ProcedureDictationLearning } from './procedure-dictation-prompt.js';
@@ -27,7 +27,7 @@ async function loadConfirmationCases(site: ProcedureSite, now: Date, signal?: Ab
     for (const row of rows) {
       if (row.outcome !== 'EDITED') continue;
       const test = dictationFeedbackCase(row);
-      if (test && dictationFeedbackSplit(test.spokenText, test.expected) === 'confirmation') cases.push(test);
+      if (test && dictationCaseSplit(test) === 'confirmation') cases.push(test);
       if (cases.length === 30) return cases;
     }
     if (rows.length < take) break;

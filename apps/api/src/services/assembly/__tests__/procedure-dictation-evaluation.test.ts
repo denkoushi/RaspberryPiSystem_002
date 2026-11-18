@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { dictationFeedbackCase, dictationFeedbackSplit, scoreDictation, summarizeDictationEvaluation } from '../procedure-dictation-evaluation.js';
+import { dictationCaseSplit, dictationFeedbackCase, dictationFeedbackSplit, scoreDictation, summarizeDictationEvaluation } from '../procedure-dictation-evaluation.js';
 import * as textLearning from '../procedure-text-learning-prompt.js';
 
 describe('dictation evaluation', () => {
@@ -92,5 +92,12 @@ describe('dictation evaluation', () => {
       wins: 2, losses: 1, dictationLearningAdopted: false,
     });
     expect(summarizeDictationEvaluation([win, win, { baseline: score(0), candidate: score(0.25) }]).dictationLearningAdopted).toBe(true);
+  });
+
+  it('splits append rows by the dictated continuation', () => {
+    const appended = { id: 'a', mode: 'append' as const, spokenText: '棚に直して', currentText: '部品を準備する。', expected: '部品を準備する。\n棚に戻す。' };
+    const fresh = { id: 'n', mode: 'new' as const, spokenText: '棚に直して', expected: '棚に戻す。' };
+    expect(dictationCaseSplit(appended)).toBe(dictationCaseSplit(fresh));
+    expect(dictationCaseSplit(fresh)).toBe(dictationFeedbackSplit('棚に直して', '棚に戻す。'));
   });
 });

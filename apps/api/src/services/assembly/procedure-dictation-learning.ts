@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { logger } from '../../lib/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { documentSite } from './procedure-document-site.js';
-import { dictationFeedbackCase, dictationFeedbackSplit, type DictationFeedback } from './procedure-dictation-evaluation.js';
+import { dictationCaseSplit, dictationFeedbackCase, type DictationFeedback } from './procedure-dictation-evaluation.js';
 import { selectDictationExamples, type ProcedureDictationLearning } from './procedure-dictation-prompt.js';
 import type { ProcedureSite } from './procedure-published-examples.js';
 
@@ -23,7 +23,7 @@ function* improvementExamples(rows: DictationFeedback[]) {
   for (const row of rows) {
     if (row.mode === 'revise') continue;
     const example = dictationFeedbackCase(row);
-    if (!example || dictationFeedbackSplit(example.spokenText, example.expected) !== 'improvement') continue;
+    if (!example || dictationCaseSplit(example) !== 'improvement') continue;
     const prefix = example.mode === 'append' ? (example.currentText ?? '') + '\n' : '';
     if (!example.expected.startsWith(prefix)) continue;
     yield { mode: example.mode, spokenText: example.spokenText, finalText: example.expected.slice(prefix.length) };

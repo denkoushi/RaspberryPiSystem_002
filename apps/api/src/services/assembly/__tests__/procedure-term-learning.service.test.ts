@@ -391,8 +391,10 @@ describe('nightly dictation evaluation', () => {
     const originalText = '既'.repeat(210);
     const appended = '棚に戻す。';
     const feedback = (id: string, mode: string, finalText: string, aiText = finalText, outcome = 'KEPT') => {
+      const prefix = `${originalText}\n`;
+      const continuation = mode === 'append' && finalText.startsWith(prefix) ? finalText.slice(prefix.length) : finalText;
       const spokenText = Array.from({ length: 100 }, (_, i) => `${id}の発話${i}`)
-        .find(spoken => dictationFeedbackSplit(spoken, finalText) === 'improvement')!;
+        .find(spoken => dictationFeedbackSplit(spoken, continuation) === 'improvement')!;
       return { id, mode, spokenText, originalText, finalText, aiText, outcome };
     };
     const append = feedback('append', 'append', `${originalText}\n${appended}`);
