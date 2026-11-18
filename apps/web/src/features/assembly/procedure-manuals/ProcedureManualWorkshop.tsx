@@ -286,16 +286,16 @@ export function ProcedureManualWorkshop() {
     if (!busy && item.draftRevision && !item.draftRevision.editLease && checkAccess()) setDiscarding(item);
   };
   // Columns nobody in the list fills are collapsed so the name gets their width.
+  // Which optional action buttons a row shows; 削除/外す is always shown in addition.
+  const rowActions = (item: ProcedureManualAssignmentOverviewItemDto) => ({
+    view: item.status !== 'unavailable',
+    fix: item.kind === 'assembly_procedure_document' && item.status !== 'unavailable',
+    reattach: processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision,
+    use: item.kind === 'assembly_procedure_document' && item.status === 'published',
+    discard: Boolean(item.draftRevision)
+  });
   // Each action button is 44px wide with a 4px gap; size the column to the row that shows the most buttons.
-  const actionButtons = (item: ProcedureManualAssignmentOverviewItemDto) => [
-    item.status !== 'unavailable',
-    item.kind === 'assembly_procedure_document' && item.status !== 'unavailable',
-    processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision,
-    item.kind === 'assembly_procedure_document' && item.status === 'published',
-    Boolean(item.draftRevision),
-    true
-  ].filter(Boolean).length;
-  const maxActionButtons = Math.max(1, ...filteredItems.map(actionButtons));
+  const maxActionButtons = Math.max(1, ...filteredItems.map(item => Object.values(rowActions(item)).filter(Boolean).length + 1));
   const actionColumn = `${maxActionButtons * 44 + (maxActionButtons - 1) * 4}px`;
   const usageColumn = filteredItems.some(item => item.otherAssignments.length > 0) ? '180px' : '0px';
   const approvalColumn = filteredItems.some(item => item.draftRevision || item.approval) ? '150px' : '0px';
@@ -342,6 +342,7 @@ export function ProcedureManualWorkshop() {
           </div>
           {filteredItems.map(item => {
             const fullName = item.label || item.title;
+            const actions = rowActions(item);
             const child = processes.find(process => process.id === item.processId);
             const name = parsedNames.get(fullName) ?? {
               partName: fullName, subjectKey: item.modelCode,
@@ -364,11 +365,11 @@ export function ProcedureManualWorkshop() {
             </div>
             <div role="cell" className="text-right font-mono text-base text-[#9fadb9]">{item.pageCount ?? '—'}{item.pageCount != null ? <span className="sr-only"> ページ</span> : null}</div>
             <div role="cell" className="flex gap-1">
-              {item.status !== 'unavailable' ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
-              {item.kind === 'assembly_procedure_document' && item.status !== 'unavailable' ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
-              {processes.find(row => row.id === item.processId)?.subjectKind === 'PART' && item.kind === 'assembly_procedure_document' && item.status === 'draft' && !item.draftRevision ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { if (checkAccess()) { setOperationMessage(null); setReattaching(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
-              {item.kind === 'assembly_procedure_document' && item.status === 'published' ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
-              {item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className={symbolAction} disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => confirmDiscard(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}
+              {actions.view ? <IconActionTooltip label="見る" disabled={previewLoading}><button aria-label="見る" className={`${symbolAction} !border-[#344252] !text-[#eef3f6]`} disabled={previewLoading} onClick={() => void view(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></svg></button></IconActionTooltip> : null}
+              {actions.fix ? <IconActionTooltip label="直す" disabled={busy}><button aria-label="直す" className={`${symbolAction} !border-[#3ba776] !text-[#3ba776]`} disabled={busy} onClick={() => fix(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z" /></svg></button></IconActionTooltip> : null}
+              {actions.reattach ? <IconActionTooltip label="部品を付け直す" disabled={busy}><button aria-label="部品を付け直す" className={`${symbolAction} !border-[#f6b93b] !text-[#f6b93b]`} disabled={busy} onClick={() => { if (checkAccess()) { setOperationMessage(null); setReattaching(item); } }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.4" /></svg></button></IconActionTooltip> : null}
+              {actions.use ? <IconActionTooltip label="使う"><Link aria-label="使う" className={symbolAction} to={kioskAssemblyTemplateNewPath({ procedureDocumentId: item.documentId })}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></svg></Link></IconActionTooltip> : null}
+              {actions.discard && item.draftRevision ? <IconActionTooltip label="改版を破棄" disabled={busy || Boolean(item.draftRevision.editLease)}><button aria-label="改版を破棄" className={symbolAction} disabled={busy || Boolean(item.draftRevision.editLease)} onClick={() => confirmDiscard(item)}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : null}
               {canDelete(item) ? <IconActionTooltip label="削除" disabled={busy}><button aria-label="削除" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setDeleting(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13" /></svg></button></IconActionTooltip> : <IconActionTooltip label="外す" disabled={busy}><button aria-label="外す" className={symbolAction} disabled={busy} onClick={() => { if (checkAccess()) setRemoving(item); }}><svg aria-hidden="true" className="h-[22px] w-[22px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><path d="M8 12h8" /></svg></button></IconActionTooltip>}
             </div>
           </div>; })}
