@@ -16,6 +16,7 @@ import { AssemblyProcedureDocumentEditorInspector } from './AssemblyProcedureDoc
 import { AssemblyProcedureDocumentEditorPageList } from './AssemblyProcedureDocumentEditorPageList';
 import { AssemblyProcedureDocumentEditorPartsPane } from './AssemblyProcedureDocumentEditorPartsPane';
 import { AssemblyProcedureDocumentPageDeleteDialog } from './AssemblyProcedureDocumentPageDeleteDialog';
+import { AssemblyProcedureDocumentPageImportDialog } from './AssemblyProcedureDocumentPageImportDialog';
 import { AssemblyProcedureDocumentPublishDialog } from './AssemblyProcedureDocumentPublishDialog';
 import { AssemblyProcedureLayoutSuggestionPanel } from './AssemblyProcedureLayoutSuggestionPanel';
 import { AssemblyProcedureOverlayTypeDialog } from './AssemblyProcedureOverlayTypeDialog';
@@ -28,7 +29,7 @@ import type { AssemblyProcedureDocumentPageDto } from '../types';
 export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDocument }: { context?: import('../types').ProcedureManualEditorContext; onNavigateToDocument: (documentId: string) => void }) {
   const controller = useAssemblyProcedureDocumentEditor();
   const shelfResources = useShelfResources(controller.accessGranted);
-  const { setSelectedOverlayId, addBlankPage: addControllerBlankPage, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
+  const { setSelectedOverlayId, setErrorMessage, addBlankPage: addControllerBlankPage, pages: controllerPages, placeMaterial: placeControllerMaterial, replaceSelectedImageMaterial: replaceControllerImageMaterial } = controller;
   const controllerElements = controller.pagePreviewElements ?? controller.elements;
   const processNames = context?.processName.split(' › ') ?? [];
   const voiceContext = processNames.some(name => name.startsWith('組立')) ? 'procedure-assembly'
@@ -90,6 +91,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     return () => window.clearTimeout(timer);
   }, [controller.message, controller.messageIsError, controller.conflict, controller.busy]);
   const [videoLinkOpen, setVideoLinkOpen] = useState(false);
+  const [importPagesOpen, setImportPagesOpen] = useState(false);
   const [deletePageIndex, setDeletePageIndex] = useState<number | null>(null);
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
@@ -151,6 +153,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
   const openVideo = useCallback(() => setVideoLinkOpen(true), []);
   const openPublish = useCallback(() => setPublishOpen(true), []);
   const addBlankPage = useCallback(() => void addControllerBlankPage(), [addControllerBlankPage]);
+  const openPageImport = useCallback(() => { setErrorMessage(null); setImportPagesOpen(true); }, [setErrorMessage]);
   const toolbarController = useMemo(() => ({
     readOnly: controller.readOnly, busy: controller.busy, saving: controller.saving, isDirty: controller.isDirty,
     canSave: controller.canSave, canPublish: controller.canPublish,
@@ -166,7 +169,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
     controller.layoutSuggestions.canSuggest, controller.layoutSuggestions.start, controller.navigateBack,
     controller.save, controller.addOverlay, controller.setSelectionMode, controller.undo, controller.redo]);
 
-  const dialogOpen = materialShelfOpen || videoLinkOpen || recoveryOpen ||
+  const dialogOpen = materialShelfOpen || videoLinkOpen || recoveryOpen || importPagesOpen ||
     publishOpen || conflictReloadOpen || takeoverOpen || controller.pendingRange != null || controller.textCandidates.length > 0;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -210,6 +213,19 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
         </div>
       ) : null}
       {materialDrag.shadow ? <span aria-hidden="true" data-testid="material-drag-shadow" className="pointer-events-none fixed h-10 w-14 -translate-x-1/2 -translate-y-1/2 rounded border-2 border-blue-400 bg-white/80 shadow-xl" style={{ left: materialDrag.shadow.x, top: materialDrag.shadow.y, zIndex: 1_000_003 }} /> : null}
+      {importPagesOpen && controller.document ? <AssemblyProcedureDocumentPageImportDialog
+        document={controller.document}
+        pages={pages}
+        selectedPageIndex={selectedPage.pageIndex}
+        context={context}
+        disabled={controller.readOnly || controller.conflict}
+        busy={controller.busy}
+        error={controller.messageIsError ? controller.message : null}
+        onClose={() => setImportPagesOpen(false)}
+        onImport={async (sourceId, indexes, afterPageIndex) => {
+          if (await controller.importPages(sourceId, indexes, afterPageIndex)) setImportPagesOpen(false);
+        }}
+      /> : null}
       {deletePageIndex !== null && pages.find(page => page.pageIndex === deletePageIndex) ? <AssemblyProcedureDocumentPageDeleteDialog
         page={pages.find(page => page.pageIndex === deletePageIndex)!}
         assets={controller.document?.assets}
@@ -224,6 +240,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           selectedPageIndex={selectedPage.pageIndex}
           onSelect={controller.setSelectedPageIndex}
           onAddBlankPage={addBlankPage}
+          onImportPages={openPageImport}
           onDeletePage={setDeletePageIndex}
           locked={controller.layoutSuggestions.locked}
           disabled={controller.readOnly || controller.busy || controller.conflict}
@@ -282,7 +299,7 @@ export function AssemblyProcedureDocumentEditorScreen({ context, onNavigateToDoc
           {controller.document?.lastApproval ? <p data-editor-approval className="absolute bottom-16 left-4 max-w-[calc(100%-32px)] rounded bg-[#161c22eb] px-3 py-1 text-xs text-[#9fadb9]">
             承認: {controller.document.lastApproval.employeeName}{controller.document.lastApproval.positionName ? `(${controller.document.lastApproval.positionName})` : ''} {new Date(controller.document.lastApproval.approvedAt).toLocaleString('ja-JP')}
           </p> : null}
-          {controller.message && controller.message !== dismissedMessage ? (
+          {controller.message && controller.message !== dismissedMessage && !(importPagesOpen && controller.messageIsError) ? (
             <div className={`absolute bottom-4 left-4 z-40 flex min-h-11 max-w-[calc(100%-32px)] flex-col justify-center rounded-lg border px-3.5 py-2 text-lg ${controller.messageIsError || controller.conflict ? 'border-[#e5484d] bg-[#161c22eb] text-[#e5484d]' : 'border-[#344252] bg-[#161c22eb]'}`} role={controller.messageIsError || controller.conflict ? 'alert' : 'status'}>
               <p className="flex items-center gap-2.5"><span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${controller.messageIsError || controller.conflict ? 'bg-[#e5484d]' : 'bg-[#3ba776]'}`} />{controller.message}</p>
               {controller.conflict ? (

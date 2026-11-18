@@ -56,6 +56,55 @@ describe('assembly procedure document summary usage', () => {
     expect(result.map(doc => doc.manualAssignments)).toEqual([[], []]);
   });
 
+  it('excludes older published versions when the picker has a published head', async () => {
+    const list = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      document('published-head', 'root')
+    ] as never);
+    vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.assemblyTemplate, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([]);
+
+    const result = await new AssemblyProcedureDocumentService({} as never).listSummary({ pageImportOffset: 0 });
+
+    expect(result.map(doc => doc.id)).toEqual(['published-head']);
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      where: { isActive: true, OR: [
+        { revisionMetadata: { is: null } },
+        { revisionMetadata: { is: { isRevisionHead: true } } }
+      ] }
+    }));
+  });
+
+  it('includes only the latest active published version alongside the draft head in the picker', async () => {
+    const revisions = vi.spyOn(prisma.assemblyProcedureDocumentRevision, 'findMany').mockResolvedValue([
+      { documentId: 'published' }
+    ] as never);
+    const list = vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([
+      document('published', 'root'), document('draft', 'root', 'DRAFT'), document('unassigned')
+    ] as never);
+    vi.spyOn(prisma.assemblyTemplate, 'findMany').mockResolvedValue([]);
+    vi.spyOn(prisma.procedureManualAssignment, 'findMany').mockResolvedValue([assignment('a', 'root')] as never);
+    const result = await new AssemblyProcedureDocumentService({} as never).listSummary({ limit: 200, pageImportOffset: 200 });
+    expect(result.map(doc => [doc.id, doc.manualAssignments])).toEqual([['published', [usage]], ['draft', [usage]], ['unassigned', []]]);
+    expect(revisions).toHaveBeenCalledWith({
+      where: {
+        isRevisionHead: false,
+        document: { status: 'PUBLISHED', isActive: true },
+        revisionRoot: { revisionRoots: { some: { isRevisionHead: true, document: { status: 'DRAFT' } } } }
+      },
+      distinct: ['revisionRootId'],
+      orderBy: { revisionNumber: 'desc' },
+      select: { documentId: true }
+    });
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({
+      skip: 200, take: 200, where: { isActive: true, OR: [
+        { revisionMetadata: { is: null } },
+        { revisionMetadata: { is: { isRevisionHead: true } } },
+        { id: { in: ['published'] } }
+      ] }
+    }));
+  });
+
   it('skips assignment and revision queries for an empty list', async () => {
     vi.spyOn(prisma.assemblyProcedureDocument, 'findMany').mockResolvedValue([]);
     const assignments = vi.spyOn(prisma.procedureManualAssignment, 'findMany');

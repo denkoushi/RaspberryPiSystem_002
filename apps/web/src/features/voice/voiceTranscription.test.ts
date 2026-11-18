@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { mockVoiceRecording } from './voiceRecording.test-support';
-import { disposeVoiceSession, startVoiceTranscription, type VoiceSession } from './voiceTranscription';
+import { disposeVoiceSession, isSilencePhrase, startVoiceTranscription, type VoiceSession } from './voiceTranscription';
 
 vi.mock('../../api/domains/assembly', () => ({
   getAssemblyProcedureSpeechToTextAvailability: vi.fn().mockResolvedValue(true),
@@ -59,5 +59,14 @@ describe('voice recording options', () => {
     expect(media.getUserMedia.mock.calls).toEqual([[{ audio: true }], [{ audio: true }]]);
     expect(media.closeContext).toHaveBeenCalledTimes(2);
     expect(media.stopTrack).toHaveBeenCalled();
+  });
+});
+
+describe('isSilencePhrase', () => {
+  it.each(['ご視聴ありがとうございました。', '♪', '♪～♪', '(音楽)', '（音楽）', '[音楽]', '【拍手】', '音楽', 'BGM', '(笑)'])('treats %s as nothing heard', text => {
+    expect(isSilencePhrase(text)).toBe(true);
+  });
+  it.each(['部品を台に置いて、ボルトを締める', '音楽を再生する', '(注意)ボルトを締める', '音楽室'])('keeps speech %s', text => {
+    expect(isSilencePhrase(text)).toBe(false);
   });
 });

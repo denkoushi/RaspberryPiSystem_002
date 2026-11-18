@@ -5,7 +5,7 @@ const db = vi.hoisted(() => ({
   assemblyProcedureDocument: { findUnique: vi.fn() },
   assemblyProcedureDocumentPage: { findMany: vi.fn() },
   assemblyProcedureOverlayElement: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() },
-  assemblyProcedureDocumentRevision: { update: vi.fn() },
+  assemblyProcedureDocumentRevision: { findUnique: vi.fn(), update: vi.fn() },
   assemblyProcedureTextFeedback: { findMany: vi.fn(), update: vi.fn() },
   assemblyProcedureCaptionFeedback: { findMany: vi.fn(), update: vi.fn() }
 }));
@@ -30,6 +30,7 @@ beforeEach(() => {
   vi.spyOn(AssemblyProcedureDocumentEditLeaseService.prototype, 'assertCanWrite').mockResolvedValue(undefined);
   db.$transaction.mockImplementation(async work => work(db));
   db.$queryRaw.mockResolvedValue([{ id: documentId, status: 'DRAFT', isActive: true, revisionRootId: documentId, isRevisionHead: true, editVersion: 0 }]);
+  db.assemblyProcedureDocumentRevision.findUnique.mockResolvedValue({ isRevisionHead: true, editVersion: 0 });
   db.assemblyProcedureDocumentPage.findMany.mockResolvedValue([{ pageIndex: 0 }]);
   db.assemblyProcedureOverlayElement.findMany.mockResolvedValue([]);
   db.assemblyProcedureDocument.findUnique.mockResolvedValue(saved);
@@ -39,6 +40,13 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('caption feedback after overlay save', () => {
+  it('rejects an earlier full save when the locked revision already includes imported pages', async () => {
+    db.assemblyProcedureDocumentRevision.findUnique.mockResolvedValue({ isRevisionHead: true, editVersion: 1 });
+    await expect(save()).rejects.toMatchObject({ code: 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT', details: { currentEditVersion: 1 } });
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.assemblyProcedureDocumentRevision.findUnique.mock.invocationCallOrder[0]);
+    expect(db.assemblyProcedureOverlayElement.deleteMany).not.toHaveBeenCalled();
+  });
+
   it.each([undefined, ['caption']])('records present saved text with applied ids %j', async ids => {
     await expect(save([caption], ids)).resolves.toBe(saved);
     expect(db.assemblyProcedureCaptionFeedback.findMany).toHaveBeenCalledWith({ where: { documentId } });

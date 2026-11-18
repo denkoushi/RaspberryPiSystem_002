@@ -1,8 +1,6 @@
 import { AssemblyProcedureDocumentEditLeaseService, type AssemblyProcedureEditActor } from './assembly-procedure-document-edit-lease.service.js';
 import { procedureVideoLinksInclude } from './procedure-video.service.js';
 import { procedureManualApprovalInclude } from './assembly-procedure-document-revision.serializer.js';
-import { randomUUID } from 'node:crypto';
-import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
 
 import type { Prisma } from '@prisma/client';
 
@@ -37,6 +35,7 @@ import { resolveProcedureCaptionFeedback } from './procedure-caption-feedback.js
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { saveBlankProcedurePage } from './assembly-procedure-document-blank.service.js';
 import { deleteProcedurePageRows } from './assembly-procedure-document-page-delete.js';
+import { copyProcedurePages, shiftProcedurePages } from './assembly-procedure-document-page-copy.js';
 
 const revisionDocumentInclude = {
   pages: {
@@ -85,6 +84,13 @@ type RevisionDocumentLockRow = {
   isRevisionHead: boolean | null;
   editVersion: number | null;
   sourceAssetId: string | null;
+};
+
+type PageInsertParams = AssemblyProcedureEditActor & {
+  documentId: string;
+  expectedEditVersion: number;
+  accessPassword?: string;
+  afterPageIndex?: number;
 };
 
 export class AssemblyProcedureDocumentRevisionService {
@@ -228,26 +234,7 @@ export class AssemblyProcedureDocumentRevisionService {
           sourceAssetId: source.sourceAssetId
         }
       });
-      await tx.assemblyProcedureDocumentPage.createMany({
-        data: sourceRecord.pages.map((page) => ({
-          documentId: created.id,
-          pageIndex: page.pageIndex,
-          imageRelativePath: page.imageRelativePath
-        }))
-      });
-      if (sourceRecord.procedureVideoLinks?.length) {
-        await tx.procedureVideoLink.createMany({ data: sourceRecord.procedureVideoLinks.map((link) => ({ videoId: link.videoId, sceneId: link.sceneId, pageIndex: link.pageIndex, sortOrder: link.sortOrder, assemblyProcedureDocumentId: created.id })) });
-      }
-      if (sourceRecord.overlayElements.length > 0) {
-        await tx.assemblyProcedureOverlayElement.createMany({
-          data: sourceRecord.overlayElements.map((overlay) => ({
-            ...overlayToCreateDataFromRow(created.id, overlay),
-            id: overlay.id.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
-              ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${randomUUID()}`
-              : randomUUID()
-          }))
-        });
-      }
+      await copyProcedurePages(tx, created.id, sourceRecord);
       const result = await tx.assemblyProcedureDocument.findUnique({
         where: { id: created.id },
         include: revisionDocumentInclude
@@ -257,7 +244,7 @@ export class AssemblyProcedureDocumentRevisionService {
     });
   }
 
-  async addBlankPage(params: AssemblyProcedureEditActor & { documentId: string; expectedEditVersion: number; accessPassword?: string; afterPageIndex?: number }) {
+  async addBlankPage(params: PageInsertParams) {
     await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
       throw new ApiError(400, 'expectedEditVersionが不正です');
@@ -268,23 +255,7 @@ export class AssemblyProcedureDocumentRevisionService {
     let imageRelativePath: string | undefined;
     try {
       return await runAssemblyTransaction(async (tx) => {
-        const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
-          SELECT d."id", d."status", d."isActive", r."revisionRootId", r."isRevisionHead", r."editVersion"
-          FROM "AssemblyProcedureDocument" d
-          LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
-          WHERE d."id" = ${params.documentId}
-          FOR UPDATE OF d
-        `;
-        const doc = locked[0];
-        if (!doc) throw new ApiError(404, '手順書が見つかりません');
-        await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
-        if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
-          throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
-        }
-        if (doc.editVersion !== params.expectedEditVersion) {
-          throw new ApiError(409, '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
-            { currentEditVersion: doc.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
-        }
+        const doc = await this.lockEditableDocument(tx, params);
         const last = await tx.assemblyProcedureDocumentPage.aggregate({ where: { documentId: doc.id }, _max: { pageIndex: true } });
         let referenceImagePath: string | undefined;
         if (params.afterPageIndex !== undefined) {
@@ -292,23 +263,7 @@ export class AssemblyProcedureDocumentRevisionService {
           const target = await tx.assemblyProcedureDocumentPage.findUnique({ where: { documentId_pageIndex: { documentId: doc.id, pageIndex: afterPageIndex } } });
           if (!target) throw new ApiError(400, '挿入先のページが存在しません');
           referenceImagePath = target.imageRelativePath;
-          const where = { assemblyProcedureDocumentId: doc.id, pageIndex: { gt: afterPageIndex } };
-          const references = await Promise.all([
-            tx.assemblyTemplateProcedureStep.count({ where }),
-            tx.assemblyTemplateBolt.count({ where }),
-            tx.assemblyTemplateCheckItem.count({ where })
-          ]);
-          if (references.some(count => count > 0)) throw new ApiError(409, '後ろのページがテンプレートで使われているため、ページを分けられません');
-          const pages = await tx.assemblyProcedureDocumentPage.findMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, orderBy: { pageIndex: 'desc' } });
-          for (const page of pages) {
-            await tx.assemblyProcedureDocumentPage.update({ where: { documentId_pageIndex: { documentId: doc.id, pageIndex: page.pageIndex } }, data: { pageIndex: page.pageIndex + 1 } });
-          }
-          const links = await tx.procedureVideoLink.findMany({ where, orderBy: { pageIndex: 'desc' } });
-          for (const link of links) {
-            await tx.procedureVideoLink.update({ where: { id: link.id }, data: { pageIndex: link.pageIndex + 1 } });
-          }
-          await tx.assemblyProcedureCaptionFeedback.updateMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, data: { pageIndex: { increment: 1 } } });
-          await tx.assemblyProcedureTextFeedback.updateMany({ where: { documentId: doc.id, pageIndex: { gt: afterPageIndex } }, data: { pageIndex: { increment: 1 } } });
+          await shiftProcedurePages(tx, doc.id, afterPageIndex, 1, '後ろのページがテンプレートで使われているため、ページを分けられません');
         }
         const page = await saveBlankProcedurePage(referenceImagePath);
         imageRelativePath = page.relativeUrl;
@@ -324,6 +279,78 @@ export class AssemblyProcedureDocumentRevisionService {
     }
   }
 
+  private async lockEditableDocument(tx: Prisma.TransactionClient, params: PageInsertParams, sourceDocumentId = params.documentId) {
+    // Lock both documents in the same order for reciprocal imports. Holding the
+    // source row keeps page edits and image cleanup from racing the copy.
+    const locked = await tx.$queryRaw<Array<Pick<RevisionDocumentLockRow, 'id' | 'status' | 'isActive'>>>`
+      SELECT d."id", d."status", d."isActive"
+      FROM "AssemblyProcedureDocument" d
+      WHERE d."id" IN (${params.documentId}, ${sourceDocumentId})
+      ORDER BY d."id"
+      FOR UPDATE OF d
+    `;
+    const doc = locked.find(row => row.id === params.documentId);
+    if (!doc) throw new ApiError(404, '手順書が見つかりません');
+    await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
+    // Read the sidecar after obtaining the row lock so waiting mutations see
+    // the committed editVersion even when the document row did not change.
+    const revision = await tx.assemblyProcedureDocumentRevision.findUnique({
+      where: { documentId: doc.id }, select: { isRevisionHead: true, editVersion: true }
+    });
+    if (!revision || !revision.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
+      throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
+    }
+    if (revision.editVersion !== params.expectedEditVersion) {
+      throw new ApiError(409, '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
+        { currentEditVersion: revision.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
+    }
+    if (!locked.some(row => row.id === sourceDocumentId)) throw new ApiError(404, 'コピー元の手順書が見つかりません');
+    return doc;
+  }
+
+  async importPages(params: PageInsertParams & { sourceDocumentId: string; sourcePageIndexes: number[] }) {
+    await this.accessService.requireAccessPassword(params.accessPassword, params);
+    if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
+      throw new ApiError(400, 'expectedEditVersionが不正です');
+    }
+    if (params.sourceDocumentId === params.documentId) throw new ApiError(400, '同じ手順書からはページを取り込めません');
+    const { sourcePageIndexes } = params;
+    if (!sourcePageIndexes.length || sourcePageIndexes.some(index => !Number.isInteger(index) || index < 0)
+      || new Set(sourcePageIndexes).size !== sourcePageIndexes.length) {
+      throw new ApiError(400, '取り込むページが不正です');
+    }
+    const afterPageIndex = params.afterPageIndex ?? -1;
+    if (!Number.isInteger(afterPageIndex) || afterPageIndex < -1) throw new ApiError(400, '挿入先のページが不正です');
+
+    return runAssemblyTransaction(async tx => {
+      const doc = await this.lockEditableDocument(tx, params, params.sourceDocumentId);
+      if (afterPageIndex >= 0 && !await tx.assemblyProcedureDocumentPage.findUnique({
+        where: { documentId_pageIndex: { documentId: doc.id, pageIndex: afterPageIndex } }
+      })) throw new ApiError(400, '挿入先のページが存在しません');
+
+      const source = await tx.assemblyProcedureDocument.findUnique({
+        where: { id: params.sourceDocumentId },
+        include: revisionDocumentInclude
+      });
+      if (!source) throw new ApiError(404, 'コピー元の手順書が見つかりません');
+      const sourcePages = new Map(source.pages.map(page => [page.pageIndex, page]));
+      if (sourcePageIndexes.some(index => !sourcePages.has(index))) throw new ApiError(400, '取り込むページが存在しません');
+
+      await shiftProcedurePages(tx, doc.id, afterPageIndex, sourcePageIndexes.length, '後ろのページがテンプレートで使われているため、ページを差し込めません');
+      const pageIndexes = new Map(sourcePageIndexes.map((index, offset) => [index, afterPageIndex + 1 + offset]));
+      await copyProcedurePages(tx, doc.id, source, pageIndexes);
+      if (afterPageIndex === -1) {
+        await tx.assemblyProcedureDocument.update({
+          where: { id: doc.id }, data: { imageRelativePath: sourcePages.get(sourcePageIndexes[0])!.imageRelativePath }
+        });
+      }
+      await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
+      const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
+      if (!result) throw new ApiError(500, 'ページ取り込み後の手順書を取得できませんでした');
+      return result;
+    });
+  }
+
   async deletePage(params: AssemblyProcedureEditActor & { documentId: string; pageIndex: number; expectedEditVersion: number; accessPassword?: string }): Promise<AssemblyProcedureDocumentRevisionRecord> {
     await this.accessService.requireAccessPassword(params.accessPassword, params);
     if (!Number.isInteger(params.expectedEditVersion) || params.expectedEditVersion < 0) {
@@ -334,23 +361,7 @@ export class AssemblyProcedureDocumentRevisionService {
     }
     let removedAssetIds: string[] = [];
     const result = await runAssemblyTransaction(async (tx) => {
-      const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
-        SELECT d."id", d."status", d."isActive", r."revisionRootId", r."isRevisionHead", r."editVersion"
-        FROM "AssemblyProcedureDocument" d
-        LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
-        WHERE d."id" = ${params.documentId}
-        FOR UPDATE OF d
-      `;
-      const doc = locked[0];
-      if (!doc) throw new ApiError(404, '手順書が見つかりません');
-      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
-      if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
-        throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
-      }
-      if (doc.editVersion !== params.expectedEditVersion) {
-        throw new ApiError(409, '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
-          { currentEditVersion: doc.editVersion }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT');
-      }
+      const doc = await this.lockEditableDocument(tx, params);
       removedAssetIds = await deleteProcedurePageRows(tx, doc.id, params.pageIndex);
       await tx.assemblyProcedureDocumentRevision.update({ where: { documentId: doc.id }, data: { editVersion: { increment: 1 } } });
       const result = await tx.assemblyProcedureDocument.findUnique({ where: { id: doc.id }, include: revisionDocumentInclude });
@@ -380,28 +391,7 @@ export class AssemblyProcedureDocumentRevisionService {
     }
     let replacedAssetIds: string[] = [];
     const result = await runAssemblyTransaction(async (tx) => {
-      const locked = await tx.$queryRaw<Array<RevisionDocumentLockRow>>`
-        SELECT d."id", d."status", d."isActive", r."revisionRootId", r."revisionNumber",
-               r."supersedesDocumentId", r."isRevisionHead", r."editVersion", r."sourceAssetId"
-        FROM "AssemblyProcedureDocument" d
-        LEFT JOIN "AssemblyProcedureDocumentRevision" r ON r."documentId" = d."id"
-        WHERE d."id" = ${params.documentId}
-        FOR UPDATE OF d
-      `;
-      const doc = locked[0];
-      if (!doc) throw new ApiError(404, '手順書が見つかりません');
-      await new AssemblyProcedureDocumentEditLeaseService().assertCanWrite(params.documentId, params.holderKey ?? null, tx, params.holderToken ?? null);
-      if (!doc.revisionRootId || !doc.isRevisionHead || !doc.isActive || doc.status !== 'DRAFT') {
-        throw new ApiError(409, '公開済みまたは旧版の手順書はoverlay編集できません');
-      }
-      if (doc.editVersion !== params.expectedEditVersion) {
-        throw new ApiError(
-          409,
-          '手順書overlayが他の編集で更新されています。最新内容を再読込してください',
-          { currentEditVersion: doc.editVersion },
-          'ASSEMBLY_PROCEDURE_EDIT_CONFLICT'
-        );
-      }
+      const doc = await this.lockEditableDocument(tx, params);
       const pages = await tx.assemblyProcedureDocumentPage.findMany({
         where: { documentId: doc.id },
         select: { pageIndex: true }

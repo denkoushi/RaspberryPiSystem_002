@@ -1,3 +1,5 @@
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
+
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type {
   AssemblyProcedureOverlayBBox,
@@ -114,8 +116,8 @@ export function overlayDraftReducer(
   }
 }
 
-export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], afterPageIndex: number): AssemblyProcedureOverlayElement[] {
-  return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + 1 } : element);
+export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], afterPageIndex: number, pageCount = 1): AssemblyProcedureOverlayElement[] {
+  return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + pageCount } : element);
 }
 
 export function removeOverlayPage(elements: AssemblyProcedureOverlayElement[], pageIndex: number): AssemblyProcedureOverlayElement[] {
@@ -139,6 +141,13 @@ export function pageOverlayElements(
 export function createOverlayId(): string {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `overlay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** A copy of a text-erase patch keeps the prefix so it still renders without padding. */
+export function duplicateOverlayId(sourceId: string, generateId: () => string = createOverlayId): string {
+  return sourceId.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
+    ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${createOverlayId()}`
+    : generateId();
 }
 
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';

@@ -22,6 +22,8 @@ import { escapeGmailQuotedSearchValue, extractEmail } from '../item-inventory/it
 import type { PdfPagesPort } from '../knowledge/pdf-pages.port.js';
 import { PdfPageCountError, PopplerPdfPagesAdapter } from '../knowledge/poppler-pdf-pages.adapter.js';
 import { materialMessageHeader, resolveProcedureMaterialGmailPacket, type ProcedureMaterialAttachmentClient, type ProcedureMaterialPhoto } from './procedure-material-gmail-packet-resolver.js';
+import type { ProcedureMaterialAppRef } from './procedure-material-app-manifest.js';
+import { buildProcedureMaterialAppNote } from './procedure-material-app-note.js';
 import { joinProcedureMaterialPdfText, normalizeProcedureMaterialPdfText, PROCEDURE_MATERIAL_MAX_PDF_PAGES } from './procedure-material-pdf-text.service.js';
 
 export type ProcedureMaterialGmailPort = ProcedureMaterialAttachmentClient & {
@@ -173,8 +175,9 @@ export class ProcedureMaterialGmailIngestionService {
           }
         }
       };
+      const appSubjectHint = (ref: ProcedureMaterialAppRef) => [ref.category, ref.note].filter(Boolean).join('・') || null;
       const savePhoto = (photo: ProcedureMaterialPhoto, subjectHint = common.subjectHint, text: string | null = null) => saveFile(photo, {
-        ...common, subjectHint: photo.appRef ? [photo.appRef.category, photo.appRef.note].filter(Boolean).join('・') || null : subjectHint,
+        ...common, subjectHint: photo.appRef ? appSubjectHint(photo.appRef) : subjectHint,
         ...(photo.appRef ? { origin: 'APP', appRef: photo.appRef } : {}), kind: 'PHOTO', gmailDedupeKey: photo.gmailDedupeKey, contentType: photo.contentType,
         originalFileName: photo.filename, width: photo.width, height: photo.height, text,
       });
@@ -182,6 +185,14 @@ export class ProcedureMaterialGmailIngestionService {
       for (const photo of packet.photos) {
         // eslint-disable-next-line no-await-in-loop
         await savePhoto(photo);
+      }
+      const appRef = packet.appRef;
+      const appNote = appRef ? buildProcedureMaterialAppNote({
+        ...common, origin: 'APP', appRef, subjectHint: appSubjectHint(appRef),
+      }) : null;
+      if (appNote) {
+        if (savedKeys.has(appNote.gmailDedupeKey)) result.duplicate++;
+        else await save(appNote);
       }
       for (const pdf of packet.pdfs) {
         const photos: Array<ProcedureMaterialPhoto & { pageNumber: number; text: string | null }> = [];

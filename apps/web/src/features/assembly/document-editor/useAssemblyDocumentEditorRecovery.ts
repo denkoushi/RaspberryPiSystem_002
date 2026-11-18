@@ -38,7 +38,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
   } = input;
   const [pending, setPending] = useState<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const storageErrorShown = useRef(false);
-  const pendingAfterPageDelete = useRef<AssemblyDocumentEditorRecoveryRecord | null>(null);
+  const pendingAfterPageChange = useRef<AssemblyDocumentEditorRecoveryRecord | null>(null);
   const lastImmediateSave = useRef<AssemblyDocumentEditorRecoveryMatch | null>(null);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
     const saved = lastImmediateSave.current;
     if (saved?.documentId === documentId && saved.baseUpdatedAt === baseUpdatedAt && saved.editVersion === editVersion) {
       // This session just saved the draft; offer recovery only after a reload.
-      setPending(current => current === pendingAfterPageDelete.current && current?.documentId === documentId && current.baseUpdatedAt === baseUpdatedAt && current.editVersion === editVersion ? current : null);
+      setPending(current => current === pendingAfterPageChange.current && current?.documentId === documentId && current.baseUpdatedAt === baseUpdatedAt && current.editVersion === editVersion ? current : null);
       return;
     }
     try {
@@ -68,7 +68,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
 
   useEffect(() => {
     if (!enabled || !dirty || typeof window === 'undefined') return;
-    pendingAfterPageDelete.current = null;
+    pendingAfterPageChange.current = null;
     setPending(null);
     const timer = window.setTimeout(() => {
       try {
@@ -113,7 +113,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
         materialPlacements: placements
       });
       lastImmediateSave.current = { documentId, ...next };
-      pendingAfterPageDelete.current = null;
+      pendingAfterPageChange.current = null;
       setPending(null);
     } catch {
       if (!storageErrorShown.current) {
@@ -147,6 +147,26 @@ export function useAssemblyDocumentEditorRecovery(input: {
     }
   };
 
+  const rebasePending = (adjusted: AssemblyDocumentEditorRecoveryRecord) => {
+    saveImmediately({ baseUpdatedAt: adjusted.baseUpdatedAt, editVersion: adjusted.editVersion }, adjusted.elements, adjusted.materialPlacements ?? []);
+    // Keep offering the adjusted draft across this session's version change.
+    pendingAfterPageChange.current = adjusted;
+    setPending(adjusted);
+  };
+
+  const importPages = (
+    next: Pick<AssemblyDocumentEditorRecoveryMatch, 'baseUpdatedAt' | 'editVersion'>,
+    insert: (elements: AssemblyProcedureOverlayElement[]) => AssemblyProcedureOverlayElement[],
+    currentElements: AssemblyProcedureOverlayElement[],
+    hasUnsavedChanges: boolean
+  ) => {
+    if (pending) {
+      rebasePending({ ...pending, ...next, elements: insert(pending.elements) });
+    } else if (hasUnsavedChanges) {
+      saveImmediately(next, currentElements);
+    }
+  };
+
   const deletePage = (pageIndex: number, next: Pick<AssemblyDocumentEditorRecoveryMatch, 'baseUpdatedAt' | 'editVersion'>, currentElements: AssemblyProcedureOverlayElement[], placements: PendingMaterialPlacement[]) => {
     if (pending) {
       const survivingPages = new Map(currentElements.map(element => [element.id, element.pageIndex]));
@@ -158,11 +178,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
       }
       const nextPlacements = pending.materialPlacements?.filter(item => !removedIds.has(item.elementId)) ?? [];
       void onDiscardMaterials?.((pending.materialPlacements ?? []).filter(item => removedIds.has(item.elementId))).catch(() => onStorageError?.());
-      saveImmediately(next, nextElements, nextPlacements);
-      // Only the candidate adjusted by this deletion may survive the version effect.
-      const adjusted = { ...pending, ...next, elements: nextElements, materialPlacements: nextPlacements };
-      pendingAfterPageDelete.current = adjusted;
-      setPending(adjusted);
+      rebasePending({ ...pending, ...next, elements: nextElements, materialPlacements: nextPlacements });
     } else if (dirty) {
       saveImmediately(next, currentElements, placements);
     }
@@ -182,6 +198,7 @@ export function useAssemblyDocumentEditorRecovery(input: {
   return {
     pending,
     deletePage,
+    importPages,
     restore,
     discard,
     clear,

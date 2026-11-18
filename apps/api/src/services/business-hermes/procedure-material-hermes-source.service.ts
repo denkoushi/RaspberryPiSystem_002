@@ -27,7 +27,7 @@ export async function loadProcedureMaterialRecords() {
     SELECT "id", "gmailMessageId", "kind", "subjectHint", "originalFileName", "discardedAt",
       LEFT("text", ${PROCEDURE_MATERIAL_BODY_TEXT_LIMIT}::int) AS "text",
       LEFT("imageDescription", ${PROCEDURE_MATERIAL_BODY_TEXT_LIMIT}::int) AS "imageDescription"
-    FROM "ProcedureMaterial" WHERE "discardedAt" IS NULL
+    FROM "ProcedureMaterial" WHERE "discardedAt" IS NULL AND NOT ("origin" = 'APP' AND "kind" = 'TEXT')
     ORDER BY "receivedAt" DESC, "createdAt" DESC, "id" DESC LIMIT ${PROCEDURE_MATERIAL_ROW_LIMIT}
   `;
   return procedureMaterialRows(materials);

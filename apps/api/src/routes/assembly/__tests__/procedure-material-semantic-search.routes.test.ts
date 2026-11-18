@@ -56,11 +56,11 @@ describe('procedure material semantic search route', () => {
     expect(response.json()).toEqual({ available: true, mode: 'semantic', items: [rows[1], { ...rows[0], text: null }, { ...rows[3], text: null }, { ...rows[2], text: null }] });
     expect(rank).toHaveBeenCalledWith('procedure_material', '溶接', 100, ['material:b2', 'mail:b', 'material:a', 'mail:a', 'material:standalone', 'material:b1']);
     expect(findMany).toHaveBeenNthCalledWith(1, {
-      where: { discardedAt: null, documentId: null, placedAt: null }, select: { id: true, gmailMessageId: true },
+      where: { NOT: { origin: 'APP', kind: 'TEXT' }, discardedAt: null, documentId: null, placedAt: null }, select: { id: true, gmailMessageId: true },
       orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });
     expect(findMany).toHaveBeenCalledWith({
-      where: { discardedAt: null, AND: [{ documentId: null, placedAt: null }, { OR: [
+      where: { NOT: { origin: 'APP', kind: 'TEXT' }, discardedAt: null, AND: [{ documentId: null, placedAt: null }, { OR: [
         { gmailMessageId: { in: ['a', 'b', 'a', 'removed'] } }, { id: { in: ['standalone'] } },
       ] }] }, orderBy: [{ receivedAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     });

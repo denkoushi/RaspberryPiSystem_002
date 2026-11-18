@@ -37,7 +37,7 @@ export async function readMaterialMatchesByPartName(db: Db, query: string, scope
         UPPER(NORMALIZE(material."subjectHint", NFKC)) AS hint,
         UPPER(NORMALIZE(material."originalFileName", NFKC)) AS filename
       FROM "ProcedureMaterial" AS material
-      WHERE ${scope}
+      WHERE ${scope} AND NOT (material."origin" = 'APP' AND material."kind" = 'TEXT')
     )
     SELECT material."id", matched."partNumber"
     FROM scoped_materials AS material

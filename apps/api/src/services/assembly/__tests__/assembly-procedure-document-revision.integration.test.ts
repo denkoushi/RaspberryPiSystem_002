@@ -139,6 +139,69 @@ describeIntegration('AssemblyProcedureDocumentRevisionService real Postgres inte
     else process.env.DATABASE_URL = originalDatabaseUrl;
   });
 
+  it.each(['source', 'destination'] as const)('retains a shared background and overlay asset after deleting the %s document', async side => {
+    const sourceId = randomUUID();
+    const destinationId = randomUUID();
+    const assetId = randomUUID();
+    const materialId = randomUUID();
+    const sourceElementId = randomUUID();
+    const placedAt = new Date();
+    const imageRelativePath = `/api/storage/assembly-procedure-images/${sourceId}.png`;
+    const storageKey = `import-page-${assetId}.png`;
+    const { AssemblyProcedureImageStorage } = await import('../../../lib/assembly-procedure-image-storage.js');
+    const { AssemblyProcedureAssetGcService } = await import('../../assembly-procedure-assets/index.js');
+    const deleteImage = vi.spyOn(AssemblyProcedureImageStorage, 'deleteImage').mockResolvedValue(undefined);
+    const deleteAsset = vi.fn(async () => undefined);
+    const gc = new AssemblyProcedureAssetGcService({ storage: { delete: deleteAsset } });
+    const revisionService = new AssemblyProcedureDocumentRevisionService(accessService as never, gc);
+    const documentService = new AssemblyProcedureDocumentService(accessService as never, gc);
+    try {
+      for (const [id, path] of [[sourceId, imageRelativePath], [destinationId, '/destination.png']]) {
+        await prisma.assemblyProcedureDocument.create({ data: {
+          id, name: 'import-page-integration', status: 'DRAFT', imageRelativePath: path,
+          pages: { create: { pageIndex: 0, imageRelativePath: path } },
+          revisionMetadata: { create: { revisionRootId: id, revisionNumber: 1, isRevisionHead: true, editVersion: 0 } }
+        } });
+      }
+      await prisma.assemblyProcedureAsset.create({ data: { id: assetId, kind: 'OVERLAY_IMAGE', storageKey, sha256: 'a'.repeat(64), byteSize: 1, contentType: 'image/png' } });
+      await prisma.procedureMaterial.create({ data: {
+        id: materialId, kind: 'PHOTO', originalFileName: 'source.png', gmailDedupeKey: materialId,
+        receivedAt: placedAt, documentId: sourceId, placedAt
+      } });
+      await prisma.assemblyProcedureOverlayElement.create({ data: {
+        id: sourceElementId, documentId: sourceId, pageIndex: 0, kind: 'IMAGE', assetId,
+        xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4, zIndex: 0
+      } });
+
+      const imported = await revisionService.importPages({
+        documentId: destinationId, sourceDocumentId: sourceId, sourcePageIndexes: [0],
+        expectedEditVersion: 0, accessPassword: ACCESS_PASSWORD
+      });
+      expect(imported.pages.map(page => [page.pageIndex, page.imageRelativePath])).toEqual([[0, imageRelativePath], [1, '/destination.png']]);
+      expect(imported.overlayElements).toHaveLength(1);
+      expect(imported.overlayElements[0]).toMatchObject({ pageIndex: 0, assetId });
+      expect(imported.overlayElements[0].id).not.toBe(sourceElementId);
+      expect(await prisma.procedureMaterial.findUnique({ where: { id: materialId } })).toMatchObject({ documentId: sourceId, placedAt });
+
+      const deletedId = side === 'source' ? sourceId : destinationId;
+      const survivingId = side === 'source' ? destinationId : sourceId;
+      expect(await documentService.deleteIfUnused(deletedId)).toBe('deleted');
+      expect(await prisma.assemblyProcedureDocumentPage.findFirst({ where: { documentId: survivingId, imageRelativePath } })).not.toBeNull();
+      expect(await prisma.assemblyProcedureAsset.findUnique({ where: { id: assetId } })).not.toBeNull();
+      expect(deleteImage).not.toHaveBeenCalledWith(imageRelativePath);
+      expect(deleteAsset).not.toHaveBeenCalled();
+      if (side === 'destination') {
+        expect(await prisma.procedureMaterial.findUnique({ where: { id: materialId } })).toMatchObject({ documentId: sourceId, placedAt });
+      }
+    } finally {
+      deleteImage.mockRestore();
+      await prisma.procedureMaterial.deleteMany({ where: { id: materialId } });
+      await prisma.assemblyProcedureDocumentRevision.deleteMany({ where: { documentId: { in: [sourceId, destinationId] } } });
+      await prisma.assemblyProcedureDocument.deleteMany({ where: { id: { in: [sourceId, destinationId] } } });
+      await prisma.assemblyProcedureAsset.deleteMany({ where: { id: assetId } });
+    }
+  });
+
   it('deletes imported page rows and cascades later overlays without deleting shared assets', async () => {
     const documentId = randomUUID();
     const assetId = randomUUID();

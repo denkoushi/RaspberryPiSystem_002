@@ -1,5 +1,6 @@
 import { projectOverlayBBoxToCrop } from '@raspi-system/shared-types';
 
+import { median } from '../assembly/procedure-layout.js';
 import type { ImageRegionPixelRoi, ImageRegionRoi } from '../image-region/image-region-roi.js';
 import type { TextCandidate } from '../image-region/text-candidate.port.js';
 
@@ -24,12 +25,6 @@ export function joinWords(words: { text: string; gap?: number }[]): string {
     const spaced = !leftCjk && !rightCjk ? true : leftCjk && rightCjk ? false : gap > 0.6;
     return joined + (spaced ? ' ' : '') + text;
   }, '');
-}
-
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 export function unionBoxes(left: Box, rightBox: Box): Box {

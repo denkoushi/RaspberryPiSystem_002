@@ -95,6 +95,7 @@ const assertCanWrite = AssemblyProcedureDocumentEditLeaseService.prototype.asser
 function buildHarness() {
   const service = {
     addBlankPage: vi.fn(async () => makeRevision()),
+    importPages: vi.fn(async () => makeRevision()),
     deletePage: vi.fn(async () => makeRevision()),
     listHistory: vi.fn(async () => [makeRevision()]),
     createRevision: vi.fn(async () => makeRevision()),
@@ -163,12 +164,49 @@ describe('assembly procedure revision routes', () => {
     expect(place).toHaveBeenCalledWith({ clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: null, documentId, materialId: documentId, pageIndex: 0, accessPassword: '1234', employeeTagUid: 'tag' });
   });
 
-  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/pages/0/delete`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
+  it.each(['/blank', `/${documentId}/pages/blank`, `/${documentId}/pages/import`, `/${documentId}/pages/0/delete`, `/${documentId}/materials/${documentId}/place`])('requires kiosk write permission for %s', async (suffix) => {
     const harness = buildHarness(); app = harness.app;
     registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => { throw new ApiError(403, '権限がありません'); } }, harness.service as never, harness.assetsService as never);
     expect((await app.inject({ method: 'POST', url: `/assembly/procedure-documents${suffix}`, payload: { name: '白紙', pageIndex: 0, expectedEditVersion: 0 } })).statusCode).toBe(403);
     expect(harness.service.addBlankPage).not.toHaveBeenCalled();
+    expect(harness.service.importPages).not.toHaveBeenCalled();
     expect(harness.service.deletePage).not.toHaveBeenCalled();
+  });
+
+  const importUrl = `/assembly/procedure-documents/${documentId}/pages/import`;
+  const importPayload = {
+    accessPassword: '1234', expectedEditVersion: 4,
+    sourceDocumentId: '00000000-0000-4000-8000-000000000002', sourcePageIndexes: [2, 0], afterPageIndex: -1
+  };
+
+  it('passes ordered indexes and the edit reservation to the page import service', async () => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: importUrl, headers: { 'x-procedure-edit-token': 'lease-token' }, payload: importPayload });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().document).toMatchObject({ id: documentId, editVersion: 4, pages: [{ pageIndex: 0, overlays: [] }] });
+    expect(harness.service.importPages).toHaveBeenCalledWith({ documentId, ...importPayload, clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: 'lease-token' });
+    expect(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).toHaveBeenCalledWith(documentId, null, undefined, 'lease-token');
+  });
+
+  it.each([
+    { sourcePageIndexes: [] }, { sourcePageIndexes: [0, 0] }, { sourcePageIndexes: [0.5] },
+    { afterPageIndex: -2 }, { sourceDocumentId: 'invalid' }, { expectedEditVersion: undefined }
+  ])('rejects invalid page import input %j', async extra => {
+    const harness = buildHarness(); app = harness.app;
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: importUrl, payload: { ...importPayload, ...extra } });
+    expect(response.statusCode).toBe(400);
+    expect(harness.service.importPages).not.toHaveBeenCalled();
+  });
+
+  it('returns a page import version conflict with the current edit version', async () => {
+    const harness = buildHarness(); app = harness.app;
+    harness.service.importPages.mockRejectedValue(new ApiError(409, '最新内容を再読込してください', { currentEditVersion: 5 }, 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ method: 'POST', url: importUrl, payload: importPayload });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ errorCode: 'ASSEMBLY_PROCEDURE_EDIT_CONFLICT', details: { currentEditVersion: 5 } });
   });
 
   it('deletes a page with the password, required version and reservation token', async () => {

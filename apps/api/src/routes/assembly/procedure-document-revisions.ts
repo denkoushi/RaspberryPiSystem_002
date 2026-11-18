@@ -137,6 +137,17 @@ export function registerAssemblyProcedureDocumentRevisionRoutes(
     const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0), afterPageIndex: z.number().int().min(0).optional() }).parse(request.body);
     return { document: serializeAssemblyProcedureDocumentRevision(await service.addBlankPage({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
   });
+  app.post('/assembly/procedure-documents/:id/pages/import', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
+    const { id } = idParamsSchema.parse(request.params);
+    const body = z.object({
+      accessPassword: accessPasswordSchema,
+      expectedEditVersion: z.coerce.number().int().min(0),
+      sourceDocumentId: z.string().guid(),
+      sourcePageIndexes: z.array(z.number().int().min(0)).min(1).refine(indexes => new Set(indexes).size === indexes.length),
+      afterPageIndex: z.number().int().min(-1).optional()
+    }).parse(request.body);
+    return { document: serializeAssemblyProcedureDocumentRevision(await service.importPages({ documentId: id, ...body, ...await resolveAssemblyProcedureEditWriter(request) })) };
+  });
   app.post('/assembly/procedure-documents/:id/pages/:pageIndex/delete', { preHandler: [options.allowWriteKiosk, enforceAssemblyProcedureEditLease] }, async (request) => {
     const { id, pageIndex } = idParamsSchema.extend({ pageIndex: z.coerce.number().int().min(0) }).parse(request.params);
     const body = z.object({ accessPassword: accessPasswordSchema, expectedEditVersion: z.coerce.number().int().min(0) }).parse(request.body);

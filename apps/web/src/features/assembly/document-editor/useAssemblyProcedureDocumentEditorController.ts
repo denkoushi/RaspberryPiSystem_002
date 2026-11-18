@@ -1,8 +1,7 @@
-import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
 import { isAxiosError } from 'axios';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 
-import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, deleteAssemblyProcedurePage } from '../../../api/client';
+import { addBlankAssemblyProcedurePage, createAssemblyProcedureDocumentRevision, deleteAssemblyProcedurePage, importAssemblyProcedurePages } from '../../../api/client';
 import { DEFAULT_UNSAVED_NAVIGATION_MESSAGE, useUnsavedChangesGuard } from '../../navigation/useUnsavedChangesGuard';
 import { createAssemblyRequestId, readAssemblyApiErrorMessage } from '../assemblyUiHelpers';
 import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedureEditorAccess } from '../procedureEditorAccess';
@@ -10,6 +9,7 @@ import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedu
 import {
   createOverlayForRange,
   createOverlayId,
+  duplicateOverlayId,
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
   removeOverlayPage,
@@ -37,12 +37,6 @@ import { useDocumentEditorMaterialPlacements } from './useDocumentEditorMaterial
 import type { InlineTextElement, InlineTextFlush } from './InlineTextEditor';
 import type { AssemblyProcedureDocumentDto, AssemblyProcedureTextCandidateDto } from '../types';
 import type { AssemblyProcedureOverlayBBox, AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
-
-function duplicateOverlayId(sourceId: string, generateId: () => string): string {
-  return sourceId.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
-    ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${createAssemblyRequestId()}`
-    : generateId();
-}
 
 // Event callbacks keep their identity while reading the latest editor state.
 function useEditorCallback<Args extends unknown[], Result>(callback: (...args: Args) => Result) {
@@ -435,6 +429,45 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     } finally { setBusy(false); }
   });
 
+  const clearPageSelection = () => { setSelectedOverlayId(null); setPendingRange(null); setSelectionMode(false); setTextCandidates([]); setTextCandidateRange(null); };
+
+  const importPages = useEditorCallback(async (sourceDocumentId: string, sourcePageIndexes: number[], afterPageIndex: number) => {
+    if (!document || readOnly || busyRef.current || conflict || sourcePageIndexes.length === 0) return false;
+    setBusy(true); setMessage(null);
+    try {
+      const next = await importAssemblyProcedurePages({
+        id: document.id, holderToken: editLease.holderToken, accessPassword: passwordInput,
+        expectedEditVersion: document.editVersion ?? 0, sourceDocumentId, sourcePageIndexes, afterPageIndex
+      });
+      const firstPageIndex = afterPageIndex + 1, pageCount = sourcePageIndexes.length;
+      const savedElements = selectDocumentOverlayElements(next);
+      const importedElements = savedElements.filter(element => element.pageIndex >= firstPageIndex && element.pageIndex < firstPageIndex + pageCount);
+      const insert = (draft: AssemblyProcedureOverlayElement[]) => [
+        ...shiftOverlayPages(draft, afterPageIndex, pageCount),
+        ...importedElements
+      ];
+      const nextBaseline = overlayDraftSnapshot(savedElements);
+      const nextElements = insert(draftElements);
+      if (inlineDraft) dispatch({ type: 'update', element: inlineDraft });
+      dispatch({ type: 'shiftPages', afterPageIndex, pageCount, importedElements });
+      setInlineDraft(null);
+      setBaselineSnapshot(nextBaseline);
+      setDocument(current => ({ ...next, assets: { ...current?.assets, ...next.assets } }));
+      setSelectedPageIndex(firstPageIndex);
+      clearPageSelection();
+      recovery.importPages({ baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 }, insert, nextElements, overlayDraftSnapshot(nextElements) !== nextBaseline);
+      setMessage(`${pageCount}ページを入れました。`);
+      return true;
+    } catch (error) {
+      if (!onEditLeaseError(error)) {
+        const nextConflict = readDocumentEditorConflict(error);
+        if (nextConflict) { setConflict(true); setConflictEditVersion(nextConflict.currentEditVersion); }
+        setErrorMessage(readAssemblyApiErrorMessage(error, 'ページを取り込めませんでした。'));
+      }
+      return false;
+    } finally { setBusy(false); }
+  });
+
   const deletePage = useEditorCallback(async (pageIndex: number) => {
     if (!document || readOnly || busyRef.current || conflict) return;
     setBusy(true);
@@ -453,11 +486,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
       setBaselineSnapshot(current => current === null ? null : overlayDraftSnapshot(removeOverlayPage(JSON.parse(current) as AssemblyProcedureOverlayElement[], pageIndex)));
       setDocument(current => ({ ...next, assets: { ...next.assets, ...current?.assets } }));
       setSelectedPageIndex(Math.min(pageIndex, Math.max(...next.pages.map(page => page.pageIndex))));
-      setSelectedOverlayId(null);
-      setPendingRange(null);
-      setSelectionMode(false);
-      setTextCandidates([]);
-      setTextCandidateRange(null);
+      clearPageSelection();
       recovery.deletePage(pageIndex, { baseUpdatedAt: next.updatedAt, editVersion: next.editVersion ?? 0 }, nextElements, placements);
       setMessage(`${pageIndex + 1}ページ目を削除しました`);
     } catch (error) {
@@ -523,6 +552,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     duplicateSelectedOverlay,
     duplicateOverlayToCurrentPage,
     addBlankPage,
+    importPages,
     deletePage,
     placeMaterial: overlayCommands.placeMaterial,
     materialRevision,

@@ -13,6 +13,7 @@ const apiMocks = vi.hoisted(() => ({
   saveOverlays: vi.fn(),
   publishDocument: vi.fn(),
   addBlankPage: vi.fn(),
+  importPages: vi.fn(),
   deletePage: vi.fn(),
   suggestLayout: vi.fn(),
   placeMaterial: vi.fn(),
@@ -28,6 +29,7 @@ vi.mock('../../../api/domains/assembly-edit-lease', async (importOriginal) => ({
 
 vi.mock('../../../api/client', () => ({
   addBlankAssemblyProcedurePage: apiMocks.addBlankPage,
+  importAssemblyProcedurePages: apiMocks.importPages,
   deleteAssemblyProcedurePage: apiMocks.deletePage,
   suggestAssemblyProcedureLayout: apiMocks.suggestLayout,
   placeProcedureMaterial: apiMocks.placeMaterial,
@@ -101,6 +103,106 @@ describe('useAssemblyProcedureDocumentEditorController', () => {
     leaseMocks.acquire.mockResolvedValue({ mine: true, holderToken: 'session-token', lease: { holderLabel: '自分の端末', acquiredAt: '2026-10-06T03:00:00Z', heartbeatAt: '2026-10-06T03:00:00Z' } });
     leaseMocks.release.mockResolvedValue(undefined);
     window.localStorage.clear(); clearProcedureEditorAccess();
+  });
+
+  it('rebases unsaved edits, undo, redo and recovery while keeping imported overlays on the next save', async () => {
+    const saved = { ...createOverlayForRange('TEXT', 1, range), id: 'saved', text: '保存済み' };
+    const imported = { ...createOverlayForRange('TEXT', 2, range), id: 'imported', text: 'コピー元の部品' };
+    const document = makeDocument({ pages: [
+      { pageIndex: 0, imageRelativePath: '/first.png' },
+      { pageIndex: 1, imageRelativePath: '/second.png', overlays: [saved] }
+    ] });
+    const next = { ...document, editVersion: 1, updatedAt: '2026-08-22T00:00:00.000Z', pages: [
+      document.pages[0],
+      { pageIndex: 1, imageRelativePath: '/source-2.png' },
+      { pageIndex: 2, imageRelativePath: '/source-0.png', overlays: [imported] },
+      { ...document.pages[1], pageIndex: 3, overlays: [{ ...saved, pageIndex: 3 }] }
+    ] };
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    act(() => hook.result.current.updateElement({ ...saved, text: '未保存' }));
+    act(() => hook.result.current.updateElement({ ...saved, text: 'やり直す編集' }));
+    await act(async () => hook.result.current.undo());
+    apiMocks.importPages.mockResolvedValue(next);
+    await act(async () => expect(await hook.result.current.importPages('other-document', [2, 0], 0)).toBe(true));
+    expect(apiMocks.importPages).toHaveBeenCalledWith({
+      id: document.id, expectedEditVersion: 0, accessPassword: '1234', holderToken: 'session-token',
+      sourceDocumentId: 'other-document', sourcePageIndexes: [2, 0], afterPageIndex: 0
+    });
+    expect(hook.result.current.selectedPageIndex).toBe(1);
+    expect(hook.result.current.message).toBe('2ページを入れました。');
+    const expected = [{ ...saved, pageIndex: 3, text: '未保存' }, imported];
+    expect(hook.result.current.elements).toEqual(expected);
+    expect(hook.result.current.isDirty).toBe(true);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toMatchObject({
+      editVersion: 1, baseUpdatedAt: next.updatedAt, elements: expected
+    });
+    await act(async () => hook.result.current.undo());
+    expect(hook.result.current.elements).toEqual([{ ...saved, pageIndex: 3 }, imported]);
+    expect(hook.result.current.isDirty).toBe(false);
+    await act(async () => hook.result.current.redo());
+    await act(async () => hook.result.current.redo());
+    apiMocks.saveOverlays.mockResolvedValue({ ...next, editVersion: 2 });
+    await act(async () => hook.result.current.save());
+    expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({
+      expectedEditVersion: 1, elements: [{ ...saved, pageIndex: 3, text: 'やり直す編集' }, imported]
+    }));
+  });
+
+  it('updates an offered recovery copy on prepending pages', async () => {
+    const document = makeDocument();
+    const unsaved = { ...createOverlayForRange('TEXT', 0, range), text: '復元する文' };
+    const imported = { ...createOverlayForRange('TEXT', 0, range), text: '取り込んだ文' };
+    writeAssemblyDocumentEditorRecovery(window.localStorage, {
+      version: 1, documentId: document.id, baseUpdatedAt: document.updatedAt,
+      editVersion: 0, savedAt: document.updatedAt, elements: [unsaved]
+    });
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.recoveryPending).not.toBeNull());
+    apiMocks.importPages.mockResolvedValue({ ...document, editVersion: 1, updatedAt: '2026-08-22T00:00:00.000Z', pages: [
+      { pageIndex: 0, imageRelativePath: '/source.png', overlays: [imported] },
+      { ...document.pages[0], pageIndex: 1 }
+    ] });
+    await act(async () => hook.result.current.importPages('other-document', [0], -1));
+    expect(hook.result.current.isDirty).toBe(false);
+    const elements = [{ ...unsaved, pageIndex: 1 }, imported];
+    expect(hook.result.current.recoveryPending).toMatchObject({ editVersion: 1, elements });
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toMatchObject({ editVersion: 1, elements });
+    act(() => hook.result.current.restoreRecovery());
+    expect(hook.result.current.elements).toEqual(elements);
+  });
+
+  it.each(['overlay', 'page'])('deletes an imported material %s without unplacing the source material', async kind => {
+    const document = makeDocument();
+    // The source material's saved IMAGE is copied with a new element ID and the same asset ID.
+    const image = { id: 'copied-element', pageIndex: 1, zIndex: 0, bbox: range, kind: 'IMAGE' as const, assetId: 'source-material-asset', objectFit: 'contain' as const };
+    const asset = { assetId: image.assetId, storageKey: 'material.png', contentType: 'image/png', byteSize: 1 };
+    const hook = renderEditor(document);
+    await authenticate(hook.result);
+    await waitFor(() => expect(hook.result.current.editLeaseMine).toBe(true));
+    apiMocks.importPages.mockResolvedValue({ ...document, editVersion: 1, assets: { [asset.assetId]: asset }, pages: [
+      ...document.pages, { pageIndex: 1, imageRelativePath: '/source.png', overlays: [image] }
+    ] });
+    await act(async () => hook.result.current.importPages('other-document', [0], 0));
+    expect(hook.result.current.document?.assets?.[asset.assetId]).toEqual(asset);
+    expect(hook.result.current.isDirty).toBe(false);
+    expect(readAssemblyDocumentEditorRecovery(window.localStorage, document.id)).toBeNull();
+    if (kind === 'overlay') {
+      act(() => hook.result.current.setSelectedOverlayId(image.id));
+      act(() => hook.result.current.deleteSelectedOverlay());
+      apiMocks.saveOverlays.mockResolvedValue({ ...hook.result.current.document, editVersion: 2, pages: [
+        ...document.pages, { pageIndex: 1, imageRelativePath: '/source.png', overlays: [] }
+      ] });
+      await act(async () => hook.result.current.save());
+      expect(apiMocks.saveOverlays).toHaveBeenCalledWith(expect.objectContaining({ elements: [] }));
+    } else {
+      apiMocks.deletePage.mockResolvedValue({ ...document, editVersion: 2 });
+      await act(async () => hook.result.current.deletePage(1));
+    }
+    expect(hook.result.current.elements).toEqual([]);
+    expect(apiMocks.unplaceMaterial).not.toHaveBeenCalled();
   });
 
   it.each([0, 1, 2])('deletes page %i while retaining drafts, baselines, history, assets and recovery for surviving pages', async pageIndex => {
