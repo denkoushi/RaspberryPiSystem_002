@@ -304,8 +304,10 @@ cat /var/log/jpcert-advisories/jpcert-advisories.log
 find storage/security-review/advisories/pending storage/security-review/advisories/done -name '*.json' -type f
 ```
 
-doneのJSONには `result`、再試行ジョブには `attempts` が残る。invalidはJSON/schema不正の隔離先。
-通知はキオスクのチャットでタイトル `JPCERT 注意喚起: 製品名` を確認する。
+doneのJSONには `result`(自動振り分けを入れた版以降は `triage` も)、再試行ジョブには `attempts` が残る。invalidはJSON/schema不正の隔離先。
+`done` にあるジョブを `pending` へコピーしても、完了済みとして黙って捨てられる。同じ通知が未解決のまま残っていると、移しても新しい通知は出ない。
+`triage` が `none` の場合は通知しない。通知はキオスクのチャットでタイトル `JPCERT 注意喚起: 製品名` を確認する。
+通知の1行目は「要対応:」で始まる。
 初回は直近7日を対象とし、URLとdc:dateのhashでジョブを識別、原子的公開で上書きしない。
 同じURLでも日付が変われば別ジョブ。seenは90日保持、破損時は0600の.corruptを残す。
 条件付きGETの304でも初回検知から過去24時間の一致一覧をログへ再掲する。
