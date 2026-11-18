@@ -106,6 +106,18 @@ describe('PlanningBoardOfflineProvider', () => {
     expect(screen.queryByText('圏外のため操作できません')).toBeNull();
     expect(mocks.get).toHaveBeenCalledTimes(1);
   });
+  it('starts independent startup reads while the board is pending', async () => {
+    let finish!: (value: string) => void;
+    mocks.board.mockReturnValueOnce(new Promise<string>((resolve) => { finish = resolve; }));
+    render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>);
+    await flush();
+    expect(mocks.board).toHaveBeenCalledTimes(1);
+    expect(mocks.aux).toHaveBeenCalledTimes(1);
+    expect(mocks.commit).not.toHaveBeenCalled();
+
+    await act(async () => finish('fresh board'));
+    expect(mocks.commit.mock.calls).toEqual([['board', 'fresh board'], ['aux', 'initial']]);
+  });
   it('retries failed startup reads on a later successful probe without overlapping pending reads', async () => {
     mocks.board.mockRejectedValueOnce(new Error('startup failure'));
     render(<PlanningBoardOfflineProvider config={config}><Harness /></PlanningBoardOfflineProvider>);
@@ -191,6 +203,39 @@ describe('PlanningBoardOfflineProvider', () => {
     await advance(2999); expect(screen.getByRole('status')).toBeInTheDocument();
     await advance(1); expect(screen.queryByRole('status')).toBeNull();
     expect(mocks.get).toHaveBeenCalledWith(expect.stringContaining('/resource-capacity'), expect.objectContaining({ timeout: 3000, headers: { 'Cache-Control': 'no-cache, no-store', Pragma: 'no-cache' } }));
+  });
+  it('reads chips after the replacement board is staged', async () => {
+    await offline();
+    let finish!: (value: string) => void;
+    mocks.board.mockReturnValueOnce(new Promise<string>((resolve) => { finish = resolve; }));
+    const read = vi.fn(async () => current.stagedRead('board'));
+    current.registerRead('chips', { read, commit: (value) => mocks.commit('chips', value) });
+    mocks.commit.mockClear();
+    mocks.get.mockResolvedValue(capacity);
+    await eventProbe(); await eventProbe();
+    expect(current.snapshot.phase).toBe('refreshing');
+    expect(read).not.toHaveBeenCalled();
+
+    await act(async () => finish('fresh board'));
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(mocks.commit.mock.calls).toEqual([['board', 'fresh board'], ['aux', 'initial'], ['chips', 'fresh board']]);
+  });
+  it('aborts pending refresh reads and commits nothing when an independent read fails', async () => {
+    await offline();
+    let signal!: AbortSignal;
+    mocks.board.mockImplementationOnce((abort: AbortSignal) => new Promise<string>((_resolve, reject) => {
+      signal = abort;
+      signal.addEventListener('abort', () => reject(new Error('board aborted')), { once: true });
+    }));
+    mocks.aux.mockRejectedValueOnce(new Error('aux failure'));
+    mocks.commit.mockClear();
+    mocks.get.mockResolvedValue(capacity);
+    await eventProbe(); await eventProbe();
+
+    expect(signal.aborted).toBe(true);
+    expect(current.snapshot.phase).toBe('offline');
+    expect(mocks.commit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('data')).toHaveTextContent('initial:initial');
   });
   it('aborts a hanging refresh at forty-five seconds despite successful probes and ignores its later result', async () => {
     await offline(); mocks.get.mockResolvedValue(capacity);
