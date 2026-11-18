@@ -1,10 +1,10 @@
 .assembly-check-sheet{
   color-scheme:dark;
-  --bg:#1e293b; --panel:#0f172ab3; --panel-solid:#0f172a; --well:#020617; --line:#ffffff26; --line-soft:#ffffff14;
+  --bg:#1e293b; --panel:#0f172ab3; --well:#020617; --line:#ffffff26; --line-soft:#ffffff14;
   --fg:#f8fafc; --muted:#ffffff99; --dim:#ffffff61;
-  --cyan:#67e8f9; --cyan-ink:#083344; --sky:#7dd3fc; --nfc-box:#0c2438; --nfc-line:#1f5a86;
+  --cyan:#67e8f9; --cyan-ink:#083344; --sky:#7dd3fc;
   --ok:#86efac; --ng:#fbbf24; --ng-bg:#78350f55; --danger:#e5484d; --role:#c4b5fd;
-  --shu:#d9452b; --paper:#fbfaf6; --paper-ink:#1c1917; --paper-line:#57534e;
+  --shu:#d9452b;
   --sans:"Noto Sans JP","Hiragino Sans","Yu Gothic",system-ui,sans-serif;
   --seal:"Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",serif;
 }
@@ -77,7 +77,6 @@
 .assembly-check-sheet .crumb .ino{font-size:15px;font-weight:900;color:var(--cyan-ink);background:var(--cyan);border-radius:4px;padding:2px 8px}
 .assembly-check-sheet .ngmode .crumb .ino{background:var(--ng);color:#451a03}
 .assembly-check-sheet .role-tag{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:14px;background:#4c1d9540;border:1px solid var(--role);color:#ede9fe;font-size:14px;font-weight:700;white-space:nowrap}
-.assembly-check-sheet .rev{font-size:13px;color:var(--ng);border:1px solid var(--ng);border-radius:3px;padding:0 5px;font-weight:700}
 .assembly-check-sheet .cbody{display:flex;flex-direction:column;gap:16px;min-width:0}
 .assembly-check-sheet .q{font-size:30px;font-weight:700;line-height:1.4;letter-spacing:.01em;margin:4px 0 0;text-wrap:pretty}
 .assembly-check-sheet .note{font-size:15px;color:var(--muted);margin-top:-6px}
@@ -86,7 +85,6 @@
 .assembly-check-sheet .f input{height:56px;border-radius:6px;border:1px solid var(--line);background:var(--well);color:var(--fg);font:inherit;font-size:24px;font-weight:700;padding:0 12px;font-variant-numeric:tabular-nums}
 .assembly-check-sheet .f input.n{width:6.5ch;text-align:right}
 .assembly-check-sheet .f input.t{width:9ch}
-.assembly-check-sheet .f input.w{width:13ch}
 .assembly-check-sheet .unit{color:var(--fg);font-size:18px;font-weight:700}
 .assembly-check-sheet .seg{display:inline-flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;background:var(--well)}
 .assembly-check-sheet .seg button{min-height:56px;min-width:72px;padding:0 20px;border:0;background:transparent;font-weight:900;font-size:20px;border-right:1px solid var(--line);color:var(--muted)}
@@ -95,9 +93,6 @@
 .assembly-check-sheet .seg.okng button{min-width:96px}
 .assembly-check-sheet .seg.okng button[data-v="OK"][aria-pressed="true"]{background:var(--ok);color:#052e16}
 .assembly-check-sheet .seg.okng button[data-v="NG"][aria-pressed="true"]{background:var(--ng);color:#451a03}
-.assembly-check-sheet .chips{display:inline-flex;gap:8px}
-.assembly-check-sheet .chips button{min-height:56px;min-width:60px;padding:0 14px;border-radius:7px;border:1px solid var(--line);background:var(--well);font-weight:900;font-size:20px;color:var(--muted)}
-.assembly-check-sheet .chips button[aria-pressed="true"]{background:var(--cyan);color:var(--cyan-ink);border-color:var(--cyan)}
 .assembly-check-sheet .cond{display:flex;flex-wrap:wrap;align-items:center;gap:14px;padding:12px 14px;border:1px dashed #c4b5fd99;border-radius:7px;background:#4c1d9520}
 .assembly-check-sheet .cond .cl{font-size:18px;font-weight:700;color:#ede9fe}
 .assembly-check-sheet .ngbox{display:flex;flex-wrap:wrap;gap:10px;align-items:center;padding:12px;border:1px solid var(--ng);border-radius:7px;background:var(--ng-bg)}
@@ -116,11 +111,7 @@
 .assembly-check-sheet .seal.ng{border-color:var(--ng);color:var(--ng);background:#fbbf2412}
 .assembly-check-sheet .seal.na{border-color:#ffffff59;color:var(--muted);background:transparent}
 .assembly-check-sheet .seal.na .nm{font-size:26px}
-.assembly-check-sheet .seal.acs-pop{animation:acs-pop .3s cubic-bezier(.2,.9,.3,1.3)}
 
-@keyframes acs-pop{0%{transform:rotate(-7deg) scale(1.6);opacity:0}
-100%{transform:rotate(-7deg) scale(1);opacity:1}
-}
 .assembly-check-sheet .nfc{grid-column:1;display:inline-flex;align-items:center;gap:14px;height:64px;padding:0 28px 0 10px;border-radius:32px;border:1.5px solid var(--sky);background:#7dd3fc1f;color:#e0f7ff;font-size:22px;font-weight:900;letter-spacing:.04em;width:fit-content}
 .assembly-check-sheet .nfc .ic{width:46px;height:46px;border-radius:50%;background:var(--sky);color:#06243a;display:grid;place-items:center}
 .assembly-check-sheet .nfc svg{width:26px;height:26px;animation:acs-pulse 1.6s ease-in-out infinite}
