@@ -11,8 +11,8 @@ import { AssemblyProcedureDocumentEditorScreen } from './AssemblyProcedureDocume
 import type { AssemblyProcedureDocumentEditorController } from './useAssemblyProcedureDocumentEditorController';
 import type { AssemblyProcedureOverlayElement } from '@raspi-system/shared-types';
 
-const approvalMocks = vi.hoisted(() => ({ realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
-vi.mock('../../../api/client', () => ({ resolveProcedureManualApprover: approvalMocks.resolve, countProcedureMaterials: approvalMocks.count, listProcedureWorkInstructionCandidates: async () => ({ items: [] }), listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
+const approvalMocks = vi.hoisted(() => ({ listDocuments: vi.fn(), getDocument: vi.fn(), realCanvas: false, count: vi.fn(async () => 0), read: null as { uid: string } | null, resolve: vi.fn(), materials: vi.fn(async () => []), videos: vi.fn(async () => []), pageVideos: vi.fn(async () => []), saveVideos: vi.fn(), pageRender: vi.fn() }));
+vi.mock('../../../api/client', () => ({ listAssemblyProcedureDocumentSummaries: approvalMocks.listDocuments, getAssemblyProcedureDocument: approvalMocks.getDocument, resolveProcedureManualApprover: approvalMocks.resolve, countProcedureMaterials: approvalMocks.count, listProcedureWorkInstructionCandidates: async () => ({ items: [] }), listProcedureMaterials: approvalMocks.materials, listProcedureVideos: approvalMocks.videos, getProcedurePageVideos: approvalMocks.pageVideos, replaceProcedurePageVideos: approvalMocks.saveVideos }));
 vi.mock('../../kiosk/inventory/setup/useArmedNfcRead', () => ({ useArmedNfcRead: (armed: boolean) => armed ? approvalMocks.read : null }));
 
 vi.mock('./AssemblyProcedureDocumentEditorCanvas', async importOriginal => {
@@ -92,6 +92,8 @@ function makeController(
     duplicateOverlayToCurrentPage: vi.fn(),
     messageIsError: false,
     addBlankPage: vi.fn(async () => undefined),
+    importPages: vi.fn(async () => true),
+    setErrorMessage: vi.fn(),
     deletePage: vi.fn(async () => undefined),
     placeMaterial: vi.fn(async () => undefined),
     replaceSelectedImageMaterial: vi.fn(async () => undefined),
@@ -200,6 +202,24 @@ function renderInteractive(overrides: Partial<AssemblyProcedureDocumentEditorCon
 afterEach(() => { approvalMocks.realCanvas = false; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('AssemblyProcedureDocumentEditorScreen', () => {
+  it('keeps the import dialog open on refusal and closes it after a successful import', async () => {
+    const source = { ...editorDocument, id: 'source', name: 'コピー元', manualAssignments: [] };
+    approvalMocks.listDocuments.mockResolvedValue([source]);
+    approvalMocks.getDocument.mockResolvedValue(source);
+    const importPages = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    const controller = makeController({ importPages });
+    render(<AssemblyProcedureDocumentEditorProvider value={controller}><AssemblyProcedureDocumentEditorScreen onNavigateToDocument={vi.fn()} /></AssemblyProcedureDocumentEditorProvider>);
+    fireEvent.click(screen.getByRole('button', { name: 'ほかの要領書から入れる' }));
+    const dialog = screen.getByRole('dialog', { name: 'ほかの要領書から入れる' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: /コピー元/ }));
+    fireEvent.click(await within(dialog).findByRole('button', { name: '1ページ目' }));
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: '1ページを入れる' })));
+    expect(importPages).toHaveBeenCalledWith('source', [0], 0);
+    expect(dialog).toBeInTheDocument();
+    await act(async () => fireEvent.click(within(dialog).getByRole('button', { name: '1ページを入れる' })));
+    expect(dialog).not.toBeInTheDocument();
+  });
+
   it('opens page deletion with the unsaved thumbnail and cancels or deletes the selected page', () => {
     const draft = { id: 'delete-preview', pageIndex: 0, kind: 'TEXT' as const, text: '削除前の未保存', bbox: { xRatio: 0, yRatio: 0, widthRatio: 0.5, heightRatio: 0.2 }, zIndex: 0 };
     const pages = [editorDocument.pages[0], { pageIndex: 1, imageRelativePath: '/pages/2.png', overlays: [] }];

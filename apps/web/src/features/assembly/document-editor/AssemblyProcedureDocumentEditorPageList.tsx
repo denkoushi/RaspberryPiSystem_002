@@ -11,6 +11,7 @@ export const AssemblyProcedureDocumentEditorPageList = memo(function AssemblyPro
   selectedPageIndex,
   onSelect,
   onAddBlankPage,
+  onImportPages,
   onDeletePage,
   disabled,
   locked = false
@@ -20,6 +21,7 @@ export const AssemblyProcedureDocumentEditorPageList = memo(function AssemblyPro
   selectedPageIndex: number;
   onSelect: (pageIndex: number) => void;
   onAddBlankPage: () => void;
+  onImportPages: () => void;
   onDeletePage: (pageIndex: number) => void;
   disabled: boolean;
   locked?: boolean;
@@ -41,6 +43,13 @@ export const AssemblyProcedureDocumentEditorPageList = memo(function AssemblyPro
         })}
       </div>
       <button type="button" aria-label="白紙ページを追加" className="h-12 w-[100px] shrink-0 rounded-lg border border-dashed border-[#344252] text-[26px] text-[#9fadb9] disabled:opacity-40" disabled={disabled} onClick={onAddBlankPage}>＋</button>
+      <button type="button" aria-label="ほかの要領書から入れる" title="ほかの要領書から入れる"
+        className="grid h-12 w-[100px] shrink-0 place-items-center rounded-lg border border-dashed border-[#344252] text-[#9fadb9] disabled:opacity-40"
+        disabled={disabled || locked} onClick={onImportPages}>
+        <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M13 3h4l4 4v14H9v-5m8-13v5h4M3 12h12m-4-4 4 4-4 4" />
+        </svg>
+      </button>
     </aside>
   );
 });

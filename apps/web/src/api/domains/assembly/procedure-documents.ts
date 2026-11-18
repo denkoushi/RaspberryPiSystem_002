@@ -139,11 +139,13 @@ export async function listAssemblyProcedureDocumentSummaries(params?: {
   q?: string;
   includeInactive?: boolean;
   limit?: number;
+  pageImportOffset?: number;
 }) {
   const qs = new URLSearchParams();
   if (params?.q) qs.set('q', params.q);
   if (params?.includeInactive) qs.set('includeInactive', 'true');
   if (params?.limit) qs.set('limit', String(params.limit));
+  if (params?.pageImportOffset !== undefined) qs.set('pageImportOffset', String(params.pageImportOffset));
   const suffix = qs.toString() ? `?${qs.toString()}` : '';
   const { data } = await api.get<{ documents: AssemblyProcedureDocumentSummaryDto[] }>(
     `/assembly/procedure-documents/summary${suffix}`
@@ -247,6 +249,22 @@ export async function createBlankAssemblyProcedureDocument(name: string, assignm
 
 export async function addBlankAssemblyProcedurePage(input: { holderToken?: string | null; id: string; accessPassword: string; expectedEditVersion: number; afterPageIndex?: number }) {
   const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(`/assembly/procedure-documents/${encodeURIComponent(input.id)}/pages/blank`, { accessPassword: input.accessPassword, expectedEditVersion: input.expectedEditVersion, ...(input.afterPageIndex === undefined ? {} : { afterPageIndex: input.afterPageIndex }) }, procedureEditHeaders(input.holderToken));
+  return data.document;
+}
+
+export async function importAssemblyProcedurePages(input: {
+  holderToken?: string | null;
+  id: string;
+  accessPassword: string;
+  expectedEditVersion: number;
+  sourceDocumentId: string;
+  sourcePageIndexes: number[];
+  afterPageIndex: number;
+}) {
+  const { id, holderToken, ...body } = input;
+  const { data } = await api.post<{ document: AssemblyProcedureDocumentDto }>(
+    `/assembly/procedure-documents/${encodeURIComponent(id)}/pages/import`, body, procedureEditHeaders(holderToken)
+  );
   return data.document;
 }
 
