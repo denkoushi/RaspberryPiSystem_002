@@ -7,9 +7,9 @@ import type { ComponentProps } from 'react';
 
 vi.mock('../../../api/hooks/local-llm', () => ({ useLocalLlmAvailability: () => ({ unavailable: false }) }));
 
-function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false, saveUnsettled = false } = {}) {
+function renderToolbar({ workshop = false, locked = false, readOnly = false, isDirty = false, saving = false } = {}) {
   const controller = {
-    readOnly, isDirty, saving, saveUnsettled, busy: saving, canSave: true, canPublish: true, canUndo: true, canRedo: true,
+    readOnly, isDirty, saving, busy: saving, canSave: true, canPublish: true, canUndo: true, canRedo: true,
     layoutLocked: locked, canSuggest: true, startLayout: vi.fn(),
     save: vi.fn(), navigateBack: vi.fn(), undo: vi.fn(), redo: vi.fn()
   } as unknown as ComponentProps<typeof AssemblyProcedureDocumentEditorCanvasToolbar>['controller'];
@@ -49,7 +49,6 @@ describe('document editor save status', () => {
   it.each([
     { isDirty: true, label: '未保存の変更を保存する', color: '!bg-[#f6b93b]' },
     { saving: true, label: '保存中', color: '!text-[#5fc3e8]' },
-    { saveUnsettled: true, label: '保存済み', color: '!text-[#3ba776]' },
     { label: '保存済み', color: '!text-[#3ba776]' }
   ])('shows $label through appearance and accessible name', ({ label, color, ...options }) => {
     renderToolbar(options);
