@@ -13,6 +13,7 @@ import { buildProcedureManualName, procedureManualShortProcessName as shortName 
 import { procedureManualModelKey } from './ProcedureManualAssignmentDialog';
 import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './ProcedureManualModelSearch';
 import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from './ProcedureManualPartPicker';
+import { useProcedureManualNameVoiceInput } from './useProcedureManualNameVoiceInput';
 
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
 import type { ProcedureManualProcessDto } from '../types';
@@ -44,6 +45,9 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
   const [directName, setDirectName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const voice = useProcedureManualNameVoiceInput(directName, setDirectName);
+  const recording = voice.status === 'recording';
+  const processing = voice.status === 'processing';
   const parent = processes.find(process => process.id === parentId);
   const child = processes.find(process => process.id === childId);
   const isPart = child?.subjectKind === 'PART';
@@ -90,9 +94,15 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
   const changeDigits = (value: string) => { setScanArmed(false); setDigitQuery(value); setSelectedModel(''); };
   const action = `${procedureManualButtonBase} px-[22px] text-[21px] font-bold disabled:opacity-40`;
   const secondaryAction = `${action} ${procedureManualButtonUnselected} text-[#eef3f6]`;
+  const close = () => {
+    if (busy) return;
+    voice.reset();
+    onClose();
+  };
   const create = async () => {
     if (beforeMutation && !beforeMutation()) return;
     if (busy || !canCreate) return;
+    if (recording || processing) voice.reset();
     setBusy(true); setError(null);
     try {
       const assignment = selectedModel && child ? { modelCode: selectedModel, processId: child.id } : undefined;
@@ -106,9 +116,23 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
     } catch (e) { setError(readAssemblyApiErrorMessage(e, '白紙の要領書を作成できません')); }
     finally { setBusy(false); }
   };
-  return <Dialog isOpen onClose={() => { if (!busy) onClose(); }} title="白紙から作る" size="full" className="!my-auto !max-w-[1180px] !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]" titleClassName="!text-2xl !font-black text-[#eef3f6]">
+  return <Dialog isOpen onClose={close} title="白紙から作る" size="full" className="!my-auto !max-w-[1180px] !rounded-[14px] !border !border-[#344252] !bg-[#161c22] !px-[26px] !py-6 !text-[#eef3f6]" titleClassName="!text-2xl !font-black text-[#eef3f6]">
     <form className="mt-[18px] grid gap-[18px]" onSubmit={event => { event.preventDefault(); void create(); }}>
-      {direct ? <label className="grid gap-2">要領書名<Input aria-label="要領書名" autoFocus maxLength={200} value={directName} onChange={event => setDirectName(event.target.value)} className="h-12 text-xl" /></label> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
+      {direct ? <div className="grid gap-2">
+        <div className="flex gap-2">
+          <Input aria-label="要領書名" placeholder="要領書名" autoFocus maxLength={200} value={directName} onChange={event => { voice.reset(); setDirectName(event.target.value); }} className="h-12 min-w-0 flex-1 text-xl" />
+          <button type="button" aria-label={recording ? '止める' : '話す'} disabled={busy || processing}
+            onClick={recording ? voice.stop : () => void voice.start()}
+            className={`${procedureManualButtonBase} flex h-12 w-16 shrink-0 items-center justify-center disabled:opacity-50 ${recording ? 'border-[#ff8a80] bg-[#ff8a80] text-[#2a0b08]' : 'border-[#7cc4ff] bg-[#7cc4ff1f] text-[#7cc4ff]'}`}>
+            {recording
+              ? <svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" /></svg>
+              : <svg aria-hidden="true" className="h-[26px] w-[26px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></svg>}
+          </button>
+          {voice.canRestore ? <button type="button" disabled={busy} onClick={voice.restore} className={`${secondaryAction} h-12 shrink-0`}>戻す</button> : null}
+        </div>
+        {processing ? <p role="status" className="text-[#f6b93b]">聞き取っています…</p>
+          : voice.error ? <p role="alert" className="text-[#ff8a80]">{voice.error}</p> : null}
+      </div> : <div className="grid grid-cols-1 gap-4 min-[900px]:grid-cols-3">
         <section aria-label="工程と細分の選択" className="grid content-start gap-2">
           <h3 className="font-bold tracking-wider text-[#9fadb9]">工程</h3>
           <div className="flex flex-wrap gap-2">{processes.filter(process => !process.parentId).map(process => <button type="button" key={process.id} className={chip(parentId === process.id)} aria-pressed={parentId === process.id} onClick={() => { setScanArmed(false); const nextChild = processes.find(child => child.parentId === process.id); if ((nextChild?.subjectKind === 'PART') !== isPart) { setSelectedModel(''); setModelSearch(''); setDigitQuery(''); } setParentId(process.id); setChildId(nextChild?.id ?? ''); }}>{shortName(process)}</button>)}</div>
@@ -133,11 +157,11 @@ export function ProcedureManualBlankDialog({ processes, modelCode, processId, on
       </div>}
       <div className="flex flex-wrap items-center justify-between gap-3.5 rounded-[10px] border border-[#27313b] bg-[#1b222a] px-4 py-3.5">
         <div className="min-w-0"><output aria-label="名前のプレビュー" className="break-all text-[26px] font-black text-[#eef3f6]">{name || (isPart ? '品番_工程_細分' : '型番_工程_細分')}</output><p className="mt-1 text-[15px] text-[#9fadb9]">保存名: {name || '未選択'} ・ 同名があれば末尾に -2</p></div>
-        <button type="button" className={secondaryAction} onClick={() => { setScanArmed(false); if (!direct) setDirectName(builtName); setDirect(!direct); }}>{direct ? '名前の組み立てに戻る' : '名前を直接入力'}</button>
+        <button type="button" className={secondaryAction} onClick={() => { setScanArmed(false); if (direct) voice.reset(); else setDirectName(builtName); setDirect(!direct); }}>{direct ? '名前の組み立てに戻る' : '名前を直接入力'}</button>
       </div>
       {error ? <p role="alert" className="text-red-400">{error}</p> : null}
       {name.length > 200 ? <p role="alert" className="text-red-400">名前は200文字以内にしてください</p> : null}
-      <div className="flex flex-wrap items-center justify-end gap-2.5">{!canCreate && missing.length > 0 ? <p role="status" aria-label="作成に必要な項目" className="text-[#9fadb9]">あと: {missing.join('、')}</p> : null}<button type="button" className={secondaryAction} disabled={busy} onClick={onClose}>閉じる</button><button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !canCreate}>{busy ? '作成中…' : '作成してエディタへ'}</button></div>
+      <div className="flex flex-wrap items-center justify-end gap-2.5">{!canCreate && missing.length > 0 ? <p role="status" aria-label="作成に必要な項目" className="text-[#9fadb9]">あと: {missing.join('、')}</p> : null}<button type="button" className={secondaryAction} disabled={busy} onClick={close}>閉じる</button><button type="submit" className={`${action} border-[#3ba776] bg-[#3ba776] text-[#0b1a12]`} disabled={busy || !canCreate}>{busy ? '作成中…' : '作成してエディタへ'}</button></div>
     </form>
   </Dialog>;
 }
