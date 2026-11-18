@@ -196,10 +196,11 @@ export function registerAssemblyProcedureDocumentRoutes(
       .object({
         includeInactive: optionalTrueOnlyBooleanSchema,
         q: z.string().optional(),
-        limit: z.coerce.number().int().min(1).max(200).optional()
+        limit: z.coerce.number().int().min(1).max(200).optional(),
+        pageImportOffset: z.coerce.number().int().min(0).optional()
       })
       .parse(request.query);
-    const documents = await procedureService.listSummary({ includeInactive: q.includeInactive, q: q.q, limit: q.limit });
+    const documents = await procedureService.listSummary({ includeInactive: q.includeInactive, q: q.q, limit: q.limit, ...(q.pageImportOffset === undefined ? {} : { pageImportOffset: q.pageImportOffset }) });
     return { documents: documents.map(serializeProcedureDocumentSummary) };
   });
 

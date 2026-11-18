@@ -187,13 +187,26 @@ export class AssemblyProcedureDocumentService {
     includeInactive?: boolean;
     q?: string;
     limit?: number;
+    pageImportOffset?: number;
   }): Promise<AssemblyProcedureDocumentSummary[]> {
     const q = params.q?.trim();
+    const forPageImport = params.pageImportOffset !== undefined;
+    const importPublishedRevisions = forPageImport ? await prisma.assemblyProcedureDocumentRevision.findMany({
+      where: {
+        isRevisionHead: false,
+        document: { status: 'PUBLISHED', isActive: true },
+        revisionRoot: { revisionRoots: { some: { isRevisionHead: true, document: { status: 'DRAFT' } } } }
+      },
+      distinct: ['revisionRootId'],
+      orderBy: { revisionNumber: 'desc' },
+      select: { documentId: true }
+    }) : [];
     const documents = await prisma.assemblyProcedureDocument.findMany({
       where: {
         OR: [
           { revisionMetadata: { is: null } },
-          { revisionMetadata: { is: { isRevisionHead: true } } }
+          { revisionMetadata: { is: { isRevisionHead: true } } },
+          ...(importPublishedRevisions.length ? [{ id: { in: importPublishedRevisions.map(revision => revision.documentId) } }] : [])
         ],
         ...(params.includeInactive ? {} : { isActive: true }),
         ...(q
@@ -201,7 +214,8 @@ export class AssemblyProcedureDocumentService {
           : {})
       },
       include: procedureDocumentListInclude,
-      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }],
+      orderBy: [{ updatedAt: 'desc' }, { name: 'asc' }, { id: 'asc' }],
+      skip: params.pageImportOffset,
       take: Math.min(Math.max(params.limit ?? 100, 1), 200)
     });
     const documentIds = documents.map((document) => document.id);
@@ -216,7 +230,7 @@ export class AssemblyProcedureDocumentService {
         include: { process: { select: { name: true } } },
         orderBy: [{ modelCodeKey: 'asc' }, { processId: 'asc' }, { sortOrder: 'asc' }]
       }),
-      rootIds.length ? prisma.assemblyProcedureDocumentRevision.findMany({
+      rootIds.length && !forPageImport ? prisma.assemblyProcedureDocumentRevision.findMany({
         where: { revisionRootId: { in: rootIds }, document: { status: 'PUBLISHED', isActive: true } },
         orderBy: { revisionNumber: 'desc' },
         select: { revisionRootId: true, documentId: true }
@@ -226,10 +240,21 @@ export class AssemblyProcedureDocumentService {
     for (const revision of publishedRevisions) {
       if (!latestPublishedByRoot.has(revision.revisionRootId)) latestPublishedByRoot.set(revision.revisionRootId, revision.documentId);
     }
+    // The picker lists versions individually. Root assignments identify the
+    // manual's model/process for those versions, including revision drafts.
+    const versionIdsByRoot = new Map<string, string[]>();
+    if (forPageImport) {
+      for (const { id, revisionMetadata } of documents) {
+        if (!revisionMetadata || revisionMetadata.revisionRootId === id) continue;
+        const ids = versionIdsByRoot.get(revisionMetadata.revisionRootId) ?? [];
+        ids.push(id);
+        versionIdsByRoot.set(revisionMetadata.revisionRootId, ids);
+      }
+    }
     const assignmentsByDocument = new Map<string, typeof manualAssignments>();
     for (const assignment of manualAssignments) {
       const directId = assignment.assemblyProcedureDocumentId!;
-      const ids = new Set([directId, latestPublishedByRoot.get(directId)]);
+      const ids = new Set([directId, latestPublishedByRoot.get(directId), ...(versionIdsByRoot.get(directId) ?? [])]);
       for (const id of ids) {
         if (!id) continue;
         const assignments = assignmentsByDocument.get(id) ?? [];

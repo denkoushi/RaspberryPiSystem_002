@@ -108,8 +108,8 @@ export function overlayDraftReducer(
   }
 }
 
-export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], afterPageIndex: number): AssemblyProcedureOverlayElement[] {
-  return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + 1 } : element);
+export function shiftOverlayPages(elements: AssemblyProcedureOverlayElement[], afterPageIndex: number, pageCount = 1): AssemblyProcedureOverlayElement[] {
+  return elements.map(element => element.pageIndex > afterPageIndex ? { ...element, pageIndex: element.pageIndex + pageCount } : element);
 }
 
 export function removeOverlayPage(elements: AssemblyProcedureOverlayElement[], pageIndex: number): AssemblyProcedureOverlayElement[] {

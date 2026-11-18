@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => {
     $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn(),
     assemblyProcedureDocumentEditLease: { findUnique: vi.fn().mockResolvedValue(null) },
     assemblyProcedureDocument: { create: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
-    assemblyProcedureDocumentRevision: { create: vi.fn(), update: vi.fn() },
+    assemblyProcedureDocumentRevision: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
     assemblyProcedureDocumentPage: { aggregate: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
     assemblyProcedureOverlayElement: { aggregate: vi.fn(), createMany: vi.fn() },
     assemblyProcedureAsset: { create: vi.fn(), deleteMany: vi.fn() },
@@ -44,6 +44,7 @@ beforeEach(async () => {
   const db = mocks.db;
   db.$transaction.mockImplementation(async (work) => work(db));
   db.$queryRaw.mockResolvedValue([locked]);
+  db.assemblyProcedureDocumentRevision.findUnique.mockResolvedValue(locked);
   db.assemblyProcedureDocument.findFirst.mockResolvedValue(null);
   db.procedureManualProcess.findFirst.mockResolvedValue({ id: 'cutting' });
   db.procedureManualAssignment.findMany.mockResolvedValue([{ sortOrder: 4 }]);
