@@ -47,7 +47,7 @@ export function registerProcedureMaterialRoutes(app: FastifyInstance, options: {
     return service.listByEmployeeTag(uid);
   });
 
-  app.get(`${path}/count`, { preHandler: options.allowView }, async (request) => ({ count: await service.count(querySchema.pick({ state: true }).parse(request.query)) }));
+  app.get(`${path}/count`, { preHandler: options.allowView }, async (request) => ({ count: await service.count(querySchema.pick({ state: true, origin: true }).parse(request.query)) }));
   app.post(`${path}/split-suggestions`, { preHandler: options.allowView, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (request) => {
     const { ids } = z.object({ ids: z.array(z.string().guid()).min(2).max(60) }).strict().parse(request.body);
     return (options.splitSuggestions ?? getProcedureMaterialSplitSuggestionService()).suggest(ids);
