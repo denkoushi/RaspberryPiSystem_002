@@ -48,6 +48,43 @@ describe('OS security update persistence', () => {
     expect(requests[0].targets).toEqual([expect.objectContaining({ clientId, state: 'pending', deliveredAt: null })]);
   });
 
+  it('targets only fresh reports and uses trial when an expected client report is stale', async () => {
+    const now = new Date();
+    const prefix = `raspi-test-${randomUUID()}`;
+    const freshClientId = `${prefix}-fresh`;
+    const staleClientId = `${prefix}-stale`;
+    const enrolledIds = [freshClientId, staleClientId];
+    clientIds.push(...enrolledIds);
+    vi.stubEnv('CLIENT_HEARTBEAT_CLIENT_ID_PATTERN', `^${prefix}-`);
+    vi.stubEnv('CLIENT_HEARTBEAT_STALE_MINUTES', '2');
+    await prisma.clientDevice.createMany({
+      data: enrolledIds.map(statusClientId => ({ apiKey: randomUUID(), statusClientId, name: '試験端末' })),
+    });
+    const staleAfterMs = 2 * 60_000;
+    await prisma.osSecurityUpdateClientReport.createMany({
+      data: enrolledIds.map((clientId, index) => ({
+        clientId,
+        earlyEnabled: true,
+        report: { earlyEnabled: true, requests: [], check: null },
+        receivedAt: new Date(now.getTime() - staleAfterMs - index),
+      })),
+    });
+    const noticeKey = newNoticeKey();
+    const input = { noticeKey, title: '更新試験', url: 'https://www.jpcert.or.jp/a',
+      products: { Chromium: { packages: ['chromium'], comparable: true, fixedVersion: '131.0' } } };
+
+    expect(await createOsSecurityUpdateRequest(input, now)).toBe('trial');
+    const request = await prisma.osSecurityUpdateRequest.findUniqueOrThrow({
+      where: { advisoryKey: noticeKey }, include: { targets: true },
+    });
+    expect(request.targets.map(target => target.clientId)).toEqual([freshClientId]);
+
+    const staleOnlyNoticeKey = newNoticeKey();
+    const later = new Date(now.getTime() + 1);
+    expect(await createOsSecurityUpdateRequest({ ...input, noticeKey: staleOnlyNoticeKey }, later)).toBeUndefined();
+    expect(await prisma.osSecurityUpdateRequest.findUnique({ where: { advisoryKey: staleOnlyNoticeKey } })).toBeNull();
+  });
+
   it('rolls back an interrupted notice and sends only once across two concurrent sweeps', async () => {
     const now = new Date();
     const noticeKey = newNoticeKey();

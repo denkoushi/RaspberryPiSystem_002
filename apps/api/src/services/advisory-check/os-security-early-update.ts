@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { OsSecurityUpdateRequest, OsSecurityUpdateTarget, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { prisma } from '../../lib/prisma.js';
@@ -51,11 +52,13 @@ export async function createOsSecurityUpdateRequest(input: {
   const existing = await prisma.osSecurityUpdateRequest.findUnique({ where: { advisoryKey }, select: { mode: true } });
   if (existing) return existing.mode;
 
+  const heartbeatConfig = loadHeartbeatAlertConfig();
   const reports = await prisma.osSecurityUpdateClientReport.findMany({
-    where: { earlyEnabled: true }, select: { clientId: true },
+    where: { earlyEnabled: true, receivedAt: { gte: new Date(now.getTime() - heartbeatConfig.staleAfterMs) } },
+    select: { clientId: true },
   });
   if (reports.length === 0) return undefined;
-  const { monitored } = await loadMonitoredHeartbeatClients(now, loadHeartbeatAlertConfig());
+  const { monitored } = await loadMonitoredHeartbeatClients(now, heartbeatConfig);
   const clients = reports.map(row => row.clientId).filter(clientId => monitored.has(clientId));
   if (clients.length === 0) return undefined;
 
@@ -124,19 +127,23 @@ export async function recordOsSecurityUpdateReport(clientId: string, report: OsS
       where: { clientId, request: { status: 'open', expiresAt: { gte: receivedAt } } },
       include: { request: true },
     });
+    const unresolved = [];
     for (const target of targets) {
-      if (target.state !== 'pending') continue;
+      if (target.state !== 'pending' && target.state !== 'failed') continue;
       const evaluation = evaluateTarget(target, target.request.products, report);
-      if (!evaluation) continue;
-      await tx.osSecurityUpdateTarget.updateMany({
-        where: { clientId, requestId: target.requestId, state: 'pending', request: { status: 'open' } },
-        data: { ...evaluation, ...(evaluation.state === 'verified' ? { verifiedAt: receivedAt } : {}) },
-      });
+      if (evaluation && (evaluation.state !== target.state || !isDeepStrictEqual(evaluation.detail, target.detail))) {
+        const updated = await tx.osSecurityUpdateTarget.updateMany({
+          where: { clientId, requestId: target.requestId, state: target.state, request: { status: 'open' } },
+          data: { ...evaluation, ...(evaluation.state === 'verified' ? { verifiedAt: receivedAt } : {}) },
+        });
+        if (updated.count === 0 || evaluation.state === 'verified') continue;
+      }
+      unresolved.push(target);
     }
 
     if (!report.earlyEnabled) return;
     const deliveredAt = new Date();
-    const deliverable = targets.filter(({ request }) => request.expiresAt >= deliveredAt);
+    const deliverable = unresolved.filter(({ request }) => request.expiresAt >= deliveredAt);
     const firstDelivery = deliverable.filter(target => target.deliveredAt === null);
     if (firstDelivery.length > 0) {
       await tx.osSecurityUpdateTarget.updateMany({

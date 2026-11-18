@@ -131,6 +131,7 @@
 - 段階1でも、判定や試行回数を保存して 512,000 バイトを超えた未配送のジョブは、旧 API に戻すか新旧が混在すると `invalid` に移る。差分前の API にも同じ性質がある。API を戻した後は `invalid` を点検する。
 - 段階2以降に API をこの PR より前へ戻す場合は、先に収集側を戻す。`pending` と `claimed` に `evidence` または `remedies` 付きのジョブがないことを確認するか、該当ジョブを退避してから API を戻す。旧 API は 512,000 バイトを超えるジョブも `invalid` に移す。API を戻した後は `invalid` を点検し、必要に応じてジョブを `pending` へ戻す。
 - 前倒しを戻すときは、フラグを false にして反映する。端末は日曜だけの更新に戻る。
+- 段階3a 以降に API をこれより前へ戻すと、open の auto 要求の見回りが止まる。戻した間に通知されるべきものは、新しい版へ戻した後の見回りで期限切れとして通知される。戻す期間が長いときは OsSecurityUpdateRequest の open を点検する。
 - 段階3の migration は、テーブルの追加だけにする。
 
 ## Interfaces and Dependencies

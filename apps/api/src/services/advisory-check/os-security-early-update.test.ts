@@ -1,17 +1,19 @@
 import Fastify from 'fastify';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { logger } from '../../lib/logger.js';
 import { registerClientCoreRoutes } from '../../routes/clients/core.js';
-import { recordOsSecurityUpdateReport, sweepOsSecurityUpdateRequests, type OsSecurityUpdateReport } from './os-security-early-update.js';
+import { createOsSecurityUpdateRequest, recordOsSecurityUpdateReport, sweepOsSecurityUpdateRequests, type OsSecurityUpdateReport } from './os-security-early-update.js';
 
 const db = vi.hoisted(() => ({
   clientDevice: { findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   clientStatus: { upsert: vi.fn() },
-  osSecurityUpdateClientReport: { createMany: vi.fn(), updateMany: vi.fn() },
+  osSecurityUpdateClientReport: { createMany: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
   osSecurityUpdateTarget: { findMany: vi.fn(), updateMany: vi.fn() },
-  osSecurityUpdateRequest: { findMany: vi.fn(), updateMany: vi.fn() },
+  osSecurityUpdateRequest: { findMany: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: { ...db, $transaction: (fn: (tx: typeof db) => unknown) => fn(db) } }));
 vi.mock('../../config/env/load-dotenv.js', () => ({}));
+vi.mock('../../lib/logger.js', () => ({ logger: { warn: vi.fn() } }));
 
 const clientId = 'raspi-1';
 const deliveredAt = new Date('2026-11-18T00:00:00Z');
@@ -50,8 +52,24 @@ beforeEach(() => {
   db.clientStatus.upsert.mockResolvedValue({ id: 'status-1' });
   db.osSecurityUpdateClientReport.createMany.mockResolvedValue({ count: 1 });
   db.osSecurityUpdateTarget.findMany.mockResolvedValue([{ ...target, request }]);
+  db.osSecurityUpdateTarget.updateMany.mockResolvedValue({ count: 1 });
   db.osSecurityUpdateRequest.updateMany.mockResolvedValue({ count: 1 });
   db.clientDevice.findMany.mockResolvedValue([{ statusClientId: clientId, name: '切削端末' }]);
+});
+
+it('requires an enabled report within the configured heartbeat staleness threshold', async () => {
+  vi.stubEnv('CLIENT_HEARTBEAT_STALE_MINUTES', '2');
+  try {
+    db.osSecurityUpdateClientReport.findMany.mockResolvedValue([]);
+    const { noticeKey, title, url, products } = request;
+    expect(await createOsSecurityUpdateRequest({ noticeKey, title, url, products }, finishedAt)).toBeUndefined();
+    expect(db.osSecurityUpdateClientReport.findMany).toHaveBeenCalledExactlyOnceWith({
+      where: { earlyEnabled: true, receivedAt: { gte: new Date(finishedAt.getTime() - 120_000) } },
+      select: { clientId: true },
+    });
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });
 
 describe('POST /clients/status OS security updates', () => {
@@ -66,12 +84,42 @@ describe('POST /clients/status OS security updates', () => {
     });
   }
 
-  it.each([undefined, { ...enabledReport, check: { result: 'unknown' } }])('ignores an omitted or malformed report (%j)', async report => {
-    const response = await post(report);
+  it('disables the existing report when the status omits the block', async () => {
+    db.osSecurityUpdateClientReport.updateMany.mockResolvedValue({ count: 1 });
+    const response = await post(undefined);
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ requestId: expect.any(String), statusId: 'status-1', clientDeviceId: 'device-1', logsStored: 0 });
     expect(db.clientStatus.upsert).toHaveBeenCalledOnce();
+    const receivedAt = db.clientStatus.upsert.mock.calls[0][0].update.lastSeen;
+    expect(db.osSecurityUpdateClientReport.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { clientId, receivedAt: { lte: receivedAt } },
+      data: { earlyEnabled: false, receivedAt },
+    });
     expect(db.osSecurityUpdateClientReport.createMany).not.toHaveBeenCalled();
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it('warns with only the client ID and issue paths for an invalid block', async () => {
+    db.osSecurityUpdateClientReport.updateMany.mockResolvedValue({ count: 1 });
+    const response = await post({ ...enabledReport, earlyEnabled: 'invalid-value' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).not.toHaveProperty('osSecurityUpdateRequests');
+    expect(db.clientStatus.upsert).toHaveBeenCalledOnce();
+    expect(db.osSecurityUpdateClientReport.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { clientId, receivedAt: { lte: expect.any(Date) } },
+      data: { earlyEnabled: false, receivedAt: expect.any(Date) },
+    });
+    expect(db.osSecurityUpdateClientReport.createMany).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ clientId, paths: [['earlyEnabled']] }, expect.any(String));
+  });
+
+  it('saves status and logs a failed disable write', async () => {
+    db.osSecurityUpdateClientReport.updateMany.mockRejectedValue(new Error('DB error'));
+    const response = await post(undefined);
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ requestId: expect.any(String), statusId: 'status-1', clientDeviceId: 'device-1', logsStored: 0 });
+    expect(db.clientStatus.upsert).toHaveBeenCalledOnce();
+    expect(logger.warn).toHaveBeenCalledExactlyOnceWith({ clientId, error: 'Error' }, expect.any(String));
   });
 
   it('records a disabled report and omits the response key', async () => {
@@ -102,6 +150,27 @@ describe('POST /clients/status OS security updates', () => {
   it('returns an empty array with no open requests', async () => {
     db.osSecurityUpdateTarget.findMany.mockResolvedValue([]);
     expect((await post(enabledReport)).json().osSecurityUpdateRequests).toEqual([]);
+  });
+
+  it('returns only requests with pending or failed targets', async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    db.osSecurityUpdateTarget.findMany.mockResolvedValue(['pending', 'failed', 'verified'].map(state => ({
+      ...target, state, requestId: state, request: { ...request, id: state, expiresAt },
+    })));
+    const response = await post(enabledReport);
+    expect(response.json().osSecurityUpdateRequests).toEqual(['pending', 'failed'].map(id => ({
+      id, packages: request.packages, expiresAt: expiresAt.toISOString(),
+    })));
+  });
+
+  it('returns an empty array when this status verifies the last target', async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    db.osSecurityUpdateTarget.findMany.mockResolvedValue([{ ...target, request: { ...request, expiresAt } }]);
+    const response = await post(checkedReport());
+    expect(response.json().osSecurityUpdateRequests).toEqual([]);
+    expect(db.osSecurityUpdateTarget.updateMany).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      data: expect.objectContaining({ state: 'verified' }),
+    }));
   });
 
   it('leaves the first delivery timestamp in place on subsequent polls', async () => {
@@ -137,6 +206,35 @@ describe('target checks', () => {
       where: { clientId, requestId: request.id, state: 'pending', request: { status: 'open' } },
       data: { state: 'verified', detail: { reason: 'packages_verified' }, verifiedAt: finishedAt },
     });
+  });
+
+  it('verifies a failed target after a successful check', async () => {
+    db.osSecurityUpdateTarget.findMany.mockResolvedValue([{ ...target, state: 'failed', request }]);
+    expect(await recordOsSecurityUpdateReport(clientId, checkedReport(), finishedAt)).toEqual([]);
+    expect(db.osSecurityUpdateTarget.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { clientId, requestId: request.id, state: 'failed', request: { status: 'open' } },
+      data: { state: 'verified', detail: { reason: 'packages_verified' }, verifiedAt: finishedAt },
+    });
+  });
+
+  it('skips rewriting the same pending state and detail regardless of JSON key order', async () => {
+    const report = checkedReport();
+    report.check!.packages.chromium = { state: 'unmeasured', version: null, candidateRemaining: null };
+    db.osSecurityUpdateTarget.findMany.mockResolvedValue([{
+      ...target, request, detail: { package: 'chromium', product: 'Chromium', reason: 'unmeasured' },
+    }]);
+    await recordOsSecurityUpdateReport(clientId, report, finishedAt);
+    expect(db.osSecurityUpdateTarget.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('skips rewriting the same failed state and detail', async () => {
+    const report = checkedReport();
+    report.check!.result = 'failed';
+    db.osSecurityUpdateTarget.findMany.mockResolvedValue([{
+      ...target, request, state: 'failed', detail: { reason: 'update_failed' },
+    }]);
+    await recordOsSecurityUpdateReport(clientId, report, finishedAt);
+    expect(db.osSecurityUpdateTarget.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
