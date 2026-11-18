@@ -5,6 +5,7 @@ import { authenticate } from '../../lib/auth.js';
 import {
   getKioskInquirySummary,
   listKioskInquiries,
+  markAllKioskInquiriesRead,
   openKioskInquiry,
   replyToKioskInquiry
 } from '../../services/kiosk-inquiry/kiosk-inquiry.service.js';
@@ -15,6 +16,9 @@ import { requireClientDevice, resolveLocationScopeContext } from './shared.js';
 const employeeTagSchema = z.object({ employeeTagUid: z.string().min(1).optional() }).strict();
 const replySchema = employeeTagSchema.extend({ body: z.string().min(1).max(1000) }).strict();
 const threadParamsSchema = z.object({ threadId: z.string().min(1) }).strict();
+const readAllSchema = employeeTagSchema.extend({
+  threads: z.array(z.object({ id: threadParamsSchema.shape.threadId, lastMessageAt: z.string().datetime({ precision: 3 }) }).strict()).max(250)
+}).strict();
 
 // ログインの検証を行うため無制限にしない。端末と URL ごとに数える(plugins/rate-limit.ts)。
 const inquiryRateLimit = { max: 300, timeWindow: '1 minute' };
@@ -42,6 +46,13 @@ export async function registerKioskInquiryRoutes(app: FastifyInstance): Promise<
     const body = employeeTagSchema.parse(request.body === undefined ? {} : request.body);
     const loginUser = body.employeeTagUid ? undefined : await resolveLoginUser(request, reply);
     return listKioskInquiries(clientDevice, body.employeeTagUid, loginUser);
+  });
+
+  app.post('/kiosk/inquiries/read-all', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {
+    const { clientDevice } = await requireClientDevice(request.headers['x-client-key']);
+    const { threads, employeeTagUid } = readAllSchema.parse(request.body);
+    const loginUser = employeeTagUid ? undefined : await resolveLoginUser(request, reply);
+    return markAllKioskInquiriesRead(clientDevice, { threads }, employeeTagUid, loginUser);
   });
 
   app.post('/kiosk/inquiries/:threadId/open', { config: { rateLimit: inquiryRateLimit } }, async (request, reply) => {

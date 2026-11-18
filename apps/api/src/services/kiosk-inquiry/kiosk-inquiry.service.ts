@@ -102,27 +102,77 @@ export async function createKioskInquiryThread(
   return thread.id;
 }
 
+const READ_ALL_UNLISTED_LIMIT = 200;
+
+function unreadThreadWhere(device: InquiryDevice) {
+  return {
+    inquiry: {
+      kind: 'INQUIRY',
+      ...(device.inquiryReceiverEnabled ? { receiverUnread: true } : { senderClientDeviceId: device.id, senderUnread: true })
+    },
+    systemNotice: device.systemNoticeReceiverEnabled
+      ? { kind: 'SYSTEM_NOTICE', receiverUnread: true, noticeResolvedAt: null } : undefined
+  } satisfies {
+    inquiry: Prisma.KioskInquiryThreadWhereInput;
+    systemNotice?: Prisma.KioskInquiryThreadWhereInput;
+  };
+}
+
 export async function getKioskInquirySummary(device: InquiryDevice, loginUser?: Pick<User, 'role'>) {
+  const { inquiry, systemNotice } = unreadThreadWhere(device);
   const unreadCount = await prisma.kioskInquiryThread.count({
-    where: { OR: [
-      { kind: 'INQUIRY', ...(device.inquiryReceiverEnabled
-        ? { receiverUnread: true } : { senderClientDeviceId: device.id, senderUnread: true }) },
-      ...(device.systemNoticeReceiverEnabled ? [{ kind: 'SYSTEM_NOTICE' as const, receiverUnread: true, noticeResolvedAt: null }] : [])
-    ] }
+    where: { OR: systemNotice ? [inquiry, systemNotice] : [inquiry] }
   });
   return { isReceiver: isReceiver(device), unreadCount,
     loginUnlock: isReceiver(device) && (loginUser?.role === 'ADMIN' || loginUser?.role === 'MANAGER') };
 }
 
+export async function markAllKioskInquiriesRead(
+  device: InquiryDevice,
+  { threads }: { threads: { id: string; lastMessageAt: string }[] },
+  employeeTagUid?: string,
+  loginUser?: Pick<User, 'role'>
+) {
+  await authorizeReceiver(device, employeeTagUid, loginUser);
+  if (threads.length === 0) return { updatedCount: 0 };
+
+  const { inquiry, systemNotice } = unreadThreadWhere(device);
+  const readScope = { OR: threads.map(({ id, lastMessageAt }) => ({ id, lastMessageAt: new Date(lastMessageAt) })) };
+  return prisma.$transaction(async (tx) => {
+    const inquiries = await tx.kioskInquiryThread.updateMany({
+      where: { AND: [inquiry, readScope] },
+      data: device.inquiryReceiverEnabled ? { receiverUnread: false } : { senderUnread: false }
+    });
+    const notices = systemNotice && await tx.kioskInquiryThread.updateMany({
+      where: { AND: [systemNotice, readScope] },
+      data: { receiverUnread: false }
+    });
+    return { updatedCount: inquiries.count + (notices?.count ?? 0) };
+  });
+}
+
 export async function listKioskInquiries(device: InquiryDevice, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {
   const { canViewScreen } = await authorizeReceiver(device, employeeTagUid, loginUser);
+  const pageSize = isReceiver(device) ? 50 : 20;
+  const { inquiry, systemNotice } = unreadThreadWhere(device);
+  // 一覧の取得前に、画面外でも既読にできる候補を確定する。
+  const unread = await prisma.kioskInquiryThread.findMany({
+    where: { OR: systemNotice ? [inquiry, systemNotice] : [inquiry] },
+    orderBy: { lastMessageAt: 'desc' },
+    take: pageSize + READ_ALL_UNLISTED_LIMIT,
+    select: { id: true, lastMessageAt: true }
+  });
   const threads = await prisma.kioskInquiryThread.findMany({
     where: { AND: [accessibleThreadWhere(device), { OR: [{ kind: 'INQUIRY' }, { noticeResolvedAt: null }] }] },
     orderBy: { lastMessageAt: 'desc' },
-    take: isReceiver(device) ? 50 : 20,
+    take: pageSize,
     include: threadInclude
   });
-  return { canViewScreen, threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
+  const listedIds = new Set(threads.map(({ id }) => id));
+  const unreadElsewhere = unread.filter(({ id }) => !listedIds.has(id))
+    .slice(0, READ_ALL_UNLISTED_LIMIT)
+    .map(({ id, lastMessageAt }) => ({ id, lastMessageAt: lastMessageAt.toISOString() }));
+  return { canViewScreen, unreadElsewhere, threads: threads.map((thread) => presentThread(thread, receivesThread(device, thread.kind))) };
 }
 
 export async function openKioskInquiry(device: InquiryDevice, threadId: string, employeeTagUid?: string, loginUser?: Pick<User, 'role'>) {

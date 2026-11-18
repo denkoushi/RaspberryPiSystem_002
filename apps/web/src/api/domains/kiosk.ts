@@ -328,7 +328,7 @@ export async function getKioskInquirySummary(signal?: AbortSignal) {
 }
 
 export async function listKioskInquiries(employeeTagUid?: string, signal?: AbortSignal) {
-  const { data } = await api.post<{ threads: KioskInquiryThread[]; canViewScreen?: boolean }>(
+  const { data } = await api.post<{ threads: KioskInquiryThread[]; canViewScreen?: boolean; unreadElsewhere: KioskInquiryReadAllPayload['threads'] }>(
     '/kiosk/inquiries/list', employeeTagUid ? { employeeTagUid } : {}, { signal }
   );
   return data;
@@ -337,6 +337,17 @@ export async function listKioskInquiries(employeeTagUid?: string, signal?: Abort
 export async function openKioskInquiry(threadId: string, employeeTagUid?: string, signal?: AbortSignal) {
   const { data } = await api.post<KioskInquiryDetail>(
     `/kiosk/inquiries/${encodeURIComponent(threadId)}/open`, employeeTagUid ? { employeeTagUid } : {}, { signal }
+  );
+  return data;
+}
+
+export type KioskInquiryReadAllPayload = {
+  threads: Pick<KioskInquiryThread, 'id' | 'lastMessageAt'>[];
+};
+
+export async function markAllKioskInquiriesRead(payload: KioskInquiryReadAllPayload, employeeTagUid?: string, signal?: AbortSignal) {
+  const { data } = await api.post<{ updatedCount: number }>(
+    '/kiosk/inquiries/read-all', { ...payload, ...(employeeTagUid ? { employeeTagUid } : {}) }, { signal }
   );
   return data;
 }
