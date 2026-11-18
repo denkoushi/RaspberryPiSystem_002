@@ -9,6 +9,7 @@ import { clearProcedureEditorAccess, readProcedureEditorAccess, subscribeProcedu
 import {
   createOverlayForRange,
   createOverlayId,
+  duplicateOverlayId,
   isOverlayDraftSaveable,
   overlayDraftSnapshot,
   removeOverlayPage,
@@ -500,7 +501,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
     if (readOnly || busyRef.current || !selectedPage) return;
     const source = elements.find((element) => element.id === sourceId);
     if (!source || source.pageIndex === selectedPage.pageIndex) return;
-    const id = createOverlayId();
+    const id = duplicateOverlayId(source.id, createOverlayId);
     const placement = pendingMaterials.current.get(sourceId);
     if (placement) pendingMaterials.current.set(id, { ...placement, elementId: id, fallbackAssetId: undefined });
     dispatch({ type: 'duplicate', sourceId, id, pageIndex: selectedPage.pageIndex });
@@ -509,7 +510,7 @@ export function useAssemblyProcedureDocumentEditorController(input: ControllerIn
 
   const duplicateSelectedOverlay = useEditorCallback(() => {
     if (!selectedElement || readOnly || busyRef.current) return;
-    const copy = { ...selectedElement, id: createAssemblyRequestId(), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
+    const copy = { ...selectedElement, id: duplicateOverlayId(selectedElement.id, createAssemblyRequestId), zIndex: Math.max(0, ...elements.map(element => element.zIndex)) + 1 };
     const placement = pendingMaterials.current.get(selectedElement.id);
     if (placement) pendingMaterials.current.set(copy.id, { ...placement, elementId: copy.id, fallbackAssetId: undefined });
     dispatch({ type: 'add', element: copy });

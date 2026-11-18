@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import datetime as dt
+import io
 import json
 import sys
 import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -163,6 +165,92 @@ class OsUpdateHealthTest(unittest.TestCase):
         health.mark_logs_delivered(self.config, old)
         self.assertNotEqual(old[0]["context"]["episodeId"], new[0]["context"]["episodeId"])
         self.assertEqual(len(self.collect(NOW + dt.timedelta(days=1))), 1)
+
+
+class OsUpdateRequestsTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.state_dir = Path(directory.name)
+        self.path = self.state_dir / "request.json"
+        clock = patch.object(health.dt, "datetime", wraps=dt.datetime)
+        clock.start().now.return_value = NOW
+        self.addCleanup(clock.stop)
+        self.expires = (NOW + dt.timedelta(days=1)).isoformat()
+
+    def request(self, request_id, packages=None):
+        return {"id": request_id, "packages": packages or ["chromium"], "expiresAt": self.expires}
+
+    def receive(self, requests):
+        body = json.dumps({"osSecurityUpdateRequests": requests}).encode("utf-8")
+        health.receive_early_update_requests(self.state_dir, io.BytesIO(body))
+
+    def stored(self):
+        return json.loads(self.path.read_text())["requests"]
+
+    def test_request_reconciliation_keeps_baseline_and_removes_unlisted_ids(self):
+        installed = SimpleNamespace(returncode=0, stdout="installed\tok\t1:120.0\n", stderr="")
+        absent = SimpleNamespace(returncode=1, stdout="", stderr="dpkg-query: no packages found matching openssl\n")
+        with patch.object(health.subprocess, "run", side_effect=[installed, installed, absent]) as run:
+            self.receive([self.request("keep"), self.request("remove")])
+            previous = self.stored()[0]
+            newer_expiry = (NOW + dt.timedelta(days=2)).isoformat()
+            self.receive([{**self.request("keep"), "expiresAt": newer_expiry},
+                          self.request("new", ["openssl"])])
+            self.assertEqual(self.stored(), [
+                {**previous, "expiresAt": newer_expiry},
+                {**self.request("new", ["openssl"]), "receivedAt": NOW.isoformat(),
+                 "baseline": {"openssl": {"state": "absent", "version": None}}},
+            ])
+            self.assertEqual(run.call_count, 3)
+            self.assertEqual(run.call_args.kwargs["env"]["LC_ALL"], "C.UTF-8")
+            self.assertEqual(run.call_args.args[0][-1], "openssl")
+            self.assertEqual(previous["baseline"], {"chromium": {"state": "installed", "version": "1:120.0"}})
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(list(self.state_dir.iterdir()), [self.path])
+        self.receive([])
+        self.assertEqual(self.stored(), [])
+
+    def test_missing_key_and_malformed_response_preserve_requests(self):
+        with patch.object(health.subprocess, "run", side_effect=FileNotFoundError):
+            self.receive([self.request("keep")])
+        self.assertEqual(self.stored()[0]["baseline"], {"chromium": {"state": "unmeasured", "version": None}})
+        self.assertEqual(self.stored()[0]["id"], "keep")
+        original = self.path.read_bytes()
+        invalid_items = [
+            None, {"id": "invalid", "packages": ["--help"], "expiresAt": self.expires},
+            {**self.request("invalid"), "expiresAt": "tomorrow"},
+            self.request("new"),  # duplicate of the first item in the response
+        ]
+        invalid_bodies = [b"{}", b"not json", b"\xff", b'{"osSecurityUpdateRequests":{}}']
+        invalid_bodies.extend(json.dumps({
+            "osSecurityUpdateRequests": [self.request("new"), invalid],
+        }).encode("utf-8") for invalid in invalid_items)
+        with patch.object(health.subprocess, "run") as run:
+            for body in invalid_bodies:
+                with self.subTest(body=body):
+                    health.receive_early_update_requests(self.state_dir, io.BytesIO(body))
+                    self.assertEqual(self.path.read_bytes(), original)
+            run.assert_not_called()
+
+    def test_report_excludes_expired_requests_and_local_only_fields(self):
+        with patch.object(health, "_measure_baseline", return_value={"state": "installed", "version": "1"}):
+            self.receive([self.request("active")])
+        request = self.stored()[0]
+        expired = {**request, "id": "expired", "expiresAt": NOW.isoformat()}
+        self.path.write_text(json.dumps({"requests": [expired, request]}), encoding="utf-8")
+        check = {"requestIds": ["active"], "result": "applied", "finishedAt": NOW.isoformat(),
+                 "packages": {"chromium": {"state": "installed", "version": "2", "candidateRemaining": False}}}
+        (self.state_dir / "state.json").write_text(json.dumps({"check": check}), encoding="utf-8")
+        payload = {}
+        health.add_early_update_report(self.state_dir, payload)
+        self.assertEqual(payload["osSecurityUpdate"], {
+            "earlyEnabled": True, "requests": [{
+                "id": "active", "receivedAt": NOW.isoformat(), "baseline": request["baseline"],
+            }], "check": check,
+        })
+        self.receive([expired])
+        self.assertEqual(self.stored(), [])
 
 
 if __name__ == "__main__":

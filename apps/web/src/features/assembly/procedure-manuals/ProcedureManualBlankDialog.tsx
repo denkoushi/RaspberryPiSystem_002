@@ -15,12 +15,12 @@ import { ProcedureManualModelMatch, ProcedureManualModelTenkey } from './Procedu
 import { ProcedureManualPartCandidateButton, useProcedureManualPartScan } from './ProcedureManualPartPicker';
 
 import type { ProcedureManualPartCandidateDto } from '../../../api/client';
-import type { ProcedureManualModelDto, ProcedureManualProcessDto } from '../types';
+import type { ProcedureManualProcessDto } from '../types';
 
 export function ProcedureManualBlankDialog({ processes, modelCode, processId, onClose, beforeMutation, subjectKind = 'MODEL' }: {
   subjectKind?: 'MODEL' | 'PART';
   beforeMutation?: () => boolean;
-  models: ProcedureManualModelDto[]; processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
+  processes: ProcedureManualProcessDto[]; modelCode: string; processId: string; onClose: () => void;
 }) {
   processes = processes.filter(process => process.subjectKind !== 'COMMON');
   const navigate = useNavigate();

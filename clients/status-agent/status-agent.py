@@ -334,6 +334,10 @@ class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
 def _post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
     api_base = config["API_BASE_URL"].rstrip("/")
     url = f"{api_base}/clients/status"
+    early_state_dir = os_update_health.early_update_state_dir(config)
+    if early_state_dir is not None:
+        payload = payload.copy()
+        os_update_health.add_early_update_report(early_state_dir, payload)
     data = json.dumps(payload).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
@@ -348,6 +352,9 @@ def _post_payload(config: Dict[str, str], payload: Dict[str, object]) -> None:
         urllib.request.HTTPSHandler(context=context), NoRedirectHandler()
     )
     with opener.open(request, timeout=timeout) as response:
+        if early_state_dir is not None and response.getcode() < 300:
+            os_update_health.receive_early_update_requests(early_state_dir, response)
+            return
         body = response.read().decode("utf-8")
         return_code = response.getcode()
         if return_code >= 300:
