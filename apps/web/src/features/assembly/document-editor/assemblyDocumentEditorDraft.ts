@@ -1,3 +1,5 @@
+import { ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX } from '@raspi-system/shared-types';
+
 import type { AssemblyProcedureDocumentDto } from '../types';
 import type {
   AssemblyProcedureOverlayBBox,
@@ -10,6 +12,7 @@ export type OverlayDraftAction =
   | { type: 'replace'; elements: AssemblyProcedureOverlayElement[]; preserveHistory?: boolean }
   | { type: 'applyLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[] }
   | { type: 'splitLayout'; pageIndex: number; elements: AssemblyProcedureOverlayElement[]; nextPageElements: AssemblyProcedureOverlayElement[] }
+  | { type: 'addPair'; elements: [AssemblyProcedureOverlayElement, AssemblyProcedureOverlayElement] }
   | { type: 'add'; element: AssemblyProcedureOverlayElement }
   | { type: 'duplicate'; sourceId: string; id: string; pageIndex: number }
   | { type: 'update'; element: AssemblyProcedureOverlayElement }
@@ -79,6 +82,11 @@ export function overlayDraftReducer(
     }
     case 'replace':
       return action.elements.map((element) => ({ ...element }));
+    case 'addPair': {
+      const [first, second] = action.elements;
+      const zIndex = nextPageZIndex(state, first.pageIndex);
+      return [...state, { ...first, zIndex }, { ...second, zIndex: zIndex + 1 }];
+    }
     case 'add':
       return [...state, { ...action.element, zIndex: nextPageZIndex(state, action.element.pageIndex) }];
     case 'duplicate': {
@@ -135,7 +143,15 @@ export function createOverlayId(): string {
   return `overlay-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** A copy of a text-erase patch keeps the prefix so it still renders without padding. */
+export function duplicateOverlayId(sourceId: string, generateId: () => string = createOverlayId): string {
+  return sourceId.startsWith(ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX)
+    ? `${ASSEMBLY_PROCEDURE_TEXT_ERASE_ID_PREFIX}${createOverlayId()}`
+    : generateId();
+}
+
 export type OverlayCreationKind = 'TEXT' | 'IMAGE' | 'SHAPE';
+export type OverlayRangeChoice = OverlayCreationKind | 'TEXT_REWRITE';
 
 function nextPageZIndex(elements: AssemblyProcedureOverlayElement[], pageIndex: number): number {
   const pageElements = pageOverlayElements(elements, pageIndex);
@@ -227,6 +243,12 @@ export function convertOverlayShapeKind(
   return { ...next, start: undefined, end: undefined };
 }
 
+export function createOverlayForRange<K extends OverlayCreationKind>(
+  kind: K,
+  pageIndex: number,
+  bbox: AssemblyProcedureOverlayBBox,
+  elements?: AssemblyProcedureOverlayElement[]
+): Extract<AssemblyProcedureOverlayElement, { kind: K }>;
 export function createOverlayForRange(
   kind: OverlayCreationKind,
   pageIndex: number,

@@ -1,4 +1,5 @@
 ---
 os_security_update_oncalendar: "Sun *-*-* 01:00:00"
+os_security_update_early_oncalendar: "*-*-* 01:00:00"
 os_security_update_randomized_delay_sec: '90min'
 os_security_update_browser_unit: 'kiosk-browser.service'

@@ -6,9 +6,11 @@ import { prisma } from '../../lib/prisma.js';
 import { getInferenceRuntime } from '../inference/inference-runtime.js';
 import { InferenceDeferredError, type TextCompletionPort } from '../inference/ports/text-completion.port.js';
 import { getLocalLlmRuntimeController } from '../inference/runtime/get-local-llm-runtime-controller.js';
+import { evaluateProcedureDictation } from './procedure-dictation-evaluation.service.js';
 import { runAssemblyTransaction } from './assembly-transaction.js';
 import { ASSEMBLY_SITE_CONTEXT, GRINDING_SITE_CONTEXT } from './procedure-site-context.js';
 import { learnSiteVocabulary, recordLearningSnapshot } from './procedure-site-vocabulary.js';
+import { procedureFeedbackLearningWindow } from './procedure-text-feedback.js';
 
 const contexts = { assembly: ASSEMBLY_SITE_CONTEXT, grinding: GRINDING_SITE_CONTEXT };
 type Site = keyof typeof contexts;
@@ -51,7 +53,7 @@ export async function runProcedureTermLearningOnce(options: { dryRun?: boolean; 
       });
       if (!changed) { results.push({ site, status: 'skipped', terms: [] }); continue; }
       const rows = await prisma.assemblyProcedureTextFeedback.findMany({
-        where: { site, source: 'LAYOUT', outcome: 'EDITED', resolvedAt: { gte: new Date(now.getTime() - 180 * 86400_000), lte: now } },
+        where: { site, source: 'LAYOUT', outcome: 'EDITED', resolvedAt: procedureFeedbackLearningWindow(now) },
         orderBy: [{ resolvedAt: 'desc' }, { id: 'desc' }], take: 300,
         select: { id: true, documentId: true, aiText: true, finalText: true }
       });
@@ -100,7 +102,8 @@ export async function runProcedureTermLearningOnce(options: { dryRun?: boolean; 
   }
   for (const site of Object.keys(contexts) as Site[]) {
     try {
-      const counts = await recordLearningSnapshot(site, now, options.dryRun, vocabularyResults[site]);
+      const { snapshot } = await evaluateProcedureDictation(site, { ...options, now });
+      const counts = await recordLearningSnapshot(site, now, options.dryRun, vocabularyResults[site], snapshot);
       const result = results.find(result => result.site === site);
       if (result) result.counts = counts;
     } catch (error) {

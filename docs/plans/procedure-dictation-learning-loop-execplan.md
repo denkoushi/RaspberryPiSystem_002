@@ -11,6 +11,7 @@ Improve the conversion of spoken Japanese into written procedure text using fina
 - [x] (2026-11-18) Stage 1 implementation records dictation proposals, resolves them on save, and counts their outcomes by source.
 - [x] (2026-11-18) Prisma generation, both TypeScript checks, 87 API tests, and 54 Web tests passed locally.
 - [x] (2026-11-18) Review corrections passed Prisma generation, both TypeScript checks, 127 targeted API tests, and 55 targeted Web tests.
+- [x] (2026-11-18) Stage 2 adds paired nightly dictation evaluations, stores scores and adoption per site, and provides a read-only evaluation CLI.
 
 ## Surprises & Discoveries
 
@@ -23,6 +24,8 @@ The API skips proposals that exceed the editor's text limit. The editor sends th
 - Decision (2026-11-18). Reuse overlay save resolution and await the optional feedback write so a proposal can exist before the editor saves. Check the edit lease for recording and use sequential queries because the reads and insert do not require a shared transaction. Split layout and dictation outcome counts for measurement.
 - Decision (2026-11-18). Restrict both the nightly change check and the 300-row sample for term learning to `LAYOUT`. Dictation corrections alone could trigger relearning, displace layout examples from the sample, and reach the layout instructions before evaluation. Use dictation corrections in the next PR after they pass the nightly evaluation.
 - Decision (2026-11-18). Defer adding learned terms to Whisper hints because the system retains no audio for replay and comparison.
+- Decision (2026-11-18). Reserve the 16 fixed cases and small `EDITED` feedback in the confirmation partition for evaluation. Split feedback by SHA-256 of the NFKC-normalized, trimmed spoken and final text pair. Adopt only with at least one confirmation case, more wins than losses, no increase in mean score or number misses, and no failure or abort. Freeze the evaluated learning in the snapshot. Production uses it only when the latest decision for the site adopted it within the last two days.
+- Decision (2026-11-18). The evaluation adds up to 120 model calls per night, so the nightly job limit rises from 20 to 60 minutes. A run that hits the limit records non-adoption. Measure the real duration with the CLI after deploy.
 
 ## Outcomes & Retrospective
 

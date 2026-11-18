@@ -6,6 +6,8 @@ import { AssemblyProcedureDocumentBlankService } from '../../../services/assembl
 import { ProcedureMaterialPlacementService } from '../../../services/assembly/procedure-material-placement.service.js';
 
 import { AssemblyProcedureDocumentEditLeaseService } from '../../../services/assembly/assembly-procedure-document-edit-lease.service.js';
+import { AssemblyProcedureDocumentAssetsService } from '../../../services/assembly/assembly-procedure-document-assets.service.js';
+import { prisma } from '../../../lib/prisma.js';
 import { ApiError } from '../../../lib/errors.js';
 import { registerErrorHandler } from '../../../plugins/error-handler.js';
 import {
@@ -82,6 +84,14 @@ function buildMultipartBody(params: {
   };
 }
 
+const rewriteSelection = { xRatio: 0.1, yRatio: 0.2, widthRatio: 0.3, heightRatio: 0.4 };
+const rewriteRequest = {
+  method: 'POST' as const,
+  url: `/assembly/procedure-documents/${documentId}/regions/text-rewrite`,
+  payload: { accessPassword: '2520', pageIndex: 0, bbox: rewriteSelection }
+};
+const assertCanWrite = AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite;
+
 function buildHarness() {
   const service = {
     addBlankPage: vi.fn(async () => makeRevision()),
@@ -111,7 +121,8 @@ function buildHarness() {
       contentType: 'image/jpeg',
       kind: 'OVERLAY_IMAGE' as const
     })),
-    findTextCandidates: vi.fn(async () => [])
+    findTextCandidates: vi.fn(async () => []),
+    createTextRewriteRegion: vi.fn<AssemblyProcedureDocumentAssetsService['createTextRewriteRegion']>()
   };
 
   const app = Fastify();
@@ -396,6 +407,63 @@ describe('assembly procedure revision routes', () => {
       documentId,
       ...region
     });
+  });
+
+  it('returns the text rewrite patch and forwards the edit token', async () => {
+    const harness = buildHarness(); app = harness.app;
+    const dto = {
+      asset: await harness.assetsService.createImageRegion(),
+      patchBBox: rewriteSelection,
+      text: '締付確認',
+      textBBox: { xRatio: 0.12, yRatio: 0.22, widthRatio: 0.19, heightRatio: 0.03 },
+      color: '#141414',
+      fontSizeRatio: 0.03
+    };
+    harness.assetsService.createTextRewriteRegion.mockResolvedValue(dto);
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject({ ...rewriteRequest, headers: { 'x-procedure-edit-token': 'lease-token' } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(dto);
+    expect(harness.assetsService.createTextRewriteRegion).toHaveBeenCalledWith({
+      ...rewriteRequest.payload, documentId, clientDeviceId: null, ip: '127.0.0.1', holderKey: null, holderToken: 'lease-token'
+    });
+  });
+
+  it('returns 422 when text rewriting finds no bounded candidates', async () => {
+    const harness = buildHarness(); app = harness.app;
+    harness.assetsService.createTextRewriteRegion.mockRejectedValue(new ApiError(422, '文字が見つかりませんでした'));
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    const response = await app.inject(rewriteRequest);
+    expect(response.statusCode).toBe(422);
+    expect(response.json().message).toBe('文字が見つかりませんでした');
+  });
+
+  it('rejects text rewriting and image cropping when another device holds an active edit lease', async () => {
+    const harness = buildHarness(); app = harness.app;
+    const acquiredAt = new Date();
+    const expiresAt = new Date(acquiredAt.getTime() + 60_000);
+    vi.mocked(AssemblyProcedureDocumentEditLeaseService.prototype.assertCanWrite).mockImplementation(assertCanWrite);
+    vi.spyOn(prisma.assemblyProcedureDocumentEditLease, 'findUnique').mockResolvedValue({
+      documentId, holderKey: 'other-device', holderToken: 'other-token', holderLabel: '別の端末',
+      acquiredAt, heartbeatAt: acquiredAt, expiresAt
+    });
+    registerAssemblyProcedureDocumentRevisionRoutes(app, { allowView: async () => {}, allowWriteKiosk: async () => {} }, harness.service as never, harness.assetsService as never);
+    for (const url of [rewriteRequest.url, `/assembly/procedure-documents/${documentId}/regions/image`]) {
+      const response = await app.inject({ ...rewriteRequest, url });
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toEqual({
+        code: 'ASSEMBLY_PROCEDURE_EDIT_LOCKED',
+        message: '別の端末が編集中です',
+        lease: {
+          holderLabel: '別の端末',
+          acquiredAt: acquiredAt.toISOString(),
+          heartbeatAt: acquiredAt.toISOString(),
+          expiresAt: expiresAt.toISOString()
+        }
+      });
+    }
+    expect(harness.assetsService.createTextRewriteRegion).not.toHaveBeenCalled();
+    expect(harness.assetsService.createImageRegion).not.toHaveBeenCalled();
   });
 
   it('propagates an optimistic conflict as HTTP 409 without replacing the local payload', async () => {
